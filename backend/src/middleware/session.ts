@@ -1,0 +1,20 @@
+import session from "express-session";
+import { env } from "../config/env";
+import { getRedisClient } from "../database/redis";
+import { RedisSessionStore } from "../database/redisSessionStore";
+
+const redis = getRedisClient();
+
+export const sessionMiddleware = session({
+  name: "discord_dashboard.sid",
+  secret: env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: redis ? new RedisSessionStore(redis) : undefined,
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: env.NODE_ENV === "production",
+    maxAge: env.SESSION_TTL_SECONDS * 1000
+  }
+});

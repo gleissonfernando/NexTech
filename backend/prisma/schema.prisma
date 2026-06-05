@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  discordId    String   @unique
+  username     String
+  avatar       String?
+  email        String?
+  accessToken  String?
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Guild {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  discordId   String     @unique
+  name        String
+  icon        String?
+  ownerId     String?
+  botEnabled  Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model GuildSettings {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String   @unique
+  welcomeEnabled      Boolean  @default(false)
+  welcomeChannelId    String?
+  welcomeMessage      String?
+  autoRoleEnabled     Boolean  @default(false)
+  autoRoleIds         String[] @default([])
+  twitchRoleId        String?
+  boosterRoleId       String?
+  ticketEnabled       Boolean  @default(false)
+  ticketCategoryId    String?
+  logChannelId        String?
+  moderationEnabled   Boolean  @default(true)
+  verificationEnabled Boolean  @default(false)
+  verificationRoleId  String?
+  updatedAt           DateTime @updatedAt
+}
+
+model LiveConfig {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  streamerId  String
+  streamer    String
+  platform    String   @default("twitch")
+  channelId   String?
+  roleId      String?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, platform, streamerId])
+}
+
+model Ticket {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String?
+  openerId    String
+  subject     String
+  status      TicketStatus @default(OPEN)
+  createdAt   DateTime     @default(now())
+  closedAt    DateTime?
+}
+
+model LogEntry {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String?
+  type      String
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
+
+model Statistic {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  memberCount  Int      @default(0)
+  channelCount Int      @default(0)
+  liveCount    Int      @default(0)
+  ticketCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  CLOSED
+}

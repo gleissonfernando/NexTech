@@ -1,0 +1,28 @@
+{
+  "name": "discord-bot-dashboard-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Arquitetura independente para frontend, backend API e bot Discord.",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "bot"
+  ],
+  "scripts": {
+    "start": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:bot": "npm run dev --workspace bot",
+    "start:frontend": "npm run dev:frontend",
+    "start:backend": "npm run dev:backend",
+    "start:bot": "npm run dev:bot",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "prisma:generate": "npm run prisma:generate --workspace backend",
+    "prisma:push": "npm run prisma:push --workspace backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.6.3"
+  }
+}
