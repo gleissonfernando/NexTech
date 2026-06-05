@@ -16,6 +16,10 @@ export const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
 const corsOrigin = env.FRONTEND_URL || true;
 
+if (env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 app.use(
   helmet({
     crossOriginResourcePolicy: {

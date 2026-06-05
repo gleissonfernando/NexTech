@@ -8,6 +8,7 @@ const redis = env.REDIS_SESSION_ENABLED ? getRedisClient() : null;
 export const sessionMiddleware = session({
   name: "discord_dashboard.sid",
   secret: env.SESSION_SECRET,
+  proxy: env.NODE_ENV === "production",
   resave: false,
   saveUninitialized: false,
   store: redis ? new RedisSessionStore(redis) : undefined,
