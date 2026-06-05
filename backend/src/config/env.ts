@@ -85,8 +85,8 @@ const productionFrontendUrl = configuredFrontendUrl ? normalizeUrl(configuredFro
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    HOST: z.string().default(isProduction ? "0.0.0.0" : "localhost"),
-    PORT: z.coerce.number().default(isProduction ? 80 : 4000),
+    HOST: z.preprocess((value) => (isProduction ? "0.0.0.0" : cleanEnvValue(value) ?? "localhost"), z.string()),
+    PORT: z.preprocess((value) => (isProduction ? 80 : cleanEnvValue(value) ?? 4000), z.coerce.number()),
     DATABASE_URL: z.string().optional().default(""),
     MONGO_URI: z.string().optional().default(""),
     MONGODB_URI: z.string().optional().default(""),

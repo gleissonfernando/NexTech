@@ -69,14 +69,12 @@ npm start
 
 O `npm start` de producao sobe o backend e o bot juntos. O backend tambem serve o build do frontend em `frontend/dist`.
 Se a hospedagem nao definir `NODE_ENV`, o script de start define `NODE_ENV=production`.
-Em producao, o backend escuta em `HOST=0.0.0.0` e usa a porta informada em `PORT`; se a plataforma nao informar nenhuma, o padrao e `80`.
+Em producao na Shard, o backend forca `HOST=0.0.0.0` e `PORT=80`, que e a porta esperada pelo proxy `shardweb.app`.
 
-Configure as variaveis no painel da Sharclaud usando `.env.example` como checklist. Em producao, nao use `localhost`, `127.0.0.1` ou `0.0.0.0` em URLs publicas: a aplicacao recusa iniciar com URLs locais. O bind do servidor pode ficar em `HOST="0.0.0.0"`.
+Configure as variaveis no painel da Sharclaud usando `.env.example` como checklist. Em producao, nao use `localhost`, `127.0.0.1` ou `0.0.0.0` em URLs publicas: a aplicacao recusa iniciar com URLs locais.
 
 ```env
 NODE_ENV="production"
-HOST="0.0.0.0"
-PORT="80"
 FRONTEND_URL="https://seu-dominio.com"
 MONGODB_URI="mongodb+srv://usuario:senha@cluster.mongodb.net/ricardinho98?retryWrites=true&w=majority"
 SESSION_SECRET="troque-por-um-segredo-grande-de-sessao"
