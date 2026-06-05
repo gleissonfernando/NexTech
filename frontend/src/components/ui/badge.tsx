@@ -6,11 +6,11 @@ type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 const variants = {
-  default: "border-primary/30 bg-primary/15 text-primary-foreground",
-  success: "border-secondary/30 bg-secondary/15 text-emerald-200",
-  warning: "border-amber-400/30 bg-amber-400/15 text-amber-100",
-  danger: "border-destructive/30 bg-destructive/15 text-red-100",
-  muted: "border-border bg-muted text-muted-foreground"
+  default: "border-zinc-600 bg-zinc-900 text-white",
+  success: "border-zinc-600 bg-zinc-900 text-zinc-100",
+  warning: "border-zinc-700 bg-zinc-950 text-zinc-300",
+  danger: "border-zinc-700 bg-zinc-900 text-zinc-200",
+  muted: "border-zinc-800 bg-zinc-950 text-zinc-400"
 };
 
 export function Badge({ className, variant = "default", ...props }: BadgeProps) {

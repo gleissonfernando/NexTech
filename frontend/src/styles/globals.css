@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --background: 220 8% 14%;
-    --foreground: 210 9% 96%;
-    --card: 223 7% 19%;
-    --card-foreground: 210 9% 96%;
-    --popover: 223 7% 19%;
-    --popover-foreground: 210 9% 96%;
-    --primary: 235 86% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 158 64% 43%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 220 7% 24%;
-    --muted-foreground: 217 9% 72%;
-    --accent: 191 89% 43%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 74% 58%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 8% 28%;
-    --input: 220 8% 28%;
-    --ring: 235 86% 65%;
+    --background: 0 0% 3%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 0 0% 92%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 0 0% 13%;
+    --muted-foreground: 0 0% 66%;
+    --accent: 0 0% 22%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 0% 32%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 0 0% 72%;
   }
 
   * {
@@ -40,9 +40,7 @@
     @apply bg-background text-foreground antialiased;
     margin: 0;
     min-width: 320px;
-    background:
-      linear-gradient(180deg, rgba(49, 51, 56, 0.96) 0%, rgba(30, 31, 34, 1) 42%),
-      linear-gradient(135deg, rgba(88, 101, 242, 0.18), rgba(35, 165, 90, 0.12), rgba(250, 166, 26, 0.08));
+    background: #050505;
     font-family:
       Inter,
       ui-sans-serif,
@@ -63,8 +61,8 @@
 
 @layer utilities {
   .glass-panel {
-    background: rgba(43, 45, 49, 0.78);
-    backdrop-filter: blur(18px);
+    background: rgba(18, 18, 18, 0.88);
+    backdrop-filter: blur(14px);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
