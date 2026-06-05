@@ -94,6 +94,20 @@ Configure `BACKEND_API_URL`, `BACKEND_SOCKET_URL`, `VITE_API_URL` e `VITE_SOCKET
 
 Preencha tambem as variaveis da Twitch se for usar esses recursos.
 
+Para reduzir RAM, o bot limita caches do Discord e deixa logs de mensagens/presenca desligados por padrao:
+
+```env
+BOT_MEMBER_EVENTS_ENABLED="true"
+BOT_MESSAGE_LOGS_ENABLED="false"
+BOT_PRESENCE_MONITOR_ENABLED="false"
+BOT_CACHE_MEMBERS_MAX="200"
+BOT_CACHE_MESSAGES_PER_CHANNEL="10"
+BOT_CACHE_PRESENCES_MAX="0"
+BOT_CACHE_USERS_MAX="200"
+```
+
+Ative `BOT_MESSAGE_LOGS_ENABLED` apenas se precisar registrar mensagens apagadas/editadas. Ative `BOT_PRESENCE_MONITOR_ENABLED` apenas se precisar monitorar lives via status/presenca do Discord.
+
 ## Desenvolvimento local
 
 Use apenas o `.env` da raiz do projeto para desenvolvimento. Se nenhuma URI de MongoDB for informada em modo dev, o backend usa `mongodb://localhost:27017/ricardinho98`.

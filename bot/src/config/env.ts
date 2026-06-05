@@ -49,6 +49,20 @@ function envUrl(name: string, developmentDefault: string, productionDefault?: st
   );
 }
 
+function envBoolean(defaultValue: boolean) {
+  return z.preprocess(
+    (value) => cleanEnvValue(value) ?? String(defaultValue),
+    z.string().transform((value) => value === "true")
+  );
+}
+
+function envNumber(defaultValue: number) {
+  return z.preprocess(
+    (value) => cleanEnvValue(value) ?? defaultValue,
+    z.coerce.number().int().nonnegative()
+  );
+}
+
 function isLocalUrl(value: string) {
   try {
     const url = new URL(value);
@@ -71,6 +85,13 @@ const envSchema = z
     BACKEND_API_URL: envUrl("BACKEND_API_URL", defaultBackendApiUrl, defaultBackendApiUrl),
     BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", defaultBackendUrl, defaultBackendUrl),
     BOT_API_TOKEN: z.string().default(""),
+    BOT_MEMBER_EVENTS_ENABLED: envBoolean(true),
+    BOT_MESSAGE_LOGS_ENABLED: envBoolean(false),
+    BOT_PRESENCE_MONITOR_ENABLED: envBoolean(false),
+    BOT_CACHE_MEMBERS_MAX: envNumber(200),
+    BOT_CACHE_MESSAGES_PER_CHANNEL: envNumber(10),
+    BOT_CACHE_PRESENCES_MAX: envNumber(0),
+    BOT_CACHE_USERS_MAX: envNumber(200),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
     TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(300_000)
