@@ -13,7 +13,7 @@ import {
 import { demoGuilds, toDashboardGuilds } from "../services/guildService";
 import { requireAuthenticated } from "../middleware/auth";
 import { requireDashboardAccessValidation } from "../middleware/roleValidation";
-import { evaluateDashboardAccess } from "../services/accessControlService";
+import { evaluateDashboardAccess, type AccessValidationResult } from "../services/accessControlService";
 import {
   clearAuthCookies,
   createAuthResponse,
@@ -23,6 +23,7 @@ import {
 } from "../services/tokenService";
 import { issueLocalAccess } from "../services/localAccessService";
 import { saveDiscordUser } from "../services/userService";
+import type { AuthSessionUser } from "../types/session";
 
 export const authRouter = Router();
 const dashboardPath = "/dashboard";
@@ -130,6 +131,24 @@ function destroySession(req: Request) {
   });
 }
 
+function applyAccessValidation(user: AuthSessionUser, validation: AccessValidationResult): AuthSessionUser {
+  const manageableGuildIds = new Set(
+    validation.checks
+      .filter((check) => check.owner || check.administrator || check.configuredPanelRole)
+      .map((check) => check.guildId)
+  );
+
+  return {
+    ...user,
+    accessLevel: validation.accessLevel,
+    authorized: validation.authorizedUser,
+    guilds: user.guilds.map((guild) => ({
+      ...guild,
+      isAdmin: guild.isAdmin || manageableGuildIds.has(guild.id)
+    }))
+  };
+}
+
 authRouter.get("/discord", async (req, res) => {
   if (isApiAuthMount(req)) {
     return res.redirect(canonicalAuthUrl("/discord"));
@@ -187,11 +206,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     };
     const validation = await evaluateDashboardAccess(baseUser);
 
-    req.session.user = {
-      ...baseUser,
-      accessLevel: validation.accessLevel,
-      authorized: validation.authorizedUser
-    };
+    req.session.user = applyAccessValidation(baseUser, validation);
     req.session.oauthState = undefined;
 
     issueAuthCookies(res, req.session.user, validation.allowed);
@@ -283,11 +298,7 @@ authRouter.post("/verify", requireAuthenticated, requireDashboardAccessValidatio
   const validation = res.locals.accessValidation;
   const verifiedAuth = issueAuthCookies(
     res,
-    {
-      ...auth.user,
-      accessLevel: validation.accessLevel,
-      authorized: validation.authorizedUser
-    },
+    applyAccessValidation(auth.user, validation),
     validation.allowed
   );
 

@@ -1,11 +1,13 @@
 import { env } from "../config/env";
 import type { AuthSessionUser } from "../types/session";
+import { getDiscordRoleAccess } from "./discordRoleAccessService";
 
 export type GuildAccessCheck = {
   guildId: string;
   guildName: string;
   administrator: boolean;
   owner: boolean;
+  administratorRole: boolean;
   configuredPanelRole: boolean;
 };
 
@@ -28,13 +30,26 @@ function getAuthorizedUserIds() {
 }
 
 export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<AccessValidationResult> {
-  const checks = user.guilds.map((guild) => ({
-    guildId: guild.id,
-    guildName: guild.name,
-    administrator: guild.isAdmin,
-    owner: guild.owner,
-    configuredPanelRole: false
-  }));
+  const checks = await Promise.all(
+    user.guilds.map(async (guild) => {
+      const roleAccess =
+        guild.owner || guild.isAdmin
+          ? {
+              administratorRole: false,
+              configuredPanelRole: false
+            }
+          : await getDiscordRoleAccess(guild.id, user.discordId);
+
+      return {
+        guildId: guild.id,
+        guildName: guild.name,
+        administrator: guild.isAdmin || roleAccess.administratorRole,
+        owner: guild.owner,
+        administratorRole: roleAccess.administratorRole,
+        configuredPanelRole: roleAccess.configuredPanelRole
+      };
+    })
+  );
   const authorizedUser = getAuthorizedUserIds().has(user.discordId);
   const canManageDashboard = authorizedUser || checks.some((check) => check.administrator || check.owner || check.configuredPanelRole);
 
