@@ -56,6 +56,14 @@ export function requireBot(req: Request, res: Response, next: NextFunction) {
   return res.status(401).json({ message: "Token do bot invalido." });
 }
 
+export function requireAdminAccess(_req: Request, res: Response, next: NextFunction) {
+  if (res.locals.dashboardAuth?.user?.accessLevel === "admin") {
+    return next();
+  }
+
+  return res.status(403).json({ message: "Acesso administrativo necessario para esta acao." });
+}
+
 export function requireAuthOrBot(req: Request, res: Response, next: NextFunction) {
   if (isBotRequest(req)) {
     return next();

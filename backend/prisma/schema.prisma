@@ -15,6 +15,7 @@ model User {
   email        String?
   accessToken  String?
   refreshToken String?
+  lastLoginAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   logs         LogEntry[]

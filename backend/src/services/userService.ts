@@ -2,6 +2,8 @@ import { prisma } from "../database/prisma";
 import type { DiscordTokenResponse, DiscordUser } from "./discordOAuthService";
 
 export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenResponse) {
+  const lastLoginAt = new Date();
+
   try {
     return await prisma.user.upsert({
       where: {
@@ -13,14 +15,16 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
         avatar: user.avatar,
         email: user.email,
         accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token
+        refreshToken: tokens.refresh_token,
+        lastLoginAt
       },
       update: {
         username: user.global_name ?? user.username,
         avatar: user.avatar,
         email: user.email,
         accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token
+        refreshToken: tokens.refresh_token,
+        lastLoginAt
       }
     });
   } catch (error) {
@@ -30,7 +34,8 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
       discordId: user.id,
       username: user.global_name ?? user.username,
       avatar: user.avatar,
-      email: user.email
+      email: user.email,
+      lastLoginAt
     };
   }
 }

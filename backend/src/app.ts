@@ -10,9 +10,11 @@ import { env } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { sessionMiddleware } from "./middleware/session";
 import { apiRouter } from "./routes";
+import { authRouter } from "./routes/auth";
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
+const corsOrigin = env.FRONTEND_URL || true;
 
 app.use(
   helmet({
@@ -23,7 +25,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: corsOrigin,
     credentials: true
   })
 );
@@ -33,6 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
+app.use("/auth", authRouter);
 app.use("/api", apiRouter);
 
 if (fs.existsSync(frontendDistPath)) {

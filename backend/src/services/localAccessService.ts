@@ -11,7 +11,10 @@ export function createLocalDashboardUser(): AuthSessionUser {
     tag: "local-admin",
     avatar: null,
     email: null,
-    guilds: demoGuilds
+    guilds: demoGuilds,
+    accessLevel: "admin",
+    authorized: true,
+    lastLoginAt: new Date().toISOString()
   };
 }
 

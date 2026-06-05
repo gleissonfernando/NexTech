@@ -49,6 +49,14 @@ export class ApiClient {
       },
       timeout: 8000
     });
+
+    this.http.interceptors.request.use((config) => {
+      if (!env.BACKEND_API_URL) {
+        throw new Error("BACKEND_API_URL nao configurado.");
+      }
+
+      return config;
+    });
   }
 
   async postLog(input: CreateLogInput) {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/auth";
+import { requireAdminAccess, requireAuth } from "../middleware/auth";
 import { getGuildLiveOptions } from "../services/discordOptionsService";
 import { getBotStatus } from "../services/statsService";
 import type { AuthSessionUser } from "../types/session";
@@ -55,7 +55,7 @@ guildsRouter.get("/:guildId/stats", (req, res) => {
   });
 });
 
-guildsRouter.get("/:guildId/live-options", async (req, res, next) => {
+guildsRouter.get("/:guildId/live-options", requireAdminAccess, async (req, res, next) => {
   try {
     const guildId = req.params.guildId;
 
@@ -80,6 +80,10 @@ guildsRouter.get("/:guildId/live-options", async (req, res, next) => {
 });
 
 function canManageGuild(user: AuthSessionUser, guildId: string) {
+  if (user.authorized) {
+    return true;
+  }
+
   const guild = user.guilds.find((item) => item.id === guildId);
   return Boolean(guild && (guild.owner || guild.isAdmin));
 }

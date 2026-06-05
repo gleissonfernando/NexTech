@@ -17,6 +17,9 @@ export type AuthUser = {
   avatar: string | null;
   email: string | null;
   guilds: DashboardGuild[];
+  accessLevel: "admin" | "viewer";
+  authorized: boolean;
+  lastLoginAt: string;
 };
 
 export type AuthResponse = {
@@ -24,10 +27,13 @@ export type AuthResponse = {
   guilds: DashboardGuild[];
   permissions: {
     canManageGuilds: boolean;
+    canManageDashboard: boolean;
+    canConfigureGuilds: boolean;
   };
   access: {
     authenticated: boolean;
     verified: boolean;
+    level: "admin" | "viewer";
     verificationMode: "temporary" | "roles";
     tokenExpiresAt: string;
   };
@@ -35,6 +41,9 @@ export type AuthResponse = {
     allowed: boolean;
     mode: "temporary" | "roles";
     temporaryAccess: boolean;
+    accessLevel: "admin" | "viewer";
+    authorizedUser: boolean;
+    canManageDashboard: boolean;
   };
 };
 

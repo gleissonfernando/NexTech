@@ -55,7 +55,8 @@ export function Topbar({ user, guilds, selectedGuildId, onOpenMenu, onSelectGuil
             <Avatar fallback={user.username} src={user.avatar} />
             <div className="min-w-0 pr-1">
               <p className="max-w-36 truncate text-sm font-medium text-zinc-100">{user.username}</p>
-              <p className="truncate text-xs text-zinc-500">{user.tag}</p>
+              <p className="truncate text-xs text-zinc-500">{user.discordId}</p>
+              <p className="truncate text-[11px] text-zinc-600">{formatDateTime(user.lastLoginAt)}</p>
             </div>
           </div>
 
@@ -66,4 +67,11 @@ export function Topbar({ user, guilds, selectedGuildId, onOpenMenu, onSelectGuil
       </div>
     </header>
   );
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(value));
 }

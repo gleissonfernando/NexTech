@@ -56,7 +56,7 @@ export function toDashboardGuild(guild: DiscordGuild): DashboardGuild {
 }
 
 export function toDashboardGuilds(guilds: DiscordGuild[]) {
-  return guilds.map(toDashboardGuild).filter((guild) => guild.isAdmin);
+  return guilds.map(toDashboardGuild);
 }
 
 export const demoGuilds: DashboardGuild[] = [

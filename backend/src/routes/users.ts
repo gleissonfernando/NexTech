@@ -12,10 +12,15 @@ usersRouter.get("/me", (req, res) => {
 });
 
 usersRouter.get("/permissions", (req, res) => {
-  const guilds = req.session.user?.guilds ?? [];
+  const user = req.session.user;
+  const guilds = user?.guilds ?? [];
+  const canManageDashboard = user?.accessLevel === "admin";
 
   return res.json({
-    canManageGuilds: guilds.some((guild) => guild.isAdmin),
-    manageableGuildIds: guilds.filter((guild) => guild.isAdmin).map((guild) => guild.id)
+    canManageGuilds: canManageDashboard,
+    canManageDashboard,
+    manageableGuildIds: canManageDashboard
+      ? guilds.filter((guild) => user?.authorized || guild.isAdmin || guild.owner).map((guild) => guild.id)
+      : []
   });
 });

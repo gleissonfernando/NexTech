@@ -6,6 +6,11 @@ export class BotSocketClient {
   private socket: Socket | null = null;
 
   connect(client: Client) {
+    if (!env.BACKEND_SOCKET_URL) {
+      console.warn("[socket] BACKEND_SOCKET_URL nao configurado; conexao em tempo real desativada.");
+      return;
+    }
+
     if (!env.BOT_API_TOKEN) {
       console.warn("[socket] BOT_API_TOKEN nao configurado; eventos em tempo real do bot serao ignorados pelo backend.");
     }

@@ -34,15 +34,21 @@ export function clearAuthCookies(res: Response) {
 }
 
 export function createAuthResponse(auth: DashboardAuth) {
+  const user = normalizeAuthUser(auth.user);
+  const canManageDashboard = user.accessLevel === "admin";
+
   return {
-    user: auth.user,
-    guilds: auth.user.guilds,
+    user,
+    guilds: user.guilds,
     permissions: {
-      canManageGuilds: auth.user.guilds.some((guild) => guild.isAdmin || guild.owner)
+      canManageGuilds: canManageDashboard,
+      canManageDashboard,
+      canConfigureGuilds: canManageDashboard
     },
     access: {
       authenticated: true,
       verified: auth.verified,
+      level: user.accessLevel,
       verificationMode: env.DASHBOARD_VERIFICATION_MODE,
       tokenExpiresAt: auth.tokenExpiresAt
     }
@@ -85,7 +91,7 @@ function signToken(type: "access" | "refresh", user: AuthSessionUser, verified: 
   return jwt.sign(
     {
       type,
-      user,
+      user: normalizeAuthUser(user),
       verified
     },
     env.JWT_SECRET,
@@ -99,7 +105,7 @@ function buildAuthFromToken(token: string): DashboardAuth {
   const payload = verifyToken(token, "access");
 
   return {
-    user: payload.user,
+    user: normalizeAuthUser(payload.user),
     verified: payload.verified,
     tokenExpiresAt: new Date((payload.exp ?? 0) * 1000).toISOString()
   };
@@ -113,6 +119,27 @@ function verifyToken(token: string, expectedType: "access" | "refresh") {
   }
 
   return payload;
+}
+
+function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
+  const authorized = user.authorized ?? getAuthorizedUserIds().has(user.discordId);
+  const hasAdminGuild = user.guilds.some((guild) => guild.owner || guild.isAdmin);
+  const accessLevel = user.accessLevel ?? (authorized || hasAdminGuild ? "admin" : "viewer");
+
+  return {
+    ...user,
+    accessLevel,
+    authorized,
+    lastLoginAt: user.lastLoginAt ?? new Date().toISOString()
+  };
+}
+
+function getAuthorizedUserIds() {
+  return new Set(
+    env.DASHBOARD_AUTHORIZED_USER_IDS.split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+  );
 }
 
 function setAuthCookie(res: Response, name: string, value: string, maxAgeSeconds: number) {

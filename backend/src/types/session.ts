@@ -8,6 +8,9 @@ export type AuthSessionUser = {
   avatar: string | null;
   email: string | null;
   guilds: DashboardGuild[];
+  accessLevel: "admin" | "viewer";
+  authorized: boolean;
+  lastLoginAt: string;
 };
 
 declare module "express-session" {

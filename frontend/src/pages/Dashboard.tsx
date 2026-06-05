@@ -6,10 +6,12 @@ import {
   Bell,
   Bot,
   Brush,
+  CalendarClock,
   CheckCircle2,
   ChevronRight,
   FileText,
   Hash,
+  IdCard,
   LockKeyhole,
   MessageSquare,
   Radio,
@@ -17,12 +19,14 @@ import {
   Settings,
   Shield,
   TicketIcon,
+  UserCheck,
   UserPlus,
   Users
 } from "lucide-react";
 import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
+import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -200,6 +204,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
+  const canManageDashboard = auth.permissions.canManageDashboard;
 
   const selectedGuild = useMemo(
     () => auth.guilds.find((guild) => guild.id === selectedGuildId) ?? auth.guilds[0] ?? null,
@@ -281,7 +286,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   }, [selectedGuildId]);
 
   async function updateSetting(key: BooleanSettingKey, checked: boolean) {
-    if (!settings || !selectedGuildId) {
+    if (!settings || !selectedGuildId || !canManageDashboard) {
       return;
     }
 
@@ -328,7 +333,9 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
 
         {activeView === "overview" ? (
           <OverviewView
+            auth={auth}
             botStatus={botStatus}
+            canManageDashboard={canManageDashboard}
             logs={logs}
             onToggle={updateSetting}
             savingKey={savingKey}
@@ -339,6 +346,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
 
         {activeView === "settings" || activeView === "permissions" || activeView === "modules" || activeView === "personalization" ? (
           <CategoryView
+            canManageDashboard={canManageDashboard}
             category={activeView}
             onToggle={updateSetting}
             savingKey={savingKey}
@@ -346,13 +354,14 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
           />
         ) : null}
 
-        {activeView === "lives" ? <LiveView guild={selectedGuild} lives={lives} /> : null}
+        {activeView === "lives" ? <LiveView canManageDashboard={canManageDashboard} guild={selectedGuild} lives={lives} /> : null}
         {activeView === "tickets" ? <TicketView tickets={tickets} /> : null}
         {activeView === "logs" ? <LogsView logs={logs} /> : null}
 
         {["roles", "welcome", "moderation"].includes(activeView) ? (
           <FocusedModuleView
             activeView={activeView}
+            canManageDashboard={canManageDashboard}
             onToggle={updateSetting}
             savingKey={savingKey}
             settings={settings}
@@ -402,14 +411,18 @@ function PageHeader({
 }
 
 function OverviewView({
+  auth,
   botStatus,
+  canManageDashboard,
   logs,
   onToggle,
   savingKey,
   settings,
   totals
 }: {
+  auth: AuthResponse;
   botStatus: BotStatus;
+  canManageDashboard: boolean;
   logs: LogEntry[];
   onToggle: (key: BooleanSettingKey, checked: boolean) => void;
   savingKey: BooleanSettingKey | null;
@@ -418,6 +431,8 @@ function OverviewView({
 }) {
   return (
     <div className="space-y-6">
+      <ProfileSummaryCard auth={auth} />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Bot} label="Status" value={botStatus.online ? "Online" : "Offline"} />
         <MetricCard icon={Users} label="Membros" value={formatNumber(totals.members)} />
@@ -426,18 +441,21 @@ function OverviewView({
       </section>
 
       <CategorySection
+        canManageDashboard={canManageDashboard}
         category="settings"
         onToggle={onToggle}
         savingKey={savingKey}
         settings={settings}
       />
       <CategorySection
+        canManageDashboard={canManageDashboard}
         category="permissions"
         onToggle={onToggle}
         savingKey={savingKey}
         settings={settings}
       />
       <CategorySection
+        canManageDashboard={canManageDashboard}
         category="modules"
         onToggle={onToggle}
         savingKey={savingKey}
@@ -473,12 +491,52 @@ function OverviewView({
   );
 }
 
+function ProfileSummaryCard({ auth }: { auth: AuthResponse }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <Avatar className="h-16 w-16 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatar} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-xl font-semibold text-white">{auth.user.username}</h3>
+              <Badge variant="muted">{auth.access.level === "admin" ? "Admin" : "Viewer"}</Badge>
+              {auth.user.authorized ? <Badge variant="muted">Autorizado</Badge> : null}
+            </div>
+            <p className="mt-1 truncate text-sm text-zinc-500">{auth.user.tag}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[520px]">
+          <ProfileFact icon={IdCard} label="Discord ID" value={auth.user.discordId} />
+          <ProfileFact icon={CalendarClock} label="Ultimo login" value={formatDateTime(auth.user.lastLoginAt)} />
+          <ProfileFact icon={UserCheck} label="Acesso" value={auth.permissions.canManageDashboard ? "Total" : "Basico"} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProfileFact({ icon: Icon, label, value }: { icon: typeof IdCard; label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-3">
+      <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <Icon className="h-3.5 w-3.5" />
+        <span>{label}</span>
+      </div>
+      <p className="mt-1 truncate text-sm font-medium text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
 function CategoryView({
+  canManageDashboard,
   category,
   onToggle,
   savingKey,
   settings
 }: {
+  canManageDashboard: boolean;
   category: DashboardCardConfig["category"];
   onToggle: (key: BooleanSettingKey, checked: boolean) => void;
   savingKey: BooleanSettingKey | null;
@@ -486,6 +544,7 @@ function CategoryView({
 }) {
   return (
     <CategorySection
+      canManageDashboard={canManageDashboard}
       category={category}
       onToggle={onToggle}
       savingKey={savingKey}
@@ -496,11 +555,13 @@ function CategoryView({
 
 function FocusedModuleView({
   activeView,
+  canManageDashboard,
   onToggle,
   savingKey,
   settings
 }: {
   activeView: ViewId;
+  canManageDashboard: boolean;
   onToggle: (key: BooleanSettingKey, checked: boolean) => void;
   savingKey: BooleanSettingKey | null;
   settings: GuildSettings | null;
@@ -519,6 +580,7 @@ function FocusedModuleView({
         .map((card) => (
           <ConfigCard
             card={card}
+            canManageDashboard={canManageDashboard}
             key={card.id}
             onToggle={onToggle}
             savingKey={savingKey}
@@ -530,11 +592,13 @@ function FocusedModuleView({
 }
 
 function CategorySection({
+  canManageDashboard,
   category,
   onToggle,
   savingKey,
   settings
 }: {
+  canManageDashboard: boolean;
   category: DashboardCardConfig["category"];
   onToggle: (key: BooleanSettingKey, checked: boolean) => void;
   savingKey: BooleanSettingKey | null;
@@ -556,6 +620,7 @@ function CategorySection({
         {cards.map((card) => (
           <ConfigCard
             card={card}
+            canManageDashboard={canManageDashboard}
             key={card.id}
             onToggle={onToggle}
             savingKey={savingKey}
@@ -569,17 +634,19 @@ function CategorySection({
 
 function ConfigCard({
   card,
+  canManageDashboard,
   onToggle,
   savingKey,
   settings
 }: {
   card: DashboardCardConfig;
+  canManageDashboard: boolean;
   onToggle: (key: BooleanSettingKey, checked: boolean) => void;
   savingKey: BooleanSettingKey | null;
   settings: GuildSettings | null;
 }) {
   const checked = card.key ? Boolean(settings?.[card.key]) : false;
-  const disabled = Boolean(card.key && (!settings || savingKey === card.key));
+  const disabled = Boolean(card.key && (!settings || savingKey === card.key || !canManageDashboard));
 
   return (
     <Card className="overflow-hidden">
@@ -600,7 +667,7 @@ function ConfigCard({
 
         <div className="flex shrink-0 items-center justify-end gap-3">
           {card.key ? <Switch checked={checked} disabled={disabled} onCheckedChange={(value) => onToggle(card.key!, value)} /> : null}
-          <Button className="h-9 px-3 text-xs" variant="outline">
+          <Button className="h-9 px-3 text-xs" disabled={!canManageDashboard} variant="outline">
             {card.action ?? "Abrir"}
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
@@ -610,10 +677,10 @@ function ConfigCard({
   );
 }
 
-function LiveView({ guild, lives }: { guild: DashboardGuild | null; lives: LiveEvent[] }) {
+function LiveView({ canManageDashboard, guild, lives }: { canManageDashboard: boolean; guild: DashboardGuild | null; lives: LiveEvent[] }) {
   return (
     <div className="space-y-6">
-      <LiveNotificationsPanel guild={guild} />
+      <LiveNotificationsPanel canManage={canManageDashboard} guild={guild} />
 
       <Card>
         <CardHeader>
@@ -783,5 +850,12 @@ function formatDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
   }).format(new Date(value));
 }

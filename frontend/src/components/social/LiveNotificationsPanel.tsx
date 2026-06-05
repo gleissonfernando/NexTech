@@ -20,10 +20,11 @@ import type {
 } from "../../types";
 
 type LiveNotificationsPanelProps = {
+  canManage: boolean;
   guild: DashboardGuild | null;
 };
 
-export function LiveNotificationsPanel({ guild }: LiveNotificationsPanelProps) {
+export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPanelProps) {
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [liveOptions, setLiveOptions] = useState<GuildLiveOptions>({ channels: [], roles: [] });
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,13 @@ export function LiveNotificationsPanel({ guild }: LiveNotificationsPanelProps) {
   );
 
   useEffect(() => {
+    if (!canManage) {
+      setLoading(false);
+      setNotifications([]);
+      setLiveOptions({ channels: [], roles: [] });
+      return;
+    }
+
     if (!guild) {
       setLoading(false);
       setNotifications([]);
@@ -60,7 +68,7 @@ export function LiveNotificationsPanel({ guild }: LiveNotificationsPanelProps) {
       })
       .catch((requestError: unknown) => setError(readErrorMessage(requestError)))
       .finally(() => setLoading(false));
-  }, [guild]);
+  }, [canManage, guild]);
 
   async function handleCreate(payload: CreateTwitchNotificationPayload) {
     if (!guild) {
@@ -139,22 +147,29 @@ export function LiveNotificationsPanel({ guild }: LiveNotificationsPanelProps) {
       </div>
 
       {loading ? <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm text-zinc-500">Carregando canais da Twitch...</div> : null}
+      {!canManage ? (
+        <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm leading-6 text-zinc-500">
+          Sua conta tem visualizacao basica. O gerenciamento de alertas de live fica disponivel apenas para administradores ou usuarios autorizados.
+        </div>
+      ) : null}
       {error ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-white">{error}</div> : null}
 
-      <TwitchNotificationCard
-        channels={liveOptions.channels}
-        notifications={notifications}
-        onAdd={() => {
-          setError(null);
-          setAddOpen(true);
-        }}
-        onDelete={setDeletingNotification}
-        onEdit={(notification) => {
-          setError(null);
-          setEditing(notification);
-        }}
-        roles={liveOptions.roles}
-      />
+      {canManage ? (
+        <TwitchNotificationCard
+          channels={liveOptions.channels}
+          notifications={notifications}
+          onAdd={() => {
+            setError(null);
+            setAddOpen(true);
+          }}
+          onDelete={setDeletingNotification}
+          onEdit={(notification) => {
+            setError(null);
+            setEditing(notification);
+          }}
+          roles={liveOptions.roles}
+        />
+      ) : null}
 
       <AddTwitchChannelModal
         error={error}

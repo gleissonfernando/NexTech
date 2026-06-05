@@ -13,6 +13,7 @@ import {
 import { demoGuilds, toDashboardGuilds } from "../services/guildService";
 import { requireAuthenticated } from "../middleware/auth";
 import { requireDashboardAccessValidation } from "../middleware/roleValidation";
+import { evaluateDashboardAccess } from "../services/accessControlService";
 import {
   clearAuthCookies,
   createAuthResponse,
@@ -24,6 +25,22 @@ import { issueLocalAccess } from "../services/localAccessService";
 import { saveDiscordUser } from "../services/userService";
 
 export const authRouter = Router();
+const dashboardPath = "/dashboard";
+const successPath = "/auth/success";
+const errorPath = "/auth/error";
+
+function dashboardRedirectUrl() {
+  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${dashboardPath}` : dashboardPath;
+}
+
+function successRedirectUrl() {
+  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${successPath}` : successPath;
+}
+
+function errorRedirectUrl(reason: string) {
+  const path = `${errorPath}?reason=${encodeURIComponent(reason)}`;
+  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${path}` : path;
+}
 
 function saveSession(req: Request) {
   return new Promise<void>((resolve, reject) => {
@@ -54,10 +71,10 @@ function destroySession(req: Request) {
 authRouter.get("/discord", async (req, res) => {
   if (!env.DASHBOARD_AUTH_REQUIRED) {
     await issueLocalAccess(req, res);
-    return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+    return res.redirect(dashboardRedirectUrl());
   }
 
-  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_CALLBACK_URL) {
     return res.status(503).json({
       message: "OAuth2 Discord ainda nao esta configurado."
     });
@@ -76,9 +93,8 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     const state = typeof req.query.state === "string" ? req.query.state : null;
 
     if (!code || !state || state !== req.session.oauthState) {
-      return res.status(400).json({
-        message: "Callback OAuth2 invalido."
-      });
+      clearAuthCookies(res);
+      return res.redirect(errorRedirectUrl("callback"));
     }
 
     const tokens = await exchangeDiscordCode(code);
@@ -86,22 +102,41 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     const discordGuilds = await fetchDiscordGuilds(tokens.access_token);
     const user = await saveDiscordUser(discordUser, tokens);
     const guilds = toDashboardGuilds(discordGuilds);
-
-    req.session.user = {
+    const baseUser = {
       id: user.id,
       discordId: discordUser.id,
       username: discordUser.global_name ?? discordUser.username,
       tag: discordUserTag(discordUser),
       avatar: discordAvatarUrl(discordUser),
       email: discordUser.email,
-      guilds
+      guilds,
+      accessLevel: "viewer" as const,
+      authorized: false,
+      lastLoginAt: user.lastLoginAt?.toISOString?.() ?? new Date().toISOString()
+    };
+    const validation = await evaluateDashboardAccess(baseUser);
+
+    req.session.user = {
+      ...baseUser,
+      accessLevel: validation.accessLevel,
+      authorized: validation.authorizedUser
     };
     req.session.oauthState = undefined;
 
-    issueAuthCookies(res, req.session.user, false);
+    issueAuthCookies(res, req.session.user, validation.allowed);
     await saveSession(req);
-    return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+    return res.redirect(validation.allowed ? successRedirectUrl() : errorRedirectUrl("permission"));
   } catch (error) {
+    clearAuthCookies(res);
+    if (req.session) {
+      req.session.oauthState = undefined;
+      await saveSession(req).catch(() => undefined);
+    }
+
+    if (!res.headersSent) {
+      return res.redirect(errorRedirectUrl("oauth"));
+    }
+
     return next(error);
   }
 });
@@ -120,7 +155,10 @@ authRouter.post("/dev", async (req, res) => {
     tag: "admin-dev",
     avatar: null,
     email: "admin@example.local",
-    guilds: demoGuilds
+    guilds: demoGuilds,
+    accessLevel: "admin",
+    authorized: true,
+    lastLoginAt: new Date().toISOString()
   };
 
   const auth = issueAuthCookies(res, req.session.user, true);
@@ -171,14 +209,23 @@ authRouter.post("/refresh", async (req, res) => {
 
 authRouter.post("/verify", requireAuthenticated, requireDashboardAccessValidation, async (req, res) => {
   const auth = res.locals.dashboardAuth;
-  const verifiedAuth = issueAuthCookies(res, auth.user, true);
+  const validation = res.locals.accessValidation;
+  const verifiedAuth = issueAuthCookies(
+    res,
+    {
+      ...auth.user,
+      accessLevel: validation.accessLevel,
+      authorized: validation.authorizedUser
+    },
+    validation.allowed
+  );
 
   req.session.user = verifiedAuth.user;
   await saveSession(req);
 
   return res.json({
     ...createAuthResponse(verifiedAuth),
-    validation: res.locals.accessValidation
+    validation
   });
 });
 

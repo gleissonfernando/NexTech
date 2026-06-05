@@ -1,15 +1,18 @@
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
+import { AuthSuccess } from "./pages/AuthSuccess";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
 
 export function App() {
   const { auth, error, loading, loginDiscord, logout, verify, verifying } = useAuth();
+  const path = window.location.pathname;
+  const routeError = path === "/auth/error" ? readAuthError() : null;
 
   useEffect(() => {
-    if (auth?.access.verified && window.location.pathname !== "/dashboard") {
+    if (auth?.access.verified && !["/dashboard", "/auth/success"].includes(window.location.pathname)) {
       window.history.replaceState(null, "", "/dashboard");
     }
   }, [auth]);
@@ -18,11 +21,29 @@ export function App() {
     return <LoadingScreen />;
   }
 
+  if (path === "/auth/success" && auth?.access.verified) {
+    return <AuthSuccess auth={auth} />;
+  }
+
   if (!auth || !auth.access.verified) {
-    return <Login auth={auth} error={error} onLoginDiscord={loginDiscord} onLogout={logout} onVerify={verify} verifying={verifying} />;
+    return <Login auth={auth} error={routeError ?? error} onLoginDiscord={loginDiscord} onLogout={logout} onVerify={verify} verifying={verifying} />;
   }
 
   return <Dashboard auth={auth} onLogout={logout} />;
+}
+
+function readAuthError() {
+  const reason = new URLSearchParams(window.location.search).get("reason");
+
+  if (reason === "permission") {
+    return "Sua conta foi autenticada, mas nao possui permissao suficiente para acesso administrativo.";
+  }
+
+  if (reason === "callback") {
+    return "A resposta do Discord expirou ou nao corresponde a sua sessao. Tente autenticar novamente.";
+  }
+
+  return "Nao foi possivel concluir a autenticacao Discord. Tente novamente.";
 }
 
 function LoadingScreen() {

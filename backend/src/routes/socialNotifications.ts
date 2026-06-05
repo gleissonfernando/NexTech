@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireBot } from "../middleware/auth";
+import { requireAdminAccess, requireAuth, requireBot } from "../middleware/auth";
 import {
   createServiceError,
   createTwitchNotification,
@@ -60,7 +60,7 @@ socialNotificationsRouter.patch("/bot/twitch/:id/state", requireBot, async (req,
   }
 });
 
-socialNotificationsRouter.get("/:guildId", requireAuth, async (req, res, next) => {
+socialNotificationsRouter.get("/:guildId", requireAuth, requireAdminAccess, async (req, res, next) => {
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     assertCanManageGuild(res.locals.dashboardAuth.user, guildId);
@@ -73,7 +73,7 @@ socialNotificationsRouter.get("/:guildId", requireAuth, async (req, res, next) =
   }
 });
 
-socialNotificationsRouter.post("/:guildId/twitch", requireAuth, async (req, res, next) => {
+socialNotificationsRouter.post("/:guildId/twitch", requireAuth, requireAdminAccess, async (req, res, next) => {
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
@@ -93,7 +93,7 @@ socialNotificationsRouter.post("/:guildId/twitch", requireAuth, async (req, res,
   }
 });
 
-socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, async (req, res, next) => {
+socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, requireAdminAccess, async (req, res, next) => {
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const id = getRequiredParam(req.params.id, "id");
@@ -110,7 +110,7 @@ socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, async (req, r
   }
 });
 
-socialNotificationsRouter.delete("/:guildId/twitch/:id", requireAuth, async (req, res, next) => {
+socialNotificationsRouter.delete("/:guildId/twitch/:id", requireAuth, requireAdminAccess, async (req, res, next) => {
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const id = getRequiredParam(req.params.id, "id");
@@ -128,6 +128,10 @@ socialNotificationsRouter.delete("/:guildId/twitch/:id", requireAuth, async (req
 });
 
 function assertCanManageGuild(user: AuthSessionUser, guildId: string) {
+  if (user.authorized) {
+    return;
+  }
+
   const guild = user.guilds.find((item) => item.id === guildId);
 
   if (!guild || (!guild.owner && !guild.isAdmin)) {

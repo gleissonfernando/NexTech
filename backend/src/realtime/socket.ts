@@ -9,7 +9,7 @@ import { setRealtimeServer } from "./events";
 export function createSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL,
+      origin: env.FRONTEND_URL || true,
       credentials: true
     }
   });

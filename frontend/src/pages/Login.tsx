@@ -30,7 +30,7 @@ export function Login({ auth, error, onLoginDiscord, onLogout, onVerify, verifyi
             <Bot className="h-6 w-6 text-zinc-200" />
           </div>
           <h1 className="text-2xl font-semibold text-white">Discord Control</h1>
-          <p className="mt-2 text-sm text-zinc-500">{auth ? "Confirme seu acesso ao painel." : "Entre para acessar o painel."}</p>
+          <p className="mt-2 text-sm text-zinc-500">{auth ? "Confirme seu acesso ao painel." : "Verifique sua conta Discord para acessar o painel."}</p>
         </div>
 
         {auth ? (
@@ -61,7 +61,7 @@ export function Login({ auth, error, onLoginDiscord, onLogout, onVerify, verifyi
         ) : (
           <Button className="h-12 w-full" onClick={onLoginDiscord}>
             <LogIn className="h-4 w-4" />
-            Entrar com Discord
+            Verificar com Discord
           </Button>
         )}
 

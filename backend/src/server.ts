@@ -7,8 +7,9 @@ const httpServer = createServer(app);
 
 createSocketServer(httpServer);
 
-httpServer.listen(env.PORT, () => {
-  console.log(`[api] rodando em http://localhost:${env.PORT}`);
+httpServer.listen(env.PORT, env.HOST, () => {
+  const publicUrl = env.NODE_ENV === "production" ? env.FRONTEND_URL : `http://localhost:${env.PORT}`;
+  console.log(`[api] rodando em ${publicUrl} (${env.HOST}:${env.PORT})`);
 });
 
 function shutdown(signal: string) {

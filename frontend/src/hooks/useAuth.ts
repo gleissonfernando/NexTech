@@ -23,7 +23,7 @@ export function useAuth() {
   }, []);
 
   const loginDiscord = useCallback(() => {
-    window.location.href = `${API_URL}/auth/discord`;
+    window.location.href = import.meta.env.PROD ? "/auth/discord" : `${API_URL}/auth/discord`;
   }, []);
 
   const loginDevelopment = useCallback(async () => {
