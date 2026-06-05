@@ -119,8 +119,7 @@ DASHBOARD_AUTH_REQUIRED="true"
 
 Crie uma aplicacao no Discord Developer Portal e configure:
 
-- Redirect URI em producao: `https://ricardinho98.shardweb.app/auth/discord/callback`
-- Redirect URI em desenvolvimento: `http://localhost:4000/auth/discord/callback`
+- Redirect URI: `https://ricardinho98.shardweb.app/auth/discord/callback`
 - Escopos: `identify`, `email`, `guilds`
 
 Para desenvolvimento local, preencha no `.env`:
@@ -128,14 +127,14 @@ Para desenvolvimento local, preencha no `.env`:
 ```env
 DISCORD_CLIENT_ID=""
 DISCORD_CLIENT_SECRET=""
-DISCORD_CALLBACK_URL="http://localhost:4000/auth/discord/callback"
-FRONTEND_URL="http://localhost:5173"
+DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
+FRONTEND_URL="https://ricardinho98.shardweb.app"
 JWT_SECRET="change-this-jwt-secret"
 DASHBOARD_AUTH_REQUIRED="true"
 DASHBOARD_VERIFICATION_MODE="temporary"
 ```
 
-Na hospedagem, use a URL publica em `DISCORD_CALLBACK_URL` e `FRONTEND_URL`, como no exemplo de deploy.
+Use sempre a URL publica em `DISCORD_CALLBACK_URL` e `FRONTEND_URL` quando `DASHBOARD_AUTH_REQUIRED="true"`. O OAuth2 do Discord nao deve apontar para `localhost`.
 
 `DASHBOARD_AUTHORIZED_USER_IDS` aceita IDs Discord separados por virgula. Esses usuarios recebem acesso administrativo mesmo que nao sejam donos/admin em um servidor retornado pelo OAuth. Quem autenticar sem permissao especial entra como visualizacao basica.
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AUTH_URL, getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
+import { getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
 import type { AuthResponse } from "../types";
+
+const DISCORD_AUTH_URL = "https://ricardinho98.shardweb.app/auth/discord";
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);
@@ -23,7 +25,7 @@ export function useAuth() {
   }, []);
 
   const loginDiscord = useCallback(() => {
-    window.location.href = `${AUTH_URL}/discord`;
+    window.location.href = DISCORD_AUTH_URL;
   }, []);
 
   const loginDevelopment = useCallback(async () => {

@@ -52,36 +52,7 @@ function resolveDevelopmentApiUrl() {
   return isLocalBrowserOrigin() ? `${publicOrigin()}/api` : "/api";
 }
 
-function resolveAuthUrl(apiUrl: string) {
-  if (apiUrl === "/api") {
-    return "/auth";
-  }
-
-  try {
-    const authUrl = new URL(apiUrl, window.location.origin);
-
-    if (isLocalHttpUrl(authUrl.origin)) {
-      return `${publicOrigin()}/auth`;
-    }
-
-    const normalizedPath = authUrl.pathname.replace(/\/+$/, "");
-
-    if (normalizedPath.endsWith("/api")) {
-      authUrl.pathname = `${normalizedPath.slice(0, -"/api".length)}/auth`;
-      authUrl.search = "";
-      authUrl.hash = "";
-
-      return normalizeUrl(authUrl.toString()) ?? "/auth";
-    }
-  } catch {
-    // Keep the simple fallback below for relative or unusual API URLs.
-  }
-
-  return `${apiUrl.replace(/\/+$/, "")}/auth`;
-}
-
 export const API_URL = import.meta.env.PROD ? "/api" : resolveDevelopmentApiUrl();
-export const AUTH_URL = import.meta.env.PROD ? "/auth" : resolveAuthUrl(API_URL);
 
 export const api = axios.create({
   baseURL: API_URL,

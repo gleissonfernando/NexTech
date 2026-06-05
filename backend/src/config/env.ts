@@ -80,6 +80,7 @@ function isLocalUrl(value: string) {
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
 const productionFrontendUrl =
   configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) ? normalizeUrl(configuredFrontendUrl) : productionPublicUrl;
+const publicDiscordCallbackUrl = `${productionFrontendUrl}/auth/discord/callback`;
 
 function productionSafeUrl(value?: string) {
   if (!value) {
@@ -114,13 +115,13 @@ const envSchema = z
     DISCORD_CLIENT_SECRET: z.string().default(""),
     DISCORD_CALLBACK_URL: envUrl(
       "DISCORD_CALLBACK_URL",
-      "http://localhost:4000/auth/discord/callback",
-      productionFrontendUrl ? `${productionFrontendUrl}/auth/discord/callback` : undefined
+      publicDiscordCallbackUrl,
+      publicDiscordCallbackUrl
     ),
     DISCORD_SCOPES: z.string().default("identify email guilds"),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
-    FRONTEND_URL: envUrl("FRONTEND_URL", "http://localhost:5173"),
+    FRONTEND_URL: envUrl("FRONTEND_URL", productionPublicUrl),
     DASHBOARD_AUTH_REQUIRED: envBoolean(isProduction),
     DASHBOARD_AUTHORIZED_USER_IDS: z.string().optional().default(""),
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("temporary"),
@@ -132,14 +133,20 @@ const envSchema = z
       productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ??
       productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ??
       (isProduction ? "" : localMongoUrl);
+    const oauthFrontendUrl =
+      value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(value.FRONTEND_URL) ? productionPublicUrl : value.FRONTEND_URL || productionPublicUrl;
+    const oauthCallbackUrl =
+      value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(value.DISCORD_CALLBACK_URL)
+        ? publicDiscordCallbackUrl
+        : value.DISCORD_CALLBACK_URL || publicDiscordCallbackUrl;
 
     return {
       ...value,
       DATABASE_URL: productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ?? mongoUrl,
       MONGO_URI: productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ?? mongoUrl,
       MONGODB_URI: mongoUrl,
-      FRONTEND_URL: value.FRONTEND_URL || productionPublicUrl,
-      DISCORD_CALLBACK_URL: value.DISCORD_CALLBACK_URL || `${productionPublicUrl}/auth/discord/callback`,
+      FRONTEND_URL: oauthFrontendUrl,
+      DISCORD_CALLBACK_URL: oauthCallbackUrl,
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
       DASHBOARD_AUTH_REQUIRED: isProduction ? true : value.DASHBOARD_AUTH_REQUIRED,
       DEV_AUTH_ENABLED: isProduction ? false : value.DEV_AUTH_ENABLED
