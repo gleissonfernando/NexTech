@@ -2,7 +2,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 const children = new Set();
-process.env.NODE_ENV ??= "production";
+process.env.NODE_ENV = "production";
+process.env.HOST = "0.0.0.0";
+process.env.PORT = "80";
 
 function ensureBuild() {
   const requiredBuildFiles = ["backend/dist/server.js", "bot/dist/index.js", "frontend/dist/index.html"];
