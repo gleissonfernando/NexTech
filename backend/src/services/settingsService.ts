@@ -1,4 +1,5 @@
-import { prisma } from "../database/prisma";
+import { randomUUID } from "node:crypto";
+import { ensureGuild, getMongoCollections, type MongoGuildSettings } from "../database/mongo";
 
 export type GuildSettingsDto = {
   guildId: string;
@@ -40,32 +41,16 @@ export function defaultSettings(guildId: string): GuildSettingsDto {
 
 export async function getGuildSettings(guildId: string) {
   try {
-    const settings = await prisma.guildSettings.findUnique({
-      where: {
-        guildId
-      }
+    const { guildSettings } = await getMongoCollections();
+    const settings = await guildSettings.findOne({
+      guildId
     });
 
     if (settings) {
-      return {
-        guildId,
-        welcomeEnabled: settings.welcomeEnabled,
-        welcomeChannelId: settings.welcomeChannelId,
-        welcomeMessage: settings.welcomeMessage,
-        autoRoleEnabled: settings.autoRoleEnabled,
-        autoRoleIds: settings.autoRoleIds,
-        twitchRoleId: settings.twitchRoleId,
-        boosterRoleId: settings.boosterRoleId,
-        ticketEnabled: settings.ticketEnabled,
-        ticketCategoryId: settings.ticketCategoryId,
-        logChannelId: settings.logChannelId,
-        moderationEnabled: settings.moderationEnabled,
-        verificationEnabled: settings.verificationEnabled,
-        verificationRoleId: settings.verificationRoleId
-      };
+      return toDto(settings);
     }
   } catch (error) {
-    console.warn("[prisma] usando settings em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] usando settings em memoria:", error instanceof Error ? error.message : error);
   }
 
   return memorySettings.get(guildId) ?? defaultSettings(guildId);
@@ -82,41 +67,61 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
   memorySettings.set(guildId, next);
 
   try {
-    await prisma.guild.upsert({
-      where: {
-        id: guildId
-      },
-      create: {
-        id: guildId,
-        name: `Guild ${guildId}`
-      },
-      update: {}
-    });
+    await ensureGuild(guildId);
 
-    await prisma.guildSettings.upsert({
-      where: {
+    const { guildSettings } = await getMongoCollections();
+    await guildSettings.updateOne(
+      {
         guildId
       },
-      create: next,
-      update: {
-        welcomeEnabled: next.welcomeEnabled,
-        welcomeChannelId: next.welcomeChannelId,
-        welcomeMessage: next.welcomeMessage,
-        autoRoleEnabled: next.autoRoleEnabled,
-        autoRoleIds: next.autoRoleIds,
-        twitchRoleId: next.twitchRoleId,
-        boosterRoleId: next.boosterRoleId,
-        ticketEnabled: next.ticketEnabled,
-        ticketCategoryId: next.ticketCategoryId,
-        logChannelId: next.logChannelId,
-        moderationEnabled: next.moderationEnabled,
-        verificationEnabled: next.verificationEnabled,
-        verificationRoleId: next.verificationRoleId
+      {
+        $set: {
+          welcomeEnabled: next.welcomeEnabled,
+          welcomeChannelId: next.welcomeChannelId,
+          welcomeMessage: next.welcomeMessage,
+          autoRoleEnabled: next.autoRoleEnabled,
+          autoRoleIds: next.autoRoleIds,
+          twitchRoleId: next.twitchRoleId,
+          boosterRoleId: next.boosterRoleId,
+          ticketEnabled: next.ticketEnabled,
+          ticketCategoryId: next.ticketCategoryId,
+          logChannelId: next.logChannelId,
+          moderationEnabled: next.moderationEnabled,
+          verificationEnabled: next.verificationEnabled,
+          verificationRoleId: next.verificationRoleId,
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          _id: randomUUID(),
+          guildId
+        }
+      },
+      {
+        upsert: true
       }
-    });
+    );
   } catch (error) {
-    console.warn("[prisma] settings mantidas em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] settings mantidas em memoria:", error instanceof Error ? error.message : error);
   }
 
   return next;
+}
+
+function toDto(settings: MongoGuildSettings): GuildSettingsDto {
+  return {
+    guildId: settings.guildId,
+    welcomeEnabled: settings.welcomeEnabled,
+    welcomeChannelId: settings.welcomeChannelId,
+    welcomeMessage: settings.welcomeMessage,
+    autoRoleEnabled: settings.autoRoleEnabled,
+    autoRoleIds: settings.autoRoleIds,
+    twitchRoleId: settings.twitchRoleId,
+    boosterRoleId: settings.boosterRoleId,
+    ticketEnabled: settings.ticketEnabled,
+    ticketCategoryId: settings.ticketCategoryId,
+    logChannelId: settings.logChannelId,
+    moderationEnabled: settings.moderationEnabled,
+    verificationEnabled: settings.verificationEnabled,
+    verificationRoleId: settings.verificationRoleId
+  };
 }

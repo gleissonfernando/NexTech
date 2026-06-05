@@ -14,7 +14,6 @@ function ensureBuild() {
     "package-lock.json",
     "tsconfig.base.json",
     "backend/package.json",
-    "backend/prisma/schema.prisma",
     "backend/src",
     "bot/package.json",
     "bot/src",

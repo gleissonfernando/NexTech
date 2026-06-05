@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@prisma/client";
-import { prisma } from "../database/prisma";
+import { MongoServerError } from "mongodb";
+import { ensureGuild, getMongoCollections, type MongoSocialNotification } from "../database/mongo";
 import { createLog } from "./logService";
 import { getTwitchUser, normalizeTwitchChannel } from "./twitchService";
 
@@ -56,14 +56,15 @@ const memoryNotifications = new Map<string, SocialNotificationDto>();
 
 export async function listSocialNotifications(guildId: string) {
   try {
-    const notifications = await prisma.socialNotification.findMany({
-      where: {
+    const { socialNotifications } = await getMongoCollections();
+    const notifications = await socialNotifications
+      .find({
         guildId
-      },
-      orderBy: {
-        createdAt: "desc"
-      }
-    });
+      })
+      .sort({
+        createdAt: -1
+      })
+      .toArray();
 
     return notifications.map(toDto);
   } catch {
@@ -73,15 +74,16 @@ export async function listSocialNotifications(guildId: string) {
 
 export async function listActiveTwitchNotifications() {
   try {
-    const notifications = await prisma.socialNotification.findMany({
-      where: {
+    const { socialNotifications } = await getMongoCollections();
+    const notifications = await socialNotifications
+      .find({
         platform: "twitch",
         enabled: true
-      },
-      orderBy: {
-        updatedAt: "asc"
-      }
-    });
+      })
+      .sort({
+        updatedAt: 1
+      })
+      .toArray();
 
     return notifications.map(toDto);
   } catch {
@@ -98,12 +100,12 @@ export async function createTwitchNotification(guildId: string, input: CreateTwi
   });
 
   if (!twitchUser) {
-    throw createServiceError("Canal da Twitch não encontrado.", 404);
+    throw createServiceError("Canal da Twitch nao encontrado.", 404);
   }
 
-  await ensureGuild(guildId);
-
-  const payload = {
+  const now = new Date();
+  const doc: MongoSocialNotification = {
+    _id: randomUUID(),
     guildId,
     userId: input.userId,
     platform: "twitch",
@@ -114,32 +116,43 @@ export async function createTwitchNotification(guildId: string, input: CreateTwi
     discordChannelId: input.discordChannelId,
     mentionRoleId: input.mentionRoleId || null,
     customMessage: input.customMessage || null,
-    enabled: input.enabled
+    enabled: input.enabled,
+    isLive: false,
+    lastStreamId: null,
+    lastMessageId: null,
+    createdAt: now,
+    updatedAt: now
   };
 
   try {
-    const created = await prisma.socialNotification.create({
-      data: payload
+    await ensureGuild(guildId);
+
+    const { socialNotifications } = await getMongoCollections();
+    const existing = await socialNotifications.findOne({
+      guildId,
+      platform: "twitch",
+      twitchChannelName
     });
-    const dto = toDto(created);
+
+    if (existing) {
+      throw createServiceError("Este canal da Twitch ja esta cadastrado neste servidor.", 409);
+    }
+
+    await socialNotifications.insertOne(doc);
+
+    const dto = toDto(doc);
     await writeActionLog("social.twitch.created", "Cadastrou canal Twitch", dto, input.userId);
     return dto;
   } catch (error) {
-    if (isUniqueConstraint(error)) {
-      throw createServiceError("Este canal da Twitch já está cadastrado neste servidor.", 409);
+    if ((error as ServiceError).statusCode) {
+      throw error;
     }
 
-    const now = new Date().toISOString();
-    const dto: SocialNotificationDto = {
-      id: randomUUID(),
-      ...payload,
-      platform: "twitch",
-      isLive: false,
-      lastStreamId: null,
-      lastMessageId: null,
-      createdAt: now,
-      updatedAt: now
-    };
+    if (isUniqueConstraint(error)) {
+      throw createServiceError("Este canal da Twitch ja esta cadastrado neste servidor.", 409);
+    }
+
+    const dto = toDto(doc);
     memoryNotifications.set(dto.id, dto);
     await writeActionLog("social.twitch.created", "Cadastrou canal Twitch", dto, input.userId);
     return dto;
@@ -148,27 +161,30 @@ export async function createTwitchNotification(guildId: string, input: CreateTwi
 
 export async function updateTwitchNotification(guildId: string, id: string, input: UpdateTwitchNotificationInput) {
   try {
-    const current = await prisma.socialNotification.findUnique({
-      where: {
-        id
-      }
+    const { socialNotifications } = await getMongoCollections();
+    const current = await socialNotifications.findOne({
+      _id: id
     });
 
     if (!current || current.guildId !== guildId) {
-      throw createServiceError("Notificação não encontrada.", 404);
+      throw createServiceError("Notificacao nao encontrada.", 404);
     }
 
-    const updated = await prisma.socialNotification.update({
-      where: {
-        id
+    const updated = await socialNotifications.findOneAndUpdate(
+      {
+        _id: id
       },
-      data: {
-        discordChannelId: input.discordChannelId,
-        mentionRoleId: input.mentionRoleId,
-        customMessage: input.customMessage,
-        enabled: input.enabled
+      {
+        $set: buildNotificationPatch(input)
+      },
+      {
+        returnDocument: "after"
       }
-    });
+    );
+
+    if (!updated) {
+      throw createServiceError("Notificacao nao encontrada.", 404);
+    }
 
     const dto = toDto(updated);
     await writeActionLog("social.twitch.updated", "Editou canal Twitch", dto, dto.userId);
@@ -180,7 +196,7 @@ export async function updateTwitchNotification(guildId: string, id: string, inpu
 
     const current = memoryNotifications.get(id);
     if (!current || current.guildId !== guildId) {
-      throw createServiceError("Notificação não encontrada.", 404);
+      throw createServiceError("Notificacao nao encontrada.", 404);
     }
 
     const updated: SocialNotificationDto = {
@@ -199,18 +215,28 @@ export async function updateTwitchNotification(guildId: string, id: string, inpu
 
 export async function updateTwitchNotificationState(id: string, input: UpdateTwitchNotificationStateInput) {
   try {
-    const updated = await prisma.socialNotification.update({
-      where: {
-        id
+    const { socialNotifications } = await getMongoCollections();
+    const updated = await socialNotifications.findOneAndUpdate(
+      {
+        _id: id
       },
-      data: input
-    });
+      {
+        $set: buildNotificationStatePatch(input)
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    if (!updated) {
+      throw createServiceError("Notificacao nao encontrada.", 404);
+    }
 
     return toDto(updated);
   } catch {
     const current = memoryNotifications.get(id);
     if (!current) {
-      throw createServiceError("Notificação não encontrada.", 404);
+      throw createServiceError("Notificacao nao encontrada.", 404);
     }
 
     const updated: SocialNotificationDto = {
@@ -225,20 +251,17 @@ export async function updateTwitchNotificationState(id: string, input: UpdateTwi
 
 export async function deleteTwitchNotification(guildId: string, id: string, userId: string) {
   try {
-    const current = await prisma.socialNotification.findUnique({
-      where: {
-        id
-      }
+    const { socialNotifications } = await getMongoCollections();
+    const current = await socialNotifications.findOne({
+      _id: id
     });
 
     if (!current || current.guildId !== guildId) {
-      throw createServiceError("Notificação não encontrada.", 404);
+      throw createServiceError("Notificacao nao encontrada.", 404);
     }
 
-    await prisma.socialNotification.delete({
-      where: {
-        id
-      }
+    await socialNotifications.deleteOne({
+      _id: id
     });
 
     const dto = toDto(current);
@@ -251,7 +274,7 @@ export async function deleteTwitchNotification(guildId: string, id: string, user
 
     const current = memoryNotifications.get(id);
     if (!current || current.guildId !== guildId) {
-      throw createServiceError("Notificação não encontrada.", 404);
+      throw createServiceError("Notificacao nao encontrada.", 404);
     }
 
     memoryNotifications.delete(id);
@@ -281,23 +304,8 @@ async function assertGuildLimit(guildId: string) {
   const count = notifications.filter((notification) => notification.platform === "twitch").length;
 
   if (count >= TWITCH_LIMIT) {
-    throw createServiceError("Você atingiu o limite de 5 canais Twitch neste servidor.", 400);
+    throw createServiceError("Voce atingiu o limite de 5 canais Twitch neste servidor.", 400);
   }
-}
-
-async function ensureGuild(guildId: string) {
-  await prisma.guild
-    .upsert({
-      where: {
-        id: guildId
-      },
-      create: {
-        id: guildId,
-        name: `Guild ${guildId}`
-      },
-      update: {}
-    })
-    .catch(() => undefined);
 }
 
 async function writeActionLog(type: string, action: string, notification: SocialNotificationDto, userId: string) {
@@ -317,27 +325,57 @@ async function writeActionLog(type: string, action: string, notification: Social
   });
 }
 
-function toDto(notification: {
-  id: string;
-  guildId: string;
-  userId: string;
-  platform: string;
-  twitchChannelName: string;
-  twitchChannelUrl: string;
-  twitchUserId: string | null;
-  twitchAvatar: string | null;
-  discordChannelId: string;
-  mentionRoleId: string | null;
-  customMessage: string | null;
-  enabled: boolean;
-  isLive: boolean;
-  lastStreamId: string | null;
-  lastMessageId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): SocialNotificationDto {
+function buildNotificationPatch(input: UpdateTwitchNotificationInput): Partial<MongoSocialNotification> {
+  const patch: Partial<MongoSocialNotification> = {
+    updatedAt: new Date()
+  };
+
+  if (input.discordChannelId !== undefined) {
+    patch.discordChannelId = input.discordChannelId;
+  }
+
+  if (input.mentionRoleId !== undefined) {
+    patch.mentionRoleId = input.mentionRoleId;
+  }
+
+  if (input.customMessage !== undefined) {
+    patch.customMessage = input.customMessage;
+  }
+
+  if (input.enabled !== undefined) {
+    patch.enabled = input.enabled;
+  }
+
+  return patch;
+}
+
+function buildNotificationStatePatch(input: UpdateTwitchNotificationStateInput): Partial<MongoSocialNotification> {
+  const patch: Partial<MongoSocialNotification> = {
+    updatedAt: new Date()
+  };
+
+  if (input.isLive !== undefined) {
+    patch.isLive = input.isLive;
+  }
+
+  if (input.lastStreamId !== undefined) {
+    patch.lastStreamId = input.lastStreamId;
+  }
+
+  if (input.lastMessageId !== undefined) {
+    patch.lastMessageId = input.lastMessageId;
+  }
+
+  if (input.twitchAvatar !== undefined) {
+    patch.twitchAvatar = input.twitchAvatar;
+  }
+
+  return patch;
+}
+
+function toDto(notification: MongoSocialNotification): SocialNotificationDto {
   return {
-    id: notification.id,
+    id: notification._id,
     guildId: notification.guildId,
     userId: notification.userId,
     platform: "twitch",
@@ -358,5 +396,5 @@ function toDto(notification: {
 }
 
 function isUniqueConstraint(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  return error instanceof MongoServerError && error.code === 11000;
 }

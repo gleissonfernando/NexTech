@@ -103,8 +103,6 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     HOST: z.preprocess((value) => (isProduction ? "0.0.0.0" : cleanEnvValue(value) ?? "localhost"), z.string()),
     PORT: z.preprocess((value) => (isProduction ? 80 : cleanEnvValue(value) ?? 4000), z.coerce.number()),
-    DATABASE_URL: z.string().optional().default(""),
-    MONGO_URI: z.string().optional().default(""),
     MONGODB_URI: z.string().optional().default(""),
     REDIS_URL: z.string().optional().default(""),
     REDIS_SESSION_ENABLED: envBoolean(false),
@@ -138,11 +136,7 @@ const envSchema = z
     DEV_AUTH_ENABLED: envBoolean(false)
   })
   .transform((value) => {
-    const mongoUrl =
-      productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ??
-      productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ??
-      productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ??
-      (isProduction ? "" : localMongoUrl);
+    const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? (isProduction ? "" : localMongoUrl);
     const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
     const oauthFrontendUrl =
       configuredOrigin && !(value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(configuredOrigin))
@@ -152,8 +146,6 @@ const envSchema = z
 
     return {
       ...value,
-      DATABASE_URL: productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ?? mongoUrl,
-      MONGO_URI: productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ?? mongoUrl,
       MONGODB_URI: mongoUrl,
       SITE_ORIGIN: oauthFrontendUrl,
       FRONTEND_URL: oauthFrontendUrl,
@@ -167,8 +159,6 @@ const envSchema = z
 
 export const env = envSchema.parse(process.env);
 
-process.env.DATABASE_URL = env.DATABASE_URL;
-process.env.MONGO_URI = env.MONGO_URI;
 process.env.MONGODB_URI = env.MONGODB_URI;
 process.env.SITE_ORIGIN = env.SITE_ORIGIN;
 process.env.FRONTEND_URL = env.FRONTEND_URL;

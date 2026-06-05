@@ -19,10 +19,8 @@
     "start:frontend": "npm run dev:frontend",
     "start:backend": "npm run dev:backend",
     "start:bot": "npm run dev:bot",
-    "build": "npm run prisma:generate && npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
-    "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
-    "prisma:push": "prisma db push --schema backend/prisma/schema.prisma"
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

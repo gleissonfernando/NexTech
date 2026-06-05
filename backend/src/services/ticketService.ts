@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "../database/prisma";
+import { ensureGuild, getMongoCollections, type MongoTicket } from "../database/mongo";
 
 export type TicketDto = {
   id: string;
@@ -29,54 +29,48 @@ export async function createTicket(input: Pick<TicketDto, "guildId" | "channelId
   memoryTickets.unshift(ticket);
 
   try {
-    await prisma.guild.upsert({
-      where: {
-        id: input.guildId
-      },
-      create: {
-        id: input.guildId,
-        name: `Guild ${input.guildId}`
-      },
-      update: {}
-    });
+    await ensureGuild(input.guildId);
 
-    const saved = await prisma.ticket.create({
-      data: {
-        guildId: input.guildId,
-        channelId: input.channelId,
-        openerId: input.openerId,
-        subject: input.subject
-      }
-    });
+    const { tickets } = await getMongoCollections();
+    const doc: MongoTicket = {
+      _id: randomUUID(),
+      guildId: input.guildId,
+      channelId: input.channelId ?? null,
+      openerId: input.openerId,
+      subject: input.subject,
+      status: "OPEN",
+      createdAt: new Date(),
+      closedAt: null
+    };
+
+    await tickets.insertOne(doc);
 
     return {
       ...ticket,
-      id: saved.id,
-      status: saved.status,
-      createdAt: saved.createdAt.toISOString()
+      id: doc._id,
+      channelId: doc.channelId,
+      status: doc.status,
+      createdAt: doc.createdAt.toISOString()
     };
   } catch (error) {
-    console.warn("[prisma] ticket mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] ticket mantido em memoria:", error instanceof Error ? error.message : error);
     return ticket;
   }
 }
 
 export async function listTickets(guildId?: string) {
   try {
-    const tickets = await prisma.ticket.findMany({
-      where: guildId
-        ? {
-            guildId
-          }
-        : undefined,
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: 50
-    });
+    const { tickets } = await getMongoCollections();
+    const rows = await tickets
+      .find(guildId ? { guildId } : {})
+      .sort({
+        createdAt: -1
+      })
+      .limit(50)
+      .toArray();
 
-    return tickets.map((ticket) => ({
-      id: ticket.id,
+    return rows.map((ticket) => ({
+      id: ticket._id,
       guildId: ticket.guildId,
       channelId: ticket.channelId,
       openerId: ticket.openerId,

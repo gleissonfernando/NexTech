@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "../database/prisma";
+import { ensureGuild, getMongoCollections, type MongoLogEntry } from "../database/mongo";
 
 export type LogEntryDto = {
   id: string;
@@ -35,54 +35,49 @@ export async function createLog(input: CreateLogInput) {
   memoryLogs.unshift(log);
 
   try {
-    await prisma.guild.upsert({
-      where: {
-        id: input.guildId
-      },
-      create: {
-        id: input.guildId,
-        name: `Guild ${input.guildId}`
-      },
-      update: {}
-    });
+    await ensureGuild(input.guildId);
 
-    const saved = await prisma.logEntry.create({
-      data: {
-        guildId: input.guildId,
-        userId: input.userId,
-        type: input.type,
-        message: input.message,
-        metadata: input.metadata as object | undefined
-      }
-    });
+    const { logEntries } = await getMongoCollections();
+    const doc: MongoLogEntry = {
+      _id: randomUUID(),
+      guildId: input.guildId,
+      userId: input.userId ?? null,
+      type: input.type,
+      message: input.message,
+      createdAt: new Date()
+    };
+
+    if (input.metadata !== undefined) {
+      doc.metadata = input.metadata;
+    }
+
+    await logEntries.insertOne(doc);
 
     return {
       ...log,
-      id: saved.id,
-      createdAt: saved.createdAt.toISOString()
+      id: doc._id,
+      userId: doc.userId,
+      createdAt: doc.createdAt.toISOString()
     };
   } catch (error) {
-    console.warn("[prisma] log mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] log mantido em memoria:", error instanceof Error ? error.message : error);
     return log;
   }
 }
 
 export async function listLogs(guildId?: string) {
   try {
-    const logs = await prisma.logEntry.findMany({
-      where: guildId
-        ? {
-            guildId
-          }
-        : undefined,
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: 50
-    });
+    const { logEntries } = await getMongoCollections();
+    const logs = await logEntries
+      .find(guildId ? { guildId } : {})
+      .sort({
+        createdAt: -1
+      })
+      .limit(50)
+      .toArray();
 
     return logs.map((log) => ({
-      id: log.id,
+      id: log._id,
       guildId: log.guildId,
       userId: log.userId,
       type: log.type,

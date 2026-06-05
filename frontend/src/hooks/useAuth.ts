@@ -3,6 +3,7 @@ import { getSession, loginDev, logout as logoutRequest, verifyAccess } from "../
 import type { AuthResponse } from "../types";
 
 const DISCORD_AUTH_URL = "https://ricardinho98.shardweb.app/auth/discord";
+const DASHBOARD_URL = "https://ricardinho98.shardweb.app/dashboard";
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);
@@ -51,7 +52,7 @@ export function useAuth() {
     try {
       const session = await verifyAccess();
       setAuth(session);
-      window.history.replaceState(null, "", "/dashboard");
+      window.location.replace(DASHBOARD_URL);
     } catch {
       setError("Nao foi possivel validar seu acesso temporario.");
     } finally {

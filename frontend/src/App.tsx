@@ -5,6 +5,8 @@ import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
 
+const DASHBOARD_URL = "https://ricardinho98.shardweb.app/dashboard";
+
 export function App() {
   const { auth, error, loading, loginDiscord, logout, verify, verifying } = useAuth();
   const path = window.location.pathname;
@@ -12,7 +14,7 @@ export function App() {
 
   useEffect(() => {
     if (auth?.access.verified && window.location.pathname !== "/dashboard") {
-      window.history.replaceState(null, "", "/dashboard");
+      window.location.replace(DASHBOARD_URL);
     }
   }, [auth]);
 

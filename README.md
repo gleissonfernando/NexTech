@@ -3,7 +3,7 @@
 Arquitetura separada em tres aplicacoes independentes:
 
 - `frontend`: dashboard React + TSX + Vite + Tailwind + componentes no estilo shadcn/ui.
-- `backend`: API Node.js + Express + TypeScript + Prisma + MongoDB + Redis + Socket.IO.
+- `backend`: API Node.js + Express + TypeScript + MongoDB + Redis + Socket.IO.
 - `bot`: bot Discord.js v14 + TypeScript, sem paginas HTML ou rotas web.
 
 ## Fluxo
@@ -26,8 +26,6 @@ O frontend nunca acessa banco de dados diretamente. O bot nunca importa ou rende
 ```bash
 npm install
 docker compose up -d
-npm run prisma:generate
-npm run prisma:push
 ```
 
 Depois, em terminais separados:

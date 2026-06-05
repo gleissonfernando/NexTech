@@ -68,10 +68,10 @@ const envSchema = z
     DISCORD_BOT_TOKEN: z.string().default(""),
     BACKEND_API_URL: envUrl(
       "BACKEND_API_URL",
-      "http://localhost:4000/api",
+      `${productionFrontendUrl}/api`,
       productionFrontendUrl ? `${productionFrontendUrl}/api` : undefined
     ),
-    BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", "http://localhost:4000", productionFrontendUrl),
+    BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", productionFrontendUrl, productionFrontendUrl),
     BOT_API_TOKEN: z.string().default(""),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),

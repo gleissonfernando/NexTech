@@ -1,38 +1,58 @@
-import { prisma } from "../database/prisma";
+import { randomUUID } from "node:crypto";
+import { getMongoCollections } from "../database/mongo";
 import type { DiscordTokenResponse, DiscordUser } from "./discordOAuthService";
 
 export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenResponse) {
   const lastLoginAt = new Date();
+  const username = user.global_name ?? user.username;
 
   try {
-    return await prisma.user.upsert({
-      where: {
+    const { users } = await getMongoCollections();
+    const now = new Date();
+
+    await users.updateOne(
+      {
         discordId: user.id
       },
-      create: {
-        discordId: user.id,
-        username: user.global_name ?? user.username,
-        avatar: user.avatar,
-        email: user.email,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        lastLoginAt
+      {
+        $set: {
+          username,
+          avatar: user.avatar,
+          email: user.email,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          lastLoginAt,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          _id: randomUUID(),
+          discordId: user.id,
+          createdAt: now
+        }
       },
-      update: {
-        username: user.global_name ?? user.username,
-        avatar: user.avatar,
-        email: user.email,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        lastLoginAt
+      {
+        upsert: true
       }
+    );
+
+    const saved = await users.findOne({
+      discordId: user.id
     });
+
+    return {
+      id: saved?._id ?? user.id,
+      discordId: user.id,
+      username,
+      avatar: user.avatar,
+      email: user.email,
+      lastLoginAt
+    };
   } catch (error) {
-    console.warn("[prisma] usuario mantido apenas em sessao:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] usuario mantido apenas em sessao:", error instanceof Error ? error.message : error);
     return {
       id: user.id,
       discordId: user.id,
-      username: user.global_name ?? user.username,
+      username,
       avatar: user.avatar,
       email: user.email,
       lastLoginAt
