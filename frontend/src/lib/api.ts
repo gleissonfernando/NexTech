@@ -1,6 +1,15 @@
 import axios from "axios";
 import type { InternalAxiosRequestConfig } from "axios";
-import type { AuthResponse, GuildSettings, LiveEvent, LogEntry, Ticket } from "../types";
+import type {
+  AuthResponse,
+  CreateTwitchNotificationPayload,
+  GuildSettings,
+  LiveEvent,
+  LogEntry,
+  SocialNotification,
+  Ticket,
+  UpdateTwitchNotificationPayload
+} from "../types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -93,4 +102,24 @@ export async function getTickets(guildId?: string) {
     }
   });
   return data.tickets;
+}
+
+export async function getSocialNotifications(guildId: string) {
+  const { data } = await api.get<{ notifications: SocialNotification[] }>(`/social-notifications/${guildId}`);
+  return data.notifications;
+}
+
+export async function createTwitchNotification(guildId: string, payload: CreateTwitchNotificationPayload) {
+  const { data } = await api.post<{ notification: SocialNotification }>(`/social-notifications/${guildId}/twitch`, payload);
+  return data.notification;
+}
+
+export async function updateTwitchNotification(guildId: string, id: string, payload: UpdateTwitchNotificationPayload) {
+  const { data } = await api.put<{ notification: SocialNotification }>(`/social-notifications/${guildId}/twitch/${id}`, payload);
+  return data.notification;
+}
+
+export async function deleteTwitchNotification(guildId: string, id: string) {
+  const { data } = await api.delete<{ notification: SocialNotification }>(`/social-notifications/${guildId}/twitch/${id}`);
+  return data.notification;
 }

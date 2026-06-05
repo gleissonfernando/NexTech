@@ -93,3 +93,38 @@ export type Ticket = {
   createdAt: string;
   closedAt?: string | null;
 };
+
+export type SocialNotification = {
+  id: string;
+  guildId: string;
+  userId: string;
+  platform: "twitch";
+  twitchChannelName: string;
+  twitchChannelUrl: string;
+  twitchUserId?: string | null;
+  twitchAvatar?: string | null;
+  discordChannelId: string;
+  mentionRoleId?: string | null;
+  customMessage?: string | null;
+  enabled: boolean;
+  isLive: boolean;
+  lastStreamId?: string | null;
+  lastMessageId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateTwitchNotificationPayload = {
+  twitchChannelInput: string;
+  discordChannelId: string;
+  mentionRoleId?: string | null;
+  customMessage?: string | null;
+  enabled: boolean;
+};
+
+export type UpdateTwitchNotificationPayload = {
+  discordChannelId?: string;
+  mentionRoleId?: string | null;
+  customMessage?: string | null;
+  enabled?: boolean;
+};

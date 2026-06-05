@@ -20,6 +20,7 @@ export type ViewId =
   | "settings"
   | "permissions"
   | "modules"
+  | "socialNotifications"
   | "lives"
   | "roles"
   | "welcome"
@@ -51,6 +52,7 @@ export const navSections: Array<{ label: string; items: NavItem[] }> = [
     label: "Modulos",
     items: [
       { id: "modules", label: "Todos os modulos", icon: Bot },
+      { id: "socialNotifications", label: "Social Notifications", icon: Bell, badge: "5" },
       { id: "lives", label: "Lives", icon: Radio },
       { id: "roles", label: "Cargos", icon: Users },
       { id: "tickets", label: "Tickets", icon: Ticket },

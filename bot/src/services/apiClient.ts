@@ -18,6 +18,26 @@ export type LiveEventInput = {
   url?: string;
 };
 
+export type SocialNotification = {
+  id: string;
+  guildId: string;
+  userId: string;
+  platform: "twitch";
+  twitchChannelName: string;
+  twitchChannelUrl: string;
+  twitchUserId?: string | null;
+  twitchAvatar?: string | null;
+  discordChannelId: string;
+  mentionRoleId?: string | null;
+  customMessage?: string | null;
+  enabled: boolean;
+  isLive: boolean;
+  lastStreamId?: string | null;
+  lastMessageId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class ApiClient {
   private readonly http: AxiosInstance;
 
@@ -49,5 +69,15 @@ export class ApiClient {
   async getSettings(guildId: string) {
     const { data } = await this.http.get<{ settings: GuildSettings }>(`/settings/${guildId}`);
     return data.settings;
+  }
+
+  async getActiveTwitchNotifications() {
+    const { data } = await this.http.get<{ notifications: SocialNotification[] }>("/social-notifications/bot/twitch-active");
+    return data.notifications;
+  }
+
+  async updateTwitchNotificationState(id: string, input: { isLive?: boolean; lastStreamId?: string | null; lastMessageId?: string | null; twitchAvatar?: string | null }) {
+    const { data } = await this.http.patch<{ notification: SocialNotification }>(`/social-notifications/bot/twitch/${id}/state`, input);
+    return data.notification;
   }
 }

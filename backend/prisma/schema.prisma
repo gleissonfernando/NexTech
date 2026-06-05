@@ -30,6 +30,7 @@ model Guild {
   updatedAt   DateTime        @updatedAt
   settings    GuildSettings?
   liveConfigs LiveConfig[]
+  socialNotifications SocialNotification[]
   tickets     Ticket[]
   logs        LogEntry[]
   statistics  Statistic[]
@@ -108,6 +109,32 @@ model Statistic {
   createdAt    DateTime @default(now())
 
   @@index([guildId, createdAt])
+}
+
+model SocialNotification {
+  id                String   @id @default(cuid())
+  guildId           String
+  guild             Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userId            String
+  platform          String   @default("twitch")
+  twitchChannelName String
+  twitchChannelUrl  String
+  twitchUserId      String?
+  twitchAvatar      String?
+  discordChannelId  String
+  mentionRoleId     String?
+  customMessage     String?
+  enabled           Boolean  @default(true)
+  isLive            Boolean  @default(false)
+  lastStreamId      String?
+  lastMessageId     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([guildId, platform, twitchChannelName])
+  @@index([guildId, platform])
+  @@index([platform, enabled])
+  @@map("social_notifications")
 }
 
 enum TicketStatus {

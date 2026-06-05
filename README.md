@@ -98,3 +98,22 @@ Redis tambem fica opcional no ambiente local. Para usar Redis como store de sess
 ```env
 REDIS_SESSION_ENABLED="true"
 ```
+
+## Social Notifications
+
+O painel inclui a pagina `Social Notifications`, com suporte inicial a alertas de lives da Twitch.
+
+Configure no `backend/.env` e no `bot/.env`:
+
+```env
+TWITCH_CLIENT_ID=""
+TWITCH_CLIENT_SECRET=""
+TWITCH_MONITOR_INTERVAL_MS="300000"
+```
+
+Fluxo:
+
+- O dono/admin do servidor cadastra o link do canal Twitch no dashboard.
+- A API normaliza o canal, valida pela Twitch API e salva por `guildId`.
+- O bot busca notificacoes ativas na API, consulta a Twitch a cada intervalo e envia uma embed quando detectar uma live nova.
+- `lastStreamId` evita alertas duplicados da mesma live.

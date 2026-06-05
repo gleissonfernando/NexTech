@@ -23,6 +23,8 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().default(""),
   DISCORD_CALLBACK_URL: z.string().url().default("http://localhost:4000/api/auth/discord/callback"),
   DISCORD_SCOPES: z.string().default("identify email guilds"),
+  TWITCH_CLIENT_ID: z.string().default(""),
+  TWITCH_CLIENT_SECRET: z.string().default(""),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
   DASHBOARD_AUTH_REQUIRED: z
     .string()

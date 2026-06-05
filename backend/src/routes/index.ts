@@ -5,6 +5,7 @@ import { healthRouter } from "./health";
 import { livesRouter } from "./lives";
 import { logsRouter } from "./logs";
 import { settingsRouter } from "./settings";
+import { socialNotificationsRouter } from "./socialNotifications";
 import { ticketsRouter } from "./tickets";
 import { usersRouter } from "./users";
 
@@ -18,3 +19,4 @@ apiRouter.use("/lives", livesRouter);
 apiRouter.use("/tickets", ticketsRouter);
 apiRouter.use("/logs", logsRouter);
 apiRouter.use("/settings", settingsRouter);
+apiRouter.use("/social-notifications", socialNotificationsRouter);

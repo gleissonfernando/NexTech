@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
+import { SocialNotificationsPage } from "./SocialNotificationsPage";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -303,11 +304,13 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
         initial={{ opacity: 0, y: 14 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        <PageHeader
-          activeView={activeView}
-          botStatus={botStatus}
-          guildName={selectedGuild?.name ?? "Servidor"}
-        />
+        {activeView !== "socialNotifications" ? (
+          <PageHeader
+            activeView={activeView}
+            botStatus={botStatus}
+            guildName={selectedGuild?.name ?? "Servidor"}
+          />
+        ) : null}
 
         {activeView === "overview" ? (
           <OverviewView
@@ -328,6 +331,8 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
             settings={settings}
           />
         ) : null}
+
+        {activeView === "socialNotifications" ? <SocialNotificationsPage guild={selectedGuild} /> : null}
 
         {activeView === "lives" ? <LiveView lives={lives} /> : null}
         {activeView === "tickets" ? <TicketView tickets={tickets} /> : null}

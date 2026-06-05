@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
 import type { BotContext } from "../types";
 
 export function handleReady(client: Client<true>, context: BotContext) {
@@ -6,6 +7,7 @@ export function handleReady(client: Client<true>, context: BotContext) {
 
   context.socket.connect(client);
   context.socket.emitStatus(client, true);
+  startSocialNotificationMonitor(client, context.api);
 
   const interval = setInterval(() => {
     context.socket.emitStatus(client, true);
