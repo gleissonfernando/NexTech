@@ -23,6 +23,10 @@ function normalizeUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+function discordRedirectUriFor(origin: string) {
+  return `${normalizeUrl(origin)}/auth/discord/callback`;
+}
+
 function isValidUrl(value: string) {
   try {
     new URL(value);
@@ -77,10 +81,10 @@ function isLocalUrl(value: string) {
   }
 }
 
-const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
-const productionFrontendUrl =
-  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) ? normalizeUrl(configuredFrontendUrl) : productionPublicUrl;
-const publicDiscordCallbackUrl = `${productionFrontendUrl}/auth/discord/callback`;
+const configuredSiteOrigin = cleanEnvValue(process.env.SITE_ORIGIN) ?? cleanEnvValue(process.env.FRONTEND_URL);
+const productionSiteOrigin =
+  configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin) ? normalizeUrl(configuredSiteOrigin) : productionPublicUrl;
+const canonicalDiscordRedirectUri = discordRedirectUriFor(productionSiteOrigin);
 
 function productionSafeUrl(value?: string) {
   if (!value) {
@@ -113,15 +117,21 @@ const envSchema = z
     DISCORD_BOT_TOKEN: z.string().default(""),
     DISCORD_CLIENT_ID: z.string().default(""),
     DISCORD_CLIENT_SECRET: z.string().default(""),
+    SITE_ORIGIN: envUrl("SITE_ORIGIN", productionSiteOrigin, productionSiteOrigin),
+    DISCORD_OAUTH_REDIRECT_URI: envUrl(
+      "DISCORD_OAUTH_REDIRECT_URI",
+      canonicalDiscordRedirectUri,
+      canonicalDiscordRedirectUri
+    ),
     DISCORD_CALLBACK_URL: envUrl(
       "DISCORD_CALLBACK_URL",
-      publicDiscordCallbackUrl,
-      publicDiscordCallbackUrl
+      canonicalDiscordRedirectUri,
+      canonicalDiscordRedirectUri
     ),
     DISCORD_SCOPES: z.string().default("identify email guilds"),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
-    FRONTEND_URL: envUrl("FRONTEND_URL", productionPublicUrl),
+    FRONTEND_URL: envUrl("FRONTEND_URL", productionSiteOrigin, productionSiteOrigin),
     DASHBOARD_AUTH_REQUIRED: envBoolean(isProduction),
     DASHBOARD_AUTHORIZED_USER_IDS: z.string().optional().default(""),
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("temporary"),
@@ -133,19 +143,21 @@ const envSchema = z
       productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ??
       productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ??
       (isProduction ? "" : localMongoUrl);
+    const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
     const oauthFrontendUrl =
-      value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(value.FRONTEND_URL) ? productionPublicUrl : value.FRONTEND_URL || productionPublicUrl;
-    const oauthCallbackUrl =
-      value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(value.DISCORD_CALLBACK_URL)
-        ? publicDiscordCallbackUrl
-        : value.DISCORD_CALLBACK_URL || publicDiscordCallbackUrl;
+      configuredOrigin && !(value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(configuredOrigin))
+        ? normalizeUrl(configuredOrigin)
+        : productionSiteOrigin;
+    const oauthCallbackUrl = discordRedirectUriFor(oauthFrontendUrl);
 
     return {
       ...value,
       DATABASE_URL: productionSafeUrl(cleanEnvValue(value.DATABASE_URL)) ?? mongoUrl,
       MONGO_URI: productionSafeUrl(cleanEnvValue(value.MONGO_URI)) ?? mongoUrl,
       MONGODB_URI: mongoUrl,
+      SITE_ORIGIN: oauthFrontendUrl,
       FRONTEND_URL: oauthFrontendUrl,
+      DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
       DISCORD_CALLBACK_URL: oauthCallbackUrl,
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
       DASHBOARD_AUTH_REQUIRED: isProduction ? true : value.DASHBOARD_AUTH_REQUIRED,
@@ -158,16 +170,21 @@ export const env = envSchema.parse(process.env);
 process.env.DATABASE_URL = env.DATABASE_URL;
 process.env.MONGO_URI = env.MONGO_URI;
 process.env.MONGODB_URI = env.MONGODB_URI;
+process.env.SITE_ORIGIN = env.SITE_ORIGIN;
+process.env.FRONTEND_URL = env.FRONTEND_URL;
+process.env.DISCORD_OAUTH_REDIRECT_URI = env.DISCORD_OAUTH_REDIRECT_URI;
+process.env.DISCORD_CALLBACK_URL = env.DISCORD_CALLBACK_URL;
 
 if (env.NODE_ENV === "production") {
   const missing = [
+    ["SITE_ORIGIN", env.SITE_ORIGIN],
     ["FRONTEND_URL", env.FRONTEND_URL],
     ["MONGODB_URI", env.MONGODB_URI],
     ["BOT_API_TOKEN", cleanEnvValue(env.BOT_API_TOKEN)],
     ["DISCORD_BOT_TOKEN", cleanEnvValue(env.DISCORD_BOT_TOKEN)],
     ["DISCORD_CLIENT_ID", cleanEnvValue(env.DISCORD_CLIENT_ID)],
     ["DISCORD_CLIENT_SECRET", cleanEnvValue(env.DISCORD_CLIENT_SECRET)],
-    ["DISCORD_CALLBACK_URL", env.DISCORD_CALLBACK_URL]
+    ["DISCORD_OAUTH_REDIRECT_URI", env.DISCORD_OAUTH_REDIRECT_URI]
   ]
     .filter(([, value]) => !value)
     .map(([name]) => name);

@@ -75,6 +75,7 @@ Configure as variaveis no painel da Sharclaud usando `.env.example` como checkli
 
 ```env
 NODE_ENV="production"
+SITE_ORIGIN="https://ricardinho98.shardweb.app"
 FRONTEND_URL="https://ricardinho98.shardweb.app"
 MONGODB_URI="mongodb+srv://usuario:senha@cluster.mongodb.net/ricardinho98?retryWrites=true&w=majority"
 SESSION_SECRET="troque-por-um-segredo-grande-de-sessao"
@@ -83,6 +84,7 @@ BOT_API_TOKEN="troque-por-um-token-interno-do-bot"
 DISCORD_BOT_TOKEN="token-do-bot"
 DISCORD_CLIENT_ID="client-id-oauth"
 DISCORD_CLIENT_SECRET="client-secret-oauth"
+DISCORD_OAUTH_REDIRECT_URI="https://ricardinho98.shardweb.app/auth/discord/callback"
 DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
 DASHBOARD_AUTH_REQUIRED="true"
 DASHBOARD_AUTHORIZED_USER_IDS="123456789012345678,987654321098765432"
@@ -127,18 +129,20 @@ Para desenvolvimento local, preencha no `.env`:
 ```env
 DISCORD_CLIENT_ID=""
 DISCORD_CLIENT_SECRET=""
-DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
+SITE_ORIGIN="https://ricardinho98.shardweb.app"
 FRONTEND_URL="https://ricardinho98.shardweb.app"
+DISCORD_OAUTH_REDIRECT_URI="https://ricardinho98.shardweb.app/auth/discord/callback"
+DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
 JWT_SECRET="change-this-jwt-secret"
 DASHBOARD_AUTH_REQUIRED="true"
 DASHBOARD_VERIFICATION_MODE="temporary"
 ```
 
-Use sempre a URL publica em `DISCORD_CALLBACK_URL` e `FRONTEND_URL` quando `DASHBOARD_AUTH_REQUIRED="true"`. O OAuth2 do Discord nao deve apontar para `localhost`.
+Use sempre a URL publica em `SITE_ORIGIN`, `DISCORD_OAUTH_REDIRECT_URI`, `DISCORD_CALLBACK_URL` e `FRONTEND_URL` quando `DASHBOARD_AUTH_REQUIRED="true"`. O OAuth2 do Discord nao deve apontar para `localhost`.
 
 `DASHBOARD_AUTHORIZED_USER_IDS` aceita IDs Discord separados por virgula. Esses usuarios recebem acesso administrativo mesmo que nao sejam donos/admin em um servidor retornado pelo OAuth. Quem autenticar sem permissao especial entra como visualizacao basica.
 
-Quando `DASHBOARD_AUTH_REQUIRED="true"`, o backend usa Discord OAuth2, salva a sessao em JWT httpOnly, redireciona para `/auth/success` e depois o frontend envia o usuario para `/dashboard`.
+Quando `DASHBOARD_AUTH_REQUIRED="true"`, o backend usa Discord OAuth2, salva a sessao em JWT httpOnly e redireciona o usuario para `/dashboard`.
 
 Enquanto a validacao avancada de cargos nao estiver pronta, `DASHBOARD_VERIFICATION_MODE="temporary"` libera o acesso quando o usuario autenticado clicar em `Verificar`. A estrutura de middleware ja separa os checks de administrador, dono do servidor e cargo configurado no painel.
 

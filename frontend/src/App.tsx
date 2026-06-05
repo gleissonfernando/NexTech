@@ -1,7 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
-import { AuthSuccess } from "./pages/AuthSuccess";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
@@ -12,17 +11,13 @@ export function App() {
   const routeError = path === "/auth/error" ? readAuthError() : null;
 
   useEffect(() => {
-    if (auth?.access.verified && !["/dashboard", "/auth/success"].includes(window.location.pathname)) {
+    if (auth?.access.verified && window.location.pathname !== "/dashboard") {
       window.history.replaceState(null, "", "/dashboard");
     }
   }, [auth]);
 
   if (loading) {
     return <LoadingScreen />;
-  }
-
-  if (path === "/auth/success" && auth?.access.verified) {
-    return <AuthSuccess auth={auth} />;
   }
 
   if (!auth || !auth.access.verified) {

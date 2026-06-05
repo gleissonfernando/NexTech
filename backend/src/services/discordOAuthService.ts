@@ -21,17 +21,23 @@ export type DiscordTokenResponse = {
   scope: string;
 };
 
+function encodeOAuthParams(params: Record<string, string>) {
+  return Object.entries(params)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+}
+
 export function buildDiscordAuthUrl(state: string) {
-  const params = new URLSearchParams({
+  const params = encodeOAuthParams({
     client_id: env.DISCORD_CLIENT_ID,
-    redirect_uri: env.DISCORD_CALLBACK_URL,
+    redirect_uri: env.DISCORD_OAUTH_REDIRECT_URI,
     response_type: "code",
     scope: env.DISCORD_SCOPES,
     state,
     prompt: "consent"
   });
 
-  return `${DISCORD_API}/oauth2/authorize?${params.toString()}`;
+  return `${DISCORD_API}/oauth2/authorize?${params}`;
 }
 
 export async function exchangeDiscordCode(code: string) {
@@ -40,7 +46,7 @@ export async function exchangeDiscordCode(code: string) {
     client_secret: env.DISCORD_CLIENT_SECRET,
     grant_type: "authorization_code",
     code,
-    redirect_uri: env.DISCORD_CALLBACK_URL
+    redirect_uri: env.DISCORD_OAUTH_REDIRECT_URI
   });
 
   const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {

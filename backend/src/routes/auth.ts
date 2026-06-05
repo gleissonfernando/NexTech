@@ -26,7 +26,6 @@ import { saveDiscordUser } from "../services/userService";
 
 export const authRouter = Router();
 const dashboardPath = "/dashboard";
-const successPath = "/auth/success";
 const errorPath = "/auth/error";
 
 function isApiAuthMount(req: Request) {
@@ -34,20 +33,16 @@ function isApiAuthMount(req: Request) {
 }
 
 function canonicalAuthUrl(path: string, query = "") {
-  return env.FRONTEND_URL ? `${env.FRONTEND_URL}/auth${path}${query}` : `/auth${path}${query}`;
+  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}/auth${path}${query}` : `/auth${path}${query}`;
 }
 
 function dashboardRedirectUrl() {
-  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${dashboardPath}` : dashboardPath;
-}
-
-function successRedirectUrl() {
-  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${successPath}` : successPath;
+  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${dashboardPath}` : dashboardPath;
 }
 
 function errorRedirectUrl(reason: string) {
   const path = `${errorPath}?reason=${encodeURIComponent(reason)}`;
-  return env.FRONTEND_URL ? `${env.FRONTEND_URL}${path}` : path;
+  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}` : path;
 }
 
 function saveSession(req: Request) {
@@ -86,7 +81,7 @@ authRouter.get("/discord", async (req, res) => {
     return res.redirect(dashboardRedirectUrl());
   }
 
-  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_CALLBACK_URL) {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_OAUTH_REDIRECT_URI) {
     return res.status(503).json({
       message: "OAuth2 Discord ainda nao esta configurado."
     });
@@ -144,7 +139,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
 
     issueAuthCookies(res, req.session.user, validation.allowed);
     await saveSession(req);
-    return res.redirect(validation.allowed ? successRedirectUrl() : errorRedirectUrl("permission"));
+    return res.redirect(validation.allowed ? dashboardRedirectUrl() : errorRedirectUrl("permission"));
   } catch (error) {
     clearAuthCookies(res);
     if (req.session) {
