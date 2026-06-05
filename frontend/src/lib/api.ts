@@ -12,6 +12,8 @@ import type {
   UpdateTwitchNotificationPayload
 } from "../types";
 
+const PUBLIC_FRONTEND_URL = "https://ricardinho98.shardweb.app";
+
 function normalizeUrl(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed.replace(/\/+$/, "") || "/" : undefined;
@@ -30,6 +32,16 @@ function isLocalBrowserOrigin() {
   return isLocalHttpUrl(window.location.origin);
 }
 
+function publicOrigin() {
+  const configuredPublicUrl = normalizeUrl(import.meta.env.VITE_FRONTEND_URL);
+
+  if (configuredPublicUrl && !isLocalHttpUrl(configuredPublicUrl)) {
+    return configuredPublicUrl;
+  }
+
+  return PUBLIC_FRONTEND_URL;
+}
+
 function resolveDevelopmentApiUrl() {
   const configuredApiUrl = normalizeUrl(import.meta.env.VITE_API_URL);
 
@@ -37,7 +49,7 @@ function resolveDevelopmentApiUrl() {
     return configuredApiUrl;
   }
 
-  return isLocalBrowserOrigin() ? "http://localhost:4000/api" : "/api";
+  return isLocalBrowserOrigin() ? `${publicOrigin()}/api` : "/api";
 }
 
 function resolveAuthUrl(apiUrl: string) {
@@ -47,6 +59,11 @@ function resolveAuthUrl(apiUrl: string) {
 
   try {
     const authUrl = new URL(apiUrl, window.location.origin);
+
+    if (isLocalHttpUrl(authUrl.origin)) {
+      return `${publicOrigin()}/auth`;
+    }
+
     const normalizedPath = authUrl.pathname.replace(/\/+$/, "");
 
     if (normalizedPath.endsWith("/api")) {
