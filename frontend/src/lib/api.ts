@@ -26,9 +26,45 @@ function isLocalHttpUrl(value?: string) {
   return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname);
 }
 
-const configuredApiUrl = import.meta.env.PROD ? undefined : normalizeUrl(import.meta.env.VITE_API_URL);
+function isLocalBrowserOrigin() {
+  return isLocalHttpUrl(window.location.origin);
+}
 
-export const API_URL = import.meta.env.PROD ? "/api" : configuredApiUrl && !isLocalHttpUrl(configuredApiUrl) ? configuredApiUrl : "http://localhost:4000/api";
+function resolveDevelopmentApiUrl() {
+  const configuredApiUrl = normalizeUrl(import.meta.env.VITE_API_URL);
+
+  if (configuredApiUrl && !isLocalHttpUrl(configuredApiUrl)) {
+    return configuredApiUrl;
+  }
+
+  return isLocalBrowserOrigin() ? "http://localhost:4000/api" : "/api";
+}
+
+function resolveAuthUrl(apiUrl: string) {
+  if (apiUrl === "/api") {
+    return "/auth";
+  }
+
+  try {
+    const authUrl = new URL(apiUrl, window.location.origin);
+    const normalizedPath = authUrl.pathname.replace(/\/+$/, "");
+
+    if (normalizedPath.endsWith("/api")) {
+      authUrl.pathname = `${normalizedPath.slice(0, -"/api".length)}/auth`;
+      authUrl.search = "";
+      authUrl.hash = "";
+
+      return normalizeUrl(authUrl.toString()) ?? "/auth";
+    }
+  } catch {
+    // Keep the simple fallback below for relative or unusual API URLs.
+  }
+
+  return `${apiUrl.replace(/\/+$/, "")}/auth`;
+}
+
+export const API_URL = import.meta.env.PROD ? "/api" : resolveDevelopmentApiUrl();
+export const AUTH_URL = import.meta.env.PROD ? "/auth" : resolveAuthUrl(API_URL);
 
 export const api = axios.create({
   baseURL: API_URL,

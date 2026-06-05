@@ -14,13 +14,21 @@ function isLocalHttpUrl(value?: string) {
   return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname);
 }
 
-const configuredSocketUrl = import.meta.env.PROD ? undefined : normalizeUrl(import.meta.env.VITE_SOCKET_URL);
+function isLocalBrowserOrigin() {
+  return isLocalHttpUrl(window.location.origin);
+}
 
-export const SOCKET_URL = import.meta.env.PROD
-  ? window.location.origin
-  : configuredSocketUrl && !isLocalHttpUrl(configuredSocketUrl)
-    ? configuredSocketUrl
-    : "http://localhost:4000";
+function resolveDevelopmentSocketUrl() {
+  const configuredSocketUrl = normalizeUrl(import.meta.env.VITE_SOCKET_URL);
+
+  if (configuredSocketUrl && !isLocalHttpUrl(configuredSocketUrl)) {
+    return configuredSocketUrl;
+  }
+
+  return isLocalBrowserOrigin() ? "http://localhost:4000" : window.location.origin;
+}
+
+export const SOCKET_URL = import.meta.env.PROD ? window.location.origin : resolveDevelopmentSocketUrl();
 
 export function createDashboardSocket() {
   return io(SOCKET_URL, {

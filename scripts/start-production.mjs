@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 
 const children = new Set();
 process.env.NODE_ENV = "production";
@@ -8,12 +8,27 @@ process.env.PORT = "80";
 
 function ensureBuild() {
   const requiredBuildFiles = ["backend/dist/server.js", "bot/dist/index.js", "frontend/dist/index.html"];
+  const sourcePaths = [
+    ".env",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.base.json",
+    "backend/package.json",
+    "backend/prisma/schema.prisma",
+    "backend/src",
+    "bot/package.json",
+    "bot/src",
+    "frontend/index.html",
+    "frontend/package.json",
+    "frontend/src",
+    "frontend/vite.config.ts"
+  ];
 
-  if (requiredBuildFiles.every((file) => existsSync(file))) {
+  if (requiredBuildFiles.every((file) => existsSync(file)) && !isBuildStale(requiredBuildFiles, sourcePaths)) {
     return;
   }
 
-  console.log("[start] build nao encontrado; gerando arquivos de producao...");
+  console.log("[start] build ausente ou desatualizado; gerando arquivos de producao...");
   const result = spawnSync("npm", ["run", "build"], {
     env: process.env,
     shell: process.platform === "win32",
@@ -23,6 +38,38 @@ function ensureBuild() {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+}
+
+function fileMtimeMs(file) {
+  try {
+    return statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function newestMtimeMs(targetPath) {
+  if (!existsSync(targetPath)) {
+    return 0;
+  }
+
+  const stats = statSync(targetPath);
+
+  if (!stats.isDirectory()) {
+    return stats.mtimeMs;
+  }
+
+  return readdirSync(targetPath, { withFileTypes: true }).reduce((newest, entry) => {
+    const childPath = `${targetPath}/${entry.name}`;
+    return Math.max(newest, entry.isDirectory() ? newestMtimeMs(childPath) : fileMtimeMs(childPath));
+  }, stats.mtimeMs);
+}
+
+function isBuildStale(buildFiles, sourcePaths) {
+  const oldestBuild = Math.min(...buildFiles.map(fileMtimeMs));
+  const newestSource = Math.max(...sourcePaths.map(newestMtimeMs));
+
+  return newestSource > oldestBuild;
 }
 
 function startProcess(name, command, args, options = {}) {

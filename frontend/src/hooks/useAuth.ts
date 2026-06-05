@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_URL, getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
+import { AUTH_URL, getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
 import type { AuthResponse } from "../types";
 
 export function useAuth() {
@@ -23,7 +23,7 @@ export function useAuth() {
   }, []);
 
   const loginDiscord = useCallback(() => {
-    window.location.href = import.meta.env.PROD ? "/auth/discord" : `${API_URL}/auth/discord`;
+    window.location.href = `${AUTH_URL}/discord`;
   }, []);
 
   const loginDevelopment = useCallback(async () => {
