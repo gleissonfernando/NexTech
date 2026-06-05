@@ -10,6 +10,7 @@ import {
   fetchDiscordUser
 } from "../services/discordOAuthService";
 import { demoGuilds, toDashboardGuilds } from "../services/guildService";
+import { createAuthResponse, createPublicDashboardUser } from "../services/publicAuthService";
 import { saveDiscordUser } from "../services/userService";
 
 export const authRouter = Router();
@@ -41,6 +42,13 @@ function destroySession(req: Request) {
 }
 
 authRouter.get("/discord", async (req, res) => {
+  if (!env.DASHBOARD_AUTH_REQUIRED) {
+    req.session.user = createPublicDashboardUser();
+    await saveSession(req);
+
+    return res.redirect(env.FRONTEND_URL);
+  }
+
   if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) {
     return res.status(503).json({
       message: "OAuth2 Discord ainda nao esta configurado."
@@ -107,28 +115,23 @@ authRouter.post("/dev", async (req, res) => {
   await saveSession(req);
 
   return res.json({
-    user: req.session.user,
-    guilds: demoGuilds,
-    permissions: {
-      canManageGuilds: true
-    }
+    ...createAuthResponse(req.session.user)
   });
 });
 
-authRouter.get("/me", (req, res) => {
+authRouter.get("/me", async (req, res) => {
+  if (!env.DASHBOARD_AUTH_REQUIRED && !req.session.user) {
+    req.session.user = createPublicDashboardUser();
+    await saveSession(req);
+  }
+
   if (!req.session.user) {
     return res.status(401).json({
       message: "Sessao nao autenticada."
     });
   }
 
-  return res.json({
-    user: req.session.user,
-    guilds: req.session.user.guilds,
-    permissions: {
-      canManageGuilds: req.session.user.guilds.some((guild) => guild.isAdmin)
-    }
-  });
+  return res.json(createAuthResponse(req.session.user));
 });
 
 authRouter.post("/logout", async (req, res, next) => {

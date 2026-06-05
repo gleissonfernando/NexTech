@@ -65,4 +65,14 @@ DISCORD_CALLBACK_URL="http://localhost:4000/api/auth/discord/callback"
 FRONTEND_URL="http://localhost:5173"
 ```
 
-Para testar a interface sem OAuth durante desenvolvimento, defina `DEV_AUTH_ENABLED=true` no `backend/.env` e acesse o login normalmente.
+Por padrao, a dashboard abre sem OAuth2 usando um usuario administrativo local. Para exigir OAuth2 Discord depois, defina no `backend/.env`:
+
+```env
+DASHBOARD_AUTH_REQUIRED="true"
+```
+
+Redis tambem fica opcional no ambiente local. Para usar Redis como store de sessao, rode o Redis e defina:
+
+```env
+REDIS_SESSION_ENABLED="true"
+```

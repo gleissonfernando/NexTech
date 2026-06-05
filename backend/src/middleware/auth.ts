@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
+import { createPublicDashboardUser } from "../services/publicAuthService";
 
 export function isBotRequest(req: Request) {
   const token = req.header("x-bot-token");
@@ -7,6 +8,11 @@ export function isBotRequest(req: Request) {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!env.DASHBOARD_AUTH_REQUIRED) {
+    req.session.user ??= createPublicDashboardUser();
+    return next();
+  }
+
   if (req.session.user) {
     return next();
   }
@@ -23,6 +29,11 @@ export function requireBot(req: Request, res: Response, next: NextFunction) {
 }
 
 export function requireAuthOrBot(req: Request, res: Response, next: NextFunction) {
+  if (!env.DASHBOARD_AUTH_REQUIRED) {
+    req.session.user ??= createPublicDashboardUser();
+    return next();
+  }
+
   if (req.session.user || isBotRequest(req)) {
     return next();
   }

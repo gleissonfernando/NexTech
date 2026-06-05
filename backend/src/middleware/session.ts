@@ -3,7 +3,7 @@ import { env } from "../config/env";
 import { getRedisClient } from "../database/redis";
 import { RedisSessionStore } from "../database/redisSessionStore";
 
-const redis = getRedisClient();
+const redis = env.REDIS_SESSION_ENABLED ? getRedisClient() : null;
 
 export const sessionMiddleware = session({
   name: "discord_dashboard.sid",
