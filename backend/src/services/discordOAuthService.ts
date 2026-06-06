@@ -10,7 +10,7 @@ export type DiscordUser = {
   discriminator?: string;
   global_name?: string | null;
   avatar: string | null;
-  email: string | null;
+  email?: string | null;
 };
 
 export type DiscordTokenResponse = {
@@ -68,6 +68,28 @@ export async function fetchDiscordUser(accessToken: string) {
   return data;
 }
 
+export async function fetchDiscordUserById(userId: string) {
+  if (!env.DISCORD_BOT_TOKEN) {
+    return null;
+  }
+
+  try {
+    const { data } = await axios.get<DiscordUser>(`${DISCORD_API}/users/${encodeURIComponent(userId)}`, {
+      headers: {
+        Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`
+      }
+    });
+
+    return {
+      ...data,
+      email: data.email ?? null
+    };
+  } catch (error) {
+    console.warn("[discord] nao foi possivel buscar usuario pelo bot:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 export async function fetchDiscordGuilds(accessToken: string) {
   const { data } = await axios.get<DiscordGuild[]>(`${DISCORD_API}/users/@me/guilds`, {
     headers: {
@@ -78,12 +100,14 @@ export async function fetchDiscordGuilds(accessToken: string) {
   return data;
 }
 
-export function discordAvatarUrl(user: Pick<DiscordUser, "id" | "avatar">) {
+export function discordAvatarUrl(user: Pick<DiscordUser, "id" | "avatar"> & Partial<Pick<DiscordUser, "discriminator">>) {
   if (!user.avatar) {
-    return null;
+    return discordDefaultAvatarUrl(user);
   }
 
-  return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`;
+  const extension = user.avatar.startsWith("a_") ? "gif" : "png";
+
+  return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${extension}?size=128`;
 }
 
 export function discordUserTag(user: Pick<DiscordUser, "username" | "discriminator" | "global_name">) {
@@ -92,4 +116,21 @@ export function discordUserTag(user: Pick<DiscordUser, "username" | "discriminat
   }
 
   return user.global_name ?? user.username;
+}
+
+function discordDefaultAvatarUrl(user: Pick<DiscordUser, "id"> & Partial<Pick<DiscordUser, "discriminator">>) {
+  if (user.discriminator && user.discriminator !== "0") {
+    const discriminator = Number.parseInt(user.discriminator, 10);
+    const index = Number.isFinite(discriminator) ? discriminator % 5 : 0;
+
+    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+  }
+
+  try {
+    const index = Number((BigInt(user.id) >> 22n) % 6n);
+
+    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+  } catch {
+    return "https://cdn.discordapp.com/embed/avatars/0.png";
+  }
 }

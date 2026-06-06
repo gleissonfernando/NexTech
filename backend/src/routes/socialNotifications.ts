@@ -7,6 +7,8 @@ import {
   deleteTwitchNotification,
   listActiveTwitchNotifications,
   listSocialNotifications,
+  previewTwitchChannel,
+  sendTwitchNotificationTest,
   updateTwitchNotification,
   updateTwitchNotificationState
 } from "../services/socialNotificationService";
@@ -19,18 +21,25 @@ const createTwitchSchema = z.object({
   discordChannelId: z.string().min(1),
   mentionRoleId: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  embedColor: z.string().optional().nullable(),
   enabled: z.boolean().default(true)
+});
+
+const previewTwitchSchema = z.object({
+  twitchChannelInput: z.string()
 });
 
 const updateTwitchSchema = z.object({
   discordChannelId: z.string().min(1).optional(),
   mentionRoleId: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  embedColor: z.string().optional().nullable(),
   enabled: z.boolean().optional()
 });
 
 const stateSchema = z.object({
   isLive: z.boolean().optional(),
+  lastLiveAt: z.string().optional().nullable(),
   lastStreamId: z.string().optional().nullable(),
   lastMessageId: z.string().optional().nullable(),
   twitchAvatar: z.string().optional().nullable()
@@ -59,6 +68,22 @@ socialNotificationsRouter.patch("/bot/twitch/:id/state", requireBot, async (req,
 
     return res.json({
       notification
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+socialNotificationsRouter.post("/:guildId/twitch/preview", requireAuth, requireAdminAccess, async (req, res, next) => {
+  try {
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    assertCanManageGuild(res.locals.dashboardAuth.user, guildId);
+
+    const input = previewTwitchSchema.parse(req.body);
+    const preview = await previewTwitchChannel(input.twitchChannelInput);
+
+    return res.json({
+      preview
     });
   } catch (error) {
     return handleRouteError(error, res, next);
@@ -109,6 +134,23 @@ socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, requireAdminA
 
     return res.json({
       notification
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+socialNotificationsRouter.post("/:guildId/twitch/:id/test", requireAuth, requireAdminAccess, async (req, res, next) => {
+  try {
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    const id = getRequiredParam(req.params.id, "id");
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    assertCanManageGuild(user, guildId);
+
+    await sendTwitchNotificationTest(guildId, id, user.discordId);
+
+    return res.json({
+      ok: true
     });
   } catch (error) {
     return handleRouteError(error, res, next);

@@ -30,8 +30,10 @@ export type SocialNotification = {
   discordChannelId: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled: boolean;
   isLive: boolean;
+  lastLiveAt?: string | null;
   lastStreamId?: string | null;
   lastMessageId?: string | null;
   createdAt: string;
@@ -84,7 +86,7 @@ export class ApiClient {
     return data.notifications;
   }
 
-  async updateTwitchNotificationState(id: string, input: { isLive?: boolean; lastStreamId?: string | null; lastMessageId?: string | null; twitchAvatar?: string | null }) {
+  async updateTwitchNotificationState(id: string, input: { isLive?: boolean; lastLiveAt?: string | null; lastStreamId?: string | null; lastMessageId?: string | null; twitchAvatar?: string | null }) {
     const { data } = await this.http.patch<{ notification: SocialNotification }>(`/social-notifications/bot/twitch/${id}/state`, input);
     return data.notification;
   }

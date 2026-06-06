@@ -39,6 +39,41 @@ export async function sendWelcomeMessage(context: BotContext, member: GuildMembe
   });
 }
 
+export async function sendLeaveMessage(context: BotContext, member: GuildMember) {
+  const settings = await context.api.getSettings(member.guild.id).catch(() => null);
+
+  if (!settings?.leaveEnabled || !settings.leaveChannelId) {
+    return;
+  }
+
+  const channel = member.guild.channels.cache.get(settings.leaveChannelId);
+
+  if (!channel?.isTextBased()) {
+    return;
+  }
+
+  const displayChannelId = settings.leaveDisplayChannelId ?? settings.leaveChannelId;
+  const imageUrl = resolveImageUrl(settings.leaveImageUrl ?? DEFAULT_WELCOME_IMAGE_URL);
+  const embed = new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle("\u{1F47E} Ricardinn98")
+    .setDescription(leavePanelDescription(`<@${member.id}>`, displayChannelId))
+    .setFooter({
+      text: "Ricardinn98 - Comunidade de lives"
+    });
+
+  if (imageUrl) {
+    embed.setImage(imageUrl);
+  }
+
+  await channel.send({
+    allowedMentions: {
+      parse: []
+    },
+    embeds: [embed]
+  });
+}
+
 function welcomePanelDescription(userMention: string, channelId: string | null) {
   const channelMention = channelId ? `<#${channelId}>` : "<#coloque_o_id_do_canal_de_lives_aqui>";
 
@@ -54,6 +89,24 @@ function welcomePanelDescription(userMention: string, channelId: string | null) 
     "**5.** Converse, faca amizades e aproveite sua estadia.",
     "",
     `\u{1F517} Acesse o canal: ${channelMention}`
+  ].join("\n");
+}
+
+function leavePanelDescription(userMention: string, channelId: string | null) {
+  const channelMention = channelId ? `<#${channelId}>` : "<#coloque_o_id_do_canal_de_lives_aqui>";
+
+  return [
+    `Ate mais, ${userMention}. Obrigado por ter feito parte da nossa comunidade de lives.`,
+    "As portas continuam abertas para quando quiser voltar e acompanhar as transmissoes com a galera.",
+    "",
+    "**Registro de saida:**",
+    "**1.** A saida foi registrada automaticamente pelo bot.",
+    "**2.** Os canais oficiais continuam disponiveis para a comunidade.",
+    "**3.** Respeite as regras se decidir retornar ao servidor.",
+    "**4.** A equipe segue por aqui para organizar eventos e avisos.",
+    "**5.** Valeu pela passagem e ate a proxima.",
+    "",
+    `\u{1F517} Canal da comunidade: ${channelMention}`
   ].join("\n");
 }
 

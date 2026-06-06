@@ -1,15 +1,20 @@
 import type { Request, Response } from "express";
+import { env } from "../config/env";
 import { demoGuilds } from "./guildService";
 import { createAuthResponse, issueAuthCookies, type DashboardAuth } from "./tokenService";
 import type { AuthSessionUser } from "../types/session";
+import { discordAvatarUrl, discordUserTag, fetchDiscordUserById } from "./discordOAuthService";
 
-export function createLocalDashboardUser(): AuthSessionUser {
+export async function createLocalDashboardUser(): Promise<AuthSessionUser> {
+  const configuredDiscordId = getPrimaryAuthorizedDiscordId();
+  const discordUser = configuredDiscordId ? await fetchDiscordUserById(configuredDiscordId) : null;
+
   return {
-    id: "local-admin",
-    discordId: "000000000000000000",
-    username: "Admin Local",
-    tag: "local-admin",
-    avatar: null,
+    id: discordUser?.id ?? "local-admin",
+    discordId: configuredDiscordId ?? "000000000000000000",
+    username: discordUser ? discordUser.global_name ?? discordUser.username : "Admin Local",
+    tag: discordUser ? discordUserTag(discordUser) : "local-admin",
+    avatar: discordUser ? discordAvatarUrl(discordUser) : null,
     email: null,
     guilds: demoGuilds,
     accessLevel: "admin",
@@ -19,7 +24,7 @@ export function createLocalDashboardUser(): AuthSessionUser {
 }
 
 export async function issueLocalAccess(req: Request, res: Response): Promise<DashboardAuth> {
-  const user = createLocalDashboardUser();
+  const user = await createLocalDashboardUser();
   const auth = issueAuthCookies(res, user, true);
 
   req.session.user = user;
@@ -40,4 +45,12 @@ export async function issueLocalAccess(req: Request, res: Response): Promise<Das
 
 export function createLocalAccessResponse(auth: DashboardAuth) {
   return createAuthResponse(auth);
+}
+
+function getPrimaryAuthorizedDiscordId() {
+  return (
+    env.DASHBOARD_AUTHORIZED_USER_IDS.split(",")
+      .map((id) => id.trim())
+      .find(Boolean) ?? null
+  );
 }

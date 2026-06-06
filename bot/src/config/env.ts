@@ -94,7 +94,7 @@ const envSchema = z
     BOT_CACHE_USERS_MAX: envNumber(200),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
-    TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(300_000)
+    TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(60_000)
   });
 
 export const env = envSchema.parse(process.env);

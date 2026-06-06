@@ -5,6 +5,7 @@ import type { DiscordTokenResponse, DiscordUser } from "./discordOAuthService";
 export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenResponse) {
   const lastLoginAt = new Date();
   const username = user.global_name ?? user.username;
+  const email = user.email ?? null;
 
   try {
     const { users } = await getMongoCollections();
@@ -18,7 +19,7 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
         $set: {
           username,
           avatar: user.avatar,
-          email: user.email,
+          email,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           lastLoginAt,
@@ -44,7 +45,7 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
       discordId: user.id,
       username,
       avatar: user.avatar,
-      email: user.email,
+      email,
       lastLoginAt
     };
   } catch (error) {
@@ -54,7 +55,7 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
       discordId: user.id,
       username,
       avatar: user.avatar,
-      email: user.email,
+      email,
       lastLoginAt
     };
   }

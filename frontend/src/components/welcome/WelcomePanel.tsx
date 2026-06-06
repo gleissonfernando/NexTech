@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Hash, ImageIcon, Send, Upload } from "lucide-react";
-import { API_URL, getGuildLiveOptions, patchGuildSettings, testWelcomePanel, uploadWelcomeImage } from "../../lib/api";
+import {
+  API_URL,
+  getGuildLiveOptions,
+  patchGuildSettings,
+  testLeavePanel,
+  testWelcomePanel,
+  uploadLeaveImage,
+  uploadWelcomeImage
+} from "../../lib/api";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
 import type { DashboardGuild, GuildChannelOption, GuildSettings } from "../../types";
 
+type MemberPanelMode = "welcome" | "leave";
+
 type WelcomePanelProps = {
   canManage: boolean;
   guild: DashboardGuild | null;
+  mode?: MemberPanelMode;
   onSettingsChange: (settings: GuildSettings) => void;
   settings: GuildSettings | null;
   viewerName: string;
@@ -16,7 +27,52 @@ type WelcomePanelProps = {
 
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
 
-export function WelcomePanel({ canManage, guild, onSettingsChange, settings, viewerName }: WelcomePanelProps) {
+const panelConfig = {
+  welcome: {
+    channelKey: "welcomeChannelId",
+    description: "Entrada de membros",
+    displayChannelKey: "welcomeDisplayChannelId",
+    enabledKey: "welcomeEnabled",
+    imageKey: "welcomeImageUrl",
+    missingGuildText: "Selecione um servidor para configurar entrada.",
+    savedImageText: "GIF de entrada atualizado.",
+    testButtonText: "Testar entrada",
+    testSentText: "Painel de entrada enviado para teste.",
+    title: "Painel de entrada",
+    toggleLabel: "Entrada"
+  },
+  leave: {
+    channelKey: "leaveChannelId",
+    description: "Saida de membros",
+    displayChannelKey: "leaveDisplayChannelId",
+    enabledKey: "leaveEnabled",
+    imageKey: "leaveImageUrl",
+    missingGuildText: "Selecione um servidor para configurar saida.",
+    savedImageText: "GIF de saida atualizado.",
+    testButtonText: "Testar saida",
+    testSentText: "Painel de saida enviado para teste.",
+    title: "Painel de saida",
+    toggleLabel: "Saida"
+  }
+} satisfies Record<
+  MemberPanelMode,
+  {
+    channelKey: "welcomeChannelId" | "leaveChannelId";
+    description: string;
+    displayChannelKey: "welcomeDisplayChannelId" | "leaveDisplayChannelId";
+    enabledKey: "welcomeEnabled" | "leaveEnabled";
+    imageKey: "welcomeImageUrl" | "leaveImageUrl";
+    missingGuildText: string;
+    savedImageText: string;
+    testButtonText: string;
+    testSentText: string;
+    title: string;
+    toggleLabel: string;
+  }
+>;
+
+export function WelcomePanel({ canManage, guild, mode = "welcome", onSettingsChange, settings, viewerName }: WelcomePanelProps) {
+  const config = panelConfig[mode];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
@@ -25,11 +81,13 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
   const [error, setError] = useState<string | null>(null);
 
   const imageUrl = useMemo(
-    () => resolveAssetUrl(settings?.welcomeImageUrl ?? DEFAULT_WELCOME_IMAGE_URL),
-    [settings?.welcomeImageUrl]
+    () => resolveAssetUrl(settings?.[config.imageKey] ?? DEFAULT_WELCOME_IMAGE_URL),
+    [config.imageKey, settings]
   );
-  const displayChannelId = settings?.welcomeDisplayChannelId ?? settings?.welcomeChannelId ?? null;
-  const destinationChannel = channels.find((channel) => channel.id === settings?.welcomeChannelId) ?? null;
+  const enabled = Boolean(settings?.[config.enabledKey]);
+  const channelId = settings?.[config.channelKey] ?? null;
+  const displayChannelId = settings?.[config.displayChannelKey] ?? channelId;
+  const destinationChannel = channels.find((channel) => channel.id === channelId) ?? null;
   const displayChannel = channels.find((channel) => channel.id === displayChannelId) ?? null;
 
   useEffect(() => {
@@ -80,9 +138,10 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
     setError(null);
 
     try {
-      const nextSettings = await uploadWelcomeImage(guild.id, file);
+      const uploadImage = mode === "welcome" ? uploadWelcomeImage : uploadLeaveImage;
+      const nextSettings = await uploadImage(guild.id, file);
       onSettingsChange(nextSettings);
-      setStatus("GIF atualizado.");
+      setStatus(config.savedImageText);
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -94,7 +153,7 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
   }
 
   async function handleTest() {
-    if (!guild || !settings?.welcomeChannelId || !canManage) {
+    if (!guild || !channelId || !canManage) {
       return;
     }
 
@@ -103,8 +162,10 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
     setError(null);
 
     try {
-      await testWelcomePanel(guild.id);
-      setStatus("Painel enviado para teste.");
+      const testPanel = mode === "welcome" ? testWelcomePanel : testLeavePanel;
+
+      await testPanel(guild.id);
+      setStatus(config.testSentText);
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -115,7 +176,7 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
   if (!guild || !settings) {
     return (
       <Card>
-        <CardContent className="p-5 text-sm text-zinc-500">Selecione um servidor para configurar boas-vindas.</CardContent>
+        <CardContent className="p-5 text-sm text-zinc-500">{config.missingGuildText}</CardContent>
       </Card>
     );
   }
@@ -124,19 +185,19 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
     <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
       <Card>
         <CardHeader>
-          <CardTitle>Sistema de boas-vindas</CardTitle>
-          <CardDescription>{guild.name}</CardDescription>
+          <CardTitle>{config.title}</CardTitle>
+          <CardDescription>{guild.name} - {config.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center justify-between gap-4 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-100">Boas-vindas</p>
-              <p className="mt-1 truncate text-xs text-zinc-500">{settings.welcomeEnabled ? "Ativado" : "Desativado"}</p>
+              <p className="text-sm font-medium text-zinc-100">{config.toggleLabel}</p>
+              <p className="mt-1 truncate text-xs text-zinc-500">{enabled ? "Ativado" : "Desativado"}</p>
             </div>
             <Switch
-              checked={settings.welcomeEnabled}
+              checked={enabled}
               disabled={!canManage || saving === "enabled"}
-              onCheckedChange={(checked) => savePatch({ welcomeEnabled: checked }, "enabled")}
+              onCheckedChange={(checked) => savePatch({ [config.enabledKey]: checked } as Partial<GuildSettings>, "enabled")}
             />
           </div>
 
@@ -144,20 +205,20 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
             disabled={!canManage || loadingChannels || saving === "channel"}
             icon={Hash}
             label="Enviar em"
-            onChange={(value) => savePatch({ welcomeChannelId: value || null }, "channel")}
+            onChange={(value) => savePatch({ [config.channelKey]: value || null } as Partial<GuildSettings>, "channel")}
             options={channels}
             placeholder={loadingChannels ? "Carregando canais..." : "Selecione um canal"}
-            value={settings.welcomeChannelId ?? ""}
+            value={channelId ?? ""}
           />
 
           <ControlSelect
             disabled={!canManage || loadingChannels || saving === "displayChannel"}
             icon={Hash}
             label="Canal destacado"
-            onChange={(value) => savePatch({ welcomeDisplayChannelId: value || null }, "displayChannel")}
+            onChange={(value) => savePatch({ [config.displayChannelKey]: value || null } as Partial<GuildSettings>, "displayChannel")}
             options={channels}
             placeholder={loadingChannels ? "Carregando canais..." : "Usar o mesmo canal"}
-            value={settings.welcomeDisplayChannelId ?? ""}
+            value={displayChannelId && displayChannelId !== channelId ? displayChannelId : ""}
           />
 
           <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
@@ -178,12 +239,12 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
               </Button>
               <Button
                 className="h-10"
-                disabled={!canManage || !settings.welcomeChannelId || saving === "test"}
+                disabled={!canManage || !channelId || saving === "test"}
                 onClick={handleTest}
                 type="button"
               >
                 <Send className="h-4 w-4" />
-                {saving === "test" ? "Enviando..." : "Testar painel"}
+                {saving === "test" ? "Enviando..." : config.testButtonText}
               </Button>
             </div>
             <input
@@ -208,6 +269,7 @@ export function WelcomePanel({ canManage, guild, onSettingsChange, settings, vie
       <WelcomePreview
         displayChannelName={displayChannel?.name ?? destinationChannel?.name ?? "coloque_o_id_do_canal_de_lives_aqui"}
         imageUrl={imageUrl}
+        mode={mode}
         viewerName={viewerName}
       />
     </div>
@@ -257,12 +319,16 @@ function ControlSelect({
 function WelcomePreview({
   displayChannelName,
   imageUrl,
+  mode,
   viewerName
 }: {
   displayChannelName: string;
   imageUrl: string;
+  mode: MemberPanelMode;
   viewerName: string;
 }) {
+  const isLeave = mode === "leave";
+
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -281,23 +347,48 @@ function WelcomePreview({
                 <span className="text-purple-400">{"\u{1F47E}"}</span>
                 Ricardinn98
               </h3>
-              <p>
-                Seja bem-vindo(a), <span className="rounded bg-white/10 px-1 text-zinc-100">@{viewerName}</span>, a nossa comunidade de lives.
-                <br />
-                Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos.
-              </p>
-              <div>
-                <p className="font-bold text-white">Algumas dicas:</p>
-                <ol className="space-y-0.5 font-semibold">
-                  <li>1. Leia as regras antes de participar.</li>
-                  <li>2. Aguarde os avisos oficiais de lives e eventos.</li>
-                  <li>3. Respeite streamers, espectadores e moderadores.</li>
-                  <li>4. Nao divulgue lives, links ou canais sem autorizacao.</li>
-                  <li>5. Converse, faca amizades e aproveite sua estadia.</li>
-                </ol>
-              </div>
+              {isLeave ? (
+                <>
+                  <p>
+                    Ate mais, <span className="rounded bg-white/10 px-1 text-zinc-100">@{viewerName}</span>. Obrigado por ter feito parte da
+                    nossa comunidade de lives.
+                    <br />
+                    As portas continuam abertas para quando quiser voltar e acompanhar as transmissoes com a galera.
+                  </p>
+                  <div>
+                    <p className="font-bold text-white">Registro de saida:</p>
+                    <ol className="space-y-0.5 font-semibold">
+                      <li>1. A saida foi registrada automaticamente pelo bot.</li>
+                      <li>2. Os canais oficiais continuam disponiveis para a comunidade.</li>
+                      <li>3. Respeite as regras se decidir retornar ao servidor.</li>
+                      <li>4. A equipe segue por aqui para organizar eventos e avisos.</li>
+                      <li>5. Valeu pela passagem e ate a proxima.</li>
+                    </ol>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Seja bem-vindo(a), <span className="rounded bg-white/10 px-1 text-zinc-100">@{viewerName}</span>, a nossa comunidade de
+                    lives.
+                    <br />
+                    Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos.
+                  </p>
+                  <div>
+                    <p className="font-bold text-white">Algumas dicas:</p>
+                    <ol className="space-y-0.5 font-semibold">
+                      <li>1. Leia as regras antes de participar.</li>
+                      <li>2. Aguarde os avisos oficiais de lives e eventos.</li>
+                      <li>3. Respeite streamers, espectadores e moderadores.</li>
+                      <li>4. Nao divulgue lives, links ou canais sem autorizacao.</li>
+                      <li>5. Converse, faca amizades e aproveite sua estadia.</li>
+                    </ol>
+                  </div>
+                </>
+              )}
               <div className="border-t border-white/10 pt-3 font-semibold">
-                {"\u{1F517}"} Acesse o canal: <span className="text-zinc-50">#{displayChannelName}</span>
+                {"\u{1F517}"} {isLeave ? "Canal da comunidade:" : "Acesse o canal:"}{" "}
+                <span className="text-zinc-50">#{displayChannelName}</span>
               </div>
               <p className="pt-2 text-[11px] text-zinc-300">Ricardinn98 - Comunidade de lives</p>
             </div>

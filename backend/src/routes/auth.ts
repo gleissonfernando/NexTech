@@ -205,7 +205,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       username: discordUser.global_name ?? discordUser.username,
       tag: discordUserTag(discordUser),
       avatar: discordAvatarUrl(discordUser),
-      email: discordUser.email,
+      email: discordUser.email ?? null,
       guilds,
       accessLevel: "viewer" as const,
       authorized: false,

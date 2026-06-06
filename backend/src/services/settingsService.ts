@@ -8,6 +8,11 @@ export type GuildSettingsDto = {
   welcomeDisplayChannelId: string | null;
   welcomeImageUrl: string | null;
   welcomeMessage: string | null;
+  leaveEnabled: boolean;
+  leaveChannelId: string | null;
+  leaveDisplayChannelId: string | null;
+  leaveImageUrl: string | null;
+  leaveMessage: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];
   twitchRoleId: string | null;
@@ -31,6 +36,11 @@ export function defaultSettings(guildId: string): GuildSettingsDto {
     welcomeDisplayChannelId: null,
     welcomeImageUrl: DEFAULT_WELCOME_IMAGE_URL,
     welcomeMessage: "Bem-vindo(a), {user}!",
+    leaveEnabled: true,
+    leaveChannelId: null,
+    leaveDisplayChannelId: null,
+    leaveImageUrl: DEFAULT_WELCOME_IMAGE_URL,
+    leaveMessage: "Ate mais, {user}.",
     autoRoleEnabled: false,
     autoRoleIds: [],
     twitchRoleId: null,
@@ -86,6 +96,11 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           welcomeDisplayChannelId: next.welcomeDisplayChannelId,
           welcomeImageUrl: next.welcomeImageUrl,
           welcomeMessage: next.welcomeMessage,
+          leaveEnabled: next.leaveEnabled,
+          leaveChannelId: next.leaveChannelId,
+          leaveDisplayChannelId: next.leaveDisplayChannelId,
+          leaveImageUrl: next.leaveImageUrl,
+          leaveMessage: next.leaveMessage,
           autoRoleEnabled: next.autoRoleEnabled,
           autoRoleIds: next.autoRoleIds,
           twitchRoleId: next.twitchRoleId,
@@ -115,6 +130,8 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
 }
 
 function toDto(settings: MongoGuildSettings): GuildSettingsDto {
+  const defaults = defaultSettings(settings.guildId);
+
   return {
     guildId: settings.guildId,
     welcomeEnabled: settings.welcomeEnabled,
@@ -122,6 +139,11 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     welcomeDisplayChannelId: settings.welcomeDisplayChannelId ?? null,
     welcomeImageUrl: normalizeWelcomeImageUrl(settings.welcomeImageUrl),
     welcomeMessage: settings.welcomeMessage,
+    leaveEnabled: settings.leaveEnabled ?? defaults.leaveEnabled,
+    leaveChannelId: settings.leaveChannelId ?? defaults.leaveChannelId,
+    leaveDisplayChannelId: settings.leaveDisplayChannelId ?? defaults.leaveDisplayChannelId,
+    leaveImageUrl: normalizeWelcomeImageUrl(settings.leaveImageUrl ?? defaults.leaveImageUrl),
+    leaveMessage: settings.leaveMessage ?? defaults.leaveMessage,
     autoRoleEnabled: settings.autoRoleEnabled,
     autoRoleIds: settings.autoRoleIds,
     twitchRoleId: settings.twitchRoleId,

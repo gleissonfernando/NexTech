@@ -10,6 +10,8 @@ import {
   Settings,
   Shield,
   Ticket,
+  UserMinus,
+  UserPlus,
   Users,
   X
 } from "lucide-react";
@@ -23,6 +25,7 @@ export type ViewId =
   | "lives"
   | "roles"
   | "welcome"
+  | "leave"
   | "tickets"
   | "logs"
   | "moderation"
@@ -51,6 +54,8 @@ export const navSections: Array<{ label: string; items: NavItem[] }> = [
     label: "Modulos",
     items: [
       { id: "modules", label: "Todos os modulos", icon: Bot },
+      { id: "welcome", label: "Entrada", icon: UserPlus },
+      { id: "leave", label: "Saida", icon: UserMinus },
       { id: "lives", label: "Lives", icon: Radio },
       { id: "roles", label: "Cargos", icon: Users },
       { id: "tickets", label: "Tickets", icon: Ticket },

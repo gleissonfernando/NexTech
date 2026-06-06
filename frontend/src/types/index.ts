@@ -69,6 +69,11 @@ export type GuildSettings = {
   welcomeDisplayChannelId: string | null;
   welcomeImageUrl: string | null;
   welcomeMessage: string | null;
+  leaveEnabled: boolean;
+  leaveChannelId: string | null;
+  leaveDisplayChannelId: string | null;
+  leaveImageUrl: string | null;
+  leaveMessage: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];
   twitchRoleId: string | null;
@@ -143,8 +148,10 @@ export type SocialNotification = {
   discordChannelId: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled: boolean;
   isLive: boolean;
+  lastLiveAt?: string | null;
   lastStreamId?: string | null;
   lastMessageId?: string | null;
   createdAt: string;
@@ -156,6 +163,7 @@ export type CreateTwitchNotificationPayload = {
   discordChannelId: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled: boolean;
 };
 
@@ -163,5 +171,14 @@ export type UpdateTwitchNotificationPayload = {
   discordChannelId?: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled?: boolean;
+};
+
+export type TwitchChannelPreview = {
+  twitchId: string;
+  twitchUsername: string;
+  twitchDisplayName: string;
+  twitchAvatar: string | null;
+  twitchUrl: string;
 };

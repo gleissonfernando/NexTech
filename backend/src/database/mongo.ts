@@ -32,6 +32,11 @@ export type MongoGuildSettings = {
   welcomeDisplayChannelId?: string | null;
   welcomeImageUrl?: string | null;
   welcomeMessage: string | null;
+  leaveEnabled?: boolean;
+  leaveChannelId?: string | null;
+  leaveDisplayChannelId?: string | null;
+  leaveImageUrl?: string | null;
+  leaveMessage?: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];
   twitchRoleId: string | null;
@@ -78,8 +83,10 @@ export type MongoSocialNotification = {
   discordChannelId: string;
   mentionRoleId: string | null;
   customMessage: string | null;
+  embedColor?: string | null;
   enabled: boolean;
   isLive: boolean;
+  lastLiveAt?: Date | null;
   lastStreamId: string | null;
   lastMessageId: string | null;
   createdAt: Date;

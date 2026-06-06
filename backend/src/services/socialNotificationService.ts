@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { MongoServerError } from "mongodb";
+import { env } from "../config/env";
 import { ensureGuild, getMongoCollections, type MongoSocialNotification } from "../database/mongo";
 import { createLog } from "./logService";
-import { getTwitchUser, normalizeTwitchChannel } from "./twitchService";
+import { getTwitchStream, getTwitchUser, normalizeTwitchChannel } from "./twitchService";
 
 export type SocialNotificationDto = {
   id: string;
@@ -16,8 +17,10 @@ export type SocialNotificationDto = {
   discordChannelId: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled: boolean;
   isLive: boolean;
+  lastLiveAt?: string | null;
   lastStreamId?: string | null;
   lastMessageId?: string | null;
   createdAt: string;
@@ -29,6 +32,7 @@ export type CreateTwitchNotificationInput = {
   discordChannelId: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled: boolean;
   userId: string;
 };
@@ -37,11 +41,13 @@ export type UpdateTwitchNotificationInput = {
   discordChannelId?: string;
   mentionRoleId?: string | null;
   customMessage?: string | null;
+  embedColor?: string | null;
   enabled?: boolean;
 };
 
 export type UpdateTwitchNotificationStateInput = {
   isLive?: boolean;
+  lastLiveAt?: string | null;
   lastStreamId?: string | null;
   lastMessageId?: string | null;
   twitchAvatar?: string | null;
@@ -52,7 +58,27 @@ type ServiceError = Error & {
 };
 
 const TWITCH_LIMIT = 5;
+const DEFAULT_EMBED_COLOR = "#9146FF";
 const memoryNotifications = new Map<string, SocialNotificationDto>();
+
+export async function previewTwitchChannel(input: string) {
+  const twitchChannelName = normalizeAndValidateChannel(input);
+  const twitchUser = await getTwitchUser(twitchChannelName).catch((error) => {
+    throw createServiceError(error instanceof Error ? error.message : "Erro ao consultar Twitch API.", 503);
+  });
+
+  if (!twitchUser) {
+    throw createServiceError("Canal da Twitch nao encontrado.", 404);
+  }
+
+  return {
+    twitchId: twitchUser.id,
+    twitchUsername: twitchUser.login,
+    twitchDisplayName: twitchUser.displayName,
+    twitchAvatar: twitchUser.profileImageUrl,
+    twitchUrl: `https://www.twitch.tv/${twitchUser.login}`
+  };
+}
 
 export async function listSocialNotifications(guildId: string) {
   try {
@@ -116,8 +142,10 @@ export async function createTwitchNotification(guildId: string, input: CreateTwi
     discordChannelId: input.discordChannelId,
     mentionRoleId: input.mentionRoleId || null,
     customMessage: input.customMessage || null,
+    embedColor: normalizeEmbedColor(input.embedColor),
     enabled: input.enabled,
     isLive: false,
+    lastLiveAt: null,
     lastStreamId: null,
     lastMessageId: null,
     createdAt: now,
@@ -204,6 +232,7 @@ export async function updateTwitchNotification(guildId: string, id: string, inpu
       discordChannelId: input.discordChannelId ?? current.discordChannelId,
       mentionRoleId: input.mentionRoleId === undefined ? current.mentionRoleId : input.mentionRoleId,
       customMessage: input.customMessage === undefined ? current.customMessage : input.customMessage,
+      embedColor: input.embedColor === undefined ? current.embedColor : normalizeEmbedColor(input.embedColor),
       enabled: input.enabled ?? current.enabled,
       updatedAt: new Date().toISOString()
     };
@@ -242,11 +271,38 @@ export async function updateTwitchNotificationState(id: string, input: UpdateTwi
     const updated: SocialNotificationDto = {
       ...current,
       ...input,
+      lastLiveAt: input.lastLiveAt === undefined ? current.lastLiveAt : input.lastLiveAt,
       updatedAt: new Date().toISOString()
     };
     memoryNotifications.set(id, updated);
     return updated;
   }
+}
+
+export async function sendTwitchNotificationTest(guildId: string, id: string, userId: string) {
+  const notification = await findTwitchNotification(guildId, id);
+  const stream = await getTwitchStream(notification.twitchChannelName).catch(() => null);
+  const title = stream?.title ?? "Live de teste iniciada pelo painel";
+  const gameName = stream?.gameName || "Grand Theft Auto V";
+  const viewerCount = stream?.viewerCount ?? 78;
+  const thumbnailUrl =
+    stream?.thumbnailUrl?.replace("{width}", "1280").replace("{height}", "720") ??
+    "https://static-cdn.jtvnw.net/previews-ttv/live_user_twitch-1280x720.jpg";
+  const channelUrl = stream?.userLogin
+    ? `https://www.twitch.tv/${stream.userLogin}`
+    : notification.twitchChannelUrl;
+
+  await sendDiscordLivePanel({
+    notification,
+    title,
+    gameName,
+    viewerCount,
+    thumbnailUrl,
+    channelUrl,
+    streamerName: stream?.userName || notification.twitchChannelName
+  });
+
+  await writeActionLog("social.twitch.tested", "Testou painel Twitch", notification, userId);
 }
 
 export async function deleteTwitchNotification(guildId: string, id: string, userId: string) {
@@ -292,8 +348,8 @@ export function createServiceError(message: string, statusCode: number) {
 function normalizeAndValidateChannel(input: string) {
   const channel = normalizeTwitchChannel(input);
 
-  if (!channel) {
-    throw createServiceError("Informe o link ou nome do canal da Twitch.", 400);
+  if (!channel || !/^[a-z0-9_]{3,25}$/i.test(channel)) {
+    throw createServiceError("Informe uma URL valida da Twitch.", 400);
   }
 
   return channel;
@@ -342,6 +398,10 @@ function buildNotificationPatch(input: UpdateTwitchNotificationInput): Partial<M
     patch.customMessage = input.customMessage;
   }
 
+  if (input.embedColor !== undefined) {
+    patch.embedColor = normalizeEmbedColor(input.embedColor);
+  }
+
   if (input.enabled !== undefined) {
     patch.enabled = input.enabled;
   }
@@ -356,6 +416,10 @@ function buildNotificationStatePatch(input: UpdateTwitchNotificationStateInput):
 
   if (input.isLive !== undefined) {
     patch.isLive = input.isLive;
+  }
+
+  if (input.lastLiveAt !== undefined) {
+    patch.lastLiveAt = input.lastLiveAt ? new Date(input.lastLiveAt) : null;
   }
 
   if (input.lastStreamId !== undefined) {
@@ -386,8 +450,10 @@ function toDto(notification: MongoSocialNotification): SocialNotificationDto {
     discordChannelId: notification.discordChannelId,
     mentionRoleId: notification.mentionRoleId,
     customMessage: notification.customMessage,
+    embedColor: notification.embedColor ?? DEFAULT_EMBED_COLOR,
     enabled: notification.enabled,
     isLive: notification.isLive,
+    lastLiveAt: notification.lastLiveAt?.toISOString?.() ?? null,
     lastStreamId: notification.lastStreamId,
     lastMessageId: notification.lastMessageId,
     createdAt: notification.createdAt.toISOString(),
@@ -397,4 +463,154 @@ function toDto(notification: MongoSocialNotification): SocialNotificationDto {
 
 function isUniqueConstraint(error: unknown) {
   return error instanceof MongoServerError && error.code === 11000;
+}
+
+async function findTwitchNotification(guildId: string, id: string) {
+  try {
+    const { socialNotifications } = await getMongoCollections();
+    const notification = await socialNotifications.findOne({
+      _id: id
+    });
+
+    if (!notification || notification.guildId !== guildId) {
+      throw createServiceError("Notificacao nao encontrada.", 404);
+    }
+
+    return toDto(notification);
+  } catch (error) {
+    if ((error as ServiceError).statusCode) {
+      throw error;
+    }
+
+    const notification = memoryNotifications.get(id);
+
+    if (!notification || notification.guildId !== guildId) {
+      throw createServiceError("Notificacao nao encontrada.", 404);
+    }
+
+    return notification;
+  }
+}
+
+async function sendDiscordLivePanel(input: {
+  notification: SocialNotificationDto;
+  streamerName: string;
+  title: string;
+  gameName: string;
+  viewerCount: number;
+  thumbnailUrl: string;
+  channelUrl: string;
+}) {
+  if (!env.DISCORD_BOT_TOKEN) {
+    throw createServiceError("DISCORD_BOT_TOKEN nao configurado.", 503);
+  }
+
+  const mention = formatMention(input.notification);
+  const content = [mention.content, input.notification.customMessage].filter(Boolean).join("\n") || undefined;
+  const response = await fetch(`https://discord.com/api/v10/channels/${input.notification.discordChannelId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content,
+      allowed_mentions: mention.allowedMentions,
+      embeds: [
+        {
+          color: parseEmbedColor(input.notification.embedColor),
+          author: {
+            name: `${input.streamerName} is now live on Twitch!`,
+            icon_url: input.notification.twitchAvatar ?? undefined,
+            url: input.channelUrl
+          },
+          description: `[@${input.notification.twitchChannelName}](${input.channelUrl}) esta ao vivo!`,
+          fields: [
+            {
+              name: "Game",
+              value: input.gameName || "Sem categoria",
+              inline: true
+            },
+            {
+              name: "Viewers",
+              value: String(input.viewerCount || 0),
+              inline: true
+            }
+          ],
+          image: {
+            url: input.thumbnailUrl
+          },
+          footer: {
+            text: `Ricardinn98 lives • Hoje as ${formatTime(new Date())}`
+          },
+          timestamp: new Date().toISOString()
+        }
+      ],
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 5,
+              label: "Watch Stream",
+              url: input.channelUrl
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw createServiceError(`Discord API respondeu ${response.status} ao testar o painel Twitch.`, 400);
+  }
+}
+
+function normalizeEmbedColor(value?: string | null) {
+  if (!value) {
+    return DEFAULT_EMBED_COLOR;
+  }
+
+  const color = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toUpperCase() : DEFAULT_EMBED_COLOR;
+}
+
+function parseEmbedColor(value?: string | null) {
+  return Number.parseInt(normalizeEmbedColor(value).replace("#", ""), 16);
+}
+
+function formatMention(notification: SocialNotificationDto) {
+  if (!notification.mentionRoleId) {
+    return {
+      content: null,
+      allowedMentions: {
+        parse: []
+      }
+    };
+  }
+
+  if (notification.mentionRoleId === "everyone" || notification.mentionRoleId === notification.guildId) {
+    return {
+      content: "@everyone",
+      allowedMentions: {
+        parse: ["everyone"]
+      }
+    };
+  }
+
+  return {
+    content: `<@&${notification.mentionRoleId}>`,
+    allowedMentions: {
+      parse: [],
+      roles: [notification.mentionRoleId]
+    }
+  };
+}
+
+function formatTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(value);
 }

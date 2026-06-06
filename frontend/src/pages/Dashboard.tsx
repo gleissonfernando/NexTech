@@ -20,6 +20,7 @@ import {
   Shield,
   TicketIcon,
   UserCheck,
+  UserMinus,
   UserPlus,
   Users
 } from "lucide-react";
@@ -43,6 +44,7 @@ type DashboardProps = {
 
 type BooleanSettingKey =
   | "welcomeEnabled"
+  | "leaveEnabled"
   | "autoRoleEnabled"
   | "ticketEnabled"
   | "moderationEnabled"
@@ -80,11 +82,20 @@ const dashboardCards: DashboardCardConfig[] = [
   {
     id: "welcome",
     category: "settings",
-    title: "Boas-vindas",
-    description: "Mensagens automáticas para entrada de novos membros.",
+    title: "Entrada",
+    description: "Painel automatico para entrada de novos membros.",
     icon: UserPlus,
     key: "welcomeEnabled",
-    action: "Editar"
+    action: "Abrir"
+  },
+  {
+    id: "leave",
+    category: "settings",
+    title: "Saida",
+    description: "Painel automatico para saida de membros.",
+    icon: UserMinus,
+    key: "leaveEnabled",
+    action: "Abrir"
   },
   {
     id: "admin-permissions",
@@ -361,6 +372,17 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
           <WelcomePanel
             canManage={canManageDashboard}
             guild={selectedGuild}
+            mode="welcome"
+            onSettingsChange={setSettings}
+            settings={settings}
+            viewerName={auth.user.username}
+          />
+        ) : null}
+        {activeView === "leave" ? (
+          <WelcomePanel
+            canManage={canManageDashboard}
+            guild={selectedGuild}
+            mode="leave"
             onSettingsChange={setSettings}
             settings={settings}
             viewerName={auth.user.username}
@@ -403,7 +425,11 @@ function PageHeader({
             ? "Módulos"
             : activeView === "settings"
               ? "Configurações"
-              : activeView.charAt(0).toUpperCase() + activeView.slice(1);
+              : activeView === "welcome"
+                ? "Entrada"
+                : activeView === "leave"
+                  ? "Saida"
+                  : activeView.charAt(0).toUpperCase() + activeView.slice(1);
 
   return (
     <section className="rounded-lg border border-zinc-900 bg-[#0b0b0b] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.38)] sm:p-6">

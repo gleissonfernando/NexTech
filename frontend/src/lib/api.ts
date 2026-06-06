@@ -9,6 +9,7 @@ import type {
   LogEntry,
   SocialNotification,
   Ticket,
+  TwitchChannelPreview,
   UpdateTwitchNotificationPayload
 } from "../types";
 import { isLocalBrowserOrigin, normalizePublicUrl, publicOrigin } from "./urls";
@@ -106,8 +107,24 @@ export async function uploadWelcomeImage(guildId: string, file: File) {
   return data.settings;
 }
 
+export async function uploadLeaveImage(guildId: string, file: File) {
+  const { data } = await api.put<{ settings: GuildSettings }>(`/settings/${guildId}/leave-image`, file, {
+    headers: {
+      "Content-Type": file.type || "application/octet-stream"
+    },
+    timeout: 30000
+  });
+  return data.settings;
+}
+
 export async function testWelcomePanel(guildId: string) {
   await api.post<{ ok: boolean }>(`/settings/${guildId}/welcome-test`, undefined, {
+    timeout: 15000
+  });
+}
+
+export async function testLeavePanel(guildId: string) {
+  await api.post<{ ok: boolean }>(`/settings/${guildId}/leave-test`, undefined, {
     timeout: 15000
   });
 }
@@ -149,9 +166,22 @@ export async function createTwitchNotification(guildId: string, payload: CreateT
   return data.notification;
 }
 
+export async function previewTwitchChannel(guildId: string, twitchChannelInput: string) {
+  const { data } = await api.post<{ preview: TwitchChannelPreview }>(`/social-notifications/${guildId}/twitch/preview`, {
+    twitchChannelInput
+  });
+  return data.preview;
+}
+
 export async function updateTwitchNotification(guildId: string, id: string, payload: UpdateTwitchNotificationPayload) {
   const { data } = await api.put<{ notification: SocialNotification }>(`/social-notifications/${guildId}/twitch/${id}`, payload);
   return data.notification;
+}
+
+export async function testTwitchNotification(guildId: string, id: string) {
+  await api.post<{ ok: boolean }>(`/social-notifications/${guildId}/twitch/${id}/test`, undefined, {
+    timeout: 15000
+  });
 }
 
 export async function deleteTwitchNotification(guildId: string, id: string) {

@@ -10,17 +10,19 @@ type TwitchNotificationCardProps = {
   onAdd: () => void;
   onEdit: (notification: SocialNotification) => void;
   onDelete: (notification: SocialNotification) => void;
+  onTest: (notification: SocialNotification) => void;
+  testingId: string | null;
 };
 
-export function TwitchNotificationCard({ channels, notifications, onAdd, onDelete, onEdit, roles }: TwitchNotificationCardProps) {
+export function TwitchNotificationCard({ channels, notifications, onAdd, onDelete, onEdit, onTest, roles, testingId }: TwitchNotificationCardProps) {
   const twitchNotifications = notifications.filter((notification) => notification.platform === "twitch");
   const count = twitchNotifications.length;
 
   return (
     <SocialCard
-      actionLabel="Adicionar canal"
+      actionLabel="Adicionar Canal"
       count={`${count}/5`}
-      description="Alertas automaticos quando uma live da Twitch comecar."
+      description="Cadastre a URL da Twitch e selecione o canal Discord que recebera o painel de live."
       disabled={count >= 5}
       icon={Twitch}
       iconClassName="text-[#9146ff]"
@@ -36,7 +38,9 @@ export function TwitchNotificationCard({ channels, notifications, onAdd, onDelet
               notification={notification}
               onDelete={onDelete}
               onEdit={onEdit}
+              onTest={onTest}
               roleName={formatRoleName(roles, notification.mentionRoleId)}
+              testing={testingId === notification.id}
             />
           ))}
         </div>

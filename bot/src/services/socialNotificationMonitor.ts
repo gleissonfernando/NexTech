@@ -1,4 +1,11 @@
-import { EmbedBuilder, type Client, type MessageMentionOptions } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  type Client,
+  type MessageMentionOptions
+} from "discord.js";
 import { env } from "../config/env";
 import type { ApiClient, SocialNotification } from "./apiClient";
 import { getTwitchStream, type TwitchStream } from "./twitchApiService";
@@ -73,6 +80,7 @@ async function processNotification(client: Client, api: ApiClient, notification:
 
   await api.updateTwitchNotificationState(notification.id, {
     isLive: true,
+    lastLiveAt: stream.startedAt,
     lastStreamId: stream.id,
     lastMessageId: messageId
   });
@@ -92,14 +100,19 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
     throw new Error(`Canal Discord ${notification.discordChannelId} nao encontrado.`);
   }
 
+  const streamUrl = `https://www.twitch.tv/${stream.userLogin}`;
+  const thumbnailUrl = stream.thumbnailUrl.replace("{width}", "1280").replace("{height}", "720");
   const embed = new EmbedBuilder()
-    .setColor("#9146FF")
-    .setTitle(`🔴 ${stream.userName} está AO VIVO!`)
-    .setURL(`https://www.twitch.tv/${stream.userLogin}`)
-    .setDescription(stream.title || "Live iniciada!")
+    .setColor(normalizeEmbedColor(notification.embedColor))
+    .setAuthor({
+      name: `${stream.userName || notification.twitchChannelName} is now live on Twitch!`,
+      iconURL: notification.twitchAvatar ?? undefined,
+      url: streamUrl
+    })
+    .setDescription(`[@${stream.userLogin}](${streamUrl}) esta ao vivo!`)
     .addFields(
       {
-        name: "Categoria",
+        name: "Game",
         value: stream.gameName || "Sem categoria",
         inline: true
       },
@@ -107,30 +120,29 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
         name: "Viewers",
         value: String(stream.viewerCount || 0),
         inline: true
-      },
-      {
-        name: "Canal",
-        value: `https://www.twitch.tv/${stream.userLogin}`,
-        inline: false
       }
     )
-    .setImage(stream.thumbnailUrl.replace("{width}", "1280").replace("{height}", "720"))
+    .setImage(thumbnailUrl)
+    .setFooter({
+      text: `Ricardinn98 lives - Hoje as ${formatTime(new Date())}`
+    })
     .setTimestamp(new Date(stream.startedAt));
 
-  if (notification.twitchAvatar) {
-    embed.setThumbnail(notification.twitchAvatar);
-  }
-
   const mention = formatMention(notification);
-  const contentParts = [
-    mention.content,
-    notification.customMessage || null,
-    `🔴 @${stream.userLogin} está AO VIVO!`
-  ].filter(Boolean);
+  const content = [mention.content, notification.customMessage || null].filter(Boolean).join("\n");
+  const components = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel("Watch Stream")
+        .setStyle(ButtonStyle.Link)
+        .setURL(streamUrl)
+    )
+  ];
 
   const message = await channel.send({
     allowedMentions: mention.allowedMentions,
-    content: contentParts.join("\n"),
+    content,
+    components,
     embeds: [embed]
   });
 
@@ -167,4 +179,15 @@ function formatMention(notification: SocialNotification): { content: string | nu
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeEmbedColor(value?: string | null) {
+  return /^#[0-9a-f]{6}$/i.test(value ?? "") ? (value as `#${string}`) : "#9146FF";
+}
+
+function formatTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(value);
 }

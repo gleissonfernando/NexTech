@@ -5,6 +5,7 @@ import {
   deleteTwitchNotification,
   getGuildLiveOptions,
   getSocialNotifications,
+  testTwitchNotification,
   updateTwitchNotification
 } from "../../lib/api";
 import { AddTwitchChannelModal } from "./AddTwitchChannelModal";
@@ -30,7 +31,9 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<SocialNotification | null>(null);
   const [deletingNotification, setDeletingNotification] = useState<SocialNotification | null>(null);
@@ -77,11 +80,13 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
 
     setSaving(true);
     setError(null);
+    setStatus(null);
 
     try {
       const notification = await createTwitchNotification(guild.id, payload);
       setNotifications((current) => [notification, ...current]);
       setAddOpen(false);
+      setStatus("Canal Twitch cadastrado com sucesso.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -96,11 +101,13 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
 
     setSaving(true);
     setError(null);
+    setStatus(null);
 
     try {
       const notification = await updateTwitchNotification(guild.id, editing.id, payload);
       setNotifications((current) => current.map((item) => (item.id === notification.id ? notification : item)));
       setEditing(null);
+      setStatus("Configuracao salva.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -114,15 +121,36 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
     }
 
     setDeleting(true);
+    setStatus(null);
 
     try {
       await deleteTwitchNotification(guild.id, deletingNotification.id);
       setNotifications((current) => current.filter((item) => item.id !== deletingNotification.id));
       setDeletingNotification(null);
+      setStatus("Canal Twitch removido.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleTest(notification: SocialNotification) {
+    if (!guild) {
+      return;
+    }
+
+    setTestingId(notification.id);
+    setError(null);
+    setStatus(null);
+
+    try {
+      await testTwitchNotification(guild.id, notification.id);
+      setStatus(`Painel de @${notification.twitchChannelName} enviado para teste.`);
+    } catch (requestError) {
+      setError(readErrorMessage(requestError));
+    } finally {
+      setTestingId(null);
     }
   }
 
@@ -134,7 +162,7 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
             <Radio className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-xl font-semibold text-white">Notificacoes de lives</h3>
+            <h3 className="text-xl font-semibold text-white">Live Notifications</h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
               Cadastre canais da Twitch para o bot avisar quando uma transmissao comecar.
             </p>
@@ -146,12 +174,13 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
         </div>
       </div>
 
-      {loading ? <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm text-zinc-500">Carregando canais da Twitch...</div> : null}
+      {loading ? <LiveSkeleton /> : null}
       {!canManage ? (
         <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm leading-6 text-zinc-500">
           Sua conta tem visualizacao basica. O gerenciamento de alertas de live fica disponivel apenas para administradores ou usuarios autorizados.
         </div>
       ) : null}
+      {status ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">{status}</div> : null}
       {error ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-white">{error}</div> : null}
 
       {canManage ? (
@@ -167,12 +196,15 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
             setError(null);
             setEditing(notification);
           }}
+          onTest={handleTest}
           roles={liveOptions.roles}
+          testingId={testingId}
         />
       ) : null}
 
       <AddTwitchChannelModal
         error={error}
+        guildId={guild?.id ?? null}
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
         open={addOpen}
@@ -194,6 +226,22 @@ export function LiveNotificationsPanel({ canManage, guild }: LiveNotificationsPa
         onConfirm={handleDelete}
       />
     </section>
+  );
+}
+
+function LiveSkeleton() {
+  return (
+    <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-5">
+      {[0, 1, 2].map((item) => (
+        <div className="flex animate-pulse items-center gap-4" key={item}>
+          <div className="h-12 w-12 rounded-lg bg-zinc-800" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-40 rounded bg-zinc-800" />
+            <div className="h-3 w-full max-w-xl rounded bg-zinc-900" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
