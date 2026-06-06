@@ -21,6 +21,7 @@ import {
   resolveAuthFromRequest
 } from "../services/tokenService";
 import { issueLocalAccess } from "../services/localAccessService";
+import { filterGuildsForBot, getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { saveDiscordUser } from "../services/userService";
 import type { AuthSessionUser } from "../types/session";
 
@@ -148,6 +149,12 @@ function applyAccessValidation(user: AuthSessionUser, validation: AccessValidati
   };
 }
 
+async function ensureBotGuildsLoaded() {
+  if (getBotStatus().botGuilds.length === 0) {
+    await refreshBotGuildsFromDiscord();
+  }
+}
+
 authRouter.get("/discord", async (req, res) => {
   if (isApiAuthMount(req)) {
     return res.redirect(canonicalAuthUrl("/discord"));
@@ -187,10 +194,11 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     }
 
     const tokens = await exchangeDiscordCode(code);
+    await ensureBotGuildsLoaded();
     const discordUser = await fetchDiscordUser(tokens.access_token);
     const discordGuilds = await fetchDiscordGuilds(tokens.access_token);
     const user = await saveDiscordUser(discordUser, tokens);
-    const guilds = toDashboardGuilds(discordGuilds);
+    const guilds = filterGuildsForBot(toDashboardGuilds(discordGuilds));
     const baseUser = {
       id: user.id,
       discordId: discordUser.id,
@@ -260,6 +268,7 @@ authRouter.get("/me", async (req, res) => {
     return res.json(createAuthResponse(auth));
   }
 
+  await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
   if (!auth) {
@@ -281,6 +290,7 @@ authRouter.post("/refresh", async (req, res) => {
     return res.json(createAuthResponse(auth));
   }
 
+  await ensureBotGuildsLoaded();
   const auth = refreshAuthFromRequest(req, res);
 
   if (!auth) {
@@ -297,6 +307,7 @@ authRouter.post("/refresh", async (req, res) => {
 });
 
 authRouter.post("/verify", requireAuthenticated, async (req, res) => {
+  await ensureBotGuildsLoaded();
   const auth = res.locals.dashboardAuth;
   const validation = await evaluateDashboardAccess(auth.user);
   const verifiedAuth = issueAuthCookies(

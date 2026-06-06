@@ -10,6 +10,8 @@ import {
   updateTwitchNotification,
   updateTwitchNotificationState
 } from "../services/socialNotificationService";
+import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
+import { getBotGuildIds } from "../services/statsService";
 import type { AuthSessionUser } from "../types/session";
 
 const createTwitchSchema = z.object({
@@ -38,8 +40,11 @@ export const socialNotificationsRouter = Router();
 
 socialNotificationsRouter.get("/bot/twitch-active", requireBot, async (_req, res, next) => {
   try {
+    const botGuildIds = getBotGuildIds();
+    const notifications = await listActiveTwitchNotifications();
+
     return res.json({
-      notifications: await listActiveTwitchNotifications()
+      notifications: botGuildIds.size > 0 ? notifications.filter((notification) => botGuildIds.has(notification.guildId)) : []
     });
   } catch (error) {
     return next(error);
@@ -128,18 +133,8 @@ socialNotificationsRouter.delete("/:guildId/twitch/:id", requireAuth, requireAdm
 });
 
 function assertCanManageGuild(user: AuthSessionUser, guildId: string) {
-  if (user.authorized) {
-    return;
-  }
-
-  const guild = user.guilds.find((item) => item.id === guildId);
-
-  if (!guild || (!guild.owner && !guild.isAdmin)) {
+  if (!canManageDashboardGuild(user, guildId)) {
     throw createServiceError("Você não tem permissão para configurar as notificações deste servidor.", 403);
-  }
-
-  if (!guild.botEnabled) {
-    throw createServiceError("O bot precisa estar neste servidor para configurar notificações.", 403);
   }
 }
 

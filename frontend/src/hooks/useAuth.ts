@@ -8,19 +8,33 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshId = useRef(0);
   const verifyInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
+    const requestId = refreshId.current + 1;
+    refreshId.current = requestId;
     setLoading(true);
     setError(null);
 
     try {
       const session = await getSession();
+      if (refreshId.current !== requestId) {
+        return;
+      }
       setAuth(session);
-    } catch {
+    } catch (requestError) {
+      if (refreshId.current !== requestId) {
+        return;
+      }
       setAuth(null);
+      if (isTimeoutError(requestError)) {
+        setError("A sessao demorou para responder. Tente entrar novamente.");
+      }
     } finally {
-      setLoading(false);
+      if (refreshId.current === requestId) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -59,8 +73,8 @@ export function useAuth() {
       if (window.location.pathname !== "/dashboard") {
         window.location.replace(dashboardUrl());
       }
-    } catch {
-      setError("Nao foi possivel validar seu acesso temporario.");
+    } catch (requestError) {
+      setError(isTimeoutError(requestError) ? "A verificacao demorou para responder. Tente novamente." : "Nao foi possivel validar seu acesso temporario.");
     } finally {
       verifyInFlight.current = false;
       setVerifying(false);
@@ -82,4 +96,8 @@ export function useAuth() {
     verify,
     verifying
   };
+}
+
+function isTimeoutError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ECONNABORTED";
 }

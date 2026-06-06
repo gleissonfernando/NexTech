@@ -29,6 +29,8 @@ export type MongoGuildSettings = {
   guildId: string;
   welcomeEnabled: boolean;
   welcomeChannelId: string | null;
+  welcomeDisplayChannelId?: string | null;
+  welcomeImageUrl?: string | null;
   welcomeMessage: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];

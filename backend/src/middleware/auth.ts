@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { issueLocalAccess } from "../services/localAccessService";
+import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { resolveAuthFromRequest } from "../services/tokenService";
 
 export function isBotRequest(req: Request) {
@@ -15,6 +16,7 @@ export async function requireAuthenticated(req: Request, res: Response, next: Ne
     return next();
   }
 
+  await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
   if (!auth) {
@@ -34,6 +36,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return next();
   }
 
+  await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
   if (!auth) {
@@ -72,4 +75,10 @@ export function requireAuthOrBot(req: Request, res: Response, next: NextFunction
   }
 
   return requireAuth(req, res, next);
+}
+
+async function ensureBotGuildsLoaded() {
+  if (getBotStatus().botGuilds.length === 0) {
+    await refreshBotGuildsFromDiscord();
+  }
 }

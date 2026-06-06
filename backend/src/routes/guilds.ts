@@ -1,22 +1,16 @@
 import { Router } from "express";
 import { requireAdminAccess, requireAuth } from "../middleware/auth";
+import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { getGuildLiveOptions } from "../services/discordOptionsService";
 import { getBotStatus } from "../services/statsService";
-import type { AuthSessionUser } from "../types/session";
 
 export const guildsRouter = Router();
 
 guildsRouter.use(requireAuth);
 
 guildsRouter.get("/", (req, res) => {
-  const botStatus = getBotStatus();
-  const guilds = req.session.user?.guilds.map((guild) => ({
-    ...guild,
-    botEnabled: guild.botEnabled || botStatus.online
-  }));
-
   return res.json({
-    guilds
+    guilds: req.session.user?.guilds ?? []
   });
 });
 
@@ -65,7 +59,7 @@ guildsRouter.get("/:guildId/live-options", requireAdminAccess, async (req, res, 
       });
     }
 
-    if (!canManageGuild(res.locals.dashboardAuth.user, guildId)) {
+    if (!canManageDashboardGuild(res.locals.dashboardAuth.user, guildId)) {
       return res.status(403).json({
         message: "Voce nao tem permissao para configurar lives deste servidor."
       });
@@ -78,12 +72,3 @@ guildsRouter.get("/:guildId/live-options", requireAdminAccess, async (req, res, 
     return next(error);
   }
 });
-
-function canManageGuild(user: AuthSessionUser, guildId: string) {
-  if (user.authorized) {
-    return true;
-  }
-
-  const guild = user.guilds.find((item) => item.id === guildId);
-  return Boolean(guild && (guild.owner || guild.isAdmin));
-}

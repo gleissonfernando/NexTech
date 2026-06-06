@@ -21,3 +21,8 @@ frontend/.vite
 frontend/vite.config.js
 frontend/vite.config.d.ts
 backend/prisma/migrations/dev.db
+backend/uploads/*
+!backend/uploads/welcome/
+backend/uploads/welcome/*
+!backend/uploads/welcome/.gitkeep
+!backend/uploads/welcome/default.gif

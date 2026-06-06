@@ -5,6 +5,8 @@ export type GuildSettingsDto = {
   guildId: string;
   welcomeEnabled: boolean;
   welcomeChannelId: string | null;
+  welcomeDisplayChannelId: string | null;
+  welcomeImageUrl: string | null;
   welcomeMessage: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];
@@ -25,6 +27,8 @@ export function defaultSettings(guildId: string): GuildSettingsDto {
     guildId,
     welcomeEnabled: true,
     welcomeChannelId: null,
+    welcomeDisplayChannelId: null,
+    welcomeImageUrl: "/uploads/welcome/default.gif",
     welcomeMessage: "Bem-vindo(a), {user}!",
     autoRoleEnabled: false,
     autoRoleIds: [],
@@ -78,6 +82,8 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
         $set: {
           welcomeEnabled: next.welcomeEnabled,
           welcomeChannelId: next.welcomeChannelId,
+          welcomeDisplayChannelId: next.welcomeDisplayChannelId,
+          welcomeImageUrl: next.welcomeImageUrl,
           welcomeMessage: next.welcomeMessage,
           autoRoleEnabled: next.autoRoleEnabled,
           autoRoleIds: next.autoRoleIds,
@@ -112,6 +118,8 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     guildId: settings.guildId,
     welcomeEnabled: settings.welcomeEnabled,
     welcomeChannelId: settings.welcomeChannelId,
+    welcomeDisplayChannelId: settings.welcomeDisplayChannelId ?? null,
+    welcomeImageUrl: settings.welcomeImageUrl ?? "/uploads/welcome/default.gif",
     welcomeMessage: settings.welcomeMessage,
     autoRoleEnabled: settings.autoRoleEnabled,
     autoRoleIds: settings.autoRoleIds,

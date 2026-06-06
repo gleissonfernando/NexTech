@@ -42,12 +42,20 @@ export class BotSocketClient {
 
   emitStatus(client: Client, online = true) {
     const users = client.guilds.cache.reduce((total, guild) => total + (guild.memberCount ?? 0), 0);
+    const botGuilds = client.guilds.cache.map((guild) => ({
+      id: guild.id,
+      name: guild.name,
+      iconUrl: guild.iconURL({ size: 128 }),
+      memberCount: guild.memberCount ?? 0,
+      channelCount: guild.channels.cache.size
+    }));
 
     this.socket?.emit("bot:status", {
       online,
       latency: Math.max(0, Math.round(client.ws.ping)),
       guilds: client.guilds.cache.size,
-      users
+      users,
+      botGuilds
     });
   }
 

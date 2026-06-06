@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import jwt, { TokenExpiredError, type JwtPayload } from "jsonwebtoken";
 import { env } from "../config/env";
 import type { AuthSessionUser } from "../types/session";
+import { filterGuildsForBot } from "./statsService";
 
 const ACCESS_COOKIE = "dashboard.access_token";
 const REFRESH_COOKIE = "dashboard.refresh_token";
@@ -131,12 +132,14 @@ function verifyToken(token: string, expectedType: "access" | "refresh") {
 }
 
 function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
+  const guilds = filterGuildsForBot(user.guilds);
   const authorized = user.authorized ?? getAuthorizedUserIds().has(user.discordId);
-  const hasAdminGuild = user.guilds.some((guild) => guild.owner || guild.isAdmin);
-  const accessLevel = user.accessLevel ?? (authorized || hasAdminGuild ? "admin" : "viewer");
+  const hasAdminGuild = guilds.some((guild) => guild.owner || guild.isAdmin);
+  const accessLevel = authorized || hasAdminGuild ? "admin" : "viewer";
 
   return {
     ...user,
+    guilds,
     accessLevel,
     authorized,
     lastLoginAt: user.lastLoginAt ?? new Date().toISOString()

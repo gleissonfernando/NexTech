@@ -28,6 +28,10 @@ async function monitorTwitchNotifications(client: Client, api: ApiClient) {
     const notifications = await api.getActiveTwitchNotifications();
 
     for (const notification of notifications) {
+      if (!client.guilds.cache.has(notification.guildId)) {
+        continue;
+      }
+
       await processNotification(client, api, notification);
       await delay(700);
     }

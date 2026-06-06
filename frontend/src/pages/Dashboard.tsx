@@ -26,6 +26,7 @@ import {
 import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
+import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -63,6 +64,7 @@ const initialBotStatus: BotStatus = {
   latency: 0,
   guilds: 0,
   users: 0,
+  botGuilds: [],
   updatedAt: new Date().toISOString()
 };
 
@@ -355,10 +357,19 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
         ) : null}
 
         {activeView === "lives" ? <LiveView canManageDashboard={canManageDashboard} guild={selectedGuild} lives={lives} /> : null}
+        {activeView === "welcome" ? (
+          <WelcomePanel
+            canManage={canManageDashboard}
+            guild={selectedGuild}
+            onSettingsChange={setSettings}
+            settings={settings}
+            viewerName={auth.user.username}
+          />
+        ) : null}
         {activeView === "tickets" ? <TicketView tickets={tickets} /> : null}
         {activeView === "logs" ? <LogsView logs={logs} /> : null}
 
-        {["roles", "welcome", "moderation"].includes(activeView) ? (
+        {["roles", "moderation"].includes(activeView) ? (
           <FocusedModuleView
             activeView={activeView}
             canManageDashboard={canManageDashboard}

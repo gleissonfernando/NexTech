@@ -52,6 +52,13 @@ export type BotStatus = {
   latency: number;
   guilds: number;
   users: number;
+  botGuilds: Array<{
+    id: string;
+    name: string;
+    iconUrl: string | null;
+    memberCount?: number;
+    channelCount?: number;
+  }>;
   updatedAt: string;
 };
 
@@ -59,6 +66,8 @@ export type GuildSettings = {
   guildId: string;
   welcomeEnabled: boolean;
   welcomeChannelId: string | null;
+  welcomeDisplayChannelId: string | null;
+  welcomeImageUrl: string | null;
   welcomeMessage: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];

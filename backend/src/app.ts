@@ -14,6 +14,7 @@ import { authRouter } from "./routes/auth";
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
+const uploadsPath = path.resolve(__dirname, "../uploads");
 const corsOrigin = env.FRONTEND_URL || true;
 
 if (env.NODE_ENV === "production") {
@@ -38,6 +39,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use("/uploads", express.static(uploadsPath));
 
 app.use("/auth", authRouter);
 app.use("/api", apiRouter);

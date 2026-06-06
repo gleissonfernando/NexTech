@@ -28,6 +28,7 @@ export const API_URL = import.meta.env.PROD ? "/api" : resolveDevelopmentApiUrl(
 
 export const api = axios.create({
   baseURL: API_URL,
+  timeout: 12000,
   withCredentials: true
 });
 
@@ -93,6 +94,22 @@ export async function getGuildLiveOptions(guildId: string) {
 export async function patchGuildSettings(guildId: string, payload: Partial<GuildSettings>) {
   const { data } = await api.patch<{ settings: GuildSettings }>(`/settings/${guildId}`, payload);
   return data.settings;
+}
+
+export async function uploadWelcomeImage(guildId: string, file: File) {
+  const { data } = await api.put<{ settings: GuildSettings }>(`/settings/${guildId}/welcome-image`, file, {
+    headers: {
+      "Content-Type": file.type || "application/octet-stream"
+    },
+    timeout: 30000
+  });
+  return data.settings;
+}
+
+export async function testWelcomePanel(guildId: string) {
+  await api.post<{ ok: boolean }>(`/settings/${guildId}/welcome-test`, undefined, {
+    timeout: 15000
+  });
 }
 
 export async function getLogs(guildId?: string) {

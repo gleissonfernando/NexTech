@@ -31,7 +31,7 @@ export function createSocketServer(httpServer: HttpServer) {
       io.emit("bot:status", updateBotStatus({ online: false }));
     });
 
-    socket.on("bot:status", (payload: { online?: boolean; latency?: number; guilds?: number; users?: number }) => {
+    socket.on("bot:status", (payload: Parameters<typeof updateBotStatus>[0]) => {
       if (!socket.data.isBot) {
         return;
       }
