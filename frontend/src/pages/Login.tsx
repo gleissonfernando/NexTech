@@ -37,7 +37,7 @@ export function Login({ auth, error, onLoginDiscord, onLogout, onVerify, verifyi
           <div className="space-y-5">
             <div className="rounded-lg border border-white/10 bg-[#0b0b0b] p-4">
               <div className="flex items-center gap-4">
-                <Avatar className="h-14 w-14 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatar} />
+                <Avatar className="h-14 w-14 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatarUrl ?? auth.user.avatar} />
                 <div className="min-w-0">
                   <p className="truncate text-base font-semibold text-white">{auth.user.username}</p>
                   <p className="truncate text-sm text-zinc-500">{auth.user.tag}</p>

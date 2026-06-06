@@ -3,6 +3,7 @@ import type { InternalAxiosRequestConfig } from "axios";
 import type {
   AuthResponse,
   CreateTwitchNotificationPayload,
+  DashboardMeResponse,
   GuildLiveOptions,
   GuildSettings,
   LiveEvent,
@@ -76,6 +77,18 @@ export async function verifyAccess() {
 export async function loginDev() {
   const { data } = await api.post<AuthResponse>("/auth/dev");
   return data;
+}
+
+export async function getDashboardMe() {
+  const { data } = await api.get<DashboardMeResponse>("/dashboard/me");
+  return data;
+}
+
+export async function updateSelectedDashboardGuild(selectedGuildId: string) {
+  const { data } = await api.patch<{ selectedGuildId: string }>("/dashboard/selected-guild", {
+    selectedGuildId
+  });
+  return data.selectedGuildId;
 }
 
 export async function logout() {

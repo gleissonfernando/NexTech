@@ -1,3 +1,5 @@
+import { getGuildIconUrl } from "./discordAssetService";
+
 export type DiscordGuild = {
   id: string;
   name: string;
@@ -33,11 +35,7 @@ export function hasAdministratorPermission(guild: Pick<DiscordGuild, "owner" | "
 }
 
 export function discordGuildIconUrl(guild: Pick<DiscordGuild, "id" | "icon">) {
-  if (!guild.icon) {
-    return null;
-  }
-
-  return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`;
+  return guild.icon ? getGuildIconUrl(guild.id, guild.icon) : null;
 }
 
 export function toDashboardGuild(guild: DiscordGuild): DashboardGuild {

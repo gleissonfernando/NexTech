@@ -7,6 +7,19 @@ type AvatarProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 export function Avatar({ src, fallback, className, ...props }: AvatarProps) {
+  const [failed, setFailed] = React.useState(false);
+  const initials = fallback
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+
+  React.useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
   return (
     <div
       className={cn(
@@ -15,7 +28,11 @@ export function Avatar({ src, fallback, className, ...props }: AvatarProps) {
       )}
       {...props}
     >
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : fallback.slice(0, 2).toUpperCase()}
+      {src && !failed ? (
+        <img src={src} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} />
+      ) : (
+        initials || "DC"
+      )}
     </div>
   );
 }

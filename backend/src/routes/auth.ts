@@ -203,10 +203,16 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       id: user.id,
       discordId: discordUser.id,
       username: discordUser.global_name ?? discordUser.username,
+      globalName: discordUser.global_name ?? null,
+      discriminator: discordUser.discriminator ?? null,
       tag: discordUserTag(discordUser),
-      avatar: discordAvatarUrl(discordUser),
+      avatar: discordUser.avatar,
+      avatarUrl: discordAvatarUrl(discordUser),
       email: discordUser.email ?? null,
       guilds,
+      selectedGuildId: user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
+        ? user.selectedGuildId
+        : guilds[0]?.id ?? null,
       accessLevel: "viewer" as const,
       authorized: false,
       lastLoginAt: user.lastLoginAt?.toISOString?.() ?? new Date().toISOString()
@@ -216,6 +222,8 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     req.session.user = applyAccessValidation(baseUser, validation);
     req.session.verified = true;
     req.session.oauthState = undefined;
+    req.session.discordAccessToken = tokens.access_token;
+    req.session.discordRefreshToken = tokens.refresh_token;
 
     issueAuthCookies(res, req.session.user, true);
     await saveSession(req);
@@ -246,10 +254,14 @@ authRouter.post("/dev", async (req, res) => {
     id: "dev-user",
     discordId: "100000000000000000",
     username: "Admin Dev",
+    globalName: "Admin Dev",
+    discriminator: null,
     tag: "admin-dev",
     avatar: null,
+    avatarUrl: null,
     email: "admin@example.local",
     guilds: demoGuilds,
+    selectedGuildId: demoGuilds[0]?.id ?? null,
     accessLevel: "admin",
     authorized: true,
     lastLoginAt: new Date().toISOString()

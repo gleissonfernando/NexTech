@@ -5,10 +5,14 @@ export type MongoUser = {
   _id: string;
   discordId: string;
   username: string;
+  globalName?: string | null;
+  discriminator?: string | null;
   avatar: string | null;
+  avatarUrl?: string | null;
   email: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+  selectedGuildId?: string | null;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
+import { DashboardHeader } from "../components/DashboardHeader";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
@@ -34,8 +35,26 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Switch } from "../components/ui/switch";
 import { createDashboardSocket } from "../lib/socket";
-import { getGuildSettings, getLives, getLogs, getTickets, patchGuildSettings } from "../lib/api";
-import type { AuthResponse, BotStatus, DashboardGuild, GuildSettings, LiveEvent, LogEntry, Ticket } from "../types";
+import {
+  getDashboardMe,
+  getGuildSettings,
+  getLives,
+  getLogs,
+  getTickets,
+  patchGuildSettings,
+  updateSelectedDashboardGuild
+} from "../lib/api";
+import type {
+  AuthResponse,
+  BotStatus,
+  DashboardGuild,
+  DashboardMeGuild,
+  DashboardMeResponse,
+  GuildSettings,
+  LiveEvent,
+  LogEntry,
+  Ticket
+} from "../types";
 
 type DashboardProps = {
   auth: AuthResponse;
@@ -212,9 +231,16 @@ const categoryMeta = {
 };
 
 export function Dashboard({ auth, onLogout }: DashboardProps) {
-  const dashboardGuilds = useMemo(() => ensureDashboardGuilds(auth.guilds), [auth.guilds]);
+  const [dashboardProfile, setDashboardProfile] = useState<DashboardMeResponse | null>(null);
+  const [dashboardProfileLoading, setDashboardProfileLoading] = useState(true);
+  const dashboardGuilds = useMemo(
+    () => ensureDashboardGuilds(dashboardProfile ? mergeDashboardGuilds(dashboardProfile.guilds, auth.guilds) : auth.guilds),
+    [auth.guilds, dashboardProfile]
+  );
   const [activeView, setActiveView] = useState<ViewId>("overview");
-  const [selectedGuildId, setSelectedGuildId] = useState<string | null>(dashboardGuilds[0]?.id ?? CONFIGURED_GUILD_ID);
+  const [selectedGuildId, setSelectedGuildId] = useState<string | null>(
+    auth.user.selectedGuildId ?? dashboardGuilds[0]?.id ?? CONFIGURED_GUILD_ID
+  );
   const [settings, setSettings] = useState<GuildSettings | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lives, setLives] = useState<LiveEvent[]>([]);
@@ -222,6 +248,43 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const canManageDashboard = auth.permissions.canManageDashboard;
+  const dashboardHeaderGuilds = useMemo(
+    () => (dashboardProfile?.guilds.length ? dashboardProfile.guilds : toDashboardMeGuilds(dashboardGuilds)),
+    [dashboardGuilds, dashboardProfile]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    setDashboardProfileLoading(true);
+    getDashboardMe()
+      .then((profile) => {
+        if (!mounted) {
+          return;
+        }
+
+        setDashboardProfile(profile);
+        const nextGuildId = profile.selectedGuildId ?? profile.guilds[0]?.id ?? null;
+
+        if (nextGuildId) {
+          setSelectedGuildId((current) => (current && profile.guilds.some((guild) => guild.id === current) ? current : nextGuildId));
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          window.location.replace("/login");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setDashboardProfileLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedGuildId && dashboardGuilds[0]?.id) {
@@ -332,13 +395,28 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     }
   }
 
+  async function handleSelectGuild(guildId: string) {
+    const previousGuildId = selectedGuildId;
+
+    setSelectedGuildId(guildId);
+    setDashboardProfile((current) => (current ? { ...current, selectedGuildId: guildId } : current));
+
+    try {
+      await updateSelectedDashboardGuild(guildId);
+    } catch {
+      setSelectedGuildId(previousGuildId);
+      setDashboardProfile((current) => (current ? { ...current, selectedGuildId: previousGuildId } : current));
+    }
+  }
+
   return (
     <DashboardLayout
       activeView={activeView}
+      dashboardUser={dashboardProfile?.user}
       guilds={dashboardGuilds}
       onChangeView={setActiveView}
       onLogout={onLogout}
-      onSelectGuild={setSelectedGuildId}
+      onSelectGuild={handleSelectGuild}
       selectedGuildId={selectedGuild?.id ?? null}
       user={auth.user}
     >
@@ -352,6 +430,14 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
           activeView={activeView}
           botStatus={botStatus}
           guildName={selectedGuild?.name ?? "Servidor"}
+        />
+        <DashboardHeader
+          bot={dashboardProfile?.bot}
+          guilds={dashboardHeaderGuilds}
+          loading={dashboardProfileLoading}
+          onSelectGuild={handleSelectGuild}
+          selectedGuildId={selectedGuild?.id ?? null}
+          user={dashboardProfile?.user}
         />
 
         {activeView === "overview" ? (
@@ -432,6 +518,36 @@ function ensureDashboardGuilds(guilds: DashboardGuild[]) {
       channelCount: 0
     }
   ];
+}
+
+function mergeDashboardGuilds(guilds: DashboardMeGuild[], fallbackGuilds: DashboardGuild[]) {
+  const fallbackById = new Map(fallbackGuilds.map((guild) => [guild.id, guild]));
+
+  return guilds.map((guild) => {
+    const fallback = fallbackById.get(guild.id);
+
+    return {
+      id: guild.id,
+      name: guild.name,
+      iconUrl: guild.iconUrl,
+      owner: guild.owner,
+      isAdmin: guild.owner || guild.permissions === "ADMINISTRATOR",
+      botEnabled: guild.botInGuild,
+      memberCount: fallback?.memberCount ?? 0,
+      channelCount: fallback?.channelCount ?? 0
+    };
+  });
+}
+
+function toDashboardMeGuilds(guilds: DashboardGuild[]): DashboardMeGuild[] {
+  return guilds.map((guild) => ({
+    id: guild.id,
+    name: guild.name,
+    iconUrl: guild.iconUrl,
+    owner: guild.owner,
+    permissions: guild.isAdmin ? "ADMINISTRATOR" : "0",
+    botInGuild: guild.botEnabled
+  }));
 }
 
 function PageHeader({
@@ -562,7 +678,7 @@ function ProfileSummaryCard({ auth }: { auth: AuthResponse }) {
     <Card>
       <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <Avatar className="h-16 w-16 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatar} />
+          <Avatar className="h-16 w-16 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatarUrl ?? auth.user.avatar} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="truncate text-xl font-semibold text-white">{auth.user.username}</h3>

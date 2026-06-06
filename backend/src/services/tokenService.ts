@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import jwt, { TokenExpiredError, type JwtPayload } from "jsonwebtoken";
 import { env } from "../config/env";
 import type { AuthSessionUser } from "../types/session";
+import { getDiscordAvatarUrl } from "./discordAssetService";
 import { filterGuildsForBot, mergeAuthorizedBotGuilds } from "./statsService";
 
 const ACCESS_COOKIE = "dashboard.access_token";
@@ -157,14 +158,38 @@ function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
   const guilds = authorized ? mergeAuthorizedBotGuilds(user.guilds) : filterGuildsForBot(user.guilds);
   const hasAdminGuild = guilds.some((guild) => guild.owner || guild.isAdmin);
   const accessLevel = authorized || hasAdminGuild ? "admin" : "viewer";
+  const selectedGuildId =
+    user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
+      ? user.selectedGuildId
+      : guilds[0]?.id ?? null;
 
   return {
     ...user,
+    globalName: user.globalName ?? null,
+    discriminator: user.discriminator ?? null,
+    avatarUrl: normalizeAvatarUrl(user),
     guilds,
+    selectedGuildId,
     accessLevel,
     authorized,
     lastLoginAt: user.lastLoginAt ?? new Date().toISOString()
   };
+}
+
+function normalizeAvatarUrl(user: AuthSessionUser) {
+  if (user.avatarUrl) {
+    return user.avatarUrl;
+  }
+
+  if (!user.avatar) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(user.avatar)) {
+    return user.avatar;
+  }
+
+  return getDiscordAvatarUrl(user.discordId, user.avatar);
 }
 
 function getAuthorizedUserIds() {

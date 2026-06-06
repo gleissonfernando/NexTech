@@ -13,10 +13,14 @@ export type AuthUser = {
   id: string;
   discordId: string;
   username: string;
+  globalName: string | null;
+  discriminator: string | null;
   tag: string;
   avatar: string | null;
+  avatarUrl: string | null;
   email: string | null;
   guilds: DashboardGuild[];
+  selectedGuildId: string | null;
   accessLevel: "admin" | "viewer";
   authorized: boolean;
   lastLoginAt: string;
@@ -181,4 +185,34 @@ export type TwitchChannelPreview = {
   twitchDisplayName: string;
   twitchAvatar: string | null;
   twitchUrl: string;
+};
+
+export type DashboardMeUser = {
+  id: string;
+  username: string;
+  globalName: string | null;
+  avatarUrl: string | null;
+};
+
+export type DashboardMeBot = {
+  id: string | null;
+  username: string;
+  avatarUrl: string | null;
+  connected: boolean;
+};
+
+export type DashboardMeGuild = {
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  owner: boolean;
+  permissions: string;
+  botInGuild: boolean;
+};
+
+export type DashboardMeResponse = {
+  user: DashboardMeUser;
+  bot: DashboardMeBot;
+  selectedGuildId: string | null;
+  guilds: DashboardMeGuild[];
 };

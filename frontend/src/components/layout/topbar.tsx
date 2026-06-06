@@ -1,11 +1,11 @@
-import { Bot, LogOut, Menu } from "lucide-react";
-import { Avatar } from "../ui/avatar";
+import { Bot, Menu } from "lucide-react";
+import { UserProfile } from "../UserProfile";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import type { AuthUser, DashboardGuild } from "../../types";
+import type { AuthUser, DashboardGuild, DashboardMeUser } from "../../types";
 
 type TopbarProps = {
   user: AuthUser;
+  dashboardUser?: DashboardMeUser | null;
   guilds: DashboardGuild[];
   selectedGuildId: string | null;
   onOpenMenu: () => void;
@@ -13,7 +13,7 @@ type TopbarProps = {
   onLogout: () => void;
 };
 
-export function Topbar({ user, guilds, selectedGuildId, onOpenMenu, onSelectGuild, onLogout }: TopbarProps) {
+export function Topbar({ dashboardUser, user, guilds, selectedGuildId, onOpenMenu, onSelectGuild, onLogout }: TopbarProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-zinc-900 bg-[#050505]/90 px-4 py-3 backdrop-blur lg:px-8">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -57,27 +57,14 @@ export function Topbar({ user, guilds, selectedGuildId, onOpenMenu, onSelectGuil
             </div>
           )}
 
-          <div className="hidden items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 md:flex">
-            <Avatar fallback={user.username} src={user.avatar} />
-            <div className="min-w-0 pr-1">
-              <p className="max-w-36 truncate text-sm font-medium text-zinc-100">{user.username}</p>
-              <p className="truncate text-xs text-zinc-500">{user.discordId}</p>
-              <p className="truncate text-[11px] text-zinc-600">{formatDateTime(user.lastLoginAt)}</p>
-            </div>
+          <div className="hidden md:block">
+            <UserProfile dashboardUser={dashboardUser} onLogout={onLogout} user={user} />
           </div>
-
-          <Button aria-label="Sair" onClick={onLogout} size="icon" title="Sair" variant="ghost">
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="md:hidden">
+            <UserProfile compact dashboardUser={dashboardUser} onLogout={onLogout} user={user} />
+          </div>
         </div>
       </div>
     </header>
   );
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short"
-  }).format(new Date(value));
 }

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "../config/env";
+import { getDiscordAvatarUrl } from "./discordAssetService";
 import type { DiscordGuild } from "./guildService";
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -101,13 +102,7 @@ export async function fetchDiscordGuilds(accessToken: string) {
 }
 
 export function discordAvatarUrl(user: Pick<DiscordUser, "id" | "avatar"> & Partial<Pick<DiscordUser, "discriminator">>) {
-  if (!user.avatar) {
-    return discordDefaultAvatarUrl(user);
-  }
-
-  const extension = user.avatar.startsWith("a_") ? "gif" : "png";
-
-  return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${extension}?size=128`;
+  return user.avatar ? getDiscordAvatarUrl(user.id, user.avatar) : discordDefaultAvatarUrl(user);
 }
 
 export function discordUserTag(user: Pick<DiscordUser, "username" | "discriminator" | "global_name">) {
