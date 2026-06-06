@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
-import { appUrl, dashboardUrl } from "../lib/urls";
+import { appUrl } from "../lib/urls";
 import type { AuthResponse } from "../types";
 
 export function useAuth() {
@@ -50,7 +50,7 @@ export function useAuth() {
     try {
       const session = await verifyAccess();
       setAuth(session);
-      window.location.replace(dashboardUrl());
+      window.location.replace(appUrl("/auth/success"));
     } catch {
       setError("Nao foi possivel validar seu acesso temporario.");
     } finally {
