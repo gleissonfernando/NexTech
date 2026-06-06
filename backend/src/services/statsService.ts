@@ -61,7 +61,7 @@ export function updateBotStatus(input: BotStatusInput) {
 }
 
 export function getBotGuildIds() {
-  return new Set(botStatus.botGuilds.map((guild) => guild.id));
+  return new Set([...botStatus.botGuilds.map((guild) => guild.id), ...getConfiguredDashboardGuildIds()]);
 }
 
 export function filterGuildsForBot(guilds: DashboardGuild[]) {
@@ -90,6 +90,21 @@ export function filterGuildsForBot(guilds: DashboardGuild[]) {
 export function mergeAuthorizedBotGuilds(guilds: DashboardGuild[]) {
   const filteredGuilds = filterGuildsForBot(guilds);
   const guildsById = new Map(filteredGuilds.map((guild) => [guild.id, guild]));
+
+  for (const guildId of getConfiguredDashboardGuildIds()) {
+    const botGuild = botStatus.botGuilds.find((guild) => guild.id === guildId);
+
+    guildsById.set(guildId, {
+      id: guildId,
+      name: botGuild?.name ?? `Servidor ${guildId}`,
+      iconUrl: botGuild?.iconUrl ?? null,
+      owner: false,
+      isAdmin: true,
+      botEnabled: true,
+      memberCount: botGuild?.memberCount ?? 0,
+      channelCount: botGuild?.channelCount ?? 0
+    });
+  }
 
   for (const botGuild of botStatus.botGuilds) {
     guildsById.set(botGuild.id, {
@@ -160,4 +175,10 @@ function normalizeBotGuilds(guilds: BotGuildDto[]) {
       name: guild.name || `Guild ${guild.id}`,
       iconUrl: guild.iconUrl ?? null
     }));
+}
+
+function getConfiguredDashboardGuildIds() {
+  return env.DASHBOARD_GUILD_IDS.split(",")
+    .map((guildId) => guildId.trim())
+    .filter(Boolean);
 }

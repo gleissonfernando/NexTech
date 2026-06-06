@@ -85,6 +85,7 @@ DISCORD_OAUTH_REDIRECT_URI="https://ricardinho98.shardweb.app/auth/discord/callb
 DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
 DASHBOARD_AUTH_REQUIRED="true"
 DASHBOARD_AUTHORIZED_USER_IDS=
+DASHBOARD_GUILD_IDS="1213384118356803594"
 DEV_AUTH_ENABLED="false"
 ```
 
@@ -151,7 +152,7 @@ DASHBOARD_VERIFICATION_MODE="temporary"
 
 Use sempre a URL publica em `SITE_ORIGIN`, `DISCORD_OAUTH_REDIRECT_URI`, `DISCORD_CALLBACK_URL` e `FRONTEND_URL` quando `DASHBOARD_AUTH_REQUIRED="true"`. O OAuth2 do Discord nao deve apontar para `localhost`.
 
-`DASHBOARD_AUTHORIZED_USER_IDS` aceita IDs Discord separados por virgula. Esses usuarios recebem acesso administrativo mesmo que nao sejam donos/admin em um servidor retornado pelo OAuth. Quem autenticar sem permissao especial entra como visualizacao basica.
+`DASHBOARD_AUTHORIZED_USER_IDS` aceita IDs de usuarios Discord separados por virgula. Esses usuarios recebem acesso administrativo mesmo que nao sejam donos/admin em um servidor retornado pelo OAuth. `DASHBOARD_GUILD_IDS` aceita IDs de servidores Discord separados por virgula e garante que esses servidores aparecam no painel quando o usuario autorizado entrar. Quem autenticar sem permissao especial entra como visualizacao basica.
 
 Quando `DASHBOARD_AUTH_REQUIRED="true"`, o backend usa Discord OAuth2, salva a sessao em JWT httpOnly e redireciona o usuario para `/dashboard`.
 

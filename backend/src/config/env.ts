@@ -9,6 +9,8 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const localMongoUrl = "mongodb://localhost:27017/ricardinho98";
 const localFrontendUrl = "http://localhost:5173";
 const productionPublicUrl = "https://ricardinho98.shardweb.app";
+const defaultDashboardGuildIds = "1213384118356803594";
+const defaultDashboardAuthorizedUserIds = "761011766440230932";
 const isProduction = process.env.NODE_ENV === "production";
 
 function cleanEnvValue(value: unknown) {
@@ -71,6 +73,10 @@ function envBoolean(defaultValue: boolean) {
     .optional()
     .default(String(defaultValue))
     .transform((value) => value === "true");
+}
+
+function mergeCsvValues(value: string, fallback: string) {
+  return [...new Set(`${value},${fallback}`.split(",").map((item) => item.trim()).filter(Boolean))].join(",");
 }
 
 function isLocalUrl(value: string) {
@@ -137,6 +143,7 @@ const envSchema = z
     FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin, productionSiteOrigin),
     DASHBOARD_AUTH_REQUIRED: envBoolean(isProduction),
     DASHBOARD_AUTHORIZED_USER_IDS: z.string().optional().default(""),
+    DASHBOARD_GUILD_IDS: z.string().optional().default(defaultDashboardGuildIds),
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("temporary"),
     DEV_AUTH_ENABLED: envBoolean(false)
   })
@@ -158,6 +165,8 @@ const envSchema = z
       DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
       DISCORD_CALLBACK_URL: oauthCallbackUrl,
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
+      DASHBOARD_AUTHORIZED_USER_IDS: mergeCsvValues(value.DASHBOARD_AUTHORIZED_USER_IDS, defaultDashboardAuthorizedUserIds),
+      DASHBOARD_GUILD_IDS: mergeCsvValues(value.DASHBOARD_GUILD_IDS, defaultDashboardGuildIds),
       DASHBOARD_AUTH_REQUIRED: isProduction ? true : value.DASHBOARD_AUTH_REQUIRED,
       DEV_AUTH_ENABLED: isProduction ? false : value.DEV_AUTH_ENABLED
     };
