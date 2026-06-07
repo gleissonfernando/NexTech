@@ -67,7 +67,7 @@ export function Login({
                 ) : accessValidation?.allowed ? (
                   "Acesso liberado para o site. Clique em Verificar para entrar."
                 ) : (
-                  "Este usuario ainda nao tem permissao liberada para acessar o site."
+                  "Acesso negado: nenhum bot cadastrado liberou o cargo deste usuario."
                 )}
               </div>
             ) : null}

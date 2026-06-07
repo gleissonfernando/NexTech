@@ -281,7 +281,7 @@ authRouter.post("/verify", requireAuthenticated, async (req, res) => {
     await saveSession(req);
 
     return res.status(403).json({
-      message: "Seu usuario nao possui o cargo liberado para acessar este painel.",
+      message: "Nenhum bot cadastrado liberou o cargo deste usuario para acessar o painel.",
       validation
     });
   }

@@ -268,6 +268,10 @@ async function assertCanManageClips(user: AuthSessionUser, guildId: string, botI
 }
 
 async function hasClipsRoleAccess(user: AuthSessionUser, guildId: string, botId: string | null) {
+  if (!botId) {
+    return false;
+  }
+
   const config = await getClipsConfig(guildId, botId).catch(() => null);
 
   if (!config?.allowedRoleIds.length) {

@@ -47,6 +47,16 @@ Somente IDs presentes em `DASHBOARD_DEV_USER_IDS` podem cadastrar e gerenciar bo
 
 Usuarios comuns nao conseguem usar as rotas de cadastro diretamente pela API.
 
+## Bloqueio por bot
+
+O acesso de usuarios comuns e validado separadamente para cada bot e servidor. O usuario so entra quando:
+
+- o bot esta cadastrado naquele servidor;
+- o acesso por cargo esta ativado para aquele bot;
+- o cargo configurado pertence ao usuario no Discord.
+
+Dono e administrador do servidor tambem precisam do cargo. Somente os Devs configurados podem entrar sem ele. Requisicoes da dashboard sem `botId` sao recusadas para usuarios comuns, evitando que a permissao de um bot libere dados de outro.
+
 ## Clips
 
 O monitor consulta a Twitch a cada 30 segundos. Configuracoes antigas com outro intervalo sao normalizadas automaticamente para 30 segundos.

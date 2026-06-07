@@ -1,7 +1,7 @@
 import { env } from "../config/env";
 import { isDashboardDevUserId } from "../config/devOwner";
 import type { AuthSessionUser } from "../types/session";
-import { getDiscordRoleAccess } from "./discordRoleAccessService";
+import { listAccessibleDashboardBots } from "./devBotService";
 
 export type GuildAccessCheck = {
   guildId: string;
@@ -22,15 +22,7 @@ export type AccessValidationResult = {
   checks: GuildAccessCheck[];
 };
 
-const ROLE_ACCESS_TIMEOUT_MS = 4500;
-
-function getAuthorizedUserIds() {
-  return new Set(
-    env.DASHBOARD_AUTHORIZED_USER_IDS.split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-  );
-}
+const BOT_ACCESS_TIMEOUT_MS = 6000;
 
 export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<AccessValidationResult> {
   const baseChecks = user.guilds.map((guild) => ({
@@ -41,26 +33,22 @@ export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<Ac
     administratorRole: false,
     configuredPanelRole: false
   }));
-  const authorizedUser = getAuthorizedUserIds().has(user.discordId) || isDashboardDevUserId(user.discordId);
+  const authorizedUser = isDashboardDevUserId(user.discordId);
+
   if (authorizedUser) {
     return createValidationResult(baseChecks, true);
   }
 
-  const checks = await withTimeout(
-    Promise.all(
-      baseChecks.map(async (check) => {
-        const roleAccess = await getDiscordRoleAccess(check.guildId, user.discordId);
-
-        return {
-          ...check,
-          administratorRole: roleAccess.administratorRole,
-          configuredPanelRole: roleAccess.configuredPanelRole
-        };
-      })
-    ),
-    baseChecks,
-    ROLE_ACCESS_TIMEOUT_MS
+  const accessibleBots = await withTimeout(
+    listAccessibleDashboardBots(user),
+    [],
+    BOT_ACCESS_TIMEOUT_MS
   );
+  const accessibleGuildIds = new Set(accessibleBots.flatMap((bot) => bot.guildIds));
+  const checks = baseChecks.map((check) => ({
+    ...check,
+    configuredPanelRole: accessibleGuildIds.has(check.guildId)
+  }));
 
   return createValidationResult(checks, authorizedUser);
 }

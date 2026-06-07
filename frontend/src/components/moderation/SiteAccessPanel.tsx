@@ -128,8 +128,8 @@ export function SiteAccessPanel({
         </label>
 
         <p className="text-xs leading-5 text-zinc-500">
-          O dono do servidor entra sem esse cargo. Administradores e demais membros precisam possuir o cargo escolhido.
-          A configuracao vale somente para este bot e este servidor.
+          Todos os usuarios, incluindo dono e administradores do servidor, precisam possuir o cargo escolhido.
+          Somente o Dev entra sem cargo. A configuracao vale apenas para este bot e este servidor.
         </p>
 
         {saving ? (

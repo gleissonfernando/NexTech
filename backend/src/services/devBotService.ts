@@ -1266,14 +1266,6 @@ async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, gui
     return true;
   }
 
-  if (bot.ownerId === user.discordId || bot.createdBy === user.discordId) {
-    return true;
-  }
-
-  if (user.guilds.some((guild) => guild.id === guildId && (guild.owner || guild.isAdmin))) {
-    return true;
-  }
-
   return user.guilds.some((guild) => guild.id === guildId)
     && await hasConfiguredPanelRole(user.discordId, bot, guildId);
 }

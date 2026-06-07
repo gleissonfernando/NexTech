@@ -98,7 +98,7 @@ export function useAuth() {
       setError(
         isTimeoutError(requestError)
           ? "A verificacao demorou para responder. Tente novamente."
-          : readRequestMessage(requestError) ?? "Seu usuario nao possui o cargo liberado para acessar este painel."
+          : readRequestMessage(requestError) ?? "Nenhum bot cadastrado liberou seu cargo para acessar o painel."
       );
     } finally {
       verifyInFlight.current = false;

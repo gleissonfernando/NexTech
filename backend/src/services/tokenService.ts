@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import jwt, { TokenExpiredError, type JwtPayload } from "jsonwebtoken";
+import { isDashboardDevUserId } from "../config/devOwner";
 import { env } from "../config/env";
 import type { AuthSessionUser } from "../types/session";
 import { getDiscordAvatarUrl } from "./discordAssetService";
@@ -156,9 +157,22 @@ function applyBrowserVerification(req: Request, auth: DashboardAuth): DashboardA
 }
 
 function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
-  const authorized = user.authorized ?? getAuthorizedUserIds().has(user.discordId);
-  const guilds = authorized ? mergeAuthorizedBotGuilds(user.guilds) : user.guilds;
-  const accessLevel = authorized || user.accessLevel === "admin" ? "admin" : "viewer";
+  const authorized = isDashboardDevUserId(user.discordId);
+  const hadLegacyAuthorization = user.authorized && !authorized;
+  const normalizedGuilds = hadLegacyAuthorization
+    ? user.guilds.map((guild) => ({
+        ...guild,
+        botEnabled: false,
+        isAdmin: false,
+        owner: false
+      }))
+    : user.guilds;
+  const guilds = authorized ? mergeAuthorizedBotGuilds(normalizedGuilds) : normalizedGuilds;
+  const accessLevel = authorized
+    ? "admin"
+    : hadLegacyAuthorization
+      ? "viewer"
+      : user.accessLevel;
   const selectedGuildId =
     user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
       ? user.selectedGuildId
@@ -191,14 +205,6 @@ function normalizeAvatarUrl(user: AuthSessionUser) {
   }
 
   return getDiscordAvatarUrl(user.discordId, user.avatar);
-}
-
-function getAuthorizedUserIds() {
-  return new Set(
-    env.DASHBOARD_AUTHORIZED_USER_IDS.split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-  );
 }
 
 function setAuthCookie(res: Response, name: string, value: string, maxAgeSeconds: number) {

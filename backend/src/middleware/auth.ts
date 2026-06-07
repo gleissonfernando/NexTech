@@ -42,7 +42,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const freshAuth = await ensureVerifiedRoleAccess(req, res, auth);
 
   if (!freshAuth) {
-    return res.status(403).json({ message: "Seu usuario nao possui o cargo liberado para acessar este painel." });
+    return res.status(403).json({ message: "Nenhum bot cadastrado liberou o cargo deste usuario para acessar o painel." });
+  }
+
+  if (freshAuth.user.accessLevel !== "admin") {
+    return res.status(403).json({ message: "A verificacao de acesso deste usuario expirou. Verifique o cargo novamente." });
   }
 
   req.session.user = freshAuth.user;

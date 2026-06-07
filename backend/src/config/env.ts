@@ -8,7 +8,6 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const productionPublicUrl = "https://ricardinho98.shardweb.app";
 const defaultDashboardGuildIds = "1213384118356803594";
-const defaultDashboardAuthorizedUserIds = "761011766440230932";
 const defaultDashboardDevUserIds = "1426287249020158018";
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -129,7 +128,6 @@ const envSchema = z
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
     FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin),
-    DASHBOARD_AUTHORIZED_USER_IDS: z.string().optional().default(""),
     DASHBOARD_DEV_USER_IDS: z.string().optional().default(""),
     DASHBOARD_GUILD_IDS: z.string().optional().default(defaultDashboardGuildIds),
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles")
@@ -150,7 +148,6 @@ const envSchema = z
       DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
       DISCORD_CALLBACK_URL: oauthCallbackUrl,
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
-      DASHBOARD_AUTHORIZED_USER_IDS: mergeCsvValues(value.DASHBOARD_AUTHORIZED_USER_IDS, defaultDashboardAuthorizedUserIds),
       DASHBOARD_DEV_USER_IDS: mergeCsvValues(value.DASHBOARD_DEV_USER_IDS, defaultDashboardDevUserIds),
       DASHBOARD_GUILD_IDS: mergeCsvValues(value.DASHBOARD_GUILD_IDS, defaultDashboardGuildIds)
     };
