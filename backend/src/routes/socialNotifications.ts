@@ -101,10 +101,11 @@ socialNotificationsRouter.get("/:guildId", requireAuth, async (req, res, next) =
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
     await assertCanManageGuild(req, guildId, botId);
 
     return res.json({
-      notifications: await listSocialNotifications(guildId, botId)
+      notifications: await listSocialNotifications(guildId, botId, user.discordId)
     });
   } catch (error) {
     return handleRouteError(error, res, next);
@@ -139,6 +140,7 @@ socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, async (req, r
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const botId = await resolveRequestBotId(req);
     const id = getRequiredParam(req.params.id, "id");
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
     await assertCanManageGuild(req, guildId, botId);
 
     const input = updateTwitchSchema.parse(req.body);
@@ -147,7 +149,7 @@ socialNotificationsRouter.put("/:guildId/twitch/:id", requireAuth, async (req, r
       await assertChannelBelongsToGuild(guildId, input.discordChannelId, botId);
     }
 
-    const notification = await updateTwitchNotification(guildId, id, input, botId);
+    const notification = await updateTwitchNotification(guildId, id, input, user.discordId, botId);
 
     return res.json({
       notification

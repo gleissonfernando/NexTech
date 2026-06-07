@@ -41,6 +41,7 @@ export type NavItem = {
   icon: LucideIcon;
   badge?: string;
   moduleId?: string;
+  moduleIds?: string[];
 };
 
 export const navSections: Array<{ label: string; items: NavItem[] }> = [
@@ -51,14 +52,14 @@ export const navSections: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Configuracoes",
     items: [
-      { id: "settings", label: "Configuracoes", icon: Settings },
+      { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["welcome", "leave"] },
       { id: "permissions", label: "Permissoes", icon: LockKeyhole, badge: "2", moduleId: "verification" }
     ]
   },
   {
     label: "Modulos",
     items: [
-      { id: "modules", label: "Todos os modulos", icon: Bot },
+      { id: "modules", label: "Modulos liberados", icon: Bot, moduleIds: ["live", "roles", "tickets", "moderation"] },
       { id: "welcome", label: "Entrada", icon: UserPlus, moduleId: "welcome" },
       { id: "leave", label: "Saida", icon: UserMinus, moduleId: "leave" },
       { id: "lives", label: "Lives", icon: Radio, moduleId: "live" },
@@ -107,7 +108,17 @@ export function Sidebar({
   const sections = baseSections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => showAllModules || !item.moduleId || enabledModuleSet.has(item.moduleId))
+      items: section.items.filter((item) => {
+        if (showAllModules || item.id === "overview" || item.id === "dev") {
+          return true;
+        }
+
+        if (item.moduleId) {
+          return enabledModuleSet.has(item.moduleId);
+        }
+
+        return Boolean(item.moduleIds?.some((moduleId) => enabledModuleSet.has(moduleId)));
+      })
     }))
     .filter((section) => section.items.length > 0);
   const serverName = server?.name ?? "Servidor configurado";

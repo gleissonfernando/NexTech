@@ -86,6 +86,7 @@ type DashboardCardConfig = {
   badge?: string;
   action?: string;
   moduleId?: string;
+  devOnly?: boolean;
 };
 
 const initialBotStatus: BotStatus = {
@@ -104,6 +105,7 @@ const dashboardCards: DashboardCardConfig[] = [
     title: "Configurações gerais",
     description: "Defina canais, comportamento do bot e parâmetros globais do servidor.",
     icon: Settings,
+    devOnly: true,
     action: "Abrir"
   },
   {
@@ -132,6 +134,7 @@ const dashboardCards: DashboardCardConfig[] = [
     title: "Permissões administrativas",
     description: "Base preparada para validar administradores e donos do servidor.",
     icon: LockKeyhole,
+    devOnly: true,
     badge: "Novo",
     action: "Ver"
   },
@@ -356,12 +359,10 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   }, [activeView, developerView]);
 
   useEffect(() => {
-    const requiredModule = viewModuleId(activeView);
-
-    if (!showAllModules && requiredModule && !enabledModules.includes(requiredModule)) {
+    if (!isViewAllowed(activeView, enabledModules, developerView)) {
       setActiveView("overview");
     }
-  }, [activeView, enabledModules, showAllModules]);
+  }, [activeView, developerView, enabledModules]);
 
   useEffect(() => {
     const selectedGuildIsAvailable = selectedGuildId
@@ -709,7 +710,32 @@ function viewModuleId(view: ViewId) {
   return viewModuleIds[view] ?? null;
 }
 
+function isViewAllowed(view: ViewId, enabledModules: string[], developerView: boolean) {
+  if (developerView || view === "overview") {
+    return true;
+  }
+
+  if (view === "dev") {
+    return false;
+  }
+
+  if (view === "settings") {
+    return ["welcome", "leave"].some((moduleId) => enabledModules.includes(moduleId));
+  }
+
+  if (view === "modules") {
+    return ["live", "roles", "tickets", "moderation"].some((moduleId) => enabledModules.includes(moduleId));
+  }
+
+  const requiredModule = viewModuleId(view);
+  return Boolean(requiredModule && enabledModules.includes(requiredModule));
+}
+
 function isCardVisible(card: DashboardCardConfig, enabledModules: string[], showAllModules: boolean) {
+  if (card.devOnly) {
+    return showAllModules;
+  }
+
   return showAllModules || !card.moduleId || enabledModules.includes(card.moduleId);
 }
 
