@@ -20,11 +20,11 @@ import {
   uploadLeaveImage,
   uploadWelcomeImage
 } from "../../lib/api";
+import type { DashboardGuild, GuildChannelOption, GuildSettings } from "../../types";
+import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
-import { Avatar } from "../ui/avatar";
-import type { DashboardGuild, GuildChannelOption, GuildSettings } from "../../types";
 
 type MemberPanelMode = "welcome" | "leave";
 
@@ -74,13 +74,13 @@ const DEFAULT_LEAVE_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
 const panelConfig = {
   welcome: {
     channelKey: "welcomeChannelId",
-    description: "Entrada de membros",
+    description: "Mensagem automatica quando alguem entra.",
     displayChannelKey: "welcomeDisplayChannelId",
     enabledKey: "welcomeEnabled",
     footerTextKey: "welcomeFooterText",
     imageKey: "welcomeImageUrl",
     channelLabelKey: "welcomeChannelLabel",
-    loadingText: "Carregando configuracoes de entrada...",
+    loadingText: "Carregando entrada...",
     messageKey: "welcomeMessage",
     rulesKey: "welcomeRules",
     rulesTitleKey: "welcomeRulesTitle",
@@ -94,21 +94,21 @@ const panelConfig = {
     missingGuildText: "Selecione um servidor para configurar entrada.",
     missingSettingsText: "Nao foi possivel carregar as configuracoes de entrada.",
     savedImageText: "Banner de entrada atualizado.",
-    savedMessageText: "Texto de entrada atualizado.",
+    savedMessageText: "Mensagem de entrada salva.",
     testButtonText: "Testar entrada",
-    testSentText: "Painel de entrada enviado para teste.",
-    title: "Painel de entrada",
+    testSentText: "Entrada enviada para teste.",
+    title: "Entrada",
     toggleLabel: "Entrada"
   },
   leave: {
     channelKey: "leaveChannelId",
-    description: "Saida de membros",
+    description: "Mensagem automatica quando alguem sai.",
     displayChannelKey: "leaveDisplayChannelId",
     enabledKey: "leaveEnabled",
     footerTextKey: "leaveFooterText",
     imageKey: "leaveImageUrl",
     channelLabelKey: "leaveChannelLabel",
-    loadingText: "Carregando configuracoes de saida...",
+    loadingText: "Carregando saida...",
     messageKey: "leaveMessage",
     rulesKey: "leaveRules",
     rulesTitleKey: "leaveRulesTitle",
@@ -122,10 +122,10 @@ const panelConfig = {
     missingGuildText: "Selecione um servidor para configurar saida.",
     missingSettingsText: "Nao foi possivel carregar as configuracoes de saida.",
     savedImageText: "Banner de saida atualizado.",
-    savedMessageText: "Texto de saida atualizado.",
+    savedMessageText: "Mensagem de saida salva.",
     testButtonText: "Testar saida",
-    testSentText: "Painel de saida enviado para teste.",
-    title: "Painel de saida",
+    testSentText: "Saida enviada para teste.",
+    title: "Saida",
     toggleLabel: "Saida"
   }
 } satisfies Record<
@@ -160,17 +160,21 @@ const panelConfig = {
   }
 >;
 
-export function WelcomePanel({ botId, canManage, guild, loading = false, mode = "welcome", onSettingsChange, settings, viewerName }: WelcomePanelProps) {
+export function WelcomePanel({
+  botId,
+  canManage,
+  guild,
+  loading = false,
+  mode = "welcome",
+  onSettingsChange,
+  settings,
+  viewerName
+}: WelcomePanelProps) {
   const config = panelConfig[mode];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [imageInput, setImageInput] = useState("");
-  const [titleInput, setTitleInput] = useState("");
   const [messageInput, setMessageInput] = useState("");
-  const [rulesTitleInput, setRulesTitleInput] = useState("");
-  const [rulesInput, setRulesInput] = useState("");
-  const [channelLabelInput, setChannelLabelInput] = useState("");
-  const [footerTextInput, setFooterTextInput] = useState("");
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -182,9 +186,7 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
   );
   const enabled = Boolean(settings?.[config.enabledKey]);
   const channelId = settings?.[config.channelKey] ?? null;
-  const displayChannelId = settings?.[config.displayChannelKey] ?? channelId;
   const destinationChannel = channels.find((channel) => channel.id === channelId) ?? null;
-  const displayChannel = channels.find((channel) => channel.id === displayChannelId) ?? null;
 
   useEffect(() => {
     if (!guild || !canManage) {
@@ -208,26 +210,6 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
     setMessageInput(settings?.[config.messageKey]?.trim() || config.defaultMessage);
   }, [config.defaultMessage, config.messageKey, settings]);
 
-  useEffect(() => {
-    setTitleInput(settings?.[config.embedTitleKey]?.trim() || config.defaultTitle);
-    setRulesTitleInput(settings?.[config.rulesTitleKey]?.trim() || config.defaultRulesTitle);
-    setRulesInput(settings?.[config.rulesKey]?.trim() || config.defaultRules);
-    setChannelLabelInput(settings?.[config.channelLabelKey]?.trim() || config.defaultChannelLabel);
-    setFooterTextInput(settings?.[config.footerTextKey]?.trim() || config.defaultFooterText);
-  }, [
-    config.channelLabelKey,
-    config.defaultChannelLabel,
-    config.defaultFooterText,
-    config.defaultRules,
-    config.defaultRulesTitle,
-    config.defaultTitle,
-    config.embedTitleKey,
-    config.footerTextKey,
-    config.rulesKey,
-    config.rulesTitleKey,
-    settings
-  ]);
-
   async function savePatch(payload: Partial<GuildSettings>, key: string, successText = "Alteracao salva.") {
     if (!guild || !settings || !canManage) {
       return false;
@@ -250,12 +232,52 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
     }
   }
 
+  async function handleChannelChange(nextChannelId: string) {
+    await savePatch(
+      {
+        [config.channelKey]: nextChannelId || null,
+        [config.displayChannelKey]: nextChannelId || null
+      } as Partial<GuildSettings>,
+      "channel",
+      "Canal salvo."
+    );
+  }
+
+  async function handleMessageSave(message = messageInput) {
+    const nextMessage = message.trim();
+
+    if (!nextMessage) {
+      setStatus(null);
+      setError("Escreva a mensagem antes de salvar.");
+      return;
+    }
+
+    await savePatch(
+      {
+        [config.embedTitleKey]: config.defaultTitle,
+        [config.messageKey]: nextMessage,
+        [config.rulesTitleKey]: config.defaultRulesTitle,
+        [config.rulesKey]: config.defaultRules,
+        [config.channelLabelKey]: config.defaultChannelLabel,
+        [config.footerTextKey]: config.defaultFooterText
+      } as Partial<GuildSettings>,
+      "message",
+      config.savedMessageText
+    );
+  }
+
+  function handleMessageReset() {
+    setMessageInput(config.defaultMessage);
+    void handleMessageSave(config.defaultMessage);
+  }
+
   async function handleImageFile(file: File | undefined) {
     if (!file || !guild || !canManage) {
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
+      setStatus(null);
       setError("A imagem precisa ter ate 10 MB.");
       return;
     }
@@ -283,60 +305,18 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
     const nextImageUrl = imageInput.trim();
 
     if (!nextImageUrl) {
+      setStatus(null);
       setError("Cole um link de imagem ou envie um arquivo.");
       return;
     }
 
     if (!/^https?:\/\//i.test(nextImageUrl)) {
+      setStatus(null);
       setError("Use um link com http:// ou https://.");
       return;
     }
 
     await savePatch({ [config.imageKey]: nextImageUrl } as Partial<GuildSettings>, "imageUrl", config.savedImageText);
-  }
-
-  async function handleTextSave(overrides: Partial<Record<"title" | "message" | "rulesTitle" | "rules" | "channelLabel" | "footerText", string>> = {}) {
-    const nextTitle = (overrides.title ?? titleInput).trim();
-    const nextMessage = (overrides.message ?? messageInput).trim();
-    const nextRulesTitle = (overrides.rulesTitle ?? rulesTitleInput).trim();
-    const nextRules = (overrides.rules ?? rulesInput).trim();
-    const nextChannelLabel = (overrides.channelLabel ?? channelLabelInput).trim();
-    const nextFooterText = (overrides.footerText ?? footerTextInput).trim();
-
-    if (!nextTitle || !nextMessage || !nextRulesTitle || !nextRules || !nextChannelLabel || !nextFooterText) {
-      setError("Preencha todos os textos do painel antes de salvar.");
-      return;
-    }
-
-    await savePatch(
-      {
-        [config.embedTitleKey]: nextTitle,
-        [config.messageKey]: nextMessage,
-        [config.rulesTitleKey]: nextRulesTitle,
-        [config.rulesKey]: nextRules,
-        [config.channelLabelKey]: nextChannelLabel,
-        [config.footerTextKey]: nextFooterText
-      } as Partial<GuildSettings>,
-      "panelText",
-      config.savedMessageText
-    );
-  }
-
-  function handleTextReset() {
-    setTitleInput(config.defaultTitle);
-    setMessageInput(config.defaultMessage);
-    setRulesTitleInput(config.defaultRulesTitle);
-    setRulesInput(config.defaultRules);
-    setChannelLabelInput(config.defaultChannelLabel);
-    setFooterTextInput(config.defaultFooterText);
-    void handleTextSave({
-      channelLabel: config.defaultChannelLabel,
-      footerText: config.defaultFooterText,
-      message: config.defaultMessage,
-      rules: config.defaultRules,
-      rulesTitle: config.defaultRulesTitle,
-      title: config.defaultTitle
-    });
   }
 
   async function handleTest() {
@@ -388,191 +368,103 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
   }
 
   return (
-    <div className="space-y-7">
-      <WelcomePreview
-        channelLabel={channelLabelInput.trim() || config.defaultChannelLabel}
-        displayChannelName={displayChannel?.name ?? destinationChannel?.name ?? "selecione_um_canal"}
-        footerText={footerTextInput.trim() || config.defaultFooterText}
-        imageUrl={imageUrl}
-        message={messageInput.trim() || config.defaultMessage}
-        panelTitle={titleInput.trim() || config.defaultTitle}
-        rulesText={rulesInput.trim() || config.defaultRules}
-        rulesTitle={rulesTitleInput.trim() || config.defaultRulesTitle}
-        viewerName={viewerName}
-      />
-
-      <Card className="mx-auto w-full max-w-6xl rounded-[24px] border-zinc-800/80 bg-[#09090b]/90 shadow-[0_24px_80px_rgba(0,0,0,0.52)] hover:translate-y-0">
-        <CardHeader className="border-b border-zinc-900/80 p-6 sm:p-8">
-          <CardTitle>{config.title}</CardTitle>
-          <CardDescription>{guild.name} - {config.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5 p-6 sm:p-8 lg:grid-cols-2">
-          <div className="flex items-center justify-between gap-5 rounded-[18px] border border-zinc-800/90 bg-zinc-950/80 p-5">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-100">{config.toggleLabel}</p>
-              <p className="mt-1 truncate text-xs text-zinc-500">{enabled ? "Ativado" : "Desativado"}</p>
+    <Card className="overflow-hidden hover:translate-y-0">
+      <CardHeader className="border-b border-zinc-900 p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black text-zinc-200">
+              <MessageSquareText className="h-5 w-5" />
             </div>
+            <div className="min-w-0">
+              <CardTitle>{config.title}</CardTitle>
+              <CardDescription>{config.description}</CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <span className="text-xs font-medium uppercase text-zinc-500">{enabled ? "Ativo" : "Inativo"}</span>
             <Switch
               checked={enabled}
               disabled={!canManage || saving === "enabled"}
-              onCheckedChange={(checked) => savePatch({ [config.enabledKey]: checked } as Partial<GuildSettings>, "enabled")}
+              onCheckedChange={(checked) => {
+                void savePatch({ [config.enabledKey]: checked } as Partial<GuildSettings>, "enabled");
+              }}
             />
           </div>
+        </div>
+      </CardHeader>
 
-          <ControlSelect
-            disabled={!canManage || loadingChannels || saving === "channel"}
-            icon={Hash}
-            label="Canal que recebe a mensagem"
-            onChange={(value) => savePatch({ [config.channelKey]: value || null } as Partial<GuildSettings>, "channel")}
-            options={channels}
-            placeholder={loadingChannels ? "Carregando canais..." : "Selecione um canal"}
-            value={channelId ?? ""}
-          />
+      <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-5">
+          <label className="block space-y-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+              <Hash className="h-4 w-4 text-zinc-400" />
+              Canal
+            </span>
+            <select
+              className="h-11 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-600 disabled:opacity-50"
+              disabled={!canManage || loadingChannels || saving === "channel"}
+              onChange={(event) => void handleChannelChange(event.target.value)}
+              value={channelId ?? ""}
+            >
+              <option value="">{loadingChannels ? "Carregando canais..." : "Selecione um canal"}</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  #{channel.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <ControlSelect
-            disabled={!canManage || loadingChannels || saving === "displayChannel"}
-            icon={Hash}
-            label="Canal citado no banner"
-            onChange={(value) => savePatch({ [config.displayChannelKey]: value || null } as Partial<GuildSettings>, "displayChannel")}
-            options={channels}
-            placeholder={loadingChannels ? "Carregando canais..." : "Usar o mesmo canal"}
-            value={displayChannelId && displayChannelId !== channelId ? displayChannelId : ""}
-          />
+          <label className="block space-y-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+              <MessageSquareText className="h-4 w-4 text-zinc-400" />
+              Mensagem
+            </span>
+            <textarea
+              className="min-h-36 w-full resize-y rounded-lg border border-zinc-800 bg-black px-3 py-3 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
+              disabled={!canManage || saving === "message"}
+              maxLength={1000}
+              onChange={(event) => setMessageInput(event.target.value)}
+              placeholder="Mensagem com {user}"
+              value={messageInput}
+            />
+          </label>
 
-          <div className="space-y-5 rounded-[18px] border border-zinc-800/90 bg-zinc-950/80 p-5 lg:col-span-2">
-            <div>
-              <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
-                <MessageSquareText className="h-4 w-4 text-zinc-400" />
-                Textos editaveis do painel
-              </span>
-              <p className="mt-1 text-xs text-zinc-500">Use {"{user}"} para inserir a mencao do membro automaticamente.</p>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <TextField
-                disabled={!canManage || saving === "panelText"}
-                label="Titulo do embed"
-                maxLength={120}
-                onChange={setTitleInput}
-                value={titleInput}
-              />
-              <TextField
-                disabled={!canManage || saving === "panelText"}
-                label="Titulo das regras"
-                maxLength={120}
-                onChange={setRulesTitleInput}
-                value={rulesTitleInput}
-              />
-              <TextField
-                disabled={!canManage || saving === "panelText"}
-                label="Texto do canal destacado"
-                maxLength={120}
-                onChange={setChannelLabelInput}
-                value={channelLabelInput}
-              />
-              <TextField
-                disabled={!canManage || saving === "panelText"}
-                label="Rodape"
-                maxLength={180}
-                onChange={setFooterTextInput}
-                value={footerTextInput}
-              />
-            </div>
-
-            <label className="block space-y-2">
-              <span className="text-xs font-medium text-zinc-500">Texto principal</span>
-              <textarea
-                className="min-h-32 w-full resize-y rounded-lg border border-zinc-800 bg-black px-3 py-3 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
-                disabled={!canManage || saving === "panelText"}
-                maxLength={1000}
-                onChange={(event) => setMessageInput(event.target.value)}
-                value={messageInput}
-              />
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-xs font-medium text-zinc-500">Regras da comunidade, uma por linha</span>
-              <textarea
-                className="min-h-40 w-full resize-y rounded-lg border border-zinc-800 bg-black px-3 py-3 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
-                disabled={!canManage || saving === "panelText"}
-                maxLength={1500}
-                onChange={(event) => setRulesInput(event.target.value)}
-                value={rulesInput}
-              />
-            </label>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <Button
-                className="h-10"
-                disabled={!canManage || saving === "panelText"}
-                onClick={handleTextReset}
-                type="button"
-                variant="outline"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Restaurar textos
-              </Button>
-              <Button
-                className="h-10"
-                disabled={!canManage || saving === "panelText"}
-                onClick={() => void handleTextSave()}
-                type="button"
-              >
-                {saving === "panelText" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {saving === "panelText" ? "Salvando..." : "Salvar textos"}
-              </Button>
-            </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button disabled={!canManage || saving === "message"} onClick={() => void handleMessageSave()} type="button">
+              {saving === "message" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar
+            </Button>
+            <Button disabled={!canManage || saving === "message"} onClick={handleMessageReset} type="button" variant="outline">
+              <RotateCcw className="h-4 w-4" />
+              Padrao
+            </Button>
+            <Button disabled={!canManage || !channelId || saving === "test"} onClick={handleTest} type="button" variant="outline">
+              {saving === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {config.testButtonText}
+            </Button>
           </div>
 
-          <div className="space-y-4 rounded-[18px] border border-zinc-800/90 bg-zinc-950/80 p-5 lg:col-span-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+          <div className="space-y-3 border-t border-zinc-900 pt-5">
+            <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
               <ImageIcon className="h-4 w-4 text-zinc-400" />
-              Banner do painel
-            </div>
-            <label className="block space-y-2">
-              <span className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-                <Link2 className="h-3.5 w-3.5" />
-                Link de imagem ou GIF
-              </span>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <input
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
-                  disabled={!canManage || saving === "imageUrl"}
-                  onChange={(event) => setImageInput(event.target.value)}
-                  placeholder="https://site.com/banner.gif"
-                  value={imageInput}
-                />
-                <Button
-                  className="h-10 shrink-0"
-                  disabled={!canManage || saving === "imageUrl"}
-                  onClick={() => void handleImageUrlSubmit()}
-                  type="button"
-                  variant="outline"
-                >
-                  <Link2 className="h-4 w-4" />
-                  {saving === "imageUrl" ? "Salvando..." : "Usar link"}
-                </Button>
-              </div>
-            </label>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button
-                className="h-10"
-                disabled={!canManage || saving === "image"}
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-                variant="outline"
-              >
-                <Upload className="h-4 w-4" />
-                {saving === "image" ? "Enviando..." : "Enviar foto/GIF"}
+              Banner
+            </span>
+            <div className="flex flex-col gap-3 lg:flex-row">
+              <input
+                className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
+                disabled={!canManage || saving === "imageUrl"}
+                onChange={(event) => setImageInput(event.target.value)}
+                placeholder="https://site.com/banner.gif"
+                value={imageInput}
+              />
+              <Button disabled={!canManage || saving === "imageUrl"} onClick={() => void handleImageUrlSubmit()} type="button" variant="outline">
+                <Link2 className="h-4 w-4" />
+                Link
               </Button>
-              <Button
-                className="h-10"
-                disabled={!canManage || !channelId || saving === "test"}
-                onClick={handleTest}
-                type="button"
-              >
-                <Send className="h-4 w-4" />
-                {saving === "test" ? "Enviando..." : config.testButtonText}
+              <Button disabled={!canManage || saving === "image"} onClick={() => fileInputRef.current?.click()} type="button" variant="outline">
+                {saving === "image" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Enviar
               </Button>
             </div>
             <input
@@ -585,174 +477,57 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
           </div>
 
           {status ? (
-            <div className="flex items-center gap-2 rounded-[18px] border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-100 lg:col-span-2">
+            <p className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100">
               <CheckCircle2 className="h-4 w-4 text-zinc-400" />
               {status}
-            </div>
+            </p>
           ) : null}
-          {error ? <div className="rounded-[18px] border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-100 lg:col-span-2">{error}</div> : null}
-        </CardContent>
-      </Card>
-    </div>
+          {error ? <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100">{error}</p> : null}
+        </div>
+
+        <SimplePanelPreview
+          channelName={destinationChannel?.name ?? "canal"}
+          imageUrl={imageUrl}
+          message={messageInput.trim() || config.defaultMessage}
+          title={config.defaultTitle}
+          viewerName={viewerName}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
-function TextField({
-  disabled,
-  label,
-  maxLength,
-  onChange,
-  value
-}: {
-  disabled: boolean;
-  label: string;
-  maxLength: number;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-xs font-medium text-zinc-500">{label}</span>
-      <input
-        className="h-11 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
-        disabled={disabled}
-        maxLength={maxLength}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      />
-    </label>
-  );
-}
-
-function ControlSelect({
-  disabled,
-  icon: Icon,
-  label,
-  onChange,
-  options,
-  placeholder,
-  value
-}: {
-  disabled: boolean;
-  icon: typeof Hash;
-  label: string;
-  onChange: (value: string) => void;
-  options: GuildChannelOption[];
-  placeholder: string;
-  value: string;
-}) {
-  return (
-    <label className="block space-y-2 rounded-[18px] border border-zinc-800/90 bg-zinc-950/80 p-5">
-      <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
-        <Icon className="h-4 w-4 text-zinc-400" />
-        {label}
-      </span>
-      <select
-        className="h-11 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-600 disabled:opacity-50"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((channel) => (
-          <option key={channel.id} value={channel.id}>
-            #{channel.name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function WelcomePreview({
-  channelLabel,
-  displayChannelName,
-  footerText,
+function SimplePanelPreview({
+  channelName,
   imageUrl,
   message,
-  panelTitle,
-  rulesText,
-  rulesTitle,
+  title,
   viewerName
 }: {
-  channelLabel: string;
-  displayChannelName: string;
-  footerText: string;
+  channelName: string;
   imageUrl: string;
   message: string;
-  panelTitle: string;
-  rulesText: string;
-  rulesTitle: string;
+  title: string;
   viewerName: string;
 }) {
-  const rules = splitRuleLines(rulesText);
-
   return (
-    <Card className="group mx-auto flex min-h-[600px] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-purple-500/20 bg-[#08080a] shadow-[0_34px_110px_rgba(0,0,0,0.66)] transition duration-500 hover:-translate-y-1 hover:border-purple-400/35 hover:shadow-[0_40px_130px_rgba(124,58,237,0.18)]">
-      <div className="relative overflow-hidden bg-black">
-        <img
-          alt=""
-          className="aspect-[21/9] min-h-[260px] w-full object-cover object-top transition duration-700 group-hover:scale-[1.03]"
-          src={imageUrl}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#08080a] via-black/15 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#08080a] to-transparent" />
-      </div>
-
-      <div className="flex-1 px-6 pb-9 sm:px-10 lg:px-12">
-        <div className="relative z-10 -mt-12 flex flex-col items-center text-center">
-          <Avatar
-            className="h-24 w-24 rounded-[24px] border-4 border-[#08080a] bg-gradient-to-br from-red-500 to-purple-600 text-2xl shadow-[0_20px_55px_rgba(124,58,237,0.35)]"
-            fallback={viewerName}
-          />
-          <div className="mt-5 space-y-2">
-            <p className="text-xs font-semibold uppercase text-red-300">{panelTitle}</p>
-            <h3 className="text-3xl font-semibold text-white sm:text-4xl">@{viewerName}</h3>
+    <aside className="overflow-hidden rounded-lg border border-zinc-800 bg-black">
+      <img alt="" className="aspect-[16/9] w-full object-cover" src={imageUrl} />
+      <div className="space-y-4 p-4">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-11 w-11 rounded-lg" fallback={viewerName} />
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium uppercase text-zinc-500">{title}</p>
+            <p className="truncate text-sm font-semibold text-white">@{viewerName}</p>
           </div>
         </div>
-
-        <div className="mx-auto mt-8 max-w-3xl text-center">
-          <PanelMessage
-            className="whitespace-pre-line text-base leading-8 text-zinc-200 sm:text-lg"
-            message={message}
-            viewerName={viewerName}
-          />
+        <PanelMessage className="whitespace-pre-line text-sm leading-6 text-zinc-300" message={message} viewerName={viewerName} />
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-900 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
+          <Hash className="h-4 w-4 text-zinc-500" />
+          <span className="truncate">#{channelName}</span>
         </div>
-
-        <section className="mx-auto mt-10 max-w-4xl text-center">
-          <p className="text-xs font-semibold uppercase text-purple-200">{rulesTitle}</p>
-          <ol className="mt-5 grid gap-3 sm:grid-cols-2">
-            {rules.map((rule, index) => (
-              <li
-                className="rounded-[18px] border border-white/10 bg-white/[0.045] px-4 py-4 text-sm leading-6 text-zinc-300 shadow-[0_12px_34px_rgba(0,0,0,0.18)] transition duration-300 hover:-translate-y-0.5 hover:border-purple-400/35 hover:bg-purple-500/10"
-                key={rule}
-              >
-                <span className="mx-auto mb-3 flex h-8 w-8 items-center justify-center rounded-full border border-red-400/25 bg-red-500/10 text-xs font-semibold text-red-200">
-                  {index + 1}
-                </span>
-                {rule}
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <div className="mx-auto mt-10 max-w-2xl rounded-[22px] border border-white/10 bg-white/[0.075] p-5 text-center shadow-[0_22px_70px_rgba(124,58,237,0.16)] backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:border-red-400/35 hover:bg-white/[0.095] sm:p-6">
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-purple-400/25 bg-purple-500/15 text-purple-100">
-              <Hash className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-zinc-500">{channelLabel}</p>
-              <p className="mt-1 truncate text-xl font-semibold text-white">#{displayChannelName}</p>
-            </div>
-          </div>
-        </div>
-
-        <footer className="mt-10 border-t border-white/10 pt-6 text-center">
-          <p className="text-xs font-medium uppercase text-zinc-500">{footerText}</p>
-        </footer>
       </div>
-    </Card>
+    </aside>
   );
 }
 
@@ -770,13 +545,6 @@ function PanelMessage({ className, message, viewerName }: { className?: string; 
       ))}
     </p>
   );
-}
-
-function splitRuleLines(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((rule) => rule.replace(/^\s*(?:\d+[.)-]\s*)/, "").trim())
-    .filter(Boolean);
 }
 
 function resolveAssetUrl(value: string) {

@@ -66,6 +66,7 @@ export const TWITCH_NOTIFICATION_LIMIT = 10_000;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_EMBED_COLOR = "#9146FF";
+const LIVE_PANEL_BRAND = "vortex lives";
 const memoryNotifications = new Map<string, SocialNotificationDto>();
 
 export async function previewTwitchChannel(input: string) {
@@ -414,7 +415,7 @@ export async function sendTwitchNotificationTest(
   const stream = await getTwitchStream(notification.twitchChannelName).catch(() => null);
   const title = stream?.title ?? "Live de teste iniciada pelo painel";
   const gameName = stream?.gameName || "Grand Theft Auto V";
-  const viewerCount = stream?.viewerCount ?? 78;
+  const viewerCount = stream?.viewerCount ?? 0;
   const thumbnailUrl =
     stream?.thumbnailUrl?.replace("{width}", "1280").replace("{height}", "720") ??
     "https://static-cdn.jtvnw.net/previews-ttv/live_user_twitch-1280x720.jpg";
@@ -878,7 +879,7 @@ async function sendDiscordLivePanel(input: {
   }
 
   const mention = formatMention(input.notification);
-  const content = [mention.content, input.notification.customMessage].filter(Boolean).join("\n") || undefined;
+  const content = mention.content ?? undefined;
   const response = await fetch(`https://discord.com/api/v10/channels/${input.notification.discordChannelId}/messages`, {
     method: "POST",
     headers: {
@@ -896,7 +897,7 @@ async function sendDiscordLivePanel(input: {
             icon_url: input.notification.twitchAvatar ?? undefined,
             url: input.channelUrl
           },
-          description: `[@${input.notification.twitchChannelName}](${input.channelUrl}) esta ao vivo!`,
+          description: renderLiveDescription(input.notification, input.channelUrl),
           fields: [
             {
               name: "Game",
@@ -913,9 +914,8 @@ async function sendDiscordLivePanel(input: {
             url: input.thumbnailUrl
           },
           footer: {
-            text: `Ricardinn98 lives • Hoje as ${formatTime(new Date())}`
-          },
-          timestamp: new Date().toISOString()
+            text: livePanelFooter(new Date())
+          }
         }
       ],
       components: [
@@ -952,6 +952,17 @@ function parseEmbedColor(value?: string | null) {
   return Number.parseInt(normalizeEmbedColor(value).replace("#", ""), 16);
 }
 
+function renderLiveDescription(notification: SocialNotificationDto, channelUrl: string) {
+  const channelLine = `[@${notification.twitchChannelName}](${channelUrl})`;
+  const customMessage = notification.customMessage?.trim();
+
+  if (!customMessage) {
+    return `${channelLine} esta ao vivo!`;
+  }
+
+  return `${channelLine} ${customMessage}`;
+}
+
 function formatMention(notification: SocialNotificationDto) {
   if (!notification.mentionRoleId) {
     return {
@@ -985,4 +996,18 @@ function formatTime(value: Date) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(value);
+}
+
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(value);
+}
+
+function livePanelFooter(value: Date) {
+  return `${LIVE_PANEL_BRAND} - Hoje \u00e0s ${formatTime(value)} - ${formatDateTime(value)}`;
 }

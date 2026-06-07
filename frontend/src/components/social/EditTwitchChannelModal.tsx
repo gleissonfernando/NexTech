@@ -79,8 +79,8 @@ export function EditTwitchChannelModal({ error, notification, onClose, onSubmit,
               ))}
           </select>
         </Field>
-        <Field label="Mensagem personalizada">
-          <textarea className="social-input min-h-24 resize-none" onChange={(event) => setCustomMessage(event.target.value)} placeholder="Opcional" value={customMessage} />
+        <Field label="Texto dentro da embed">
+          <textarea className="social-input min-h-24 resize-none" onChange={(event) => setCustomMessage(event.target.value)} placeholder="@Vilões [+18] FOCO MAXIMO 💯 | DC | VOZ | PIX" value={customMessage} />
         </Field>
         <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-3 text-sm text-zinc-500">

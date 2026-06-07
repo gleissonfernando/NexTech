@@ -147,11 +147,11 @@ export function AddTwitchChannelModal({ botId, error, guildId, onClose, onSubmit
           </Field>
         </div>
 
-        <Field label="Mensagem personalizada">
+        <Field label="Texto dentro da embed">
           <textarea
             className="social-input min-h-24 resize-none"
             onChange={(event) => setCustomMessage(event.target.value)}
-            placeholder="@Streamer esta ao vivo!"
+            placeholder="@Vilões [+18] FOCO MAXIMO 💯 | DC | VOZ | PIX"
             value={customMessage}
           />
         </Field>

@@ -13,6 +13,7 @@ import { getTwitchStreams, type TwitchStream } from "./twitchApiService";
 let running = false;
 const TWITCH_BATCH_SIZE = 100;
 const NOTIFICATION_CONCURRENCY = 25;
+const LIVE_PANEL_BRAND = "vortex lives";
 
 export function startSocialNotificationMonitor(client: Client, api: ApiClient) {
   const run = () => {
@@ -132,14 +133,15 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
 
   const streamUrl = `https://www.twitch.tv/${stream.userLogin}`;
   const thumbnailUrl = stream.thumbnailUrl.replace("{width}", "1280").replace("{height}", "720");
+  const streamerName = stream.userName || notification.twitchChannelName;
   const embed = new EmbedBuilder()
     .setColor(normalizeEmbedColor(notification.embedColor))
     .setAuthor({
-      name: `${stream.userName || notification.twitchChannelName} is now live on Twitch!`,
+      name: `${streamerName} is now live on Twitch!`,
       iconURL: notification.twitchAvatar ?? undefined,
       url: streamUrl
     })
-    .setDescription(`[@${stream.userLogin}](${streamUrl}) esta ao vivo!`)
+    .setDescription(renderLiveDescription(notification, stream, streamUrl))
     .addFields(
       {
         name: "Game",
@@ -154,12 +156,11 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
     )
     .setImage(thumbnailUrl)
     .setFooter({
-      text: `Ricardinn98 lives - Hoje as ${formatTime(new Date())}`
-    })
-    .setTimestamp(new Date(stream.startedAt));
+      text: livePanelFooter(new Date())
+    });
 
   const mention = formatMention(notification);
-  const content = [mention.content, notification.customMessage || null].filter(Boolean).join("\n");
+  const content = mention.content ?? undefined;
   const components = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -177,6 +178,17 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
   });
 
   return message.id;
+}
+
+function renderLiveDescription(notification: SocialNotification, stream: TwitchStream, streamUrl: string) {
+  const channelLine = `[@${stream.userLogin}](${streamUrl})`;
+  const customMessage = notification.customMessage?.trim();
+
+  if (!customMessage) {
+    return `${channelLine} esta ao vivo!`;
+  }
+
+  return `${channelLine} ${customMessage}`;
 }
 
 function formatMention(notification: SocialNotification): { content: string | null; allowedMentions: MessageMentionOptions } {
@@ -242,4 +254,18 @@ function formatTime(value: Date) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(value);
+}
+
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(value);
+}
+
+function livePanelFooter(value: Date) {
+  return `${LIVE_PANEL_BRAND} - Hoje \u00e0s ${formatTime(value)} - ${formatDateTime(value)}`;
 }

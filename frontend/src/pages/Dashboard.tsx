@@ -92,6 +92,8 @@ type ModuleDefinition = {
   view: ViewId;
 };
 
+type EntryLeaveMode = "welcome" | "leave";
+
 const CONFIGURED_GUILD_ID = "";
 const CONFIGURED_GUILD_NAME = "Servidor configurado";
 
@@ -884,32 +886,17 @@ function SettingsView({
   viewerName: string;
 }) {
   const blocks: JSX.Element[] = [];
+  const entryLeaveModes = (["welcome", "leave"] as const).filter((mode) => enabledModules.includes(mode));
 
-  if (enabledModules.includes("welcome")) {
+  if (entryLeaveModes.length) {
     blocks.push(
-      <WelcomePanel
+      <EntryLeaveManager
+        availableModes={entryLeaveModes}
         botId={botId}
-        canManage={canManageModule("welcome")}
+        canManageModule={canManageModule}
         guild={guild}
-        key="welcome"
+        key="entry-leave"
         loading={loading}
-        mode="welcome"
-        onSettingsChange={onSettingsChange}
-        settings={settings}
-        viewerName={viewerName}
-      />
-    );
-  }
-
-  if (enabledModules.includes("leave")) {
-    blocks.push(
-      <WelcomePanel
-        botId={botId}
-        canManage={canManageModule("leave")}
-        guild={guild}
-        key="leave"
-        loading={loading}
-        mode="leave"
         onSettingsChange={onSettingsChange}
         settings={settings}
         viewerName={viewerName}
@@ -950,6 +937,82 @@ function SettingsView({
   }
 
   return <div className="space-y-5">{blocks}</div>;
+}
+
+function EntryLeaveManager({
+  availableModes,
+  botId,
+  canManageModule,
+  guild,
+  loading,
+  onSettingsChange,
+  settings,
+  viewerName
+}: {
+  availableModes: EntryLeaveMode[];
+  botId?: string | null;
+  canManageModule: (moduleId: string) => boolean;
+  guild: DashboardGuild | null;
+  loading: boolean;
+  onSettingsChange: (settings: GuildSettings) => void;
+  settings: GuildSettings | null;
+  viewerName: string;
+}) {
+  const [activeMode, setActiveMode] = useState<EntryLeaveMode>(availableModes[0] ?? "welcome");
+  const modesKey = availableModes.join("|");
+
+  useEffect(() => {
+    if (!availableModes.includes(activeMode)) {
+      setActiveMode(availableModes[0] ?? "welcome");
+    }
+  }, [activeMode, availableModes, modesKey]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Entrada e saida</h2>
+          <p className="mt-1 text-sm text-zinc-500">Configure as mensagens automaticas dos membros em um so lugar.</p>
+        </div>
+
+        <div className="inline-flex w-full rounded-lg border border-zinc-800 bg-zinc-950 p-1 sm:w-auto">
+          {availableModes.map((mode) => {
+            const active = activeMode === mode;
+            const Icon = mode === "welcome" ? UserPlus : UserMinus;
+            const label = mode === "welcome" ? "Entrada" : "Saida";
+
+            return (
+              <button
+                className={[
+                  "flex h-9 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition sm:flex-none",
+                  active
+                    ? "bg-white text-black"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                ].join(" ")}
+                key={mode}
+                onClick={() => setActiveMode(mode)}
+                type="button"
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <WelcomePanel
+        botId={botId}
+        canManage={canManageModule(activeMode)}
+        guild={guild}
+        loading={loading}
+        mode={activeMode}
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+        viewerName={viewerName}
+      />
+    </section>
+  );
 }
 
 function LogsView({ logs }: { logs: LogEntry[] }) {
