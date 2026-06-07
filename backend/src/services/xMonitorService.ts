@@ -93,6 +93,7 @@ type XApiMedia = {
 
 type XApiResponse<TData> = {
   data?: TData;
+  detail?: string;
   errors?: Array<{
     detail?: string;
     status?: number;
@@ -105,6 +106,9 @@ type XApiResponse<TData> = {
     newest_id?: string;
     result_count?: number;
   };
+  status?: number | string;
+  title?: string;
+  type?: string;
 };
 
 const X_API_BASE_URL = "https://api.x.com/2";
@@ -538,7 +542,7 @@ async function xFetch<TResponse>(path: string) {
   const data = (await response.json().catch(() => null)) as XApiResponse<unknown> | null;
 
   if (!response.ok) {
-    throw createServiceError(formatXApiError(data, response.status), response.status === 429 ? 429 : 502);
+    throw createServiceError(formatXApiError(data, response.status), xApiHttpStatus(response.status));
   }
 
   if (data?.errors?.length && !data.data) {
@@ -549,8 +553,33 @@ async function xFetch<TResponse>(path: string) {
 }
 
 function formatXApiError(data: XApiResponse<unknown> | null, fallbackStatus: number) {
-  const detail = data?.errors?.map((error) => error.detail || error.title).filter(Boolean).join(" ");
-  return detail || `API do X respondeu ${fallbackStatus}.`;
+  const title = data?.title?.trim();
+  const detail = data?.detail?.trim();
+  const type = data?.type?.trim();
+
+  if (fallbackStatus === 402 || title === "CreditsDepleted" || type?.includes("/credits")) {
+    return "Creditos da API do X esgotados. Recarregue/adquira creditos no portal do X ou configure outro X_BEARER_TOKEN com cota.";
+  }
+
+  if (fallbackStatus === 401) {
+    return "X_BEARER_TOKEN invalido ou expirado. Gere um novo Bearer Token no portal do X.";
+  }
+
+  if (fallbackStatus === 403) {
+    return "Seu plano/permissao da API do X nao permite essa consulta.";
+  }
+
+  const errors = data?.errors?.map((error) => error.detail || error.title).filter(Boolean).join(" ");
+  const message = [detail, errors, title].filter(Boolean).join(" ");
+  return message || `API do X respondeu ${fallbackStatus}.`;
+}
+
+function xApiHttpStatus(status: number) {
+  if (status === 429 || status === 402) {
+    return status;
+  }
+
+  return 502;
 }
 
 async function buildAccountPatch(input: UpdateXAccountInput, userId?: string | null): Promise<Partial<MongoXAccount>> {
