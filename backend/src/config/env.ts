@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const productionPublicUrl = "";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
+const requiredDiscordScopes = "identify email guilds guilds.members.read";
 const isProduction = process.env.NODE_ENV === "production";
 
 function cleanEnvValue(value: unknown) {
@@ -109,6 +110,10 @@ function mergeCsvValues(value: string, fallback: string) {
   return [...new Set(`${value},${fallback}`.split(",").map((item) => item.trim()).filter(Boolean))].join(",");
 }
 
+function mergeSpaceValues(value: string, fallback: string) {
+  return [...new Set(`${value} ${fallback}`.split(/\s+/).map((item) => item.trim()).filter(Boolean))].join(" ");
+}
+
 function isLocalUrl(value: string) {
   try {
     const url = new URL(value);
@@ -159,7 +164,7 @@ const envSchema = z
     SITE_ORIGIN: envUrl("SITE_ORIGIN", defaultSiteOrigin),
     DISCORD_OAUTH_REDIRECT_URI: envUrl("DISCORD_OAUTH_REDIRECT_URI", canonicalDiscordRedirectUri),
     DISCORD_CALLBACK_URL: envUrl("DISCORD_CALLBACK_URL", canonicalDiscordRedirectUri),
-    DISCORD_SCOPES: z.string().default("identify email guilds"),
+    DISCORD_SCOPES: z.string().default(requiredDiscordScopes),
     X_CONSUMER_KEY: z.string().default(""),
     X_CONSUMER_SECRET: z.string().default(""),
     X_BEARER_TOKEN: z.string().default(""),
@@ -185,6 +190,7 @@ const envSchema = z
       FRONTEND_URL: oauthFrontendUrl,
       DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
       DISCORD_CALLBACK_URL: oauthCallbackUrl,
+      DISCORD_SCOPES: mergeSpaceValues(value.DISCORD_SCOPES, requiredDiscordScopes),
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
       DASHBOARD_DEV_USER_IDS: mergeCsvValues(value.DASHBOARD_DEV_USER_IDS, defaultDashboardDevUserIds),
       DASHBOARD_GUILD_IDS: mergeCsvValues(value.DASHBOARD_GUILD_IDS, defaultDashboardGuildIds)

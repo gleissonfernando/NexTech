@@ -76,6 +76,53 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
   }
 }
 
+export async function getStoredDiscordTokens(discordId: string) {
+  try {
+    const { users } = await getMongoCollections();
+    const user = await users.findOne(
+      {
+        discordId
+      },
+      {
+        projection: {
+          accessToken: 1,
+          refreshToken: 1
+        }
+      }
+    );
+
+    return user?.accessToken
+      ? {
+          accessToken: user.accessToken,
+          refreshToken: user.refreshToken ?? null
+        }
+      : null;
+  } catch (error) {
+    console.warn("[mongo] nao foi possivel ler token OAuth do usuario:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+export async function updateStoredDiscordTokens(discordId: string, tokens: DiscordTokenResponse) {
+  try {
+    const { users } = await getMongoCollections();
+    await users.updateOne(
+      {
+        discordId
+      },
+      {
+        $set: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          updatedAt: new Date()
+        }
+      }
+    );
+  } catch (error) {
+    console.warn("[mongo] nao foi possivel atualizar token OAuth do usuario:", error instanceof Error ? error.message : error);
+  }
+}
+
 export async function saveSelectedGuild(userId: string, selectedGuildId: string) {
   try {
     const { users } = await getMongoCollections();

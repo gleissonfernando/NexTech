@@ -22,6 +22,10 @@ export type DiscordTokenResponse = {
   scope: string;
 };
 
+export type DiscordCurrentUserGuildMember = {
+  roles?: string[];
+};
+
 function encodeOAuthParams(params: Record<string, string>) {
   return Object.entries(params)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
@@ -59,11 +63,39 @@ export async function exchangeDiscordCode(code: string) {
   return data;
 }
 
+export async function refreshDiscordTokens(refreshToken: string) {
+  const body = new URLSearchParams({
+    client_id: env.DISCORD_CLIENT_ID,
+    client_secret: env.DISCORD_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken
+  });
+
+  const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    }
+  });
+
+  return data;
+}
+
 export async function fetchDiscordUser(accessToken: string) {
   const { data } = await axios.get<DiscordUser>(`${DISCORD_API}/users/@me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`
     }
+  });
+
+  return data;
+}
+
+export async function fetchDiscordCurrentUserGuildMember(accessToken: string, guildId: string) {
+  const { data } = await axios.get<DiscordCurrentUserGuildMember>(`${DISCORD_API}/users/@me/guilds/${guildId}/member`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    timeout: 5000
   });
 
   return data;

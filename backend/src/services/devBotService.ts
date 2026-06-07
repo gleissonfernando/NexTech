@@ -6,7 +6,9 @@ import { getMongoCollections, type MongoBotGuildConfig, type MongoDevBot, type M
 import { emitRealtime } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
 import { getDiscordAvatarUrl, getGuildIconUrl } from "./discordAssetService";
+import { fetchDiscordCurrentUserGuildMember, refreshDiscordTokens } from "./discordOAuthService";
 import { getPersistedDashboardAccess } from "./settingsService";
+import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -1368,6 +1370,26 @@ async function hasConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId:
     return false;
   }
 
+  const memberRoleIds = await getDashboardMemberRoleIds(userId, bot, guildId);
+
+  if (!memberRoleIds) {
+    return false;
+  }
+
+  return access.roleIds.some((roleId) => memberRoleIds.has(roleId));
+}
+
+async function getDashboardMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string) {
+  const botRoleIds = await fetchBotGuildMemberRoleIds(userId, bot, guildId);
+
+  if (botRoleIds) {
+    return botRoleIds;
+  }
+
+  return fetchOAuthGuildMemberRoleIds(userId, guildId);
+}
+
+async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string) {
   const token = decryptSecret(bot.tokenEncrypted);
 
   try {
@@ -1380,17 +1402,100 @@ async function hasConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId:
     const memberRoleIds = new Set(member.roles);
     memberRoleIds.add(guildId);
 
-    return access.roleIds.some((roleId) => memberRoleIds.has(roleId));
+    return memberRoleIds;
   } catch (error) {
-    if (!(axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 404))) {
+    const status = axios.isAxiosError(error) ? error.response?.status ?? null : null;
+
+    if (status === 403 || status === 404) {
+      console.warn(
+        `[discord] bot ${bot._id} nao conseguiu ler o membro ${userId} no servidor ${guildId} (HTTP ${status}). Tentando OAuth do usuario.`
+      );
+    } else {
       console.warn(
         `[discord] nao foi possivel validar cargo do painel em ${guildId}:`,
         error instanceof Error ? error.message : error
       );
     }
 
-    return false;
+    return null;
   }
+}
+
+async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string) {
+  const tokens = await getStoredDiscordTokens(userId);
+
+  if (!tokens?.accessToken) {
+    console.warn(`[access] usuario ${userId} precisa entrar novamente pelo Discord para validar cargos do servidor ${guildId}.`);
+    return null;
+  }
+
+  const firstLookup = await fetchOAuthGuildMemberRoleIdsWithToken(tokens.accessToken, guildId);
+
+  if (firstLookup.roleIds || firstLookup.status !== 401 || !tokens.refreshToken) {
+    return firstLookup.roleIds;
+  }
+
+  try {
+    const refreshedTokens = await refreshDiscordTokens(tokens.refreshToken);
+    await updateStoredDiscordTokens(userId, refreshedTokens);
+    return (await fetchOAuthGuildMemberRoleIdsWithToken(refreshedTokens.access_token, guildId)).roleIds;
+  } catch (error) {
+    console.warn(
+      `[discord] nao foi possivel renovar OAuth do usuario ${userId} para validar cargos:`,
+      readDiscordErrorMessage(error)
+    );
+    return null;
+  }
+}
+
+async function fetchOAuthGuildMemberRoleIdsWithToken(accessToken: string, guildId: string) {
+  try {
+    const member = await fetchDiscordCurrentUserGuildMember(accessToken, guildId);
+    const memberRoleIds = new Set(member.roles ?? []);
+    memberRoleIds.add(guildId);
+
+    return {
+      roleIds: memberRoleIds,
+      status: null
+    };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status ?? null : null;
+
+    if (status === 403) {
+      console.warn(`[discord] OAuth sem permissao guilds.members.read para validar cargos do servidor ${guildId}.`);
+    } else if (status === 404) {
+      console.warn(`[discord] usuario OAuth nao encontrado como membro do servidor ${guildId}.`);
+    } else if (status !== 401) {
+      console.warn(
+        `[discord] nao foi possivel validar cargo via OAuth no servidor ${guildId}:`,
+        readDiscordErrorMessage(error)
+      );
+    }
+
+    return {
+      roleIds: null,
+      status
+    };
+  }
+}
+
+function readDiscordErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const responseMessage = error.response?.data;
+
+    if (
+      responseMessage &&
+      typeof responseMessage === "object" &&
+      "message" in responseMessage &&
+      typeof responseMessage.message === "string"
+    ) {
+      return `HTTP ${error.response?.status ?? "?"}: ${responseMessage.message}`;
+    }
+
+    return error.response?.status ? `HTTP ${error.response.status}: ${error.message}` : error.message;
+  }
+
+  return error instanceof Error ? error.message : error;
 }
 
 function groupGuildIdsByBot(configs: MongoBotGuildConfig[]) {
