@@ -14,7 +14,6 @@ import {
   DEFAULT_WELCOME_MESSAGE,
   DEFAULT_WELCOME_RULES,
   DEFAULT_WELCOME_RULES_TITLE,
-  DEFAULT_WELCOME_TITLE,
   type GuildSettingsDto
 } from "./settingsService";
 
@@ -22,6 +21,17 @@ const DISCORD_API_URL = "https://discord.com/api/v10";
 const WELCOME_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/welcome");
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
 type MemberPanelMode = "welcome" | "leave";
+type DiscordEmbedPayload = {
+  color: number;
+  description?: string;
+  footer?: {
+    text: string;
+  };
+  image?: {
+    url: string;
+  };
+  title?: string;
+};
 
 const MIME_EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
@@ -96,16 +106,20 @@ function memberPanelDescription({
   ].join("\n");
 }
 
-export function createWelcomePanelEmbed(settings: GuildSettingsDto, userMention: string) {
+export function createWelcomePanelEmbeds(settings: GuildSettingsDto, userMention: string) {
   const displayChannelId = settings.welcomeDisplayChannelId ?? settings.welcomeChannelId;
   const imageUrl = toPublicUrl(settings.welcomeImageUrl ?? DEFAULT_WELCOME_IMAGE_URL);
-
-  return createMemberPanelEmbed({
+  const textEmbed = createMemberPanelTextEmbed({
     description: welcomePanelDescription(settings, userMention, displayChannelId),
-    footerText: settings.welcomeFooterText ?? DEFAULT_WELCOME_FOOTER_TEXT,
-    imageUrl,
-    title: settings.welcomeTitle ?? DEFAULT_WELCOME_TITLE
+    footerText: settings.welcomeFooterText ?? DEFAULT_WELCOME_FOOTER_TEXT
   });
+
+  return imageUrl
+    ? [
+        createMemberPanelImageEmbed(imageUrl),
+        textEmbed
+      ]
+    : [textEmbed];
 }
 
 export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: string) {
@@ -120,6 +134,31 @@ export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: s
   });
 }
 
+function createMemberPanelImageEmbed(imageUrl: string): DiscordEmbedPayload {
+  return {
+    color: 0xef4444,
+    image: {
+      url: imageUrl
+    }
+  };
+}
+
+function createMemberPanelTextEmbed({
+  description,
+  footerText
+}: {
+  description: string;
+  footerText: string;
+}): DiscordEmbedPayload {
+  return {
+    color: 0xef4444,
+    description,
+    footer: {
+      text: footerText
+    }
+  };
+}
+
 function createMemberPanelEmbed({
   description,
   footerText,
@@ -130,7 +169,7 @@ function createMemberPanelEmbed({
   footerText: string;
   imageUrl: string | null;
   title: string;
-}) {
+}): DiscordEmbedPayload {
   return {
     color: 0xef4444,
     title,
@@ -172,7 +211,7 @@ export async function sendWelcomePanelToDiscord(settings: GuildSettingsDto, user
   await sendMemberPanelToDiscord({
     botToken,
     channelId: settings.welcomeChannelId,
-    embed: createWelcomePanelEmbed(settings, userMention),
+    embeds: createWelcomePanelEmbeds(settings, userMention),
     missingChannelMessage: "Selecione o canal onde o painel sera enviado.",
     testErrorLabel: "boas-vindas"
   });
@@ -182,7 +221,7 @@ export async function sendLeavePanelToDiscord(settings: GuildSettingsDto, userMe
   await sendMemberPanelToDiscord({
     botToken,
     channelId: settings.leaveChannelId,
-    embed: createLeavePanelEmbed(settings, userMention),
+    embeds: [createLeavePanelEmbed(settings, userMention)],
     missingChannelMessage: "Selecione o canal onde o painel de saida sera enviado.",
     testErrorLabel: "saida"
   });
@@ -191,13 +230,13 @@ export async function sendLeavePanelToDiscord(settings: GuildSettingsDto, userMe
 async function sendMemberPanelToDiscord({
   channelId,
   botToken,
-  embed,
+  embeds,
   missingChannelMessage,
   testErrorLabel
 }: {
   channelId: string | null;
   botToken?: string | null;
-  embed: ReturnType<typeof createWelcomePanelEmbed>;
+  embeds: DiscordEmbedPayload[];
   missingChannelMessage: string;
   testErrorLabel: string;
 }) {
@@ -218,7 +257,7 @@ async function sendMemberPanelToDiscord({
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      embeds: [embed],
+      embeds,
       allowed_mentions: {
         parse: []
       }

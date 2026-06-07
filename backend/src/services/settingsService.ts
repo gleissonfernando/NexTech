@@ -54,21 +54,33 @@ export type PersistedDashboardAccess = {
 
 const memorySettings = new Map<string, GuildSettingsDto>();
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
-export const DEFAULT_WELCOME_MESSAGE = [
+const PREVIOUS_WELCOME_MESSAGE = [
   "Seja bem-vindo(a), {user}, a nossa comunidade de lives.",
   "Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos."
 ].join("\n");
-export const DEFAULT_WELCOME_TITLE = "Ricardinn98";
-export const DEFAULT_WELCOME_RULES_TITLE = "Algumas dicas:";
-export const DEFAULT_WELCOME_RULES = [
+const PREVIOUS_WELCOME_RULES = [
   "Leia as regras antes de participar.",
   "Aguarde os avisos oficiais de lives e eventos.",
   "Respeite streamers, espectadores e moderadores.",
   "Nao divulgue lives, links ou canais sem autorizacao.",
   "Converse, faca amizades e aproveite sua estadia."
 ].join("\n");
+const PREVIOUS_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
+export const DEFAULT_WELCOME_MESSAGE = [
+  "Seja bem-vindo(a), {user}, \u00e0 nossa comunidade de lives.",
+  "Aqui a galera acompanha transmiss\u00f5es, eventos da comunidade, avisos e momentos ao vivo juntos."
+].join("\n");
+export const DEFAULT_WELCOME_TITLE = "Ricardin98";
+export const DEFAULT_WELCOME_RULES_TITLE = "Algumas dicas:";
+export const DEFAULT_WELCOME_RULES = [
+  "Leia as regras antes de participar.",
+  "Aguarde os avisos oficiais de lives e eventos.",
+  "Respeite streamers, espectadores e moderadores.",
+  "N\u00e3o divulgue links ou canais sem autoriza\u00e7\u00e3o.",
+  "Converse, fa\u00e7a amizades e aproveite sua estadia."
+].join("\n");
 export const DEFAULT_WELCOME_CHANNEL_LABEL = "Acesse o canal:";
-export const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
+export const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardin98 - Comunidade de Lives";
 export const DEFAULT_LEAVE_MESSAGE = [
   "Ate mais, {user}. Obrigado por ter feito parte da nossa comunidade de lives.",
   "As portas continuam abertas para quando quiser voltar e acompanhar as transmissoes com a galera."
@@ -219,7 +231,7 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     welcomeMessage: normalizePanelMessage(
       "welcomeMessage" in input ? input.welcomeMessage : current.welcomeMessage,
       DEFAULT_WELCOME_MESSAGE,
-      LEGACY_WELCOME_MESSAGE
+      [LEGACY_WELCOME_MESSAGE, PREVIOUS_WELCOME_MESSAGE]
     ),
     welcomeRulesTitle: normalizePanelText(
       "welcomeRulesTitle" in input ? input.welcomeRulesTitle : current.welcomeRulesTitle,
@@ -227,7 +239,8 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     ),
     welcomeRules: normalizePanelText(
       "welcomeRules" in input ? input.welcomeRules : current.welcomeRules,
-      DEFAULT_WELCOME_RULES
+      DEFAULT_WELCOME_RULES,
+      [PREVIOUS_WELCOME_RULES]
     ),
     welcomeChannelLabel: normalizePanelText(
       "welcomeChannelLabel" in input ? input.welcomeChannelLabel : current.welcomeChannelLabel,
@@ -235,7 +248,8 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     ),
     welcomeFooterText: normalizePanelText(
       "welcomeFooterText" in input ? input.welcomeFooterText : current.welcomeFooterText,
-      DEFAULT_WELCOME_FOOTER_TEXT
+      DEFAULT_WELCOME_FOOTER_TEXT,
+      [PREVIOUS_WELCOME_FOOTER_TEXT]
     ),
     leaveTitle: normalizePanelText(
       "leaveTitle" in input ? input.leaveTitle : current.leaveTitle,
@@ -362,12 +376,12 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     welcomeMessage: normalizePanelMessage(
       settings.welcomeMessage,
       DEFAULT_WELCOME_MESSAGE,
-      LEGACY_WELCOME_MESSAGE
+      [LEGACY_WELCOME_MESSAGE, PREVIOUS_WELCOME_MESSAGE]
     ),
     welcomeRulesTitle: normalizePanelText(settings.welcomeRulesTitle, DEFAULT_WELCOME_RULES_TITLE),
-    welcomeRules: normalizePanelText(settings.welcomeRules, DEFAULT_WELCOME_RULES),
+    welcomeRules: normalizePanelText(settings.welcomeRules, DEFAULT_WELCOME_RULES, [PREVIOUS_WELCOME_RULES]),
     welcomeChannelLabel: normalizePanelText(settings.welcomeChannelLabel, DEFAULT_WELCOME_CHANNEL_LABEL),
-    welcomeFooterText: normalizePanelText(settings.welcomeFooterText, DEFAULT_WELCOME_FOOTER_TEXT),
+    welcomeFooterText: normalizePanelText(settings.welcomeFooterText, DEFAULT_WELCOME_FOOTER_TEXT, [PREVIOUS_WELCOME_FOOTER_TEXT]),
     leaveEnabled: settings.leaveEnabled ?? defaults.leaveEnabled,
     leaveChannelId: settings.leaveChannelId ?? defaults.leaveChannelId,
     leaveDisplayChannelId: settings.leaveDisplayChannelId ?? defaults.leaveDisplayChannelId,
@@ -505,13 +519,15 @@ function normalizeWelcomeImageUrl(value: string | null | undefined) {
   return !value || value === "/uploads/welcome/default.gif" ? DEFAULT_WELCOME_IMAGE_URL : value;
 }
 
-function normalizePanelMessage(value: string | null | undefined, fallback: string, legacyValue: string) {
+function normalizePanelMessage(value: string | null | undefined, fallback: string, legacyValue: string | string[]) {
   const normalized = value?.trim();
-  return !normalized || normalized === legacyValue ? fallback : normalized;
+  const legacyValues = Array.isArray(legacyValue) ? legacyValue : [legacyValue];
+  return !normalized || legacyValues.includes(normalized) ? fallback : normalized;
 }
 
-function normalizePanelText(value: string | null | undefined, fallback: string) {
-  return value?.trim() || fallback;
+function normalizePanelText(value: string | null | undefined, fallback: string, legacyValues: string[] = []) {
+  const normalized = value?.trim();
+  return !normalized || legacyValues.includes(normalized) ? fallback : normalized;
 }
 
 function normalizeBotId(botId: string | null | undefined) {

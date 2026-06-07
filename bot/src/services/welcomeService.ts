@@ -3,21 +3,21 @@ import { env } from "../config/env";
 import type { BotContext } from "../types";
 
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
-const DEFAULT_WELCOME_TITLE = "Ricardinn98";
 const DEFAULT_WELCOME_MESSAGE = [
-  "Seja bem-vindo(a), {user}, a nossa comunidade de lives.",
-  "Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos."
+  "Seja bem-vindo(a), {user}, \u00e0 nossa comunidade de lives.",
+  "Aqui a galera acompanha transmiss\u00f5es, eventos da comunidade, avisos e momentos ao vivo juntos."
 ].join("\n");
 const DEFAULT_WELCOME_RULES_TITLE = "Algumas dicas:";
 const DEFAULT_WELCOME_RULES = [
   "Leia as regras antes de participar.",
   "Aguarde os avisos oficiais de lives e eventos.",
   "Respeite streamers, espectadores e moderadores.",
-  "Nao divulgue lives, links ou canais sem autorizacao.",
-  "Converse, faca amizades e aproveite sua estadia."
+  "N\u00e3o divulgue links ou canais sem autoriza\u00e7\u00e3o.",
+  "Converse, fa\u00e7a amizades e aproveite sua estadia."
 ].join("\n");
 const DEFAULT_WELCOME_CHANNEL_LABEL = "Acesse o canal:";
-const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
+const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardin98 - Comunidade de Lives";
+const LEGACY_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
 const DEFAULT_LEAVE_TITLE = "Ricardinn98";
 const DEFAULT_LEAVE_MESSAGE = [
   "Ate mais, {user}. Obrigado por ter feito parte da nossa comunidade de lives.",
@@ -49,23 +49,13 @@ export async function sendWelcomeMessage(context: BotContext, member: GuildMembe
 
   const displayChannelId = settings.welcomeDisplayChannelId ?? settings.welcomeChannelId;
   const imageUrl = resolveImageUrl(settings.welcomeImageUrl ?? DEFAULT_WELCOME_IMAGE_URL);
-  const embed = new EmbedBuilder()
-    .setColor(0xef4444)
-    .setTitle(settings.welcomeTitle?.trim() || DEFAULT_WELCOME_TITLE)
-    .setDescription(welcomePanelDescription(settings, `<@${member.id}>`, displayChannelId))
-    .setFooter({
-      text: settings.welcomeFooterText?.trim() || DEFAULT_WELCOME_FOOTER_TEXT
-    });
-
-  if (imageUrl) {
-    embed.setImage(imageUrl);
-  }
+  const embeds = createWelcomeMessageEmbeds(settings, `<@${member.id}>`, displayChannelId, imageUrl);
 
   await channel.send({
     allowedMentions: {
       parse: []
     },
-    embeds: [embed]
+    embeds
   });
 }
 
@@ -121,6 +111,34 @@ function welcomePanelDescription(
     rulesTitle: settings.welcomeRulesTitle,
     userMention
   });
+}
+
+function createWelcomeMessageEmbeds(
+  settings: Awaited<ReturnType<BotContext["api"]["getSettings"]>>,
+  userMention: string,
+  displayChannelId: string | null,
+  imageUrl: string | null
+) {
+  const embeds: EmbedBuilder[] = [];
+
+  if (imageUrl) {
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0xef4444)
+        .setImage(imageUrl)
+    );
+  }
+
+  embeds.push(
+    new EmbedBuilder()
+      .setColor(0xef4444)
+      .setDescription(welcomePanelDescription(settings, userMention, displayChannelId))
+      .setFooter({
+        text: welcomeFooterText(settings.welcomeFooterText)
+      })
+  );
+
+  return embeds;
 }
 
 function leavePanelDescription(
@@ -200,6 +218,11 @@ async function resolveTextChannel(member: GuildMember | PartialGuildMember, chan
 
 function formatPanelMessage(message: string | null, userMention: string, fallback: string) {
   return (message?.trim() || fallback).replace(/\{user\}/gi, userMention);
+}
+
+function welcomeFooterText(value: string | null) {
+  const normalized = value?.trim();
+  return !normalized || normalized === LEGACY_WELCOME_FOOTER_TEXT ? DEFAULT_WELCOME_FOOTER_TEXT : normalized;
 }
 
 function formatRuleLines(rules: string | null, fallback: string) {

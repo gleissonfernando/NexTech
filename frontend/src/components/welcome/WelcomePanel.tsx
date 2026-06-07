@@ -21,7 +21,6 @@ import {
   uploadWelcomeImage
 } from "../../lib/api";
 import type { DashboardGuild, GuildChannelOption, GuildSettings } from "../../types";
-import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
@@ -40,21 +39,21 @@ type WelcomePanelProps = {
 };
 
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
-const DEFAULT_WELCOME_TITLE = "Ricardinn98";
+const DEFAULT_WELCOME_TITLE = "Ricardin98";
 const DEFAULT_WELCOME_MESSAGE = [
-  "Seja bem-vindo(a), {user}, a nossa comunidade de lives.",
-  "Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos."
+  "Seja bem-vindo(a), {user}, \u00e0 nossa comunidade de lives.",
+  "Aqui a galera acompanha transmiss\u00f5es, eventos da comunidade, avisos e momentos ao vivo juntos."
 ].join("\n");
 const DEFAULT_WELCOME_RULES_TITLE = "Algumas dicas:";
 const DEFAULT_WELCOME_RULES = [
   "Leia as regras antes de participar.",
   "Aguarde os avisos oficiais de lives e eventos.",
   "Respeite streamers, espectadores e moderadores.",
-  "Nao divulgue lives, links ou canais sem autorizacao.",
-  "Converse, faca amizades e aproveite sua estadia."
+  "N\u00e3o divulgue links ou canais sem autoriza\u00e7\u00e3o.",
+  "Converse, fa\u00e7a amizades e aproveite sua estadia."
 ].join("\n");
 const DEFAULT_WELCOME_CHANNEL_LABEL = "Acesse o canal:";
-const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
+const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardin98 - Comunidade de Lives";
 const DEFAULT_LEAVE_TITLE = "Ricardinn98";
 const DEFAULT_LEAVE_MESSAGE = [
   "Ate mais, {user}. Obrigado por ter feito parte da nossa comunidade de lives.",
@@ -486,10 +485,13 @@ export function WelcomePanel({
         </div>
 
         <SimplePanelPreview
+          channelLabel={settings?.[config.channelLabelKey]?.trim() || config.defaultChannelLabel}
           channelName={destinationChannel?.name ?? "canal"}
+          footerText={settings?.[config.footerTextKey]?.trim() || config.defaultFooterText}
           imageUrl={imageUrl}
           message={messageInput.trim() || config.defaultMessage}
-          title={config.defaultTitle}
+          rules={settings?.[config.rulesKey]?.trim() || config.defaultRules}
+          rulesTitle={settings?.[config.rulesTitleKey]?.trim() || config.defaultRulesTitle}
           viewerName={viewerName}
         />
       </CardContent>
@@ -498,35 +500,52 @@ export function WelcomePanel({
 }
 
 function SimplePanelPreview({
+  channelLabel,
   channelName,
+  footerText,
   imageUrl,
   message,
-  title,
+  rules,
+  rulesTitle,
   viewerName
 }: {
+  channelLabel: string;
   channelName: string;
+  footerText: string;
   imageUrl: string;
   message: string;
-  title: string;
+  rules: string;
+  rulesTitle: string;
   viewerName: string;
 }) {
+  const ruleItems = formatRuleItems(rules);
+
   return (
     <aside className="overflow-hidden rounded-lg border border-zinc-800 bg-black">
       <img alt="" className="aspect-[16/9] w-full object-cover" src={imageUrl} />
-      <div className="space-y-4 p-4">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-11 w-11 rounded-lg" fallback={viewerName} />
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium uppercase text-zinc-500">{title}</p>
-            <p className="truncate text-sm font-semibold text-white">@{viewerName}</p>
-          </div>
+      <div className="space-y-5 p-4 pt-5">
+        <PanelMessage className="whitespace-pre-line text-sm leading-6 text-zinc-200" message={message} viewerName={viewerName} />
+
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-white">{rulesTitle}</p>
+          <ol className="space-y-1 text-sm leading-6 text-zinc-300">
+            {ruleItems.map((rule, index) => (
+              <li className="grid grid-cols-[1.6rem_minmax(0,1fr)] gap-2" key={`${rule}-${index}`}>
+                <span className="font-semibold text-zinc-100">{index + 1}.</span>
+                <span>{rule}</span>
+              </li>
+            ))}
+          </ol>
         </div>
-        <PanelMessage className="whitespace-pre-line text-sm leading-6 text-zinc-300" message={message} viewerName={viewerName} />
+
         <div className="flex items-center gap-2 rounded-lg border border-zinc-900 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
-          <Hash className="h-4 w-4 text-zinc-500" />
-          <span className="truncate">#{channelName}</span>
+          <span aria-hidden="true">{"\u{1F517}"}</span>
+          <span className="min-w-0 truncate">
+            {channelLabel} <span className="font-medium text-zinc-100">#{channelName}</span>
+          </span>
         </div>
       </div>
+      <footer className="border-t border-zinc-900 px-4 py-3 text-xs text-zinc-500">{footerText}</footer>
     </aside>
   );
 }
@@ -545,6 +564,13 @@ function PanelMessage({ className, message, viewerName }: { className?: string; 
       ))}
     </p>
   );
+}
+
+function formatRuleItems(rules: string) {
+  return rules
+    .split(/\r?\n/)
+    .map((rule) => rule.replace(/^\s*(?:\d+[.)-]\s*|\*\*\d+[.)-]?\*\*\s*)/, "").trim())
+    .filter(Boolean);
 }
 
 function resolveAssetUrl(value: string) {
