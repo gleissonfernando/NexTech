@@ -48,15 +48,10 @@ export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<Ac
   const checks = await withTimeout(
     Promise.all(
       baseChecks.map(async (check) => {
-        if (check.owner || check.administrator) {
-          return check;
-        }
-
         const roleAccess = await getDiscordRoleAccess(check.guildId, user.discordId);
 
         return {
           ...check,
-          administrator: check.administrator || roleAccess.administratorRole,
           administratorRole: roleAccess.administratorRole,
           configuredPanelRole: roleAccess.configuredPanelRole
         };
@@ -95,5 +90,29 @@ function createValidationResult(checks: GuildAccessCheck[], authorizedUser: bool
 }
 
 export function guildCheckGrantsDashboardAccess(check: GuildAccessCheck) {
-  return check.owner || check.administrator || check.administratorRole || check.configuredPanelRole;
+  return check.configuredPanelRole;
+}
+
+export function applyDashboardAccessValidation(user: AuthSessionUser, validation: AccessValidationResult): AuthSessionUser {
+  const manageableGuildIds = new Set(
+    validation.checks
+      .filter((check) => validation.authorizedUser || guildCheckGrantsDashboardAccess(check))
+      .map((check) => check.guildId)
+  );
+  const selectedGuildId = user.selectedGuildId && manageableGuildIds.has(user.selectedGuildId)
+    ? user.selectedGuildId
+    : manageableGuildIds.values().next().value ?? null;
+
+  return {
+    ...user,
+    accessLevel: validation.accessLevel,
+    authorized: validation.authorizedUser,
+    selectedGuildId,
+    guilds: user.guilds
+      .filter((guild) => manageableGuildIds.has(guild.id))
+      .map((guild) => ({
+        ...guild,
+        isAdmin: validation.authorizedUser || manageableGuildIds.has(guild.id)
+      }))
+  };
 }

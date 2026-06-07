@@ -95,7 +95,7 @@ const envSchema = z
     BOT_CACHE_MESSAGES_PER_CHANNEL: envNumber(10),
     BOT_CACHE_PRESENCES_MAX: envNumber(0),
     BOT_CACHE_USERS_MAX: envNumber(200),
-    CLIPS_MONITOR_INTERVAL_MS: envNumber(60_000),
+    CLIPS_MONITOR_INTERVAL_MS: envNumber(10_000),
     CLIPS_MAX_PER_CHECK: envNumber(3),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),

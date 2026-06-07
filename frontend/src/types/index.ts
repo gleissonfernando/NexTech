@@ -219,7 +219,7 @@ export type ClipSent = {
   clipThumbnail: string | null;
   clipCreatorName: string | null;
   createdAtTwitch: string;
-  discordChannelId: string;
+  discordChannelId: string | null;
   discordMessageId: string | null;
   sentAt: string;
 };

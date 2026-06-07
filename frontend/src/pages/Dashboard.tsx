@@ -51,6 +51,7 @@ import {
 import type {
   AuthResponse,
   BotStatus,
+  ClipSent,
   DashboardGuild,
   DashboardBot,
   DashboardMeGuild,
@@ -293,6 +294,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lives, setLives] = useState<LiveEvent[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [clipsRefreshSignal, setClipsRefreshSignal] = useState(0);
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const selectedPanelBot = useMemo(
@@ -499,6 +501,11 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
         setTickets((current) => [ticket, ...current].slice(0, 50));
       }
     });
+    socket.on("clips:new", (clip: ClipSent) => {
+      if (clip.guildId === selectedGuildId && (clip.botId ?? null) === activeBotId) {
+        setClipsRefreshSignal((current) => current + 1);
+      }
+    });
     socket.on("settings:updated", (nextSettings: GuildSettings) => {
       if (nextSettings.guildId === selectedGuildId && (nextSettings.botId ?? null) === activeBotId) {
         setSettings(nextSettings);
@@ -684,7 +691,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
           <LiveView botId={activeBotId} canManageDashboard={canManageDashboard} guild={selectedGuild} lives={lives} />
         ) : null}
         {activeView === "clips" ? (
-          <ClipsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
+          <ClipsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
         ) : null}
         {activeView === "welcome" ? (
           <WelcomePanel

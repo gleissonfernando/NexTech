@@ -60,12 +60,8 @@ async function monitorClips(client: Client, api: ApiClient) {
 }
 
 async function processConfig(client: Client, api: ApiClient, config: ClipsConfig) {
-  if (!config.discordChannelId || !config.twitchBroadcasterId) {
+  if (!config.twitchBroadcasterId) {
     return;
-  }
-
-  if (!client.guilds.cache.has(config.guildId)) {
-    throw new Error("Bot removido do servidor ou servidor nao carregado.");
   }
 
   const lastCheckAt = config.lastCheckAt ? new Date(config.lastCheckAt) : null;
@@ -76,7 +72,9 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
     return;
   }
 
-  if (now.getTime() - lastCheckAt.getTime() < config.checkInterval) {
+  const effectiveCheckInterval = Math.min(config.checkInterval, env.CLIPS_MONITOR_INTERVAL_MS);
+
+  if (now.getTime() - lastCheckAt.getTime() < effectiveCheckInterval) {
     return;
   }
 
@@ -96,7 +94,16 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
       continue;
     }
 
-    const messageId = await sendClipAlert(client, config, clip);
+    let messageId: string | null = null;
+    let discordErrorMessage: string | null = null;
+
+    if (config.discordChannelId) {
+      try {
+        messageId = await sendClipAlert(client, config, clip);
+      } catch (error) {
+        discordErrorMessage = formatErrorMessage(error);
+      }
+    }
 
     await api.recordClipSent(config.id, {
       clipId: clip.id,
@@ -116,6 +123,22 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
         throw error;
       }
     });
+
+    if (discordErrorMessage) {
+      console.warn(`[clips] clip ${clip.id} registrado, mas nao enviado ao Discord: ${discordErrorMessage}`);
+      await api.postLog({
+        guildId: config.guildId,
+        type: "clips.discord_error",
+        message: `Clip registrado na aba, mas nao enviado ao Discord: ${discordErrorMessage}`,
+        metadata: {
+          module: "clips",
+          configId: config.id,
+          clipId: clip.id,
+          clipUrl: clip.url,
+          twitchChannelName: config.twitchChannelName
+        }
+      }).catch(() => undefined);
+    }
 
     await delay(900);
   }
@@ -231,6 +254,10 @@ function renderClipMessage(message: string | null, streamer: string) {
 
 function normalizeEmbedColor(value?: string | null) {
   return /^#[0-9a-f]{6}$/i.test(value ?? "") ? (value as `#${string}`) : "#9146FF";
+}
+
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erro desconhecido.";
 }
 
 function delay(ms: number) {

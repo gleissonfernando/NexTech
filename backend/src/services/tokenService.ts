@@ -158,8 +158,7 @@ function applyBrowserVerification(req: Request, auth: DashboardAuth): DashboardA
 function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
   const authorized = user.authorized ?? getAuthorizedUserIds().has(user.discordId);
   const guilds = authorized ? mergeAuthorizedBotGuilds(user.guilds) : user.guilds;
-  const hasAdminGuild = guilds.some((guild) => guild.owner || guild.isAdmin);
-  const accessLevel = authorized || hasAdminGuild ? "admin" : "viewer";
+  const accessLevel = authorized || user.accessLevel === "admin" ? "admin" : "viewer";
   const selectedGuildId =
     user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
       ? user.selectedGuildId

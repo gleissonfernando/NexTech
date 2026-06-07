@@ -21,6 +21,7 @@ declare module "express-session" {
   interface SessionData {
     user?: AuthSessionUser;
     verified?: boolean;
+    accessValidatedAt?: number;
     oauthState?: string;
     discordAccessToken?: string;
     discordRefreshToken?: string;

@@ -27,7 +27,7 @@ type MemberRoleCacheEntry = {
 
 const DISCORD_API_URL = "https://discord.com/api/v10";
 const DISCORD_MEMBER_TIMEOUT_MS = 2500;
-const MEMBER_ROLE_CACHE_TTL_MS = 60 * 1000;
+const MEMBER_ROLE_CACHE_TTL_MS = 10 * 1000;
 
 const noRoleAccess: DiscordRoleAccess = {
   administratorRole: false,

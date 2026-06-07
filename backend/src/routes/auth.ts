@@ -13,9 +13,8 @@ import {
 import { demoGuilds, toDashboardGuilds } from "../services/guildService";
 import { requireAuthenticated } from "../middleware/auth";
 import {
-  evaluateDashboardAccess,
-  guildCheckGrantsDashboardAccess,
-  type AccessValidationResult
+  applyDashboardAccessValidation,
+  evaluateDashboardAccess
 } from "../services/accessControlService";
 import {
   clearAuthCookies,
@@ -28,7 +27,6 @@ import {
 import { issueLocalAccess } from "../services/localAccessService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { saveDiscordUser } from "../services/userService";
-import type { AuthSessionUser } from "../types/session";
 
 export const authRouter = Router();
 const dashboardPath = "/dashboard";
@@ -134,26 +132,6 @@ function destroySession(req: Request) {
       resolve();
     });
   });
-}
-
-function applyAccessValidation(user: AuthSessionUser, validation: AccessValidationResult): AuthSessionUser {
-  const manageableGuildIds = new Set(
-    validation.checks
-      .filter((check) => validation.authorizedUser || guildCheckGrantsDashboardAccess(check))
-      .map((check) => check.guildId)
-  );
-
-  return {
-    ...user,
-    accessLevel: validation.accessLevel,
-    authorized: validation.authorizedUser,
-    guilds: user.guilds
-      .filter((guild) => manageableGuildIds.has(guild.id))
-      .map((guild) => ({
-        ...guild,
-        isAdmin: manageableGuildIds.has(guild.id)
-      }))
-  };
 }
 
 async function ensureBotGuildsLoaded() {
@@ -340,12 +318,13 @@ authRouter.post("/verify", requireAuthenticated, async (req, res) => {
   await ensureBotGuildsLoaded();
   const auth = res.locals.dashboardAuth;
   const validation = await evaluateDashboardAccess(auth.user);
-  const validatedUser = applyAccessValidation(auth.user, validation);
+  const validatedUser = applyDashboardAccessValidation(auth.user, validation);
 
   if (!validation.allowed) {
     const deniedAuth = issueAuthCookies(res, validatedUser, false);
     req.session.user = deniedAuth.user;
     req.session.verified = false;
+    req.session.accessValidatedAt = Date.now();
     await saveSession(req);
 
     return res.status(403).json({
@@ -362,6 +341,7 @@ authRouter.post("/verify", requireAuthenticated, async (req, res) => {
 
   req.session.user = verifiedAuth.user;
   req.session.verified = verifiedAuth.verified;
+  req.session.accessValidatedAt = Date.now();
   await saveSession(req);
 
   return res.json({

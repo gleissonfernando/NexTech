@@ -29,6 +29,7 @@ type ClipsPanelProps = {
   botId?: string | null;
   canManage: boolean;
   guild: DashboardGuild | null;
+  refreshSignal?: number;
 };
 
 type ClipsForm = {
@@ -50,10 +51,10 @@ const defaultForm: ClipsForm = {
   mentionRoleId: "",
   embedColor: "#9146FF",
   customMessage: "Novo corte criado na live do {streamer}!",
-  checkInterval: 60_000
+  checkInterval: 10_000
 };
 
-export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
+export function ClipsPanel({ botId, canManage, guild, refreshSignal = 0 }: ClipsPanelProps) {
   const [config, setConfig] = useState<ClipsConfig | null>(null);
   const [history, setHistory] = useState<ClipSent[]>([]);
   const [options, setOptions] = useState<GuildLiveOptions>({ channels: [], roles: [] });
@@ -107,6 +108,36 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
       .catch((requestError) => setError(readErrorMessage(requestError)))
       .finally(() => setLoading(false));
   }, [botId, canManage, guild]);
+
+  useEffect(() => {
+    if (!refreshSignal || !guild || !canManage) {
+      return;
+    }
+
+    let mounted = true;
+
+    Promise.all([
+      getClipsConfig(guild.id, botId),
+      getClipsHistory(guild.id, botId)
+    ])
+      .then(([nextConfig, nextHistory]) => {
+        if (!mounted) {
+          return;
+        }
+
+        setConfig(nextConfig);
+        setHistory(nextHistory);
+      })
+      .catch((requestError) => {
+        if (mounted) {
+          setError(readErrorMessage(requestError));
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, canManage, guild, refreshSignal]);
 
   function updateForm<K extends keyof ClipsForm>(key: K, value: ClipsForm[K]) {
     setForm((current) => ({
@@ -162,7 +193,7 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
 
       setConfig(nextConfig);
       setForm(formFromConfig(nextConfig));
-      setStatus("Configuracao de clips salva.");
+      setStatus("Configuracao de clips salva. Clips novos vao aparecer no historico quando forem cortados na Twitch.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -264,7 +295,7 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
           totalSent={config?.totalSent ?? history.length}
         />
         <MetricCard icon={ShieldCheck} label="Cargo liberado" value={form.allowedRoleId ? roleOptions.find((role) => role.id === form.allowedRoleId)?.name ?? "Configurado" : "Nenhum"} />
-        <MetricCard icon={Sparkles} label="Intervalo" value={`${Math.round(form.checkInterval / 60000)} min`} />
+        <MetricCard icon={Sparkles} label="Intervalo" value={formatInterval(form.checkInterval)} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
@@ -304,12 +335,12 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
           <Card>
             <CardHeader>
               <CardTitle>Canal de envio</CardTitle>
-              <CardDescription>Destino e permissao para configurar.</CardDescription>
+              <CardDescription>Destino opcional no Discord e permissao para configurar.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <Field label="Canal Discord">
                 <select className="social-input" onChange={(event) => updateForm("discordChannelId", event.target.value)} value={form.discordChannelId}>
-                  <option value="">Selecione o canal</option>
+                  <option value="">Nao enviar no Discord</option>
                   {options.channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>#{channel.name}</option>
                   ))}
@@ -401,7 +432,7 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
           <Card>
             <CardHeader>
               <CardTitle>Historico</CardTitle>
-              <CardDescription>Ultimos clips enviados por este bot neste servidor.</CardDescription>
+              <CardDescription>Ultimos clips registrados por este bot neste servidor.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {history.length ? history.map((clip) => (
@@ -422,7 +453,7 @@ export function ClipsPanel({ botId, canManage, guild }: ClipsPanelProps) {
                 </a>
               )) : (
                 <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-center text-sm text-zinc-500">
-                  Nenhum clip enviado ainda.
+                  Nenhum clip registrado ainda.
                 </div>
               )}
             </CardContent>
@@ -453,7 +484,7 @@ function StatusCard({
           <p className="text-sm text-zinc-500">Status do sistema</p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant={enabled ? "success" : "muted"}>{enabled ? "Ativo" : "Desativado"}</Badge>
-            <span className="text-xs text-zinc-600">{totalSent} enviados</span>
+            <span className="text-xs text-zinc-600">{totalSent} registrados</span>
           </div>
           <p className="mt-2 text-xs text-zinc-600">Ultima verificacao: {lastCheckAt ? formatDate(lastCheckAt) : "Nunca"}</p>
         </div>
@@ -510,7 +541,7 @@ function formFromConfig(config: ClipsConfig | null): ClipsForm {
     mentionRoleId: config.mentionRoleId ?? "",
     embedColor: config.embedColor,
     customMessage: config.customMessage ?? defaultForm.customMessage,
-    checkInterval: config.checkInterval
+    checkInterval: Math.min(config.checkInterval, defaultForm.checkInterval)
   };
 }
 
@@ -525,6 +556,10 @@ function formatDate(value: string) {
     minute: "2-digit",
     month: "2-digit"
   }).format(new Date(value));
+}
+
+function formatInterval(value: number) {
+  return value < 60_000 ? `${Math.round(value / 1000)} seg` : `${Math.round(value / 60000)} min`;
 }
 
 function readErrorMessage(error: unknown) {

@@ -1,8 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
+import { applyDashboardAccessValidation, evaluateDashboardAccess } from "../services/accessControlService";
 import { issueLocalAccess } from "../services/localAccessService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
-import { resolveAuthFromRequest } from "../services/tokenService";
+import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
+
+const VERIFIED_ACCESS_RECHECK_MS = 30 * 1000;
 
 export function isBotRequest(req: Request) {
   const token = req.header("x-bot-token");
@@ -49,9 +52,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(403).json({ message: "Verificacao obrigatoria para acessar o painel." });
   }
 
-  req.session.user = auth.user;
-  req.session.verified = auth.verified;
-  res.locals.dashboardAuth = auth;
+  const freshAuth = await ensureVerifiedRoleAccess(req, res, auth);
+
+  if (!freshAuth) {
+    return res.status(403).json({ message: "Seu usuario nao possui o cargo liberado para acessar este painel." });
+  }
+
+  req.session.user = freshAuth.user;
+  req.session.verified = freshAuth.verified;
+  res.locals.dashboardAuth = freshAuth;
   return next();
 }
 
@@ -83,4 +92,30 @@ async function ensureBotGuildsLoaded() {
   if (getBotStatus().botGuilds.length === 0) {
     await refreshBotGuildsFromDiscord();
   }
+}
+
+async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: DashboardAuth) {
+  const lastValidation = typeof req.session.accessValidatedAt === "number" ? req.session.accessValidatedAt : 0;
+
+  if (Date.now() - lastValidation < VERIFIED_ACCESS_RECHECK_MS) {
+    return auth;
+  }
+
+  const validation = await evaluateDashboardAccess(auth.user);
+  const validatedUser = applyDashboardAccessValidation(auth.user, validation);
+
+  if (!validation.allowed) {
+    clearAuthCookies(res);
+    req.session.user = validatedUser;
+    req.session.verified = false;
+    req.session.accessValidatedAt = Date.now();
+    return null;
+  }
+
+  const freshAuth = issueAuthCookies(res, validatedUser, true);
+  req.session.user = freshAuth.user;
+  req.session.verified = freshAuth.verified;
+  req.session.accessValidatedAt = Date.now();
+
+  return freshAuth;
 }

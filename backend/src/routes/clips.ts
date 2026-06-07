@@ -31,7 +31,7 @@ const clipsConfigSchema = z.object({
   mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   embedColor: z.string().max(16).nullable().optional(),
   customMessage: z.string().max(1000).nullable().optional(),
-  checkInterval: z.number().int().min(60_000).max(300_000).optional(),
+  checkInterval: z.number().int().min(10_000).max(300_000).optional(),
   enabled: z.boolean().optional()
 });
 const guildActionSchema = z.object({
@@ -47,7 +47,7 @@ const botSentSchema = z.object({
   clipThumbnail: z.string().url().max(2048).nullable().optional(),
   clipCreatorName: z.string().max(100).nullable().optional(),
   createdAtTwitch: z.string().datetime(),
-  discordChannelId: z.string().regex(/^\d{5,32}$/),
+  discordChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   discordMessageId: z.string().regex(/^\d{5,32}$/).nullable().optional()
 });
 

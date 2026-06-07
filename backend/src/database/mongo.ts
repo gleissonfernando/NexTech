@@ -138,7 +138,7 @@ export type MongoClipSent = {
   clipThumbnail: string | null;
   clipCreatorName: string | null;
   createdAtTwitch: Date;
-  discordChannelId: string;
+  discordChannelId: string | null;
   discordMessageId: string | null;
   sentAt: Date;
 };

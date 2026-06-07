@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { MongoServerError } from "mongodb";
 import { env } from "../config/env";
+import { emitRealtime } from "../realtime/events";
 import {
   ensureGuild,
   getMongoCollections,
@@ -48,7 +49,7 @@ export type ClipSentDto = {
   clipThumbnail: string | null;
   clipCreatorName: string | null;
   createdAtTwitch: string;
-  discordChannelId: string;
+  discordChannelId: string | null;
   discordMessageId: string | null;
   sentAt: string;
 };
@@ -72,13 +73,13 @@ export type RecordClipSentInput = {
   clipThumbnail?: string | null;
   clipCreatorName?: string | null;
   createdAtTwitch: string;
-  discordChannelId: string;
+  discordChannelId?: string | null;
   discordMessageId?: string | null;
 };
 
 const DEFAULT_EMBED_COLOR = "#9146FF";
-const DEFAULT_CHECK_INTERVAL = 60_000;
-const MIN_CHECK_INTERVAL = 60_000;
+const DEFAULT_CHECK_INTERVAL = 10_000;
+const MIN_CHECK_INTERVAL = 10_000;
 const MAX_CHECK_INTERVAL = 300_000;
 
 export async function validateTwitchClipChannel(input: string) {
@@ -119,11 +120,7 @@ export async function saveClipsConfig(
   const twitchPreview = await validateTwitchClipChannel(input.twitchChannelInput);
   const discordChannelId = input.discordChannelId?.trim() || null;
 
-  if (!discordChannelId) {
-    throw createClipsError("Selecione o canal de texto para enviar clips.", 400);
-  }
-
-  if (!(await isGuildTextChannel(guildId, discordChannelId, botToken))) {
+  if (discordChannelId && !(await isGuildTextChannel(guildId, discordChannelId, botToken))) {
     throw createClipsError("O canal selecionado nao pertence a este servidor.", 400);
   }
 
@@ -194,8 +191,8 @@ export async function enableClipsConfig(guildId: string, userId: string, botId?:
   const { clipsConfig } = await getMongoCollections();
   const current = await clipsConfig.findOne(scopeQuery(guildId, normalizedBotId));
 
-  if (!current?.twitchBroadcasterId || !current.discordChannelId) {
-    throw createClipsError("Configure canal da Twitch e canal do Discord antes de ativar.", 400);
+  if (!current?.twitchBroadcasterId) {
+    throw createClipsError("Configure o canal da Twitch antes de ativar.", 400);
   }
 
   const updated = await clipsConfig.findOneAndUpdate(
@@ -329,7 +326,7 @@ export async function recordClipSent(configId: string, input: RecordClipSentInpu
     clipThumbnail: input.clipThumbnail ?? null,
     clipCreatorName: input.clipCreatorName ?? null,
     createdAtTwitch: new Date(input.createdAtTwitch),
-    discordChannelId: input.discordChannelId,
+    discordChannelId: input.discordChannelId ?? config.discordChannelId ?? null,
     discordMessageId: input.discordMessageId ?? null,
     sentAt: now
   };
@@ -337,8 +334,18 @@ export async function recordClipSent(configId: string, input: RecordClipSentInpu
   try {
     const { clipsSent } = await getMongoCollections();
     await clipsSent.insertOne(doc);
-    await writeClipLog(config, "clips.sent", null, `Novo clip enviado: ${input.clipTitle || input.clipId}`);
-    return toSentDto(doc);
+    const clip = toSentDto(doc);
+
+    emitRealtime("clips:new", clip);
+    await writeClipLog(
+      config,
+      doc.discordMessageId ? "clips.sent" : "clips.detected",
+      null,
+      doc.discordMessageId
+        ? `Novo clip enviado: ${input.clipTitle || input.clipId}`
+        : `Novo clip registrado na aba de clips: ${input.clipTitle || input.clipId}`
+    );
+    return clip;
   } catch (error) {
     if (error instanceof MongoServerError && error.code === 11000) {
       await writeClipLog(config, "clips.duplicate", null, `Clip ignorado por ja ter sido enviado: ${input.clipId}`);
