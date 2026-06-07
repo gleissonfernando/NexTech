@@ -508,6 +508,7 @@ export async function dispatchXWebhookPost(input: XWebhookPostInput) {
 
   for (const account of accounts) {
     const post = toWebhookPostDto(input, account.username);
+    const nextAccount = await applyWebhookProfile(account, input);
     const key = `${account.botId ?? "default"}:${account.id}:${post.id}`;
 
     if (recentWebhookPostKeys.has(key) || await isXPostSent(account.id, post.id, account.botId)) {
@@ -516,13 +517,13 @@ export async function dispatchXWebhookPost(input: XWebhookPostInput) {
 
     rememberWebhookPost(key);
     emitRealtime("x-monitor:post", {
-      account,
-      botId: account.botId,
-      guildId: account.guildId,
+      account: nextAccount,
+      botId: nextAccount.botId,
+      guildId: nextAccount.guildId,
       post
     });
 
-    await writeXLog("x_monitor.webhook_post", `Postagem via webhook detectada para @${account.username}.`, account, null, {
+    await writeXLog("x_monitor.webhook_post", `Postagem via webhook detectada para @${nextAccount.username}.`, nextAccount, null, {
       postId: post.id,
       postUrl: post.url
     });
@@ -532,6 +533,50 @@ export async function dispatchXWebhookPost(input: XWebhookPostInput) {
   return {
     emitted,
     matched: accounts.length
+  };
+}
+
+async function applyWebhookProfile(account: XAccountDto, input: XWebhookPostInput) {
+  const username = input.username ? normalizeUsername(input.username) : account.username;
+  const avatar = input.avatar?.trim() || account.avatar || xAvatarUrl(username);
+  const displayName = input.displayName?.trim() || account.displayName || username;
+  const xUserId = input.xUserId?.trim() || account.xUserId;
+
+  if (avatar === account.avatar && displayName === account.displayName && xUserId === account.xUserId) {
+    return account;
+  }
+
+  const patch = {
+    avatar,
+    displayName,
+    updatedAt: new Date(),
+    xUserId
+  };
+
+  try {
+    const { xAccounts } = await getMongoCollections();
+    await xAccounts.updateOne({
+      _id: account.id,
+      ...accountBotScopeQuery(account.botId)
+    }, {
+      $set: patch
+    });
+  } catch {
+    memoryAccounts.set(account.id, {
+      ...account,
+      avatar,
+      displayName,
+      updatedAt: patch.updatedAt.toISOString(),
+      xUserId
+    });
+  }
+
+  return {
+    ...account,
+    avatar,
+    displayName,
+    updatedAt: patch.updatedAt.toISOString(),
+    xUserId
   };
 }
 
@@ -937,12 +982,16 @@ function toPreviewDto(user: XApiUser): XAccountPreviewDto {
 
 function toManualPreviewDto(username: string): XAccountPreviewDto {
   return {
-    avatar: null,
+    avatar: xAvatarUrl(username),
     displayName: username,
     mostRecentPostId: null,
     username,
     xUserId: ""
   };
+}
+
+function xAvatarUrl(username: string) {
+  return `https://unavatar.io/x/${encodeURIComponent(username)}`;
 }
 
 function toWebhookPostDto(input: XWebhookPostInput, fallbackUsername: string): XPostDto {

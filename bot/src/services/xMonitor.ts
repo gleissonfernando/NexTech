@@ -169,6 +169,10 @@ async function sendXPostAlert(client: Client, account: XAccount, post: XPost) {
     })
     .setTimestamp(new Date(post.createdAt));
 
+  if (account.avatar) {
+    embed.setThumbnail(account.avatar);
+  }
+
   if (post.mediaUrls[0]) {
     embed.setImage(post.mediaUrls[0]);
   }
