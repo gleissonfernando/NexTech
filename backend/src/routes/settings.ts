@@ -21,12 +21,22 @@ const settingsSchema = z.object({
   welcomeChannelId: z.string().nullable().optional(),
   welcomeDisplayChannelId: z.string().nullable().optional(),
   welcomeImageUrl: z.string().max(2048).nullable().optional(),
+  welcomeTitle: z.string().max(120).nullable().optional(),
   welcomeMessage: z.string().max(1000).nullable().optional(),
+  welcomeRulesTitle: z.string().max(120).nullable().optional(),
+  welcomeRules: z.string().max(1500).nullable().optional(),
+  welcomeChannelLabel: z.string().max(120).nullable().optional(),
+  welcomeFooterText: z.string().max(180).nullable().optional(),
   leaveEnabled: z.boolean().optional(),
   leaveChannelId: z.string().nullable().optional(),
   leaveDisplayChannelId: z.string().nullable().optional(),
   leaveImageUrl: z.string().max(2048).nullable().optional(),
+  leaveTitle: z.string().max(120).nullable().optional(),
   leaveMessage: z.string().max(1000).nullable().optional(),
+  leaveRulesTitle: z.string().max(120).nullable().optional(),
+  leaveRules: z.string().max(1500).nullable().optional(),
+  leaveChannelLabel: z.string().max(120).nullable().optional(),
+  leaveFooterText: z.string().max(180).nullable().optional(),
   autoRoleEnabled: z.boolean().optional(),
   autoRoleIds: z.array(z.string()).max(MAX_AUTOMATIC_ROLES, "Selecione no maximo 2 cargos automaticos.").optional(),
   twitchRoleId: z.string().nullable().optional(),
@@ -355,12 +365,22 @@ async function canPatchSettings(
     welcomeChannelId: ["welcome"],
     welcomeDisplayChannelId: ["welcome"],
     welcomeImageUrl: ["welcome"],
+    welcomeTitle: ["welcome"],
     welcomeMessage: ["welcome"],
+    welcomeRulesTitle: ["welcome"],
+    welcomeRules: ["welcome"],
+    welcomeChannelLabel: ["welcome"],
+    welcomeFooterText: ["welcome"],
     leaveEnabled: ["leave"],
     leaveChannelId: ["leave"],
     leaveDisplayChannelId: ["leave"],
     leaveImageUrl: ["leave"],
+    leaveTitle: ["leave"],
     leaveMessage: ["leave"],
+    leaveRulesTitle: ["leave"],
+    leaveRules: ["leave"],
+    leaveChannelLabel: ["leave"],
+    leaveFooterText: ["leave"],
     autoRoleEnabled: ["welcome", "roles"],
     autoRoleIds: ["welcome", "roles"],
     twitchRoleId: ["roles"],
@@ -477,20 +497,20 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
     return input.ticketEnabled ? "Sistema de tickets ativado." : "Sistema de tickets desativado.";
   }
 
-  if (input.welcomeChannelId !== undefined || input.welcomeMessage !== undefined || input.welcomeImageUrl !== undefined) {
-    return "Boas-vindas atualizadas.";
-  }
-
   if (input.welcomeEnabled !== undefined) {
     return input.welcomeEnabled ? "Boas-vindas ativadas." : "Boas-vindas desativadas.";
   }
 
-  if (input.leaveChannelId !== undefined || input.leaveMessage !== undefined || input.leaveImageUrl !== undefined) {
-    return "Mensagem de saida atualizada.";
+  if (Object.keys(input).some((key) => key.startsWith("welcome"))) {
+    return "Boas-vindas atualizadas.";
   }
 
   if (input.leaveEnabled !== undefined) {
     return input.leaveEnabled ? "Mensagem de saida ativada." : "Mensagem de saida desativada.";
+  }
+
+  if (Object.keys(input).some((key) => key.startsWith("leave"))) {
+    return "Mensagem de saida atualizada.";
   }
 
   if (input.autoRoleIds !== undefined) {

@@ -8,12 +8,22 @@ export type GuildSettingsDto = {
   welcomeChannelId: string | null;
   welcomeDisplayChannelId: string | null;
   welcomeImageUrl: string | null;
+  welcomeTitle: string | null;
   welcomeMessage: string | null;
+  welcomeRulesTitle: string | null;
+  welcomeRules: string | null;
+  welcomeChannelLabel: string | null;
+  welcomeFooterText: string | null;
   leaveEnabled: boolean;
   leaveChannelId: string | null;
   leaveDisplayChannelId: string | null;
   leaveImageUrl: string | null;
+  leaveTitle: string | null;
   leaveMessage: string | null;
+  leaveRulesTitle: string | null;
+  leaveRules: string | null;
+  leaveChannelLabel: string | null;
+  leaveFooterText: string | null;
   autoRoleEnabled: boolean;
   autoRoleIds: string[];
   twitchRoleId: string | null;
@@ -40,10 +50,32 @@ export const DEFAULT_WELCOME_MESSAGE = [
   "Seja bem-vindo(a), {user}, a nossa comunidade de lives.",
   "Aqui a galera acompanha transmissoes, eventos da comunidade, avisos e momentos ao vivo juntos."
 ].join("\n");
+export const DEFAULT_WELCOME_TITLE = "Ricardinn98";
+export const DEFAULT_WELCOME_RULES_TITLE = "Algumas dicas:";
+export const DEFAULT_WELCOME_RULES = [
+  "Leia as regras antes de participar.",
+  "Aguarde os avisos oficiais de lives e eventos.",
+  "Respeite streamers, espectadores e moderadores.",
+  "Nao divulgue lives, links ou canais sem autorizacao.",
+  "Converse, faca amizades e aproveite sua estadia."
+].join("\n");
+export const DEFAULT_WELCOME_CHANNEL_LABEL = "Acesse o canal:";
+export const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
 export const DEFAULT_LEAVE_MESSAGE = [
   "Ate mais, {user}. Obrigado por ter feito parte da nossa comunidade de lives.",
   "As portas continuam abertas para quando quiser voltar e acompanhar as transmissoes com a galera."
 ].join("\n");
+export const DEFAULT_LEAVE_TITLE = "Ricardinn98";
+export const DEFAULT_LEAVE_RULES_TITLE = "Registro de saida:";
+export const DEFAULT_LEAVE_RULES = [
+  "A saida foi registrada automaticamente pelo bot.",
+  "Os canais oficiais continuam disponiveis para a comunidade.",
+  "Respeite as regras se decidir retornar ao servidor.",
+  "A equipe segue por aqui para organizar eventos e avisos.",
+  "Valeu pela passagem e ate a proxima."
+].join("\n");
+export const DEFAULT_LEAVE_CHANNEL_LABEL = "Canal da comunidade:";
+export const DEFAULT_LEAVE_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
 const LEGACY_WELCOME_MESSAGE = "Bem-vindo(a), {user}!";
 const LEGACY_LEAVE_MESSAGE = "Ate mais, {user}.";
 export const MAX_AUTOMATIC_ROLES = 2;
@@ -56,12 +88,22 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     welcomeChannelId: null,
     welcomeDisplayChannelId: null,
     welcomeImageUrl: DEFAULT_WELCOME_IMAGE_URL,
+    welcomeTitle: DEFAULT_WELCOME_TITLE,
     welcomeMessage: DEFAULT_WELCOME_MESSAGE,
+    welcomeRulesTitle: DEFAULT_WELCOME_RULES_TITLE,
+    welcomeRules: DEFAULT_WELCOME_RULES,
+    welcomeChannelLabel: DEFAULT_WELCOME_CHANNEL_LABEL,
+    welcomeFooterText: DEFAULT_WELCOME_FOOTER_TEXT,
     leaveEnabled: true,
     leaveChannelId: null,
     leaveDisplayChannelId: null,
     leaveImageUrl: DEFAULT_WELCOME_IMAGE_URL,
+    leaveTitle: DEFAULT_LEAVE_TITLE,
     leaveMessage: DEFAULT_LEAVE_MESSAGE,
+    leaveRulesTitle: DEFAULT_LEAVE_RULES_TITLE,
+    leaveRules: DEFAULT_LEAVE_RULES,
+    leaveChannelLabel: DEFAULT_LEAVE_CHANNEL_LABEL,
+    leaveFooterText: DEFAULT_LEAVE_FOOTER_TEXT,
     autoRoleEnabled: false,
     autoRoleIds: [],
     twitchRoleId: null,
@@ -155,15 +197,55 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     ...current,
     ...input,
     autoRoleIds,
+    welcomeTitle: normalizePanelText(
+      "welcomeTitle" in input ? input.welcomeTitle : current.welcomeTitle,
+      DEFAULT_WELCOME_TITLE
+    ),
     welcomeMessage: normalizePanelMessage(
       "welcomeMessage" in input ? input.welcomeMessage : current.welcomeMessage,
       DEFAULT_WELCOME_MESSAGE,
       LEGACY_WELCOME_MESSAGE
     ),
+    welcomeRulesTitle: normalizePanelText(
+      "welcomeRulesTitle" in input ? input.welcomeRulesTitle : current.welcomeRulesTitle,
+      DEFAULT_WELCOME_RULES_TITLE
+    ),
+    welcomeRules: normalizePanelText(
+      "welcomeRules" in input ? input.welcomeRules : current.welcomeRules,
+      DEFAULT_WELCOME_RULES
+    ),
+    welcomeChannelLabel: normalizePanelText(
+      "welcomeChannelLabel" in input ? input.welcomeChannelLabel : current.welcomeChannelLabel,
+      DEFAULT_WELCOME_CHANNEL_LABEL
+    ),
+    welcomeFooterText: normalizePanelText(
+      "welcomeFooterText" in input ? input.welcomeFooterText : current.welcomeFooterText,
+      DEFAULT_WELCOME_FOOTER_TEXT
+    ),
+    leaveTitle: normalizePanelText(
+      "leaveTitle" in input ? input.leaveTitle : current.leaveTitle,
+      DEFAULT_LEAVE_TITLE
+    ),
     leaveMessage: normalizePanelMessage(
       "leaveMessage" in input ? input.leaveMessage : current.leaveMessage,
       DEFAULT_LEAVE_MESSAGE,
       LEGACY_LEAVE_MESSAGE
+    ),
+    leaveRulesTitle: normalizePanelText(
+      "leaveRulesTitle" in input ? input.leaveRulesTitle : current.leaveRulesTitle,
+      DEFAULT_LEAVE_RULES_TITLE
+    ),
+    leaveRules: normalizePanelText(
+      "leaveRules" in input ? input.leaveRules : current.leaveRules,
+      DEFAULT_LEAVE_RULES
+    ),
+    leaveChannelLabel: normalizePanelText(
+      "leaveChannelLabel" in input ? input.leaveChannelLabel : current.leaveChannelLabel,
+      DEFAULT_LEAVE_CHANNEL_LABEL
+    ),
+    leaveFooterText: normalizePanelText(
+      "leaveFooterText" in input ? input.leaveFooterText : current.leaveFooterText,
+      DEFAULT_LEAVE_FOOTER_TEXT
     ),
     verificationRoleIds,
     botId: normalizedBotId,
@@ -187,12 +269,22 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           welcomeChannelId: next.welcomeChannelId,
           welcomeDisplayChannelId: next.welcomeDisplayChannelId,
           welcomeImageUrl: next.welcomeImageUrl,
+          welcomeTitle: next.welcomeTitle,
           welcomeMessage: next.welcomeMessage,
+          welcomeRulesTitle: next.welcomeRulesTitle,
+          welcomeRules: next.welcomeRules,
+          welcomeChannelLabel: next.welcomeChannelLabel,
+          welcomeFooterText: next.welcomeFooterText,
           leaveEnabled: next.leaveEnabled,
           leaveChannelId: next.leaveChannelId,
           leaveDisplayChannelId: next.leaveDisplayChannelId,
           leaveImageUrl: next.leaveImageUrl,
+          leaveTitle: next.leaveTitle,
           leaveMessage: next.leaveMessage,
+          leaveRulesTitle: next.leaveRulesTitle,
+          leaveRules: next.leaveRules,
+          leaveChannelLabel: next.leaveChannelLabel,
+          leaveFooterText: next.leaveFooterText,
           autoRoleEnabled: next.autoRoleEnabled,
           autoRoleIds: next.autoRoleIds,
           twitchRoleId: next.twitchRoleId,
@@ -241,20 +333,30 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     welcomeChannelId: settings.welcomeChannelId,
     welcomeDisplayChannelId: settings.welcomeDisplayChannelId ?? null,
     welcomeImageUrl: normalizeWelcomeImageUrl(settings.welcomeImageUrl),
+    welcomeTitle: normalizePanelText(settings.welcomeTitle, DEFAULT_WELCOME_TITLE),
     welcomeMessage: normalizePanelMessage(
       settings.welcomeMessage,
       DEFAULT_WELCOME_MESSAGE,
       LEGACY_WELCOME_MESSAGE
     ),
+    welcomeRulesTitle: normalizePanelText(settings.welcomeRulesTitle, DEFAULT_WELCOME_RULES_TITLE),
+    welcomeRules: normalizePanelText(settings.welcomeRules, DEFAULT_WELCOME_RULES),
+    welcomeChannelLabel: normalizePanelText(settings.welcomeChannelLabel, DEFAULT_WELCOME_CHANNEL_LABEL),
+    welcomeFooterText: normalizePanelText(settings.welcomeFooterText, DEFAULT_WELCOME_FOOTER_TEXT),
     leaveEnabled: settings.leaveEnabled ?? defaults.leaveEnabled,
     leaveChannelId: settings.leaveChannelId ?? defaults.leaveChannelId,
     leaveDisplayChannelId: settings.leaveDisplayChannelId ?? defaults.leaveDisplayChannelId,
     leaveImageUrl: normalizeWelcomeImageUrl(settings.leaveImageUrl ?? defaults.leaveImageUrl),
+    leaveTitle: normalizePanelText(settings.leaveTitle, DEFAULT_LEAVE_TITLE),
     leaveMessage: normalizePanelMessage(
       settings.leaveMessage,
       DEFAULT_LEAVE_MESSAGE,
       LEGACY_LEAVE_MESSAGE
     ),
+    leaveRulesTitle: normalizePanelText(settings.leaveRulesTitle, DEFAULT_LEAVE_RULES_TITLE),
+    leaveRules: normalizePanelText(settings.leaveRules, DEFAULT_LEAVE_RULES),
+    leaveChannelLabel: normalizePanelText(settings.leaveChannelLabel, DEFAULT_LEAVE_CHANNEL_LABEL),
+    leaveFooterText: normalizePanelText(settings.leaveFooterText, DEFAULT_LEAVE_FOOTER_TEXT),
     autoRoleEnabled: settings.autoRoleEnabled,
     autoRoleIds: normalizeRoleIds(settings.autoRoleIds ?? []).slice(0, MAX_AUTOMATIC_ROLES),
     twitchRoleId: settings.twitchRoleId,
@@ -303,6 +405,10 @@ function normalizeWelcomeImageUrl(value: string | null | undefined) {
 function normalizePanelMessage(value: string | null | undefined, fallback: string, legacyValue: string) {
   const normalized = value?.trim();
   return !normalized || normalized === legacyValue ? fallback : normalized;
+}
+
+function normalizePanelText(value: string | null | undefined, fallback: string) {
+  return value?.trim() || fallback;
 }
 
 function normalizeBotId(botId: string | null | undefined) {

@@ -3,8 +3,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { env } from "../config/env";
 import {
+  DEFAULT_LEAVE_CHANNEL_LABEL,
+  DEFAULT_LEAVE_FOOTER_TEXT,
   DEFAULT_LEAVE_MESSAGE,
+  DEFAULT_LEAVE_RULES,
+  DEFAULT_LEAVE_RULES_TITLE,
+  DEFAULT_LEAVE_TITLE,
+  DEFAULT_WELCOME_CHANNEL_LABEL,
+  DEFAULT_WELCOME_FOOTER_TEXT,
   DEFAULT_WELCOME_MESSAGE,
+  DEFAULT_WELCOME_RULES,
+  DEFAULT_WELCOME_RULES_TITLE,
+  DEFAULT_WELCOME_TITLE,
   type GuildSettingsDto
 } from "./settingsService";
 
@@ -20,37 +30,69 @@ const MIME_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp"
 };
 
-export function welcomePanelDescription(message: string | null, userMention: string, channelId: string | null) {
-  const channelMention = channelId ? `<#${channelId}>` : "<#coloque_o_id_do_canal_de_lives_aqui>";
-
-  return [
-    formatPanelMessage(message, userMention, DEFAULT_WELCOME_MESSAGE),
-    "",
-    "**Algumas dicas:**",
-    "**1.** Leia as regras antes de participar.",
-    "**2.** Aguarde os avisos oficiais de lives e eventos.",
-    "**3.** Respeite streamers, espectadores e moderadores.",
-    "**4.** Nao divulgue lives, links ou canais sem autorizacao.",
-    "**5.** Converse, faca amizades e aproveite sua estadia.",
-    "",
-    `\u{1F517} Acesse o canal: ${channelMention}`
-  ].join("\n");
+export function welcomePanelDescription(settings: GuildSettingsDto, userMention: string, channelId: string | null) {
+  return memberPanelDescription({
+    channelId,
+    channelLabel: settings.welcomeChannelLabel,
+    defaultChannelLabel: DEFAULT_WELCOME_CHANNEL_LABEL,
+    defaultMessage: DEFAULT_WELCOME_MESSAGE,
+    defaultRules: DEFAULT_WELCOME_RULES,
+    defaultRulesTitle: DEFAULT_WELCOME_RULES_TITLE,
+    message: settings.welcomeMessage,
+    rules: settings.welcomeRules,
+    rulesTitle: settings.welcomeRulesTitle,
+    userMention
+  });
 }
 
-export function leavePanelDescription(message: string | null, userMention: string, channelId: string | null) {
+export function leavePanelDescription(settings: GuildSettingsDto, userMention: string, channelId: string | null) {
+  return memberPanelDescription({
+    channelId,
+    channelLabel: settings.leaveChannelLabel,
+    defaultChannelLabel: DEFAULT_LEAVE_CHANNEL_LABEL,
+    defaultMessage: DEFAULT_LEAVE_MESSAGE,
+    defaultRules: DEFAULT_LEAVE_RULES,
+    defaultRulesTitle: DEFAULT_LEAVE_RULES_TITLE,
+    message: settings.leaveMessage,
+    rules: settings.leaveRules,
+    rulesTitle: settings.leaveRulesTitle,
+    userMention
+  });
+}
+
+function memberPanelDescription({
+  channelId,
+  channelLabel,
+  defaultChannelLabel,
+  defaultMessage,
+  defaultRules,
+  defaultRulesTitle,
+  message,
+  rules,
+  rulesTitle,
+  userMention
+}: {
+  channelId: string | null;
+  channelLabel: string | null;
+  defaultChannelLabel: string;
+  defaultMessage: string;
+  defaultRules: string;
+  defaultRulesTitle: string;
+  message: string | null;
+  rules: string | null;
+  rulesTitle: string | null;
+  userMention: string;
+}) {
   const channelMention = channelId ? `<#${channelId}>` : "<#coloque_o_id_do_canal_de_lives_aqui>";
+  const ruleLines = formatRuleLines(rules, defaultRules);
 
   return [
-    formatPanelMessage(message, userMention, DEFAULT_LEAVE_MESSAGE),
+    formatPanelMessage(message, userMention, defaultMessage),
     "",
-    "**Registro de saida:**",
-    "**1.** A saida foi registrada automaticamente pelo bot.",
-    "**2.** Os canais oficiais continuam disponiveis para a comunidade.",
-    "**3.** Respeite as regras se decidir retornar ao servidor.",
-    "**4.** A equipe segue por aqui para organizar eventos e avisos.",
-    "**5.** Valeu pela passagem e ate a proxima.",
+    `**${rulesTitle?.trim() || defaultRulesTitle}**`,
+    ...ruleLines.map((rule, index) => `**${index + 1}.** ${rule}`),
     "",
-    `\u{1F517} Canal da comunidade: ${channelMention}`
+    `\u{1F517} ${channelLabel?.trim() || defaultChannelLabel} ${channelMention}`
   ].join("\n");
 }
 
@@ -59,8 +101,10 @@ export function createWelcomePanelEmbed(settings: GuildSettingsDto, userMention:
   const imageUrl = toPublicUrl(settings.welcomeImageUrl ?? DEFAULT_WELCOME_IMAGE_URL);
 
   return createMemberPanelEmbed({
-    description: welcomePanelDescription(settings.welcomeMessage, userMention, displayChannelId),
-    imageUrl
+    description: welcomePanelDescription(settings, userMention, displayChannelId),
+    footerText: settings.welcomeFooterText ?? DEFAULT_WELCOME_FOOTER_TEXT,
+    imageUrl,
+    title: settings.welcomeTitle ?? DEFAULT_WELCOME_TITLE
   });
 }
 
@@ -69,19 +113,31 @@ export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: s
   const imageUrl = toPublicUrl(settings.leaveImageUrl ?? DEFAULT_WELCOME_IMAGE_URL);
 
   return createMemberPanelEmbed({
-    description: leavePanelDescription(settings.leaveMessage, userMention, displayChannelId),
-    imageUrl
+    description: leavePanelDescription(settings, userMention, displayChannelId),
+    footerText: settings.leaveFooterText ?? DEFAULT_LEAVE_FOOTER_TEXT,
+    imageUrl,
+    title: settings.leaveTitle ?? DEFAULT_LEAVE_TITLE
   });
 }
 
-function createMemberPanelEmbed({ description, imageUrl }: { description: string; imageUrl: string | null }) {
+function createMemberPanelEmbed({
+  description,
+  footerText,
+  imageUrl,
+  title
+}: {
+  description: string;
+  footerText: string;
+  imageUrl: string | null;
+  title: string;
+}) {
   return {
     color: 0xef4444,
-    title: "\u{1F47E} Ricardinn98",
+    title,
     description,
     image: imageUrl ? { url: imageUrl } : undefined,
     footer: {
-      text: "Ricardinn98 - Comunidade de lives"
+      text: footerText
     }
   };
 }
@@ -189,4 +245,11 @@ function toPublicUrl(value: string | null) {
 
 function formatPanelMessage(message: string | null, userMention: string, fallback: string) {
   return (message?.trim() || fallback).replace(/\{user\}/gi, userMention);
+}
+
+function formatRuleLines(rules: string | null, fallback: string) {
+  return (rules?.trim() || fallback)
+    .split(/\r?\n/)
+    .map((rule) => rule.replace(/^\s*(?:\d+[.)-]\s*|\*\*\d+[.)-]?\*\*\s*)/, "").trim())
+    .filter(Boolean);
 }
