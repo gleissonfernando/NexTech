@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { Dashboard } from "./pages/Dashboard";
+import { DevDashboard } from "./pages/DevDashboard";
 import { Login } from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
 import { dashboardUrl } from "./lib/urls";
@@ -20,26 +21,27 @@ export function App() {
   } = useAuth();
   const path = window.location.pathname;
   const routeError = path === "/auth/error" ? readAuthError() : null;
+  const dashboardPath = path === "/dashboard" || path === "/dev";
 
   useEffect(() => {
-    if (auth?.access.verified && path !== "/dashboard") {
+    if (auth?.access.verified && !dashboardPath) {
       window.location.replace(dashboardUrl());
     }
-  }, [auth, path]);
+  }, [auth, dashboardPath]);
 
   useEffect(() => {
-    if (loading || path !== "/dashboard" || error || auth) {
+    if (loading || !dashboardPath || error || auth) {
       return;
     }
 
     loginDiscord();
-  }, [auth, error, loading, loginDiscord, path]);
+  }, [auth, dashboardPath, error, loading, loginDiscord]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
-  if (path === "/dashboard" && !auth && !error) {
+  if (dashboardPath && !auth && !error) {
     return <LoadingScreen />;
   }
 
@@ -56,6 +58,10 @@ export function App() {
         verifying={verifying}
       />
     );
+  }
+
+  if (path === "/dev") {
+    return <DevDashboard auth={auth} onLogout={logout} />;
   }
 
   return <Dashboard auth={auth} onLogout={logout} />;

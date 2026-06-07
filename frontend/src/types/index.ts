@@ -415,8 +415,6 @@ export type DashboardMeResponse = {
   guilds: DashboardMeGuild[];
 };
 
-export type DashboardViewMode = "developer" | "user";
-
 export type DevModuleDefinition = {
   id: string;
   label: string;

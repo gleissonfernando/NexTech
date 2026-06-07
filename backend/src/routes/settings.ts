@@ -5,6 +5,7 @@ import { isBotRequest, requireAuth, requireAuthOrBot } from "../middleware/auth"
 import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
 import { canManageDevBotGuild, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
+import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import { getGuildSettings, updateGuildSettings } from "../services/settingsService";
 import { saveLeaveImage, saveWelcomeImage, sendLeavePanelToDiscord, sendWelcomePanelToDiscord } from "../services/welcomePanelService";
@@ -268,8 +269,25 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
     await validateGuildResources(guildId, botId, input);
 
     const settings = await updateGuildSettings(guildId, input, botId);
+    const settingsLog = await createLog({
+      botId,
+      guildId,
+      userId: res.locals.dashboardAuth.user.discordId,
+      type: "dashboard.settings.updated",
+      message: friendlySettingsMessage(input),
+      metadata: {
+        moduleName: inferSettingsModuleName(input),
+        changedKeys: Object.keys(input),
+        botId,
+        guildId,
+        userId: res.locals.dashboardAuth.user.discordId
+      }
+    }).catch(() => null);
 
     emitRealtime("settings:updated", settings);
+    if (settingsLog) {
+      emitRealtime("logs:new", settingsLog);
+    }
 
     return res.json({
       settings
@@ -351,9 +369,9 @@ async function canPatchSettings(
     ticketCategoryId: ["tickets"],
     logChannelId: ["logs"],
     moderationEnabled: ["moderation"],
-    verificationEnabled: ["moderation"],
-    verificationRoleId: ["moderation"],
-    verificationRoleIds: ["moderation"]
+    verificationEnabled: ["verification", "moderation"],
+    verificationRoleId: ["verification", "moderation"],
+    verificationRoleIds: ["verification", "moderation"]
   };
   const access = await Promise.all(
     (Object.keys(input) as Array<keyof typeof input>).map(async (key) => {
@@ -422,4 +440,66 @@ function createSettingsError(message: string) {
   return Object.assign(new Error(message), {
     statusCode: 400
   });
+}
+
+function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
+  const keys = new Set(Object.keys(input));
+
+  if ([...keys].some((key) => key.startsWith("verification"))) return "permissions";
+  if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
+  if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
+  if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
+  if ([...keys].some((key) => key.startsWith("log"))) return "logs";
+  if ([...keys].some((key) => key.startsWith("moderation"))) return "moderation";
+  if ([...keys].some((key) => key.startsWith("twitch") || key.startsWith("booster"))) return "roles";
+
+  return "settings";
+}
+
+function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
+  if (input.verificationRoleIds || input.verificationRoleId !== undefined) {
+    return "Permissao de acesso ao painel atualizada.";
+  }
+
+  if (input.verificationEnabled !== undefined) {
+    return input.verificationEnabled ? "Sistema de permissoes ativado." : "Sistema de permissoes desativado.";
+  }
+
+  if (input.logChannelId !== undefined) {
+    return "Canal de logs atualizado.";
+  }
+
+  if (input.moderationEnabled !== undefined) {
+    return input.moderationEnabled ? "Sistema de moderacao ativado." : "Sistema de moderacao desativado.";
+  }
+
+  if (input.ticketEnabled !== undefined) {
+    return input.ticketEnabled ? "Sistema de tickets ativado." : "Sistema de tickets desativado.";
+  }
+
+  if (input.welcomeChannelId !== undefined || input.welcomeMessage !== undefined || input.welcomeImageUrl !== undefined) {
+    return "Boas-vindas atualizadas.";
+  }
+
+  if (input.welcomeEnabled !== undefined) {
+    return input.welcomeEnabled ? "Boas-vindas ativadas." : "Boas-vindas desativadas.";
+  }
+
+  if (input.leaveChannelId !== undefined || input.leaveMessage !== undefined || input.leaveImageUrl !== undefined) {
+    return "Mensagem de saida atualizada.";
+  }
+
+  if (input.leaveEnabled !== undefined) {
+    return input.leaveEnabled ? "Mensagem de saida ativada." : "Mensagem de saida desativada.";
+  }
+
+  if (input.autoRoleIds !== undefined) {
+    return "Cargos automaticos atualizados.";
+  }
+
+  if (input.autoRoleEnabled !== undefined) {
+    return input.autoRoleEnabled ? "Sistema de cargos automaticos ativado." : "Sistema de cargos automaticos desativado.";
+  }
+
+  return "Configuracao do servidor atualizada.";
 }

@@ -30,10 +30,9 @@ export function Topbar({ dashboardUser, user, guilds, selectedGuildId, onOpenMen
             <Bot className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-white">Painel de Orviteck Bots</h1>
+            <h1 className="truncate text-lg font-semibold text-white">Dashboard do servidor</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <Badge variant="muted">OAuth2</Badge>
-              <Badge variant="muted">{guilds.length} servidores</Badge>
+              <Badge variant="muted">{guilds.length === 1 ? "1 servidor" : `${guilds.length} servidores`}</Badge>
             </div>
           </div>
         </div>

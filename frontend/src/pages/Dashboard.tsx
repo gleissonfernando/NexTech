@@ -3,38 +3,29 @@ import { motion } from "framer-motion";
 import {
   Activity,
   AtSign,
-  Ban,
-  Bell,
   Bot,
-  Brush,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
   Film,
-  FileText,
-  Globe2,
   Hash,
-  IdCard,
+  Loader2,
   LockKeyhole,
-  MessageSquare,
   Radio,
   ScrollText,
+  Server,
   Settings,
   Shield,
   TicketIcon,
-  UserCheck,
   UserMinus,
   UserPlus,
   Users
 } from "lucide-react";
 import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
-import { DashboardHeader } from "../components/DashboardHeader";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
-import { DevPanel } from "../components/dev/DevPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
-import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
 import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
@@ -44,11 +35,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Switch } from "../components/ui/switch";
 import { createDashboardSocket } from "../lib/socket";
 import {
+  getClipsConfig,
   getDashboardMe,
   getGuildSettings,
   getLives,
   getLogs,
+  getSocialNotifications,
   getTickets,
+  getXMonitor,
   patchGuildSettings,
   updateSelectedDashboardGuild
 } from "../lib/api";
@@ -56,15 +50,17 @@ import type {
   AuthResponse,
   BotStatus,
   ClipSent,
-  DashboardGuild,
+  ClipsConfig,
   DashboardBot,
+  DashboardGuild,
   DashboardMeGuild,
   DashboardMeResponse,
-  DashboardViewMode,
   GuildSettings,
   LiveEvent,
   LogEntry,
-  Ticket
+  SocialNotification,
+  Ticket,
+  XAccount
 } from "../types";
 
 type DashboardProps = {
@@ -72,29 +68,29 @@ type DashboardProps = {
   onLogout: () => void;
 };
 
-const CONFIGURED_GUILD_ID = "";
-const CONFIGURED_GUILD_NAME = "Servidor configurado";
-const DASHBOARD_VIEW_MODE_KEY = "dashboard.dev_view_mode";
 type BooleanSettingKey =
   | "welcomeEnabled"
   | "leaveEnabled"
   | "autoRoleEnabled"
   | "ticketEnabled"
-  | "moderationEnabled"
-  | "verificationEnabled";
+  | "moderationEnabled";
 
-type DashboardCardConfig = {
+type OverviewDetails = {
+  clipsConfig: ClipsConfig | null;
+  liveNotifications: SocialNotification[];
+  xAccounts: XAccount[];
+};
+
+type ModuleDefinition = {
   id: string;
-  category: "settings" | "permissions" | "modules" | "logs" | "personalization";
   title: string;
   description: string;
   icon: typeof Bot;
-  key?: BooleanSettingKey;
-  badge?: string;
-  action?: string;
-  moduleId?: string;
-  devOnly?: boolean;
+  view: ViewId;
 };
+
+const CONFIGURED_GUILD_ID = "";
+const CONFIGURED_GUILD_NAME = "Servidor configurado";
 
 const initialBotStatus: BotStatus = {
   online: false,
@@ -105,212 +101,110 @@ const initialBotStatus: BotStatus = {
   updatedAt: new Date().toISOString()
 };
 
-const dashboardCards: DashboardCardConfig[] = [
+const emptyOverviewDetails: OverviewDetails = {
+  clipsConfig: null,
+  liveNotifications: [],
+  xAccounts: []
+};
+
+const moduleCatalog: ModuleDefinition[] = [
   {
-    id: "general-settings",
-    category: "settings",
-    title: "Configurações gerais",
-    description: "Defina canais, comportamento do bot e parâmetros globais do servidor.",
-    icon: Settings,
-    devOnly: true,
-    action: "Abrir"
-  },
-  {
-    id: "welcome",
-    category: "settings",
-    title: "Entrada",
-    description: "Painel automatico para entrada de novos membros.",
-    icon: UserPlus,
-    moduleId: "welcome",
-    key: "welcomeEnabled",
-    action: "Abrir"
-  },
-  {
-    id: "leave",
-    category: "settings",
-    title: "Saida",
-    description: "Painel automatico para saida de membros.",
-    icon: UserMinus,
-    moduleId: "leave",
-    key: "leaveEnabled",
-    action: "Abrir"
-  },
-  {
-    id: "admin-permissions",
-    category: "permissions",
-    title: "Permissões administrativas",
-    description: "Base preparada para validar administradores e donos do servidor.",
-    icon: LockKeyhole,
-    devOnly: true,
-    badge: "Novo",
-    action: "Ver"
-  },
-  {
-    id: "role-validation",
-    category: "permissions",
-    title: "Cargo configurado no painel",
-    description: "Estrutura pronta para liberar acesso por cargo definido futuramente.",
-    icon: Shield,
-    moduleId: "verification",
-    key: "verificationEnabled",
-    action: "Preparar"
-  },
-  {
-    id: "lives",
-    category: "modules",
-    title: "Sistema de lives",
-    description: "Detecte transmissões, envie alertas e atualize o painel em tempo real.",
+    id: "live",
+    title: "Sistema de Lives",
+    description: "Detecta transmissoes na Twitch e envia alertas no Discord.",
     icon: Radio,
-    moduleId: "live",
-    action: "Gerenciar"
+    view: "lives"
   },
   {
     id: "clips",
-    category: "modules",
     title: "Clips",
-    description: "Detecte cortes criados na Twitch e envie no Discord automaticamente.",
+    description: "Detecta clips criados na Twitch e envia automaticamente no Discord.",
     icon: Film,
-    moduleId: "clips",
-    action: "Configurar"
-  },
-  {
-    id: "network",
-    category: "modules",
-    title: "Rede Social dos Membros",
-    description: "Organize Twitter, Instagram, Twitch, YouTube, TikTok e outros links da comunidade.",
-    icon: Globe2,
-    moduleId: "network",
-    action: "Gerenciar"
+    view: "clips"
   },
   {
     id: "x-monitor",
-    category: "modules",
     title: "X Monitor",
-    description: "Monitore perfis do X e envie novas publicacoes no Discord automaticamente.",
+    description: "Monitora perfis do X e publica novos posts no Discord.",
     icon: AtSign,
-    moduleId: "x-monitor",
-    action: "Gerenciar"
-  },
-  {
-    id: "roles",
-    category: "modules",
-    title: "Cargos automáticos",
-    description: "Controle cargos de entrada, booster, subscriber e perfis customizados.",
-    icon: Users,
-    moduleId: "roles",
-    key: "autoRoleEnabled",
-    action: "Configurar"
-  },
-  {
-    id: "tickets",
-    category: "modules",
-    title: "Tickets",
-    description: "Organize atendimentos, canais temporários e histórico de suporte.",
-    icon: TicketIcon,
-    moduleId: "tickets",
-    key: "ticketEnabled",
-    action: "Abrir"
+    view: "x-monitor"
   },
   {
     id: "moderation",
-    category: "modules",
-    title: "Moderação",
-    description: "Ações de ban, kick, timeout e warn com registros centralizados.",
-    icon: Ban,
-    moduleId: "moderation",
-    key: "moderationEnabled",
-    action: "Gerenciar"
+    title: "Moderacao",
+    description: "Centraliza ajustes basicos de seguranca e moderacao do servidor.",
+    icon: Shield,
+    view: "moderation"
   },
   {
-    id: "audit-logs",
-    category: "logs",
-    title: "Logs do servidor",
-    description: "Eventos de mensagens, membros, cargos, tickets e moderação.",
+    id: "verification",
+    title: "Permissoes",
+    description: "Define quais cargos podem entrar e configurar este painel.",
+    icon: LockKeyhole,
+    view: "permissions"
+  },
+  {
+    id: "logs",
+    title: "Logs",
+    description: "Mostra acontecimentos importantes do bot no servidor.",
     icon: ScrollText,
-    moduleId: "logs",
-    badge: "3",
-    action: "Ver logs"
+    view: "logs"
   },
   {
-    id: "notifications",
-    category: "logs",
-    title: "Notificações internas",
-    description: "Área reservada para alertas operacionais do painel.",
-    icon: Bell,
-    moduleId: "logs",
-    action: "Em breve"
+    id: "welcome",
+    title: "Boas-vindas",
+    description: "Envia mensagem e imagem quando um membro entra no servidor.",
+    icon: UserPlus,
+    view: "settings"
   },
   {
-    id: "messages",
-    category: "personalization",
-    title: "Mensagens personalizadas",
-    description: "Crie textos reutilizáveis para boas-vindas, tickets e avisos.",
-    icon: MessageSquare,
-    moduleId: "avisos",
-    action: "Editar"
+    id: "leave",
+    title: "Saida",
+    description: "Envia mensagem quando um membro sai do servidor.",
+    icon: UserMinus,
+    view: "settings"
   },
   {
-    id: "appearance",
-    category: "personalization",
-    title: "Aparência do servidor",
-    description: "Espaço preparado para identidade visual, embeds e modelos futuros.",
-    icon: Brush,
-    moduleId: "avisos",
-    action: "Em breve"
+    id: "roles",
+    title: "Cargos automaticos",
+    description: "Aplica cargos configurados para novos membros.",
+    icon: Users,
+    view: "settings"
+  },
+  {
+    id: "tickets",
+    title: "Tickets",
+    description: "Organiza atendimento em canais de suporte.",
+    icon: TicketIcon,
+    view: "settings"
+  },
+  {
+    id: "avisos",
+    title: "Configuracoes",
+    description: "Mantem mensagens e ajustes simples do servidor.",
+    icon: Settings,
+    view: "settings"
   }
 ];
-
-const categoryMeta = {
-  settings: {
-    title: "Configurações",
-    description: "Base operacional do servidor e do bot."
-  },
-  permissions: {
-    title: "Permissões",
-    description: "Regras de acesso e validação administrativa."
-  },
-  modules: {
-    title: "Módulos",
-    description: "Funções principais do bot Discord."
-  },
-  logs: {
-    title: "Logs",
-    description: "Auditoria e eventos em tempo real."
-  },
-  personalization: {
-    title: "Personalização",
-    description: "Mensagens e espaços para futuras customizações."
-  }
-};
 
 const viewModuleIds: Partial<Record<ViewId, string>> = {
   permissions: "verification",
   lives: "live",
   clips: "clips",
-  network: "network",
   "x-monitor": "x-monitor",
-  roles: "roles",
-  welcome: "welcome",
-  leave: "leave",
-  tickets: "tickets",
   logs: "logs",
-  moderation: "moderation",
-  personalization: "avisos"
+  moderation: "moderation"
 };
+
+const settingsModuleIds = new Set(["welcome", "leave", "roles", "tickets", "avisos", "network"]);
 
 export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [dashboardProfile, setDashboardProfile] = useState<DashboardMeResponse | null>(null);
   const [dashboardProfileLoading, setDashboardProfileLoading] = useState(true);
-  const panelBots = dashboardProfile?.bots ?? [];
-  const dashboardGuilds = useMemo(
-    () => ensureDashboardGuilds(dashboardProfile ? mergeDashboardGuilds(dashboardProfile.guilds, auth.guilds) : auth.guilds),
-    [auth.guilds, dashboardProfile]
-  );
   const [activeView, setActiveView] = useState<ViewId>("overview");
-  const [dashboardViewMode, setDashboardViewMode] = useState<DashboardViewMode>(readDashboardViewMode);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedGuildId, setSelectedGuildId] = useState<string | null>(
-    auth.user.selectedGuildId ?? dashboardGuilds[0]?.id ?? CONFIGURED_GUILD_ID
+    auth.user.selectedGuildId ?? auth.guilds[0]?.id ?? CONFIGURED_GUILD_ID
   );
   const [settings, setSettings] = useState<GuildSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -320,39 +214,40 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [clipsRefreshSignal, setClipsRefreshSignal] = useState(0);
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
-  const selectedPanelBot = useMemo(
+  const [overviewDetails, setOverviewDetails] = useState<OverviewDetails>(emptyOverviewDetails);
+
+  const panelBots = dashboardProfile?.bots ?? [];
+  const dashboardGuilds = useMemo(
+    () => ensureDashboardGuilds(dashboardProfile ? mergeDashboardGuilds(dashboardProfile.guilds, auth.guilds) : auth.guilds),
+    [auth.guilds, dashboardProfile]
+  );
+  const selectedBot = useMemo(
     () => panelBots.find((bot) => bot.id === selectedBotId) ?? null,
     [panelBots, selectedBotId]
   );
-  const activeBotId = selectedPanelBot?.id ?? null;
-  const canManageDashboard = panelBots.length ? Boolean(selectedPanelBot) : auth.permissions.canManageDashboard;
-  const canViewDev = dashboardProfile?.canViewDev ?? false;
-  const developerView = canViewDev && dashboardViewMode === "developer";
-  const enabledModules = selectedPanelBot?.enabledModules ?? [];
-  const showAllModules = developerView;
-  const showDevOnlyCards = developerView;
-  const displayedBotStatus = selectedPanelBot
+  const activeBotId = selectedBot?.id ?? null;
+  const enabledModules = selectedBot?.enabledModules ?? [];
+  const scopedDashboardGuilds = useMemo(
+    () => selectedBot
+      ? dashboardGuilds.filter((guild) => selectedBot.guildIds.includes(guild.id))
+      : dashboardGuilds,
+    [dashboardGuilds, selectedBot]
+  );
+  const selectedGuild = useMemo(
+    () => scopedDashboardGuilds.find((guild) => guild.id === selectedGuildId) ?? scopedDashboardGuilds[0] ?? null,
+    [scopedDashboardGuilds, selectedGuildId]
+  );
+  const displayedBotStatus = selectedBot
     ? {
         ...botStatus,
-        botId: selectedPanelBot.id,
-        online: selectedPanelBot.status === "online"
+        botId: selectedBot.id,
+        online: selectedBot.status === "online" || botStatus.online
       }
     : botStatus;
-  const scopedDashboardGuilds = useMemo(
-    () => selectedPanelBot
-      ? dashboardGuilds.filter((guild) => selectedPanelBot.guildIds.includes(guild.id))
-      : dashboardGuilds,
-    [dashboardGuilds, selectedPanelBot]
-  );
-  const allDashboardHeaderGuilds = useMemo(
-    () => (dashboardProfile?.guilds.length ? dashboardProfile.guilds : toDashboardMeGuilds(dashboardGuilds)),
-    [dashboardGuilds, dashboardProfile]
-  );
-  const dashboardHeaderGuilds = useMemo(
-    () => selectedPanelBot
-      ? allDashboardHeaderGuilds.filter((guild) => selectedPanelBot.guildIds.includes(guild.id))
-      : allDashboardHeaderGuilds,
-    [allDashboardHeaderGuilds, selectedPanelBot]
+  const canManageDashboard = panelBots.length ? Boolean(selectedBot) : auth.permissions.canManageDashboard;
+  const availableModules = useMemo(
+    () => moduleCatalog.filter((module) => enabledModules.includes(module.id)),
+    [enabledModules]
   );
 
   useEffect(() => {
@@ -361,18 +256,15 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     setDashboardProfileLoading(true);
     getDashboardMe()
       .then((profile) => {
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         setDashboardProfile(profile);
-        const firstPanelBot = profile.bots[0] ?? null;
+        const firstBot = profile.bots[0] ?? null;
+        setSelectedBotId((current) => current ?? firstBot?.id ?? null);
 
-        setSelectedBotId((current) => current ?? firstPanelBot?.id ?? null);
-        const nextGuildId = firstPanelBot?.guildIds[0] ?? profile.selectedGuildId ?? profile.guilds[0]?.id ?? null;
-
+        const nextGuildId = firstBot?.guildIds[0] ?? profile.selectedGuildId ?? profile.guilds[0]?.id ?? null;
         if (nextGuildId) {
-          setSelectedGuildId((current) => (current && profile.guilds.some((guild) => guild.id === current) ? current : nextGuildId));
+          setSelectedGuildId((current) => current && profile.guilds.some((guild) => guild.id === current) ? current : nextGuildId);
         }
       })
       .catch(() => {
@@ -392,16 +284,10 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   }, []);
 
   useEffect(() => {
-    if (activeView === "dev" && !developerView) {
+    if (!isViewAllowed(activeView, enabledModules)) {
       setActiveView("overview");
     }
-  }, [activeView, developerView]);
-
-  useEffect(() => {
-    if (!isViewAllowed(activeView, enabledModules, developerView, showAllModules)) {
-      setActiveView("overview");
-    }
-  }, [activeView, developerView, enabledModules, showAllModules]);
+  }, [activeView, enabledModules]);
 
   useEffect(() => {
     const selectedGuildIsAvailable = selectedGuildId
@@ -413,32 +299,19 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     }
   }, [scopedDashboardGuilds, selectedGuildId]);
 
-  const selectedGuild = useMemo(
-    () => scopedDashboardGuilds.find((guild) => guild.id === selectedGuildId) ?? scopedDashboardGuilds[0] ?? null,
-    [scopedDashboardGuilds, selectedGuildId]
-  );
-
-  const totals = useMemo(
-    () => ({
-      members: scopedDashboardGuilds.reduce((sum, guild) => sum + guild.memberCount, 0),
-      channels: scopedDashboardGuilds.reduce((sum, guild) => sum + guild.channelCount, 0),
-      guilds: scopedDashboardGuilds.length,
-      onlineGuilds: scopedDashboardGuilds.filter((guild) => guild.botEnabled || botStatus.online).length
-    }),
-    [scopedDashboardGuilds, botStatus.online]
-  );
-
   useEffect(() => {
     if (panelBots.length && !activeBotId) {
       setSettings(null);
       setLogs([]);
       setLives([]);
       setTickets([]);
+      setOverviewDetails(emptyOverviewDetails);
       return;
     }
 
     if (!selectedGuildId) {
       setSettings(null);
+      setOverviewDetails(emptyOverviewDetails);
       return;
     }
 
@@ -451,17 +324,23 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
       getGuildSettings(selectedGuildId, activeBotId),
       getLogs(selectedGuildId, activeBotId),
       getLives(selectedGuildId, activeBotId),
-      getTickets(selectedGuildId, activeBotId)
+      getTickets(selectedGuildId, activeBotId),
+      enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
+      enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId) : Promise.resolve(null),
+      enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null)
     ])
-      .then(([settingsResult, logsResult, livesResult, ticketsResult]) => {
-        if (!mounted) {
-          return;
-        }
+      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, clipsResult, xResult]) => {
+        if (!mounted) return;
 
         setSettings(settingsResult.status === "fulfilled" ? settingsResult.value : null);
-        setLogs(logsResult.status === "fulfilled" ? logsResult.value : []);
+        setLogs(logsResult.status === "fulfilled" ? userVisibleLogs(logsResult.value) : []);
         setLives(livesResult.status === "fulfilled" ? livesResult.value : []);
         setTickets(ticketsResult.status === "fulfilled" ? ticketsResult.value : []);
+        setOverviewDetails({
+          liveNotifications: liveResult.status === "fulfilled" && liveResult.value ? liveResult.value.notifications : [],
+          clipsConfig: clipsResult.status === "fulfilled" ? clipsResult.value : null,
+          xAccounts: xResult.status === "fulfilled" && xResult.value ? xResult.value.accounts : []
+        });
       })
       .finally(() => {
         if (mounted) {
@@ -472,7 +351,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     return () => {
       mounted = false;
     };
-  }, [activeBotId, panelBots.length, selectedGuildId]);
+  }, [activeBotId, enabledModules, panelBots.length, selectedGuildId]);
 
   useEffect(() => {
     const socket = createDashboardSocket();
@@ -488,23 +367,8 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
         bots: current.bots.map((bot) => bot.id === updatedBot.id ? updatedBot : bot)
       } : current);
     });
-    socket.on("dev:bot_created", (createdBot: DashboardBot) => {
-      setDashboardProfile((current) => current ? {
-        ...current,
-        bots: current.bots.some((bot) => bot.id === createdBot.id)
-          ? current.bots.map((bot) => bot.id === createdBot.id ? createdBot : bot)
-          : [createdBot, ...current.bots]
-      } : current);
-    });
-    socket.on("dev:bot_deleted", (deletedBot: DashboardBot) => {
-      setDashboardProfile((current) => current ? {
-        ...current,
-        bots: current.bots.filter((bot) => bot.id !== deletedBot.id)
-      } : current);
-      setSelectedBotId((current) => current === deletedBot.id ? null : current);
-    });
     socket.on("logs:new", (log: LogEntry) => {
-      if (log.guildId === selectedGuildId && (log.botId ?? null) === activeBotId) {
+      if (log.guildId === selectedGuildId && (log.botId ?? null) === activeBotId && isUserVisibleLog(log)) {
         setLogs((current) => [log, ...current].slice(0, 50));
       }
     });
@@ -581,7 +445,6 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     setSelectedBotId(botId);
 
     const bot = panelBots.find((item) => item.id === botId) ?? null;
-
     const nextGuildId = bot
       ? bot.guildIds.includes(selectedGuildId ?? "") ? selectedGuildId : bot.guildIds[0]
       : selectedGuildId;
@@ -592,222 +455,737 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     }
   }
 
-  function upsertDashboardBot(bot: DashboardBot) {
-    setDashboardProfile((current) => current ? {
-      ...current,
-      bots: current.bots.some((item) => item.id === bot.id)
-        ? current.bots.map((item) => item.id === bot.id ? bot : item)
-        : [bot, ...current.bots]
-    } : current);
-  }
-
-  function removeDashboardBot(botId: string) {
-    setDashboardProfile((current) => current ? {
-      ...current,
-      bots: current.bots.filter((bot) => bot.id !== botId)
-    } : current);
-    setSelectedBotId((current) => current === botId ? null : current);
-  }
-
-  function handleDashboardViewMode(mode: DashboardViewMode) {
-    if (!canViewDev) {
-      return;
-    }
-
-    setDashboardViewMode(mode);
-    writeDashboardViewMode(mode);
-
-    if (mode === "user" && activeView === "dev") {
-      setActiveView("overview");
-    }
-  }
-
   return (
     <DashboardLayout
       activeView={activeView}
-      bots={panelBots}
       dashboardUser={dashboardProfile?.user}
       enabledModules={enabledModules}
       guilds={scopedDashboardGuilds}
       onChangeView={setActiveView}
       onLogout={onLogout}
-      onSelectBot={handleSelectBot}
       onSelectGuild={handleSelectGuild}
-      selectedBotId={activeBotId}
       selectedGuildId={selectedGuild?.id ?? null}
-      showDev={developerView}
-      showAllModules={showAllModules}
       user={auth.user}
     >
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-6"
+        className="space-y-5"
         initial={{ opacity: 0, y: 14 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        <PageHeader
-          activeView={activeView}
-          botStatus={displayedBotStatus}
-          guildName={selectedGuild?.name ?? "Servidor"}
-        />
-        <DashboardHeader
-          bot={selectedPanelBot ? {
-            id: selectedPanelBot.clientId,
-            username: selectedPanelBot.name,
-            avatarUrl: selectedPanelBot.avatarUrl,
-            connected: selectedPanelBot.status === "online"
-          } : dashboardProfile?.bot}
+        <UserDashboardHeader
+          bot={selectedBot}
           bots={panelBots}
-          canSwitchDashboardMode={canViewDev}
-          dashboardMode={developerView ? "developer" : "user"}
-          guilds={dashboardHeaderGuilds}
           loading={dashboardProfileLoading}
-          onChangeDashboardMode={handleDashboardViewMode}
           onSelectBot={handleSelectBot}
-          onSelectGuild={handleSelectGuild}
-          selectedBotId={activeBotId}
-          selectedGuildId={selectedGuild?.id ?? null}
-          user={dashboardProfile?.user}
+          selectedGuild={selectedGuild}
+          status={displayedBotStatus}
         />
-        {activeView !== "dev" ? (
-          <BotConfigScopeCard
-            bots={panelBots}
-            enabledModules={enabledModules}
-            loading={dashboardProfileLoading}
-            onSelectBot={handleSelectBot}
-            selectedBot={selectedPanelBot}
-            selectedGuild={selectedGuild}
-          />
-        ) : null}
 
         {activeView === "overview" ? (
           <OverviewView
-            auth={auth}
-            botStatus={displayedBotStatus}
-            canManageDashboard={canManageDashboard}
-            enabledModules={enabledModules}
+            availableModules={availableModules}
+            bot={selectedBot}
+            details={overviewDetails}
+            guild={selectedGuild}
             logs={logs}
-            onToggle={updateSetting}
-            savingKey={savingKey}
+            onConfigure={setActiveView}
             settings={settings}
-            showAllModules={showAllModules}
-            showDevOnlyCards={showDevOnlyCards}
-            totals={totals}
-          />
-        ) : null}
-
-        {activeView === "settings" || activeView === "permissions" || activeView === "modules" || activeView === "personalization" ? (
-          <CategoryView
-            canManageDashboard={canManageDashboard}
-            category={activeView}
-            enabledModules={enabledModules}
-            onToggle={updateSetting}
-            savingKey={savingKey}
-            settings={settings}
-            showAllModules={showAllModules}
-            showDevOnlyCards={showDevOnlyCards}
+            status={displayedBotStatus}
           />
         ) : null}
 
         {activeView === "lives" ? (
-          <LiveView botId={activeBotId} canManageDashboard={canManageDashboard} guild={selectedGuild} lives={lives} />
+          <LiveView botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} lives={lives} />
         ) : null}
         {activeView === "clips" ? (
           <ClipsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
         ) : null}
-        {activeView === "network" ? (
-          <MemberSocialNetworkPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
-        ) : null}
         {activeView === "x-monitor" ? (
           <XMonitorPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
         ) : null}
-        {activeView === "welcome" ? (
-          <WelcomePanel
+        {activeView === "moderation" ? (
+          <ModerationView
             canManage={canManageDashboard}
-            botId={activeBotId}
-            guild={selectedGuild}
-            loading={settingsLoading}
-            mode="welcome"
-            onSettingsChange={setSettings}
+            onToggle={updateSetting}
+            savingKey={savingKey}
             settings={settings}
-            viewerName={auth.user.username}
           />
         ) : null}
-        {activeView === "leave" ? (
-          <WelcomePanel
-            canManage={canManageDashboard}
+        {activeView === "permissions" ? (
+          <SiteAccessPanel
             botId={activeBotId}
+            canManage={canManageDashboard}
             guild={selectedGuild}
             loading={settingsLoading}
-            mode="leave"
             onSettingsChange={setSettings}
             settings={settings}
-            viewerName={auth.user.username}
           />
         ) : null}
-        {activeView === "tickets" ? <TicketView tickets={tickets} /> : null}
         {activeView === "logs" ? <LogsView logs={logs} /> : null}
-        {activeView === "dev" && developerView ? (
-          <DevPanel
-            guilds={allDashboardHeaderGuilds}
-            onBotCreated={(bot) => {
-              upsertDashboardBot(bot);
-              setSelectedBotId(bot.id);
-              setSelectedGuildId(bot.guildIds[0] ?? bot.mainGuildId);
-            }}
-            onBotDeleted={removeDashboardBot}
-            onBotUpdated={upsertDashboardBot}
-            onOpenView={setActiveView}
-            onSelectBot={handleSelectBot}
-            selectedBotId={activeBotId}
-            selectedGuildId={selectedGuild?.id ?? null}
-            user={auth.user}
+        {activeView === "settings" ? (
+          <SettingsView
+            botId={activeBotId}
+            canManage={canManageDashboard}
+            enabledModules={enabledModules}
+            guild={selectedGuild}
+            loading={settingsLoading}
+            onSettingsChange={setSettings}
+            onToggle={updateSetting}
+            savingKey={savingKey}
+            settings={settings}
+            tickets={tickets}
+            viewerName={auth.user.username}
           />
-        ) : null}
-
-        {["roles", "moderation"].includes(activeView) ? (
-          <>
-            <FocusedModuleView
-              activeView={activeView}
-              canManageDashboard={canManageDashboard}
-              enabledModules={enabledModules}
-              onToggle={updateSetting}
-              savingKey={savingKey}
-              settings={settings}
-              showAllModules={showAllModules}
-              showDevOnlyCards={showDevOnlyCards}
-            />
-            {activeView === "moderation" ? (
-              <SiteAccessPanel
-                botId={activeBotId}
-                canManage={canManageDashboard}
-                guild={selectedGuild}
-                loading={settingsLoading}
-                onSettingsChange={setSettings}
-                settings={settings}
-              />
-            ) : null}
-          </>
         ) : null}
       </motion.div>
     </DashboardLayout>
   );
 }
 
-function readDashboardViewMode(): DashboardViewMode {
-  try {
-    return window.sessionStorage.getItem(DASHBOARD_VIEW_MODE_KEY) === "user" ? "user" : "developer";
-  } catch {
-    return "developer";
-  }
+function UserDashboardHeader({
+  bot,
+  bots,
+  loading,
+  onSelectBot,
+  selectedGuild,
+  status
+}: {
+  bot: DashboardBot | null;
+  bots: DashboardBot[];
+  loading: boolean;
+  onSelectBot: (botId: string | null) => void;
+  selectedGuild: DashboardGuild | null;
+  status: BotStatus;
+}) {
+  return (
+    <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+      <Card className="border-purple-500/20 bg-[#0b0b0b]">
+        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar
+              className="h-12 w-12 rounded-lg border border-purple-500/45"
+              fallback={bot?.name ?? "Bot"}
+              src={bot?.avatarUrl ?? null}
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-purple-300">Bot selecionado</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <h1 className="truncate text-xl font-semibold text-white">{bot?.name ?? "Nenhum bot selecionado"}</h1>
+                <Badge variant={status.online ? "success" : "muted"}>
+                  {status.online ? "Online" : "Offline"}
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          {bots.length > 1 ? (
+            <label className="block w-full space-y-1 sm:max-w-xs">
+              <span className="text-xs text-zinc-500">Trocar bot</span>
+              <select
+                className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-400 disabled:opacity-50"
+                disabled={loading}
+                onChange={(event) => onSelectBot(event.target.value || null)}
+                value={bot?.id ?? ""}
+              >
+                <option value="">Selecione um bot</option>
+                {bots.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <Avatar
+            className="h-11 w-11 rounded-lg border border-zinc-800"
+            fallback={selectedGuild?.name ?? "Servidor"}
+            src={selectedGuild?.iconUrl ?? null}
+          />
+          <div className="min-w-0">
+            <p className="text-xs text-zinc-500">Servidor atual</p>
+            <p className="truncate text-sm font-semibold text-zinc-100">{selectedGuild?.name ?? "Servidor configurado"}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  );
 }
 
-function writeDashboardViewMode(mode: DashboardViewMode) {
-  try {
-    window.sessionStorage.setItem(DASHBOARD_VIEW_MODE_KEY, mode);
-  } catch {
-    // The mode falls back to developer when session storage is unavailable.
+function OverviewView({
+  availableModules,
+  bot,
+  details,
+  guild,
+  logs,
+  onConfigure,
+  settings,
+  status
+}: {
+  availableModules: ModuleDefinition[];
+  bot: DashboardBot | null;
+  details: OverviewDetails;
+  guild: DashboardGuild | null;
+  logs: LogEntry[];
+  onConfigure: (view: ViewId) => void;
+  settings: GuildSettings | null;
+  status: BotStatus;
+}) {
+  const moduleSummaries = availableModules.map((module) => ({
+    ...module,
+    state: moduleState(module.id, settings, details)
+  }));
+  const activeModules = moduleSummaries.filter((module) => module.state.active).length;
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <MetricCard icon={Bot} label="Bot" value={status.online ? "Online" : "Offline"} />
+        <MetricCard icon={Server} label="Servidor" value={guild?.name ?? "Nenhum"} />
+        <MetricCard icon={Users} label="Membros" value={formatNumber(guild?.memberCount ?? bot?.mainGuildMemberCount ?? 0)} />
+        <MetricCard icon={Hash} label="Canais" value={formatNumber(guild?.channelCount ?? bot?.mainGuildChannelCount ?? 0)} />
+        <MetricCard icon={CheckCircle2} label="Modulos ativos" value={`${activeModules}/${availableModules.length}`} />
+        <MetricCard icon={CalendarClock} label="Atualizado" value={formatDate(status.updatedAt)} />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Modulos disponiveis</h2>
+          <p className="text-sm text-zinc-500">Apenas os modulos liberados para este bot neste servidor aparecem aqui.</p>
+        </div>
+
+        {moduleSummaries.length ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {moduleSummaries.map((module) => (
+              <ModuleCard
+                description={module.description}
+                icon={module.icon}
+                key={module.id}
+                onConfigure={() => onConfigure(module.view)}
+                state={module.state}
+                title={module.title}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon={Settings} title="Nenhum modulo liberado para este bot" />
+        )}
+      </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Logs recentes</CardTitle>
+          <CardDescription>Eventos importantes traduzidos para o usuario.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FriendlyLogList compact logs={logs.slice(0, 5)} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ModuleCard({
+  description,
+  icon: Icon,
+  onConfigure,
+  state,
+  title
+}: {
+  description: string;
+  icon: typeof Bot;
+  onConfigure: () => void;
+  state: ReturnType<typeof moduleState>;
+  title: string;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-purple-500/25 bg-purple-500/10 text-purple-200">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold text-white">{title}</h3>
+            <p className="mt-1 text-sm leading-5 text-zinc-500">{description}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant={state.active ? "success" : "muted"}>{state.active ? "Ativado" : "Desativado"}</Badge>
+              <Badge variant={state.configured ? "success" : "danger"}>{state.configuredText}</Badge>
+            </div>
+          </div>
+        </div>
+
+        <Button className="h-9 shrink-0 px-3 text-xs" onClick={onConfigure} variant="outline">
+          Configurar
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LiveView({
+  botId,
+  canManage,
+  guild,
+  lives
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  lives: LiveEvent[];
+}) {
+  return (
+    <div className="space-y-5">
+      <LiveNotificationsPanel botId={botId} canManage={canManage} guild={guild} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sistema de lives</CardTitle>
+          <CardDescription>Eventos recentes detectados pelo bot.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {lives.length ? (
+              lives.map((live) => (
+                <EventRow
+                  badge={live.type === "started" ? "Iniciada" : "Encerrada"}
+                  icon={Radio}
+                  key={live.id}
+                  subtitle={live.title ?? live.url ?? "Sem titulo"}
+                  title={live.streamer}
+                  time={live.createdAt}
+                />
+              ))
+            ) : (
+              <EmptyState icon={Radio} title="Nenhuma live registrada" />
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ModerationView({
+  canManage,
+  onToggle,
+  savingKey,
+  settings
+}: {
+  canManage: boolean;
+  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
+  savingKey: BooleanSettingKey | null;
+  settings: GuildSettings | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <SimpleToggleCard
+        checked={Boolean(settings?.moderationEnabled)}
+        description="Ative ou pause os recursos basicos de moderacao deste servidor."
+        disabled={!settings || !canManage || savingKey === "moderationEnabled"}
+        icon={Shield}
+        onChange={(checked) => onToggle("moderationEnabled", checked)}
+        title="Moderacao"
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>Resumo</CardTitle>
+          <CardDescription>As regras globais do bot ficam no painel DEV. Aqui ficam apenas ajustes deste servidor.</CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+function SettingsView({
+  botId,
+  canManage,
+  enabledModules,
+  guild,
+  loading,
+  onSettingsChange,
+  onToggle,
+  savingKey,
+  settings,
+  tickets,
+  viewerName
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  enabledModules: string[];
+  guild: DashboardGuild | null;
+  loading: boolean;
+  onSettingsChange: (settings: GuildSettings) => void;
+  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
+  savingKey: BooleanSettingKey | null;
+  settings: GuildSettings | null;
+  tickets: Ticket[];
+  viewerName: string;
+}) {
+  const blocks: JSX.Element[] = [];
+
+  if (enabledModules.includes("welcome")) {
+    blocks.push(
+      <WelcomePanel
+        botId={botId}
+        canManage={canManage}
+        guild={guild}
+        key="welcome"
+        loading={loading}
+        mode="welcome"
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+        viewerName={viewerName}
+      />
+    );
   }
+
+  if (enabledModules.includes("leave")) {
+    blocks.push(
+      <WelcomePanel
+        botId={botId}
+        canManage={canManage}
+        guild={guild}
+        key="leave"
+        loading={loading}
+        mode="leave"
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+        viewerName={viewerName}
+      />
+    );
+  }
+
+  if (enabledModules.includes("tickets")) {
+    blocks.push(
+      <SimpleToggleCard
+        checked={Boolean(settings?.ticketEnabled)}
+        description={`${tickets.length} ticket(s) registrados neste servidor.`}
+        disabled={!settings || !canManage || savingKey === "ticketEnabled"}
+        icon={TicketIcon}
+        key="tickets"
+        onChange={(checked) => onToggle("ticketEnabled", checked)}
+        title="Tickets"
+      />
+    );
+  }
+
+  if (enabledModules.includes("roles") && !enabledModules.includes("welcome")) {
+    blocks.push(
+      <SimpleToggleCard
+        checked={Boolean(settings?.autoRoleEnabled)}
+        description={`${settings?.autoRoleIds.length ?? 0} cargo(s) configurado(s) para entrada.`}
+        disabled={!settings || !canManage || savingKey === "autoRoleEnabled"}
+        icon={Users}
+        key="roles"
+        onChange={(checked) => onToggle("autoRoleEnabled", checked)}
+        title="Cargos automaticos"
+      />
+    );
+  }
+
+  if (!blocks.length) {
+    return <EmptyState icon={Settings} title="Nenhuma configuracao simples liberada para este bot" />;
+  }
+
+  return <div className="space-y-5">{blocks}</div>;
+}
+
+function LogsView({ logs }: { logs: LogEntry[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Logs do servidor</CardTitle>
+        <CardDescription>Eventos importantes em linguagem simples.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <FriendlyLogList logs={logs} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SimpleToggleCard({
+  checked,
+  description,
+  disabled,
+  icon: Icon,
+  onChange,
+  title
+}: {
+  checked: boolean;
+  description: string;
+  disabled: boolean;
+  icon: typeof Bot;
+  onChange: (checked: boolean) => void;
+  title: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-white">{title}</h3>
+            <p className="mt-1 text-sm text-zinc-500">{description}</p>
+          </div>
+        </div>
+        <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricCard({ icon: Icon, label, value }: { icon: typeof Bot; label: string; value: string }) {
+  return (
+    <Card>
+      <CardContent className="flex h-full min-h-24 items-center gap-3 p-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs text-zinc-500">{label}</p>
+          <p className="mt-1 truncate text-lg font-semibold text-white">{value}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EventRow({
+  badge,
+  icon: Icon,
+  subtitle,
+  title,
+  time
+}: {
+  badge: string;
+  icon: typeof Bot;
+  subtitle: string;
+  title: string;
+  time: string;
+}) {
+  return (
+    <div className="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-zinc-900 bg-zinc-950/70 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black">
+          <Icon className="h-4 w-4 text-zinc-300" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{title}</p>
+          <p className="truncate text-xs text-zinc-500">{subtitle}</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="hidden text-xs text-zinc-500 sm:inline">{formatDate(time)}</span>
+        <Badge variant="muted">{badge}</Badge>
+      </div>
+    </div>
+  );
+}
+
+function FriendlyLogList({ compact = false, logs }: { compact?: boolean; logs: LogEntry[] }) {
+  if (!logs.length) {
+    return <EmptyState icon={ScrollText} title="Nenhum log registrado" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {logs.map((log) => {
+        const friendly = friendlyLog(log);
+
+        return (
+          <EventRow
+            badge={friendly.badge}
+            icon={ScrollText}
+            key={log.id}
+            subtitle={compact ? formatDate(log.createdAt) : friendly.description}
+            title={friendly.title}
+            time={log.createdAt}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, title }: { icon: typeof Bot; title: string }) {
+  return (
+    <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-center">
+      <Icon className="mb-3 h-7 w-7 text-zinc-500" />
+      <p className="text-sm font-medium text-zinc-500">{title}</p>
+    </div>
+  );
+}
+
+function moduleState(moduleId: string, settings: GuildSettings | null, details: OverviewDetails) {
+  if (moduleId === "live") {
+    const active = details.liveNotifications.some((notification) => notification.enabled);
+    return {
+      active,
+      configured: details.liveNotifications.length > 0,
+      configuredText: details.liveNotifications.length ? `${details.liveNotifications.length} alerta(s)` : "Falta configurar"
+    };
+  }
+
+  if (moduleId === "clips") {
+    return {
+      active: Boolean(details.clipsConfig?.enabled),
+      configured: Boolean(details.clipsConfig?.discordChannelId),
+      configuredText: details.clipsConfig?.discordChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
+  if (moduleId === "x-monitor") {
+    const activeAccounts = details.xAccounts.filter((account) => account.active).length;
+    return {
+      active: activeAccounts > 0,
+      configured: details.xAccounts.length > 0,
+      configuredText: details.xAccounts.length ? `${details.xAccounts.length} conta(s)` : "Falta conta"
+    };
+  }
+
+  if (moduleId === "moderation") {
+    return {
+      active: Boolean(settings?.moderationEnabled),
+      configured: Boolean(settings?.moderationEnabled),
+      configuredText: settings?.moderationEnabled ? "Configurado" : "Falta ativar"
+    };
+  }
+
+  if (moduleId === "verification") {
+    const roleCount = settings?.verificationRoleIds.length || (settings?.verificationRoleId ? 1 : 0);
+    return {
+      active: Boolean(settings?.verificationEnabled),
+      configured: roleCount > 0,
+      configuredText: roleCount ? `${roleCount} cargo(s)` : "Falta cargo"
+    };
+  }
+
+  if (moduleId === "logs") {
+    return {
+      active: Boolean(settings?.logChannelId),
+      configured: Boolean(settings?.logChannelId),
+      configuredText: settings?.logChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
+  if (moduleId === "welcome") {
+    return {
+      active: Boolean(settings?.welcomeEnabled),
+      configured: Boolean(settings?.welcomeChannelId),
+      configuredText: settings?.welcomeChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
+  if (moduleId === "leave") {
+    return {
+      active: Boolean(settings?.leaveEnabled),
+      configured: Boolean(settings?.leaveChannelId),
+      configuredText: settings?.leaveChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
+  if (moduleId === "roles") {
+    const count = settings?.autoRoleIds.length ?? 0;
+    return {
+      active: Boolean(settings?.autoRoleEnabled),
+      configured: count > 0,
+      configuredText: count ? `${count} cargo(s)` : "Falta cargo"
+    };
+  }
+
+  if (moduleId === "tickets") {
+    return {
+      active: Boolean(settings?.ticketEnabled),
+      configured: Boolean(settings?.ticketCategoryId),
+      configuredText: settings?.ticketCategoryId ? "Categoria configurada" : "Falta categoria"
+    };
+  }
+
+  return {
+    active: true,
+    configured: true,
+    configuredText: "Disponivel"
+  };
+}
+
+function friendlyLog(log: LogEntry) {
+  const lowerMessage = log.message.toLowerCase();
+  const message = log.message.replace(/^Usuario\s+/i, "").replace(/\.$/, "");
+  const byType: Record<string, { badge: string; title: string }> = {
+    "x_monitor.account_added": { badge: "X Monitor", title: "Conta do X adicionada com sucesso" },
+    "x_monitor.account_updated": { badge: "X Monitor", title: "Conta do X atualizada" },
+    "x_monitor.account_removed": { badge: "X Monitor", title: "Conta do X removida" },
+    "x_monitor.post_detected": { badge: "X Monitor", title: "Post do X detectado" },
+    "x_monitor.post_sent": { badge: "X Monitor", title: "Post do X enviado ao Discord" },
+    "x_monitor.webhook_post": { badge: "X Monitor", title: "Post recebido pelo webhook do X" },
+    "x_monitor.discord_error": { badge: "X Monitor", title: "Nao foi possivel enviar post do X" },
+    "x_monitor.api_error": { badge: "X Monitor", title: "X Monitor precisa de atencao" },
+    "live:started": { badge: "Lives", title: "Live iniciada" },
+    "live:ended": { badge: "Lives", title: "Live encerrada" },
+    "ticket.created": { badge: "Tickets", title: "Ticket criado" },
+    "audit.lives": { badge: "Lives", title: "Canal de lives atualizado" },
+    "audit.dev_bot": { badge: "Sistema", title: "Configuracao do bot atualizada" },
+    "clips.config_saved": { badge: "Clips", title: "Sistema de clips atualizado" },
+    "clips.enabled": { badge: "Clips", title: "Sistema de clips ativado" },
+    "clips.disabled": { badge: "Clips", title: "Sistema de clips desativado" }
+  };
+  const mapped = byType[log.type];
+
+  if (mapped) {
+    return {
+      ...mapped,
+      description: message || mapped.title
+    };
+  }
+
+  if (log.type.includes("clip") || lowerMessage.includes("clip")) {
+    return { badge: "Clips", title: message || "Sistema de clips atualizado", description: message };
+  }
+
+  if (log.type.includes("live") || lowerMessage.includes("twitch")) {
+    return { badge: "Lives", title: message || "Sistema de lives atualizado", description: message };
+  }
+
+  if (log.type.includes("ticket")) {
+    return { badge: "Tickets", title: message || "Ticket atualizado", description: message };
+  }
+
+  return {
+    badge: "Painel",
+    title: message || "Configuracao atualizada",
+    description: "Evento registrado no servidor."
+  };
+}
+
+function userVisibleLogs(logs: LogEntry[]) {
+  return logs.filter(isUserVisibleLog);
+}
+
+function isUserVisibleLog(log: LogEntry) {
+  return log.type !== "audit.dev_bot";
+}
+
+function isViewAllowed(view: ViewId, enabledModules: string[]) {
+  if (view === "overview") {
+    return true;
+  }
+
+  if (view === "settings") {
+    return enabledModules.some((moduleId) => settingsModuleIds.has(moduleId));
+  }
+
+  const requiredModule = viewModuleIds[view];
+  return Boolean(requiredModule && enabledModules.includes(requiredModule));
 }
 
 function ensureDashboardGuilds(guilds: DashboardGuild[]) {
@@ -829,44 +1207,6 @@ function ensureDashboardGuilds(guilds: DashboardGuild[]) {
   ];
 }
 
-function viewModuleId(view: ViewId) {
-  return viewModuleIds[view] ?? null;
-}
-
-function isViewAllowed(view: ViewId, enabledModules: string[], developerView: boolean, showAllModules: boolean) {
-  if (view === "overview" || showAllModules) {
-    return true;
-  }
-
-  if (view === "dev") {
-    return developerView;
-  }
-
-  if (view === "settings") {
-    return ["welcome", "leave"].some((moduleId) => enabledModules.includes(moduleId));
-  }
-
-  if (view === "modules") {
-    return ["live", "clips", "network", "x-monitor", "roles", "tickets", "moderation"].some((moduleId) => enabledModules.includes(moduleId));
-  }
-
-  const requiredModule = viewModuleId(view);
-  return Boolean(requiredModule && enabledModules.includes(requiredModule));
-}
-
-function isCardVisible(
-  card: DashboardCardConfig,
-  enabledModules: string[],
-  showAllModules: boolean,
-  showDevOnlyCards: boolean
-) {
-  if (card.devOnly) {
-    return showDevOnlyCards;
-  }
-
-  return showAllModules || !card.moduleId || enabledModules.includes(card.moduleId);
-}
-
 function mergeDashboardGuilds(guilds: DashboardMeGuild[], fallbackGuilds: DashboardGuild[]) {
   const fallbackById = new Map(fallbackGuilds.map((guild) => [guild.id, guild]));
 
@@ -886,614 +1226,6 @@ function mergeDashboardGuilds(guilds: DashboardMeGuild[], fallbackGuilds: Dashbo
   });
 }
 
-function toDashboardMeGuilds(guilds: DashboardGuild[]): DashboardMeGuild[] {
-  return guilds.map((guild) => ({
-    id: guild.id,
-    name: guild.name,
-    iconUrl: guild.iconUrl,
-    owner: guild.owner,
-    permissions: guild.isAdmin ? "ADMINISTRATOR" : "0",
-    botInGuild: guild.botEnabled
-  }));
-}
-
-function PageHeader({
-  activeView,
-  botStatus,
-  guildName
-}: {
-  activeView: ViewId;
-  botStatus: BotStatus;
-  guildName: string;
-}) {
-  const title =
-    activeView === "overview"
-      ? "Painel Administrativo"
-      : activeView === "personalization"
-        ? "Personalização"
-        : activeView === "permissions"
-          ? "Permissões"
-          : activeView === "modules"
-            ? "Módulos"
-            : activeView === "settings"
-              ? "Configurações"
-              : activeView === "welcome"
-                ? "Entrada"
-                : activeView === "leave"
-                  ? "Saida"
-                  : activeView === "network"
-                    ? "Rede Social"
-                    : activeView === "x-monitor"
-                      ? "X Monitor"
-                      : activeView === "dev"
-                        ? "Gerenciar Bots"
-                        : activeView.charAt(0).toUpperCase() + activeView.slice(1);
-
-  return (
-    <section className="rounded-lg border border-zinc-900 bg-[#0b0b0b] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.38)] sm:p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-zinc-500">{guildName}</p>
-          <h2 className="mt-2 text-3xl font-semibold text-white sm:text-4xl">{title}</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-500">
-            Gerencie configurações, módulos, permissões e logs do bot em uma interface pronta para crescer.
-          </p>
-        </div>
-        <Badge variant="muted">{botStatus.online ? "Bot online" : "Bot offline"}</Badge>
-      </div>
-    </section>
-  );
-}
-
-function BotConfigScopeCard({
-  bots,
-  enabledModules,
-  loading,
-  onSelectBot,
-  selectedBot,
-  selectedGuild
-}: {
-  bots: DashboardBot[];
-  enabledModules: string[];
-  loading: boolean;
-  onSelectBot: (botId: string | null) => void;
-  selectedBot: DashboardBot | null;
-  selectedGuild: DashboardGuild | null;
-}) {
-  if (!bots.length) {
-    return null;
-  }
-
-  return (
-    <Card className="border-purple-500/25 bg-purple-500/[0.06]">
-      <CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <Avatar
-              className="h-12 w-12 rounded-full border border-purple-500/40"
-              fallback={selectedBot?.name ?? "Bot"}
-              src={selectedBot?.avatarUrl ?? null}
-            />
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase text-purple-200">Bots cadastrados</p>
-              <h3 className="mt-1 truncate text-lg font-semibold text-white">
-                {selectedBot?.name ?? "Nenhum bot selecionado"}
-              </h3>
-              <p className="truncate text-xs text-zinc-500">
-                Servidor: {selectedGuild?.name ?? selectedBot?.mainGuildName ?? "selecione um servidor"}
-              </p>
-            </div>
-          </div>
-
-          <label className="block w-full space-y-2 lg:max-w-sm">
-            <span className="text-xs font-medium uppercase text-zinc-500">Bot das configuracoes</span>
-            <select
-              className="h-11 w-full rounded-lg border border-purple-500/30 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 outline-none transition duration-300 focus:border-purple-400 disabled:opacity-60"
-              disabled={loading}
-              onChange={(event) => onSelectBot(event.target.value || null)}
-              value={selectedBot?.id ?? ""}
-            >
-              <option value="">Selecione um bot cadastrado</option>
-              {bots.map((bot) => (
-                <option key={bot.id} value={bot.id}>
-                  {bot.name} - {bot.mainGuildName}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-zinc-400">
-            {selectedBot
-              ? "As abas, botoes e configuracoes abaixo pertencem somente ao bot selecionado."
-              : "Escolha um bot cadastrado para mudar o que o usuario pode ver na dashboard."}
-          </p>
-          <Badge variant="muted">{enabledModules.length} configs liberadas</Badge>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function OverviewView({
-  auth,
-  botStatus,
-  canManageDashboard,
-  enabledModules,
-  logs,
-  onToggle,
-  savingKey,
-  settings,
-  showAllModules,
-  showDevOnlyCards,
-  totals
-}: {
-  auth: AuthResponse;
-  botStatus: BotStatus;
-  canManageDashboard: boolean;
-  enabledModules: string[];
-  logs: LogEntry[];
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
-  settings: GuildSettings | null;
-  showAllModules: boolean;
-  showDevOnlyCards: boolean;
-  totals: { members: number; channels: number; guilds: number; onlineGuilds: number };
-}) {
-  return (
-    <div className="space-y-6">
-      <ProfileSummaryCard auth={auth} />
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={Bot} label="Status" value={botStatus.online ? "Online" : "Offline"} />
-        <MetricCard icon={Users} label="Membros" value={formatNumber(totals.members)} />
-        <MetricCard icon={Hash} label="Canais" value={formatNumber(totals.channels)} />
-        <MetricCard icon={Activity} label="Servidores" value={`${totals.onlineGuilds}/${totals.guilds}`} />
-      </section>
-
-      <CategorySection
-        canManageDashboard={canManageDashboard}
-        category="settings"
-        enabledModules={enabledModules}
-        onToggle={onToggle}
-        savingKey={savingKey}
-        settings={settings}
-        showAllModules={showAllModules}
-        showDevOnlyCards={showDevOnlyCards}
-      />
-      <CategorySection
-        canManageDashboard={canManageDashboard}
-        category="permissions"
-        enabledModules={enabledModules}
-        onToggle={onToggle}
-        savingKey={savingKey}
-        settings={settings}
-        showAllModules={showAllModules}
-        showDevOnlyCards={showDevOnlyCards}
-      />
-      <CategorySection
-        canManageDashboard={canManageDashboard}
-        category="modules"
-        enabledModules={enabledModules}
-        onToggle={onToggle}
-        savingKey={savingKey}
-        settings={settings}
-        showAllModules={showAllModules}
-        showDevOnlyCards={showDevOnlyCards}
-      />
-
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Estatísticas em tempo real</CardTitle>
-            <CardDescription>Latência, servidores e usuários sincronizados pelo backend.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <RealtimeStat label="Latência" value={`${botStatus.latency}ms`} />
-              <RealtimeStat label="Guilds no bot" value={formatNumber(botStatus.guilds)} />
-              <RealtimeStat label="Usuários" value={formatNumber(botStatus.users)} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Logs recentes</CardTitle>
-            <CardDescription>Últimos eventos recebidos pelo painel.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LogList logs={logs.slice(0, 4)} compact />
-          </CardContent>
-        </Card>
-      </section>
-    </div>
-  );
-}
-
-function ProfileSummaryCard({ auth }: { auth: AuthResponse }) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-4">
-          <Avatar className="h-16 w-16 rounded-lg text-base" fallback={auth.user.username} src={auth.user.avatarUrl ?? auth.user.avatar} />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-xl font-semibold text-white">{auth.user.username}</h3>
-              <Badge variant="muted">{auth.access.level === "admin" ? "Admin" : "Viewer"}</Badge>
-              {auth.user.authorized ? <Badge variant="muted">Autorizado</Badge> : null}
-            </div>
-            <p className="mt-1 truncate text-sm text-zinc-500">{auth.user.tag}</p>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[520px]">
-          <ProfileFact icon={IdCard} label="Discord ID" value={auth.user.discordId} />
-          <ProfileFact icon={CalendarClock} label="Ultimo login" value={formatDateTime(auth.user.lastLoginAt)} />
-          <ProfileFact icon={UserCheck} label="Acesso" value={auth.permissions.canManageDashboard ? "Total" : "Basico"} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProfileFact({ icon: Icon, label, value }: { icon: typeof IdCard; label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-3">
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
-        <Icon className="h-3.5 w-3.5" />
-        <span>{label}</span>
-      </div>
-      <p className="mt-1 truncate text-sm font-medium text-zinc-100">{value}</p>
-    </div>
-  );
-}
-
-function CategoryView({
-  canManageDashboard,
-  category,
-  enabledModules,
-  onToggle,
-  savingKey,
-  settings,
-  showAllModules,
-  showDevOnlyCards
-}: {
-  canManageDashboard: boolean;
-  category: DashboardCardConfig["category"];
-  enabledModules: string[];
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
-  settings: GuildSettings | null;
-  showAllModules: boolean;
-  showDevOnlyCards: boolean;
-}) {
-  return (
-    <CategorySection
-      canManageDashboard={canManageDashboard}
-      category={category}
-      enabledModules={enabledModules}
-      onToggle={onToggle}
-      savingKey={savingKey}
-      settings={settings}
-      showAllModules={showAllModules}
-      showDevOnlyCards={showDevOnlyCards}
-    />
-  );
-}
-
-function FocusedModuleView({
-  activeView,
-  canManageDashboard,
-  enabledModules,
-  onToggle,
-  savingKey,
-  settings,
-  showAllModules,
-  showDevOnlyCards
-}: {
-  activeView: ViewId;
-  canManageDashboard: boolean;
-  enabledModules: string[];
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
-  settings: GuildSettings | null;
-  showAllModules: boolean;
-  showDevOnlyCards: boolean;
-}) {
-  const ids =
-    activeView === "roles"
-      ? ["roles"]
-      : activeView === "welcome"
-        ? ["welcome", "role-validation"]
-        : ["moderation"];
-
-  return (
-    <div className="space-y-4">
-      {dashboardCards
-        .filter((card) => ids.includes(card.id) && isCardVisible(card, enabledModules, showAllModules, showDevOnlyCards))
-        .map((card) => (
-          <ConfigCard
-            card={card}
-            canManageDashboard={canManageDashboard}
-            key={card.id}
-            onToggle={onToggle}
-            savingKey={savingKey}
-            settings={settings}
-          />
-        ))}
-    </div>
-  );
-}
-
-function CategorySection({
-  canManageDashboard,
-  category,
-  enabledModules,
-  onToggle,
-  savingKey,
-  settings,
-  showAllModules,
-  showDevOnlyCards
-}: {
-  canManageDashboard: boolean;
-  category: DashboardCardConfig["category"];
-  enabledModules: string[];
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
-  settings: GuildSettings | null;
-  showAllModules: boolean;
-  showDevOnlyCards: boolean;
-}) {
-  const meta = categoryMeta[category];
-  const cards = dashboardCards.filter(
-    (card) => card.category === category && isCardVisible(card, enabledModules, showAllModules, showDevOnlyCards)
-  );
-
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h3 className="text-xl font-semibold text-white">{meta.title}</h3>
-          <p className="text-sm text-zinc-500">{meta.description}</p>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {cards.map((card) => (
-          <ConfigCard
-            card={card}
-            canManageDashboard={canManageDashboard}
-            key={card.id}
-            onToggle={onToggle}
-            savingKey={savingKey}
-            settings={settings}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ConfigCard({
-  card,
-  canManageDashboard,
-  onToggle,
-  savingKey,
-  settings
-}: {
-  card: DashboardCardConfig;
-  canManageDashboard: boolean;
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
-  settings: GuildSettings | null;
-}) {
-  const checked = card.key ? Boolean(settings?.[card.key]) : false;
-  const disabled = Boolean(card.key && (!settings || savingKey === card.key || !canManageDashboard));
-
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
-            <card.icon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="truncate text-base font-semibold text-white">{card.title}</h4>
-              {card.badge ? <Badge variant="muted">{card.badge}</Badge> : null}
-              {card.key ? <span className="h-2 w-2 rounded-full bg-zinc-500" /> : null}
-            </div>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">{card.description}</p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-end gap-3">
-          {card.key ? <Switch checked={checked} disabled={disabled} onCheckedChange={(value) => onToggle(card.key!, value)} /> : null}
-          <Button className="h-9 px-3 text-xs" disabled={!canManageDashboard} variant="outline">
-            {card.action ?? "Abrir"}
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LiveView({
-  botId,
-  canManageDashboard,
-  guild,
-  lives
-}: {
-  botId?: string | null;
-  canManageDashboard: boolean;
-  guild: DashboardGuild | null;
-  lives: LiveEvent[];
-}) {
-  return (
-    <div className="space-y-6">
-      <LiveNotificationsPanel botId={botId} canManage={canManageDashboard} guild={guild} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sistema de lives</CardTitle>
-          <CardDescription>Eventos de início e encerramento recebidos do bot.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {lives.length ? (
-              lives.map((live) => (
-                <EventRow
-                  badge={live.type === "started" ? "Iniciada" : "Encerrada"}
-                  icon={Radio}
-                  key={live.id}
-                  subtitle={live.title ?? live.url ?? "Sem título"}
-                  title={live.streamer}
-                  time={live.createdAt}
-                />
-              ))
-            ) : (
-              <EmptyState icon={Radio} title="Nenhuma live registrada" />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function TicketView({ tickets }: { tickets: Ticket[] }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sistema de tickets</CardTitle>
-        <CardDescription>Atendimentos criados pelo bot e sincronizados pela API.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {tickets.length ? (
-            tickets.map((ticket) => (
-              <EventRow
-                badge={ticket.status}
-                icon={TicketIcon}
-                key={ticket.id}
-                subtitle={`Aberto por ${ticket.openerId}`}
-                title={ticket.subject}
-                time={ticket.createdAt}
-              />
-            ))
-          ) : (
-            <EmptyState icon={TicketIcon} title="Nenhum ticket aberto" />
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LogsView({ logs }: { logs: LogEntry[] }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sistema de logs</CardTitle>
-        <CardDescription>Mensagens apagadas, edições, membros, cargos e moderação.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <LogList logs={logs} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetricCard({ icon: Icon, label, value }: { icon: typeof Bot; label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm text-zinc-500">{label}</p>
-          <p className="truncate text-2xl font-semibold text-white">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RealtimeStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
-function EventRow({
-  badge,
-  icon: Icon,
-  subtitle,
-  title,
-  time
-}: {
-  badge: string;
-  icon: typeof Bot;
-  subtitle: string;
-  title: string;
-  time: string;
-}) {
-  return (
-    <div className="flex min-h-16 items-center justify-between gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 px-4 py-3 transition duration-300 hover:-translate-y-0.5 hover:bg-zinc-900 hover:shadow-[0_18px_45px_rgba(0,0,0,0.42)]">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black">
-          <Icon className="h-5 w-5 text-zinc-300" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-white">{title}</p>
-          <p className="truncate text-xs text-zinc-500">{subtitle}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <span className="hidden text-xs text-zinc-500 sm:inline">{formatDate(time)}</span>
-        <Badge variant="muted">{badge}</Badge>
-      </div>
-    </div>
-  );
-}
-
-function LogList({ compact = false, logs }: { compact?: boolean; logs: LogEntry[] }) {
-  if (!logs.length) {
-    return <EmptyState icon={ScrollText} title="Nenhum log registrado" />;
-  }
-
-  return (
-    <div className="space-y-3">
-      {logs.map((log) => (
-        <EventRow
-          badge={log.type}
-          icon={ScrollText}
-          key={log.id}
-          subtitle={compact ? formatDate(log.createdAt) : log.guildId}
-          title={log.message}
-          time={log.createdAt}
-        />
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, title }: { icon: typeof Bot; title: string }) {
-  return (
-    <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-center">
-      <Icon className="mb-3 h-7 w-7 text-zinc-500" />
-      <p className="text-sm font-medium text-zinc-500">{title}</p>
-    </div>
-  );
-}
-
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
@@ -1504,12 +1236,5 @@ function formatDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit"
-  }).format(new Date(value));
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short"
   }).format(new Date(value));
 }
