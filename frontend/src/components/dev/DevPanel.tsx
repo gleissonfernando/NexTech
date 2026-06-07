@@ -68,7 +68,7 @@ type DevPanelProps = {
   selectedBotId?: string | null;
   selectedGuildId?: string | null;
   onSelectBot?: (botId: string | null) => void;
-  onOpenView?: (view: "overview" | "settings" | "logs") => void;
+  onOpenView?: (view: "overview" | "settings" | "logs", bot?: DevBot) => void;
   user?: AuthUser;
 };
 
@@ -267,7 +267,7 @@ export function DevPanel({
   function openSelectedBotView(view: "overview" | "settings" | "logs") {
     if (!selectedBot) return;
     handleSelectBotId(selectedBot.id);
-    onOpenView?.(view);
+    onOpenView?.(view, selectedBot);
   }
 
   function openModuleSettings() {
@@ -288,12 +288,32 @@ export function DevPanel({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DevStatCard label="Bots cadastrados" value={String(stats.total)} />
-        <DevStatCard label="Bots online" value={String(stats.online)} />
-        <DevStatCard label="Bots offline" value={String(stats.offline)} />
-        <DevStatCard label="Com erro" value={String(stats.errors)} />
+    <div className="space-y-7">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <DevStatCard
+          icon={Bot}
+          iconClassName="border-purple-500/25 bg-purple-500/10 text-purple-200"
+          label="Bots cadastrados"
+          value={String(stats.total)}
+        />
+        <DevStatCard
+          icon={CheckCircle2}
+          iconClassName="border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+          label="Bots online"
+          value={String(stats.online)}
+        />
+        <DevStatCard
+          icon={Unplug}
+          iconClassName="border-zinc-700 bg-zinc-900 text-zinc-300"
+          label="Bots offline"
+          value={String(stats.offline)}
+        />
+        <DevStatCard
+          icon={Circle}
+          iconClassName="border-red-500/25 bg-red-500/10 text-red-300"
+          label="Com erro"
+          value={String(stats.errors)}
+        />
       </section>
 
       {message ? (
@@ -302,9 +322,9 @@ export function DevPanel({
         </div>
       ) : null}
 
-      <section className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-        <Card className="border-[#5865f2]/30 bg-black/70 backdrop-blur-xl">
-          <CardHeader className="border-b border-zinc-900">
+      <section className="grid items-stretch gap-6 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.05fr)]">
+        <Card className="flex h-full flex-col border-[#5865f2]/30 bg-black/70 backdrop-blur-xl hover:translate-y-0">
+          <CardHeader className="border-b border-zinc-900/80 p-5 sm:p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#5865f2] text-white shadow-[0_12px_30px_rgba(88,101,242,0.3)]">
                 <Bot className="h-5 w-5" />
@@ -315,7 +335,7 @@ export function DevPanel({
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-5 pt-5">
+          <CardContent className="flex flex-1 flex-col gap-5 p-5 pt-5 sm:p-6 sm:pt-6">
             <DevInput
               autoComplete="off"
               label="Token do Bot"
@@ -332,7 +352,7 @@ export function DevPanel({
               value={form.mainGuildId}
             />
 
-            <div className="flex items-center gap-3 border-y border-zinc-900 py-4">
+            <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-zinc-950/65 p-4 sm:flex-row sm:items-center">
               <Avatar
                 className="h-10 w-10 rounded-full border border-zinc-800"
                 fallback={user?.globalName || user?.username || "Discord"}
@@ -344,7 +364,7 @@ export function DevPanel({
                 </p>
                 <p className="truncate text-xs text-zinc-500">Responsavel via Discord OAuth2</p>
               </div>
-              <ShieldCheck className="h-5 w-5 text-emerald-400" />
+              <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
             </div>
 
             <Button
@@ -356,7 +376,7 @@ export function DevPanel({
               {saving ? "Validando no Discord..." : "Conectar Bot"}
             </Button>
 
-            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500">
+            <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
               <AutomaticField label="Nome e avatar" />
               <AutomaticField label="Application ID" />
               <AutomaticField label="Data de criacao" />
@@ -378,8 +398,8 @@ export function DevPanel({
             restarting={restartingBotId === selectedBot.id}
           />
         ) : (
-          <Card className="border-dashed border-zinc-800 bg-zinc-950/45">
-            <CardContent className="flex min-h-[360px] flex-col items-center justify-center p-8 text-center">
+          <Card className="flex h-full min-h-[420px] border-dashed border-zinc-800 bg-zinc-950/45 hover:translate-y-0">
+            <CardContent className="flex flex-1 flex-col items-center justify-center p-8 text-center">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-800 bg-black">
                 <Bot className="h-7 w-7 text-zinc-500" />
               </div>
@@ -390,20 +410,20 @@ export function DevPanel({
         )}
       </section>
 
-      <Card>
-        <CardHeader>
+      <Card className="border-zinc-800/80 bg-zinc-950/75">
+        <CardHeader className="p-5 sm:p-6">
           <CardTitle>Bots conectados</CardTitle>
           <CardDescription>{bots.length} bot{bots.length === 1 ? "" : "s"} nesta hospedagem.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
           {bots.length ? (
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3">
               {bots.map((bot) => (
                 <div
-                  className={`flex items-center gap-3 rounded-lg border p-3 transition duration-200 ${
+                  className={`flex flex-col gap-3 rounded-lg border p-3.5 transition duration-200 sm:flex-row sm:items-center sm:justify-between ${
                     selectedBot?.id === bot.id
-                      ? "border-[#5865f2]/50 bg-[#5865f2]/10"
-                      : "border-zinc-900 bg-black/35 hover:border-zinc-700"
+                      ? "border-[#5865f2]/55 bg-[#5865f2]/10 shadow-[0_0_0_1px_rgba(88,101,242,0.16)]"
+                      : "border-zinc-900 bg-black/35 hover:border-zinc-700 hover:bg-zinc-950/70"
                   }`}
                   key={bot.id}
                 >
@@ -412,9 +432,9 @@ export function DevPanel({
                     onClick={() => handleSelectBotId(bot.id)}
                     type="button"
                   >
-                    <Avatar className="h-11 w-11 rounded-full border border-zinc-800" fallback={bot.name} src={bot.avatarUrl} />
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-2">
+                    <Avatar className="h-12 w-12 shrink-0 rounded-full border border-zinc-800" fallback={bot.name} src={bot.avatarUrl} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate text-sm font-semibold text-white">{bot.name}</span>
                         <StatusDot status={bot.status} />
                       </span>
@@ -424,24 +444,26 @@ export function DevPanel({
                       <span className="block truncate font-mono text-[11px] text-zinc-600">{bot.clientId}</span>
                     </span>
                   </button>
-                  <Button
-                    disabled={restartingBotId === bot.id}
-                    onClick={() => void handleRestart(bot)}
-                    size="icon"
-                    title="Reiniciar bot"
-                    variant="outline"
-                  >
-                    {restartingBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                  </Button>
-                  <Button
-                    disabled={deletingBotId === bot.id}
-                    onClick={() => void handleDelete(bot)}
-                    size="icon"
-                    title="Desconectar bot"
-                    variant="destructive"
-                  >
-                    {deletingBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+                    <Button
+                      disabled={restartingBotId === bot.id}
+                      onClick={() => void handleRestart(bot)}
+                      size="icon"
+                      title="Reiniciar bot"
+                      variant="outline"
+                    >
+                      {restartingBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      disabled={deletingBotId === bot.id}
+                      onClick={() => void handleDelete(bot)}
+                      size="icon"
+                      title="Desconectar bot"
+                      variant="destructive"
+                    >
+                      {deletingBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -454,17 +476,17 @@ export function DevPanel({
       </Card>
 
       {selectedBot ? (
-        <Card id="dev-bot-module-settings">
-          <CardHeader>
+        <Card className="border-zinc-800/80 bg-zinc-950/75" id="dev-bot-module-settings">
+          <CardHeader className="p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle>Configuracoes de {selectedBot.name}</CardTitle>
-                <CardDescription>Modulos visiveis na dashboard deste bot.</CardDescription>
+                <CardTitle>Configuracoes de bot</CardTitle>
+                <CardDescription>Modulos visiveis na dashboard de {selectedBot.name}.</CardDescription>
               </div>
               <Badge variant="muted">{selectedBot.enabledModules.length}/{modules.length} ativos</Badge>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0">
             <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
               <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
               <div>
@@ -506,9 +528,9 @@ function ConnectedBotPanel({
   restarting: boolean;
 }) {
   return (
-    <Card className="overflow-hidden border-zinc-800 bg-zinc-950/75 backdrop-blur-xl">
-      <div className="h-20 border-b border-[#5865f2]/25 bg-[linear-gradient(135deg,rgba(88,101,242,0.32),rgba(16,185,129,0.08),rgba(9,9,11,0.15))]" />
-      <CardContent className="-mt-8 space-y-5 p-5 pt-0">
+    <Card className="flex h-full min-h-[420px] flex-col overflow-hidden border-zinc-800 bg-zinc-950/75 backdrop-blur-xl hover:translate-y-0">
+      <div className="h-20 shrink-0 border-b border-[#5865f2]/25 bg-[linear-gradient(135deg,rgba(88,101,242,0.32),rgba(16,185,129,0.08),rgba(9,9,11,0.15))]" />
+      <CardContent className="-mt-8 flex flex-1 flex-col gap-5 p-5 pt-0 sm:p-6 sm:pt-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex min-w-0 items-end gap-3">
             <Avatar
@@ -546,7 +568,7 @@ function ConnectedBotPanel({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2 border-t border-zinc-900 pt-4">
+        <div className="mt-auto flex flex-wrap gap-2 border-t border-zinc-900 pt-4">
           <Button onClick={onOpenDashboard} size="sm">
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
@@ -581,7 +603,7 @@ function BotDetail({
   value: string;
 }) {
   return (
-    <div className="min-w-0 bg-zinc-950 p-3">
+    <div className="min-w-0 bg-zinc-950 p-4">
       <p className="flex items-center gap-2 text-xs text-zinc-500">
         <Icon className="h-3.5 w-3.5" />
         {label}
@@ -593,23 +615,33 @@ function BotDetail({
 
 function AutomaticField({ label }: { label: string }) {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-h-10 items-center gap-2 rounded-md border border-zinc-900 bg-zinc-950/70 px-3 py-2">
       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
       {label}
     </span>
   );
 }
 
-function DevStatCard({ label, value }: { label: string; value: string }) {
+function DevStatCard({
+  icon: Icon = Bot,
+  iconClassName = "border-zinc-800 bg-black text-zinc-200",
+  label,
+  value
+}: {
+  icon?: typeof Bot;
+  iconClassName?: string;
+  label: string;
+  value: string;
+}) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-800 bg-black text-zinc-200">
-          <Bot className="h-5 w-5" />
+    <Card className="h-full border-zinc-800/80 bg-zinc-950/75 hover:translate-y-0">
+      <CardContent className="flex min-h-[116px] items-center gap-4 p-5">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border ${iconClassName}`}>
+          <Icon className="h-5 w-5" />
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm text-zinc-500">{label}</p>
-          <p className="text-2xl font-semibold text-white">{value}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-zinc-400">{label}</p>
+          <p className="mt-1 text-3xl font-semibold leading-none text-white">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -659,17 +691,22 @@ function ModuleSwitchGrid({
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-3 lg:grid-cols-2">
       {modules.map((module) => {
         const enabled = enabledModules.includes(module.id);
 
         return (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-900 bg-black/35 px-3 py-2" key={module.id}>
-            <div className="min-w-0">
+          <div
+            className="flex min-h-[74px] items-center gap-4 rounded-lg border border-zinc-900 bg-black/35 px-4 py-3 transition duration-200 hover:border-zinc-800 hover:bg-zinc-950/70"
+            key={module.id}
+          >
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-zinc-100">{module.label}</p>
-              <p className="text-xs text-zinc-500">{enabled ? "Ativado" : "Desativado"}</p>
+              <p className={enabled ? "text-xs text-emerald-300" : "text-xs text-zinc-500"}>
+                {enabled ? "Ativado" : "Desativado"}
+              </p>
             </div>
-            <Switch checked={enabled} onCheckedChange={(checked) => onToggle(module.id, checked)} />
+            <Switch checked={enabled} className="shrink-0" onCheckedChange={(checked) => onToggle(module.id, checked)} />
           </div>
         );
       })}

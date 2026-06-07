@@ -5,7 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { DevDashboard } from "./pages/DevDashboard";
 import { Login } from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
-import { dashboardUrl } from "./lib/urls";
+import { dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "./lib/urls";
 
 export function App() {
   const {
@@ -21,27 +21,28 @@ export function App() {
   } = useAuth();
   const path = window.location.pathname;
   const routeError = path === "/auth/error" ? readAuthError() : null;
-  const dashboardPath = path === "/dashboard" || path === "/dev";
+  const dashboardPath = isDashboardRoutePath(path);
+  const protectedPanelPath = dashboardPath || path === "/dev";
 
   useEffect(() => {
-    if (auth?.access.verified && !dashboardPath) {
+    if (auth?.access.verified && !protectedPanelPath) {
       window.location.replace(dashboardUrl());
     }
-  }, [auth, dashboardPath]);
+  }, [auth, protectedPanelPath]);
 
   useEffect(() => {
-    if (loading || !dashboardPath || error || auth) {
+    if (loading || !protectedPanelPath || error || auth) {
       return;
     }
 
     loginDiscord();
-  }, [auth, dashboardPath, error, loading, loginDiscord]);
+  }, [auth, protectedPanelPath, error, loading, loginDiscord]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
-  if (dashboardPath && !auth && !error) {
+  if (protectedPanelPath && !auth && !error) {
     return <LoadingScreen />;
   }
 
@@ -64,7 +65,7 @@ export function App() {
     return <DevDashboard auth={auth} onLogout={logout} />;
   }
 
-  return <Dashboard auth={auth} onLogout={logout} />;
+  return <Dashboard auth={auth} initialBotSlug={dashboardSlugFromPath(path)} onLogout={logout} />;
 }
 
 function readAuthError() {

@@ -1,4 +1,4 @@
-import { MongoClient, type Db } from "mongodb";
+import { MongoClient, type Collection, type Db } from "mongodb";
 import { env } from "../config/env";
 
 export type MongoUser = {
@@ -228,6 +228,7 @@ export type MongoDevBotStatus = "online" | "offline" | "invalid_token" | "error"
 export type MongoDevBot = {
   _id: string;
   name: string;
+  slug?: string | null;
   clientId: string;
   tokenEncrypted: string;
   tokenLast4?: string | null;
@@ -403,10 +404,83 @@ async function createMongoIndexes(db: Db) {
       platform: 1,
       createdAt: -1
     }),
-    db.collection<MongoDevBot>("Bot").createIndex({ clientId: 1 }, { unique: true }),
+    ensureDevBotIndexes(db),
     db.collection<MongoBotGuildConfig>("BotGuildConfig").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDevPermission>("DevPermission").createIndex({ userId: 1 }, { unique: true })
   ]);
+}
+
+async function ensureDevBotIndexes(db: Db) {
+  const collection = db.collection<MongoDevBot>("Bot");
+
+  await ensureDevBotSlugs(collection);
+  await collection.createIndex({ clientId: 1 }, { unique: true });
+  await collection.createIndex({ slug: 1 }, { unique: true });
+}
+
+async function ensureDevBotSlugs(collection: Collection<MongoDevBot>) {
+  const bots = await collection
+    .find(
+      {},
+      {
+        projection: {
+          _id: 1,
+          name: 1,
+          slug: 1,
+          createdAt: 1
+        }
+      }
+    )
+    .sort({ createdAt: 1 })
+    .toArray();
+  const reservedSlugs = new Set<string>();
+
+  for (const bot of bots) {
+    const currentSlug = bot.slug ? slugifyBotName(bot.slug) : "";
+    const baseSlug = currentSlug || slugifyBotName(bot.name);
+    const nextSlug = uniqueSlugFromReserved(baseSlug, reservedSlugs);
+
+    reservedSlugs.add(nextSlug);
+
+    if (bot.slug !== nextSlug) {
+      await collection.updateOne(
+        {
+          _id: bot._id
+        },
+        {
+          $set: {
+            slug: nextSlug,
+            updatedAt: new Date()
+          }
+        }
+      );
+    }
+  }
+}
+
+function uniqueSlugFromReserved(baseSlug: string, reservedSlugs: Set<string>) {
+  const base = baseSlug || "bot";
+  let slug = base;
+  let suffix = 2;
+
+  while (reservedSlugs.has(slug)) {
+    slug = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
+}
+
+function slugifyBotName(value: string) {
+  const slug = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  return slug || "bot";
 }
 
 async function ensureGuildSettingsIndexes(db: Db) {

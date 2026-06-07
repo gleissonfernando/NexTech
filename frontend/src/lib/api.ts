@@ -7,6 +7,7 @@ import type {
   ClipsConfig,
   CreateTwitchNotificationPayload,
   CreateDevBotPayload,
+  DashboardBot,
   DashboardMeResponse,
   DevBot,
   DevModuleDefinition,
@@ -114,6 +115,11 @@ export async function checkSiteAccess() {
 export async function getDashboardMe() {
   const { data } = await api.get<DashboardMeResponse>("/dashboard/me");
   return data;
+}
+
+export async function getDashboardBotBySlug(slug: string) {
+  const { data } = await api.get<{ bot: DashboardBot }>(`/dashboard/${encodeURIComponent(slug)}`);
+  return data.bot;
 }
 
 export async function updateSelectedDashboardGuild(selectedGuildId: string, botId?: string | null) {

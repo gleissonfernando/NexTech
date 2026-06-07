@@ -4,7 +4,7 @@ import { requireAuth } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { fetchBotProfile } from "../services/botProfileService";
 import { canAccessDevPanel } from "../services/devAccessService";
-import { canManageDevBotGuild, listAccessibleDashboardBots } from "../services/devBotService";
+import { canManageDevBotGuild, getAccessibleDashboardBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
 import { mergeAuthorizedBotGuilds } from "../services/statsService";
 import { issueAuthCookies, type DashboardAuth } from "../services/tokenService";
 import { saveSelectedGuild } from "../services/userService";
@@ -72,6 +72,30 @@ dashboardRouter.get("/me", async (_req, res, next) => {
       canViewDev,
       selectedGuildId,
       guilds
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+dashboardRouter.get("/:slug", async (req, res, next) => {
+  try {
+    const input = z
+      .object({
+        slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      })
+      .parse(req.params);
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const bot = await getAccessibleDashboardBotBySlug(auth.user, input.slug);
+
+    if (!bot) {
+      return res.status(404).json({
+        message: "Dashboard do bot nao encontrada."
+      });
+    }
+
+    return res.json({
+      bot
     });
   } catch (error) {
     return next(error);

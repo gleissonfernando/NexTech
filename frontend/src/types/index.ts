@@ -425,6 +425,7 @@ export type DevBotStatus = "online" | "offline" | "invalid_token" | "error";
 export type DashboardBot = {
   id: string;
   name: string;
+  slug: string;
   clientId: string;
   avatarUrl: string | null;
   mainGuildId: string;
@@ -442,6 +443,7 @@ export type DashboardBot = {
 export type DevBot = {
   id: string;
   name: string;
+  slug: string;
   clientId: string;
   tokenMasked: string;
   secretConfigured: boolean;

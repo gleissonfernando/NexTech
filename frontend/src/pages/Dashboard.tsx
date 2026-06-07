@@ -27,6 +27,7 @@ import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
+import { UserProfile } from "../components/UserProfile";
 import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
@@ -36,6 +37,7 @@ import { Switch } from "../components/ui/switch";
 import { createDashboardSocket } from "../lib/socket";
 import {
   getClipsConfig,
+  getDashboardBotBySlug,
   getDashboardMe,
   getGuildSettings,
   getLives,
@@ -46,8 +48,10 @@ import {
   patchGuildSettings,
   updateSelectedDashboardGuild
 } from "../lib/api";
+import { dashboardUrl } from "../lib/urls";
 import type {
   AuthResponse,
+  AuthUser,
   BotStatus,
   ClipSent,
   ClipsConfig,
@@ -55,6 +59,7 @@ import type {
   DashboardGuild,
   DashboardMeGuild,
   DashboardMeResponse,
+  DashboardMeUser,
   GuildSettings,
   LiveEvent,
   LogEntry,
@@ -65,6 +70,7 @@ import type {
 
 type DashboardProps = {
   auth: AuthResponse;
+  initialBotSlug?: string | null;
   onLogout: () => void;
 };
 
@@ -198,9 +204,10 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
 
 const settingsModuleIds = new Set(["welcome", "leave", "roles", "tickets", "avisos", "network"]);
 
-export function Dashboard({ auth, onLogout }: DashboardProps) {
+export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardProps) {
   const [dashboardProfile, setDashboardProfile] = useState<DashboardMeResponse | null>(null);
   const [dashboardProfileLoading, setDashboardProfileLoading] = useState(true);
+  const [dashboardRouteError, setDashboardRouteError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewId>("overview");
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedGuildId, setSelectedGuildId] = useState<string | null>(
@@ -252,25 +259,58 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
 
   useEffect(() => {
     let mounted = true;
+    const requestedSlug = initialBotSlug?.trim() || null;
 
     setDashboardProfileLoading(true);
-    getDashboardMe()
-      .then((profile) => {
+    setDashboardRouteError(null);
+
+    async function loadDashboardProfile() {
+      const profile = await getDashboardMe();
+
+      if (!mounted) return;
+
+      setDashboardProfile(profile);
+
+      const routeBot = requestedSlug ? await getDashboardBotBySlug(requestedSlug).catch(() => null) : null;
+
+      if (!mounted) return;
+
+      if (requestedSlug && !routeBot) {
+        setDashboardRouteError("Dashboard do bot nao encontrada ou sem permissao de acesso.");
+        return;
+      }
+
+      const selectedFromRoute = routeBot
+        ? profile.bots.find((bot) => bot.id === routeBot.id) ?? routeBot
+        : null;
+      const targetBot = selectedFromRoute ?? profile.bots[0] ?? null;
+
+      if (!requestedSlug && profile.bots.length) {
+        setSelectedBotId(null);
+        return;
+      }
+
+      if (requestedSlug && selectedFromRoute?.slug && selectedFromRoute.slug !== requestedSlug) {
+        window.location.replace(dashboardUrl(selectedFromRoute.slug));
+        return;
+      }
+
+      setSelectedBotId(targetBot?.id ?? null);
+
+      const nextGuildId = targetBot
+        ? (targetBot.guildIds.includes(profile.selectedGuildId ?? "") ? profile.selectedGuildId : targetBot.guildIds[0])
+        : profile.selectedGuildId ?? profile.guilds[0]?.id ?? null;
+
+      if (nextGuildId) {
+        setSelectedGuildId(nextGuildId);
+      }
+    }
+
+    loadDashboardProfile()
+      .catch(() => {
         if (!mounted) return;
 
-        setDashboardProfile(profile);
-        const firstBot = profile.bots[0] ?? null;
-        setSelectedBotId((current) => current ?? firstBot?.id ?? null);
-
-        const nextGuildId = firstBot?.guildIds[0] ?? profile.selectedGuildId ?? profile.guilds[0]?.id ?? null;
-        if (nextGuildId) {
-          setSelectedGuildId((current) => current && profile.guilds.some((guild) => guild.id === current) ? current : nextGuildId);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          window.location.replace("/login");
-        }
+        window.location.replace("/login");
       })
       .finally(() => {
         if (mounted) {
@@ -281,7 +321,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [initialBotSlug]);
 
   useEffect(() => {
     if (!isViewAllowed(activeView, enabledModules)) {
@@ -300,6 +340,10 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   }, [scopedDashboardGuilds, selectedGuildId]);
 
   useEffect(() => {
+    if (dashboardProfileLoading || dashboardRouteError) {
+      return;
+    }
+
     if (panelBots.length && !activeBotId) {
       setSettings(null);
       setLogs([]);
@@ -351,7 +395,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     return () => {
       mounted = false;
     };
-  }, [activeBotId, enabledModules, panelBots.length, selectedGuildId]);
+  }, [activeBotId, dashboardProfileLoading, dashboardRouteError, enabledModules, panelBots.length, selectedGuildId]);
 
   useEffect(() => {
     const socket = createDashboardSocket();
@@ -442,17 +486,40 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   }
 
   async function handleSelectBot(botId: string | null) {
-    setSelectedBotId(botId);
-
     const bot = panelBots.find((item) => item.id === botId) ?? null;
-    const nextGuildId = bot
-      ? bot.guildIds.includes(selectedGuildId ?? "") ? selectedGuildId : bot.guildIds[0]
-      : selectedGuildId;
 
-    if (bot && nextGuildId) {
+    if (!bot) {
+      setSelectedBotId(null);
+      return;
+    }
+
+    const nextGuildId = bot.guildIds.includes(selectedGuildId ?? "") ? selectedGuildId : bot.guildIds[0];
+
+    setSelectedBotId(bot.id);
+
+    if (nextGuildId) {
       setSelectedGuildId(nextGuildId);
       await updateSelectedDashboardGuild(nextGuildId, bot.id).catch(() => undefined);
     }
+
+    if (bot.slug && bot.slug !== initialBotSlug) {
+      window.location.assign(dashboardUrl(bot.slug));
+    }
+  }
+
+  if (dashboardRouteError) {
+    return <DashboardRouteError message={dashboardRouteError} />;
+  }
+
+  if (!initialBotSlug && dashboardProfile && panelBots.length) {
+    return (
+      <DashboardBotIndex
+        bots={panelBots}
+        dashboardUser={dashboardProfile.user}
+        onLogout={onLogout}
+        user={auth.user}
+      />
+    );
   }
 
   return (
@@ -543,6 +610,101 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   );
 }
 
+function DashboardBotIndex({
+  bots,
+  dashboardUser,
+  onLogout,
+  user
+}: {
+  bots: DashboardBot[];
+  dashboardUser: DashboardMeUser;
+  onLogout: () => void;
+  user: AuthUser;
+}) {
+  return (
+    <main className="min-h-screen bg-[#050505]">
+      <header className="border-b border-zinc-900/80 bg-[#050505]/95 px-4 py-4 backdrop-blur-xl lg:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase text-purple-300">Dashboards dos bots</p>
+            <h1 className="mt-1 truncate text-xl font-semibold text-white">Escolha um painel</h1>
+          </div>
+          <UserProfile dashboardUser={dashboardUser} onLogout={onLogout} user={user} />
+        </div>
+      </header>
+
+      <section className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-6 sm:grid-cols-2 lg:grid-cols-3 lg:px-8">
+        {bots.map((bot) => (
+          <button
+            className="group rounded-lg border border-zinc-900 bg-zinc-950/80 p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.35)] transition duration-300 hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-[#0b0b0b]"
+            key={bot.id}
+            onClick={() => window.location.assign(dashboardUrl(bot.slug))}
+            type="button"
+          >
+            <div className="flex items-start gap-3">
+              <Avatar
+                className="h-12 w-12 rounded-lg border border-purple-500/35"
+                fallback={bot.name}
+                src={bot.avatarUrl}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="truncate text-base font-semibold text-white">{bot.name}</h2>
+                  <Badge variant={bot.status === "online" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : "muted"}>
+                    {bot.status === "online" ? "Online" : bot.status === "offline" ? "Offline" : "Erro"}
+                  </Badge>
+                </div>
+                <p className="mt-1 truncate font-mono text-xs text-zinc-500">/dashboard/{bot.slug}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 text-sm text-zinc-400">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-900 bg-black/35 px-3 py-2">
+                <span>Servidor principal</span>
+                <span className="min-w-0 truncate text-zinc-100">{bot.mainGuildName}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-900 bg-black/35 px-3 py-2">
+                <span>Servidores</span>
+                <span className="text-zinc-100">{bot.guildIds.length}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-900 bg-black/35 px-3 py-2">
+                <span>Modulos liberados</span>
+                <span className="text-zinc-100">{bot.enabledModules.length}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-4">
+              <span className="text-xs text-zinc-500">Abrir dashboard propria</span>
+              <ChevronRight className="h-4 w-4 text-zinc-500 transition duration-300 group-hover:translate-x-0.5 group-hover:text-purple-200" />
+            </div>
+          </button>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function DashboardRouteError({ message }: { message: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
+      <Card className="w-full max-w-md border-red-500/20 bg-zinc-950/90">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-5 w-5 text-red-300" />
+            Dashboard indisponivel
+          </CardTitle>
+          <CardDescription>{message}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button className="w-full" onClick={() => window.location.replace(dashboardUrl())}>
+            Ver minhas dashboards
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+
 function UserDashboardHeader({
   bot,
   bots,
@@ -575,7 +737,13 @@ function UserDashboardHeader({
                 <Badge variant={status.online ? "success" : "muted"}>
                   {status.online ? "Online" : "Offline"}
                 </Badge>
+                {bot ? (
+                  <Badge variant="muted">{bot.guildIds.length} servidor{bot.guildIds.length === 1 ? "" : "es"}</Badge>
+                ) : null}
               </div>
+              {bot?.slug ? (
+                <p className="mt-1 truncate font-mono text-xs text-zinc-500">/dashboard/{bot.slug}</p>
+              ) : null}
             </div>
           </div>
 
@@ -591,7 +759,7 @@ function UserDashboardHeader({
                 <option value="">Selecione um bot</option>
                 {bots.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name}
+                    {item.name} - /dashboard/{item.slug}
                   </option>
                 ))}
               </select>

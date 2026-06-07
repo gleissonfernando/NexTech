@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { checkSiteAccess, getSession, logout as logoutRequest, verifyAccess } from "../lib/api";
-import { appUrl, dashboardUrl } from "../lib/urls";
+import { appUrl, dashboardUrl, isDashboardRoutePath } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
 export function useAuth() {
@@ -89,7 +89,7 @@ export function useAuth() {
       const session = await verifyAccess();
       setAuth(session);
       setAccessValidation(session.validation ?? null);
-      if (window.location.pathname !== "/dashboard") {
+      if (!isDashboardRoutePath(window.location.pathname)) {
         window.location.replace(dashboardUrl());
       }
     } catch (requestError) {

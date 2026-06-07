@@ -6,6 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { getDashboardMe, getLogs } from "../lib/api";
+import { dashboardUrl } from "../lib/urls";
 import type { AuthResponse, DashboardBot, DashboardMeResponse, LogEntry } from "../types";
 
 type DevDashboardProps = {
@@ -88,24 +89,24 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
 
   return (
     <main className="min-h-screen bg-[#050505]">
-      <header className="sticky top-0 z-20 border-b border-zinc-900 bg-[#050505]/92 px-4 py-3 backdrop-blur lg:px-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-100">
+      <header className="sticky top-0 z-20 border-b border-zinc-900/80 bg-[#050505]/95 px-4 py-4 backdrop-blur-xl lg:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-purple-500/35 bg-purple-500/10 text-purple-100 shadow-[0_0_28px_rgba(124,58,237,0.18)]">
               <Code2 className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold text-white">Painel DEV</h1>
-              <div className="mt-1 flex flex-wrap gap-2">
-                <Badge variant="muted">Bots</Badge>
+              <h1 className="truncate text-xl font-semibold text-white">Painel DEV</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-100" variant="muted">Bots</Badge>
                 <Badge variant="muted">Modulos globais</Badge>
                 <Badge variant="muted">Logs tecnicos</Badge>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button onClick={() => window.location.replace("/dashboard")} variant="outline">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
+            <Button className="shrink-0" onClick={() => window.location.replace("/dashboard")} variant="outline">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
             </Button>
@@ -114,14 +115,14 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 lg:px-8">
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
         <DevPanel
           guilds={profile.guilds}
           onBotCreated={handleBotCreated}
           onBotDeleted={handleBotDeleted}
           onBotUpdated={(bot) => setSelectedBotId((current) => current ?? bot.id)}
-          onOpenView={(view) => {
-            if (view === "overview") window.location.replace("/dashboard");
+          onOpenView={(view, bot) => {
+            if (view === "overview") window.location.replace(dashboardUrl(bot?.slug));
           }}
           onSelectBot={setSelectedBotId}
           selectedBotId={selectedBotId}
@@ -165,15 +166,15 @@ function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId:
   }, [botId, guildId]);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-zinc-800/80 bg-zinc-950/75">
+      <CardHeader className="p-5 sm:p-6">
         <CardTitle className="flex items-center gap-2">
           <ScrollText className="h-5 w-5" />
           Logs tecnicos
         </CardTitle>
         <CardDescription>Eventos brutos por botId e guildId para diagnostico do desenvolvedor.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
         {loading ? (
           <div className="flex min-h-28 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />

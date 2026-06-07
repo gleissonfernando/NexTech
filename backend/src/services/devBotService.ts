@@ -77,6 +77,7 @@ export type DetectedDiscordGuild = {
 export type DevBotDto = {
   id: string;
   name: string;
+  slug: string;
   clientId: string;
   tokenMasked: string;
   secretConfigured: boolean;
@@ -102,6 +103,7 @@ export type DashboardBotDto = Pick<
   DevBotDto,
   | "id"
   | "name"
+  | "slug"
   | "clientId"
   | "avatarUrl"
   | "mainGuildId"
@@ -222,6 +224,30 @@ export async function getDevBot(botId: string) {
   ]);
 
   return bot ? toDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId))) : null;
+}
+
+export async function getDevBotBySlug(slug: string) {
+  const { botGuildConfigs, devBots } = await getMongoCollections();
+  const normalizedSlug = slugifyBotName(slug);
+  const bot = await devBots.findOne({ slug: normalizedSlug });
+
+  if (!bot) {
+    return null;
+  }
+
+  const configs = await botGuildConfigs.find({ botId: bot._id }).toArray();
+  return toDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId)));
+}
+
+export async function getAccessibleDashboardBotBySlug(user: AuthSessionUser, slug: string) {
+  const bot = await getDevBotBySlug(slug);
+
+  if (!bot) {
+    return null;
+  }
+
+  const accessibleBots = await listAccessibleDevBots(user);
+  return accessibleBots.find((accessibleBot) => accessibleBot.id === bot.id) ?? null;
 }
 
 export async function findDevBotIdByClientId(clientId: string) {
@@ -349,9 +375,11 @@ export async function createDevBot(input: CreateDevBotInput) {
     throw createDevBotError("Este Client ID ja esta cadastrado no sistema.", 409);
   }
 
+  const botName = detectedGuild.botName || `Bot ${clientId}`;
   const bot: MongoDevBot = {
     _id: randomUUID(),
-    name: detectedGuild.botName || `Bot ${clientId}`,
+    name: botName,
+    slug: await generateUniqueDevBotSlug(botName),
     clientId,
     tokenEncrypted: encryptSecret(input.token),
     tokenLast4: tokenLast4(input.token),
@@ -465,13 +493,17 @@ export async function registerPrimaryDevBot(input: RegisterPrimaryDevBotInput): 
   }
 
   const now = new Date();
+  const nextName = input.name?.trim() || connection.username || current.name;
+  const nextSlug = current.slug?.trim() || await generateUniqueDevBotSlug(nextName, existingBotId);
+
   await devBots.updateOne(
     {
       _id: existingBotId
     },
     {
       $set: {
-        name: input.name?.trim() || connection.username || current.name,
+        name: nextName,
+        slug: nextSlug,
         clientId: connection.clientId,
         tokenEncrypted: encryptSecret(token),
         tokenLast4: tokenLast4(token),
@@ -566,6 +598,7 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
   };
 
   if (input.name !== undefined) $set.name = input.name?.trim() || current.name;
+  if (!current.slug?.trim()) $set.slug = await generateUniqueDevBotSlug($set.name ?? current.name, botId);
   if (input.clientId !== undefined) $set.clientId = input.clientId;
   if (input.secret !== undefined) $set.secretEncrypted = input.secret ? encryptSecret(input.secret) : null;
   if (input.avatarUrl !== undefined) $set.avatarUrl = input.avatarUrl;
@@ -718,6 +751,48 @@ async function testDiscordBotTokenForClient(token: string, expectedClientId?: st
       createdAt: null
     };
   }
+}
+
+async function generateUniqueDevBotSlug(name: string, excludedBotId?: string) {
+  const { devBots } = await getMongoCollections();
+  const baseSlug = slugifyBotName(name);
+  let slug = baseSlug;
+  let suffix = 2;
+
+  while (await devBots.findOne(
+    excludedBotId
+      ? {
+          slug,
+          _id: {
+            $ne: excludedBotId
+          }
+        }
+      : {
+          slug
+        },
+    {
+      projection: {
+        _id: 1
+      }
+    }
+  )) {
+    slug = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
+}
+
+function slugifyBotName(value: string) {
+  const slug = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  return slug || "bot";
 }
 
 export async function testDiscordBotToken(token: string, expectedClientId?: string) {
@@ -949,6 +1024,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId]): 
   return {
     id: bot._id,
     name: bot.name,
+    slug: bot.slug || slugifyBotName(bot.name),
     clientId: bot.clientId,
     tokenMasked: bot.tokenEncrypted ? maskedToken(bot) : "",
     secretConfigured: Boolean(bot.secretEncrypted),
@@ -1070,6 +1146,7 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
   return {
     id: bot.id,
     name: bot.name,
+    slug: bot.slug,
     clientId: bot.clientId,
     avatarUrl: bot.avatarUrl,
     mainGuildId: bot.mainGuildId,

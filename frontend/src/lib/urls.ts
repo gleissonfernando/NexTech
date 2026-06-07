@@ -32,6 +32,31 @@ export function appUrl(path = "") {
   return origin ? `${origin}${normalizedPath}` : normalizedPath;
 }
 
-export function dashboardUrl() {
-  return appUrl("/dashboard");
+export function dashboardPath(slug?: string | null) {
+  return slug ? `/dashboard/${encodeURIComponent(slug)}` : "/dashboard";
+}
+
+export function dashboardUrl(slug?: string | null) {
+  return appUrl(dashboardPath(slug));
+}
+
+export function isDashboardRoutePath(path: string) {
+  return path === "/dashboard" || path.startsWith("/dashboard/");
+}
+
+export function dashboardSlugFromPath(path: string) {
+  if (!path.startsWith("/dashboard/")) {
+    return null;
+  }
+
+  const slug = path.slice("/dashboard/".length).split("/")[0]?.trim();
+  if (!slug) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(slug);
+  } catch {
+    return null;
+  }
 }
