@@ -1352,8 +1352,7 @@ async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, gui
     return true;
   }
 
-  return user.guilds.some((guild) => guild.id === guildId)
-    && await hasConfiguredPanelRole(user.discordId, bot, guildId);
+  return hasConfiguredPanelRole(user.discordId, bot, guildId);
 }
 
 async function hasConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId: string) {

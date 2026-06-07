@@ -29,6 +29,7 @@ export type GuildSettingsDto = {
 
 const memorySettings = new Map<string, GuildSettingsDto>();
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
+export const MAX_AUTOMATIC_ROLES = 2;
 
 export function defaultSettings(guildId: string, botId: string | null = null): GuildSettingsDto {
   return {
@@ -78,6 +79,9 @@ export async function getGuildSettings(guildId: string, botId?: string | null) {
 export async function updateGuildSettings(guildId: string, input: Partial<GuildSettingsDto>, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const current = await getGuildSettings(guildId, normalizedBotId);
+  const autoRoleIds = "autoRoleIds" in input
+    ? normalizeRoleIds(input.autoRoleIds ?? []).slice(0, MAX_AUTOMATIC_ROLES)
+    : current.autoRoleIds;
   const verificationRoleIds = "verificationRoleIds" in input
     ? normalizeRoleIds(input.verificationRoleIds ?? [])
     : "verificationRoleId" in input
@@ -86,12 +90,11 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
   const next = normalizeVerificationRoles({
     ...current,
     ...input,
+    autoRoleIds,
     verificationRoleIds,
     botId: normalizedBotId,
     guildId
   });
-
-  memorySettings.set(settingsKey(guildId, normalizedBotId), next);
 
   try {
     await ensureGuild(guildId);
@@ -137,9 +140,11 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
       }
     );
   } catch (error) {
-    console.warn("[mongo] settings mantidas em memoria:", error instanceof Error ? error.message : error);
+    console.error("[mongo] nao foi possivel persistir settings:", error);
+    throw createSettingsPersistenceError(error);
   }
 
+  memorySettings.set(settingsKey(guildId, normalizedBotId), next);
   return next;
 }
 
@@ -168,7 +173,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     leaveImageUrl: normalizeWelcomeImageUrl(settings.leaveImageUrl ?? defaults.leaveImageUrl),
     leaveMessage: settings.leaveMessage ?? defaults.leaveMessage,
     autoRoleEnabled: settings.autoRoleEnabled,
-    autoRoleIds: settings.autoRoleIds,
+    autoRoleIds: normalizeRoleIds(settings.autoRoleIds ?? []).slice(0, MAX_AUTOMATIC_ROLES),
     twitchRoleId: settings.twitchRoleId,
     boosterRoleId: settings.boosterRoleId,
     ticketEnabled: settings.ticketEnabled,
@@ -199,6 +204,13 @@ function normalizeVerificationRoles(settings: GuildSettingsDto): GuildSettingsDt
 
 function normalizeRoleIds(roleIds: string[]) {
   return [...new Set(roleIds.map((roleId) => roleId.trim()).filter(Boolean))];
+}
+
+function createSettingsPersistenceError(cause: unknown) {
+  return Object.assign(new Error("Nao foi possivel salvar a configuracao no banco de dados. Tente novamente."), {
+    cause,
+    statusCode: 503
+  });
 }
 
 function normalizeWelcomeImageUrl(value: string | null | undefined) {

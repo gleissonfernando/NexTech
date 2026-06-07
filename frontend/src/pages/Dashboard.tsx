@@ -37,6 +37,7 @@ import { createDashboardSocket } from "../lib/socket";
 import {
   getClipsConfig,
   getDashboardBySlug,
+  getDashboardMe,
   getGuildSettings,
   getLives,
   getLogs,
@@ -260,17 +261,23 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     setDashboardRouteError(null);
 
     async function loadDashboardProfile() {
-      if (!requestedSlug) {
-        setDashboardRouteError("Acesse esta area pela URL personalizada da dashboard do bot.");
-        return;
-      }
-
-      const profile = await getDashboardBySlug(requestedSlug);
+      const profile = requestedSlug
+        ? await getDashboardBySlug(requestedSlug)
+        : await getDashboardMe();
 
       if (!mounted) return;
 
       setDashboardProfile(profile);
       const targetBot = profile.bots[0] ?? null;
+
+      if (!targetBot) {
+        setDashboardRouteError("Nenhuma dashboard liberada para este usuario.");
+        return;
+      }
+
+      if (!requestedSlug) {
+        window.history.replaceState({}, "", `/dashboard/${encodeURIComponent(targetBot.slug)}`);
+      }
 
       setSelectedBotId(targetBot?.id ?? null);
 

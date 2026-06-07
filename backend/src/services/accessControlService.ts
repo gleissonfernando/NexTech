@@ -22,7 +22,7 @@ export type AccessValidationResult = {
   checks: GuildAccessCheck[];
 };
 
-const BOT_ACCESS_TIMEOUT_MS = 6000;
+const BOT_ACCESS_TIMEOUT_MS = 12_000;
 
 export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<AccessValidationResult> {
   const baseChecks = user.guilds.map((guild) => ({
@@ -44,22 +44,39 @@ export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<Ac
     [],
     BOT_ACCESS_TIMEOUT_MS
   );
-  const accessibleGuildIds = new Set(accessibleBots.flatMap((bot) => bot.guildIds));
-  const checks = baseChecks.map((check) => ({
-    ...check,
-    configuredPanelRole: accessibleGuildIds.has(check.guildId)
-  }));
+  const checksByGuildId = new Map(baseChecks.map((check) => [check.guildId, check]));
 
-  return createValidationResult(checks, authorizedUser);
+  for (const bot of accessibleBots) {
+    for (const guildId of bot.guildIds) {
+      const current = checksByGuildId.get(guildId);
+
+      checksByGuildId.set(guildId, {
+        guildId,
+        guildName: current?.guildName ?? (guildId === bot.mainGuildId ? bot.mainGuildName : `Servidor ${guildId}`),
+        administrator: current?.administrator ?? false,
+        owner: current?.owner ?? false,
+        administratorRole: false,
+        configuredPanelRole: true
+      });
+    }
+  }
+
+  return createValidationResult([...checksByGuildId.values()], authorizedUser);
 }
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(fallback), timeoutMs);
+    const timeout = setTimeout(() => {
+      console.warn(`[access] validacao de cargos excedeu ${timeoutMs}ms.`);
+      resolve(fallback);
+    }, timeoutMs);
 
     void promise
       .then(resolve)
-      .catch(() => resolve(fallback))
+      .catch((error) => {
+        console.warn("[access] nao foi possivel validar cargos do painel:", error instanceof Error ? error.message : error);
+        resolve(fallback);
+      })
       .finally(() => clearTimeout(timeout));
   });
 }

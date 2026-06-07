@@ -376,7 +376,13 @@ async function ensureMongoIndexes(db: Db) {
 
 async function createMongoIndexes(db: Db) {
   await Promise.all([
-    db.collection<MongoUser>("User").createIndex({ discordId: 1 }, { unique: true }),
+    db.collection<MongoUser>("User").createIndex(
+      { discordId: 1 },
+      {
+        name: "User_discordId_key",
+        unique: true
+      }
+    ),
     ensureGuildSettingsIndexes(db),
     db.collection<MongoTicket>("Ticket").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
@@ -486,7 +492,10 @@ function slugifyBotName(value: string) {
 async function ensureGuildSettingsIndexes(db: Db) {
   const collection = db.collection<MongoGuildSettings>("GuildSettings");
 
-  await collection.dropIndex("guildId_1").catch(() => undefined);
+  await Promise.all([
+    collection.dropIndex("guildId_1").catch(() => undefined),
+    collection.dropIndex("GuildSettings_guildId_key").catch(() => undefined)
+  ]);
   await collection.createIndex({ botId: 1, guildId: 1 }, { unique: true });
 }
 

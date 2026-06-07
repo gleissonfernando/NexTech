@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Hash, ImageIcon, Link2, Loader2, Send, Upload, UserCheck } from "lucide-react";
+import { Check, CheckCircle2, Hash, ImageIcon, Link2, Loader2, Send, Upload, UserCheck } from "lucide-react";
 import {
   API_URL,
   getGuildLiveOptions,
@@ -28,6 +28,7 @@ type WelcomePanelProps = {
 };
 
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
+const MAX_AUTOMATIC_ROLES = 2;
 
 const panelConfig = {
   welcome: {
@@ -99,7 +100,7 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
   const displayChannelId = settings?.[config.displayChannelKey] ?? channelId;
   const destinationChannel = channels.find((channel) => channel.id === channelId) ?? null;
   const displayChannel = channels.find((channel) => channel.id === displayChannelId) ?? null;
-  const autoRoleId = settings?.autoRoleIds[0] ?? "";
+  const autoRoleIds = settings?.autoRoleIds.slice(0, MAX_AUTOMATIC_ROLES) ?? [];
 
   useEffect(() => {
     if (!guild || !canManage) {
@@ -214,21 +215,25 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
     }
   }
 
-  async function handleAutoRoleChange(roleId: string) {
+  async function handleAutoRoleToggle(roleId: string, checked: boolean) {
+    const nextRoleIds = checked
+      ? [...new Set([...autoRoleIds, roleId])].slice(0, MAX_AUTOMATIC_ROLES)
+      : autoRoleIds.filter((selectedRoleId) => selectedRoleId !== roleId);
+
     await savePatch(
       {
-        autoRoleEnabled: Boolean(roleId),
-        autoRoleIds: roleId ? [roleId] : []
+        autoRoleEnabled: Boolean(nextRoleIds.length),
+        autoRoleIds: nextRoleIds
       },
       "autoRole",
-      roleId ? "Cargo automatico salvo e ativado." : "Cargo automatico removido."
+      nextRoleIds.length ? "Cargos automaticos salvos e ativados." : "Cargos automaticos removidos."
     );
   }
 
   function handleAutoRoleEnabled(checked: boolean) {
-    if (checked && !autoRoleId) {
+    if (checked && !autoRoleIds.length) {
       setStatus(null);
-      setError("Selecione primeiro o cargo que o usuario vai receber.");
+      setError("Selecione primeiro pelo menos um cargo que o usuario vai receber.");
       return;
     }
 
@@ -314,9 +319,9 @@ export function WelcomePanel({ botId, canManage, guild, loading = false, mode = 
               enabled={settings.autoRoleEnabled}
               loading={loadingChannels}
               onEnabledChange={handleAutoRoleEnabled}
-              onRoleChange={(roleId) => void handleAutoRoleChange(roleId)}
+              onRoleToggle={(roleId, checked) => void handleAutoRoleToggle(roleId, checked)}
               roles={roles}
-              value={autoRoleId}
+              values={autoRoleIds}
             />
           ) : null}
 
@@ -405,17 +410,17 @@ function AutoRoleControl({
   enabled,
   loading,
   onEnabledChange,
-  onRoleChange,
+  onRoleToggle,
   roles,
-  value
+  values
 }: {
   disabled: boolean;
   enabled: boolean;
   loading: boolean;
   onEnabledChange: (checked: boolean) => void;
-  onRoleChange: (value: string) => void;
+  onRoleToggle: (roleId: string, checked: boolean) => void;
   roles: GuildRoleOption[];
-  value: string;
+  values: string[];
 }) {
   return (
     <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
@@ -423,29 +428,59 @@ function AutoRoleControl({
         <div>
           <p className="flex items-center gap-2 text-sm font-medium text-zinc-100">
             <UserCheck className="h-4 w-4 text-zinc-400" />
-            Cargo automatico ao entrar
+            Cargos automaticos ao entrar
           </p>
-          <p className="mt-1 text-xs text-zinc-500">O novo membro recebe este cargo assim que entrar no Discord.</p>
+          <p className="mt-1 text-xs text-zinc-500">O novo membro recebe ate 2 cargos assim que entrar no Discord.</p>
         </div>
         <Switch checked={enabled} disabled={disabled} onCheckedChange={onEnabledChange} />
       </div>
 
-      <select
-        className="h-11 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-600 disabled:opacity-50"
-        disabled={disabled}
-        onChange={(event) => onRoleChange(event.target.value)}
-        value={value}
-      >
-        <option value="">{loading ? "Carregando cargos..." : "Selecione um cargo"}</option>
-        {roles.map((role) => (
-          <option disabled={!role.assignable} key={role.id} value={role.id}>
-            @{role.name}{role.assignable ? "" : " - mova o cargo do bot para cima"}
-          </option>
-        ))}
-      </select>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-medium text-zinc-500">Cargos selecionados</span>
+          <span className="text-xs text-zinc-500">{values.length}/{MAX_AUTOMATIC_ROLES}</span>
+        </div>
+        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+          {loading ? (
+            <p className="flex min-h-11 items-center gap-2 rounded-lg border border-zinc-900 bg-black px-3 py-2 text-sm text-zinc-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Carregando cargos...
+            </p>
+          ) : roles.length ? (
+            roles.map((role) => {
+              const checked = values.includes(role.id);
+              const roleDisabled = disabled || !role.assignable || (!checked && values.length >= MAX_AUTOMATIC_ROLES);
+
+              return (
+                <label
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-zinc-900 bg-black px-3 py-2 text-sm text-zinc-100 transition hover:border-zinc-700 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
+                  key={role.id}
+                >
+                  <input
+                    checked={checked}
+                    className="peer sr-only"
+                    disabled={roleDisabled}
+                    onChange={(event) => onRoleToggle(role.id, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-black transition peer-checked:border-emerald-400 peer-checked:bg-emerald-400">
+                    {checked ? <Check className="h-3.5 w-3.5" /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">@{role.name}</span>
+                  {!role.assignable ? <span className="text-xs text-zinc-600">cargo acima do bot</span> : null}
+                </label>
+              );
+            })
+          ) : (
+            <p className="rounded-lg border border-zinc-900 bg-black px-3 py-2 text-sm text-zinc-500">
+              Nenhum cargo disponivel.
+            </p>
+          )}
+        </div>
+      </div>
 
       <p className="text-xs leading-5 text-zinc-500">
-        O bot precisa da permissao Gerenciar Cargos e o cargo do bot deve ficar acima do cargo selecionado.
+        O bot precisa da permissao Gerenciar Cargos e o cargo do bot deve ficar acima dos cargos selecionados.
       </p>
     </div>
   );

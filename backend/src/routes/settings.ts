@@ -7,7 +7,7 @@ import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dash
 import { canManageDevBotGuild, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
-import { getGuildSettings, updateGuildSettings } from "../services/settingsService";
+import { getGuildSettings, MAX_AUTOMATIC_ROLES, updateGuildSettings } from "../services/settingsService";
 import { saveLeaveImage, saveWelcomeImage, sendLeavePanelToDiscord, sendWelcomePanelToDiscord } from "../services/welcomePanelService";
 import {
   areGuildAssignableRoles,
@@ -28,7 +28,7 @@ const settingsSchema = z.object({
   leaveImageUrl: z.string().max(2048).nullable().optional(),
   leaveMessage: z.string().nullable().optional(),
   autoRoleEnabled: z.boolean().optional(),
-  autoRoleIds: z.array(z.string()).optional(),
+  autoRoleIds: z.array(z.string()).max(MAX_AUTOMATIC_ROLES, "Selecione no maximo 2 cargos automaticos.").optional(),
   twitchRoleId: z.string().nullable().optional(),
   boosterRoleId: z.string().nullable().optional(),
   ticketEnabled: z.boolean().optional(),
