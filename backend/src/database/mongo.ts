@@ -315,6 +315,18 @@ async function createMongoIndexes(db: Db) {
       platform: 1,
       enabled: 1
     }),
+    db.collection<MongoSocialNotification>("social_notifications").createIndex({
+      botId: 1,
+      platform: 1,
+      enabled: 1,
+      updatedAt: 1
+    }),
+    db.collection<MongoSocialNotification>("social_notifications").createIndex({
+      botId: 1,
+      guildId: 1,
+      platform: 1,
+      createdAt: -1
+    }),
     db.collection<MongoDevBot>("Bot").createIndex({ clientId: 1 }, { unique: true }),
     db.collection<MongoBotGuildConfig>("BotGuildConfig").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDevPermission>("DevPermission").createIndex({ userId: 1 }, { unique: true })

@@ -183,6 +183,16 @@ export type SocialNotification = {
   updatedAt: string;
 };
 
+export type SocialNotificationsPage = {
+  notifications: SocialNotification[];
+  page: number;
+  pageSize: number;
+  total: number;
+  filteredTotal: number;
+  totalPages: number;
+  limit: number;
+};
+
 export type ClipMentionType = "none" | "everyone" | "role";
 
 export type ClipsConfig = {

@@ -39,34 +39,51 @@ export type TwitchClip = {
 let tokenCache: TwitchToken | null = null;
 
 export async function getTwitchStream(channelName: string) {
+  const streams = await getTwitchStreams([channelName]);
+  return streams.get(channelName.toLowerCase()) ?? null;
+}
+
+export async function getTwitchStreams(channelNames: string[]) {
+  const uniqueChannelNames = [...new Set(
+    channelNames
+      .map((channelName) => channelName.trim().toLowerCase())
+      .filter(Boolean)
+  )].slice(0, 100);
+
+  if (!uniqueChannelNames.length) {
+    return new Map<string, TwitchStream>();
+  }
+
   const token = await getAppAccessToken();
+  const params = new URLSearchParams();
+
+  for (const channelName of uniqueChannelNames) {
+    params.append("user_login", channelName);
+  }
+
   const { data } = await axios.get<{ data: Array<Record<string, string | number>> }>("https://api.twitch.tv/helix/streams", {
     headers: {
       "Client-ID": env.TWITCH_CLIENT_ID,
       Authorization: `Bearer ${token}`
     },
-    params: {
-      user_login: channelName
-    },
+    params,
     timeout: 10_000
   });
 
-  const stream = data.data[0];
+  return new Map(data.data.map((stream) => {
+    const parsed = {
+      id: String(stream.id),
+      userLogin: String(stream.user_login),
+      userName: String(stream.user_name),
+      gameName: String(stream.game_name || ""),
+      title: String(stream.title || ""),
+      viewerCount: Number(stream.viewer_count || 0),
+      thumbnailUrl: String(stream.thumbnail_url || ""),
+      startedAt: String(stream.started_at || new Date().toISOString())
+    } satisfies TwitchStream;
 
-  if (!stream) {
-    return null;
-  }
-
-  return {
-    id: String(stream.id),
-    userLogin: String(stream.user_login),
-    userName: String(stream.user_name),
-    gameName: String(stream.game_name || ""),
-    title: String(stream.title || ""),
-    viewerCount: Number(stream.viewer_count || 0),
-    thumbnailUrl: String(stream.thumbnail_url || ""),
-    startedAt: String(stream.started_at || new Date().toISOString())
-  } satisfies TwitchStream;
+    return [parsed.userLogin.toLowerCase(), parsed];
+  }));
 }
 
 export async function getTwitchUser(channelName: string) {

@@ -11,7 +11,8 @@ import {
   previewTwitchChannel,
   sendTwitchNotificationTest,
   updateTwitchNotification,
-  updateTwitchNotificationState
+  updateTwitchNotificationState,
+  TWITCH_NOTIFICATION_LIMIT
 } from "../services/socialNotificationService";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { canUseDevBotModule, getDevBotToken } from "../services/devBotService";
@@ -50,6 +51,12 @@ const stateSchema = z.object({
   twitchAvatar: z.string().optional().nullable()
 });
 
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  search: z.string().max(100).optional().default("")
+});
+
 export const socialNotificationsRouter = Router();
 export const botLivesRouter = Router();
 
@@ -60,19 +67,21 @@ botLivesRouter.get("/:botId/guilds/:guildId/lives", requireAuth, async (req, res
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
     await assertCanManageGuild(req, guildId, botId, "visualizou lives");
 
-    const notifications = await listSocialNotifications(guildId, botId);
+    const query = listQuerySchema.parse(req.query);
+    const result = await listSocialNotifications(guildId, botId, query);
     await writeLiveAudit({
       action: "visualizou lives",
       botId,
       guildId,
       metadata: {
-        total: notifications.length
+        total: result.total
       },
       userId: user.discordId
     });
 
     return res.json({
-      notifications
+      ...result,
+      limit: TWITCH_NOTIFICATION_LIMIT
     });
   } catch (error) {
     return handleRouteError(error, res, next);
@@ -231,19 +240,21 @@ socialNotificationsRouter.get("/:guildId", requireAuth, async (req, res, next) =
     const botId = await resolveRequestBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
     await assertCanManageGuild(req, guildId, botId, "visualizou lives");
-    const notifications = await listSocialNotifications(guildId, botId);
+    const query = listQuerySchema.parse(req.query);
+    const result = await listSocialNotifications(guildId, botId, query);
     await writeLiveAudit({
       action: "visualizou lives",
       botId,
       guildId,
       metadata: {
-        total: notifications.length
+        total: result.total
       },
       userId: user.discordId
     });
 
     return res.json({
-      notifications
+      ...result,
+      limit: TWITCH_NOTIFICATION_LIMIT
     });
   } catch (error) {
     return handleRouteError(error, res, next);

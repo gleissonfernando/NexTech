@@ -62,7 +62,9 @@ type ServiceError = Error & {
   statusCode?: number;
 };
 
-const TWITCH_LIMIT = 5;
+export const TWITCH_NOTIFICATION_LIMIT = 10_000;
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 const DEFAULT_EMBED_COLOR = "#9146FF";
 const memoryNotifications = new Map<string, SocialNotificationDto>();
 
@@ -85,25 +87,84 @@ export async function previewTwitchChannel(input: string) {
   };
 }
 
-export async function listSocialNotifications(guildId: string, botId?: string | null) {
+export async function listSocialNotifications(
+  guildId: string,
+  botId?: string | null,
+  options: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  } = {}
+) {
   const normalizedBotId = normalizeBotId(botId);
+  const page = Math.max(1, Math.trunc(options.page ?? 1));
+  const pageSize = Math.max(1, Math.min(Math.trunc(options.pageSize ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE));
+  const search = options.search?.trim() ?? "";
+  const query = {
+    ...notificationScopeQuery(guildId, normalizedBotId),
+    platform: "twitch" as const,
+    ...(search
+      ? {
+          twitchChannelName: {
+            $regex: escapeRegex(search),
+            $options: "i"
+          }
+        }
+      : {})
+  };
 
   try {
     const { socialNotifications } = await getMongoCollections();
-    const notifications = await socialNotifications
-      .find(notificationScopeQuery(guildId, normalizedBotId))
-      .sort({
-        createdAt: -1
-      })
-      .toArray();
+    const filteredTotalPromise = socialNotifications.countDocuments(query);
+    const [notifications, filteredTotal, total] = await Promise.all([
+      socialNotifications
+        .find(query)
+        .sort({
+          createdAt: -1
+        })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .toArray(),
+      filteredTotalPromise,
+      search
+        ? socialNotifications.countDocuments({
+            ...notificationScopeQuery(guildId, normalizedBotId),
+            platform: "twitch"
+          })
+        : filteredTotalPromise
+    ]);
 
-    return notifications.map(toDto);
+    return {
+      notifications: notifications.map(toDto),
+      page,
+      pageSize,
+      total,
+      filteredTotal,
+      totalPages: Math.max(1, Math.ceil(filteredTotal / pageSize))
+    };
   } catch {
-    return [...memoryNotifications.values()].filter(
-      (notification) =>
+    const scopedNotifications = [...memoryNotifications.values()]
+      .filter(
+        (notification) =>
         notification.guildId === guildId
         && normalizeBotId(notification.botId) === normalizedBotId
-    );
+        && notification.platform === "twitch"
+      );
+    const allNotifications = scopedNotifications
+      .filter(
+        (notification) => !search || notification.twitchChannelName.toLowerCase().includes(search.toLowerCase())
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const filteredTotal = allNotifications.length;
+
+    return {
+      notifications: allNotifications.slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pageSize,
+      total: scopedNotifications.length,
+      filteredTotal,
+      totalPages: Math.max(1, Math.ceil(filteredTotal / pageSize))
+    };
   }
 }
 
@@ -438,11 +499,28 @@ function normalizeAndValidateChannel(input: string) {
 }
 
 async function assertGuildLimit(guildId: string, botId: string | null) {
-  const notifications = await listSocialNotifications(guildId, botId);
-  const count = notifications.filter((notification) => notification.platform === "twitch").length;
+  let count: number;
 
-  if (count >= TWITCH_LIMIT) {
-    throw createServiceError("Voce atingiu o limite de 5 canais Twitch neste servidor.", 400);
+  try {
+    const { socialNotifications } = await getMongoCollections();
+    count = await socialNotifications.countDocuments({
+      ...notificationScopeQuery(guildId, botId),
+      platform: "twitch"
+    });
+  } catch {
+    count = [...memoryNotifications.values()].filter(
+      (notification) =>
+        notification.guildId === guildId
+        && normalizeBotId(notification.botId) === botId
+        && notification.platform === "twitch"
+    ).length;
+  }
+
+  if (count >= TWITCH_NOTIFICATION_LIMIT) {
+    throw createServiceError(
+      `Voce atingiu o limite de ${TWITCH_NOTIFICATION_LIMIT.toLocaleString("pt-BR")} canais Twitch neste servidor.`,
+      400
+    );
   }
 }
 
@@ -593,6 +671,10 @@ async function findTwitchNotification(guildId: string, id: string, botId?: strin
 function normalizeBotId(botId: string | null | undefined) {
   const normalized = botId?.trim();
   return normalized ? normalized : null;
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function notificationScopeQuery(guildId: string, botId: string | null) {

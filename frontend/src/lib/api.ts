@@ -16,6 +16,7 @@ import type {
   LogEntry,
   SaveClipsConfigPayload,
   SocialNotification,
+  SocialNotificationsPage,
   Ticket,
   TwitchClipChannelPreview,
   TwitchChannelPreview,
@@ -237,14 +238,27 @@ export async function getTickets(guildId?: string, botId?: string | null) {
   return data.tickets;
 }
 
-export async function getSocialNotifications(guildId: string, botId?: string | null) {
-  const { data } = await api.get<{ notifications: SocialNotification[] }>(
+export async function getSocialNotifications(
+  guildId: string,
+  botId?: string | null,
+  options: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  } = {}
+) {
+  const { data } = await api.get<SocialNotificationsPage>(
     botId ? scopedBotGuildPath(botId, guildId, "/lives") : `/social-notifications/${guildId}`,
     {
-      params: botParams(botId)
+      params: {
+        ...botParams(botId),
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 25,
+        search: options.search || undefined
+      }
     }
   );
-  return data.notifications;
+  return data;
 }
 
 export async function getClipsConfig(guildId: string, botId?: string | null) {

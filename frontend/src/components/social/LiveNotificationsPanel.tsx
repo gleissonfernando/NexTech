@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Radio } from "lucide-react";
 import {
   createTwitchNotification,
@@ -28,6 +28,14 @@ type LiveNotificationsPanelProps = {
 
 export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotificationsPanelProps) {
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [limit, setLimit] = useState(10_000);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [refreshSignal, setRefreshSignal] = useState(0);
   const [liveOptions, setLiveOptions] = useState<GuildLiveOptions>({ channels: [], roles: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,40 +47,103 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
   const [editing, setEditing] = useState<SocialNotification | null>(null);
   const [deletingNotification, setDeletingNotification] = useState<SocialNotification | null>(null);
 
-  const twitchCount = useMemo(
-    () => notifications.filter((notification) => notification.platform === "twitch").length,
-    [notifications]
-  );
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+    setSearchInput("");
+    setSearch("");
+  }, [botId, guild?.id]);
+
+  useEffect(() => {
+    if (!canManage || !guild) {
+      setLiveOptions({ channels: [], roles: [] });
+      return;
+    }
+
+    let cancelled = false;
+
+    getGuildLiveOptions(guild.id, botId)
+      .then((options) => {
+        if (!cancelled) {
+          setLiveOptions(options);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLiveOptions({ channels: [], roles: [] });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, canManage, guild?.id]);
 
   useEffect(() => {
     if (!canManage) {
       setLoading(false);
       setNotifications([]);
-      setLiveOptions({ channels: [], roles: [] });
+      setTotal(0);
+      setFilteredTotal(0);
       return;
     }
 
     if (!guild) {
       setLoading(false);
       setNotifications([]);
-      setLiveOptions({ channels: [], roles: [] });
+      setTotal(0);
+      setFilteredTotal(0);
       return;
     }
 
     setLoading(true);
     setError(null);
+    let cancelled = false;
 
-    Promise.all([
-      getSocialNotifications(guild.id, botId),
-      getGuildLiveOptions(guild.id, botId).catch(() => ({ channels: [], roles: [] }))
-    ])
-      .then(([nextNotifications, nextOptions]) => {
-        setNotifications(nextNotifications);
-        setLiveOptions(nextOptions);
+    getSocialNotifications(guild.id, botId, {
+        page,
+        pageSize: 25,
+        search
       })
-      .catch((requestError: unknown) => setError(readErrorMessage(requestError)))
-      .finally(() => setLoading(false));
-  }, [botId, canManage, guild]);
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (page > result.totalPages) {
+          setPage(result.totalPages);
+          return;
+        }
+
+        setNotifications(result.notifications);
+        setTotal(result.total);
+        setFilteredTotal(result.filteredTotal);
+        setLimit(result.limit);
+        setTotalPages(result.totalPages);
+      })
+      .catch((requestError: unknown) => {
+        if (!cancelled) {
+          setError(readErrorMessage(requestError));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, canManage, guild?.id, page, refreshSignal, search]);
 
   async function handleCreate(payload: CreateTwitchNotificationPayload) {
     if (!guild) {
@@ -84,8 +155,11 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
     setStatus(null);
 
     try {
-      const notification = await createTwitchNotification(guild.id, payload, botId);
-      setNotifications((current) => [notification, ...current]);
+      await createTwitchNotification(guild.id, payload, botId);
+      setSearchInput("");
+      setSearch("");
+      setPage(1);
+      setRefreshSignal((current) => current + 1);
       setAddOpen(false);
       setStatus("Canal Twitch cadastrado com sucesso.");
     } catch (requestError) {
@@ -126,7 +200,7 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
 
     try {
       await deleteTwitchNotification(guild.id, deletingNotification.id, botId);
-      setNotifications((current) => current.filter((item) => item.id !== deletingNotification.id));
+      setRefreshSignal((current) => current + 1);
       setDeletingNotification(null);
       setStatus("Canal Twitch removido.");
     } catch (requestError) {
@@ -171,7 +245,7 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
         </div>
 
         <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 px-4 py-2 text-sm text-zinc-500">
-          Twitch: <span className="font-semibold text-white">{twitchCount}/5</span>
+          Twitch: <span className="font-semibold text-white">{total.toLocaleString("pt-BR")} / {limit.toLocaleString("pt-BR")}</span>
         </div>
       </div>
 
@@ -187,6 +261,8 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
       {canManage ? (
         <TwitchNotificationCard
           channels={liveOptions.channels}
+          filteredTotal={filteredTotal}
+          limit={limit}
           notifications={notifications}
           onAdd={() => {
             setError(null);
@@ -198,8 +274,14 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
             setEditing(notification);
           }}
           onTest={handleTest}
+          onPageChange={setPage}
+          onSearchChange={setSearchInput}
+          page={page}
           roles={liveOptions.roles}
+          search={searchInput}
           testingId={testingId}
+          total={total}
+          totalPages={totalPages}
         />
       ) : null}
 

@@ -8,9 +8,11 @@ import {
 } from "discord.js";
 import { env } from "../config/env";
 import type { ApiClient, SocialNotification } from "./apiClient";
-import { getTwitchStream, type TwitchStream } from "./twitchApiService";
+import { getTwitchStreams, type TwitchStream } from "./twitchApiService";
 
 let running = false;
+const TWITCH_BATCH_SIZE = 100;
+const NOTIFICATION_CONCURRENCY = 25;
 
 export function startSocialNotificationMonitor(client: Client, api: ApiClient) {
   const run = () => {
@@ -33,31 +35,46 @@ async function monitorTwitchNotifications(client: Client, api: ApiClient) {
 
   try {
     const notifications = await api.getActiveTwitchNotifications();
+    const eligibleNotifications = notifications.filter((notification) => client.guilds.cache.has(notification.guildId));
+    const streamsByChannel = new Map<string, TwitchStream>();
+    const channelNames = [...new Set(
+      eligibleNotifications.map((notification) => notification.twitchChannelName.toLowerCase())
+    )];
 
-    for (const notification of notifications) {
-      if (!client.guilds.cache.has(notification.guildId)) {
-        continue;
+    for (let index = 0; index < channelNames.length; index += TWITCH_BATCH_SIZE) {
+      const batchStreams = await getTwitchStreams(channelNames.slice(index, index + TWITCH_BATCH_SIZE));
+
+      for (const [channelName, stream] of batchStreams) {
+        streamsByChannel.set(channelName, stream);
       }
+    }
 
+    await mapWithConcurrency(eligibleNotifications, NOTIFICATION_CONCURRENCY, async (notification) => {
       try {
-        await processNotification(client, api, notification);
+        await processNotification(
+          client,
+          api,
+          notification,
+          streamsByChannel.get(notification.twitchChannelName.toLowerCase()) ?? null
+        );
       } catch (error) {
         console.warn(
           `[social-notifications] notificacao ${notification.id} ignorada:`,
           error instanceof Error ? error.message : error
         );
       }
-
-      await delay(700);
-    }
+    });
   } finally {
     running = false;
   }
 }
 
-async function processNotification(client: Client, api: ApiClient, notification: SocialNotification) {
-  const stream = await getTwitchStream(notification.twitchChannelName);
-
+async function processNotification(
+  client: Client,
+  api: ApiClient,
+  notification: SocialNotification,
+  stream: TwitchStream | null
+) {
   if (!stream) {
     if (notification.isLive) {
       await api.updateTwitchNotificationState(notification.id, {
@@ -190,8 +207,30 @@ function formatMention(notification: SocialNotification): { content: string | nu
   };
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function mapWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  handler: (item: T) => Promise<void>
+) {
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+
+      if (item !== undefined) {
+        await handler(item);
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(Math.max(1, concurrency), items.length) },
+      () => worker()
+    )
+  );
 }
 
 function normalizeEmbedColor(value?: string | null) {

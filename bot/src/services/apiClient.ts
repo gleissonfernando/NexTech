@@ -119,7 +119,9 @@ export class ApiClient {
   }
 
   async getActiveTwitchNotifications() {
-    const { data } = await this.http.get<{ notifications: SocialNotification[] }>("/social-notifications/bot/twitch-active");
+    const { data } = await this.http.get<{ notifications: SocialNotification[] }>("/social-notifications/bot/twitch-active", {
+      timeout: 30_000
+    });
     return data.notifications;
   }
 
