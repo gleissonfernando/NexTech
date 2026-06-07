@@ -67,29 +67,31 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
   const lastCheckAt = config.lastCheckAt ? new Date(config.lastCheckAt) : null;
   const now = new Date();
 
-  if (!lastCheckAt) {
-    await api.updateClipConfigCheck(config.id, now.toISOString());
-    return;
-  }
-
   const effectiveCheckInterval = Math.min(config.checkInterval, env.CLIPS_MONITOR_INTERVAL_MS);
 
-  if (now.getTime() - lastCheckAt.getTime() < effectiveCheckInterval) {
+  if (lastCheckAt && now.getTime() - lastCheckAt.getTime() < effectiveCheckInterval) {
     return;
   }
 
+  const lookupBaseTime = lastCheckAt?.getTime() ?? now.getTime();
+  const startedAt = new Date(Math.max(0, lookupBaseTime - env.CLIPS_LOOKBACK_MS));
   const clips = await getTwitchClips({
     broadcasterId: config.twitchBroadcasterId,
     endedAt: now.toISOString(),
     first: 20,
-    startedAt: new Date(Math.max(0, lastCheckAt.getTime() - 5_000)).toISOString()
+    startedAt: startedAt.toISOString()
   });
-  const newClips = clips
-    .filter((clip) => new Date(clip.createdAt).getTime() > lastCheckAt.getTime())
+  const candidateClips = clips
+    .filter((clip) => new Date(clip.createdAt).getTime() >= startedAt.getTime())
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-    .slice(0, Math.max(1, env.CLIPS_MAX_PER_CHECK));
+  let recordedClips = 0;
+  const maxClipsPerCheck = Math.max(1, env.CLIPS_MAX_PER_CHECK);
 
-  for (const clip of newClips) {
+  for (const clip of candidateClips) {
+    if (recordedClips >= maxClipsPerCheck) {
+      break;
+    }
+
     if (await api.isClipSent(config.id, clip.id)) {
       continue;
     }
@@ -123,6 +125,7 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
         throw error;
       }
     });
+    recordedClips += 1;
 
     if (discordErrorMessage) {
       console.warn(`[clips] clip ${clip.id} registrado, mas nao enviado ao Discord: ${discordErrorMessage}`);

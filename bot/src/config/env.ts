@@ -97,6 +97,7 @@ const envSchema = z
     BOT_CACHE_USERS_MAX: envNumber(200),
     CLIPS_MONITOR_INTERVAL_MS: envNumber(10_000),
     CLIPS_MAX_PER_CHECK: envNumber(3),
+    CLIPS_LOOKBACK_MS: envNumber(15 * 60_000),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
     TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(20_000)
