@@ -86,7 +86,7 @@ export function DevPanel({
   const [guildDetectionError, setGuildDetectionError] = useState<string | null>(null);
 
   const selectedBotId = controlledSelectedBotId ?? internalSelectedBotId;
-  const selectedBot = bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null;
+  const selectedBot = bots.find((bot) => bot.id === selectedBotId) ?? null;
   const guildNameById = useMemo(() => new Map(guilds.map((guild) => [guild.id, guild.name])), [guilds]);
   const stats = useMemo(
     () => ({
@@ -373,8 +373,8 @@ export function DevPanel({
 
         <Card>
           <CardHeader>
-            <CardTitle>Bots cadastrados</CardTitle>
-            <CardDescription>Selecione o bot cadastrado que voce quer configurar para a dashboard.</CardDescription>
+            <CardTitle>Selecionar bot para liberar configs</CardTitle>
+            <CardDescription>Escolha o bot cadastrado que recebera as abas, botoes e configuracoes liberadas.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -386,6 +386,7 @@ export function DevPanel({
                     onChange={(event) => handleSelectBotId(event.target.value || null)}
                     value={selectedBot?.id ?? ""}
                   >
+                    <option value="">Selecione o bot</option>
                     {bots.map((bot) => (
                       <option key={bot.id} value={bot.id}>
                         {bot.name}
@@ -393,7 +394,7 @@ export function DevPanel({
                     ))}
                   </select>
                   <p className="text-xs leading-5 text-purple-100/80">
-                    Depois de escolher o bot, marque abaixo quais sistemas aparecem para ele na dashboard.
+                    Depois de escolher o bot, marque abaixo quais configs aparecem para ele na dashboard.
                   </p>
                 </label>
               ) : null}
@@ -457,8 +458,8 @@ export function DevPanel({
       {selectedBot ? (
         <Card>
           <CardHeader>
-            <CardTitle>O que aparece na dashboard</CardTitle>
-            <CardDescription>Ative ou desative os sistemas visiveis para o bot selecionado.</CardDescription>
+            <CardTitle>Configs liberadas para este bot</CardTitle>
+            <CardDescription>Ative ou desative os sistemas visiveis somente para o bot selecionado.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">

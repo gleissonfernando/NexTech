@@ -72,8 +72,9 @@ export function DashboardHeader({
                 className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 outline-none transition duration-300 focus:border-purple-400"
                 disabled={loading}
                 onChange={(event) => onSelectBot?.(event.target.value || null)}
-                value={selectedBotId ?? bots[0]?.id ?? ""}
+                value={selectedBotId ?? ""}
               >
+                <option value="">Selecione o bot</option>
                 {bots.map((panelBot) => (
                   <option key={panelBot.id} value={panelBot.id}>
                     {panelBot.name}

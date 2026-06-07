@@ -284,11 +284,11 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const selectedPanelBot = useMemo(
-    () => panelBots.find((bot) => bot.id === selectedBotId) ?? panelBots[0] ?? null,
+    () => panelBots.find((bot) => bot.id === selectedBotId) ?? null,
     [panelBots, selectedBotId]
   );
   const activeBotId = selectedPanelBot?.id ?? null;
-  const canManageDashboard = auth.permissions.canManageDashboard || Boolean(selectedPanelBot);
+  const canManageDashboard = panelBots.length ? Boolean(selectedPanelBot) : auth.permissions.canManageDashboard;
   const isSystemOwner = auth.user.discordId === DASHBOARD_SYSTEM_OWNER_ID || dashboardProfile?.user.id === DASHBOARD_SYSTEM_OWNER_ID;
   const canViewDev = isSystemOwner && (dashboardProfile?.canViewDev ?? false);
   const developerView = canViewDev && dashboardViewMode === "developer";
@@ -393,6 +393,14 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   );
 
   useEffect(() => {
+    if (panelBots.length && !activeBotId) {
+      setSettings(null);
+      setLogs([]);
+      setLives([]);
+      setTickets([]);
+      return;
+    }
+
     if (!selectedGuildId) {
       setSettings(null);
       return;
@@ -428,7 +436,7 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
     return () => {
       mounted = false;
     };
-  }, [activeBotId, selectedGuildId]);
+  }, [activeBotId, panelBots.length, selectedGuildId]);
 
   useEffect(() => {
     const socket = createDashboardSocket();
@@ -617,6 +625,16 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
           selectedGuildId={selectedGuild?.id ?? null}
           user={dashboardProfile?.user}
         />
+        {activeView !== "dev" ? (
+          <BotConfigScopeCard
+            bots={panelBots}
+            enabledModules={enabledModules}
+            loading={dashboardProfileLoading}
+            onSelectBot={handleSelectBot}
+            selectedBot={selectedPanelBot}
+            selectedGuild={selectedGuild}
+          />
+        ) : null}
 
         {activeView === "overview" ? (
           <OverviewView
@@ -866,6 +884,77 @@ function PageHeader({
         <Badge variant="muted">{botStatus.online ? "Bot online" : "Bot offline"}</Badge>
       </div>
     </section>
+  );
+}
+
+function BotConfigScopeCard({
+  bots,
+  enabledModules,
+  loading,
+  onSelectBot,
+  selectedBot,
+  selectedGuild
+}: {
+  bots: DashboardBot[];
+  enabledModules: string[];
+  loading: boolean;
+  onSelectBot: (botId: string | null) => void;
+  selectedBot: DashboardBot | null;
+  selectedGuild: DashboardGuild | null;
+}) {
+  if (!bots.length) {
+    return null;
+  }
+
+  return (
+    <Card className="border-purple-500/25 bg-purple-500/[0.06]">
+      <CardContent className="space-y-4 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar
+              className="h-12 w-12 rounded-full border border-purple-500/40"
+              fallback={selectedBot?.name ?? "Bot"}
+              src={selectedBot?.avatarUrl ?? null}
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-purple-200">Selecionar bot para liberar configs</p>
+              <h3 className="mt-1 truncate text-lg font-semibold text-white">
+                {selectedBot?.name ?? "Nenhum bot selecionado"}
+              </h3>
+              <p className="truncate text-xs text-zinc-500">
+                Servidor: {selectedGuild?.name ?? selectedBot?.mainGuildName ?? "selecione um servidor"}
+              </p>
+            </div>
+          </div>
+
+          <label className="block w-full space-y-2 lg:max-w-sm">
+            <span className="text-xs font-medium uppercase text-zinc-500">Bot das configuracoes</span>
+            <select
+              className="h-11 w-full rounded-lg border border-purple-500/30 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 outline-none transition duration-300 focus:border-purple-400 disabled:opacity-60"
+              disabled={loading}
+              onChange={(event) => onSelectBot(event.target.value || null)}
+              value={selectedBot?.id ?? ""}
+            >
+              <option value="">Selecione um bot cadastrado</option>
+              {bots.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name} - {bot.mainGuildName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-zinc-400">
+            {selectedBot
+              ? "As abas, botoes e configuracoes abaixo pertencem somente ao bot selecionado."
+              : "Escolha um bot para liberar e editar as configuracoes dele."}
+          </p>
+          <Badge variant="muted">{enabledModules.length} configs liberadas</Badge>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
