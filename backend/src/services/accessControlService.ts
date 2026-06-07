@@ -92,7 +92,7 @@ export async function evaluateDashboardAccess(
         matchedUserIds: [],
         matchedRoleCount: 0,
         memberRoleIds: [],
-        reason: "A validacao de cargos demorou demais para responder. Tente novamente em alguns segundos.",
+        reason: "A validacao de usuarios liberados demorou demais para responder. Tente novamente em alguns segundos.",
         requiredRoleIds: [],
         requiredUserIds: []
       }]
@@ -149,7 +149,7 @@ export async function evaluateDashboardAccess(
   const validation = createValidationResult(
     [...checksByGuildId.values()],
     authorizedUser,
-    rejectionReasons.length ? rejectionReasons : ["Nenhuma dashboard com acesso por cargo foi encontrada para esta conta Discord."],
+    rejectionReasons.length ? rejectionReasons : ["Nenhuma dashboard com usuario liberado foi encontrada para esta conta Discord."],
     highestAccessLevel
   );
   await persistAccessSnapshot(user.discordId, validation, roleSnapshot);
@@ -159,14 +159,14 @@ export async function evaluateDashboardAccess(
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
-      console.warn(`[access] validacao de cargos excedeu ${timeoutMs}ms.`);
+      console.warn(`[access] validacao de usuarios liberados excedeu ${timeoutMs}ms.`);
       resolve(fallback);
     }, timeoutMs);
 
     void promise
       .then(resolve)
       .catch((error) => {
-        console.warn("[access] nao foi possivel validar cargos do painel:", error instanceof Error ? error.message : error);
+        console.warn("[access] nao foi possivel validar usuarios liberados do painel:", error instanceof Error ? error.message : error);
         resolve(fallback);
       })
       .finally(() => clearTimeout(timeout));

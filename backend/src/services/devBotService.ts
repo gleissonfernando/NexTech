@@ -1592,7 +1592,7 @@ async function checkConfiguredPanelRole(
 ): Promise<PanelRoleAccessResult> {
   const access = await getPersistedDashboardAccess(guildId, bot._id).catch((error) => {
     console.warn(
-      `[access] nao foi possivel ler cargos persistidos do bot ${bot._id} no servidor ${guildId}:`,
+      `[access] nao foi possivel ler usuarios liberados do bot ${bot._id} no servidor ${guildId}:`,
       error instanceof Error ? error.message : error
     );
     return null;
@@ -1610,7 +1610,7 @@ async function checkConfiguredPanelRole(
       memberRoleIds: [],
       requiredRoleIds: [],
       requiredUserIds: [],
-      reason: "Nenhuma configuracao de acesso por cargo foi encontrada para este bot/servidor."
+      reason: "Nenhuma configuracao de usuarios liberados foi encontrada para este bot/servidor."
     };
 
     await writeAccessValidationLog(userId, bot, guildId, result);
@@ -1630,7 +1630,7 @@ async function checkConfiguredPanelRole(
       memberRoleIds: [],
       requiredRoleIds: access.roleIds,
       requiredUserIds,
-      reason: "O acesso ao site por cargo esta desativado neste servidor."
+      reason: "O acesso ao site por usuario esta desativado neste servidor."
     };
 
     await writeAccessValidationLog(userId, bot, guildId, result);
@@ -1638,8 +1638,9 @@ async function checkConfiguredPanelRole(
   }
 
   const requiredUserIds = Object.keys(access.userPermissions);
+  const directUserAccessLevel = access.userPermissions[userId] ?? null;
 
-  if (!access.roleIds.length && !requiredUserIds.length) {
+  if (!requiredUserIds.length) {
     const result = {
       allowed: false,
       accessLevel: null,
@@ -1651,16 +1652,14 @@ async function checkConfiguredPanelRole(
       memberRoleIds: [],
       requiredRoleIds: [],
       requiredUserIds: [],
-      reason: "Nenhum cargo ou usuario foi salvo como liberado para acessar este painel."
+      reason: "Nenhum usuario foi salvo como liberado para acessar este painel."
     };
 
     await writeAccessValidationLog(userId, bot, guildId, result);
     return result;
   }
 
-  const memberRoles = await getDashboardMemberRoleIds(userId, bot, guildId, options);
-
-  if (!memberRoles.roleIds) {
+  if (!directUserAccessLevel) {
     const result = {
       allowed: false,
       accessLevel: null,
@@ -1670,61 +1669,30 @@ async function checkConfiguredPanelRole(
       matchedUserIds: [],
       matchedRoleCount: 0,
       memberRoleIds: [],
-      requiredRoleIds: access.roleIds,
+      requiredRoleIds: [],
       requiredUserIds,
-      reason: memberRoles.reason ?? "Nao foi possivel ler os cargos do usuario no Discord."
+      reason: "Seu usuario Discord nao esta na lista de pessoas liberadas para este painel."
     };
 
-    await writeAccessValidationLog(userId, bot, guildId, result, memberRoles.source);
-    return result;
-  }
-
-  const memberRoleIds = [...memberRoles.roleIds];
-  const matchedRoleIds = access.roleIds.filter((roleId) => memberRoles.roleIds?.has(roleId));
-  const matchedRoleCount = matchedRoleIds.length;
-  const directUserAccessLevel = access.userPermissions[userId] ?? null;
-  const matchedUserIds = directUserAccessLevel ? [userId] : [];
-  const accessLevel = highestDashboardAccessLevel([
-    directUserAccessLevel,
-    ...matchedRoleIds.map((roleId) => access.rolePermissions[roleId] ?? "admin")
-  ]);
-
-  if (!accessLevel) {
-    const result = {
-      allowed: false,
-      accessLevel: null,
-      configuredRoleCount: access.roleIds.length,
-      configuredUserCount: requiredUserIds.length,
-      matchedRoleIds,
-      matchedUserIds: [],
-      matchedRoleCount,
-      memberRoleIds,
-      requiredRoleIds: access.roleIds,
-      requiredUserIds,
-      reason: "Sua conta foi encontrada no servidor, mas seu ID e seus cargos nao batem com a liberacao do painel."
-    };
-
-    await writeAccessValidationLog(userId, bot, guildId, result, memberRoles.source);
+    await writeAccessValidationLog(userId, bot, guildId, result);
     return result;
   }
 
   const result = {
     allowed: true,
-    accessLevel,
+    accessLevel: directUserAccessLevel,
     configuredRoleCount: access.roleIds.length,
     configuredUserCount: requiredUserIds.length,
-    matchedRoleIds,
-    matchedUserIds,
-    matchedRoleCount,
-    memberRoleIds,
-    requiredRoleIds: access.roleIds,
+    matchedRoleIds: [],
+    matchedUserIds: [userId],
+    matchedRoleCount: 0,
+    memberRoleIds: [],
+    requiredRoleIds: [],
     requiredUserIds,
-    reason: directUserAccessLevel
-      ? "Usuario liberado diretamente encontrado na configuracao do painel."
-      : "Cargo liberado encontrado na sua conta Discord."
+    reason: "Usuario liberado diretamente encontrado na configuracao do painel."
   };
 
-  await writeAccessValidationLog(userId, bot, guildId, result, memberRoles.source);
+  await writeAccessValidationLog(userId, bot, guildId, result);
   return result;
 }
 

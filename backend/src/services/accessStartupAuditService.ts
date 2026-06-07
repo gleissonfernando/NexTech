@@ -57,7 +57,7 @@ async function auditGuildAccessSettings(settings: MongoGuildSettings): Promise<A
     updatedAt: new Date()
   };
 
-  if (!roleIds.length && !Object.keys(userPermissions).length) {
+  if (!Object.keys(userPermissions).length) {
     await persistAuditCorrection(settings, {
       ...update,
       verificationEnabled: false
@@ -153,7 +153,7 @@ async function writeStartupAuditLog(correction: AuditCorrection) {
     userId: null,
     type: "access.startup_audit",
     message: correction.disabled
-      ? "Auditoria de acesso desativou liberacao sem cargos validos."
+      ? "Auditoria de acesso desativou liberacao sem usuarios cadastrados."
       : "Auditoria de acesso removeu cargos invalidos da liberacao.",
     metadata: {
       checkedAt: new Date().toISOString(),

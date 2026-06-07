@@ -3,7 +3,7 @@ import { checkSiteAccess, getSession, logout as logoutRequest, verifyAccess } fr
 import { appUrl, dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);

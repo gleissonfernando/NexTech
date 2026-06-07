@@ -4,7 +4,7 @@ import { Avatar } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 type LoginProps = {
   accessValidation: AccessValidationResult | null;

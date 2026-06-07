@@ -144,7 +144,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "verification",
     title: "Permissoes",
-    description: "Define quais cargos podem entrar e configurar este painel.",
+    description: "Define quais usuarios podem entrar e configurar este painel.",
     icon: LockKeyhole,
     view: "permissions"
   },
@@ -1117,11 +1117,11 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
   }
 
   if (moduleId === "verification") {
-    const roleCount = settings?.verificationRoleIds.length || (settings?.verificationRoleId ? 1 : 0);
+    const userCount = Object.keys(settings?.dashboardUserPermissions ?? {}).length;
     return {
       active: Boolean(settings?.verificationEnabled),
-      configured: roleCount > 0,
-      configuredText: roleCount ? `${roleCount} cargo(s)` : "Falta cargo"
+      configured: userCount > 0,
+      configuredText: userCount ? `${userCount} usuario(s)` : "Falta usuario"
     };
   }
 

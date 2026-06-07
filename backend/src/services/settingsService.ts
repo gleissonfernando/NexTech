@@ -453,7 +453,7 @@ function normalizeRoleIds(roleIds: string[]) {
 }
 
 function accessHasEntries(access: PersistedDashboardAccess) {
-  return access.roleIds.length > 0 || Object.keys(access.userPermissions).length > 0;
+  return Object.keys(access.userPermissions).length > 0;
 }
 
 function normalizeRolePermissionMap(

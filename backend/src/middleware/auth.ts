@@ -6,7 +6,7 @@ import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsServ
 import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
 
 const VERIFIED_ACCESS_RECHECK_MS = 30 * 1000;
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 export function isBotRequest(req: Request) {
   const token = req.header("x-bot-token");

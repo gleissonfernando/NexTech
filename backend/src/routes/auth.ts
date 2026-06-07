@@ -33,7 +33,7 @@ export const authRouter = Router();
 const dashboardPath = "/dashboard";
 const errorPath = "/auth/error";
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 function isApiAuthMount(req: Request) {
   return req.baseUrl.replace(/\/+$/, "") === "/api/auth";

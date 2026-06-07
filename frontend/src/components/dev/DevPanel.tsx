@@ -513,7 +513,7 @@ export function DevPanel({
               <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
               <div>
                 <p className="text-sm font-medium text-zinc-100">Acesso protegido</p>
-                <p className="text-xs text-zinc-500">Login Discord e cargo autorizado para este bot.</p>
+                <p className="text-xs text-zinc-500">Login Discord e usuario autorizado para este bot.</p>
               </div>
             </div>
             <ModuleSwitchGrid

@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { evaluateDashboardAccess } from "../services/accessControlService";
 import type { DashboardAuth } from "../services/tokenService";
 
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 export async function requireDashboardAccessValidation(req: Request, res: Response, next: NextFunction) {
   const auth = res.locals.dashboardAuth as DashboardAuth | undefined;
