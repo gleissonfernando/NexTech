@@ -66,6 +66,84 @@ export type ClipsConfig = {
   updatedAt: string;
 };
 
+export type SocialPlatform =
+  | "twitter"
+  | "instagram"
+  | "twitch"
+  | "youtube"
+  | "tiktok"
+  | "kick"
+  | "facebook"
+  | "website";
+
+export type SocialMember = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  userId: string | null;
+  discordId: string | null;
+  name: string;
+  avatar: string | null;
+  role: string | null;
+  links: Record<SocialPlatform, string>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SocialPanel = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  channelId: string | null;
+  messageId: string | null;
+  embedColor: string;
+  published: boolean;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastPublishedAt: string | null;
+};
+
+export type SocialPanelPayload = {
+  members: SocialMember[];
+  panel: SocialPanel;
+};
+
+export type XApiStatus = "idle" | "ok" | "error";
+
+export type XAccount = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  channelId: string;
+  xUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  active: boolean;
+  lastSyncAt: string | null;
+  lastPostId: string | null;
+  lastPostAt: string | null;
+  lastApiStatus: XApiStatus;
+  lastApiError: string | null;
+  totalPostsSent: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type XPost = {
+  id: string;
+  text: string;
+  createdAt: string;
+  url: string;
+  mediaUrls: string[];
+};
+
+export type XSyncResult = {
+  account: XAccount;
+  posts: XPost[];
+};
+
 export class ApiClient {
   private readonly http: AxiosInstance;
 
@@ -158,5 +236,49 @@ export class ApiClient {
   }) {
     const { data } = await this.http.post(`/clips/bot/configs/${configId}/sent`, input);
     return data;
+  }
+
+  async getSocialPanels() {
+    const { data } = await this.http.get<{ panels: SocialPanelPayload[] }>("/socials/bot/panels");
+    return data.panels;
+  }
+
+  async getSocialPanel(panelId: string) {
+    const { data } = await this.http.get<SocialPanelPayload>(`/socials/bot/panels/${panelId}`);
+    return data;
+  }
+
+  async updateSocialPanelState(panelId: string, input: { messageId?: string | null; published?: boolean }) {
+    const { data } = await this.http.patch<{ panel: SocialPanel }>(`/socials/bot/panels/${panelId}/state`, input);
+    return data.panel;
+  }
+
+  async getActiveXAccounts() {
+    const { data } = await this.http.get<{ accounts: XAccount[] }>("/x-monitor/bot/accounts");
+    return data.accounts;
+  }
+
+  async syncXAccount(accountId: string) {
+    const { data } = await this.http.post<XSyncResult>(`/x-monitor/bot/accounts/${accountId}/sync`, undefined, {
+      timeout: 30_000
+    });
+    return data;
+  }
+
+  async recordXPostSent(accountId: string, input: {
+    channelId: string;
+    discordMessageId?: string | null;
+    xPostCreatedAt?: string | null;
+    xPostId: string;
+    xPostUrl: string;
+  }) {
+    const { data } = await this.http.post(`/x-monitor/bot/accounts/${accountId}/sent`, input);
+    return data;
+  }
+
+  async recordXDiscordFailure(accountId: string, message: string) {
+    await this.http.post(`/x-monitor/bot/accounts/${accountId}/discord-error`, {
+      message
+    });
   }
 }

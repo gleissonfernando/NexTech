@@ -43,6 +43,8 @@ import { Switch } from "../ui/switch";
 const fallbackModules: DevModuleDefinition[] = [
   { id: "live", label: "Sistema de Live" },
   { id: "clips", label: "Sistema de Clips" },
+  { id: "network", label: "Rede Social dos Membros" },
+  { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificacao" },
   { id: "welcome", label: "Sistema de Boas-vindas" },
   { id: "leave", label: "Sistema de Saida" },
@@ -326,7 +328,7 @@ export function DevPanel({
               inputMode="numeric"
               label="Servidor (Guild ID)"
               onChange={(value) => updateForm("mainGuildId", value.replace(/\D/g, ""))}
-              placeholder="1213384118356803594"
+              placeholder="123456789012345678"
               value={form.mainGuildId}
             />
 

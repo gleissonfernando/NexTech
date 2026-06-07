@@ -10,8 +10,10 @@ import { livesRouter } from "./lives";
 import { logsRouter } from "./logs";
 import { settingsRouter } from "./settings";
 import { botLivesRouter, socialNotificationsRouter } from "./socialNotifications";
+import { socialsRouter } from "./socials";
 import { ticketsRouter } from "./tickets";
 import { usersRouter } from "./users";
+import { xMonitorRouter } from "./xMonitor";
 
 export const apiRouter = Router();
 
@@ -29,3 +31,5 @@ apiRouter.use("/tickets", ticketsRouter);
 apiRouter.use("/logs", logsRouter);
 apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/social-notifications", socialNotificationsRouter);
+apiRouter.use("/socials", socialsRouter);
+apiRouter.use("/x-monitor", xMonitorRouter);

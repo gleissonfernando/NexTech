@@ -2,8 +2,26 @@ import type { Client } from "discord.js";
 import { io, type Socket } from "socket.io-client";
 import { env } from "../config/env";
 
+export type SocialPanelUpdateEvent = {
+  action: "publish" | "remove" | "update";
+  botId?: string | null;
+  guildId: string;
+  panelId: string;
+};
+
+export type XMonitorUpdateEvent = {
+  action: string;
+  botId?: string | null;
+  guildId: string;
+  account?: {
+    id: string;
+  };
+};
+
 export class BotSocketClient {
   private socket: Socket | null = null;
+  private socialPanelUpdateHandler: ((payload: SocialPanelUpdateEvent) => void) | null = null;
+  private xMonitorUpdateHandler: ((payload: XMonitorUpdateEvent) => void) | null = null;
 
   connect(client: Client) {
     if (!env.BACKEND_SOCKET_URL) {
@@ -40,6 +58,14 @@ export class BotSocketClient {
     this.socket.on("disconnect", (reason) => {
       console.warn(`[socket] desconectado do backend: ${reason}`);
     });
+
+    if (this.socialPanelUpdateHandler) {
+      this.socket.on("socials:update", this.socialPanelUpdateHandler);
+    }
+
+    if (this.xMonitorUpdateHandler) {
+      this.socket.on("x-monitor:update", this.xMonitorUpdateHandler);
+    }
   }
 
   emitStatus(client: Client, online = true) {
@@ -72,6 +98,18 @@ export class BotSocketClient {
 
   emitLiveEnded(payload: { guildId: string; streamer: string; title?: string; url?: string }) {
     this.socket?.emit("live:ended", { ...payload, botId: env.DASHBOARD_BOT_ID || null });
+  }
+
+  onSocialPanelUpdate(handler: (payload: SocialPanelUpdateEvent) => void) {
+    this.socialPanelUpdateHandler = handler;
+    this.socket?.off("socials:update");
+    this.socket?.on("socials:update", handler);
+  }
+
+  onXMonitorUpdate(handler: (payload: XMonitorUpdateEvent) => void) {
+    this.xMonitorUpdateHandler = handler;
+    this.socket?.off("x-monitor:update");
+    this.socket?.on("x-monitor:update", handler);
   }
 
   disconnect(client: Client) {

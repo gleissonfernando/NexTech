@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const isProduction = process.env.NODE_ENV === "production";
-const productionPublicUrl = "https://ricardinho98.shardweb.app";
+const productionPublicUrl = "";
 
 function cleanEnvValue(value: unknown) {
   if (typeof value !== "string") {
@@ -98,7 +98,8 @@ const envSchema = z
     CLIPS_LOOKBACK_MS: envNumber(15 * 60_000),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
-    TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(20_000)
+    TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(20_000),
+    X_MONITOR_INTERVAL_MS: z.coerce.number().default(60_000)
   });
 
 export const env = envSchema.parse(process.env);

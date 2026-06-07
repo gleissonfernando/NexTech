@@ -1,8 +1,10 @@
 # Ricardinho98
 
-Dashboard, API e bots Discord executados em producao na Shard.
+Dashboard, API e bots Discord para uso em hospedagem.
 
-## Deploy Shard
+Este repositorio nao deve conter tokens, secrets, IDs reais de servidor, IDs reais de dev ou dominio real de producao. Configure tudo no painel da hospedagem usando variaveis de ambiente.
+
+## Deploy Na Hospedagem
 
 Use o projeto pela raiz.
 
@@ -18,62 +20,92 @@ Start:
 npm start
 ```
 
-O `npm start` define `NODE_ENV=production`, sobe o backend e os bots, e serve o frontend compilado. O backend usa `0.0.0.0:80`, conforme o proxy da hospedagem.
+O `npm start` sobe backend, frontend compilado e processos de bot em modo de producao. A hospedagem deve fornecer as variaveis de ambiente listadas em `.env.example`.
 
-Cadastre no painel da Shard todas as variaveis listadas em `.env.example`. Os valores principais sao:
+## Variaveis
+
+Copie `.env.example` apenas como referencia. Troque todos os valores de exemplo no painel da hospedagem.
+
+Exemplo seguro:
 
 ```env
-SITE_ORIGIN="https://ricardinho98.shardweb.app"
-FRONTEND_URL="https://ricardinho98.shardweb.app"
-MONGODB_URI="mongodb+srv://..."
-SESSION_SECRET="segredo-forte"
-JWT_SECRET="outro-segredo-forte"
-BOT_API_TOKEN="token-interno"
-DISCORD_BOT_TOKEN="token-do-bot"
-DISCORD_CLIENT_ID="client-id"
-DISCORD_CLIENT_SECRET="client-secret"
-DISCORD_OAUTH_REDIRECT_URI="https://ricardinho98.shardweb.app/auth/discord/callback"
-DISCORD_CALLBACK_URL="https://ricardinho98.shardweb.app/auth/discord/callback"
-DASHBOARD_DEV_USER_IDS="1426287249020158018"
-TWITCH_CLIENT_ID=""
-TWITCH_CLIENT_SECRET=""
+SITE_ORIGIN="https://seu-dominio-da-hospedagem.example.com"
+FRONTEND_URL="https://seu-dominio-da-hospedagem.example.com"
+MONGODB_URI="mongodb+srv://usuario:senha@cluster.example.net/nome-do-banco?retryWrites=true&w=majority"
+SESSION_SECRET="gere-um-segredo-forte"
+JWT_SECRET="gere-outro-segredo-forte"
+BOT_API_TOKEN="gere-um-token-interno"
+DISCORD_BOT_TOKEN="token-do-bot-discord"
+DISCORD_CLIENT_ID="client-id-do-discord"
+DISCORD_CLIENT_SECRET="client-secret-do-discord"
+DISCORD_OAUTH_REDIRECT_URI="https://seu-dominio-da-hospedagem.example.com/auth/discord/callback"
+DISCORD_CALLBACK_URL="https://seu-dominio-da-hospedagem.example.com/auth/discord/callback"
+DASHBOARD_DEV_USER_IDS="id-discord-dev-1,id-discord-dev-2"
+DASHBOARD_GUILD_IDS="id-servidor-discord-1,id-servidor-discord-2"
 ```
 
-O runtime recusa MongoDB e URLs publicas locais. Nao existe login local: o acesso ao painel sempre usa Discord OAuth2.
-
-## Permissao Dev
-
-Somente IDs presentes em `DASHBOARD_DEV_USER_IDS` podem cadastrar e gerenciar bots. Para autorizar mais de um Dev, separe os IDs do Discord por virgula.
-
-Usuarios comuns nao conseguem usar as rotas de cadastro diretamente pela API.
-
-## Bloqueio por bot
-
-O acesso de usuarios comuns e validado separadamente para cada bot e servidor. O usuario so entra quando:
-
-- o bot esta cadastrado naquele servidor;
-- o acesso por cargo esta ativado para aquele bot;
-- o cargo configurado pertence ao usuario no Discord.
-
-Dono e administrador do servidor tambem precisam do cargo. Somente os Devs configurados podem entrar sem ele. Requisicoes da dashboard sem `botId` sao recusadas para usuarios comuns, evitando que a permissao de um bot libere dados de outro.
-
-## Clips
-
-O monitor consulta a Twitch a cada 30 segundos. Configuracoes antigas com outro intervalo sao normalizadas automaticamente para 30 segundos.
-
-Os canais sao processados com concorrencia controlada para evitar fila longa. Um clipe so e registrado como enviado depois que o Discord confirma a mensagem; falhas temporarias sao tentadas novamente no ciclo seguinte.
-
-A Twitch pode levar algum tempo para disponibilizar um clipe novo na API. O sistema usa uma janela retroativa configurada por `CLIPS_LOOKBACK_MS` para encontrar o clipe assim que ele aparecer, sem duplicar mensagens.
-
-## Multi-bot
-
-Cadastre bots na aba Dev. Cada processo recebe seu escopo interno por `DASHBOARD_BOT_ID`, e os modulos liberados ficam isolados por bot e servidor.
-
-## Redis
-
-Redis e opcional, mas deve ser remoto quando ativado:
+Credenciais de integracoes tambem devem ficar somente na hospedagem:
 
 ```env
-REDIS_SESSION_ENABLED="true"
-REDIS_URL="rediss://..."
+TWITCH_CLIENT_ID="client-id-da-twitch"
+TWITCH_CLIENT_SECRET="client-secret-da-twitch"
+X_CONSUMER_KEY="consumer-key-do-x"
+X_CONSUMER_SECRET="consumer-secret-do-x"
+X_BEARER_TOKEN="bearer-token-do-x"
+```
+
+## Seguranca
+
+- Nao commite `.env`.
+- Nao commite tokens reais.
+- Nao coloque IDs reais no README.
+- Nao coloque dominio real no README.
+- Se algum segredo foi exposto em chat, log ou commit, rotacione o segredo no provedor antes de usar em producao.
+
+## Modulos
+
+O painel suporta modulos por bot e servidor:
+
+- Boas-vindas e saida
+- Lives Twitch
+- Clips Twitch
+- Rede Social dos Membros
+- X Monitor
+- Tickets
+- Logs
+- Moderacao
+- Cargos
+
+Cada bot cadastrado pode ter modulos liberados separadamente na aba de administracao.
+
+## X Monitor
+
+O X Monitor usa a API v2 do X via `X_BEARER_TOKEN` configurado na hospedagem. A dashboard valida o perfil, salva a conta no banco e o bot monitora novas publicacoes para enviar no canal configurado.
+
+## Banco De Dados
+
+Use um MongoDB remoto configurado por `MONGODB_URI`.
+
+Colecoes usadas pelo sistema incluem:
+
+- `User`
+- `Guild`
+- `GuildSettings`
+- `LogEntry`
+- `social_notifications`
+- `social_members`
+- `social_panels`
+- `x_accounts`
+- `x_posts_sent`
+- `clips_config`
+- `clips_sent`
+- `Bot`
+- `BotGuildConfig`
+
+## Git
+
+Repositorio de destino:
+
+```text
+https://github.com/gleissonfernando/Ricardinho98.git
 ```

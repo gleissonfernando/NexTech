@@ -2,7 +2,9 @@ import type { Client } from "discord.js";
 import { env, isBotModuleEnabled } from "../config/env";
 import { registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
+import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
+import { startXMonitor } from "../services/xMonitor";
 import type { BotContext } from "../types";
 
 export async function handleReady(client: Client<true>, context: BotContext) {
@@ -22,6 +24,12 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   context.socket.emitStatus(client, true);
   if (isBotModuleEnabled("live")) {
     startSocialNotificationMonitor(client, context.api);
+  }
+  if (isBotModuleEnabled("network")) {
+    startSocialNetworkPanelSync(client, context.api, context.socket);
+  }
+  if (isBotModuleEnabled("x-monitor")) {
+    startXMonitor(client, context.api, context.socket);
   }
   if (isBotModuleEnabled("clips")) {
     startClipsMonitor(client, context.api);

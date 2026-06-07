@@ -1,4 +1,4 @@
-const PRODUCTION_ORIGIN = "https://ricardinho98.shardweb.app";
+const PRODUCTION_ORIGIN = "";
 
 function normalizeUrl(value?: string) {
   const trimmed = value?.trim();

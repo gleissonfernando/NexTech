@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  AtSign,
   Bell,
   Bot,
   Brush,
   Code2,
   Film,
+  Globe2,
   LockKeyhole,
   Radio,
   ScrollText,
@@ -28,6 +30,8 @@ export type ViewId =
   | "modules"
   | "lives"
   | "clips"
+  | "network"
+  | "x-monitor"
   | "roles"
   | "welcome"
   | "leave"
@@ -61,14 +65,21 @@ export const navSections: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Modulos",
     items: [
-      { id: "modules", label: "Modulos liberados", icon: Bot, moduleIds: ["live", "clips", "roles", "tickets", "moderation"] },
+      { id: "modules", label: "Modulos liberados", icon: Bot, moduleIds: ["live", "clips", "network", "x-monitor", "roles", "tickets", "moderation"] },
       { id: "welcome", label: "Entrada", icon: UserPlus, moduleId: "welcome" },
       { id: "leave", label: "Saida", icon: UserMinus, moduleId: "leave" },
       { id: "lives", label: "Lives", icon: Radio, moduleId: "live" },
       { id: "clips", label: "Clips", icon: Film, moduleId: "clips" },
+      { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
       { id: "roles", label: "Cargos", icon: Users, moduleId: "roles" },
       { id: "tickets", label: "Tickets", icon: Ticket, moduleId: "tickets" },
       { id: "moderation", label: "Moderacao", icon: Shield, moduleId: "moderation" }
+    ]
+  },
+  {
+    label: "Comunidade",
+    items: [
+      { id: "network", label: "Rede Social", icon: Globe2, moduleId: "network" }
     ]
   },
   {

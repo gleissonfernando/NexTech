@@ -15,12 +15,23 @@ import type {
   LiveEvent,
   LogEntry,
   SaveClipsConfigPayload,
+  SaveSocialPanelPayload,
+  SocialMember,
+  SocialMemberPayload,
+  SocialNetworkResponse,
   SocialNotification,
   SocialNotificationsPage,
+  SocialPanel,
   Ticket,
   TwitchClipChannelPreview,
   TwitchChannelPreview,
-  UpdateTwitchNotificationPayload
+  UpdateSocialMemberPayload,
+  UpdateTwitchNotificationPayload,
+  SaveXAccountPayload,
+  UpdateXAccountPayload,
+  XAccount,
+  XAccountPreview,
+  XMonitorResponse
 } from "../types";
 import { publicOrigin } from "./urls";
 
@@ -371,6 +382,100 @@ export async function deleteTwitchNotification(guildId: string, id: string, botI
     }
   );
   return data.notification;
+}
+
+export async function getMemberSocialNetwork(guildId: string, botId?: string | null) {
+  const { data } = await api.get<SocialNetworkResponse>(`/socials/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function createSocialMember(guildId: string, payload: SocialMemberPayload, botId?: string | null) {
+  const { data } = await api.post<{ member: SocialMember }>(`/socials/${guildId}/members`, payload, {
+    params: botParams(botId)
+  });
+  return data.member;
+}
+
+export async function updateSocialMember(guildId: string, memberId: string, payload: UpdateSocialMemberPayload, botId?: string | null) {
+  const { data } = await api.patch<{ member: SocialMember }>(`/socials/${guildId}/members/${memberId}`, payload, {
+    params: botParams(botId)
+  });
+  return data.member;
+}
+
+export async function deleteSocialMember(guildId: string, memberId: string, botId?: string | null) {
+  const { data } = await api.delete<{ member: SocialMember }>(`/socials/${guildId}/members/${memberId}`, {
+    params: botParams(botId)
+  });
+  return data.member;
+}
+
+export async function saveSocialPanel(guildId: string, payload: SaveSocialPanelPayload, botId?: string | null) {
+  const { data } = await api.put<{ panel: SocialPanel }>(`/socials/${guildId}/panel`, payload, {
+    params: botParams(botId)
+  });
+  return data.panel;
+}
+
+export async function publishSocialPanel(guildId: string, payload: Partial<SaveSocialPanelPayload>, botId?: string | null) {
+  const { data } = await api.post<SocialNetworkResponse>("/socials/update", {
+    guildId,
+    ...payload
+  }, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data;
+}
+
+export async function removeSocialPanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ panel: SocialPanel | null }>(`/socials/${guildId}/panel/remove`, undefined, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.panel;
+}
+
+export async function getXMonitor(guildId: string, botId?: string | null) {
+  const { data } = await api.get<XMonitorResponse>(`/x-monitor/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function verifyXAccount(guildId: string, username: string, botId?: string | null) {
+  const { data } = await api.post<{ profile: XAccountPreview }>(`/x-monitor/${guildId}/verify`, {
+    username
+  }, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.profile;
+}
+
+export async function createXAccount(guildId: string, payload: SaveXAccountPayload, botId?: string | null) {
+  const { data } = await api.post<{ account: XAccount }>(`/x-monitor/${guildId}/accounts`, payload, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.account;
+}
+
+export async function updateXAccount(guildId: string, accountId: string, payload: UpdateXAccountPayload, botId?: string | null) {
+  const { data } = await api.patch<{ account: XAccount }>(`/x-monitor/${guildId}/accounts/${accountId}`, payload, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.account;
+}
+
+export async function deleteXAccount(guildId: string, accountId: string, botId?: string | null) {
+  const { data } = await api.delete<{ account: XAccount }>(`/x-monitor/${guildId}/accounts/${accountId}`, {
+    params: botParams(botId)
+  });
+  return data.account;
 }
 
 export async function getDevModules() {

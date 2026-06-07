@@ -6,9 +6,9 @@ import { z } from "zod";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const productionPublicUrl = "https://ricardinho98.shardweb.app";
-const defaultDashboardGuildIds = "1213384118356803594";
-const defaultDashboardDevUserIds = "1426287249020158018";
+const productionPublicUrl = "";
+const defaultDashboardGuildIds = "";
+const defaultDashboardDevUserIds = "";
 const isProduction = process.env.NODE_ENV === "production";
 
 function cleanEnvValue(value: unknown) {
@@ -125,6 +125,9 @@ const envSchema = z
     DISCORD_OAUTH_REDIRECT_URI: envUrl("DISCORD_OAUTH_REDIRECT_URI", canonicalDiscordRedirectUri),
     DISCORD_CALLBACK_URL: envUrl("DISCORD_CALLBACK_URL", canonicalDiscordRedirectUri),
     DISCORD_SCOPES: z.string().default("identify email guilds"),
+    X_CONSUMER_KEY: z.string().default(""),
+    X_CONSUMER_SECRET: z.string().default(""),
+    X_BEARER_TOKEN: z.string().default(""),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
     FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin),

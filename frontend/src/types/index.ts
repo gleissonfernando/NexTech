@@ -193,6 +193,109 @@ export type SocialNotificationsPage = {
   limit: number;
 };
 
+export type SocialPlatform =
+  | "twitter"
+  | "instagram"
+  | "twitch"
+  | "youtube"
+  | "tiktok"
+  | "kick"
+  | "facebook"
+  | "website";
+
+export type SocialLinks = Record<SocialPlatform, string>;
+
+export type SocialMember = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  userId: string | null;
+  discordId: string | null;
+  name: string;
+  avatar: string | null;
+  role: string | null;
+  links: SocialLinks;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SocialPanel = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  channelId: string | null;
+  messageId: string | null;
+  embedColor: string;
+  published: boolean;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastPublishedAt: string | null;
+};
+
+export type SocialNetworkResponse = {
+  members: SocialMember[];
+  panel: SocialPanel | null;
+};
+
+export type SocialMemberPayload = {
+  avatar?: string | null;
+  discordId?: string | null;
+  links: Partial<Record<SocialPlatform, string | null>>;
+  name: string;
+  role?: string | null;
+};
+
+export type UpdateSocialMemberPayload = Partial<SocialMemberPayload>;
+
+export type SaveSocialPanelPayload = {
+  channelId: string;
+  embedColor?: string | null;
+};
+
+export type XApiStatus = "idle" | "ok" | "error";
+
+export type XAccount = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  channelId: string;
+  xUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  active: boolean;
+  lastSyncAt: string | null;
+  lastPostId: string | null;
+  lastPostAt: string | null;
+  lastApiStatus: XApiStatus;
+  lastApiError: string | null;
+  totalPostsSent: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type XAccountPreview = {
+  xUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  mostRecentPostId: string | null;
+};
+
+export type XMonitorResponse = {
+  accounts: XAccount[];
+  logs: LogEntry[];
+};
+
+export type SaveXAccountPayload = {
+  active: boolean;
+  channelId: string;
+  username: string;
+};
+
+export type UpdateXAccountPayload = Partial<SaveXAccountPayload>;
+
 export type ClipMentionType = "none" | "everyone" | "role";
 
 export type ClipsConfig = {

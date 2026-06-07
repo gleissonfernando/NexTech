@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
+  AtSign,
   Ban,
   Bell,
   Bot,
@@ -11,6 +12,7 @@ import {
   ChevronRight,
   Film,
   FileText,
+  Globe2,
   Hash,
   IdCard,
   LockKeyhole,
@@ -32,6 +34,8 @@ import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { DevPanel } from "../components/dev/DevPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
+import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
+import { XMonitorPanel } from "../components/social/XMonitorPanel";
 import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
@@ -68,7 +72,7 @@ type DashboardProps = {
   onLogout: () => void;
 };
 
-const CONFIGURED_GUILD_ID = "1213384118356803594";
+const CONFIGURED_GUILD_ID = "";
 const CONFIGURED_GUILD_NAME = "Servidor configurado";
 const DASHBOARD_VIEW_MODE_KEY = "dashboard.dev_view_mode";
 type BooleanSettingKey =
@@ -170,6 +174,24 @@ const dashboardCards: DashboardCardConfig[] = [
     action: "Configurar"
   },
   {
+    id: "network",
+    category: "modules",
+    title: "Rede Social dos Membros",
+    description: "Organize Twitter, Instagram, Twitch, YouTube, TikTok e outros links da comunidade.",
+    icon: Globe2,
+    moduleId: "network",
+    action: "Gerenciar"
+  },
+  {
+    id: "x-monitor",
+    category: "modules",
+    title: "X Monitor",
+    description: "Monitore perfis do X e envie novas publicacoes no Discord automaticamente.",
+    icon: AtSign,
+    moduleId: "x-monitor",
+    action: "Gerenciar"
+  },
+  {
     id: "roles",
     category: "modules",
     title: "Cargos automáticos",
@@ -265,6 +287,8 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   permissions: "verification",
   lives: "live",
   clips: "clips",
+  network: "network",
+  "x-monitor": "x-monitor",
   roles: "roles",
   welcome: "welcome",
   leave: "leave",
@@ -691,6 +715,12 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
         {activeView === "clips" ? (
           <ClipsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
         ) : null}
+        {activeView === "network" ? (
+          <MemberSocialNetworkPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
+        ) : null}
+        {activeView === "x-monitor" ? (
+          <XMonitorPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
+        ) : null}
         {activeView === "welcome" ? (
           <WelcomePanel
             canManage={canManageDashboard}
@@ -817,7 +847,7 @@ function isViewAllowed(view: ViewId, enabledModules: string[], developerView: bo
   }
 
   if (view === "modules") {
-    return ["live", "roles", "tickets", "moderation"].some((moduleId) => enabledModules.includes(moduleId));
+    return ["live", "clips", "network", "x-monitor", "roles", "tickets", "moderation"].some((moduleId) => enabledModules.includes(moduleId));
   }
 
   const requiredModule = viewModuleId(view);
@@ -891,9 +921,13 @@ function PageHeader({
                 ? "Entrada"
                 : activeView === "leave"
                   ? "Saida"
-                  : activeView === "dev"
-                    ? "Gerenciar Bots"
-                    : activeView.charAt(0).toUpperCase() + activeView.slice(1);
+                  : activeView === "network"
+                    ? "Rede Social"
+                    : activeView === "x-monitor"
+                      ? "X Monitor"
+                      : activeView === "dev"
+                        ? "Gerenciar Bots"
+                        : activeView.charAt(0).toUpperCase() + activeView.slice(1);
 
   return (
     <section className="rounded-lg border border-zinc-900 bg-[#0b0b0b] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.38)] sm:p-6">

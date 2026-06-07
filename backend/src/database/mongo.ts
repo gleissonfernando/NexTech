@@ -103,6 +103,75 @@ export type MongoSocialNotification = {
   updatedAt: Date;
 };
 
+export type MongoSocialMember = {
+  _id: string;
+  botId?: string | null;
+  guildId: string;
+  userId?: string | null;
+  discordId?: string | null;
+  name: string;
+  avatar: string | null;
+  role?: string | null;
+  twitter: string | null;
+  instagram: string | null;
+  twitch: string | null;
+  youtube: string | null;
+  tiktok: string | null;
+  kick: string | null;
+  facebook: string | null;
+  website: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSocialPanel = {
+  _id: string;
+  botId?: string | null;
+  guildId: string;
+  channelId: string | null;
+  messageId: string | null;
+  embedColor: string | null;
+  published: boolean;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastPublishedAt?: Date | null;
+};
+
+export type MongoXAccount = {
+  _id: string;
+  botId?: string | null;
+  guildId: string;
+  channelId: string;
+  xUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  active: boolean;
+  lastSyncAt: Date | null;
+  lastPostId: string | null;
+  lastPostAt: Date | null;
+  lastApiStatus: "idle" | "ok" | "error";
+  lastApiError: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoXPostSent = {
+  _id: string;
+  botId?: string | null;
+  guildId: string;
+  channelId: string;
+  accountId: string;
+  xPostId: string;
+  xPostUrl: string;
+  discordMessageId: string | null;
+  sentAt: Date;
+};
+
 export type MongoClipMentionType = "none" | "everyone" | "role";
 
 export type MongoClipsConfig = {
@@ -253,6 +322,10 @@ export async function getMongoCollections() {
     tickets: db.collection<MongoTicket>("Ticket"),
     logEntries: db.collection<MongoLogEntry>("LogEntry"),
     socialNotifications: db.collection<MongoSocialNotification>("social_notifications"),
+    socialMembers: db.collection<MongoSocialMember>("social_members"),
+    socialPanels: db.collection<MongoSocialPanel>("social_panels"),
+    xAccounts: db.collection<MongoXAccount>("x_accounts"),
+    xPostsSent: db.collection<MongoXPostSent>("x_posts_sent"),
     clipsConfig: db.collection<MongoClipsConfig>("clips_config"),
     clipsSent: db.collection<MongoClipSent>("clips_sent"),
     clipsLogs: db.collection<MongoClipLog>("clips_logs"),
@@ -306,6 +379,8 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTicket>("Ticket").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
     ensureSocialNotificationIndexes(db),
+    ensureSocialNetworkIndexes(db),
+    ensureXMonitorIndexes(db),
     ensureClipsIndexes(db),
     db.collection<MongoSocialNotification>("social_notifications").createIndex({
       guildId: 1,
@@ -361,6 +436,75 @@ async function ensureSocialNotificationIndexes(db: Db) {
       unique: true
     }
   );
+}
+
+async function ensureSocialNetworkIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoSocialMember>("social_members").createIndex({
+      botId: 1,
+      guildId: 1,
+      createdAt: -1
+    }),
+    db.collection<MongoSocialMember>("social_members").createIndex({
+      botId: 1,
+      guildId: 1,
+      name: 1
+    }),
+    db.collection<MongoSocialPanel>("social_panels").createIndex(
+      {
+        botId: 1,
+        guildId: 1
+      },
+      {
+        unique: true
+      }
+    ),
+    db.collection<MongoSocialPanel>("social_panels").createIndex({
+      botId: 1,
+      published: 1,
+      updatedAt: 1
+    })
+  ]);
+}
+
+async function ensureXMonitorIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoXAccount>("x_accounts").createIndex({
+      botId: 1,
+      guildId: 1,
+      createdAt: -1
+    }),
+    db.collection<MongoXAccount>("x_accounts").createIndex(
+      {
+        botId: 1,
+        guildId: 1,
+        username: 1
+      },
+      {
+        unique: true
+      }
+    ),
+    db.collection<MongoXAccount>("x_accounts").createIndex({
+      botId: 1,
+      active: 1,
+      lastSyncAt: 1
+    }),
+    db.collection<MongoXPostSent>("x_posts_sent").createIndex(
+      {
+        botId: 1,
+        accountId: 1,
+        xPostId: 1
+      },
+      {
+        unique: true
+      }
+    ),
+    db.collection<MongoXPostSent>("x_posts_sent").createIndex({
+      botId: 1,
+      guildId: 1,
+      sentAt: -1
+    })
+  ]);
 }
 
 async function ensureClipsIndexes(db: Db) {
