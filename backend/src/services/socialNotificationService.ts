@@ -897,6 +897,8 @@ async function sendDiscordLivePanel(input: {
             icon_url: input.notification.twitchAvatar ?? undefined,
             url: input.channelUrl
           },
+          title: formatLiveTitle(input.title),
+          url: input.channelUrl,
           description: renderLiveDescription(input.notification, input.channelUrl),
           fields: [
             {
@@ -961,6 +963,11 @@ function renderLiveDescription(notification: SocialNotificationDto, channelUrl: 
   }
 
   return `${channelLine} ${customMessage}`;
+}
+
+function formatLiveTitle(title?: string | null) {
+  const normalizedTitle = title?.trim();
+  return normalizedTitle || "Live ao vivo";
 }
 
 function formatMention(notification: SocialNotificationDto) {

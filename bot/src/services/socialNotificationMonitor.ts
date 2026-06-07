@@ -141,6 +141,8 @@ async function sendLiveAlert(client: Client, notification: SocialNotification, s
       iconURL: notification.twitchAvatar ?? undefined,
       url: streamUrl
     })
+    .setTitle(formatLiveTitle(stream.title))
+    .setURL(streamUrl)
     .setDescription(renderLiveDescription(notification, stream, streamUrl))
     .addFields(
       {
@@ -189,6 +191,11 @@ function renderLiveDescription(notification: SocialNotification, stream: TwitchS
   }
 
   return `${channelLine} ${customMessage}`;
+}
+
+function formatLiveTitle(title?: string | null) {
+  const normalizedTitle = title?.trim();
+  return normalizedTitle || "Live ao vivo";
 }
 
 function formatMention(notification: SocialNotification): { content: string | null; allowedMentions: MessageMentionOptions } {
