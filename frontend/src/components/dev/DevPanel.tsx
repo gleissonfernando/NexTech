@@ -13,6 +13,7 @@ import {
   getDevModules,
   restartDevBot,
   testDevBotConnection,
+  updateDevBotAccess,
   updateDevBotModules
 } from "../../lib/api";
 import type {
@@ -81,6 +82,11 @@ export function DevPanel({
   const [detectedGuild, setDetectedGuild] = useState<DetectedDiscordGuild | null>(null);
   const [detectingGuild, setDetectingGuild] = useState(false);
   const [guildDetectionError, setGuildDetectionError] = useState<string | null>(null);
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [accessForm, setAccessForm] = useState({
+    ownerName: "",
+    ownerId: ""
+  });
 
   const selectedBotId = controlledSelectedBotId ?? internalSelectedBotId;
   const selectedBot = bots.find((bot) => bot.id === selectedBotId) ?? null;
@@ -123,6 +129,13 @@ export function DevPanel({
       mainGuildId: current.mainGuildId || selectedGuildId || guilds[0]?.id || ""
     }));
   }, [guilds, selectedGuildId]);
+
+  useEffect(() => {
+    setAccessForm({
+      ownerName: selectedBot?.ownerName ?? "",
+      ownerId: selectedBot?.ownerId ?? ""
+    });
+  }, [selectedBot]);
 
   useEffect(() => {
     const token = form.token.trim();
@@ -219,7 +232,9 @@ export function DevPanel({
       const bot = await createDevBot({
         ...form,
         avatarUrl: form.avatarUrl || null,
-        name: form.name || null
+        name: form.name || null,
+        ownerName: form.ownerName || undefined,
+        ownerId: form.ownerId || undefined
       });
       setBots((current) => [bot, ...current]);
       onBotCreated?.(bot);
@@ -232,6 +247,30 @@ export function DevPanel({
       setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o bot. Confira os campos obrigatorios.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveAccess() {
+    if (!selectedBot || !/^\d{5,32}$/.test(accessForm.ownerId.trim())) {
+      setMessage("Informe o Discord ID do usuario que vai acessar esse bot.");
+      return;
+    }
+
+    setSavingAccess(true);
+    setMessage(null);
+
+    try {
+      const updated = await updateDevBotAccess(selectedBot.id, {
+        ownerName: accessForm.ownerName.trim() || selectedBot.ownerName,
+        ownerId: accessForm.ownerId.trim()
+      });
+      setBots((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      onBotUpdated?.(updated);
+      setMessage("Acesso do usuario atualizado. Ele vera somente os modulos liberados para este bot.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o acesso desse usuario.");
+    } finally {
+      setSavingAccess(false);
     }
   }
 
@@ -323,6 +362,16 @@ export function DevPanel({
                 onChange={(value) => updateForm("mainGuildId", value.replace(/\D/g, ""))}
               />
               <DevInput label="Nome do bot (opcional)" value={form.name ?? ""} onChange={(value) => updateForm("name", value)} />
+              <DevInput
+                label="Discord ID de quem vai acessar"
+                value={form.ownerId ?? ""}
+                onChange={(value) => updateForm("ownerId", value.replace(/\D/g, ""))}
+              />
+              <DevInput
+                label="Nome do usuario com acesso"
+                value={form.ownerName ?? ""}
+                onChange={(value) => updateForm("ownerName", value)}
+              />
             </div>
 
             <BotConnectionPreview
@@ -486,6 +535,31 @@ export function DevPanel({
                 </div>
               </div>
               <Badge variant="muted">{selectedBot.enabledModules.length}/{modules.length} visiveis</Badge>
+            </div>
+            <div className="rounded-lg border border-purple-500/20 bg-purple-500/[0.06] p-4">
+              <div className="mb-3">
+                <p className="text-sm font-semibold text-white">Dar acesso para usuario</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">
+                  Informe o Discord ID do Ricardinho ou do usuario que podera abrir este bot na dashboard.
+                  Ele vera somente os modulos ativados abaixo.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <DevInput
+                  label="Nome do usuario"
+                  value={accessForm.ownerName}
+                  onChange={(value) => setAccessForm((current) => ({ ...current, ownerName: value }))}
+                />
+                <DevInput
+                  label="Discord ID do usuario"
+                  value={accessForm.ownerId}
+                  onChange={(value) => setAccessForm((current) => ({ ...current, ownerId: value.replace(/\D/g, "") }))}
+                />
+                <Button disabled={savingAccess || !/^\d{5,32}$/.test(accessForm.ownerId)} onClick={handleSaveAccess}>
+                  {savingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                  Salvar acesso
+                </Button>
+              </div>
             </div>
             <ModuleSwitchGrid
               enabledModules={selectedBot.enabledModules}

@@ -113,8 +113,8 @@ devRouter.post("/bots/create", async (req, res, next) => {
       name: input.name || null,
       avatarUrl: input.avatarUrl || null,
       secret: input.secret || null,
-      ownerName: auth.user.globalName ?? auth.user.username,
-      ownerId: auth.user.discordId,
+      ownerName: input.ownerName || auth.user.globalName || auth.user.username,
+      ownerId: input.ownerId || auth.user.discordId,
       createdBy: auth.user.discordId
     });
     await startDevBotProcess(createdBot.id);

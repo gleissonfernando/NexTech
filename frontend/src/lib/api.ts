@@ -333,6 +333,13 @@ export async function createDevBot(payload: CreateDevBotPayload) {
   return data.bot;
 }
 
+export async function updateDevBotAccess(botId: string, payload: { ownerName?: string; ownerId?: string }) {
+  const { data } = await api.patch<{ bot: DevBot }>(`/dev/bots/${botId}`, payload, {
+    timeout: 16000
+  });
+  return data.bot;
+}
+
 export async function testDevBotConnection(token: string, clientId?: string) {
   const { data } = await api.post<BotConnectionTest>("/dev/bots/test-connection", { token, clientId: clientId || undefined }, {
     timeout: 16000
