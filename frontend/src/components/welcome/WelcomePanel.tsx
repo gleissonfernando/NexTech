@@ -521,31 +521,36 @@ function SimplePanelPreview({
   const ruleItems = formatRuleItems(rules);
 
   return (
-    <aside className="overflow-hidden rounded-lg border border-zinc-800 bg-black">
-      <img alt="" className="aspect-[16/9] w-full object-cover" src={imageUrl} />
-      <div className="space-y-5 p-4 pt-5">
-        <PanelMessage className="whitespace-pre-line text-sm leading-6 text-zinc-200" message={message} viewerName={viewerName} />
-
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-white">{rulesTitle}</p>
-          <ol className="space-y-1 text-sm leading-6 text-zinc-300">
-            {ruleItems.map((rule, index) => (
-              <li className="grid grid-cols-[1.6rem_minmax(0,1fr)] gap-2" key={`${rule}-${index}`}>
-                <span className="font-semibold text-zinc-100">{index + 1}.</span>
-                <span>{rule}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <div className="flex items-center gap-2 rounded-lg border border-zinc-900 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
-          <span aria-hidden="true">{"\u{1F517}"}</span>
-          <span className="min-w-0 truncate">
-            {channelLabel} <span className="font-medium text-zinc-100">#{channelName}</span>
-          </span>
-        </div>
+    <aside className="space-y-2 rounded-lg border border-zinc-800 bg-[#313338] p-3">
+      <div className="overflow-hidden rounded border-l-4 border-red-500 bg-[#2b2d31]">
+        <img alt="" className="mx-auto aspect-[16/9] w-full object-cover" src={imageUrl} />
       </div>
-      <footer className="border-t border-zinc-900 px-4 py-3 text-xs text-zinc-500">{footerText}</footer>
+
+      <div className="overflow-hidden rounded border-l-4 border-red-500 bg-[#2b2d31]">
+        <div className="space-y-5 p-4">
+          <PanelMessage className="whitespace-pre-line break-words text-sm leading-6 text-zinc-100" message={message} viewerName={viewerName} />
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-white">{rulesTitle}</p>
+            <ol className="space-y-1 text-sm leading-6 text-zinc-200">
+              {ruleItems.map((rule, index) => (
+                <li className="grid grid-cols-[1.6rem_minmax(0,1fr)] gap-2" key={`${rule}-${index}`}>
+                  <span className="font-semibold text-zinc-100">{index + 1}.</span>
+                  <span className="break-words">{rule}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="flex items-center gap-2 rounded border border-zinc-700/70 bg-[#232428] px-3 py-2 text-sm text-zinc-200">
+            <span aria-hidden="true">{"\u{1F517}"}</span>
+            <span className="min-w-0 truncate">
+              {channelLabel} <span className="font-medium text-zinc-100">#{channelName}</span>
+            </span>
+          </div>
+        </div>
+        <footer className="border-t border-zinc-700/60 px-4 py-3 text-xs text-zinc-400">{footerText}</footer>
+      </div>
     </aside>
   );
 }
