@@ -33,6 +33,7 @@ export function SiteAccessPanel({
   const [validation, setValidation] = useState<AccessValidationResult | null>(null);
   const [directUserId, setDirectUserId] = useState("");
   const [memberOptions, setMemberOptions] = useState<GuildMemberOption[]>([]);
+  const [selectedMemberProfiles, setSelectedMemberProfiles] = useState<Record<string, GuildMemberOption>>({});
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export function SiteAccessPanel({
   const rolePermissions = settings?.dashboardRolePermissions ?? {};
   const userPermissions = settings?.dashboardUserPermissions ?? {};
   const selectedUserIds = Object.keys(userPermissions);
+  const selectedUserKey = selectedUserIds.join(",");
 
   useEffect(() => {
     if (!guild || !canManage) {
@@ -64,6 +66,38 @@ export function SiteAccessPanel({
       .finally(() => setLoadingRoles(false));
   }, [botId, canManage, guild]);
 
+  useEffect(() => {
+    if (!guild || !canManage || !selectedUserIds.length) {
+      setSelectedMemberProfiles({});
+      return;
+    }
+
+    let active = true;
+
+    Promise.all(
+      selectedUserIds.map(async (userId) => {
+        const members = await getGuildMemberOptions(guild.id, userId, botId).catch(() => []);
+        return members.find((member) => member.id === userId) ?? null;
+      })
+    ).then((members) => {
+      if (!active) {
+        return;
+      }
+
+      setSelectedMemberProfiles(
+        Object.fromEntries(
+          members
+            .filter((member): member is GuildMemberOption => Boolean(member))
+            .map((member) => [member.id, member])
+        )
+      );
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [botId, canManage, guild, selectedUserKey]);
+
   async function saveAccess(payload: Partial<GuildSettings>, successText: string) {
     if (!guild || !settings || !canManage) {
       return;
@@ -86,7 +120,7 @@ export function SiteAccessPanel({
 
   function handleEnabledChange(checked: boolean) {
     if (checked && !selectedRoleIds.length && !selectedUserIds.length) {
-      setError("Selecione pelo menos um cargo ou adicione uma pessoa que tera acesso ao site.");
+      setError("Selecione uma pessoa do Discord ou um cargo para liberar o painel.");
       return;
     }
 
@@ -257,7 +291,7 @@ export function SiteAccessPanel({
             <div>
               <CardTitle>Acesso ao painel</CardTitle>
               <CardDescription>
-                Libere o painel por cargo ou por ID Discord direto neste bot e servidor.
+                Selecione um usuario do Discord para liberar o site sem precisar configurar cargo.
               </CardDescription>
             </div>
           </div>
@@ -271,7 +305,7 @@ export function SiteAccessPanel({
       <CardContent className="space-y-4">
         <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm font-medium text-zinc-100">Cargos configurados</span>
+            <span className="text-sm font-medium text-zinc-100">Cargos opcionais</span>
             <div className="flex items-center gap-2">
               <Badge variant={settings?.verificationEnabled ? "success" : "muted"}>
                 {settings?.verificationEnabled ? "Ativo" : "Inativo"}
@@ -349,7 +383,7 @@ export function SiteAccessPanel({
 
         <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm font-medium text-zinc-100">Pessoas liberadas diretamente</span>
+            <span className="text-sm font-medium text-zinc-100">Selecionar usuario do Discord</span>
             <span className="text-xs text-zinc-500">{selectedUserIds.length} pessoa(s)</span>
           </div>
 
@@ -364,7 +398,7 @@ export function SiteAccessPanel({
                 }
               }}
               onChange={(event) => setDirectUserId(event.target.value)}
-              placeholder="Buscar membro por nome ou ID"
+              placeholder="Nome, @usuario ou ID Discord"
               value={directUserId}
             />
             <Button disabled={disabled || loadingMembers || directUserId.trim().length < 2} onClick={() => void handleMemberSearch()} type="button" variant="outline">
@@ -404,12 +438,24 @@ export function SiteAccessPanel({
 
           <div className="space-y-2">
             {selectedUserIds.length ? (
-              selectedUserIds.map((userId) => (
+              selectedUserIds.map((userId) => {
+                const member = selectedMemberProfiles[userId];
+
+                return (
                 <div className="rounded-lg border border-zinc-900 bg-black px-3 py-3" key={userId}>
                   <div className="flex flex-wrap items-center gap-3">
+                    {member?.avatarUrl ? (
+                      <img
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-full border border-zinc-800 bg-zinc-950 object-cover"
+                        src={member.avatarUrl}
+                      />
+                    ) : null}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-zinc-100">{userId}</p>
-                      <p className="mt-1 text-xs text-zinc-500">Acesso por ID Discord direto</p>
+                      <p className="truncate text-sm font-medium text-zinc-100">{member?.displayName ?? userId}</p>
+                      <p className="mt-1 truncate text-xs text-zinc-500">
+                        {member ? `${member.tag} - ${userId}` : "Acesso por usuario Discord selecionado"}
+                      </p>
                     </div>
                     <Badge variant="muted">{levelLabel(userPermissions[userId] ?? "basic")}</Badge>
                     <button
@@ -447,7 +493,8 @@ export function SiteAccessPanel({
                     })}
                   </div>
                 </div>
-              ))
+                );
+              })
             ) : (
               <p className="rounded-lg border border-zinc-900 bg-black px-3 py-2 text-sm text-zinc-500">
                 Nenhuma pessoa liberada diretamente.
@@ -457,8 +504,7 @@ export function SiteAccessPanel({
         </div>
 
         <p className="text-xs leading-5 text-zinc-500">
-          Dono e administradores do Discord tambem precisam estar em um cargo configurado ou na lista direta.
-          A pessoa adicionada por ID ainda precisa estar no servidor Discord deste bot.
+          Cargo e opcional. A pessoa selecionada precisa continuar no servidor Discord deste bot para manter o acesso.
         </p>
 
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4 sm:flex-row sm:items-center sm:justify-between">
