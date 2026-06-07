@@ -130,6 +130,17 @@ export type DevBotRuntimeConfig = {
   enabledModules: string[];
 };
 
+export type DevBotAccessDiagnostic = {
+  allowed: boolean;
+  botId: string;
+  botName: string;
+  configuredRoleCount: number;
+  guildId: string;
+  guildName: string;
+  matchedRoleCount: number;
+  reason: string;
+};
+
 type CreateDevBotInput = {
   token: string;
   ownerName: string;
@@ -175,6 +186,18 @@ type AccessibleDevBotsOptions = {
   botSlug?: string | null;
 };
 
+type PanelRoleAccessResult = {
+  allowed: boolean;
+  configuredRoleCount: number;
+  matchedRoleCount: number;
+  reason: string;
+};
+
+type MemberRoleLookupResult = {
+  roleIds: Set<string> | null;
+  reason: string | null;
+};
+
 export async function listDevBots() {
   const { botGuildConfigs, devBots } = await getMongoCollections();
   const [bots, configs] = await Promise.all([
@@ -187,13 +210,23 @@ export async function listDevBots() {
 }
 
 export async function listAccessibleDevBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {
+  return (await scanAccessibleDevBots(user, options)).accessibleBots;
+}
+
+export async function scanAccessibleDevBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {
   if (isDashboardDevUserId(user.discordId)) {
     if (options.botSlug) {
       const bot = await getDevBotBySlug(options.botSlug);
-      return bot ? [bot] : [];
+      return {
+        accessibleBots: bot ? [bot] : [],
+        diagnostics: []
+      };
     }
 
-    return listDevBots();
+    return {
+      accessibleBots: await listDevBots(),
+      diagnostics: []
+    };
   }
 
   const { botGuildConfigs, devBots } = await getMongoCollections();
@@ -205,26 +238,43 @@ export async function listAccessibleDevBots(user: AuthSessionUser, options: Acce
   const guildIdsByBot = groupGuildIdsByBot(configs);
   const userGuildIds = new Set(user.guilds.map((guild) => guild.id));
 
-  const accessibleBots = await Promise.all(bots.map(async (bot) => {
+  const scans = await Promise.all(bots.map(async (bot) => {
     const allGuildIds = allBotGuildIds(bot, guildIdsByBot.get(bot._id));
     const candidateGuildIds = userGuildIds.size
       ? allGuildIds.filter((guildId) => userGuildIds.has(guildId))
       : allGuildIds;
 
     if (!candidateGuildIds.length) {
-      return null;
+      return {
+        bot: null,
+        diagnostics: [{
+          allowed: false,
+          botId: bot._id,
+          botName: bot.name,
+          configuredRoleCount: 0,
+          guildId: bot.mainGuildId,
+          guildName: bot.mainGuildName ?? `Servidor ${bot.mainGuildId}`,
+          matchedRoleCount: 0,
+          reason: "Sua conta Discord nao aparece como membro do servidor deste painel."
+        }]
+      };
     }
 
-    const authorizedGuildIds = (
-      await Promise.all(
-        candidateGuildIds.map(async (guildId) => (await canAccessDevBotGuild(user, bot, guildId)) ? guildId : null)
-      )
-    ).filter((guildId): guildId is string => Boolean(guildId));
+    const results = await Promise.all(candidateGuildIds.map((guildId) => checkAccessDevBotGuild(user, bot, guildId)));
+    const authorizedGuildIds = results
+      .filter((result) => result.allowed)
+      .map((result) => result.guildId);
 
-    return authorizedGuildIds.length ? toDevBotDto(bot, authorizedGuildIds) : null;
+    return {
+      bot: authorizedGuildIds.length ? toDevBotDto(bot, authorizedGuildIds) : null,
+      diagnostics: results
+    };
   }));
 
-  return accessibleBots.filter((bot): bot is DevBotDto => Boolean(bot));
+  return {
+    accessibleBots: scans.map((scan) => scan.bot).filter((bot): bot is DevBotDto => Boolean(bot)),
+    diagnostics: scans.flatMap((scan) => scan.diagnostics)
+  };
 }
 
 export async function listAccessibleDashboardBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {
@@ -1345,7 +1395,12 @@ function firstConfiguredDashboardGuildId() {
 }
 
 async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, guildId: string) {
+  return (await checkAccessDevBotGuild(user, bot, guildId)).allowed;
+}
+
+async function checkAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, guildId: string): Promise<DevBotAccessDiagnostic> {
   const { botGuildConfigs } = await getMongoCollections();
+  const guildName = bot.mainGuildId === guildId ? bot.mainGuildName ?? `Servidor ${guildId}` : `Servidor ${guildId}`;
   const botUsesGuild = bot.mainGuildId === guildId || Boolean(await botGuildConfigs.findOne(
     {
       botId: bot._id,
@@ -1359,17 +1414,43 @@ async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, gui
   ));
 
   if (!botUsesGuild) {
-    return false;
+    return {
+      allowed: false,
+      botId: bot._id,
+      botName: bot.name,
+      configuredRoleCount: 0,
+      guildId,
+      guildName,
+      matchedRoleCount: 0,
+      reason: "Este bot nao esta vinculado ao servidor selecionado."
+    };
   }
 
   if (isDashboardDevUserId(user.discordId)) {
-    return true;
+    return {
+      allowed: true,
+      botId: bot._id,
+      botName: bot.name,
+      configuredRoleCount: 0,
+      guildId,
+      guildName,
+      matchedRoleCount: 0,
+      reason: "Usuario Dev liberado."
+    };
   }
 
-  return hasConfiguredPanelRole(user.discordId, bot, guildId);
+  const panelRoleAccess = await checkConfiguredPanelRole(user.discordId, bot, guildId);
+
+  return {
+    ...panelRoleAccess,
+    botId: bot._id,
+    botName: bot.name,
+    guildId,
+    guildName
+  };
 }
 
-async function hasConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId: string) {
+async function checkConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId: string): Promise<PanelRoleAccessResult> {
   const access = await getPersistedDashboardAccess(guildId, bot._id).catch((error) => {
     console.warn(
       `[access] nao foi possivel ler cargos persistidos do bot ${bot._id} no servidor ${guildId}:`,
@@ -1378,30 +1459,87 @@ async function hasConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId:
     return null;
   });
 
-  if (!access?.enabled || !access.roleIds.length) {
-    return false;
+  if (!access) {
+    return {
+      allowed: false,
+      configuredRoleCount: 0,
+      matchedRoleCount: 0,
+      reason: "Nenhuma configuracao de acesso por cargo foi encontrada para este bot/servidor."
+    };
   }
 
-  const memberRoleIds = await getDashboardMemberRoleIds(userId, bot, guildId);
-
-  if (!memberRoleIds) {
-    return false;
+  if (!access.enabled) {
+    return {
+      allowed: false,
+      configuredRoleCount: access.roleIds.length,
+      matchedRoleCount: 0,
+      reason: "O acesso ao site por cargo esta desativado neste servidor."
+    };
   }
 
-  return access.roleIds.some((roleId) => memberRoleIds.has(roleId));
+  if (!access.roleIds.length) {
+    return {
+      allowed: false,
+      configuredRoleCount: 0,
+      matchedRoleCount: 0,
+      reason: "Nenhum cargo foi salvo como liberado para acessar este painel."
+    };
+  }
+
+  const memberRoles = await getDashboardMemberRoleIds(userId, bot, guildId);
+
+  if (!memberRoles.roleIds) {
+    return {
+      allowed: false,
+      configuredRoleCount: access.roleIds.length,
+      matchedRoleCount: 0,
+      reason: memberRoles.reason ?? "Nao foi possivel ler os cargos do usuario no Discord."
+    };
+  }
+
+  const matchedRoleCount = access.roleIds.filter((roleId) => memberRoles.roleIds?.has(roleId)).length;
+
+  if (!matchedRoleCount) {
+    return {
+      allowed: false,
+      configuredRoleCount: access.roleIds.length,
+      matchedRoleCount,
+      reason: "Sua conta foi encontrada no servidor, mas nenhum dos seus cargos bate com os cargos liberados no painel."
+    };
+  }
+
+  return {
+    allowed: true,
+    configuredRoleCount: access.roleIds.length,
+    matchedRoleCount,
+    reason: "Cargo liberado encontrado na sua conta Discord."
+  };
 }
 
-async function getDashboardMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string) {
+async function getDashboardMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string): Promise<MemberRoleLookupResult> {
   const oauthRoleIds = await fetchOAuthGuildMemberRoleIds(userId, guildId);
 
-  if (oauthRoleIds) {
+  if (oauthRoleIds.roleIds) {
     return oauthRoleIds;
   }
 
-  return fetchBotGuildMemberRoleIds(userId, bot, guildId);
+  const botRoleIds = await fetchBotGuildMemberRoleIds(userId, bot, guildId);
+
+  if (botRoleIds.roleIds) {
+    return botRoleIds;
+  }
+
+  return {
+    roleIds: null,
+    reason: [
+      oauthRoleIds.reason,
+      botRoleIds.reason,
+      "Entre novamente pelo Discord e confira se o Server Members Intent esta ativo no bot."
+    ].filter(Boolean).join(" ")
+  };
 }
 
-async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string) {
+async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string): Promise<MemberRoleLookupResult> {
   const token = decryptSecret(bot.tokenEncrypted);
 
   try {
@@ -1414,7 +1552,10 @@ async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guil
     const memberRoleIds = new Set(member.roles);
     memberRoleIds.add(guildId);
 
-    return memberRoleIds;
+    return {
+      roleIds: memberRoleIds,
+      reason: null
+    };
   } catch (error) {
     const status = axios.isAxiosError(error) ? error.response?.status ?? null : null;
 
@@ -1429,34 +1570,53 @@ async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guil
       );
     }
 
-    return null;
+    return {
+      roleIds: null,
+      reason: status === 403 || status === 404
+        ? `O bot nao conseguiu ler este membro no Discord (HTTP ${status}).`
+        : "O bot nao conseguiu consultar os cargos do membro no Discord."
+    };
   }
 }
 
-async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string) {
+async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string): Promise<MemberRoleLookupResult> {
   const tokens = await getStoredDiscordTokens(userId);
 
   if (!tokens?.accessToken) {
     console.warn(`[access] usuario ${userId} precisa entrar novamente pelo Discord para validar cargos do servidor ${guildId}.`);
-    return null;
+    return {
+      roleIds: null,
+      reason: "A sessao Discord nao tem token OAuth salvo para ler cargos."
+    };
   }
 
   const firstLookup = await fetchOAuthGuildMemberRoleIdsWithToken(tokens.accessToken, guildId);
 
   if (firstLookup.roleIds || firstLookup.status !== 401 || !tokens.refreshToken) {
-    return firstLookup.roleIds;
+    return {
+      roleIds: firstLookup.roleIds,
+      reason: firstLookup.reason
+    };
   }
 
   try {
     const refreshedTokens = await refreshDiscordTokens(tokens.refreshToken);
     await updateStoredDiscordTokens(userId, refreshedTokens);
-    return (await fetchOAuthGuildMemberRoleIdsWithToken(refreshedTokens.access_token, guildId)).roleIds;
+    const refreshedLookup = await fetchOAuthGuildMemberRoleIdsWithToken(refreshedTokens.access_token, guildId);
+
+    return {
+      roleIds: refreshedLookup.roleIds,
+      reason: refreshedLookup.reason
+    };
   } catch (error) {
     console.warn(
       `[discord] nao foi possivel renovar OAuth do usuario ${userId} para validar cargos:`,
       readDiscordErrorMessage(error)
     );
-    return null;
+    return {
+      roleIds: null,
+      reason: "Nao foi possivel renovar a autorizacao Discord para ler cargos."
+    };
   }
 }
 
@@ -1468,7 +1628,8 @@ async function fetchOAuthGuildMemberRoleIdsWithToken(accessToken: string, guildI
 
     return {
       roleIds: memberRoleIds,
-      status: null
+      status: null,
+      reason: null
     };
   } catch (error) {
     const status = axios.isAxiosError(error) ? error.response?.status ?? null : null;
@@ -1486,7 +1647,14 @@ async function fetchOAuthGuildMemberRoleIdsWithToken(accessToken: string, guildI
 
     return {
       roleIds: null,
-      status
+      status,
+      reason: status === 403
+        ? "A autorizacao Discord nao liberou a leitura de cargos. Clique em Sair e entre novamente pelo Discord."
+        : status === 404
+          ? "Sua conta nao foi encontrada como membro do servidor no OAuth do Discord."
+          : status === 401
+            ? "A autorizacao Discord expirou."
+            : "Nao foi possivel consultar os cargos pelo OAuth do Discord."
     };
   }
 }

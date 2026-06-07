@@ -1,7 +1,7 @@
 import { env } from "../config/env";
 import { isDashboardDevUserId } from "../config/devOwner";
 import type { AuthSessionUser } from "../types/session";
-import { listAccessibleDashboardBots } from "./devBotService";
+import { scanAccessibleDevBots } from "./devBotService";
 
 export type GuildAccessCheck = {
   guildId: string;
@@ -20,6 +20,7 @@ export type AccessValidationResult = {
   authorizedUser: boolean;
   canManageDashboard: boolean;
   checks: GuildAccessCheck[];
+  rejectionReasons: string[];
 };
 
 export type DashboardAccessOptions = {
@@ -46,13 +47,43 @@ export async function evaluateDashboardAccess(
     return createValidationResult(baseChecks, true);
   }
 
-  const accessibleBots = await withTimeout(
-    listAccessibleDashboardBots(user, {
+  const accessScan = await withTimeout(
+    scanAccessibleDevBots(user, {
       botSlug: options.botSlug
     }),
-    [],
+    {
+      accessibleBots: [],
+      diagnostics: [{
+        allowed: false,
+        botId: "",
+        botName: "Painel",
+        configuredRoleCount: 0,
+        guildId: "",
+        guildName: "Servidor",
+        matchedRoleCount: 0,
+        reason: "A validacao de cargos demorou demais para responder. Tente novamente em alguns segundos."
+      }]
+    },
     BOT_ACCESS_TIMEOUT_MS
   );
+  const accessibleBots = accessScan.accessibleBots.map((bot) => ({
+    id: bot.id,
+    name: bot.name,
+    slug: bot.slug,
+    dashboardUrl: bot.dashboardUrl,
+    clientId: bot.clientId,
+    avatarUrl: bot.avatarUrl,
+    mainGuildId: bot.mainGuildId,
+    mainGuildName: bot.mainGuildName,
+    mainGuildIconUrl: bot.mainGuildIconUrl,
+    mainGuildMemberCount: bot.mainGuildMemberCount,
+    mainGuildChannelCount: bot.mainGuildChannelCount,
+    botCreatedAt: bot.botCreatedAt,
+    guildIds: bot.guildIds,
+    status: bot.status,
+    statusMessage: bot.statusMessage,
+    enabledModules: bot.enabledModules
+  }));
   const checksByGuildId = new Map(baseChecks.map((check) => [check.guildId, check]));
 
   for (const bot of accessibleBots) {
@@ -70,7 +101,11 @@ export async function evaluateDashboardAccess(
     }
   }
 
-  return createValidationResult([...checksByGuildId.values()], authorizedUser);
+  return createValidationResult(
+    [...checksByGuildId.values()],
+    authorizedUser,
+    uniqueReasons(accessScan.diagnostics.filter((item) => !item.allowed).map((item) => item.reason))
+  );
 }
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
@@ -90,7 +125,11 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Pr
   });
 }
 
-function createValidationResult(checks: GuildAccessCheck[], authorizedUser: boolean): AccessValidationResult {
+function createValidationResult(
+  checks: GuildAccessCheck[],
+  authorizedUser: boolean,
+  rejectionReasons: string[] = []
+): AccessValidationResult {
   const canManageDashboard = authorizedUser || checks.some(guildCheckGrantsDashboardAccess);
 
   return {
@@ -100,8 +139,13 @@ function createValidationResult(checks: GuildAccessCheck[], authorizedUser: bool
     accessLevel: canManageDashboard ? "admin" : "viewer",
     authorizedUser,
     canManageDashboard,
-    checks
+    checks,
+    rejectionReasons: canManageDashboard ? [] : rejectionReasons
   };
+}
+
+function uniqueReasons(reasons: string[]) {
+  return [...new Set(reasons.map((reason) => reason.trim()).filter(Boolean))].slice(0, 4);
 }
 
 export function guildCheckGrantsDashboardAccess(check: GuildAccessCheck) {

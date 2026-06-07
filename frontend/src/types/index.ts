@@ -43,6 +43,7 @@ export type AccessValidationResult = {
   authorizedUser: boolean;
   canManageDashboard: boolean;
   checks: GuildAccessCheck[];
+  rejectionReasons: string[];
 };
 
 export type AuthResponse = {

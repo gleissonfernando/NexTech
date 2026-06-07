@@ -69,7 +69,16 @@ export function Login({
                 ) : accessValidation?.allowed ? (
                   "Acesso liberado para o site. Clique em Verificar para entrar."
                 ) : (
-                  ACCESS_DENIED_MESSAGE
+                  <div className="space-y-2">
+                    <p>{ACCESS_DENIED_MESSAGE}</p>
+                    {accessValidation?.rejectionReasons?.length ? (
+                      <div className="space-y-1 text-xs leading-5 text-zinc-500">
+                        {accessValidation.rejectionReasons.map((reason) => (
+                          <p key={reason}>{reason}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
             ) : null}
