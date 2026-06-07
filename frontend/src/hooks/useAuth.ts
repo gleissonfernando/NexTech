@@ -97,10 +97,11 @@ export function useAuth() {
     } catch (requestError) {
       const validation = readRequestValidation(requestError);
       setAccessValidation(validation);
+      const rejectionMessage = validation?.rejectionReasons?.[0] ?? null;
       setError(
         isTimeoutError(requestError)
           ? "A verificacao demorou para responder. Tente novamente."
-          : readRequestMessage(requestError) ?? ACCESS_DENIED_MESSAGE
+          : rejectionMessage ?? readRequestMessage(requestError) ?? ACCESS_DENIED_MESSAGE
       );
     } finally {
       verifyInFlight.current = false;

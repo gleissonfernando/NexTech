@@ -107,10 +107,12 @@ export async function evaluateDashboardAccess(
     }
   }
 
+  const rejectionReasons = uniqueReasons(accessScan.diagnostics.filter((item) => !item.allowed).map((item) => item.reason));
+
   return createValidationResult(
     [...checksByGuildId.values()],
     authorizedUser,
-    uniqueReasons(accessScan.diagnostics.filter((item) => !item.allowed).map((item) => item.reason))
+    rejectionReasons.length ? rejectionReasons : ["Nenhuma dashboard com acesso por cargo foi encontrada para esta conta Discord."]
   );
 }
 
