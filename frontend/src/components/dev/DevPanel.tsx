@@ -4,6 +4,8 @@ import {
   CalendarDays,
   CheckCircle2,
   Circle,
+  Copy,
+  ExternalLink,
   Hash,
   LayoutDashboard,
   Loader2,
@@ -25,6 +27,7 @@ import {
   updateDevBotModules
 } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
+import { dashboardUrl } from "../../lib/urls";
 import type {
   AuthUser,
   CreateDevBotPayload,
@@ -527,6 +530,23 @@ function ConnectedBotPanel({
   onRestart: () => void;
   restarting: boolean;
 }) {
+  const [copiedDashboardUrl, setCopiedDashboardUrl] = useState(false);
+  const botDashboardUrl = bot.dashboardUrl || dashboardUrl(bot.slug);
+
+  useEffect(() => {
+    setCopiedDashboardUrl(false);
+  }, [bot.id]);
+
+  async function handleCopyDashboardUrl() {
+    await copyToClipboard(botDashboardUrl);
+    setCopiedDashboardUrl(true);
+    window.setTimeout(() => setCopiedDashboardUrl(false), 2200);
+  }
+
+  function handleOpenDashboardUrl() {
+    window.open(botDashboardUrl, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <Card className="flex h-full min-h-[420px] flex-col overflow-hidden border-zinc-800 bg-zinc-950/75 backdrop-blur-xl hover:translate-y-0">
       <div className="h-20 shrink-0 border-b border-[#5865f2]/25 bg-[linear-gradient(135deg,rgba(88,101,242,0.32),rgba(16,185,129,0.08),rgba(9,9,11,0.15))]" />
@@ -567,6 +587,28 @@ function ConnectedBotPanel({
             {bot.statusMessage}
           </div>
         ) : null}
+
+        <div className="rounded-lg border border-[#5865f2]/25 bg-[#5865f2]/[0.06] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-purple-200">URL da Dashboard</p>
+              <p className="mt-1 break-all font-mono text-sm text-zinc-100">{botDashboardUrl}</p>
+              <p className={`mt-2 text-xs text-emerald-300 transition duration-300 ${copiedDashboardUrl ? "opacity-100" : "opacity-0"}`}>
+                URL copiada com sucesso.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button onClick={() => void handleCopyDashboardUrl()} size="sm" variant="outline">
+                {copiedDashboardUrl ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                Copiar URL
+              </Button>
+              <Button onClick={handleOpenDashboardUrl} size="sm" variant="outline">
+                <ExternalLink className="h-4 w-4" />
+                Abrir Dashboard
+              </Button>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-auto flex flex-wrap gap-2 border-t border-zinc-900 pt-4">
           <Button onClick={onOpenDashboard} size="sm">
@@ -754,6 +796,23 @@ function readRequestMessage(error: unknown) {
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+async function copyToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "true");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand("copy");
+  document.body.removeChild(input);
 }
 
 function formatDate(value: string) {

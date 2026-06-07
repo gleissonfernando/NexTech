@@ -426,6 +426,7 @@ export type DashboardBot = {
   id: string;
   name: string;
   slug: string;
+  dashboardUrl: string;
   clientId: string;
   avatarUrl: string | null;
   mainGuildId: string;
@@ -444,6 +445,7 @@ export type DevBot = {
   id: string;
   name: string;
   slug: string;
+  dashboardUrl: string;
   clientId: string;
   tokenMasked: string;
   secretConfigured: boolean;

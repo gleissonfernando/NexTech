@@ -78,6 +78,7 @@ export type DevBotDto = {
   id: string;
   name: string;
   slug: string;
+  dashboardUrl: string;
   clientId: string;
   tokenMasked: string;
   secretConfigured: boolean;
@@ -104,6 +105,7 @@ export type DashboardBotDto = Pick<
   | "id"
   | "name"
   | "slug"
+  | "dashboardUrl"
   | "clientId"
   | "avatarUrl"
   | "mainGuildId"
@@ -795,6 +797,13 @@ function slugifyBotName(value: string) {
   return slug || "bot";
 }
 
+function buildDashboardUrl(slug: string) {
+  const origin = env.SITE_ORIGIN || env.FRONTEND_URL;
+  const path = `/dashboard/${slug}`;
+
+  return origin ? `${origin}${path}` : path;
+}
+
 export async function testDiscordBotToken(token: string, expectedClientId?: string) {
   return testDiscordBotTokenForClient(token, expectedClientId);
 }
@@ -1021,10 +1030,13 @@ function sanitizeModules(modules: string[]) {
 }
 
 function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId]): DevBotDto {
+  const slug = bot.slug || slugifyBotName(bot.name);
+
   return {
     id: bot._id,
     name: bot.name,
-    slug: bot.slug || slugifyBotName(bot.name),
+    slug,
+    dashboardUrl: buildDashboardUrl(slug),
     clientId: bot.clientId,
     tokenMasked: bot.tokenEncrypted ? maskedToken(bot) : "",
     secretConfigured: Boolean(bot.secretEncrypted),
@@ -1147,6 +1159,7 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     id: bot.id,
     name: bot.name,
     slug: bot.slug,
+    dashboardUrl: bot.dashboardUrl,
     clientId: bot.clientId,
     avatarUrl: bot.avatarUrl,
     mainGuildId: bot.mainGuildId,
