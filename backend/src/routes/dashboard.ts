@@ -68,7 +68,7 @@ dashboardRouter.get("/me", async (_req, res, next) => {
         avatarUrl: user.avatarUrl ?? user.avatar
       },
       bot: await fetchBotProfile(),
-      bots: canViewDev ? panelBots : [],
+      bots: panelBots,
       canViewDev,
       selectedGuildId,
       guilds

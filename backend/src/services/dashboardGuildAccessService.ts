@@ -1,7 +1,7 @@
 import type { AuthSessionUser } from "../types/session";
 
 export function getAccessibleGuildIds(user: AuthSessionUser) {
-  if (!user.authorized) {
+  if (user.accessLevel !== "admin") {
     return new Set<string>();
   }
 
@@ -13,7 +13,7 @@ export function canReadDashboardGuild(user: AuthSessionUser, guildId: string) {
 }
 
 export function canManageDashboardGuild(user: AuthSessionUser, guildId: string) {
-  if (!user.authorized) {
+  if (user.accessLevel !== "admin") {
     return false;
   }
 

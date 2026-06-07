@@ -109,6 +109,8 @@ const emptyOverviewDetails: OverviewDetails = {
   liveNotifications: [],
   xAccounts: []
 };
+const emptyPanelBots: DashboardBot[] = [];
+const emptyEnabledModules: string[] = [];
 
 const moduleCatalog: ModuleDefinition[] = [
   {
@@ -220,17 +222,19 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const [overviewDetails, setOverviewDetails] = useState<OverviewDetails>(emptyOverviewDetails);
 
-  const panelBots = dashboardProfile?.bots ?? [];
+  const panelBots = dashboardProfile?.bots ?? emptyPanelBots;
+  const dashboardProfileGuilds = dashboardProfile?.guilds ?? null;
   const dashboardGuilds = useMemo(
-    () => ensureDashboardGuilds(dashboardProfile ? mergeDashboardGuilds(dashboardProfile.guilds, auth.guilds) : auth.guilds),
-    [auth.guilds, dashboardProfile]
+    () => ensureDashboardGuilds(dashboardProfileGuilds ? mergeDashboardGuilds(dashboardProfileGuilds, auth.guilds) : auth.guilds),
+    [auth.guilds, dashboardProfileGuilds]
   );
   const selectedBot = useMemo(
     () => panelBots.find((bot) => bot.id === selectedBotId) ?? null,
     [panelBots, selectedBotId]
   );
   const activeBotId = selectedBot?.id ?? null;
-  const enabledModules = selectedBot?.enabledModules ?? [];
+  const enabledModules = selectedBot?.enabledModules ?? emptyEnabledModules;
+  const enabledModulesKey = enabledModules.join("|");
   const scopedDashboardGuilds = useMemo(
     () => selectedBot
       ? dashboardGuilds.filter((guild) => selectedBot.guildIds.includes(guild.id))
@@ -251,7 +255,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const canManageDashboard = panelBots.length ? Boolean(selectedBot) : auth.permissions.canManageDashboard;
   const availableModules = useMemo(
     () => moduleCatalog.filter((module) => enabledModules.includes(module.id)),
-    [enabledModules]
+    [enabledModulesKey]
   );
 
   useEffect(() => {
@@ -317,7 +321,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     if (!isViewAllowed(activeView, enabledModules)) {
       setActiveView("overview");
     }
-  }, [activeView, enabledModules]);
+  }, [activeView, enabledModulesKey]);
 
   useEffect(() => {
     const selectedGuildIsAvailable = selectedGuildId
@@ -385,7 +389,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     return () => {
       mounted = false;
     };
-  }, [activeBotId, dashboardProfileLoading, dashboardRouteError, enabledModules, panelBots.length, selectedGuildId]);
+  }, [activeBotId, dashboardProfileLoading, dashboardRouteError, enabledModulesKey, panelBots.length, selectedGuildId]);
 
   useEffect(() => {
     const socket = createDashboardSocket();
