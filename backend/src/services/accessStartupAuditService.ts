@@ -47,15 +47,17 @@ async function auditGuildAccessSettings(settings: MongoGuildSettings): Promise<A
         : []
   );
   const rolePermissions = normalizeRolePermissions(settings.dashboardRolePermissions ?? {}, roleIds);
+  const userPermissions = normalizeUserPermissions(settings.dashboardUserPermissions ?? {});
   const botId = normalizeBotId(settings.botId);
   const update: Partial<MongoGuildSettings> = {
     verificationRoleId: roleIds[0] ?? null,
     verificationRoleIds: roleIds,
     dashboardRolePermissions: rolePermissions,
+    dashboardUserPermissions: userPermissions,
     updatedAt: new Date()
   };
 
-  if (!roleIds.length) {
+  if (!roleIds.length && !Object.keys(userPermissions).length) {
     await persistAuditCorrection(settings, {
       ...update,
       verificationEnabled: false
@@ -106,16 +108,18 @@ async function auditGuildAccessSettings(settings: MongoGuildSettings): Promise<A
   }
 
   const nextRolePermissions = normalizeRolePermissions(rolePermissions, retainedRoleIds);
+  const hasDirectUsers = Object.keys(userPermissions).length > 0;
   await persistAuditCorrection(settings, {
-    verificationEnabled: retainedRoleIds.length > 0,
+    verificationEnabled: retainedRoleIds.length > 0 || hasDirectUsers,
     verificationRoleId: retainedRoleIds[0] ?? null,
     verificationRoleIds: retainedRoleIds,
     dashboardRolePermissions: nextRolePermissions,
+    dashboardUserPermissions: userPermissions,
     updatedAt: new Date()
   });
   await writeStartupAuditLog({
     botId,
-    disabled: retainedRoleIds.length === 0,
+    disabled: retainedRoleIds.length === 0 && !hasDirectUsers,
     guildId: settings.guildId,
     removedRoleIds,
     retainedRoleIds
@@ -123,7 +127,7 @@ async function auditGuildAccessSettings(settings: MongoGuildSettings): Promise<A
 
   return {
     botId,
-    disabled: retainedRoleIds.length === 0,
+    disabled: retainedRoleIds.length === 0 && !hasDirectUsers,
     guildId: settings.guildId,
     removedRoleIds,
     retainedRoleIds
@@ -171,6 +175,20 @@ function normalizeRolePermissions(value: Record<string, unknown>, roleIds: strin
 
   for (const roleId of roleIds) {
     permissions[roleId] = normalizeDashboardAccessLevel(value[roleId], "admin");
+  }
+
+  return permissions;
+}
+
+function normalizeUserPermissions(value: Record<string, unknown>) {
+  const permissions: Record<string, DashboardAccessLevel> = {};
+
+  for (const [userId, level] of Object.entries(value)) {
+    const normalizedUserId = userId.trim();
+
+    if (/^\d{5,32}$/.test(normalizedUserId)) {
+      permissions[normalizedUserId] = normalizeDashboardAccessLevel(level, "basic");
+    }
   }
 
   return permissions;

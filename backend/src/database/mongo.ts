@@ -68,6 +68,7 @@ export type MongoGuildSettings = {
   verificationRoleId: string | null;
   verificationRoleIds?: string[];
   dashboardRolePermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
+  dashboardUserPermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
   updatedAt: Date;
 };
 

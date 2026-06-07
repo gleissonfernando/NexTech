@@ -53,7 +53,9 @@ export type GuildAccessCheck = {
   configuredPanelRole: boolean;
   accessLevel: DashboardAccessLevel | null;
   matchedRoleIds: string[];
+  matchedUserIds: string[];
   requiredRoleIds: string[];
+  requiredUserIds: string[];
 };
 
 export type AccessValidationResult = {
@@ -136,6 +138,7 @@ export type GuildSettings = {
   verificationRoleId: string | null;
   verificationRoleIds: string[];
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
+  dashboardUserPermissions: Record<string, DashboardAccessLevel>;
 };
 
 export type LogEntry = {

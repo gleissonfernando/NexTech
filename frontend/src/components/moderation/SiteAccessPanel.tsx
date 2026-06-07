@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Crown, Loader2, ShieldCheck, Sparkles, UserCheck, UserCog } from "lucide-react";
+import { Check, Crown, Loader2, Plus, ShieldCheck, Sparkles, Trash2, UserCheck, UserCog } from "lucide-react";
 import { checkSiteAccess, getGuildRoleOptions, patchGuildSettings } from "../../lib/api";
 import type { AccessValidationResult, DashboardAccessLevel, DashboardGuild, GuildRoleOption, GuildSettings } from "../../types";
 import { Badge } from "../ui/badge";
@@ -31,10 +31,13 @@ export function SiteAccessPanel({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [validation, setValidation] = useState<AccessValidationResult | null>(null);
+  const [directUserId, setDirectUserId] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedRoleIds = settings ? selectedVerificationRoleIds(settings) : [];
   const rolePermissions = settings?.dashboardRolePermissions ?? {};
+  const userPermissions = settings?.dashboardUserPermissions ?? {};
+  const selectedUserIds = Object.keys(userPermissions);
 
   useEffect(() => {
     if (!guild || !canManage) {
@@ -78,8 +81,8 @@ export function SiteAccessPanel({
   }
 
   function handleEnabledChange(checked: boolean) {
-    if (checked && !selectedRoleIds.length) {
-      setError("Selecione primeiro pelo menos um cargo que tera acesso ao site.");
+    if (checked && !selectedRoleIds.length && !selectedUserIds.length) {
+      setError("Selecione pelo menos um cargo ou adicione uma pessoa que tera acesso ao site.");
       return;
     }
 
@@ -87,7 +90,7 @@ export function SiteAccessPanel({
       {
         verificationEnabled: checked
       },
-      checked ? "Acesso por cargo ativado." : "Acesso por cargo desativado."
+      checked ? "Acesso ao painel ativado." : "Acesso ao painel desativado."
     );
   }
 
@@ -101,9 +104,9 @@ export function SiteAccessPanel({
       nextPermissions[roleId] = "basic";
     }
 
-    if (settings?.verificationEnabled && !nextRoleIds.length) {
+    if (settings?.verificationEnabled && !nextRoleIds.length && !selectedUserIds.length) {
       setStatus(null);
-      setError("Desative o acesso por cargo antes de remover o ultimo cargo.");
+      setError("Desative o acesso ao painel antes de remover a ultima liberacao.");
       return;
     }
 
@@ -113,7 +116,7 @@ export function SiteAccessPanel({
         verificationRoleIds: nextRoleIds,
         dashboardRolePermissions: nextPermissions
       },
-      nextRoleIds.length ? "Cargos de acesso salvos." : "Cargos de acesso removidos. Ative quando desejar."
+      nextRoleIds.length ? "Cargos de acesso salvos." : "Cargos de acesso removidos."
     );
   }
 
@@ -130,6 +133,57 @@ export function SiteAccessPanel({
         }
       },
       "Nivel de permissao atualizado."
+    );
+  }
+
+  function handleDirectUserAdd() {
+    const userId = directUserId.trim();
+
+    if (!/^\d{5,32}$/.test(userId)) {
+      setStatus(null);
+      setError("Informe um ID Discord valido da pessoa.");
+      return;
+    }
+
+    void saveAccess(
+      {
+        verificationEnabled: true,
+        dashboardUserPermissions: {
+          ...userPermissions,
+          [userId]: userPermissions[userId] ?? "basic"
+        }
+      },
+      "Pessoa liberada para acessar o painel."
+    );
+    setDirectUserId("");
+  }
+
+  function handleDirectUserRemove(userId: string) {
+    const nextPermissions = normalizeUserPermissions(userPermissions, selectedUserIds.filter((id) => id !== userId));
+
+    if (settings?.verificationEnabled && !selectedRoleIds.length && !Object.keys(nextPermissions).length) {
+      setStatus(null);
+      setError("Desative o acesso ao painel antes de remover a ultima liberacao.");
+      return;
+    }
+
+    void saveAccess(
+      {
+        dashboardUserPermissions: nextPermissions
+      },
+      "Pessoa removida da liberacao do painel."
+    );
+  }
+
+  function handleDirectUserLevelChange(userId: string, level: DashboardAccessLevel) {
+    void saveAccess(
+      {
+        dashboardUserPermissions: {
+          ...userPermissions,
+          [userId]: level
+        }
+      },
+      "Nivel da pessoa atualizado."
     );
   }
 
@@ -161,9 +215,9 @@ export function SiteAccessPanel({
               <ShieldCheck className="h-5 w-5 text-zinc-300" />
             </div>
             <div>
-              <CardTitle>Acesso ao site por cargo</CardTitle>
+              <CardTitle>Acesso ao painel</CardTitle>
               <CardDescription>
-                Somente membros com cargo configurado neste bot e servidor podem abrir este painel.
+                Libere o painel por cargo ou por ID Discord direto neste bot e servidor.
               </CardDescription>
             </div>
           </div>
@@ -182,7 +236,7 @@ export function SiteAccessPanel({
               <Badge variant={settings?.verificationEnabled ? "success" : "muted"}>
                 {settings?.verificationEnabled ? "Ativo" : "Inativo"}
               </Badge>
-              <span className="text-xs text-zinc-500">{selectedRoleIds.length} selecionado(s)</span>
+              <span className="text-xs text-zinc-500">{selectedRoleIds.length} cargo(s)</span>
             </div>
           </div>
 
@@ -253,9 +307,84 @@ export function SiteAccessPanel({
           </div>
         </div>
 
+        <div className="space-y-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-medium text-zinc-100">Pessoas liberadas diretamente</span>
+            <span className="text-xs text-zinc-500">{selectedUserIds.length} pessoa(s)</span>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              className="min-h-10 flex-1 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600"
+              disabled={disabled}
+              inputMode="numeric"
+              onChange={(event) => setDirectUserId(event.target.value)}
+              placeholder="ID Discord da pessoa"
+              value={directUserId}
+            />
+            <Button disabled={disabled || !directUserId.trim()} onClick={handleDirectUserAdd} type="button" variant="outline">
+              <Plus className="h-4 w-4" />
+              Adicionar
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {selectedUserIds.length ? (
+              selectedUserIds.map((userId) => (
+                <div className="rounded-lg border border-zinc-900 bg-black px-3 py-3" key={userId}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-zinc-100">{userId}</p>
+                      <p className="mt-1 text-xs text-zinc-500">Acesso por ID Discord direto</p>
+                    </div>
+                    <Badge variant="muted">{levelLabel(userPermissions[userId] ?? "basic")}</Badge>
+                    <button
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 transition hover:border-red-500/50 hover:text-red-300"
+                      disabled={disabled}
+                      onClick={() => handleDirectUserRemove(userId)}
+                      type="button"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {levelOptions.map((option) => {
+                      const active = (userPermissions[userId] ?? "basic") === option.id;
+                      const Icon = option.icon;
+
+                      return (
+                        <button
+                          className={[
+                            "flex min-h-10 items-center gap-2 rounded-lg border px-3 text-left text-xs transition",
+                            active
+                              ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
+                              : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-zinc-100"
+                          ].join(" ")}
+                          disabled={disabled}
+                          key={option.id}
+                          onClick={() => handleDirectUserLevelChange(userId, option.id)}
+                          type="button"
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 truncate">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-lg border border-zinc-900 bg-black px-3 py-2 text-sm text-zinc-500">
+                Nenhuma pessoa liberada diretamente.
+              </p>
+            )}
+          </div>
+        </div>
+
         <p className="text-xs leading-5 text-zinc-500">
-          Dono e administradores do Discord tambem precisam possuir um cargo configurado. Somente o Dev entra sem cargo.
-          Esta regra vale apenas para este bot e este servidor.
+          Dono e administradores do Discord tambem precisam estar em um cargo configurado ou na lista direta.
+          A pessoa adicionada por ID ainda precisa estar no servidor Discord deste bot.
         </p>
 
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-zinc-950/75 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -279,7 +408,8 @@ export function SiteAccessPanel({
             </div>
             {validation.checks.map((check) => (
               <p className="text-xs text-zinc-500" key={check.guildId}>
-                {check.guildName}: {check.matchedRoleIds.length}/{check.requiredRoleIds.length} cargo(s) encontrado(s)
+                {check.guildName}: {check.matchedRoleIds.length}/{check.requiredRoleIds.length} cargo(s),
+                {" "}{check.matchedUserIds.length}/{check.requiredUserIds.length} pessoa(s)
               </p>
             ))}
             {!validation.allowed && validation.rejectionReasons.length ? (
@@ -336,6 +466,21 @@ function normalizeRolePermissions(
   for (const [roleId, level] of Object.entries(value)) {
     if (roleIdSet.has(roleId)) {
       next[roleId] = level;
+    }
+  }
+
+  return next;
+}
+
+function normalizeUserPermissions(
+  value: Record<string, DashboardAccessLevel>,
+  userIds: string[]
+) {
+  const next: Record<string, DashboardAccessLevel> = {};
+
+  for (const userId of userIds) {
+    if (/^\d{5,32}$/.test(userId)) {
+      next[userId] = value[userId] ?? "basic";
     }
   }
 

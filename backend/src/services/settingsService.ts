@@ -40,6 +40,7 @@ export type GuildSettingsDto = {
   verificationRoleId: string | null;
   verificationRoleIds: string[];
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
+  dashboardUserPermissions: Record<string, DashboardAccessLevel>;
 };
 
 export type PersistedDashboardAccess = {
@@ -48,6 +49,7 @@ export type PersistedDashboardAccess = {
   enabled: boolean;
   roleIds: string[];
   rolePermissions: Record<string, DashboardAccessLevel>;
+  userPermissions: Record<string, DashboardAccessLevel>;
 };
 
 const memorySettings = new Map<string, GuildSettingsDto>();
@@ -121,7 +123,8 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     verificationEnabled: false,
     verificationRoleId: null,
     verificationRoleIds: [],
-    dashboardRolePermissions: {}
+    dashboardRolePermissions: {},
+    dashboardUserPermissions: {}
   };
 }
 
@@ -159,7 +162,8 @@ export async function getPersistedDashboardAccess(
     verificationEnabled: 1,
     verificationRoleId: 1,
     verificationRoleIds: 1,
-    dashboardRolePermissions: 1
+    dashboardRolePermissions: 1,
+    dashboardUserPermissions: 1
   };
   const specificSettings = await guildSettings.findOne(
     {
@@ -179,8 +183,8 @@ export async function getPersistedDashboardAccess(
   const specificAccess = specificSettings ? toPersistedDashboardAccess(specificSettings, normalizedBotId) : null;
   const legacyAccess = legacySettings ? toPersistedDashboardAccess(legacySettings, normalizedBotId) : null;
 
-  if (specificAccess?.enabled && specificAccess.roleIds.length) return specificAccess;
-  if (legacyAccess?.enabled && legacyAccess.roleIds.length) return legacyAccess;
+  if (specificAccess?.enabled && accessHasEntries(specificAccess)) return specificAccess;
+  if (legacyAccess?.enabled && accessHasEntries(legacyAccess)) return legacyAccess;
   return specificAccess ?? legacyAccess;
 }
 
@@ -199,6 +203,10 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     "dashboardRolePermissions" in input ? input.dashboardRolePermissions ?? {} : current.dashboardRolePermissions,
     verificationRoleIds,
     current.dashboardRolePermissions
+  );
+  const dashboardUserPermissions = normalizeUserPermissionMap(
+    "dashboardUserPermissions" in input ? input.dashboardUserPermissions ?? {} : current.dashboardUserPermissions,
+    current.dashboardUserPermissions
   );
   const next = normalizeVerificationRoles({
     ...current,
@@ -256,6 +264,7 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     ),
     verificationRoleIds,
     dashboardRolePermissions,
+    dashboardUserPermissions,
     botId: normalizedBotId,
     guildId
   });
@@ -305,6 +314,7 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           verificationRoleId: next.verificationRoleId,
           verificationRoleIds: next.verificationRoleIds,
           dashboardRolePermissions: next.dashboardRolePermissions,
+          dashboardUserPermissions: next.dashboardUserPermissions,
           updatedAt: new Date()
         },
         $setOnInsert: {
@@ -339,6 +349,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     verificationRoleIds,
     Object.fromEntries(verificationRoleIds.map((roleId) => [roleId, "admin" as const]))
   );
+  const dashboardUserPermissions = normalizeUserPermissionMap(settings.dashboardUserPermissions ?? {});
 
   return normalizeVerificationRoles({
     botId,
@@ -382,7 +393,8 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     verificationEnabled: settings.verificationEnabled,
     verificationRoleId: verificationRoleIds[0] ?? null,
     verificationRoleIds,
-    dashboardRolePermissions
+    dashboardRolePermissions,
+    dashboardUserPermissions
   });
 }
 
@@ -403,12 +415,13 @@ function normalizeVerificationRoles(settings: GuildSettingsDto): GuildSettingsDt
       settings.dashboardRolePermissions,
       verificationRoleIds,
       settings.dashboardRolePermissions
-    )
+    ),
+    dashboardUserPermissions: normalizeUserPermissionMap(settings.dashboardUserPermissions)
   };
 }
 
 function toPersistedDashboardAccess(
-  settings: Pick<MongoGuildSettings, "botId" | "guildId" | "verificationEnabled" | "verificationRoleId" | "verificationRoleIds" | "dashboardRolePermissions">,
+  settings: Pick<MongoGuildSettings, "botId" | "guildId" | "verificationEnabled" | "verificationRoleId" | "verificationRoleIds" | "dashboardRolePermissions" | "dashboardUserPermissions">,
   fallbackBotId: string
 ): PersistedDashboardAccess {
   const roleIds = normalizeRoleIds(
@@ -423,18 +436,24 @@ function toPersistedDashboardAccess(
     roleIds,
     Object.fromEntries(roleIds.map((roleId) => [roleId, "admin" as const]))
   );
+  const userPermissions = normalizeUserPermissionMap(settings.dashboardUserPermissions ?? {});
 
   return {
     botId: normalizeBotId(settings.botId) ?? fallbackBotId,
     guildId: settings.guildId,
     enabled: settings.verificationEnabled === true,
     roleIds,
-    rolePermissions
+    rolePermissions,
+    userPermissions
   };
 }
 
 function normalizeRoleIds(roleIds: string[]) {
   return [...new Set(roleIds.map((roleId) => roleId.trim()).filter(Boolean))];
+}
+
+function accessHasEntries(access: PersistedDashboardAccess) {
+  return access.roleIds.length > 0 || Object.keys(access.userPermissions).length > 0;
 }
 
 function normalizeRolePermissionMap(
@@ -452,6 +471,23 @@ function normalizeRolePermissionMap(
   for (const [roleId, level] of Object.entries(value ?? {})) {
     if (allowed.has(roleId)) {
       permissions[roleId] = normalizeDashboardAccessLevel(level, permissions[roleId] ?? "basic");
+    }
+  }
+
+  return permissions;
+}
+
+function normalizeUserPermissionMap(
+  value: Record<string, unknown> | undefined,
+  fallback: Record<string, DashboardAccessLevel> = {}
+) {
+  const permissions: Record<string, DashboardAccessLevel> = {};
+
+  for (const [userId, level] of Object.entries(value ?? {})) {
+    const normalizedUserId = userId.trim();
+
+    if (/^\d{5,32}$/.test(normalizedUserId)) {
+      permissions[normalizedUserId] = normalizeDashboardAccessLevel(level, fallback[normalizedUserId] ?? "basic");
     }
   }
 

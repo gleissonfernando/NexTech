@@ -20,7 +20,9 @@ export type GuildAccessCheck = {
   configuredPanelRole: boolean;
   accessLevel: DashboardAccessLevel | null;
   matchedRoleIds: string[];
+  matchedUserIds: string[];
   requiredRoleIds: string[];
+  requiredUserIds: string[];
 };
 
 export type AccessValidationResult = {
@@ -56,7 +58,9 @@ export async function evaluateDashboardAccess(
     configuredPanelRole: false,
     accessLevel: null,
     matchedRoleIds: [],
-    requiredRoleIds: []
+    matchedUserIds: [],
+    requiredRoleIds: [],
+    requiredUserIds: []
   }));
   const authorizedUser = isDashboardDevUserId(user.discordId);
 
@@ -81,13 +85,16 @@ export async function evaluateDashboardAccess(
         botId: "",
         botName: "Painel",
         configuredRoleCount: 0,
+        configuredUserCount: 0,
         guildId: "",
         guildName: "Servidor",
         matchedRoleIds: [],
+        matchedUserIds: [],
         matchedRoleCount: 0,
         memberRoleIds: [],
         reason: "A validacao de cargos demorou demais para responder. Tente novamente em alguns segundos.",
-        requiredRoleIds: []
+        requiredRoleIds: [],
+        requiredUserIds: []
       }]
     },
     BOT_ACCESS_TIMEOUT_MS
@@ -129,7 +136,9 @@ export async function evaluateDashboardAccess(
         configuredPanelRole: true,
         accessLevel: diagnostic?.accessLevel ?? bot.accessLevel,
         matchedRoleIds: diagnostic?.matchedRoleIds ?? [],
-        requiredRoleIds: diagnostic?.requiredRoleIds ?? []
+        matchedUserIds: diagnostic?.matchedUserIds ?? [],
+        requiredRoleIds: diagnostic?.requiredRoleIds ?? [],
+        requiredUserIds: diagnostic?.requiredUserIds ?? []
       });
     }
   }

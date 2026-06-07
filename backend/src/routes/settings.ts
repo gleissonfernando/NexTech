@@ -48,7 +48,8 @@ const settingsSchema = z.object({
   verificationEnabled: z.boolean().optional(),
   verificationRoleId: z.string().nullable().optional(),
   verificationRoleIds: z.array(z.string()).optional(),
-  dashboardRolePermissions: z.record(z.enum(["admin", "moderator", "premium", "basic"])).optional()
+  dashboardRolePermissions: z.record(z.enum(["admin", "moderator", "premium", "basic"])).optional(),
+  dashboardUserPermissions: z.record(z.enum(["admin", "moderator", "premium", "basic"])).optional()
 });
 
 export const settingsRouter = Router();
@@ -393,7 +394,8 @@ async function canPatchSettings(
     verificationEnabled: ["verification"],
     verificationRoleId: ["verification"],
     verificationRoleIds: ["verification"],
-    dashboardRolePermissions: ["verification"]
+    dashboardRolePermissions: ["verification"],
+    dashboardUserPermissions: ["verification"]
   };
   const access = await Promise.all(
     (Object.keys(input) as Array<keyof typeof input>).map(async (key) => {
@@ -468,7 +470,7 @@ function createSettingsError(message: string) {
 function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   const keys = new Set(Object.keys(input));
 
-  if ([...keys].some((key) => key.startsWith("verification") || key === "dashboardRolePermissions")) return "permissions";
+  if ([...keys].some((key) => key.startsWith("verification") || key === "dashboardRolePermissions" || key === "dashboardUserPermissions")) return "permissions";
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
@@ -480,7 +482,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
 }
 
 function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
-  if (input.verificationRoleIds || input.verificationRoleId !== undefined || input.dashboardRolePermissions) {
+  if (input.verificationRoleIds || input.verificationRoleId !== undefined || input.dashboardRolePermissions || input.dashboardUserPermissions) {
     return "Permissao de acesso ao painel atualizada.";
   }
 
