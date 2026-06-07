@@ -25,6 +25,9 @@ export type AccessValidationResult = {
 
 export type DashboardAccessOptions = {
   botSlug?: string | null;
+  discordAccessToken?: string | null;
+  discordRefreshToken?: string | null;
+  onDiscordTokensRefreshed?: (tokens: { accessToken: string; refreshToken: string | null }) => Promise<void> | void;
 };
 
 const BOT_ACCESS_TIMEOUT_MS = 12_000;
@@ -49,7 +52,10 @@ export async function evaluateDashboardAccess(
 
   const accessScan = await withTimeout(
     scanAccessibleDevBots(user, {
-      botSlug: options.botSlug
+      botSlug: options.botSlug,
+      discordAccessToken: options.discordAccessToken,
+      discordRefreshToken: options.discordRefreshToken,
+      onDiscordTokensRefreshed: options.onDiscordTokensRefreshed
     }),
     {
       accessibleBots: [],

@@ -4,7 +4,7 @@ import type { DashboardAuth } from "../services/tokenService";
 
 const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu cargo foi liberado agora, saia e entre novamente pelo Discord.";
 
-export async function requireDashboardAccessValidation(_req: Request, res: Response, next: NextFunction) {
+export async function requireDashboardAccessValidation(req: Request, res: Response, next: NextFunction) {
   const auth = res.locals.dashboardAuth as DashboardAuth | undefined;
 
   if (!auth) {
@@ -13,7 +13,14 @@ export async function requireDashboardAccessValidation(_req: Request, res: Respo
     });
   }
 
-  const validation = await evaluateDashboardAccess(auth.user);
+  const validation = await evaluateDashboardAccess(auth.user, {
+    discordAccessToken: req.session.discordAccessToken ?? null,
+    discordRefreshToken: req.session.discordRefreshToken ?? null,
+    onDiscordTokensRefreshed: (tokens) => {
+      req.session.discordAccessToken = tokens.accessToken;
+      req.session.discordRefreshToken = tokens.refreshToken ?? req.session.discordRefreshToken;
+    }
+  });
 
   if (!validation.allowed) {
     return res.status(403).json({

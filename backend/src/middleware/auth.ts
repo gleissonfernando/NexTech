@@ -93,7 +93,14 @@ async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: Dashb
     return auth;
   }
 
-  const validation = await evaluateDashboardAccess(auth.user);
+  const validation = await evaluateDashboardAccess(auth.user, {
+    discordAccessToken: req.session.discordAccessToken ?? null,
+    discordRefreshToken: req.session.discordRefreshToken ?? null,
+    onDiscordTokensRefreshed: (tokens) => {
+      req.session.discordAccessToken = tokens.accessToken;
+      req.session.discordRefreshToken = tokens.refreshToken ?? req.session.discordRefreshToken;
+    }
+  });
 
   if (!validation.allowed) {
     const deniedUser = createDeniedAccessUser(auth.user);

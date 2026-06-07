@@ -184,6 +184,9 @@ type EnsurePrimaryDevBotListedInput = {
 
 type AccessibleDevBotsOptions = {
   botSlug?: string | null;
+  discordAccessToken?: string | null;
+  discordRefreshToken?: string | null;
+  onDiscordTokensRefreshed?: (tokens: { accessToken: string; refreshToken: string | null }) => Promise<void> | void;
 };
 
 type PanelRoleAccessResult = {
@@ -260,7 +263,7 @@ export async function scanAccessibleDevBots(user: AuthSessionUser, options: Acce
       };
     }
 
-    const results = await Promise.all(candidateGuildIds.map((guildId) => checkAccessDevBotGuild(user, bot, guildId)));
+    const results = await Promise.all(candidateGuildIds.map((guildId) => checkAccessDevBotGuild(user, bot, guildId, options)));
     const authorizedGuildIds = results
       .filter((result) => result.allowed)
       .map((result) => result.guildId);
@@ -1398,7 +1401,12 @@ async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, gui
   return (await checkAccessDevBotGuild(user, bot, guildId)).allowed;
 }
 
-async function checkAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, guildId: string): Promise<DevBotAccessDiagnostic> {
+async function checkAccessDevBotGuild(
+  user: AuthSessionUser,
+  bot: MongoDevBot,
+  guildId: string,
+  options: AccessibleDevBotsOptions = {}
+): Promise<DevBotAccessDiagnostic> {
   const { botGuildConfigs } = await getMongoCollections();
   const guildName = bot.mainGuildId === guildId ? bot.mainGuildName ?? `Servidor ${guildId}` : `Servidor ${guildId}`;
   const botUsesGuild = bot.mainGuildId === guildId || Boolean(await botGuildConfigs.findOne(
@@ -1439,7 +1447,7 @@ async function checkAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, g
     };
   }
 
-  const panelRoleAccess = await checkConfiguredPanelRole(user.discordId, bot, guildId);
+  const panelRoleAccess = await checkConfiguredPanelRole(user.discordId, bot, guildId, options);
 
   return {
     ...panelRoleAccess,
@@ -1450,7 +1458,12 @@ async function checkAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, g
   };
 }
 
-async function checkConfiguredPanelRole(userId: string, bot: MongoDevBot, guildId: string): Promise<PanelRoleAccessResult> {
+async function checkConfiguredPanelRole(
+  userId: string,
+  bot: MongoDevBot,
+  guildId: string,
+  options: AccessibleDevBotsOptions = {}
+): Promise<PanelRoleAccessResult> {
   const access = await getPersistedDashboardAccess(guildId, bot._id).catch((error) => {
     console.warn(
       `[access] nao foi possivel ler cargos persistidos do bot ${bot._id} no servidor ${guildId}:`,
@@ -1486,7 +1499,7 @@ async function checkConfiguredPanelRole(userId: string, bot: MongoDevBot, guildI
     };
   }
 
-  const memberRoles = await getDashboardMemberRoleIds(userId, bot, guildId);
+  const memberRoles = await getDashboardMemberRoleIds(userId, bot, guildId, options);
 
   if (!memberRoles.roleIds) {
     return {
@@ -1516,8 +1529,13 @@ async function checkConfiguredPanelRole(userId: string, bot: MongoDevBot, guildI
   };
 }
 
-async function getDashboardMemberRoleIds(userId: string, bot: MongoDevBot, guildId: string): Promise<MemberRoleLookupResult> {
-  const oauthRoleIds = await fetchOAuthGuildMemberRoleIds(userId, guildId);
+async function getDashboardMemberRoleIds(
+  userId: string,
+  bot: MongoDevBot,
+  guildId: string,
+  options: AccessibleDevBotsOptions = {}
+): Promise<MemberRoleLookupResult> {
+  const oauthRoleIds = await fetchOAuthGuildMemberRoleIds(userId, guildId, options);
 
   if (oauthRoleIds.roleIds) {
     return oauthRoleIds;
@@ -1579,10 +1597,16 @@ async function fetchBotGuildMemberRoleIds(userId: string, bot: MongoDevBot, guil
   }
 }
 
-async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string): Promise<MemberRoleLookupResult> {
-  const tokens = await getStoredDiscordTokens(userId);
+async function fetchOAuthGuildMemberRoleIds(
+  userId: string,
+  guildId: string,
+  options: AccessibleDevBotsOptions = {}
+): Promise<MemberRoleLookupResult> {
+  const storedTokens = options.discordAccessToken ? null : await getStoredDiscordTokens(userId);
+  const accessToken = options.discordAccessToken?.trim() || storedTokens?.accessToken;
+  const refreshToken = options.discordRefreshToken?.trim() || storedTokens?.refreshToken;
 
-  if (!tokens?.accessToken) {
+  if (!accessToken) {
     console.warn(`[access] usuario ${userId} precisa entrar novamente pelo Discord para validar cargos do servidor ${guildId}.`);
     return {
       roleIds: null,
@@ -1590,9 +1614,9 @@ async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string): Pr
     };
   }
 
-  const firstLookup = await fetchOAuthGuildMemberRoleIdsWithToken(tokens.accessToken, guildId);
+  const firstLookup = await fetchOAuthGuildMemberRoleIdsWithToken(accessToken, guildId);
 
-  if (firstLookup.roleIds || firstLookup.status !== 401 || !tokens.refreshToken) {
+  if (firstLookup.roleIds || firstLookup.status !== 401 || !refreshToken) {
     return {
       roleIds: firstLookup.roleIds,
       reason: firstLookup.reason
@@ -1600,8 +1624,12 @@ async function fetchOAuthGuildMemberRoleIds(userId: string, guildId: string): Pr
   }
 
   try {
-    const refreshedTokens = await refreshDiscordTokens(tokens.refreshToken);
+    const refreshedTokens = await refreshDiscordTokens(refreshToken);
     await updateStoredDiscordTokens(userId, refreshedTokens);
+    await options.onDiscordTokensRefreshed?.({
+      accessToken: refreshedTokens.access_token,
+      refreshToken: refreshedTokens.refresh_token ?? refreshToken
+    });
     const refreshedLookup = await fetchOAuthGuildMemberRoleIdsWithToken(refreshedTokens.access_token, guildId);
 
     return {
