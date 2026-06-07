@@ -14,6 +14,7 @@ import { socialsRouter } from "./socials";
 import { ticketsRouter } from "./tickets";
 import { usersRouter } from "./users";
 import { xMonitorRouter } from "./xMonitor";
+import { xWebhookRouter } from "./xWebhook";
 
 export const apiRouter = Router();
 
@@ -33,3 +34,4 @@ apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/social-notifications", socialNotificationsRouter);
 apiRouter.use("/socials", socialsRouter);
 apiRouter.use("/x-monitor", xMonitorRouter);
+apiRouter.use("/x-webhook", xWebhookRouter);
