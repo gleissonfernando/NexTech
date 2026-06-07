@@ -22,37 +22,51 @@ npm start
 
 O `npm start` sobe backend, frontend compilado e processos de bot em modo de producao. A hospedagem deve fornecer as variaveis de ambiente listadas em `.env.example`.
 
-## Variaveis
+## Variaveis Na Hospedagem
 
-Copie `.env.example` apenas como referencia. Troque todos os valores de exemplo no painel da hospedagem.
+Se a hospedagem tiver limite de variaveis, use somente uma variavel:
 
-Exemplo seguro:
-
-```env
-SITE_ORIGIN="https://seu-dominio-da-hospedagem.example.com"
-FRONTEND_URL="https://seu-dominio-da-hospedagem.example.com"
-MONGODB_URI="mongodb+srv://usuario:senha@cluster.example.net/nome-do-banco?retryWrites=true&w=majority"
-SESSION_SECRET="gere-um-segredo-forte"
-JWT_SECRET="gere-outro-segredo-forte"
-BOT_API_TOKEN="gere-um-token-interno"
-DISCORD_BOT_TOKEN="token-do-bot-discord"
-DISCORD_CLIENT_ID="client-id-do-discord"
-DISCORD_CLIENT_SECRET="client-secret-do-discord"
-DISCORD_OAUTH_REDIRECT_URI="https://seu-dominio-da-hospedagem.example.com/auth/discord/callback"
-DISCORD_CALLBACK_URL="https://seu-dominio-da-hospedagem.example.com/auth/discord/callback"
-DASHBOARD_DEV_USER_IDS="id-discord-dev-1,id-discord-dev-2"
-DASHBOARD_GUILD_IDS="id-servidor-discord-1,id-servidor-discord-2"
+```text
+APP_CONFIG_JSON
 ```
 
-Credenciais de integracoes tambem devem ficar somente na hospedagem:
+Valor: um JSON com todas as configuracoes.
 
-```env
-TWITCH_CLIENT_ID="client-id-da-twitch"
-TWITCH_CLIENT_SECRET="client-secret-da-twitch"
-X_CONSUMER_KEY="consumer-key-do-x"
-X_CONSUMER_SECRET="consumer-secret-do-x"
-X_BEARER_TOKEN="bearer-token-do-x"
+Exemplo de estrutura, sem valores reais:
+
+```json
+{
+  "SITE_ORIGIN": "https://seu-dominio-da-hospedagem.example.com",
+  "FRONTEND_URL": "https://seu-dominio-da-hospedagem.example.com",
+  "MONGODB_URI": "mongodb+srv://usuario:senha@cluster.example.net/nome-do-banco?retryWrites=true&w=majority",
+  "SESSION_SECRET": "gere-um-segredo-forte",
+  "JWT_SECRET": "gere-outro-segredo-forte",
+  "BOT_API_TOKEN": "gere-um-token-interno",
+  "DISCORD_BOT_TOKEN": "token-do-bot-discord",
+  "DISCORD_CLIENT_ID": "client-id-do-discord",
+  "DISCORD_CLIENT_SECRET": "client-secret-do-discord",
+  "DISCORD_OAUTH_REDIRECT_URI": "https://seu-dominio-da-hospedagem.example.com/auth/discord/callback",
+  "DISCORD_CALLBACK_URL": "https://seu-dominio-da-hospedagem.example.com/auth/discord/callback",
+  "DASHBOARD_DEV_USER_IDS": "id-discord-dev-1,id-discord-dev-2",
+  "DASHBOARD_GUILD_IDS": "id-servidor-discord-1,id-servidor-discord-2",
+  "DASHBOARD_VERIFICATION_MODE": "roles",
+  "TWITCH_CLIENT_ID": "client-id-da-twitch",
+  "TWITCH_CLIENT_SECRET": "client-secret-da-twitch",
+  "X_CONSUMER_KEY": "consumer-key-do-x",
+  "X_CONSUMER_SECRET": "consumer-secret-do-x",
+  "X_BEARER_TOKEN": "bearer-token-do-x"
+}
 ```
+
+Se o painel nao aceitar JSON com aspas, use:
+
+```text
+APP_CONFIG_B64
+```
+
+Valor: o mesmo JSON convertido para Base64.
+
+Variaveis soltas ainda funcionam e sobrescrevem valores do JSON quando existirem, mas o caminho recomendado para hospedagem com limite e usar `APP_CONFIG_JSON` ou `APP_CONFIG_B64`.
 
 ## Seguranca
 

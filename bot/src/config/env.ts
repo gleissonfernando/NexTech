@@ -17,6 +17,39 @@ function cleanEnvValue(value: unknown) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function applyPackedEnv() {
+  const jsonConfig = cleanEnvValue(process.env.APP_CONFIG_JSON);
+  const base64Config =
+    cleanEnvValue(process.env.APP_CONFIG_B64)
+    ?? cleanEnvValue(process.env.APP_CONFIG_BASE64)
+    ?? cleanEnvValue(process.env.RICARDINHO_CONFIG_B64);
+  const rawConfig = jsonConfig ?? (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : undefined);
+
+  if (!rawConfig) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(rawConfig) as unknown;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("config precisa ser um objeto JSON.");
+    }
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!/^[A-Z0-9_]+$/.test(key) || value === null || value === undefined) {
+        continue;
+      }
+
+      if (!cleanEnvValue(process.env[key])) {
+        process.env[key] = typeof value === "string" ? value : String(value);
+      }
+    }
+  } catch (error) {
+    console.warn("[bot env] APP_CONFIG_JSON/APP_CONFIG_B64 invalido:", error instanceof Error ? error.message : error);
+  }
+}
+
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -70,6 +103,8 @@ function isLocalUrl(value: string) {
     return /(?:\/\/|@)(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(value);
   }
 }
+
+applyPackedEnv();
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
 const productionFrontendUrl =
