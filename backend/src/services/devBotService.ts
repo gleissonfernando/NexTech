@@ -138,6 +138,26 @@ type UpdateDevBotInput = Partial<Omit<CreateDevBotInput, "createdBy" | "token">>
   token?: string;
 };
 
+type RegisterPrimaryDevBotInput = {
+  name?: string | null;
+  ownerName: string;
+  ownerId: string;
+  mainGuildId: string;
+  enabledModules: string[];
+  createdBy: string;
+};
+
+export type RegisterPrimaryDevBotResult = {
+  bot: DevBotDto;
+  created: boolean;
+};
+
+type EnsurePrimaryDevBotListedInput = {
+  ownerName: string;
+  ownerId: string;
+  createdBy: string;
+};
+
 export async function listDevBots() {
   const { botGuildConfigs, devBots } = await getMongoCollections();
   const [bots, configs] = await Promise.all([
@@ -402,6 +422,138 @@ export async function createDevBot(input: CreateDevBotInput) {
   emitRealtime("dev:bot_created", toDashboardBotDto(toDevBotDto(bot)));
 
   return toDevBotDto(bot);
+}
+
+export async function registerPrimaryDevBot(input: RegisterPrimaryDevBotInput): Promise<RegisterPrimaryDevBotResult> {
+  const token = env.DISCORD_BOT_TOKEN.trim();
+
+  if (!token) {
+    throw createDevBotError("DISCORD_BOT_TOKEN nao configurado no servidor.", 400);
+  }
+
+  const expectedClientId = env.DISCORD_CLIENT_ID.trim() || undefined;
+  const connection = await testDiscordBotToken(token, expectedClientId);
+
+  if (connection.status !== "online" || !connection.clientId) {
+    throw createDevBotError(connection.message, 400);
+  }
+
+  const detectedGuild = await fetchDiscordBotGuild(token, input.mainGuildId);
+  const existingBotId = await findDevBotIdByClientId(connection.clientId);
+
+  if (!existingBotId) {
+    const bot = await createDevBot({
+      name: input.name || connection.username || null,
+      clientId: connection.clientId,
+      token,
+      avatarUrl: connection.avatarUrl,
+      ownerName: input.ownerName,
+      ownerId: input.ownerId,
+      mainGuildId: input.mainGuildId,
+      enabledModules: input.enabledModules,
+      createdBy: input.createdBy
+    });
+
+    return {
+      bot,
+      created: true
+    };
+  }
+
+  const { devBots } = await getMongoCollections();
+  const current = await devBots.findOne({ _id: existingBotId });
+
+  if (!current) {
+    throw createDevBotError("Bot nao encontrado para atualizar.", 404);
+  }
+
+  const now = new Date();
+  await devBots.updateOne(
+    {
+      _id: existingBotId
+    },
+    {
+      $set: {
+        name: input.name?.trim() || connection.username || current.name,
+        clientId: connection.clientId,
+        tokenEncrypted: encryptSecret(token),
+        tokenLast4: tokenLast4(token),
+        avatarUrl: connection.avatarUrl ?? current.avatarUrl,
+        botCreatedAt: connection.createdAt ? new Date(connection.createdAt) : current.botCreatedAt ?? null,
+        ownerId: input.ownerId,
+        ownerName: input.ownerName,
+        mainGuildId: input.mainGuildId,
+        mainGuildName: detectedGuild.name,
+        mainGuildIconUrl: detectedGuild.iconUrl,
+        mainGuildMemberCount: detectedGuild.memberCount,
+        mainGuildChannelCount: detectedGuild.channelCount,
+        status: "offline",
+        statusMessage: "Token validado. Aguardando reinicializacao.",
+        enabledModules: sanitizeModules(input.enabledModules),
+        updatedAt: now
+      }
+    }
+  );
+  await upsertDetectedGuildConfig(existingBotId, detectedGuild, now);
+
+  const bot = await getDevBot(existingBotId);
+
+  if (!bot) {
+    throw createDevBotError("Bot nao encontrado depois da atualizacao.", 404);
+  }
+
+  emitRealtime("dev:bot_updated", toDashboardBotDto(bot));
+  return {
+    bot,
+    created: false
+  };
+}
+
+export async function ensurePrimaryDevBotListed(input: EnsurePrimaryDevBotListedInput): Promise<RegisterPrimaryDevBotResult | null> {
+  const configuredClientId = env.DISCORD_CLIENT_ID.trim();
+
+  if (configuredClientId) {
+    const existingBotId = await findDevBotIdByClientId(configuredClientId);
+    const existingBot = existingBotId ? await getDevBot(existingBotId) : null;
+
+    if (existingBot) {
+      return {
+        bot: existingBot,
+        created: false
+      };
+    }
+  }
+
+  const mainGuildId = firstConfiguredDashboardGuildId();
+
+  if (!mainGuildId || !env.DISCORD_BOT_TOKEN.trim()) {
+    return null;
+  }
+
+  const connection = await testDiscordBotToken(env.DISCORD_BOT_TOKEN, configuredClientId || undefined);
+
+  if (connection.status !== "online" || !connection.clientId) {
+    throw createDevBotError(connection.message, 400);
+  }
+
+  const existingBotId = await findDevBotIdByClientId(connection.clientId);
+  const existingBot = existingBotId ? await getDevBot(existingBotId) : null;
+
+  if (existingBot) {
+    return {
+      bot: existingBot,
+      created: false
+    };
+  }
+
+  return registerPrimaryDevBot({
+    name: connection.username || "Bot do Ricardinho",
+    ownerName: input.ownerName,
+    ownerId: input.ownerId,
+    mainGuildId,
+    enabledModules: DEV_MODULES.map((module) => module.id),
+    createdBy: input.createdBy
+  });
 }
 
 export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
@@ -962,6 +1114,56 @@ function defaultBotGuildConfig(botId: string, guildId: string) {
   };
 }
 
+async function upsertDetectedGuildConfig(botId: string, detectedGuild: DetectedDiscordGuildRecord, now = new Date()) {
+  const { botGuildConfigs, guilds } = await getMongoCollections();
+
+  await Promise.all([
+    guilds.updateOne(
+      {
+        _id: detectedGuild.id
+      },
+      {
+        $set: {
+          name: detectedGuild.name,
+          icon: detectedGuild.iconHash,
+          ownerId: detectedGuild.ownerId,
+          botEnabled: true,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          _id: detectedGuild.id,
+          createdAt: now
+        }
+      },
+      {
+        upsert: true
+      }
+    ),
+    botGuildConfigs.updateOne(
+      {
+        botId,
+        guildId: detectedGuild.id
+      },
+      {
+        $set: {
+          guildName: detectedGuild.name,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          _id: randomUUID(),
+          botId,
+          guildId: detectedGuild.id,
+          modules: {},
+          createdAt: now
+        }
+      },
+      {
+        upsert: true
+      }
+    )
+  ]);
+}
+
 function encryptSecret(value: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
@@ -1033,6 +1235,12 @@ function parsePermissions(value: string) {
   } catch {
     return 0n;
   }
+}
+
+function firstConfiguredDashboardGuildId() {
+  return env.DASHBOARD_GUILD_IDS.split(",")
+    .map((guildId) => guildId.trim())
+    .find(Boolean) ?? null;
 }
 
 async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, guildId: string) {

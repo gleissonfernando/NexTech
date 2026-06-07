@@ -302,6 +302,14 @@ export type CreateDevBotPayload = {
   enabledModules: string[];
 };
 
+export type RegisterPrimaryDevBotPayload = {
+  name?: string | null;
+  ownerName?: string;
+  ownerId?: string;
+  mainGuildId: string;
+  enabledModules: string[];
+};
+
 export type BotConnectionTest = {
   status: DevBotStatus;
   message: string;

@@ -917,7 +917,7 @@ function BotConfigScopeCard({
               src={selectedBot?.avatarUrl ?? null}
             />
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase text-purple-200">Selecionar bot para liberar configs</p>
+              <p className="text-xs font-medium uppercase text-purple-200">Bots cadastrados</p>
               <h3 className="mt-1 truncate text-lg font-semibold text-white">
                 {selectedBot?.name ?? "Nenhum bot selecionado"}
               </h3>
@@ -949,7 +949,7 @@ function BotConfigScopeCard({
           <p className="text-sm text-zinc-400">
             {selectedBot
               ? "As abas, botoes e configuracoes abaixo pertencem somente ao bot selecionado."
-              : "Escolha um bot para liberar e editar as configuracoes dele."}
+              : "Escolha um bot cadastrado para mudar o que o usuario pode ver na dashboard."}
           </p>
           <Badge variant="muted">{enabledModules.length} configs liberadas</Badge>
         </div>

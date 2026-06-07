@@ -11,6 +11,7 @@ import {
   detectDevBotGuild,
   getDevBots,
   getDevModules,
+  registerPrimaryDevBot,
   restartDevBot,
   testDevBotConnection,
   updateDevBotAccess,
@@ -76,6 +77,7 @@ export function DevPanel({
   const [form, setForm] = useState<CreateDevBotPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [registeringPrimary, setRegisteringPrimary] = useState(false);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<BotConnectionTest | null>(null);
@@ -250,6 +252,40 @@ export function DevPanel({
     }
   }
 
+  async function handleRegisterPrimaryBot() {
+    if (!/^\d{5,32}$/.test(form.mainGuildId.trim())) {
+      setMessage("Informe o ID do servidor para cadastrar o bot principal.");
+      return;
+    }
+
+    setRegisteringPrimary(true);
+    setMessage(null);
+
+    try {
+      const result = await registerPrimaryDevBot({
+        name: form.name || null,
+        ownerName: form.ownerName || user?.globalName || user?.username || undefined,
+        ownerId: form.ownerId || user?.discordId || undefined,
+        mainGuildId: form.mainGuildId.trim(),
+        enabledModules: form.enabledModules
+      });
+      setBots((current) => (
+        current.some((item) => item.id === result.bot.id)
+          ? current.map((item) => (item.id === result.bot.id ? result.bot : item))
+          : [result.bot, ...current]
+      ));
+      onBotCreated?.(result.bot);
+      handleSelectBotId(result.bot.id);
+      setTestResult(null);
+      setDetectedGuild(null);
+      setMessage(result.created ? "Bot principal cadastrado no sistema." : "Bot principal atualizado no sistema.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel cadastrar o bot principal do .env.");
+    } finally {
+      setRegisteringPrimary(false);
+    }
+  }
+
   async function handleSaveAccess() {
     if (!selectedBot || !/^\d{5,32}$/.test(accessForm.ownerId.trim())) {
       setMessage("Informe o Discord ID do usuario que vai acessar esse bot.");
@@ -417,6 +453,14 @@ export function DevPanel({
                 Testar conexao
               </Button>
               <Button
+                disabled={registeringPrimary || detectingGuild || !/^\d{5,32}$/.test(form.mainGuildId)}
+                onClick={handleRegisterPrimaryBot}
+                variant="secondary"
+              >
+                {registeringPrimary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                Sincronizar bot do Ricardinho
+              </Button>
+              <Button
                 disabled={
                   saving
                   || detectingGuild
@@ -435,14 +479,14 @@ export function DevPanel({
 
         <Card>
           <CardHeader>
-            <CardTitle>Selecionar bot para liberar configs</CardTitle>
-            <CardDescription>Escolha o bot cadastrado que recebera as abas, botoes e configuracoes liberadas.</CardDescription>
+            <CardTitle>Bots cadastrados</CardTitle>
+            <CardDescription>Selecione um bot da lista para mudar o que o usuario pode ver na dashboard.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {bots.length ? (
                 <label className="block space-y-2 rounded-lg border border-purple-500/25 bg-purple-500/10 p-4">
-                  <span className="text-xs font-medium uppercase text-purple-200">Bot selecionado no sistema Dev</span>
+                  <span className="text-xs font-medium uppercase text-purple-200">Bot selecionado</span>
                   <select
                     className="h-11 w-full rounded-lg border border-purple-500/30 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 outline-none transition duration-300 focus:border-purple-400"
                     onChange={(event) => handleSelectBotId(event.target.value || null)}
@@ -456,7 +500,7 @@ export function DevPanel({
                     ))}
                   </select>
                   <p className="text-xs leading-5 text-purple-100/80">
-                    Depois de escolher o bot, marque abaixo quais configs aparecem para ele na dashboard.
+                    Depois de escolher o bot, marque abaixo quais modulos aparecem para o usuario na dashboard.
                   </p>
                 </label>
               ) : null}
@@ -521,8 +565,8 @@ export function DevPanel({
       {selectedBot ? (
         <Card>
           <CardHeader>
-            <CardTitle>Configs liberadas para este bot</CardTitle>
-            <CardDescription>Ative ou desative os sistemas visiveis somente para o bot selecionado.</CardDescription>
+            <CardTitle>O que o usuario pode ver</CardTitle>
+            <CardDescription>Ative ou desative as abas e sistemas visiveis somente para o bot selecionado.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">

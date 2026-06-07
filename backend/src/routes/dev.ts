@@ -10,8 +10,10 @@ import {
   DEV_MODULES,
   getBotGuildConfig,
   getDevBot,
+  ensurePrimaryDevBotListed,
   listAccessibleDevBots,
   listBotGuildConfigs,
+  registerPrimaryDevBot,
   testDiscordBotToken,
   updateBotGuildConfig,
   updateDevBot,
@@ -48,6 +50,14 @@ const modulesSchema = z.object({
   enabledModules: z.array(z.enum(moduleIds))
 });
 
+const registerPrimaryBotSchema = z.object({
+  name: z.string().min(2).max(80).optional().or(z.literal("")),
+  ownerName: z.string().min(2).max(80).optional(),
+  ownerId: z.string().regex(/^\d{5,32}$/).optional(),
+  mainGuildId: z.string().regex(/^\d{5,32}$/),
+  enabledModules: z.array(z.enum(moduleIds)).default([])
+});
+
 const guildConfigSchema = z.object({
   guildName: z.string().min(1).max(100).default("Servidor"),
   modules: z.record(z.record(z.unknown())).default({})
@@ -66,6 +76,18 @@ devRouter.get("/modules", (_req, res) => {
 devRouter.get("/bots", async (_req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
+    const primaryBot = await ensurePrimaryDevBotListed({
+      ownerName: auth.user.globalName || auth.user.username,
+      ownerId: auth.user.discordId,
+      createdBy: auth.user.discordId
+    }).catch((error) => {
+      console.warn("[dev-bot] bot principal nao foi sincronizado:", error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    if (primaryBot?.created) {
+      await startDevBotProcess(primaryBot.bot.id);
+    }
 
     return res.json({
       bots: await listAccessibleDevBots(auth.user)
@@ -126,6 +148,41 @@ devRouter.post("/bots/create", async (req, res, next) => {
 
     return res.status(201).json({
       bot
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/register-primary", async (req, res, next) => {
+  try {
+    const input = registerPrimaryBotSchema.parse(req.body);
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const result = await registerPrimaryDevBot({
+      ...input,
+      name: input.name || null,
+      ownerName: input.ownerName || auth.user.globalName || auth.user.username,
+      ownerId: input.ownerId || auth.user.discordId,
+      createdBy: auth.user.discordId
+    });
+
+    await startDevBotProcess(result.bot.id);
+    const bot = await getDevBot(result.bot.id) ?? result.bot;
+    await writeDevBotAudit(
+      auth,
+      bot.mainGuildId,
+      bot.id,
+      result.created ? "register_primary" : "update_primary",
+      result.created ? `Bot principal ${bot.name} conectado ao painel.` : `Bot principal ${bot.name} atualizado no painel.`,
+      {
+        clientId: bot.clientId,
+        modules: bot.enabledModules
+      }
+    );
+
+    return res.status(result.created ? 201 : 200).json({
+      bot,
+      created: result.created
     });
   } catch (error) {
     return next(error);

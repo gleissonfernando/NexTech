@@ -14,6 +14,7 @@ import type {
   GuildSettings,
   LiveEvent,
   LogEntry,
+  RegisterPrimaryDevBotPayload,
   SocialNotification,
   Ticket,
   TwitchChannelPreview,
@@ -331,6 +332,13 @@ export async function createDevBot(payload: CreateDevBotPayload) {
     timeout: 16000
   });
   return data.bot;
+}
+
+export async function registerPrimaryDevBot(payload: RegisterPrimaryDevBotPayload) {
+  const { data } = await api.post<{ bot: DevBot; created: boolean }>("/dev/bots/register-primary", payload, {
+    timeout: 16000
+  });
+  return data;
 }
 
 export async function updateDevBotAccess(botId: string, payload: { ownerName?: string; ownerId?: string }) {
