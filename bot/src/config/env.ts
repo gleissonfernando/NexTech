@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const isProduction = process.env.NODE_ENV === "production";
-const localBackendUrl = "http://localhost:4000";
+const productionPublicUrl = "https://ricardinho98.shardweb.app";
 
 function cleanEnvValue(value: unknown) {
   if (typeof value !== "string") {
@@ -30,13 +30,12 @@ function isValidUrl(value: string) {
   }
 }
 
-function envUrl(name: string, developmentDefault: string, productionDefault?: string) {
+function envUrl(name: string, fallback: string) {
   return z.preprocess(
     (value) => {
       const cleaned = cleanEnvValue(value);
-      const fallback = isProduction ? productionDefault ?? "" : developmentDefault;
 
-      if (isProduction && cleaned && isLocalUrl(cleaned)) {
+      if (cleaned && isLocalUrl(cleaned)) {
         return fallback;
       }
 
@@ -74,18 +73,18 @@ function isLocalUrl(value: string) {
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
 const productionFrontendUrl =
-  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) ? normalizeUrl(configuredFrontendUrl) : "";
-const defaultBackendUrl = isProduction ? productionFrontendUrl : localBackendUrl;
+  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) ? normalizeUrl(configuredFrontendUrl) : productionPublicUrl;
+const defaultBackendUrl = productionFrontendUrl;
 const defaultBackendApiUrl = defaultBackendUrl ? `${defaultBackendUrl}/api` : "";
 
 const envSchema = z
   .object({
-    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
     DISCORD_BOT_TOKEN: z.string().default(""),
     DASHBOARD_BOT_ID: z.string().optional().default(""),
     BOT_MAIN_GUILD_ID: z.string().optional().default(""),
-    BACKEND_API_URL: envUrl("BACKEND_API_URL", defaultBackendApiUrl, defaultBackendApiUrl),
-    BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", defaultBackendUrl, defaultBackendUrl),
+    BACKEND_API_URL: envUrl("BACKEND_API_URL", defaultBackendApiUrl),
+    BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", defaultBackendUrl),
     BOT_API_TOKEN: z.string().default(""),
     BOT_ENABLED_MODULES: z.string().optional().default(""),
     BOT_MEMBER_EVENTS_ENABLED: envBoolean(true),
@@ -95,7 +94,6 @@ const envSchema = z
     BOT_CACHE_MESSAGES_PER_CHANNEL: envNumber(10),
     BOT_CACHE_PRESENCES_MAX: envNumber(0),
     BOT_CACHE_USERS_MAX: envNumber(200),
-    CLIPS_MONITOR_INTERVAL_MS: envNumber(10_000),
     CLIPS_MAX_PER_CHECK: envNumber(3),
     CLIPS_LOOKBACK_MS: envNumber(15 * 60_000),
     TWITCH_CLIENT_ID: z.string().default(""),

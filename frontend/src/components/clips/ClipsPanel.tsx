@@ -51,7 +51,7 @@ const defaultForm: ClipsForm = {
   mentionRoleId: "",
   embedColor: "#9146FF",
   customMessage: "Novo corte criado na live do {streamer}!",
-  checkInterval: 10_000
+  checkInterval: 30_000
 };
 
 export function ClipsPanel({ botId, canManage, guild, refreshSignal = 0 }: ClipsPanelProps) {
@@ -187,7 +187,6 @@ export function ClipsPanel({ botId, canManage, guild, refreshSignal = 0 }: Clips
         mentionRoleId: form.mentionType === "role" ? form.mentionRoleId || null : null,
         embedColor: form.embedColor,
         customMessage: form.customMessage,
-        checkInterval: form.checkInterval,
         enabled: config?.enabled ?? false
       }, botId);
 
@@ -541,7 +540,7 @@ function formFromConfig(config: ClipsConfig | null): ClipsForm {
     mentionRoleId: config.mentionRoleId ?? "",
     embedColor: config.embedColor,
     customMessage: config.customMessage ?? defaultForm.customMessage,
-    checkInterval: Math.min(config.checkInterval, defaultForm.checkInterval)
+    checkInterval: defaultForm.checkInterval
   };
 }
 

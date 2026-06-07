@@ -1,11 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
-import { isDevOwnerUserId } from "../config/devOwner";
+import { isDashboardDevUserId } from "../config/devOwner";
 import { requireAuth } from "../middleware/auth";
 import type { AuthSessionUser } from "../types/session";
 import type { DashboardAuth } from "./tokenService";
 
 export function isDevUser(user: AuthSessionUser | null | undefined) {
-  return isDevOwnerUserId(user?.discordId);
+  return isDashboardDevUserId(user?.discordId);
 }
 
 export async function canAccessDevPanel(user: AuthSessionUser | null | undefined) {
@@ -19,7 +19,7 @@ export function requireDevAccess(req: Request, res: Response, next: NextFunction
     void (async () => {
       if (!(await canAccessDevPanel(auth?.user))) {
         return res.status(403).json({
-          message: "Aba Dev liberada somente para o dono do sistema."
+          message: "Somente usuarios Dev podem cadastrar e gerenciar bots."
         });
       }
 

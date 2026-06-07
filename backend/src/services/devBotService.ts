@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import axios from "axios";
-import { isDevOwnerUserId } from "../config/devOwner";
+import { isDashboardDevUserId } from "../config/devOwner";
 import { env } from "../config/env";
 import { getMongoCollections, type MongoBotGuildConfig, type MongoDevBot, type MongoDevBotStatus } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -171,7 +171,7 @@ export async function listDevBots() {
 }
 
 export async function listAccessibleDevBots(user: AuthSessionUser) {
-  if (isDevOwnerUserId(user.discordId)) {
+  if (isDashboardDevUserId(user.discordId)) {
     return listDevBots();
   }
 
@@ -201,7 +201,7 @@ export async function listAccessibleDashboardBots(user: AuthSessionUser) {
 }
 
 export async function userHasAccessibleDevBot(user: AuthSessionUser) {
-  if (isDevOwnerUserId(user.discordId)) {
+  if (isDashboardDevUserId(user.discordId)) {
     return true;
   }
 
@@ -235,7 +235,7 @@ export async function findDevBotIdByClientId(clientId: string) {
 }
 
 export async function canManageDevBot(user: AuthSessionUser, botId: string) {
-  if (isDevOwnerUserId(user.discordId)) {
+  if (isDashboardDevUserId(user.discordId)) {
     return true;
   }
 
@@ -303,7 +303,7 @@ export async function canUseDevBotModule(
     return false;
   }
 
-  if (isDevOwnerUserId(user.discordId)) {
+  if (isDashboardDevUserId(user.discordId)) {
     return true;
   }
 
@@ -1262,7 +1262,7 @@ async function canAccessDevBotGuild(user: AuthSessionUser, bot: MongoDevBot, gui
     return false;
   }
 
-  if (isDevOwnerUserId(user.discordId)) {
+  if (isDashboardDevUserId(user.discordId)) {
     return true;
   }
 

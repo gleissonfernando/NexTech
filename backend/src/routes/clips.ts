@@ -31,7 +31,6 @@ const clipsConfigSchema = z.object({
   mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   embedColor: z.string().max(16).nullable().optional(),
   customMessage: z.string().max(1000).nullable().optional(),
-  checkInterval: z.number().int().min(10_000).max(300_000).optional(),
   enabled: z.boolean().optional()
 });
 const guildActionSchema = z.object({

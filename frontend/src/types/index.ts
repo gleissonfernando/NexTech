@@ -233,7 +233,6 @@ export type SaveClipsConfigPayload = {
   mentionRoleId?: string | null;
   embedColor?: string | null;
   customMessage?: string | null;
-  checkInterval?: number;
   enabled?: boolean;
 };
 

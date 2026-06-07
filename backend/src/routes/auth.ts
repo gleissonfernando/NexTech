@@ -10,7 +10,7 @@ import {
   fetchDiscordGuilds,
   fetchDiscordUser
 } from "../services/discordOAuthService";
-import { demoGuilds, toDashboardGuilds } from "../services/guildService";
+import { toDashboardGuilds } from "../services/guildService";
 import { requireAuthenticated } from "../middleware/auth";
 import {
   applyDashboardAccessValidation,
@@ -24,7 +24,6 @@ import {
   refreshAuthFromRequest,
   resolveAuthFromRequest
 } from "../services/tokenService";
-import { issueLocalAccess } from "../services/localAccessService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { saveDiscordUser } from "../services/userService";
 
@@ -145,11 +144,6 @@ authRouter.get("/discord", async (req, res) => {
     return res.redirect(canonicalAuthUrl("/discord"));
   }
 
-  if (!env.DASHBOARD_AUTH_REQUIRED) {
-    await issueLocalAccess(req, res);
-    return res.redirect(dashboardRedirectUrl());
-  }
-
   if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_OAUTH_REDIRECT_URI) {
     return res.status(503).json({
       message: "OAuth2 Discord ainda nao esta configurado."
@@ -226,43 +220,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
   }
 });
 
-authRouter.post("/dev", async (req, res) => {
-  if (!env.DEV_AUTH_ENABLED) {
-    return res.status(404).json({
-      message: "Login de desenvolvimento desativado."
-    });
-  }
-
-  req.session.user = {
-    id: "dev-user",
-    discordId: "100000000000000000",
-    username: "Admin Dev",
-    globalName: "Admin Dev",
-    discriminator: null,
-    tag: "admin-dev",
-    avatar: null,
-    avatarUrl: null,
-    email: "admin@example.local",
-    guilds: demoGuilds,
-    selectedGuildId: demoGuilds[0]?.id ?? null,
-    accessLevel: "admin",
-    authorized: true,
-    lastLoginAt: new Date().toISOString()
-  };
-  req.session.verified = false;
-
-  const auth = issueAuthCookies(res, req.session.user, false);
-  await saveSession(req);
-
-  return res.json(createAuthResponse(auth));
-});
-
 authRouter.get("/me", async (req, res) => {
-  if (!env.DASHBOARD_AUTH_REQUIRED) {
-    const auth = await issueLocalAccess(req, res);
-    return res.json(createAuthResponse(auth));
-  }
-
   await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
@@ -282,11 +240,6 @@ authRouter.get("/me", async (req, res) => {
 });
 
 authRouter.post("/refresh", async (req, res) => {
-  if (!env.DASHBOARD_AUTH_REQUIRED) {
-    const auth = await issueLocalAccess(req, res);
-    return res.json(createAuthResponse(auth));
-  }
-
   await ensureBotGuildsLoaded();
   const auth = refreshAuthFromRequest(req, res);
 

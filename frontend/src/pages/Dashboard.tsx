@@ -71,7 +71,6 @@ type DashboardProps = {
 const CONFIGURED_GUILD_ID = "1213384118356803594";
 const CONFIGURED_GUILD_NAME = "Servidor configurado";
 const DASHBOARD_VIEW_MODE_KEY = "dashboard.dev_view_mode";
-const DASHBOARD_SYSTEM_OWNER_ID = "1426287249020158018";
 type BooleanSettingKey =
   | "welcomeEnabled"
   | "leaveEnabled"
@@ -303,11 +302,10 @@ export function Dashboard({ auth, onLogout }: DashboardProps) {
   );
   const activeBotId = selectedPanelBot?.id ?? null;
   const canManageDashboard = panelBots.length ? Boolean(selectedPanelBot) : auth.permissions.canManageDashboard;
-  const isSystemOwner = auth.user.discordId === DASHBOARD_SYSTEM_OWNER_ID || dashboardProfile?.user.id === DASHBOARD_SYSTEM_OWNER_ID;
-  const canViewDev = isSystemOwner && (dashboardProfile?.canViewDev ?? false);
+  const canViewDev = dashboardProfile?.canViewDev ?? false;
   const developerView = canViewDev && dashboardViewMode === "developer";
   const enabledModules = selectedPanelBot?.enabledModules ?? [];
-  const showAllModules = developerView && isSystemOwner;
+  const showAllModules = developerView;
   const showDevOnlyCards = developerView;
   const displayedBotStatus = selectedPanelBot
     ? {

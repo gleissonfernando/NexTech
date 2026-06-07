@@ -24,20 +24,9 @@ import type {
   TwitchChannelPreview,
   UpdateTwitchNotificationPayload
 } from "../types";
-import { isLocalBrowserOrigin, normalizePublicUrl, publicOrigin } from "./urls";
+import { publicOrigin } from "./urls";
 
-function resolveDevelopmentApiUrl() {
-  const configuredApiUrl = normalizePublicUrl(import.meta.env.VITE_API_URL);
-
-  if (configuredApiUrl) {
-    return configuredApiUrl;
-  }
-
-  const origin = publicOrigin();
-  return isLocalBrowserOrigin() && origin ? `${origin}/api` : "/api";
-}
-
-export const API_URL = import.meta.env.PROD ? "/api" : resolveDevelopmentApiUrl();
+export const API_URL = `${publicOrigin()}/api`;
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -111,12 +100,6 @@ export async function verifyAccess() {
 export async function checkSiteAccess() {
   const { data } = await api.get<{ validation: AccessValidationResult }>("/auth/access-check");
   return data.validation;
-}
-
-export async function loginDev() {
-  const { data } = await api.post<AuthResponse>("/auth/dev");
-  synchronizeTabVerification(data);
-  return data;
 }
 
 export async function getDashboardMe() {

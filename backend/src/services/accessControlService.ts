@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import { isDashboardDevUserId } from "../config/devOwner";
 import type { AuthSessionUser } from "../types/session";
 import { getDiscordRoleAccess } from "./discordRoleAccessService";
 
@@ -40,7 +41,7 @@ export async function evaluateDashboardAccess(user: AuthSessionUser): Promise<Ac
     administratorRole: false,
     configuredPanelRole: false
   }));
-  const authorizedUser = getAuthorizedUserIds().has(user.discordId);
+  const authorizedUser = getAuthorizedUserIds().has(user.discordId) || isDashboardDevUserId(user.discordId);
   if (authorizedUser) {
     return createValidationResult(baseChecks, true);
   }

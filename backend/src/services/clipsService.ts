@@ -62,7 +62,6 @@ export type SaveClipsConfigInput = {
   mentionRoleId?: string | null;
   embedColor?: string | null;
   customMessage?: string | null;
-  checkInterval?: number | null;
   enabled?: boolean;
 };
 
@@ -78,9 +77,7 @@ export type RecordClipSentInput = {
 };
 
 const DEFAULT_EMBED_COLOR = "#9146FF";
-const DEFAULT_CHECK_INTERVAL = 10_000;
-const MIN_CHECK_INTERVAL = 10_000;
-const MAX_CHECK_INTERVAL = 300_000;
+const CLIPS_CHECK_INTERVAL = 30_000;
 
 export async function validateTwitchClipChannel(input: string) {
   const twitchChannelName = normalizeAndValidateChannel(input);
@@ -141,6 +138,11 @@ export async function saveClipsConfig(
   const now = new Date();
   const current = await clipsConfig.findOne(scopeQuery(guildId, normalizedBotId));
   const nextEnabled = input.enabled ?? current?.enabled ?? false;
+
+  if (nextEnabled && !discordChannelId) {
+    throw createClipsError("Selecione o canal do Discord antes de ativar os clips.", 400);
+  }
+
   const shouldResetLastCheck = nextEnabled && !current?.enabled;
   const docPatch: Partial<MongoClipsConfig> = {
     guildId,
@@ -156,7 +158,7 @@ export async function saveClipsConfig(
     mentionRoleId,
     embedColor: normalizeEmbedColor(input.embedColor),
     customMessage: normalizeMessage(input.customMessage),
-    checkInterval: normalizeCheckInterval(input.checkInterval),
+    checkInterval: CLIPS_CHECK_INTERVAL,
     lastCheckAt: shouldResetLastCheck ? now : current?.lastCheckAt ?? null,
     updatedAt: now
   };
@@ -193,6 +195,10 @@ export async function enableClipsConfig(guildId: string, userId: string, botId?:
 
   if (!current?.twitchBroadcasterId) {
     throw createClipsError("Configure o canal da Twitch antes de ativar.", 400);
+  }
+
+  if (!current.discordChannelId) {
+    throw createClipsError("Configure o canal do Discord antes de ativar.", 400);
   }
 
   const updated = await clipsConfig.findOneAndUpdate(
@@ -548,7 +554,7 @@ function toConfigDto(config: MongoClipsConfig, totalSent = 0): ClipsConfigDto {
     mentionRoleId: config.mentionRoleId ?? null,
     embedColor: normalizeEmbedColor(config.embedColor),
     customMessage: config.customMessage ?? null,
-    checkInterval: normalizeCheckInterval(config.checkInterval),
+    checkInterval: normalizeCheckInterval(),
     lastCheckAt: config.lastCheckAt?.toISOString?.() ?? null,
     totalSent,
     createdAt: config.createdAt.toISOString(),
@@ -621,9 +627,8 @@ function normalizeMessage(value?: string | null) {
   return normalized ? normalized.slice(0, 1000) : null;
 }
 
-function normalizeCheckInterval(value?: number | null) {
-  const interval = Number(value || DEFAULT_CHECK_INTERVAL);
-  return Math.max(MIN_CHECK_INTERVAL, Math.min(MAX_CHECK_INTERVAL, Number.isFinite(interval) ? interval : DEFAULT_CHECK_INTERVAL));
+function normalizeCheckInterval() {
+  return CLIPS_CHECK_INTERVAL;
 }
 
 function normalizeEmbedColor(value?: string | null) {

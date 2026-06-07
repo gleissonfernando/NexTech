@@ -6,8 +6,6 @@ import { z } from "zod";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const localMongoUrl = "mongodb://localhost:27017/ricardinho98";
-const localFrontendUrl = "http://localhost:5173";
 const productionPublicUrl = "https://ricardinho98.shardweb.app";
 const defaultDashboardGuildIds = "1213384118356803594";
 const defaultDashboardAuthorizedUserIds = "761011766440230932";
@@ -40,22 +38,21 @@ function isValidUrl(value: string) {
   }
 }
 
-function envSecret(developmentDefault: string) {
-  const productionDefault = randomBytes(32).toString("hex");
+function envSecret() {
+  const fallback = randomBytes(32).toString("hex");
 
   return z.preprocess(
-    (value) => cleanEnvValue(value) ?? (isProduction ? productionDefault : developmentDefault),
+    (value) => cleanEnvValue(value) ?? fallback,
     z.string().min(12)
   );
 }
 
-function envUrl(name: string, developmentDefault: string, productionDefault?: string) {
+function envUrl(name: string, fallback: string) {
   return z.preprocess(
     (value) => {
       const cleaned = cleanEnvValue(value);
-      const fallback = isProduction ? productionDefault ?? "" : developmentDefault;
 
-      if (isProduction && cleaned && isLocalUrl(cleaned)) {
+      if (cleaned && isLocalUrl(cleaned)) {
         return fallback;
       }
 
@@ -90,12 +87,10 @@ function isLocalUrl(value: string) {
 }
 
 const configuredSiteOrigin = cleanEnvValue(process.env.SITE_ORIGIN) ?? cleanEnvValue(process.env.FRONTEND_URL);
-const productionSiteOrigin = isProduction
-  ? productionPublicUrl
-  : configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin)
-    ? normalizeUrl(configuredSiteOrigin)
-    : "";
-const defaultSiteOrigin = isProduction ? productionSiteOrigin : localFrontendUrl;
+const productionSiteOrigin = configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin)
+  ? normalizeUrl(configuredSiteOrigin)
+  : productionPublicUrl;
+const defaultSiteOrigin = productionSiteOrigin;
 const canonicalDiscordRedirectUri = defaultSiteOrigin ? discordRedirectUriFor(defaultSiteOrigin) : "";
 
 function productionSafeUrl(value?: string) {
@@ -103,7 +98,7 @@ function productionSafeUrl(value?: string) {
     return undefined;
   }
 
-  if (isProduction && isLocalUrl(value)) {
+  if (isLocalUrl(value)) {
     return undefined;
   }
 
@@ -112,51 +107,39 @@ function productionSafeUrl(value?: string) {
 
 const envSchema = z
   .object({
-    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    HOST: z.preprocess((value) => (isProduction ? "0.0.0.0" : cleanEnvValue(value) ?? "localhost"), z.string()),
-    PORT: z.preprocess((value) => (isProduction ? 80 : cleanEnvValue(value) ?? 4000), z.coerce.number()),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
+    HOST: z.string().default("0.0.0.0"),
+    PORT: z.coerce.number().default(80),
     MONGODB_URI: z.string().optional().default(""),
     REDIS_URL: z.string().optional().default(""),
     REDIS_SESSION_ENABLED: envBoolean(false),
-    SESSION_SECRET: envSecret("development-session-secret"),
+    SESSION_SECRET: envSecret(),
     SESSION_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
-    JWT_SECRET: envSecret("development-jwt-secret"),
+    JWT_SECRET: envSecret(),
     JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(60 * 15),
     JWT_REFRESH_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
     BOT_API_TOKEN: z.string().default(""),
     DISCORD_BOT_TOKEN: z.string().default(""),
     DISCORD_CLIENT_ID: z.string().default(""),
     DISCORD_CLIENT_SECRET: z.string().default(""),
-    SITE_ORIGIN: envUrl("SITE_ORIGIN", defaultSiteOrigin, productionSiteOrigin),
-    DISCORD_OAUTH_REDIRECT_URI: envUrl(
-      "DISCORD_OAUTH_REDIRECT_URI",
-      canonicalDiscordRedirectUri,
-      canonicalDiscordRedirectUri
-    ),
-    DISCORD_CALLBACK_URL: envUrl(
-      "DISCORD_CALLBACK_URL",
-      canonicalDiscordRedirectUri,
-      canonicalDiscordRedirectUri
-    ),
+    SITE_ORIGIN: envUrl("SITE_ORIGIN", defaultSiteOrigin),
+    DISCORD_OAUTH_REDIRECT_URI: envUrl("DISCORD_OAUTH_REDIRECT_URI", canonicalDiscordRedirectUri),
+    DISCORD_CALLBACK_URL: envUrl("DISCORD_CALLBACK_URL", canonicalDiscordRedirectUri),
     DISCORD_SCOPES: z.string().default("identify email guilds"),
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
-    FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin, productionSiteOrigin),
-    DASHBOARD_AUTH_REQUIRED: envBoolean(isProduction),
+    FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin),
     DASHBOARD_AUTHORIZED_USER_IDS: z.string().optional().default(""),
     DASHBOARD_DEV_USER_IDS: z.string().optional().default(""),
     DASHBOARD_GUILD_IDS: z.string().optional().default(defaultDashboardGuildIds),
-    DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles"),
-    DEV_AUTH_ENABLED: envBoolean(false)
+    DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles")
   })
   .transform((value) => {
-    const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? (isProduction ? "" : localMongoUrl);
+    const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";
     const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
-    const oauthFrontendUrl = isProduction
-      ? productionPublicUrl
-      : configuredOrigin && !(value.DASHBOARD_AUTH_REQUIRED && isLocalUrl(configuredOrigin))
-        ? normalizeUrl(configuredOrigin)
-        : productionSiteOrigin;
+    const oauthFrontendUrl = configuredOrigin && !isLocalUrl(configuredOrigin)
+      ? normalizeUrl(configuredOrigin)
+      : productionSiteOrigin;
     const oauthCallbackUrl = oauthFrontendUrl ? discordRedirectUriFor(oauthFrontendUrl) : "";
 
     return {
@@ -169,9 +152,7 @@ const envSchema = z
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
       DASHBOARD_AUTHORIZED_USER_IDS: mergeCsvValues(value.DASHBOARD_AUTHORIZED_USER_IDS, defaultDashboardAuthorizedUserIds),
       DASHBOARD_DEV_USER_IDS: mergeCsvValues(value.DASHBOARD_DEV_USER_IDS, defaultDashboardDevUserIds),
-      DASHBOARD_GUILD_IDS: mergeCsvValues(value.DASHBOARD_GUILD_IDS, defaultDashboardGuildIds),
-      DASHBOARD_AUTH_REQUIRED: isProduction ? true : value.DASHBOARD_AUTH_REQUIRED,
-      DEV_AUTH_ENABLED: isProduction ? false : value.DEV_AUTH_ENABLED
+      DASHBOARD_GUILD_IDS: mergeCsvValues(value.DASHBOARD_GUILD_IDS, defaultDashboardGuildIds)
     };
   });
 

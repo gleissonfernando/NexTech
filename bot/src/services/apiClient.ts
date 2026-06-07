@@ -60,7 +60,6 @@ export type ClipsConfig = {
   mentionRoleId: string | null;
   embedColor: string;
   customMessage: string | null;
-  checkInterval: number;
   lastCheckAt: string | null;
   totalSent: number;
   createdAt: string;

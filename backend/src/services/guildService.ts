@@ -56,26 +56,3 @@ export function toDashboardGuild(guild: DiscordGuild): DashboardGuild {
 export function toDashboardGuilds(guilds: DiscordGuild[]) {
   return guilds.map(toDashboardGuild);
 }
-
-export const demoGuilds: DashboardGuild[] = [
-  {
-    id: "1213384118356803594",
-    name: "Servidor Ricardinho",
-    iconUrl: null,
-    owner: true,
-    isAdmin: true,
-    botEnabled: true,
-    memberCount: 1842,
-    channelCount: 42
-  },
-  {
-    id: "110000000000000002",
-    name: "Lives e Eventos",
-    iconUrl: null,
-    owner: false,
-    isAdmin: true,
-    botEnabled: true,
-    memberCount: 936,
-    channelCount: 31
-  }
-];

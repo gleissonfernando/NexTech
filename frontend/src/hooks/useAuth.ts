@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { checkSiteAccess, getSession, loginDev, logout as logoutRequest, verifyAccess } from "../lib/api";
+import { checkSiteAccess, getSession, logout as logoutRequest, verifyAccess } from "../lib/api";
 import { appUrl, dashboardUrl } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
@@ -69,18 +69,6 @@ export function useAuth() {
     window.location.href = appUrl("/auth/discord");
   }, []);
 
-  const loginDevelopment = useCallback(async () => {
-    setError(null);
-
-    try {
-      const session = await loginDev();
-      setAuth(session);
-      setAccessValidation(session.validation ?? null);
-    } catch {
-      setError("Login de desenvolvimento indisponivel.");
-    }
-  }, []);
-
   const logout = useCallback(async () => {
     await logoutRequest();
     setAuth(null);
@@ -129,7 +117,6 @@ export function useAuth() {
     loading,
     error,
     loginDiscord,
-    loginDevelopment,
     logout,
     refresh,
     verify,

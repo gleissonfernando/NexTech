@@ -12,6 +12,8 @@ import type { ApiClient, ClipsConfig } from "./apiClient";
 import { getTwitchClips, type TwitchClip } from "./twitchApiService";
 
 let running = false;
+const CLIPS_MONITOR_INTERVAL_MS = 30_000;
+const CLIPS_CONFIG_CONCURRENCY = 5;
 
 export function startClipsMonitor(client: Client, api: ApiClient) {
   const run = () => {
@@ -21,7 +23,7 @@ export function startClipsMonitor(client: Client, api: ApiClient) {
   };
 
   run();
-  const interval = setInterval(run, env.CLIPS_MONITOR_INTERVAL_MS);
+  const interval = setInterval(run, CLIPS_MONITOR_INTERVAL_MS);
   interval.unref();
 }
 
@@ -35,27 +37,33 @@ async function monitorClips(client: Client, api: ApiClient) {
   try {
     const configs = await api.getActiveClipConfigs();
 
-    for (const config of configs) {
-      try {
-        await processConfig(client, api, config);
-      } catch (error) {
-        await api.postLog({
-          guildId: config.guildId,
-          type: "clips.error",
-          message: error instanceof Error ? error.message : "Erro ao processar clips.",
-          metadata: {
-            module: "clips",
-            configId: config.id,
-            twitchChannelName: config.twitchChannelName
-          }
-        }).catch(() => undefined);
-        console.warn(`[clips] config ${config.id} ignorada:`, error instanceof Error ? error.message : error);
-      }
-
-      await delay(700);
+    for (let index = 0; index < configs.length; index += CLIPS_CONFIG_CONCURRENCY) {
+      await Promise.all(
+        configs
+          .slice(index, index + CLIPS_CONFIG_CONCURRENCY)
+          .map((config) => processConfigSafely(client, api, config))
+      );
     }
   } finally {
     running = false;
+  }
+}
+
+async function processConfigSafely(client: Client, api: ApiClient, config: ClipsConfig) {
+  try {
+    await processConfig(client, api, config);
+  } catch (error) {
+    await api.postLog({
+      guildId: config.guildId,
+      type: "clips.error",
+      message: error instanceof Error ? error.message : "Erro ao processar clips.",
+      metadata: {
+        module: "clips",
+        configId: config.id,
+        twitchChannelName: config.twitchChannelName
+      }
+    }).catch(() => undefined);
+    console.warn(`[clips] config ${config.id} ignorada:`, error instanceof Error ? error.message : error);
   }
 }
 
@@ -64,14 +72,12 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
     return;
   }
 
+  if (!config.discordChannelId) {
+    throw new Error("Canal do Discord nao configurado para o sistema de clips.");
+  }
+
   const lastCheckAt = config.lastCheckAt ? new Date(config.lastCheckAt) : null;
   const now = new Date();
-
-  const effectiveCheckInterval = Math.min(config.checkInterval, env.CLIPS_MONITOR_INTERVAL_MS);
-
-  if (lastCheckAt && now.getTime() - lastCheckAt.getTime() < effectiveCheckInterval) {
-    return;
-  }
 
   const lookupBaseTime = lastCheckAt?.getTime() ?? now.getTime();
   const startedAt = new Date(Math.max(0, lookupBaseTime - env.CLIPS_LOOKBACK_MS));
@@ -83,12 +89,12 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
   });
   const candidateClips = clips
     .filter((clip) => new Date(clip.createdAt).getTime() >= startedAt.getTime())
-    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-  let recordedClips = 0;
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  let attemptedClips = 0;
   const maxClipsPerCheck = Math.max(1, env.CLIPS_MAX_PER_CHECK);
 
   for (const clip of candidateClips) {
-    if (recordedClips >= maxClipsPerCheck) {
+    if (attemptedClips >= maxClipsPerCheck) {
       break;
     }
 
@@ -96,15 +102,27 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
       continue;
     }
 
-    let messageId: string | null = null;
-    let discordErrorMessage: string | null = null;
+    attemptedClips += 1;
+    let messageId: string;
 
-    if (config.discordChannelId) {
-      try {
-        messageId = await sendClipAlert(client, config, clip);
-      } catch (error) {
-        discordErrorMessage = formatErrorMessage(error);
-      }
+    try {
+      messageId = await sendClipAlert(client, config, clip);
+    } catch (error) {
+      const discordErrorMessage = formatErrorMessage(error);
+      console.warn(`[clips] clip ${clip.id} ainda nao enviado ao Discord: ${discordErrorMessage}`);
+      await api.postLog({
+        guildId: config.guildId,
+        type: "clips.discord_retry",
+        message: `Falha temporaria ao enviar clip; nova tentativa em ate 30 segundos: ${discordErrorMessage}`,
+        metadata: {
+          module: "clips",
+          configId: config.id,
+          clipId: clip.id,
+          clipUrl: clip.url,
+          twitchChannelName: config.twitchChannelName
+        }
+      }).catch(() => undefined);
+      continue;
     }
 
     await api.recordClipSent(config.id, {
@@ -125,24 +143,6 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
         throw error;
       }
     });
-    recordedClips += 1;
-
-    if (discordErrorMessage) {
-      console.warn(`[clips] clip ${clip.id} registrado, mas nao enviado ao Discord: ${discordErrorMessage}`);
-      await api.postLog({
-        guildId: config.guildId,
-        type: "clips.discord_error",
-        message: `Clip registrado na aba, mas nao enviado ao Discord: ${discordErrorMessage}`,
-        metadata: {
-          module: "clips",
-          configId: config.id,
-          clipId: clip.id,
-          clipUrl: clip.url,
-          twitchChannelName: config.twitchChannelName
-        }
-      }).catch(() => undefined);
-    }
-
     await delay(900);
   }
 

@@ -9,8 +9,7 @@ const httpServer = createServer(app);
 createSocketServer(httpServer);
 
 httpServer.listen(env.PORT, env.HOST, () => {
-  const publicUrl = env.NODE_ENV === "production" ? env.FRONTEND_URL : `http://localhost:${env.PORT}`;
-  console.log(`[api] rodando em ${publicUrl} (${env.HOST}:${env.PORT})`);
+  console.log(`[api] rodando em ${env.FRONTEND_URL} (${env.HOST}:${env.PORT})`);
   void startRegisteredDevBots();
 });
 

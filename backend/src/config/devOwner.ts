@@ -1,5 +1,11 @@
-export const DASHBOARD_SYSTEM_OWNER_ID = "1426287249020158018";
+import { env } from "./env";
 
-export function isDevOwnerUserId(discordId: string | null | undefined) {
-  return discordId === DASHBOARD_SYSTEM_OWNER_ID;
+const dashboardDevUserIds = new Set(
+  env.DASHBOARD_DEV_USER_IDS.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+);
+
+export function isDashboardDevUserId(discordId: string | null | undefined) {
+  return Boolean(discordId && dashboardDevUserIds.has(discordId));
 }

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { env } from "../config/env";
 import type { DashboardGuild } from "./guildService";
-import { demoGuilds, discordGuildIconUrl } from "./guildService";
+import { discordGuildIconUrl } from "./guildService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -66,10 +66,6 @@ export function getBotGuildIds() {
 }
 
 export function filterGuildsForBot(guilds: DashboardGuild[]) {
-  if (!env.DASHBOARD_AUTH_REQUIRED && botStatus.botGuilds.length === 0) {
-    return guilds;
-  }
-
   const botGuildsById = new Map(botStatus.botGuilds.map((guild) => [guild.id, guild]));
 
   return guilds
@@ -93,7 +89,7 @@ export function mergeAuthorizedBotGuilds(guilds: DashboardGuild[]) {
   const guildsById = new Map(filteredGuilds.map((guild) => [guild.id, guild]));
 
   for (const guildId of getConfiguredDashboardGuildIds()) {
-    const fallbackGuild = guildsById.get(guildId) ?? guilds.find((guild) => guild.id === guildId) ?? demoGuilds.find((guild) => guild.id === guildId);
+    const fallbackGuild = guildsById.get(guildId) ?? guilds.find((guild) => guild.id === guildId);
     const botGuild = botStatus.botGuilds.find((guild) => guild.id === guildId);
 
     guildsById.set(guildId, {

@@ -1,7 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { applyDashboardAccessValidation, evaluateDashboardAccess } from "../services/accessControlService";
-import { issueLocalAccess } from "../services/localAccessService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
 
@@ -13,12 +12,6 @@ export function isBotRequest(req: Request) {
 }
 
 export async function requireAuthenticated(req: Request, res: Response, next: NextFunction) {
-  if (!env.DASHBOARD_AUTH_REQUIRED) {
-    const auth = await issueLocalAccess(req, res);
-    res.locals.dashboardAuth = auth;
-    return next();
-  }
-
   await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
@@ -35,12 +28,6 @@ export async function requireAuthenticated(req: Request, res: Response, next: Ne
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!env.DASHBOARD_AUTH_REQUIRED) {
-    const auth = await issueLocalAccess(req, res);
-    res.locals.dashboardAuth = auth;
-    return next();
-  }
-
   await ensureBotGuildsLoaded();
   const auth = resolveAuthFromRequest(req, res);
 
