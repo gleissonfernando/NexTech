@@ -4,7 +4,7 @@ import { requireAuth } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { fetchBotProfile } from "../services/botProfileService";
 import { canAccessDevPanel } from "../services/devAccessService";
-import { canManageDevBotGuild, getAccessibleDashboardBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
+import { canAccessDevBotGuild, getAccessibleDashboardBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
 import { mergeAuthorizedBotGuilds } from "../services/statsService";
 import { issueAuthCookies, type DashboardAuth } from "../services/tokenService";
 import { saveSelectedGuild } from "../services/userService";
@@ -129,7 +129,7 @@ dashboardRouter.patch("/selected-guild", async (req, res, next) => {
 
     const botId = typeof req.body?.botId === "string" && req.body.botId.trim() ? req.body.botId.trim() : null;
 
-    if (!canManageDashboardGuild(auth.user, input.selectedGuildId) && !(await canManageDevBotGuild(auth.user, botId, input.selectedGuildId))) {
+    if (!canManageDashboardGuild(auth.user, input.selectedGuildId) && !(await canAccessDevBotGuild(auth.user, botId, input.selectedGuildId))) {
       return res.status(403).json({
         message: "Voce nao tem permissao para configurar este servidor."
       });

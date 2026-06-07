@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 import { isBotRequest, requireAuth, requireAuthOrBot } from "../middleware/auth";
 import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canManageDevBotGuild, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
+import { canAccessDevBotGuild, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import { getGuildSettings, MAX_AUTOMATIC_ROLES, updateGuildSettings } from "../services/settingsService";
@@ -47,7 +47,8 @@ const settingsSchema = z.object({
   moderationEnabled: z.boolean().optional(),
   verificationEnabled: z.boolean().optional(),
   verificationRoleId: z.string().nullable().optional(),
-  verificationRoleIds: z.array(z.string()).optional()
+  verificationRoleIds: z.array(z.string()).optional(),
+  dashboardRolePermissions: z.record(z.enum(["admin", "moderator", "premium", "basic"])).optional()
 });
 
 export const settingsRouter = Router();
@@ -315,7 +316,7 @@ async function canReadSettings(req: Request, res: Response, guildId: string, bot
   const user = res.locals.dashboardAuth.user;
 
   if (botId) {
-    return canManageDevBotGuild(user, botId, guildId);
+    return canAccessDevBotGuild(user, botId, guildId);
   }
 
   return canReadDashboardGuild(user, guildId);
@@ -329,7 +330,7 @@ async function canManageSettings(req: Request, res: Response, guildId: string, b
   const user = res.locals.dashboardAuth.user;
 
   if (botId) {
-    return canManageDevBotGuild(user, botId, guildId);
+    return canAccessDevBotGuild(user, botId, guildId);
   }
 
   return canManageDashboardGuild(user, guildId);
@@ -389,9 +390,10 @@ async function canPatchSettings(
     ticketCategoryId: ["tickets"],
     logChannelId: ["logs"],
     moderationEnabled: ["moderation"],
-    verificationEnabled: ["verification", "moderation"],
-    verificationRoleId: ["verification", "moderation"],
-    verificationRoleIds: ["verification", "moderation"]
+    verificationEnabled: ["verification"],
+    verificationRoleId: ["verification"],
+    verificationRoleIds: ["verification"],
+    dashboardRolePermissions: ["verification"]
   };
   const access = await Promise.all(
     (Object.keys(input) as Array<keyof typeof input>).map(async (key) => {
@@ -439,6 +441,7 @@ async function validateGuildResources(
   const roleIds = [
     ...(input.autoRoleIds ?? []),
     ...(input.verificationRoleIds ?? []),
+    ...Object.keys(input.dashboardRolePermissions ?? {}),
     input.twitchRoleId,
     input.boosterRoleId,
     input.verificationRoleId
@@ -465,7 +468,7 @@ function createSettingsError(message: string) {
 function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   const keys = new Set(Object.keys(input));
 
-  if ([...keys].some((key) => key.startsWith("verification"))) return "permissions";
+  if ([...keys].some((key) => key.startsWith("verification") || key === "dashboardRolePermissions")) return "permissions";
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
@@ -477,7 +480,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
 }
 
 function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
-  if (input.verificationRoleIds || input.verificationRoleId !== undefined) {
+  if (input.verificationRoleIds || input.verificationRoleId !== undefined || input.dashboardRolePermissions) {
     return "Permissao de acesso ao painel atualizada.";
   }
 

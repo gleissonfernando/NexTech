@@ -252,7 +252,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         online: selectedBot.status === "online" || botStatus.online
       }
     : botStatus;
-  const canManageDashboard = panelBots.length ? Boolean(selectedBot) : auth.permissions.canManageDashboard;
+  const canManageDashboard = panelBots.length
+    ? Boolean(selectedBot && (selectedBot.permissions.canManageDashboard || selectedBot.permissions.canManageOwnServices))
+    : auth.permissions.canManageDashboard;
   const availableModules = useMemo(
     () => moduleCatalog.filter((module) => enabledModules.includes(module.id)),
     [enabledModulesKey]
@@ -521,17 +523,17 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
 
         {activeView === "lives" ? (
-          <LiveView botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} lives={lives} />
+          <LiveView botId={activeBotId} canManage={canManageModule(selectedBot, "live", canManageDashboard)} guild={selectedGuild} lives={lives} />
         ) : null}
         {activeView === "clips" ? (
-          <ClipsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
+          <ClipsPanel botId={activeBotId} canManage={canManageModule(selectedBot, "clips", canManageDashboard)} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
         ) : null}
         {activeView === "x-monitor" ? (
-          <XMonitorPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
+          <XMonitorPanel botId={activeBotId} canManage={canManageModule(selectedBot, "x-monitor", canManageDashboard)} guild={selectedGuild} />
         ) : null}
         {activeView === "moderation" ? (
           <ModerationView
-            canManage={canManageDashboard}
+            canManage={canManageModule(selectedBot, "moderation", canManageDashboard)}
             onToggle={updateSetting}
             savingKey={savingKey}
             settings={settings}
@@ -540,7 +542,8 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "permissions" ? (
           <SiteAccessPanel
             botId={activeBotId}
-            canManage={canManageDashboard}
+            botSlug={selectedBot?.slug ?? initialBotSlug}
+            canManage={canManageModule(selectedBot, "verification", canManageDashboard)}
             guild={selectedGuild}
             loading={settingsLoading}
             onSettingsChange={setSettings}
@@ -552,6 +555,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <SettingsView
             botId={activeBotId}
             canManage={canManageDashboard}
+            canManageModule={(moduleId) => canManageModule(selectedBot, moduleId, canManageDashboard)}
             enabledModules={enabledModules}
             guild={selectedGuild}
             loading={settingsLoading}
@@ -587,6 +591,26 @@ function DashboardRouteError({ message }: { message: string }) {
       </Card>
     </main>
   );
+}
+
+function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: boolean) {
+  if (!bot) {
+    return fallback;
+  }
+
+  if (bot.accessLevel === "admin") {
+    return true;
+  }
+
+  if (bot.accessLevel === "moderator") {
+    return moduleId !== "verification";
+  }
+
+  if (bot.accessLevel === "premium") {
+    return ["live", "clips", "network", "x-monitor"].includes(moduleId);
+  }
+
+  return false;
 }
 
 function UserDashboardHeader({
@@ -835,6 +859,7 @@ function ModerationView({
 function SettingsView({
   botId,
   canManage,
+  canManageModule,
   enabledModules,
   guild,
   loading,
@@ -847,6 +872,7 @@ function SettingsView({
 }: {
   botId?: string | null;
   canManage: boolean;
+  canManageModule: (moduleId: string) => boolean;
   enabledModules: string[];
   guild: DashboardGuild | null;
   loading: boolean;
@@ -863,7 +889,7 @@ function SettingsView({
     blocks.push(
       <WelcomePanel
         botId={botId}
-        canManage={canManage}
+        canManage={canManageModule("welcome")}
         guild={guild}
         key="welcome"
         loading={loading}
@@ -879,7 +905,7 @@ function SettingsView({
     blocks.push(
       <WelcomePanel
         botId={botId}
-        canManage={canManage}
+        canManage={canManageModule("leave")}
         guild={guild}
         key="leave"
         loading={loading}
@@ -896,7 +922,7 @@ function SettingsView({
       <SimpleToggleCard
         checked={Boolean(settings?.ticketEnabled)}
         description={`${tickets.length} ticket(s) registrados neste servidor.`}
-        disabled={!settings || !canManage || savingKey === "ticketEnabled"}
+        disabled={!settings || !canManageModule("tickets") || savingKey === "ticketEnabled"}
         icon={TicketIcon}
         key="tickets"
         onChange={(checked) => onToggle("ticketEnabled", checked)}
@@ -909,7 +935,7 @@ function SettingsView({
     blocks.push(
       <AutoRolesPanel
         botId={botId}
-        canManage={canManage}
+        canManage={canManageModule("roles")}
         guild={guild}
         key="roles"
         loading={loading}

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canManageDevBotGuild, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
+import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
 import { userHasAnyGuildRole } from "../services/discordOptionsService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import { getBotGuildIds } from "../services/statsService";
@@ -231,7 +231,7 @@ async function assertCanReadClips(user: AuthSessionUser, guildId: string, botId:
       throw createRouteError("O modulo de clips nao foi liberado para este bot.", 403);
     }
 
-    if (await canManageDevBotGuild(user, botId, guildId)) {
+    if (await canReadDevBotModule(user, botId, guildId, "clips")) {
       return;
     }
   } else if (canReadDashboardGuild(user, guildId)) {
@@ -253,7 +253,7 @@ async function assertCanManageClips(user: AuthSessionUser, guildId: string, botI
       throw createRouteError("O modulo de clips nao foi liberado para este bot.", 403);
     }
 
-    if (await canManageDevBotGuild(user, botId, guildId)) {
+    if (await canUseDevBotModule(user, botId, guildId, "clips")) {
       return;
     }
   } else if (canManageDashboardGuild(user, guildId)) {

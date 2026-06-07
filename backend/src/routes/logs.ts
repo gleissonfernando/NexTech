@@ -3,8 +3,8 @@ import type { Request } from "express";
 import { z } from "zod";
 import { isBotRequest, requireAuthOrBot } from "../middleware/auth";
 import { emitRealtime } from "../realtime/events";
-import { canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
-import { canUseDevBotModule } from "../services/devBotService";
+import { canManageDashboardGuild, canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
+import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import { createLog, listLogs } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
@@ -51,7 +51,7 @@ logsRouter.post("/", async (req, res, next) => {
     const input = logSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
 
-    if (!isBotRequest(req) && !(await canReadScopedGuild(req, input.guildId, botId))) {
+    if (!isBotRequest(req) && !(await canManageScopedGuild(req, input.guildId, botId))) {
       return res.status(403).json({
         message: "Servidor nao encontrado ou sem o bot."
       });
@@ -80,8 +80,22 @@ async function canReadScopedGuild(req: Request, guildId: string, botId: string |
   }
 
   if (botId) {
-    return canUseDevBotModule(user, botId, guildId, "logs");
+    return canReadDevBotModule(user, botId, guildId, "logs");
   }
 
   return canReadDashboardGuild(user, guildId);
+}
+
+async function canManageScopedGuild(req: Request, guildId: string, botId: string | null) {
+  const user = req.res?.locals.dashboardAuth.user;
+
+  if (!user) {
+    return false;
+  }
+
+  if (botId) {
+    return canUseDevBotModule(user, botId, guildId, "logs");
+  }
+
+  return canManageDashboardGuild(user, guildId);
 }

@@ -9,6 +9,24 @@ export type DashboardGuild = {
   channelCount: number;
 };
 
+export type DashboardAccessLevel = "admin" | "moderator" | "premium" | "basic";
+export type SessionAccessLevel = DashboardAccessLevel | "viewer";
+
+export type DashboardPermissionFlags = {
+  canAccessDashboard: boolean;
+  canConfigureGuilds: boolean;
+  canManageAccess: boolean;
+  canManageBots: boolean;
+  canManageDashboard: boolean;
+  canManageGlobalSettings: boolean;
+  canManageGuilds: boolean;
+  canManageModules: boolean;
+  canManageOwnServices: boolean;
+  canManageUsers: boolean;
+  canUsePremium: boolean;
+  canViewUsers: boolean;
+};
+
 export type AuthUser = {
   id: string;
   discordId: string;
@@ -21,7 +39,7 @@ export type AuthUser = {
   email: string | null;
   guilds: DashboardGuild[];
   selectedGuildId: string | null;
-  accessLevel: "admin" | "viewer";
+  accessLevel: SessionAccessLevel;
   authorized: boolean;
   lastLoginAt: string;
 };
@@ -33,13 +51,16 @@ export type GuildAccessCheck = {
   owner: boolean;
   administratorRole: boolean;
   configuredPanelRole: boolean;
+  accessLevel: DashboardAccessLevel | null;
+  matchedRoleIds: string[];
+  requiredRoleIds: string[];
 };
 
 export type AccessValidationResult = {
   allowed: boolean;
   mode: "temporary" | "roles";
   temporaryAccess: boolean;
-  accessLevel: "admin" | "viewer";
+  accessLevel: SessionAccessLevel;
   authorizedUser: boolean;
   canManageDashboard: boolean;
   checks: GuildAccessCheck[];
@@ -53,11 +74,11 @@ export type AuthResponse = {
     canManageGuilds: boolean;
     canManageDashboard: boolean;
     canConfigureGuilds: boolean;
-  };
+  } & DashboardPermissionFlags;
   access: {
     authenticated: boolean;
     verified: boolean;
-    level: "admin" | "viewer";
+    level: SessionAccessLevel;
     verificationMode: "temporary" | "roles";
     tokenExpiresAt: string;
   };
@@ -114,6 +135,7 @@ export type GuildSettings = {
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
+  dashboardRolePermissions: Record<string, DashboardAccessLevel>;
 };
 
 export type LogEntry = {
@@ -450,6 +472,8 @@ export type DashboardBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   enabledModules: string[];
+  accessLevel: DashboardAccessLevel;
+  permissions: DashboardPermissionFlags;
 };
 
 export type DevBot = {
@@ -473,6 +497,8 @@ export type DevBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   enabledModules: string[];
+  accessLevel: DashboardAccessLevel;
+  permissions: DashboardPermissionFlags;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

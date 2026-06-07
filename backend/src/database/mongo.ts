@@ -12,6 +12,10 @@ export type MongoUser = {
   email: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+  discordRoleIdsByGuild?: Record<string, string[]>;
+  accessStatus?: "allowed" | "denied" | "pending";
+  permissionLevel?: "admin" | "moderator" | "premium" | "basic" | "viewer";
+  lastAccessSyncAt?: Date | null;
   selectedGuildId?: string | null;
   lastLoginAt: Date | null;
   createdAt: Date;
@@ -63,6 +67,7 @@ export type MongoGuildSettings = {
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds?: string[];
+  dashboardRolePermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
   updatedAt: Date;
 };
 

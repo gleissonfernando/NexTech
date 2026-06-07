@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
+import { dashboardPermissionsForLevel } from "../services/dashboardPermissionService";
 
 export const usersRouter = Router();
 
@@ -14,10 +15,12 @@ usersRouter.get("/me", (req, res) => {
 usersRouter.get("/permissions", (req, res) => {
   const user = req.session.user;
   const guilds = user?.guilds ?? [];
-  const canManageDashboard = user?.accessLevel === "admin";
+  const permissions = dashboardPermissionsForLevel(user?.accessLevel ?? "viewer");
+  const canManageDashboard = permissions.canManageDashboard || permissions.canManageOwnServices;
 
   return res.json({
-    canManageGuilds: canManageDashboard,
+    ...permissions,
+    canManageGuilds: permissions.canManageGuilds,
     canManageDashboard,
     manageableGuildIds: canManageDashboard
       ? guilds.filter((guild) => user?.authorized || guild.isAdmin || guild.owner).map((guild) => guild.id)

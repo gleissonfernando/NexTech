@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getMongoCollections } from "../database/mongo";
+import type { SessionAccessLevel } from "./dashboardPermissionService";
 import type { DiscordTokenResponse, DiscordUser } from "./discordOAuthService";
 import { discordAvatarUrl } from "./discordOAuthService";
 
@@ -29,6 +30,7 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
           email,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
+          accessStatus: "pending",
           lastLoginAt,
           updatedAt: now
         },
@@ -120,6 +122,35 @@ export async function updateStoredDiscordTokens(discordId: string, tokens: Disco
     );
   } catch (error) {
     console.warn("[mongo] nao foi possivel atualizar token OAuth do usuario:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function saveDiscordAccessSnapshot(
+  discordId: string,
+  input: {
+    accessStatus: "allowed" | "denied" | "pending";
+    permissionLevel: SessionAccessLevel;
+    roleIdsByGuild: Record<string, string[]>;
+  }
+) {
+  try {
+    const { users } = await getMongoCollections();
+    await users.updateOne(
+      {
+        discordId
+      },
+      {
+        $set: {
+          discordRoleIdsByGuild: input.roleIdsByGuild,
+          accessStatus: input.accessStatus,
+          permissionLevel: input.permissionLevel,
+          lastAccessSyncAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    );
+  } catch (error) {
+    console.warn("[mongo] snapshot de acesso mantido apenas em sessao:", error instanceof Error ? error.message : error);
   }
 }
 

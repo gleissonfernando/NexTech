@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canUseDevBotModule, getDevBotToken } from "../services/devBotService";
+import { canReadDevBotModule, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { isGuildTextChannel } from "../services/discordOptionsService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
@@ -125,7 +125,7 @@ socialsRouter.get("/:guildId", requireAuth, async (req, res, next) => {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const botId = await resolveRequestBotId(req);
 
-    await assertCanManageGuild(req, guildId, botId, "visualizou a Network");
+    await assertCanReadGuild(req, guildId, botId, "visualizou a Network");
 
     return res.json(await getSocialNetwork(guildId, botId));
   } catch (error) {
@@ -241,6 +241,14 @@ async function assertCanManageGuild(req: Request, guildId: string, botId: string
   const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
 
   if (botId ? !(await canUseDevBotModule(user, botId, guildId, "network")) : !canManageDashboardGuild(user, guildId)) {
+    throw createServiceError(`Voce nao tem permissao para ${action} deste servidor.`, 403);
+  }
+}
+
+async function assertCanReadGuild(req: Request, guildId: string, botId: string | null, action: string) {
+  const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
+
+  if (botId ? !(await canReadDevBotModule(user, botId, guildId, "network")) : !canManageDashboardGuild(user, guildId)) {
     throw createServiceError(`Voce nao tem permissao para ${action} deste servidor.`, 403);
   }
 }

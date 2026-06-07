@@ -1,4 +1,5 @@
 import type { DashboardGuild } from "../services/guildService";
+import type { SessionAccessLevel } from "../services/dashboardPermissionService";
 
 export type AuthSessionUser = {
   id: string;
@@ -12,7 +13,7 @@ export type AuthSessionUser = {
   email: string | null;
   guilds: DashboardGuild[];
   selectedGuildId: string | null;
-  accessLevel: "admin" | "viewer";
+  accessLevel: SessionAccessLevel;
   authorized: boolean;
   lastLoginAt: string;
 };

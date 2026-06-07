@@ -3,6 +3,10 @@ import jwt, { TokenExpiredError, type JwtPayload } from "jsonwebtoken";
 import { isDashboardDevUserId } from "../config/devOwner";
 import { env } from "../config/env";
 import type { AuthSessionUser } from "../types/session";
+import {
+  dashboardPermissionsForLevel,
+  normalizeSessionAccessLevel
+} from "./dashboardPermissionService";
 import { getDiscordAvatarUrl } from "./discordAssetService";
 import { mergeAuthorizedBotGuilds } from "./statsService";
 
@@ -50,15 +54,16 @@ export function clearAuthCookies(res: Response) {
 
 export function createAuthResponse(auth: DashboardAuth) {
   const user = normalizeAuthUser(auth.user);
-  const canManageDashboard = user.accessLevel === "admin";
+  const permissions = dashboardPermissionsForLevel(user.accessLevel);
 
   return {
     user,
     guilds: user.guilds,
     permissions: {
-      canManageGuilds: canManageDashboard,
-      canManageDashboard,
-      canConfigureGuilds: canManageDashboard
+      ...permissions,
+      canManageGuilds: permissions.canManageGuilds,
+      canManageDashboard: permissions.canManageDashboard || permissions.canManageOwnServices,
+      canConfigureGuilds: permissions.canConfigureGuilds
     },
     access: {
       authenticated: true,
@@ -172,7 +177,7 @@ function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
     ? "admin"
     : hadLegacyAuthorization
       ? "viewer"
-      : user.accessLevel;
+      : normalizeSessionAccessLevel(user.accessLevel);
   const selectedGuildId =
     user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
       ? user.selectedGuildId

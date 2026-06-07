@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canUseDevBotModule, getDevBotToken } from "../services/devBotService";
+import { canReadDevBotModule, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { isGuildTextChannel } from "../services/discordOptionsService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import { getBotGuildIds } from "../services/statsService";
@@ -104,7 +104,7 @@ xMonitorRouter.get("/:guildId", requireAuth, async (req, res, next) => {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
 
-    await assertCanManageXMonitor(req, guildId, botId, "acessar o X Monitor");
+    await assertCanReadXMonitor(req, guildId, botId, "acessar o X Monitor");
 
     return res.json(await getXMonitorDashboard(guildId, botId));
   } catch (error) {
@@ -193,6 +193,14 @@ async function assertCanManageXMonitor(req: Request, guildId: string, botId: str
   const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
 
   if (botId ? !(await canUseDevBotModule(user, botId, guildId, "x-monitor")) : !canManageDashboardGuild(user, guildId)) {
+    throw createServiceError(`Voce nao tem permissao para ${action} neste servidor.`, 403);
+  }
+}
+
+async function assertCanReadXMonitor(req: Request, guildId: string, botId: string | null, action: string) {
+  const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
+
+  if (botId ? !(await canReadDevBotModule(user, botId, guildId, "x-monitor")) : !canManageDashboardGuild(user, guildId)) {
     throw createServiceError(`Voce nao tem permissao para ${action} neste servidor.`, 403);
   }
 }

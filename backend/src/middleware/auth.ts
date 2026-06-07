@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { applyDashboardAccessValidation, createDeniedAccessUser, evaluateDashboardAccess } from "../services/accessControlService";
+import { dashboardPermissionsForLevel } from "../services/dashboardPermissionService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
 
@@ -46,10 +47,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(403).json({ message: ACCESS_DENIED_MESSAGE });
   }
 
-  if (freshAuth.user.accessLevel !== "admin") {
-    return res.status(403).json({ message: ACCESS_DENIED_MESSAGE });
-  }
-
   req.session.user = freshAuth.user;
   req.session.verified = freshAuth.verified;
   res.locals.dashboardAuth = freshAuth;
@@ -65,7 +62,9 @@ export function requireBot(req: Request, res: Response, next: NextFunction) {
 }
 
 export function requireAdminAccess(_req: Request, res: Response, next: NextFunction) {
-  if (res.locals.dashboardAuth?.user?.accessLevel === "admin") {
+  const accessLevel = res.locals.dashboardAuth?.user?.accessLevel ?? "viewer";
+
+  if (dashboardPermissionsForLevel(accessLevel).canManageGlobalSettings) {
     return next();
   }
 

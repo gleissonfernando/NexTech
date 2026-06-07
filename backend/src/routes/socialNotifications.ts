@@ -15,7 +15,7 @@ import {
   TWITCH_NOTIFICATION_LIMIT
 } from "../services/socialNotificationService";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canUseDevBotModule, getDevBotToken } from "../services/devBotService";
+import { canReadDevBotModule, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { isGuildTextChannel } from "../services/discordOptionsService";
 import { getBotGuildIds } from "../services/statsService";
 import type { AuthSessionUser } from "../types/session";
@@ -65,7 +65,7 @@ botLivesRouter.get("/:botId/guilds/:guildId/lives", requireAuth, async (req, res
     const botId = getRequiredParam(req.params.botId, "botId");
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
-    await assertCanManageGuild(req, guildId, botId, "visualizou lives");
+    await assertCanReadGuild(req, guildId, botId, "visualizou lives");
 
     const query = listQuerySchema.parse(req.query);
     const result = await listSocialNotifications(guildId, botId, query);
@@ -239,7 +239,7 @@ socialNotificationsRouter.get("/:guildId", requireAuth, async (req, res, next) =
     const guildId = getRequiredParam(req.params.guildId, "guildId");
     const botId = await resolveRequestBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
-    await assertCanManageGuild(req, guildId, botId, "visualizou lives");
+    await assertCanReadGuild(req, guildId, botId, "visualizou lives");
     const query = listQuerySchema.parse(req.query);
     const result = await listSocialNotifications(guildId, botId, query);
     await writeLiveAudit({
@@ -355,6 +355,20 @@ async function assertCanManageGuild(req: Request, guildId: string, botId: string
       userId: user.discordId
     });
     throw createServiceError("Você não tem permissão para configurar as notificações deste servidor.", 403);
+  }
+}
+
+async function assertCanReadGuild(req: Request, guildId: string, botId: string | null, action: string) {
+  const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
+
+  if (botId ? !(await canReadDevBotModule(user, botId, guildId, "live")) : !canManageDashboardGuild(user, guildId)) {
+    await writeLiveAudit({
+      action: `sem permissao tentou ${action}`,
+      botId,
+      guildId,
+      userId: user.discordId
+    });
+    throw createServiceError("Voce nao tem permissao para visualizar as notificacoes deste servidor.", 403);
   }
 }
 

@@ -1,7 +1,8 @@
 import type { AuthSessionUser } from "../types/session";
+import { canManageDashboardAccessLevel, dashboardPermissionsForLevel } from "./dashboardPermissionService";
 
 export function getAccessibleGuildIds(user: AuthSessionUser) {
-  if (user.accessLevel !== "admin") {
+  if (!dashboardPermissionsForLevel(user.accessLevel).canAccessDashboard) {
     return new Set<string>();
   }
 
@@ -13,7 +14,7 @@ export function canReadDashboardGuild(user: AuthSessionUser, guildId: string) {
 }
 
 export function canManageDashboardGuild(user: AuthSessionUser, guildId: string) {
-  if (user.accessLevel !== "admin") {
+  if (!canManageDashboardAccessLevel(user.accessLevel)) {
     return false;
   }
 

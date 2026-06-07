@@ -1,7 +1,15 @@
 import { env } from "../config/env";
 import { isDashboardDevUserId } from "../config/devOwner";
 import type { AuthSessionUser } from "../types/session";
+import {
+  canManageDashboardAccessLevel,
+  dashboardPermissionsForLevel,
+  highestDashboardAccessLevel,
+  type DashboardAccessLevel,
+  type SessionAccessLevel
+} from "./dashboardPermissionService";
 import { scanAccessibleDevBots } from "./devBotService";
+import { saveDiscordAccessSnapshot } from "./userService";
 
 export type GuildAccessCheck = {
   guildId: string;
@@ -10,13 +18,16 @@ export type GuildAccessCheck = {
   owner: boolean;
   administratorRole: boolean;
   configuredPanelRole: boolean;
+  accessLevel: DashboardAccessLevel | null;
+  matchedRoleIds: string[];
+  requiredRoleIds: string[];
 };
 
 export type AccessValidationResult = {
   allowed: boolean;
   mode: "temporary" | "roles";
   temporaryAccess: boolean;
-  accessLevel: "admin" | "viewer";
+  accessLevel: SessionAccessLevel;
   authorizedUser: boolean;
   canManageDashboard: boolean;
   checks: GuildAccessCheck[];
@@ -36,18 +47,23 @@ export async function evaluateDashboardAccess(
   user: AuthSessionUser,
   options: DashboardAccessOptions = {}
 ): Promise<AccessValidationResult> {
-  const baseChecks = user.guilds.map((guild) => ({
+  const baseChecks: GuildAccessCheck[] = user.guilds.map((guild) => ({
     guildId: guild.id,
     guildName: guild.name,
     administrator: guild.isAdmin,
     owner: guild.owner,
     administratorRole: false,
-    configuredPanelRole: false
+    configuredPanelRole: false,
+    accessLevel: null,
+    matchedRoleIds: [],
+    requiredRoleIds: []
   }));
   const authorizedUser = isDashboardDevUserId(user.discordId);
 
   if (authorizedUser) {
-    return createValidationResult(baseChecks, true);
+    const validation = createValidationResult(baseChecks, true, [], "admin");
+    await persistAccessSnapshot(user.discordId, validation, accessScanRoleSnapshot([]));
+    return validation;
   }
 
   const accessScan = await withTimeout(
@@ -61,13 +77,17 @@ export async function evaluateDashboardAccess(
       accessibleBots: [],
       diagnostics: [{
         allowed: false,
+        accessLevel: null,
         botId: "",
         botName: "Painel",
         configuredRoleCount: 0,
         guildId: "",
         guildName: "Servidor",
+        matchedRoleIds: [],
         matchedRoleCount: 0,
-        reason: "A validacao de cargos demorou demais para responder. Tente novamente em alguns segundos."
+        memberRoleIds: [],
+        reason: "A validacao de cargos demorou demais para responder. Tente novamente em alguns segundos.",
+        requiredRoleIds: []
       }]
     },
     BOT_ACCESS_TIMEOUT_MS
@@ -88,13 +108,17 @@ export async function evaluateDashboardAccess(
     guildIds: bot.guildIds,
     status: bot.status,
     statusMessage: bot.statusMessage,
-    enabledModules: bot.enabledModules
+    enabledModules: bot.enabledModules,
+    accessLevel: bot.accessLevel,
+    permissions: bot.permissions
   }));
   const checksByGuildId = new Map(baseChecks.map((check) => [check.guildId, check]));
+  const roleSnapshot = accessScanRoleSnapshot(accessScan.diagnostics);
 
   for (const bot of accessibleBots) {
     for (const guildId of bot.guildIds) {
       const current = checksByGuildId.get(guildId);
+      const diagnostic = accessScan.diagnostics.find((item) => item.allowed && item.botId === bot.id && item.guildId === guildId);
 
       checksByGuildId.set(guildId, {
         guildId,
@@ -102,18 +126,25 @@ export async function evaluateDashboardAccess(
         administrator: current?.administrator ?? false,
         owner: current?.owner ?? false,
         administratorRole: false,
-        configuredPanelRole: true
+        configuredPanelRole: true,
+        accessLevel: diagnostic?.accessLevel ?? bot.accessLevel,
+        matchedRoleIds: diagnostic?.matchedRoleIds ?? [],
+        requiredRoleIds: diagnostic?.requiredRoleIds ?? []
       });
     }
   }
 
   const rejectionReasons = uniqueReasons(accessScan.diagnostics.filter((item) => !item.allowed).map((item) => item.reason));
+  const highestAccessLevel = highestDashboardAccessLevel(accessibleBots.map((bot) => bot.accessLevel));
 
-  return createValidationResult(
+  const validation = createValidationResult(
     [...checksByGuildId.values()],
     authorizedUser,
-    rejectionReasons.length ? rejectionReasons : ["Nenhuma dashboard com acesso por cargo foi encontrada para esta conta Discord."]
+    rejectionReasons.length ? rejectionReasons : ["Nenhuma dashboard com acesso por cargo foi encontrada para esta conta Discord."],
+    highestAccessLevel
   );
+  await persistAccessSnapshot(user.discordId, validation, roleSnapshot);
+  return validation;
 }
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
@@ -136,17 +167,20 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Pr
 function createValidationResult(
   checks: GuildAccessCheck[],
   authorizedUser: boolean,
-  rejectionReasons: string[] = []
+  rejectionReasons: string[] = [],
+  accessLevel: DashboardAccessLevel | null = null
 ): AccessValidationResult {
+  const resolvedAccessLevel: SessionAccessLevel = authorizedUser ? "admin" : accessLevel ?? "viewer";
+  const permissions = dashboardPermissionsForLevel(resolvedAccessLevel);
   const canManageDashboard = authorizedUser || checks.some(guildCheckGrantsDashboardAccess);
 
   return {
     allowed: canManageDashboard,
     mode: env.DASHBOARD_VERIFICATION_MODE,
     temporaryAccess: false,
-    accessLevel: canManageDashboard ? "admin" : "viewer",
+    accessLevel: canManageDashboard ? resolvedAccessLevel : "viewer",
     authorizedUser,
-    canManageDashboard,
+    canManageDashboard: canManageDashboard && (permissions.canManageDashboard || permissions.canManageOwnServices),
     checks,
     rejectionReasons: canManageDashboard ? [] : rejectionReasons
   };
@@ -157,7 +191,7 @@ function uniqueReasons(reasons: string[]) {
 }
 
 export function guildCheckGrantsDashboardAccess(check: GuildAccessCheck) {
-  return check.configuredPanelRole;
+  return check.configuredPanelRole && Boolean(check.accessLevel);
 }
 
 export function applyDashboardAccessValidation(user: AuthSessionUser, validation: AccessValidationResult): AuthSessionUser {
@@ -179,7 +213,9 @@ export function applyDashboardAccessValidation(user: AuthSessionUser, validation
       .filter((guild) => manageableGuildIds.has(guild.id))
       .map((guild) => ({
         ...guild,
-        isAdmin: validation.authorizedUser || manageableGuildIds.has(guild.id)
+        isAdmin: validation.authorizedUser || canManageDashboardAccessLevel(
+          validation.checks.find((check) => check.guildId === guild.id)?.accessLevel ?? "viewer"
+        )
       }))
   };
 }
@@ -195,4 +231,31 @@ export function createDeniedAccessUser(user: AuthSessionUser): AuthSessionUser {
     authorized: false,
     selectedGuildId
   };
+}
+
+function accessScanRoleSnapshot(diagnostics: Array<{
+  guildId: string;
+  memberRoleIds?: string[];
+}>) {
+  const roleIdsByGuild: Record<string, string[]> = {};
+
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.guildId && diagnostic.memberRoleIds?.length) {
+      roleIdsByGuild[diagnostic.guildId] = diagnostic.memberRoleIds;
+    }
+  }
+
+  return roleIdsByGuild;
+}
+
+async function persistAccessSnapshot(
+  discordId: string,
+  validation: AccessValidationResult,
+  roleIdsByGuild: Record<string, string[]>
+) {
+  await saveDiscordAccessSnapshot(discordId, {
+    accessStatus: validation.allowed ? "allowed" : "denied",
+    permissionLevel: validation.accessLevel,
+    roleIdsByGuild
+  });
 }
