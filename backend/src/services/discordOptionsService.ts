@@ -61,19 +61,10 @@ export async function getGuildLiveOptions(guildId: string, botToken?: string | n
     };
   }
 
-  const bot = await discordFetch<DiscordBotUser>("/users/@me", token);
-  const [channels, roles, botMember] = await Promise.all([
+  const [channels, roles] = await Promise.all([
     discordFetch<DiscordChannel[]>(`/guilds/${guildId}/channels`, token),
-    discordFetch<DiscordRole[]>(`/guilds/${guildId}/roles`, token),
-    discordFetch<DiscordGuildMember>(`/guilds/${guildId}/members/${bot.id}`, token)
+    getGuildRoleOptions(guildId, token)
   ]);
-  const botRoleIds = new Set([guildId, ...botMember.roles]);
-  const botRoles = roles.filter((role) => botRoleIds.has(role.id));
-  const highestBotRolePosition = Math.max(0, ...botRoles.map((role) => role.position));
-  const botPermissions = botRoles.reduce((permissions, role) => permissions | parsePermissions(role.permissions), 0n);
-  const canManageRoles =
-    (botPermissions & ADMINISTRATOR) === ADMINISTRATOR
-    || (botPermissions & MANAGE_ROLES) === MANAGE_ROLES;
 
   return {
     channels: channels
@@ -85,20 +76,43 @@ export async function getGuildLiveOptions(guildId: string, botToken?: string | n
         parentId: channel.parent_id ?? null,
         type: channel.type === 5 ? "announcement" : "text"
       })),
-    roles: [
-      createEveryoneRole(guildId),
-      ...roles
-        .filter((role) => role.id !== guildId && !role.managed)
-        .sort((left, right) => right.position - left.position)
-        .map((role) => ({
-          assignable: canManageRoles && role.position < highestBotRolePosition,
-          id: role.id,
-          name: role.name,
-          color: role.color,
-          managed: role.managed
-        }))
-    ]
+    roles
   };
+}
+
+export async function getGuildRoleOptions(guildId: string, botToken?: string | null): Promise<GuildRoleOptionDto[]> {
+  const token = botToken || env.DISCORD_BOT_TOKEN;
+
+  if (!token) {
+    return [createEveryoneRole(guildId)];
+  }
+
+  const bot = await discordFetch<DiscordBotUser>("/users/@me", token);
+  const [roles, botMember] = await Promise.all([
+    discordFetch<DiscordRole[]>(`/guilds/${guildId}/roles`, token),
+    discordFetch<DiscordGuildMember>(`/guilds/${guildId}/members/${bot.id}`, token)
+  ]);
+  const botRoleIds = new Set([guildId, ...botMember.roles]);
+  const botRoles = roles.filter((role) => botRoleIds.has(role.id));
+  const highestBotRolePosition = Math.max(0, ...botRoles.map((role) => role.position));
+  const botPermissions = botRoles.reduce((permissions, role) => permissions | parsePermissions(role.permissions), 0n);
+  const canManageRoles =
+    (botPermissions & ADMINISTRATOR) === ADMINISTRATOR
+    || (botPermissions & MANAGE_ROLES) === MANAGE_ROLES;
+
+  return [
+    createEveryoneRole(guildId),
+    ...roles
+      .filter((role) => role.id !== guildId && !role.managed)
+      .sort((left, right) => right.position - left.position)
+      .map((role) => ({
+        assignable: canManageRoles && role.position < highestBotRolePosition,
+        id: role.id,
+        name: role.name,
+        color: role.color,
+        managed: role.managed
+      }))
+  ];
 }
 
 export async function isGuildTextChannel(guildId: string, channelId: string, botToken?: string | null) {
@@ -134,9 +148,9 @@ export async function areGuildAssignableRoles(guildId: string, roleIds: string[]
   }
 
   try {
-    const options = await getGuildLiveOptions(guildId, token);
+    const roles = await getGuildRoleOptions(guildId, token);
     const assignableRoleIds = new Set(
-      options.roles
+      roles
         .filter((role) => role.assignable)
         .map((role) => role.id)
     );

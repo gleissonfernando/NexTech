@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Users } from "lucide-react";
-import { getGuildLiveOptions, patchGuildSettings } from "../../lib/api";
+import { getGuildRoleOptions, patchGuildSettings } from "../../lib/api";
 import type { DashboardGuild, GuildRoleOption, GuildSettings } from "../../types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
@@ -34,13 +34,21 @@ export function AutoRolesPanel({
   useEffect(() => {
     if (!guild || !canManage) {
       setRoles([]);
+      setError(null);
       return;
     }
 
     setLoadingRoles(true);
-    getGuildLiveOptions(guild.id, botId)
-      .then((options) => setRoles(options.roles.filter((role) => role.id !== guild.id && !role.managed)))
-      .catch(() => setRoles([]))
+    setError(null);
+    getGuildRoleOptions(guild.id, botId)
+      .then((nextRoles) => {
+        setRoles(nextRoles.filter((role) => role.id !== guild.id && !role.managed));
+        setError(null);
+      })
+      .catch((requestError) => {
+        setRoles([]);
+        setError(readErrorMessage(requestError, "Nao foi possivel carregar os cargos deste servidor."));
+      })
       .finally(() => setLoadingRoles(false));
   }, [botId, canManage, guild]);
 
@@ -58,7 +66,7 @@ export function AutoRolesPanel({
       onSettingsChange(nextSettings);
       setStatus(successText);
     } catch (requestError) {
-      setError(readErrorMessage(requestError));
+      setError(readErrorMessage(requestError, "Nao foi possivel salvar os cargos automaticos."));
     } finally {
       setSaving(false);
     }
@@ -189,13 +197,13 @@ export function AutoRolesPanel({
   );
 }
 
-function readErrorMessage(error: unknown) {
+function readErrorMessage(error: unknown, fallback: string) {
   if (typeof error !== "object" || error === null || !("response" in error)) {
-    return "Nao foi possivel salvar os cargos automaticos.";
+    return fallback;
   }
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string"
     ? response.data.message
-    : "Nao foi possivel salvar os cargos automaticos.";
+    : fallback;
 }

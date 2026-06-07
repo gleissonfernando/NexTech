@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { canManageDevBotGuild, getDevBotToken } from "../services/devBotService";
-import { getGuildLiveOptions } from "../services/discordOptionsService";
+import { getGuildLiveOptions, getGuildRoleOptions } from "../services/discordOptionsService";
 import { getBotStatus } from "../services/statsService";
 
 export const guildsRouter = Router();
@@ -72,6 +72,34 @@ guildsRouter.get("/:guildId/live-options", async (req, res, next) => {
 
     return res.json({
       options: await getGuildLiveOptions(guildId, await getDevBotToken(botId))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+guildsRouter.get("/:guildId/role-options", async (req, res, next) => {
+  try {
+    const guildId = req.params.guildId;
+    const botId = typeof req.query.botId === "string" && req.query.botId.trim() ? req.query.botId.trim() : null;
+
+    if (!guildId) {
+      return res.status(400).json({
+        message: "Servidor obrigatorio."
+      });
+    }
+
+    if (
+      !canManageDashboardGuild(res.locals.dashboardAuth.user, guildId) &&
+      !(await canManageDevBotGuild(res.locals.dashboardAuth.user, botId, guildId))
+    ) {
+      return res.status(403).json({
+        message: "Voce nao tem permissao para configurar cargos deste servidor."
+      });
+    }
+
+    return res.json({
+      roles: await getGuildRoleOptions(guildId, await getDevBotToken(botId))
     });
   } catch (error) {
     return next(error);

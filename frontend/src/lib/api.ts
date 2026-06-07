@@ -12,6 +12,7 @@ import type {
   DevBot,
   DevModuleDefinition,
   GuildLiveOptions,
+  GuildRoleOption,
   GuildSettings,
   LiveEvent,
   LogEntry,
@@ -180,6 +181,13 @@ export async function getGuildLiveOptions(guildId: string, botId?: string | null
     params: botParams(botId)
   });
   return data.options;
+}
+
+export async function getGuildRoleOptions(guildId: string, botId?: string | null) {
+  const { data } = await api.get<{ roles: GuildRoleOption[] }>(`/guilds/${guildId}/role-options`, {
+    params: botParams(botId)
+  });
+  return data.roles;
 }
 
 export async function patchGuildSettings(guildId: string, payload: Partial<GuildSettings>, botId?: string | null) {
