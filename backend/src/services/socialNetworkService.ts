@@ -1,8 +1,18 @@
 import { randomUUID } from "node:crypto";
+import { env } from "../config/env";
 import { ensureGuild, getMongoCollections, type MongoSocialMember, type MongoSocialPanel } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 import { createLog } from "./logService";
 
+const DISCORD_API_URL = "https://discord.com/api/v10";
+const COMPONENT_TYPE = {
+  TextDisplay: 10,
+  Separator: 14,
+  Container: 17
+} as const;
+const MESSAGE_FLAGS = {
+  IsComponentsV2: 1 << 15
+} as const;
 export const SOCIAL_PLATFORMS = [
   "twitter",
   "instagram",
@@ -16,6 +26,44 @@ export const SOCIAL_PLATFORMS = [
 
 export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
 export type SocialLinks = Record<SocialPlatform, string>;
+
+const SOCIAL_META: Array<{
+  id: SocialPlatform;
+  label: string;
+}> = [
+  {
+    id: "twitter",
+    label: "X (Twitter)"
+  },
+  {
+    id: "instagram",
+    label: "Instagram"
+  },
+  {
+    id: "twitch",
+    label: "Twitch"
+  },
+  {
+    id: "youtube",
+    label: "YouTube"
+  },
+  {
+    id: "tiktok",
+    label: "TikTok"
+  },
+  {
+    id: "kick",
+    label: "Kick"
+  },
+  {
+    id: "facebook",
+    label: "Facebook"
+  },
+  {
+    id: "website",
+    label: "Site Pessoal"
+  }
+];
 
 export type SocialMemberDto = {
   id: string;
@@ -69,6 +117,10 @@ export type SaveSocialPanelInput = {
   userId?: string | null;
 };
 
+export type TestSocialPanelInput = SaveSocialPanelInput & {
+  botToken?: string | null;
+};
+
 export type UpdateSocialPanelStateInput = {
   messageId?: string | null;
   published?: boolean;
@@ -77,6 +129,22 @@ export type UpdateSocialPanelStateInput = {
 type ServiceError = Error & {
   statusCode?: number;
 };
+
+type DiscordComponentPayload =
+  | {
+      type: typeof COMPONENT_TYPE.TextDisplay;
+      content: string;
+    }
+  | {
+      type: typeof COMPONENT_TYPE.Separator;
+      divider?: boolean;
+      spacing?: number;
+    }
+  | {
+      type: typeof COMPONENT_TYPE.Container;
+      accent_color: number;
+      components: DiscordComponentPayload[];
+    };
 
 const DEFAULT_EMBED_COLOR = "#00D4FF";
 const SOCIAL_MEMBER_LIMIT = 200;
@@ -395,6 +463,36 @@ export async function removeSocialPanel(guildId: string, userId?: string | null,
   return panel;
 }
 
+export async function sendSocialPanelTest(guildId: string, input: TestSocialPanelInput, botId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const channelId = normalizeRequiredSnowflake(input.channelId, "Canal");
+  const panel: SocialPanelDto = {
+    id: "test",
+    botId: normalizedBotId,
+    channelId,
+    createdAt: new Date().toISOString(),
+    embedColor: normalizeEmbedColor(input.embedColor),
+    guildId,
+    lastPublishedAt: null,
+    memberCount: await countSocialMembers(guildId, normalizedBotId),
+    messageId: null,
+    published: false,
+    updatedAt: new Date().toISOString()
+  };
+  const members = await listSocialMembers(guildId, normalizedBotId);
+  const messageId = await sendSocialPanelV2ToDiscord({
+    botToken: input.botToken,
+    members,
+    panel
+  });
+
+  await writePanelAudit("social.network.panel_tested", "Enviou teste do painel Network", panel, input.userId);
+
+  return {
+    messageId
+  };
+}
+
 export async function listBotSocialPanels(botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
 
@@ -666,6 +764,139 @@ function buildPanelStatePatch(input: UpdateSocialPanelStateInput): Partial<Mongo
   return patch;
 }
 
+async function sendSocialPanelV2ToDiscord({
+  botToken,
+  members,
+  panel
+}: {
+  botToken?: string | null;
+  members: SocialMemberDto[];
+  panel: SocialPanelDto;
+}) {
+  const token = botToken || env.DISCORD_BOT_TOKEN;
+
+  if (!token) {
+    throw createServiceError("DISCORD_BOT_TOKEN nao configurado.", 503);
+  }
+
+  if (!panel.channelId) {
+    throw createServiceError("Selecione o canal da Network antes de testar.", 400);
+  }
+
+  const response = await fetch(`${DISCORD_API_URL}/channels/${panel.channelId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      allowed_mentions: {
+        parse: []
+      },
+      components: buildSocialPanelV2Components(panel, members),
+      flags: MESSAGE_FLAGS.IsComponentsV2
+    })
+  });
+
+  if (!response.ok) {
+    throw createServiceError(`Discord API respondeu ${response.status} ao testar a Network.`, 400);
+  }
+
+  const data = await response.json().catch(() => null) as { id?: string } | null;
+  return data?.id ?? null;
+}
+
+function buildSocialPanelV2Components(panel: SocialPanelDto, members: SocialMemberDto[]): DiscordComponentPayload[] {
+  const components: DiscordComponentPayload[] = [
+    {
+      type: COMPONENT_TYPE.TextDisplay,
+      content: [
+        "## Network",
+        "Todas as redes sociais dos nossos membros.",
+        "",
+        "-# Mensagem de teste enviada pela dashboard."
+      ].join("\n")
+    },
+    {
+      type: COMPONENT_TYPE.Separator,
+      divider: true,
+      spacing: 1
+    }
+  ];
+
+  if (!members.length) {
+    components.push({
+      type: COMPONENT_TYPE.TextDisplay,
+      content: "Nenhum membro cadastrado ainda."
+    });
+  } else {
+    for (let index = 0; index < members.length; index += 1) {
+      const member = members[index];
+
+      if (!member) {
+        continue;
+      }
+
+      const section = formatMemberV2Section(member);
+      const projectedLength = components.reduce((total, component) => total + ("content" in component ? component.content.length : 0), 0) + section.length;
+
+      if (projectedLength > 3600 || components.length >= 22) {
+        const remaining = members.length - index;
+        components.push({
+          type: COMPONENT_TYPE.TextDisplay,
+          content: `Mais ${remaining} membro${remaining === 1 ? "" : "s"} cadastrado${remaining === 1 ? "" : "s"} no painel.`
+        });
+        break;
+      }
+
+      components.push({
+        type: COMPONENT_TYPE.TextDisplay,
+        content: section
+      });
+    }
+  }
+
+  components.push(
+    {
+      type: COMPONENT_TYPE.Separator,
+      divider: true,
+      spacing: 1
+    },
+    {
+      type: COMPONENT_TYPE.TextDisplay,
+      content: `-# Network atualizada em ${formatDateTime(new Date())}`
+    }
+  );
+
+  return [
+    {
+      type: COMPONENT_TYPE.Container,
+      accent_color: parseEmbedColor(panel.embedColor),
+      components
+    }
+  ];
+}
+
+function formatMemberV2Section(member: SocialMemberDto) {
+  const links = activeMemberLinks(member);
+  const lines = [`**${escapeMarkdownText(member.name)}**${member.role ? ` - ${escapeMarkdownText(member.role)}` : ""}`];
+
+  if (!links.length) {
+    lines.push("-# Sem redes cadastradas.");
+    return lines.join("\n");
+  }
+
+  lines.push(links.map((link) => `[${link.label}](${link.url})`).join("  |  "));
+  return lines.join("\n");
+}
+
+function activeMemberLinks(member: SocialMemberDto) {
+  return SOCIAL_META.map((meta) => ({
+    ...meta,
+    url: member.links[meta.id]?.trim() ?? ""
+  })).filter((link) => isHttpUrl(link.url));
+}
+
 function normalizeLinks(input: Partial<Record<SocialPlatform, string | null | undefined>>, fillMissing: boolean) {
   const links: Partial<Record<SocialPlatform, string | null>> = {};
 
@@ -758,6 +989,30 @@ function normalizeEmbedColor(value?: string | null) {
 
   const color = value.trim();
   return /^#[0-9a-f]{6}$/i.test(color) ? color.toUpperCase() : DEFAULT_EMBED_COLOR;
+}
+
+function parseEmbedColor(value?: string | null) {
+  return Number.parseInt(normalizeEmbedColor(value).replace("#", ""), 16);
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function escapeMarkdownText(value: string) {
+  return value.replace(/([\\*_`~|>\[\]()])/g, "\\$1");
+}
+
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(value);
 }
 
 function toMemberDto(member: MongoSocialMember): SocialMemberDto {

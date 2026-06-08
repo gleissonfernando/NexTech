@@ -460,6 +460,13 @@ export async function publishSocialPanel(guildId: string, payload: Partial<SaveS
   return data;
 }
 
+export async function testSocialPanel(guildId: string, payload: SaveSocialPanelPayload, botId?: string | null) {
+  await api.post<{ ok: boolean; messageId?: string | null }>(`/socials/${guildId}/panel/test`, payload, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+}
+
 export async function removeSocialPanel(guildId: string, botId?: string | null) {
   const { data } = await api.post<{ panel: SocialPanel | null }>(`/socials/${guildId}/panel/remove`, undefined, {
     params: botParams(botId),

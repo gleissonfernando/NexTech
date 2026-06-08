@@ -15,6 +15,7 @@ import {
   publishSocialPanel,
   removeSocialPanel,
   saveSocialPanelConfig,
+  sendSocialPanelTest,
   SOCIAL_PLATFORMS,
   updateSocialMember,
   updateSocialPanelMessageState,
@@ -213,6 +214,32 @@ socialsRouter.put("/:guildId/panel", requireAuth, async (req, res, next) => {
 
     return res.json({
       panel
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+socialsRouter.post("/:guildId/panel/test", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    await assertCanManageGuild(req, guildId, botId, "testar o painel Network");
+
+    const input = panelSchema.parse(req.body);
+    await assertChannelBelongsToGuild(guildId, input.channelId, botId);
+
+    const result = await sendSocialPanelTest(guildId, {
+      ...input,
+      botToken: await getDevBotToken(botId),
+      userId: user.discordId
+    }, botId);
+
+    return res.json({
+      ok: true,
+      ...result
     });
   } catch (error) {
     return handleRouteError(error, res, next);
