@@ -1,5 +1,11 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { BotCommand } from "../types";
+
+type BulkDeletableChannel = {
+  bulkDelete: (limit: number, filterOld?: boolean) => Promise<{ size: number }>;
+  id: string;
+  name?: string;
+};
 
 export const clearCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -34,9 +40,19 @@ export const clearCommand: BotCommand = {
     const channel = interaction.channel;
     const amount = interaction.options.getInteger("quantidade", true);
 
-    if (!channel || typeof (channel as { bulkDelete?: unknown }).bulkDelete !== "function") {
+    if (!isBulkDeletableChannel(channel)) {
       await interaction.reply({
         content: "Este canal nao permite apagar mensagens em massa.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const botMember = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
+
+    if (!botMember?.permissionsIn(channel.id).has(PermissionFlagsBits.ManageMessages)) {
+      await interaction.reply({
+        content: "Eu preciso da permissao Gerenciar Mensagens neste canal para usar o /clear.",
         ephemeral: true
       });
       return;
@@ -46,7 +62,7 @@ export const clearCommand: BotCommand = {
       ephemeral: true
     });
 
-    const deleted = await (channel as { bulkDelete: (limit: number, filterOld?: boolean) => Promise<{ size: number }> }).bulkDelete(amount, true);
+    const deleted = await channel.bulkDelete(amount, true);
 
     await context.api.postLog({
       guildId: interaction.guild.id,
@@ -77,3 +93,22 @@ export const clearCommand: BotCommand = {
     });
   }
 };
+
+function isBulkDeletableChannel(channel: unknown): channel is BulkDeletableChannel {
+  if (!channel || typeof channel !== "object") {
+    return false;
+  }
+
+  const candidate = channel as { bulkDelete?: unknown; id?: unknown; type?: ChannelType };
+
+  return (
+    typeof candidate.id === "string"
+    && (
+      candidate.type === ChannelType.GuildText
+      || candidate.type === ChannelType.GuildAnnouncement
+      || candidate.type === ChannelType.PublicThread
+      || candidate.type === ChannelType.PrivateThread
+    )
+    && typeof candidate.bulkDelete === "function"
+  );
+}
