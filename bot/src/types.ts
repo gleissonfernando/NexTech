@@ -19,6 +19,7 @@ export type BotContext = {
 export type BotCommand = {
   data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction, context: BotContext) => Promise<void>;
+  moduleId?: string;
 };
 
 export type GuildSettings = {

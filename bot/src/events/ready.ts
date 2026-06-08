@@ -5,7 +5,7 @@ import { startClipsMonitor } from "../services/clipsMonitor";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
 import { startXMonitor } from "../services/xMonitor";
-import type { BotContext } from "../types";
+import type { BotCommand, BotContext } from "../types";
 
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
@@ -15,7 +15,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
 
   if (commandGuildId) {
     try {
-      await registerGuildCommands([...context.commands.values()], client.user.id, commandGuildId);
+      await registerGuildCommands(commandsEnabledForBot([...context.commands.values()]), client.user.id, commandGuildId);
       console.log(`[bot] comandos sincronizados no servidor ${commandGuildId}`);
     } catch (error) {
       console.warn("[bot] falha ao sincronizar comandos:", error instanceof Error ? error.message : error);
@@ -46,4 +46,8 @@ export async function handleReady(client: Client<true>, context: BotContext) {
 
 function primaryCommandGuildId() {
   return env.BOT_MAIN_GUILD_ID.trim() || env.DASHBOARD_GUILD_IDS.split(",").map((guildId) => guildId.trim()).find(Boolean) || "";
+}
+
+function commandsEnabledForBot(commands: BotCommand[]) {
+  return commands.filter((command) => !command.moduleId || isBotModuleEnabled(command.moduleId));
 }

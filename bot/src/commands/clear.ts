@@ -31,6 +31,7 @@ export const clearCommand: BotCommand = {
         .setMaxValue(100)
         .setRequired(true)
     ),
+  moduleId: "moderation",
   async execute(interaction, context) {
     if (!interaction.guild) {
       await interaction.reply({

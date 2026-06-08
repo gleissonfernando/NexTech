@@ -8,6 +8,7 @@ export const banCommand: BotCommand = {
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .addUserOption((option) => option.setName("usuario").setDescription("Usuario que sera banido.").setRequired(true))
     .addStringOption((option) => option.setName("motivo").setDescription("Motivo do banimento.").setRequired(false)),
+  moduleId: "moderation",
   async execute(interaction, context) {
     if (!interaction.guild) {
       await interaction.reply({

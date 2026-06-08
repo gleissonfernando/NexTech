@@ -6,6 +6,7 @@ export const ticketCommand: BotCommand = {
     .setName("ticket")
     .setDescription("Cria um ticket de atendimento.")
     .addStringOption((option) => option.setName("assunto").setDescription("Assunto do atendimento.").setRequired(false)),
+  moduleId: "tickets",
   async execute(interaction, context) {
     if (!interaction.guild) {
       await interaction.reply({
