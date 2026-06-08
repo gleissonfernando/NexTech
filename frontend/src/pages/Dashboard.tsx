@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Film,
+  Globe2,
   Hash,
   Loader2,
   LockKeyhole,
@@ -27,6 +28,7 @@ import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
+import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
 import { WelcomePanel } from "../components/welcome/WelcomePanel";
 import { Avatar } from "../components/ui/avatar";
@@ -183,6 +185,13 @@ const moduleCatalog: ModuleDefinition[] = [
     title: "Tickets",
     description: "Organiza atendimento em canais de suporte.",
     icon: TicketIcon,
+    view: "settings"
+  },
+  {
+    id: "network",
+    title: "Rede Social dos Membros",
+    description: "Centraliza links sociais dos membros em um painel publicado no Discord.",
+    icon: Globe2,
     view: "settings"
   },
   {
@@ -928,6 +937,17 @@ function SettingsView({
         loading={loading}
         onSettingsChange={onSettingsChange}
         settings={settings}
+      />
+    );
+  }
+
+  if (enabledModules.includes("network")) {
+    blocks.push(
+      <MemberSocialNetworkPanel
+        botId={botId}
+        canManage={canManageModule("network")}
+        guild={guild}
+        key="network"
       />
     );
   }
