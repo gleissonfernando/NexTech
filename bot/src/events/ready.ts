@@ -5,18 +5,18 @@ import { startClipsMonitor } from "../services/clipsMonitor";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
 import { startXMonitor } from "../services/xMonitor";
-import type { BotCommand, BotContext } from "../types";
+import type { BotContext } from "../types";
 
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
   context.api.setDiscordClientId(client.user.id);
 
-  const commandGuildIds = commandRegistrationGuildIds();
-  const enabledCommands = commandsEnabledForBot([...context.commands.values()]);
+  const commandGuildIds = commandRegistrationGuildIds(client);
+  const commands = [...context.commands.values()];
 
   for (const commandGuildId of commandGuildIds) {
     try {
-      await registerGuildCommands(enabledCommands, client.user.id, commandGuildId);
+      await registerGuildCommands(commands, client.user.id, commandGuildId);
       console.log(`[bot] comandos sincronizados no servidor ${commandGuildId}`);
     } catch (error) {
       console.warn(`[bot] falha ao sincronizar comandos no servidor ${commandGuildId}:`, error instanceof Error ? error.message : error);
@@ -45,21 +45,18 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   interval.unref();
 }
 
-function commandRegistrationGuildIds() {
+function commandRegistrationGuildIds(client: Client<true>) {
   const explicitGuildIds = csv(env.BOT_COMMAND_GUILD_IDS);
 
   if (explicitGuildIds.length) {
-    return explicitGuildIds;
+    return unique(explicitGuildIds);
   }
 
   return unique([
     env.BOT_MAIN_GUILD_ID.trim(),
-    ...csv(env.DASHBOARD_GUILD_IDS)
+    ...csv(env.DASHBOARD_GUILD_IDS),
+    ...client.guilds.cache.map((guild) => guild.id)
   ]);
-}
-
-function commandsEnabledForBot(commands: BotCommand[]) {
-  return commands.filter((command) => !command.moduleId || isBotModuleEnabled(command.moduleId));
 }
 
 function csv(value: string) {
