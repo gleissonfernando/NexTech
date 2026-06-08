@@ -12,7 +12,7 @@ export function createCommandCollection() {
   [
     pingCommand,
     ...(isBotModuleEnabled("moderation") ? [banCommand] : []),
-    ...(isBotModuleEnabled("moderation") ? [clearCommand] : []),
+    clearCommand,
     ...(isBotModuleEnabled("tickets") ? [ticketCommand] : [])
   ].forEach((command) => {
     commands.set(command.data.name, command);
