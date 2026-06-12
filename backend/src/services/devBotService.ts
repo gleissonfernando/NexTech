@@ -26,6 +26,7 @@ export const DEV_MODULES = [
   { id: "live", label: "Sistema de Live" },
   { id: "kick-integration", label: "Kick Integration" },
   { id: "clips", label: "Sistema de Clips" },
+  { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
@@ -36,6 +37,7 @@ export const DEV_MODULES = [
   { id: "roles", label: "Sistema de Cargos" },
   { id: "tickets", label: "Sistema de Tickets" },
   { id: "moderation", label: "Sistema de Moderacao" },
+  { id: "image-anti-spam", label: "Anti-Spam de Imagens" },
   { id: "fivem", label: "FiveM" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }

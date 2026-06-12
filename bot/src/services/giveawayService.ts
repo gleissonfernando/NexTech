@@ -170,7 +170,8 @@ function buildGiveawayMessage(giveaway: Giveaway): MessageCreateOptions {
     ? giveaway.winners.map((winner, index) => `${index + 1}. ${escapeMarkdownText(winner.displayName)}`).join("\n")
     : "Nenhum ganhador ainda.";
   const description = giveaway.customMessage?.trim()
-    || "Sorteio exclusivo para subs da live cadastrada.";
+    || "Sorteio com verificacao Twitch/Kick pela roleta.";
+  const totalTickets = giveaway.participants.reduce((total, participant) => total + Math.max(1, participant.tickets ?? 1), 0);
   const embed = new EmbedBuilder()
     .setTitle(giveaway.title)
     .setColor(status.color)
@@ -192,8 +193,18 @@ function buildGiveawayMessage(giveaway: Giveaway): MessageCreateOptions {
         inline: true
       },
       {
-        name: "Subs carregados",
+        name: "Participantes",
         value: String(giveaway.participants.length),
+        inline: true
+      },
+      {
+        name: "Tickets",
+        value: String(totalTickets),
+        inline: true
+      },
+      {
+        name: "Filtro",
+        value: giveawayModeLabel(giveaway.participantMode),
         inline: true
       },
       {
@@ -219,6 +230,20 @@ function buildGiveawayMessage(giveaway: Giveaway): MessageCreateOptions {
     content: "",
     embeds: [embed]
   };
+}
+
+function giveawayModeLabel(mode: Giveaway["participantMode"]) {
+  const labels: Record<Giveaway["participantMode"], string> = {
+    all: "Todos",
+    kick_followers: "Followers Kick",
+    kick_subs: "Subs Kick",
+    twitch_followers: "Followers Twitch",
+    twitch_kick: "Twitch + Kick",
+    twitch_subs: "Subs Twitch",
+    twitch_subs_followers: "Subs + Followers Twitch"
+  };
+
+  return labels[mode] ?? "Subs Twitch";
 }
 
 function buildComponents(giveaway: Giveaway) {

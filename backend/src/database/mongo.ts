@@ -215,15 +215,31 @@ export type MongoXPostSent = {
 };
 
 export type MongoClipMentionType = "none" | "everyone" | "role";
+export type MongoClipPlatform = "twitch" | "kick";
+
+export type MongoClipRewardRole = {
+  clipCount: number;
+  label: string;
+  roleId: string;
+};
 
 export type MongoClipsConfig = {
   _id: string;
   guildId: string;
   botId?: string | null;
-  twitchChannelName: string;
-  twitchBroadcasterId: string;
+  platform?: MongoClipPlatform;
+  twitchChannelName?: string | null;
+  twitchBroadcasterId?: string | null;
   twitchDisplayName?: string | null;
   twitchAvatar?: string | null;
+  kickChannelName?: string | null;
+  kickChannelUrl?: string | null;
+  kickChannelId?: string | null;
+  kickUserId?: string | null;
+  kickDisplayName?: string | null;
+  kickAvatar?: string | null;
+  kickFollowers?: number | null;
+  kickApiTokenEncrypted?: string | null;
   discordChannelId: string | null;
   enabled: boolean;
   allowedRoleIds: string[];
@@ -231,8 +247,13 @@ export type MongoClipsConfig = {
   mentionRoleId: string | null;
   embedColor: string | null;
   customMessage: string | null;
+  clipRewards?: MongoClipRewardRole[];
   checkInterval: number;
   lastCheckAt: Date | null;
+  activeLiveSessionId?: string | null;
+  activeLiveStartedAt?: Date | null;
+  activeLiveTitle?: string | null;
+  activeLiveThumbnail?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -241,13 +262,18 @@ export type MongoClipSent = {
   _id: string;
   guildId: string;
   botId?: string | null;
-  twitchChannelName: string;
-  twitchBroadcasterId: string;
+  configId?: string | null;
+  platform?: MongoClipPlatform;
+  twitchChannelName?: string | null;
+  twitchBroadcasterId?: string | null;
+  kickChannelName?: string | null;
+  kickUserId?: string | null;
   clipId: string;
   clipTitle: string;
   clipUrl: string;
   clipThumbnail: string | null;
   clipCreatorName: string | null;
+  clipDuration?: number | null;
   createdAtTwitch: Date;
   discordChannelId: string | null;
   discordMessageId: string | null;
@@ -258,20 +284,61 @@ export type MongoClipLog = {
   _id: string;
   guildId: string;
   botId?: string | null;
+  platform?: MongoClipPlatform;
   action: string;
   userId: string | null;
   message: string;
   createdAt: Date;
 };
 
+export type MongoClipLiveSession = {
+  _id: string;
+  guildId: string;
+  botId?: string | null;
+  configId: string;
+  platform: MongoClipPlatform;
+  streamId: string;
+  channelName: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  startedAt: Date;
+  endedAt: Date | null;
+  status: "active" | "ended";
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type MongoGiveawayStatus = "waiting" | "running" | "ended";
+export type MongoGiveawayParticipantSource = "twitch" | "kick";
+export type MongoGiveawayParticipantMode =
+  | "twitch_subs"
+  | "twitch_followers"
+  | "twitch_subs_followers"
+  | "kick_subs"
+  | "kick_followers"
+  | "twitch_kick"
+  | "all";
 
 export type MongoGiveawayParticipant = {
   id: string;
+  accountId?: string | null;
+  platform?: MongoGiveawayParticipantSource;
+  platformUserId?: string;
   username: string;
   displayName: string;
-  subscriber: boolean;
-  source: "twitch";
+  subscriber?: boolean;
+  follower?: boolean;
+  source: MongoGiveawayParticipantSource;
+  subTier?: "prime" | "1000" | "2000" | "3000" | string | null;
+  subTierLabel?: string | null;
+  subMonths?: number | null;
+  isPrime?: boolean;
+  isVip?: boolean;
+  isModerator?: boolean;
+  isEditor?: boolean;
+  tickets?: number;
+  eligible?: boolean;
+  invalidReason?: string | null;
   validatedAt: Date;
 };
 
@@ -291,8 +358,15 @@ export type MongoGiveaway = {
   title: string;
   liveName: string;
   liveUrl: string;
-  livePlatform: "twitch";
+  livePlatform: "twitch" | "kick" | "multi";
   twitchBroadcasterId: string;
+  twitchChannelName?: string | null;
+  kickChannelName?: string | null;
+  kickUserId?: string | null;
+  kickChannelId?: string | null;
+  participantMode?: MongoGiveawayParticipantMode;
+  lastSyncedAt?: Date | null;
+  lastSyncError?: string | null;
   prizeName: string;
   participants: MongoGiveawayParticipant[];
   winners: MongoGiveawayWinner[];
@@ -312,6 +386,40 @@ export type MongoGiveaway = {
   startedAt: Date | null;
   endedAt: Date | null;
   updatedAt: Date;
+};
+
+export type MongoGiveawayPlatformAccount = {
+  _id: string;
+  platform: MongoGiveawayParticipantSource;
+  platformUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string | null;
+  scopes: string[];
+  expiresAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastVerifiedAt: Date | null;
+};
+
+export type MongoGiveawayKickEvent = {
+  _id: string;
+  broadcasterUserId: string | null;
+  channelSlug: string | null;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  isFollower: boolean;
+  isSubscriber: boolean;
+  lastChatAt: Date | null;
+  lastFollowedAt: Date | null;
+  lastSubscribedAt: Date | null;
+  subExpiresAt: Date | null;
+  updatedAt: Date;
+  createdAt: Date;
 };
 
 export type MongoFivemFacMessages = {
@@ -378,6 +486,62 @@ export type MongoFivemFacAbsence = {
   finishedAt: Date | null;
   closedAt: Date | null;
   audit: MongoFivemFacAuditEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoImageAntiSpamSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  logChannelId: string | null;
+  immuneRoleIds: string[];
+  ignoredChannelIds: string[];
+  maxImages: number;
+  windowSeconds: number;
+  warningsEnabled: boolean;
+  progressiveTimeoutEnabled: boolean;
+  autoKickEnabled: boolean;
+  maxWarnings: number;
+  ignoreAdministrators: boolean;
+  warningResetDays: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoImageAntiSpamUser = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  warningCount: number;
+  totalImagesRemoved: number;
+  lastInfractionAt: Date | null;
+  lastPunishment: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoImageAntiSpamIncident = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  incidentKey: string;
+  userId: string;
+  username: string | null;
+  channelId: string;
+  removedImages: number;
+  warningCount: number;
+  timeoutMs: number;
+  action: "none" | "warning" | "timeout" | "kick";
+  actionSucceeded: boolean | null;
+  actionError: string | null;
+  reason: string;
+  status: "pending" | "completed" | "failed";
   createdAt: Date;
   updatedAt: Date;
 };
@@ -491,9 +655,15 @@ export async function getMongoCollections() {
     clipsConfig: db.collection<MongoClipsConfig>("clips_config"),
     clipsSent: db.collection<MongoClipSent>("clips_sent"),
     clipsLogs: db.collection<MongoClipLog>("clips_logs"),
+    clipLiveSessions: db.collection<MongoClipLiveSession>("clip_live_sessions"),
     giveaways: db.collection<MongoGiveaway>("giveaways"),
+    giveawayPlatformAccounts: db.collection<MongoGiveawayPlatformAccount>("giveaway_platform_accounts"),
+    giveawayKickEvents: db.collection<MongoGiveawayKickEvent>("giveaway_kick_events"),
     fivemFacSettings: db.collection<MongoFivemFacSettings>("fivem_fac_settings"),
     fivemFacAbsences: db.collection<MongoFivemFacAbsence>("fivem_fac_absences"),
+    imageAntiSpamSettings: db.collection<MongoImageAntiSpamSettings>("image_anti_spam_settings"),
+    imageAntiSpamUsers: db.collection<MongoImageAntiSpamUser>("image_anti_spam_users"),
+    imageAntiSpamIncidents: db.collection<MongoImageAntiSpamIncident>("image_anti_spam_incidents"),
     devBots: db.collection<MongoDevBot>("Bot"),
     botGuildConfigs: db.collection<MongoBotGuildConfig>("BotGuildConfig"),
     devPermissions: db.collection<MongoDevPermission>("DevPermission")
@@ -556,6 +726,7 @@ async function createMongoIndexes(db: Db) {
     ensureClipsIndexes(db),
     ensureGiveawayIndexes(db),
     ensureFivemFacIndexes(db),
+    ensureImageAntiSpamIndexes(db),
     db.collection<MongoSocialNotification>("social_notifications").createIndex(
       {
         guildId: 1,
@@ -816,11 +987,23 @@ async function ensureXMonitorIndexes(db: Db) {
 }
 
 async function ensureClipsIndexes(db: Db) {
+  const clipsConfig = db.collection<MongoClipsConfig>("clips_config");
+  const clipsSent = db.collection<MongoClipSent>("clips_sent");
+  const clipLiveSessions = db.collection<MongoClipLiveSession>("clip_live_sessions");
+
   await Promise.all([
-    db.collection<MongoClipsConfig>("clips_config").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
-    db.collection<MongoClipsConfig>("clips_config").createIndex({ enabled: 1, botId: 1, lastCheckAt: 1 }),
-    db.collection<MongoClipSent>("clips_sent").createIndex({ botId: 1, guildId: 1, clipId: 1 }, { unique: true }),
-    db.collection<MongoClipSent>("clips_sent").createIndex({ botId: 1, guildId: 1, sentAt: -1 }),
+    clipsConfig.dropIndex("botId_1_guildId_1").catch(() => undefined),
+    clipsSent.dropIndex("botId_1_guildId_1_clipId_1").catch(() => undefined)
+  ]);
+
+  await Promise.all([
+    clipsConfig.createIndex({ botId: 1, guildId: 1, platform: 1 }, { name: "clips_config_scope_platform_unique", unique: true }),
+    clipsConfig.createIndex({ enabled: 1, botId: 1, platform: 1, lastCheckAt: 1 }),
+    clipsSent.createIndex({ botId: 1, guildId: 1, platform: 1, clipId: 1 }, { name: "clips_sent_scope_platform_clip_unique", unique: true }),
+    clipsSent.createIndex({ botId: 1, guildId: 1, platform: 1, sentAt: -1 }),
+    clipsSent.createIndex({ botId: 1, guildId: 1, platform: 1, clipCreatorName: 1, sentAt: -1 }),
+    clipLiveSessions.createIndex({ botId: 1, configId: 1, streamId: 1 }, { unique: true }),
+    clipLiveSessions.createIndex({ botId: 1, guildId: 1, platform: 1, startedAt: -1 }),
     db.collection<MongoClipLog>("clips_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 })
   ]);
 }
@@ -830,7 +1013,32 @@ async function ensureGiveawayIndexes(db: Db) {
     db.collection<MongoGiveaway>("giveaways").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoGiveaway>("giveaways").createIndex({ botId: 1, status: 1, scheduledStartAt: 1 }),
     db.collection<MongoGiveaway>("giveaways").createIndex({ botId: 1, status: 1, scheduledEndAt: 1 }),
-    db.collection<MongoGiveaway>("giveaways").createIndex({ rouletteToken: 1 }, { unique: true })
+    db.collection<MongoGiveaway>("giveaways").createIndex({ rouletteToken: 1 }, { unique: true }),
+    db.collection<MongoGiveawayPlatformAccount>("giveaway_platform_accounts").createIndex(
+      {
+        platform: 1,
+        platformUserId: 1
+      },
+      {
+        unique: true
+      }
+    ),
+    db.collection<MongoGiveawayKickEvent>("giveaway_kick_events").createIndex(
+      {
+        broadcasterUserId: 1,
+        channelSlug: 1,
+        userId: 1
+      },
+      {
+        unique: true
+      }
+    ),
+    db.collection<MongoGiveawayKickEvent>("giveaway_kick_events").createIndex({
+      broadcasterUserId: 1,
+      isFollower: 1,
+      isSubscriber: 1,
+      updatedAt: -1
+    })
   ]);
 }
 
@@ -841,5 +1049,38 @@ async function ensureFivemFacIndexes(db: Db) {
     db.collection<MongoFivemFacAbsence>("fivem_fac_absences").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemFacAbsence>("fivem_fac_absences").createIndex({ botId: 1, guildId: 1, userId: 1, status: 1 }),
     db.collection<MongoFivemFacAbsence>("fivem_fac_absences").createIndex({ botId: 1, status: 1, startDate: 1, endDate: 1 })
+  ]);
+}
+
+async function ensureImageAntiSpamIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoImageAntiSpamSettings>("image_anti_spam_settings").createIndex(
+      { botId: 1, guildId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoImageAntiSpamSettings>("image_anti_spam_settings").createIndex({
+      botId: 1,
+      enabled: 1,
+      updatedAt: -1
+    }),
+    db.collection<MongoImageAntiSpamUser>("image_anti_spam_users").createIndex(
+      { botId: 1, guildId: 1, userId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoImageAntiSpamUser>("image_anti_spam_users").createIndex({
+      botId: 1,
+      guildId: 1,
+      warningCount: -1,
+      lastInfractionAt: -1
+    }),
+    db.collection<MongoImageAntiSpamIncident>("image_anti_spam_incidents").createIndex(
+      { botId: 1, guildId: 1, incidentKey: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoImageAntiSpamIncident>("image_anti_spam_incidents").createIndex({
+      botId: 1,
+      guildId: 1,
+      createdAt: -1
+    })
   ]);
 }

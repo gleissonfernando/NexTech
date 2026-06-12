@@ -3,6 +3,7 @@ import { handleGuildMemberAdd } from "../events/guildMemberAdd";
 import { handleGuildMemberRemove } from "../events/guildMemberRemove";
 import { handleGuildMemberUpdate } from "../events/guildMemberUpdate";
 import { handleInteractionCreate } from "../events/interactionCreate";
+import { handleMessageCreate } from "../events/messageCreate";
 import { handleMessageDelete } from "../events/messageDelete";
 import { handleMessageUpdate } from "../events/messageUpdate";
 import { handlePresenceEvent } from "../events/presenceUpdate";
@@ -42,6 +43,10 @@ export function registerEvents(client: Client, context: BotContext) {
   if (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) {
     client.on(Events.MessageDelete, (message) => void handleMessageDelete(message, context));
     client.on(Events.MessageUpdate, (oldMessage, newMessage) => void handleMessageUpdate(oldMessage, newMessage, context));
+  }
+
+  if (isBotModuleEnabled("image-anti-spam")) {
+    client.on(Events.MessageCreate, (message) => void handleMessageCreate(message, context));
   }
 
   if (env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) {

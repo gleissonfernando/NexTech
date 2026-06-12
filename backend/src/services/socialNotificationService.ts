@@ -5,6 +5,7 @@ import { ensureGuild, getMongoCollections, type MongoSocialNotification } from "
 import { createLog } from "./logService";
 import { isGuildTextChannel } from "./discordOptionsService";
 import { getTwitchStream, getTwitchUser, normalizeTwitchChannel } from "./twitchService";
+import type { LivePanelPreviewDto } from "./livePanelPreviewService";
 
 export type SocialNotificationDto = {
   id: string;
@@ -440,6 +441,47 @@ export async function sendTwitchNotificationTest(
   });
 
   await writeActionLog("social.twitch.tested", "Testou painel Twitch", notification, userId);
+}
+
+export async function previewTwitchNotificationPanel(
+  guildId: string,
+  id: string,
+  botId?: string | null
+): Promise<LivePanelPreviewDto> {
+  const notification = await findTwitchNotification(guildId, id, botId);
+  const stream = await getTwitchStream(notification.twitchChannelName).catch(() => null);
+  const channelName = stream?.userLogin || notification.twitchChannelName;
+  const channelUrl = stream?.userLogin
+    ? `https://www.twitch.tv/${stream.userLogin}`
+    : notification.twitchChannelUrl;
+  const streamerName = stream?.userName || notification.twitchChannelName;
+
+  return {
+    platform: "twitch",
+    dataSource: stream ? "live" : "simulated",
+    mention: formatMention(notification).content,
+    color: normalizeEmbedColor(notification.embedColor),
+    authorName: `${streamerName} is now live on Twitch!`,
+    authorIconUrl: notification.twitchAvatar ?? null,
+    title: formatLiveTitle(stream?.title ?? "Live de teste iniciada pelo painel"),
+    url: channelUrl,
+    description: renderLiveDescription(notification, channelUrl),
+    fields: [
+      {
+        name: "Game",
+        value: stream?.gameName || "Grand Theft Auto V",
+        inline: true
+      },
+      {
+        name: "Viewers",
+        value: String(stream?.viewerCount ?? 0),
+        inline: true
+      }
+    ],
+    imageUrl: buildLivePreviewImageUrl(stream?.thumbnailUrl, channelName),
+    footer: livePanelFooter(new Date()),
+    buttonLabel: "Watch Stream"
+  };
 }
 
 export async function deleteTwitchNotification(guildId: string, id: string, userId: string, botId?: string | null) {

@@ -21,9 +21,10 @@ import {
   getGuildLiveOptions,
   publishGiveawayPanel,
   startGiveaway,
+  syncGiveawayParticipants,
   updateGiveaway
 } from "../../lib/api";
-import type { DashboardGuild, Giveaway, GuildLiveOptions, SaveGiveawayPayload } from "../../types";
+import type { DashboardGuild, Giveaway, GiveawayParticipantMode, GuildLiveOptions, SaveGiveawayPayload } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -40,7 +41,9 @@ type GiveawayForm = {
   customMessage: string;
   discordChannelId: string;
   endDelayMinutes: number;
+  kickChannelInput: string;
   liveUrl: string;
+  participantMode: GiveawayParticipantMode;
   prizeName: string;
   startDelayMinutes: number;
   title: string;
@@ -52,7 +55,9 @@ const emptyForm: GiveawayForm = {
   customMessage: "",
   discordChannelId: "",
   endDelayMinutes: 0,
+  kickChannelInput: "",
   liveUrl: "",
+  participantMode: "twitch_subs",
   prizeName: "",
   startDelayMinutes: 0,
   title: "",
@@ -95,6 +100,9 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
         if (!mounted) return;
         setGiveaways(nextGiveaways);
         setOptions(nextOptions);
+        if (canManage) {
+          void syncGiveawayList(nextGiveaways);
+        }
       })
       .catch((error) => {
         if (mounted) setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar os sorteios.");
@@ -106,7 +114,19 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     return () => {
       mounted = false;
     };
-  }, [botId, guild?.id]);
+  }, [botId, canManage, guild?.id]);
+
+  useEffect(() => {
+    if (!guild || !canManage) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void syncGiveawayList(giveaways);
+    }, 30 * 60 * 1000);
+
+    return () => window.clearInterval(interval);
+  }, [botId, canManage, giveaways, guild?.id]);
 
   function updateForm<K extends keyof GiveawayForm>(key: K, value: GiveawayForm[K]) {
     setForm((current) => ({
@@ -128,6 +148,29 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel sincronizar canais.");
     } finally {
       setActionId(null);
+    }
+  }
+
+  async function syncGiveawayList(items: Giveaway[]) {
+    if (!guild || !canManage) {
+      return;
+    }
+
+    const activeGiveaways = items.filter((giveaway) => giveaway.status !== "ended");
+
+    for (const giveaway of activeGiveaways) {
+      const syncedRecently = giveaway.lastSyncedAt && Date.now() - new Date(giveaway.lastSyncedAt).getTime() < 29 * 60 * 1000;
+
+      if (syncedRecently) {
+        continue;
+      }
+
+      try {
+        const updated = await syncGiveawayParticipants(guild.id, giveaway.id, botId);
+        setGiveaways((current) => upsertGiveaway(current, updated));
+      } catch {
+        // A sincronizacao manual mostra o erro; a automatica nao deve interromper o painel.
+      }
     }
   }
 
@@ -156,7 +199,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     }
   }
 
-  async function handleAction(giveaway: Giveaway, action: "panel" | "start" | "end") {
+  async function handleAction(giveaway: Giveaway, action: "panel" | "start" | "end" | "sync") {
     if (!guild || !canManage) {
       return;
     }
@@ -169,10 +212,12 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
         ? await publishGiveawayPanel(guild.id, giveaway.id, botId)
         : action === "start"
           ? await startGiveaway(guild.id, giveaway.id, botId)
-          : await endGiveaway(guild.id, giveaway.id, botId);
+          : action === "sync"
+            ? await syncGiveawayParticipants(guild.id, giveaway.id, botId)
+            : await endGiveaway(guild.id, giveaway.id, botId);
 
       setGiveaways((current) => upsertGiveaway(current, updated));
-      setMessage(action === "panel" ? "Painel enviado para o Discord." : action === "start" ? "Sorteio iniciado." : "Sorteio encerrado.");
+      setMessage(action === "panel" ? "Painel enviado para o Discord." : action === "start" ? "Sorteio iniciado." : action === "sync" ? "Participantes atualizados." : "Sorteio encerrado.");
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel executar essa acao.");
     } finally {
@@ -187,7 +232,9 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       customMessage: giveaway.customMessage ?? "",
       discordChannelId: giveaway.discordChannelId ?? "",
       endDelayMinutes: giveaway.endDelayMinutes,
+      kickChannelInput: giveaway.kickChannelName ? `https://kick.com/${giveaway.kickChannelName}` : "",
       liveUrl: giveaway.liveUrl,
+      participantMode: giveaway.participantMode,
       prizeName: giveaway.prizeName,
       startDelayMinutes: giveaway.startDelayMinutes,
       title: giveaway.title,
@@ -277,6 +324,33 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
               placeholder="https://www.twitch.tv/canal"
               value={form.liveUrl}
             />
+          </FormField>
+
+          <FormField label="Canal Kick">
+            <input
+              className="social-input h-11"
+              disabled={!canManage}
+              onChange={(event) => updateForm("kickChannelInput", event.target.value)}
+              placeholder="https://kick.com/canal"
+              value={form.kickChannelInput}
+            />
+          </FormField>
+
+          <FormField label="Participantes">
+            <select
+              className="social-input h-11"
+              disabled={!canManage}
+              onChange={(event) => updateForm("participantMode", event.target.value as GiveawayParticipantMode)}
+              value={form.participantMode}
+            >
+              <option value="twitch_subs">Apenas Subs Twitch</option>
+              <option value="twitch_followers">Apenas Followers Twitch</option>
+              <option value="twitch_subs_followers">Subs + Followers Twitch</option>
+              <option value="kick_subs">Apenas Subs Kick</option>
+              <option value="kick_followers">Apenas Followers Kick</option>
+              <option value="twitch_kick">Twitch + Kick</option>
+              <option value="all">Todos</option>
+            </select>
           </FormField>
 
           <FormField label="Canal do Discord">
@@ -400,13 +474,15 @@ function GiveawayRow({
   actionId: string | null;
   canManage: boolean;
   giveaway: Giveaway;
-  onAction: (giveaway: Giveaway, action: "panel" | "start" | "end") => void;
+  onAction: (giveaway: Giveaway, action: "panel" | "start" | "end" | "sync") => void;
   onEdit: (giveaway: Giveaway) => void;
 }) {
   const status = statusMeta(giveaway.status);
   const panelLoading = actionId === `panel:${giveaway.id}`;
+  const syncLoading = actionId === `sync:${giveaway.id}`;
   const startLoading = actionId === `start:${giveaway.id}`;
   const endLoading = actionId === `end:${giveaway.id}`;
+  const totalTickets = giveaway.participants.reduce((total, participant) => total + Math.max(1, participant.tickets ?? 1), 0);
 
   return (
     <Card className="border-zinc-800 bg-zinc-950/75">
@@ -418,12 +494,12 @@ function GiveawayRow({
           </div>
           <div className="mt-2 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 xl:grid-cols-4">
             <InfoPill icon={Gift} label={giveaway.prizeName} />
-            <InfoPill icon={Users} label={`${giveaway.participants.length} sub(s)`} />
+            <InfoPill icon={Users} label={`${giveaway.participants.length} participante(s) / ${totalTickets} ticket(s)`} />
             <InfoPill icon={Trophy} label={`${giveaway.winners.length}/${giveaway.winnerCount} ganhador(es)`} />
             <InfoPill icon={Clock} label={giveaway.scheduledStartAt ? `Inicia ${formatDate(giveaway.scheduledStartAt)}` : giveaway.scheduledEndAt ? `Encerra ${formatDate(giveaway.scheduledEndAt)}` : formatDate(giveaway.createdAt)} />
           </div>
-          {giveaway.schedulerError ? (
-            <p className="mt-2 text-xs text-red-300">{giveaway.schedulerError}</p>
+          {giveaway.schedulerError || giveaway.lastSyncError ? (
+            <p className="mt-2 text-xs text-red-300">{giveaway.schedulerError ?? giveaway.lastSyncError}</p>
           ) : null}
         </div>
 
@@ -435,6 +511,10 @@ function GiveawayRow({
           <Button disabled={!canManage || panelLoading} onClick={() => onAction(giveaway, "panel")} size="sm" variant="outline">
             {panelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Painel
+          </Button>
+          <Button disabled={!canManage || syncLoading || giveaway.status === "ended"} onClick={() => onAction(giveaway, "sync")} size="sm" variant="outline">
+            {syncLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Atualizar
           </Button>
           <Button disabled={!canManage || giveaway.status !== "waiting" || startLoading} onClick={() => onAction(giveaway, "start")} size="sm">
             {startLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -485,7 +565,9 @@ function toPayload(form: GiveawayForm): SaveGiveawayPayload {
     customMessage: form.customMessage.trim() || null,
     discordChannelId: form.discordChannelId || null,
     endDelayMinutes: Math.max(0, Number(form.endDelayMinutes) || 0),
+    kickChannelInput: form.kickChannelInput.trim() || null,
     liveUrl: form.liveUrl.trim(),
+    participantMode: form.participantMode,
     prizeName: form.prizeName.trim(),
     startDelayMinutes: Math.max(0, Number(form.startDelayMinutes) || 0),
     title: form.title.trim(),

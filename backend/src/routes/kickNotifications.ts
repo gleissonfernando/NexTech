@@ -15,6 +15,7 @@ import {
   getKickStreamsForBot,
   listActiveKickNotifications,
   listKickNotifications,
+  previewKickNotificationPanel,
   previewKickChannel,
   processKickWebhookStatus,
   saveKickApiConfig,
@@ -29,6 +30,7 @@ import { createLog } from "../services/logService";
 import { createLiveEvent } from "../services/liveService";
 import { emitRealtime } from "../realtime/events";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
+import { recordKickGiveawayWebhookEvent } from "../services/giveawayIdentityService";
 import type { AuthSessionUser } from "../types/session";
 import { validateKickApiCredentials } from "../services/kickService";
 
@@ -308,6 +310,21 @@ kickNotificationsRouter.post("/:guildId/channels/:id/test", requireAuth, async (
   }
 });
 
+kickNotificationsRouter.get("/:guildId/channels/:id/panel-preview", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    const botId = await resolveRequestBotId(req);
+    const id = getRequiredParam(req.params.id, "id");
+    await assertCanManageGuild(req, guildId, botId, "visualizou previa Kick");
+
+    return res.json({
+      preview: await previewKickNotificationPanel(guildId, id, botId)
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
 kickNotificationsRouter.delete("/:guildId/channels/:id", requireAuth, async (req, res, next) => {
   try {
     const guildId = getRequiredParam(req.params.guildId, "guildId");
@@ -344,10 +361,15 @@ kickWebhookRouter.post("/webhook", async (req, res, next) => {
 
     const eventType = req.header("Kick-Event-Type") ?? "";
 
+    const giveawayEvents = await recordKickGiveawayWebhookEvent(eventType, req.body).catch(() => ({
+      recorded: 0
+    }));
+
     if (eventType !== "livestream.status.updated") {
       return res.json({
+        giveawayEvents,
         ok: true,
-        ignored: true
+        ignored: giveawayEvents.recorded === 0
       });
     }
 

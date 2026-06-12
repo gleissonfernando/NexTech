@@ -30,6 +30,8 @@ type StopDevBotOptions = {
 const DISCORD_API = "https://discord.com/api/v10";
 const GATEWAY_GUILD_MEMBERS = 1 << 14;
 const GATEWAY_GUILD_MEMBERS_LIMITED = 1 << 15;
+const GATEWAY_MESSAGE_CONTENT = 1 << 18;
+const GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19;
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
 
@@ -125,6 +127,17 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
   }
 
   await updateDevBotRuntimeStatus(bot.id, "offline", "Iniciando processo do bot.");
+  const messageContentEnabled = await canUseMessageContentIntent(bot);
+
+  if (!messageContentEnabled) {
+    await updateDevBotRuntimeStatus(
+      bot.id,
+      "error",
+      "Ative o Message Content Intent no Discord Developer Portal para usar o Anti-Spam de Imagens."
+    );
+    return;
+  }
+
   const memberEventsEnabled = await canUseGuildMemberIntent(bot);
 
   const child = spawn(process.execPath, [entry], {
@@ -223,6 +236,29 @@ async function canUseGuildMemberIntent(bot: DevBotRuntimeConfig) {
   } catch (error) {
     console.warn(
       `[dev-bot:${bot.id}] nao foi possivel consultar intents do Discord; iniciando sem eventos de membros:`,
+      error instanceof Error ? error.message : error
+    );
+    return false;
+  }
+}
+
+async function canUseMessageContentIntent(bot: DevBotRuntimeConfig) {
+  if (!bot.enabledModules.includes("image-anti-spam")) {
+    return true;
+  }
+
+  try {
+    const { data } = await axios.get<DiscordApplication>(`${DISCORD_API}/oauth2/applications/@me`, {
+      headers: {
+        Authorization: `Bot ${bot.token}`
+      },
+      timeout: 5_000
+    });
+    const flags = data.flags ?? 0;
+    return Boolean(flags & (GATEWAY_MESSAGE_CONTENT | GATEWAY_MESSAGE_CONTENT_LIMITED));
+  } catch (error) {
+    console.warn(
+      `[dev-bot:${bot.id}] nao foi possivel consultar o Message Content Intent:`,
       error instanceof Error ? error.message : error
     );
     return false;

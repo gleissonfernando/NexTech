@@ -21,6 +21,15 @@ if (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) {
   intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
 }
 
+if (isBotModuleEnabled("image-anti-spam")) {
+  if (!intents.includes(GatewayIntentBits.GuildMessages)) {
+    intents.push(GatewayIntentBits.GuildMessages);
+  }
+  if (!intents.includes(GatewayIntentBits.MessageContent)) {
+    intents.push(GatewayIntentBits.MessageContent);
+  }
+}
+
 if (env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) {
   intents.push(GatewayIntentBits.GuildPresences);
 }

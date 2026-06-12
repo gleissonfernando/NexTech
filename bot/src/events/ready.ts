@@ -4,6 +4,7 @@ import { registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
 import { startFivemFacService } from "../services/fivemFacService";
 import { startGiveawayService } from "../services/giveawayService";
+import { startImageAntiSpamService } from "../services/imageAntiSpamService";
 import { startKickNotificationMonitor } from "../services/kickNotificationMonitor";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
@@ -39,7 +40,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("x-monitor")) {
     startXMonitor(client, context.api, context.socket);
   }
-  if (isBotModuleEnabled("clips")) {
+  if (isBotModuleEnabled("clips") || isBotModuleEnabled("kick-clips")) {
     startClipsMonitor(client, context.api);
   }
   if (isBotModuleEnabled("giveaway")) {
@@ -47,6 +48,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   }
   if (isBotModuleEnabled("fivem-fac")) {
     startFivemFacService(client, context);
+  }
+  if (isBotModuleEnabled("image-anti-spam")) {
+    startImageAntiSpamService(context);
   }
   context.socket.connect(client);
   context.socket.emitStatus(client, true);

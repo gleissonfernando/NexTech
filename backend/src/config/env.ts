@@ -131,6 +131,8 @@ const productionSiteOrigin = configuredSiteOrigin && !isLocalUrl(configuredSiteO
   : productionPublicUrl;
 const defaultSiteOrigin = productionSiteOrigin;
 const canonicalDiscordRedirectUri = defaultSiteOrigin ? discordRedirectUriFor(defaultSiteOrigin) : "";
+const canonicalTwitchRedirectUri = defaultSiteOrigin ? `${defaultSiteOrigin}/api/giveaways/oauth/twitch/callback` : "";
+const canonicalKickRedirectUri = defaultSiteOrigin ? `${defaultSiteOrigin}/api/giveaways/oauth/kick/callback` : "";
 
 function productionSafeUrl(value?: string) {
   if (!value) {
@@ -171,8 +173,11 @@ const envSchema = z
     TWITCH_CLIENT_ID: z.string().default(""),
     TWITCH_CLIENT_SECRET: z.string().default(""),
     TWITCH_BROADCASTER_ACCESS_TOKEN: z.string().default(""),
+    TWITCH_OAUTH_REDIRECT_URI: envUrl("TWITCH_OAUTH_REDIRECT_URI", canonicalTwitchRedirectUri),
+    KICK_API_KEY: z.string().default(""),
     KICK_CLIENT_ID: z.string().default(""),
     KICK_CLIENT_SECRET: z.string().default(""),
+    KICK_OAUTH_REDIRECT_URI: envUrl("KICK_OAUTH_REDIRECT_URI", canonicalKickRedirectUri),
     KICK_WEBHOOK_PUBLIC_KEY: z.string().default(""),
     FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin),
     DASHBOARD_DEV_USER_IDS: z.string().optional().default(""),
@@ -194,6 +199,8 @@ const envSchema = z
       FRONTEND_URL: oauthFrontendUrl,
       DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
       DISCORD_CALLBACK_URL: oauthCallbackUrl,
+      TWITCH_OAUTH_REDIRECT_URI: value.TWITCH_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/twitch/callback` : ""),
+      KICK_OAUTH_REDIRECT_URI: value.KICK_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/kick/callback` : ""),
       DISCORD_SCOPES: mergeSpaceValues(value.DISCORD_SCOPES, requiredDiscordScopes),
       REDIS_URL: value.REDIS_SESSION_ENABLED ? productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "" : "",
       DASHBOARD_DEV_USER_IDS: mergeCsvValues(value.DASHBOARD_DEV_USER_IDS, defaultDashboardDevUserIds),

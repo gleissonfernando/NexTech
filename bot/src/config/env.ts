@@ -137,6 +137,7 @@ const envSchema = z
     TWITCH_CLIENT_SECRET: z.string().default(""),
     TWITCH_MONITOR_INTERVAL_MS: z.coerce.number().default(20_000),
     KICK_CLIENT_ID: z.string().default(""),
+    KICK_API_KEY: z.string().default(""),
     KICK_CLIENT_SECRET: z.string().default(""),
     KICK_MONITOR_INTERVAL_MS: z.coerce.number().default(30_000),
     X_MONITOR_INTERVAL_MS: z.coerce.number().default(60_000)

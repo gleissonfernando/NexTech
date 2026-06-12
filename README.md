@@ -52,6 +52,12 @@ Exemplo de estrutura, sem valores reais:
   "DASHBOARD_VERIFICATION_MODE": "roles",
   "TWITCH_CLIENT_ID": "client-id-da-twitch",
   "TWITCH_CLIENT_SECRET": "client-secret-da-twitch",
+  "TWITCH_BROADCASTER_ACCESS_TOKEN": "token-do-broadcaster-com-scopes",
+  "TWITCH_OAUTH_REDIRECT_URI": "https://seu-dominio-da-hospedagem.example.com/api/giveaways/oauth/twitch/callback",
+  "KICK_CLIENT_ID": "client-id-da-kick",
+  "KICK_CLIENT_SECRET": "api-key-ou-client-secret-da-kick",
+  "KICK_OAUTH_REDIRECT_URI": "https://seu-dominio-da-hospedagem.example.com/api/giveaways/oauth/kick/callback",
+  "KICK_WEBHOOK_PUBLIC_KEY": "",
   "X_CONSUMER_KEY": "consumer-key-do-x",
   "X_CONSUMER_SECRET": "consumer-secret-do-x",
   "X_BEARER_TOKEN": "bearer-token-do-x"
@@ -83,6 +89,7 @@ O painel suporta modulos por bot e servidor:
 - Boas-vindas e saida
 - Lives Twitch
 - Clips Twitch
+- Sorteio Twitch/Kick
 - Rede Social dos Membros
 - X Monitor
 - Tickets
@@ -114,6 +121,9 @@ Colecoes usadas pelo sistema incluem:
 - `x_posts_sent`
 - `clips_config`
 - `clips_sent`
+- `giveaways`
+- `giveaway_platform_accounts`
+- `giveaway_kick_events`
 - `Bot`
 - `BotGuildConfig`
 - `fivem_fac_settings`

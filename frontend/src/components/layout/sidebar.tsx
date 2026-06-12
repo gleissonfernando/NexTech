@@ -6,6 +6,7 @@ import {
   Building2,
   Film,
   Gift,
+  ImageOff,
   LockKeyhole,
   Radio,
   ScrollText,
@@ -19,9 +20,11 @@ export type ViewId =
   | "overview"
   | "lives"
   | "clips"
+  | "kick-clips"
   | "giveaway"
   | "x-monitor"
   | "moderation"
+  | "image-anti-spam"
   | "permissions"
   | "logs"
   | "fivem"
@@ -39,9 +42,11 @@ const navItems: NavItem[] = [
   { id: "overview", label: "Visao geral", icon: Activity },
   { id: "lives", label: "Lives", icon: Radio, moduleIds: ["live", "kick-integration"] },
   { id: "clips", label: "Clips", icon: Film, moduleId: "clips" },
+  { id: "kick-clips", label: "Clipes Kick", icon: Film, moduleId: "kick-clips" },
   { id: "giveaway", label: "Sorteio", icon: Gift, moduleId: "giveaway" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderacao", icon: Shield, moduleId: "moderation" },
+  { id: "image-anti-spam", label: "Anti-Spam de Imagens", icon: ImageOff, moduleId: "image-anti-spam" },
   { id: "permissions", label: "Permissoes", icon: LockKeyhole, moduleId: "verification" },
   { id: "logs", label: "Logs", icon: ScrollText, moduleId: "logs" },
   { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-fac"] },

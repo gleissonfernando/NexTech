@@ -12,6 +12,7 @@ import {
   Gift,
   Globe2,
   Hash,
+  ImageOff,
   Loader2,
   LockKeyhole,
   Plug,
@@ -31,6 +32,7 @@ import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
+import { ImageAntiSpamPanel } from "../components/moderation/ImageAntiSpamPanel";
 import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { KickIntegrationPanel } from "../components/social/KickIntegrationPanel";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
@@ -48,6 +50,7 @@ import {
   getDashboardBySlug,
   getDashboardMe,
   getGuildSettings,
+  getImageAntiSpam,
   getKickNotifications,
   getLives,
   getLogs,
@@ -67,6 +70,7 @@ import type {
   DashboardMeGuild,
   DashboardMeResponse,
   GuildSettings,
+  ImageAntiSpamSettings,
   KickNotification,
   LiveEvent,
   LogEntry,
@@ -89,7 +93,9 @@ type BooleanSettingKey =
   | "moderationEnabled";
 
 type OverviewDetails = {
+  imageAntiSpamSettings: ImageAntiSpamSettings | null;
   clipsConfig: ClipsConfig | null;
+  kickClipsConfig: ClipsConfig | null;
   kickNotifications: KickNotification[];
   liveNotifications: SocialNotification[];
   xAccounts: XAccount[];
@@ -118,7 +124,9 @@ const initialBotStatus: BotStatus = {
 };
 
 const emptyOverviewDetails: OverviewDetails = {
+  imageAntiSpamSettings: null,
   clipsConfig: null,
+  kickClipsConfig: null,
   kickNotifications: [],
   liveNotifications: [],
   xAccounts: []
@@ -149,6 +157,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "clips"
   },
   {
+    id: "kick-clips",
+    title: "Clipes Kick",
+    description: "Monitora lives da Kick, ranking e recompensas por clipes.",
+    icon: Film,
+    view: "kick-clips"
+  },
+  {
     id: "giveaway",
     title: "Sorteio",
     description: "Cria roleta web para sortear apenas subs da live cadastrada.",
@@ -168,6 +183,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Centraliza ajustes basicos de seguranca e moderacao do servidor.",
     icon: Shield,
     view: "moderation"
+  },
+  {
+    id: "image-anti-spam",
+    title: "Anti-Spam de Imagens",
+    description: "Remove imagens excedentes e aplica advertencias progressivas.",
+    icon: ImageOff,
+    view: "image-anti-spam"
   },
   {
     id: "fivem-fac",
@@ -237,10 +259,12 @@ const moduleCatalog: ModuleDefinition[] = [
 const viewModuleIds: Partial<Record<ViewId, string>> = {
   permissions: "verification",
   clips: "clips",
+  "kick-clips": "kick-clips",
   giveaway: "giveaway",
   "x-monitor": "x-monitor",
   logs: "logs",
   fivem: "fivem-fac",
+  "image-anti-spam": "image-anti-spam",
   moderation: "moderation"
 };
 
@@ -411,9 +435,12 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
       liveModulesEnabled(enabledModules) ? getKickNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
       enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId) : Promise.resolve(null),
-      enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null)
+      enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null),
+      enabledModules.includes("image-anti-spam") && activeBotId
+        ? getImageAntiSpam(selectedGuildId, activeBotId)
+        : Promise.resolve(null)
     ])
-      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, kickResult, clipsResult, xResult]) => {
+      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, kickResult, clipsResult, xResult, antiSpamResult]) => {
         if (!mounted) return;
 
         setSettings(settingsResult.status === "fulfilled" ? settingsResult.value : null);
@@ -421,6 +448,10 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         setLives(livesResult.status === "fulfilled" ? livesResult.value : []);
         setTickets(ticketsResult.status === "fulfilled" ? ticketsResult.value : []);
         setOverviewDetails({
+          imageAntiSpamSettings: antiSpamResult.status === "fulfilled" && antiSpamResult.value
+            ? antiSpamResult.value.settings
+            : null,
+          kickClipsConfig: null,
           liveNotifications: liveResult.status === "fulfilled" && liveResult.value ? liveResult.value.notifications : [],
           kickNotifications: kickResult.status === "fulfilled" && kickResult.value ? kickResult.value.notifications : [],
           clipsConfig: clipsResult.status === "fulfilled" ? clipsResult.value : null,
@@ -526,6 +557,21 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     }
   }
 
+  function handleSelectBot(botId: string) {
+    const nextBot = panelBots.find((bot) => bot.id === botId);
+
+    if (!nextBot) {
+      return;
+    }
+
+    setSelectedBotId(nextBot.id);
+    window.history.replaceState({}, "", `/dashboard/${encodeURIComponent(nextBot.slug)}`);
+
+    if (!selectedGuildId || !nextBot.guildIds.includes(selectedGuildId)) {
+      setSelectedGuildId(nextBot.guildIds[0] ?? null);
+    }
+  }
+
   if (dashboardRouteError) {
     return <DashboardRouteError message={dashboardRouteError} />;
   }
@@ -593,6 +639,18 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             onToggle={updateSetting}
             savingKey={savingKey}
             settings={settings}
+          />
+        ) : null}
+        {activeView === "image-anti-spam" ? (
+          <ImageAntiSpamPanel
+            bot={selectedBot}
+            botId={activeBotId}
+            bots={panelBots}
+            canManage={canManageModule(selectedBot, "image-anti-spam", canManageDashboard)}
+            guild={selectedGuild}
+            guilds={scopedDashboardGuilds}
+            onSelectBot={handleSelectBot}
+            onSelectGuild={(guildId) => void handleSelectGuild(guildId)}
           />
         ) : null}
         {activeView === "permissions" ? (
@@ -705,7 +763,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
   }
 
   if (bot.accessLevel === "premium") {
-    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "fivem", "fivem-fac"].includes(moduleId);
+    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "image-anti-spam", "fivem", "fivem-fac"].includes(moduleId);
   }
 
   return false;
@@ -1306,6 +1364,14 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
     };
   }
 
+  if (moduleId === "image-anti-spam") {
+    return {
+      active: Boolean(details.imageAntiSpamSettings?.enabled),
+      configured: Boolean(details.imageAntiSpamSettings?.logChannelId),
+      configuredText: details.imageAntiSpamSettings?.logChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
   if (moduleId === "verification") {
     const userCount = Object.keys(settings?.dashboardUserPermissions ?? {}).length;
     return {
@@ -1394,6 +1460,9 @@ function friendlyLog(log: LogEntry) {
     "giveaway.started": { badge: "Sorteio", title: "Sorteio iniciado" },
     "giveaway.ended": { badge: "Sorteio", title: "Sorteio encerrado" },
     "giveaway.winner": { badge: "Sorteio", title: "Ganhador sorteado" },
+    "image_anti_spam.settings_updated": { badge: "Anti-Spam", title: "Anti-Spam de Imagens atualizado" },
+    "image_anti_spam.incident": { badge: "Anti-Spam", title: "Spam de imagens bloqueado" },
+    "image_anti_spam.member_kicked": { badge: "Anti-Spam", title: "Membro expulso por spam de imagens" },
     "fivem.fac.settings_updated": { badge: "FiveM", title: "FAC atualizado" },
     "fivem.fac.request_created": { badge: "FiveM", title: "Solicitacao de ausencia criada" },
     "fivem.fac.request_approved": { badge: "FiveM", title: "Solicitacao de ausencia aprovada" },
@@ -1432,6 +1501,10 @@ function friendlyLog(log: LogEntry) {
 
   if (log.type.includes("fivem.fac")) {
     return { badge: "FiveM", title: message || "FAC atualizado", description: message };
+  }
+
+  if (log.type.includes("image_anti_spam")) {
+    return { badge: "Anti-Spam", title: message || "Spam de imagens bloqueado", description: message };
   }
 
   return {

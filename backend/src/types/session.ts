@@ -26,5 +26,16 @@ declare module "express-session" {
     oauthState?: string;
     discordAccessToken?: string;
     discordRefreshToken?: string;
+    giveawayOAuth?: {
+      codeVerifier?: string;
+      platform: "twitch" | "kick";
+      redirectPath: string;
+      state: string;
+      token: string;
+    };
+    giveawayPlatformAccounts?: {
+      kick?: string;
+      twitch?: string;
+    };
   }
 }

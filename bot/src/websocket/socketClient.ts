@@ -75,6 +75,11 @@ export type GiveawayPanelUpdateEvent = {
   guildId: string;
 };
 
+export type ImageAntiSpamSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+};
+
 export class BotSocketClient {
   private socket: Socket | null = null;
   private socialPanelUpdateHandler: ((payload: SocialPanelUpdateEvent) => void) | null = null;
@@ -84,6 +89,7 @@ export class BotSocketClient {
   private fivemFacPanelPublishHandler: ((payload: FivemFacPanelPublishEvent) => void) | null = null;
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
   private giveawayPanelUpdateHandler: ((payload: GiveawayPanelUpdateEvent) => void) | null = null;
+  private imageAntiSpamSettingsHandler: ((payload: ImageAntiSpamSettingsEvent) => void) | null = null;
 
   connect(client: Client) {
     if (!env.BACKEND_SOCKET_URL) {
@@ -158,6 +164,10 @@ export class BotSocketClient {
 
     if (this.giveawayPanelUpdateHandler) {
       this.socket.on("giveaway:panel_update", this.giveawayPanelUpdateHandler);
+    }
+
+    if (this.imageAntiSpamSettingsHandler) {
+      this.socket.on("image-anti-spam:settings_updated", this.imageAntiSpamSettingsHandler);
     }
   }
 
@@ -240,6 +250,12 @@ export class BotSocketClient {
     this.giveawayPanelUpdateHandler = handler;
     this.socket?.off("giveaway:panel_update");
     this.socket?.on("giveaway:panel_update", handler);
+  }
+
+  onImageAntiSpamSettingsUpdated(handler: (payload: ImageAntiSpamSettingsEvent) => void) {
+    this.imageAntiSpamSettingsHandler = handler;
+    this.socket?.off("image-anti-spam:settings_updated");
+    this.socket?.on("image-anti-spam:settings_updated", handler);
   }
 
   disconnect(client: Client) {

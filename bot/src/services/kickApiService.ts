@@ -90,7 +90,7 @@ export async function getKickLivestreamsByUserIds(userIds: string[]) {
 }
 
 async function getAppAccessToken() {
-  if (!env.KICK_CLIENT_ID || !env.KICK_CLIENT_SECRET) {
+  if (!env.KICK_CLIENT_ID || !(env.KICK_CLIENT_SECRET || env.KICK_API_KEY)) {
     throw new Error("Credenciais da Kick API nao configuradas no bot.");
   }
 
@@ -102,7 +102,7 @@ async function getAppAccessToken() {
     KICK_OAUTH_TOKEN_URL,
     new URLSearchParams({
       client_id: env.KICK_CLIENT_ID,
-      client_secret: env.KICK_CLIENT_SECRET,
+      client_secret: env.KICK_CLIENT_SECRET || env.KICK_API_KEY,
       grant_type: "client_credentials"
     }),
     {

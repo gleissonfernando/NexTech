@@ -3,7 +3,10 @@ import type { InternalAxiosRequestConfig } from "axios";
 import type {
   AccessValidationResult,
   AuthResponse,
+  ClipPlatform,
+  ClipRankingEntry,
   ClipSent,
+  ClipStats,
   ClipsConfig,
   CreateTwitchNotificationPayload,
   CreateKickNotificationPayload,
@@ -16,20 +19,27 @@ import type {
   FivemFacResponse,
   FivemFacSettings,
   Giveaway,
+  GiveawayEntryResult,
+  GiveawayIdentity,
   GiveawaySpinResult,
   GuildLiveOptions,
   KickChannelPreview,
   KickIntegrationStatus,
   KickNotification,
   KickNotificationsPage,
+  LivePanelPreview,
   GuildMemberOption,
   GuildRoleOption,
   GuildSettings,
+  ImageAntiSpamResponse,
+  ImageAntiSpamSettings,
   LiveEvent,
   LogEntry,
+  PublicKickClips,
   SaveClipsConfigPayload,
   SaveFivemFacSettingsPayload,
   SaveGiveawayPayload,
+  SaveImageAntiSpamSettingsPayload,
   SaveSocialPanelPayload,
   SocialMember,
   SocialMemberPayload,
@@ -38,6 +48,7 @@ import type {
   SocialNotificationsPage,
   SocialPanel,
   Ticket,
+  KickClipChannelPreview,
   TwitchClipChannelPreview,
   TwitchChannelPreview,
   UpdateSocialMemberPayload,
@@ -226,6 +237,31 @@ export async function patchGuildSettings(guildId: string, payload: Partial<Guild
   return data.settings;
 }
 
+export async function getImageAntiSpam(guildId: string, botId: string) {
+  const { data } = await api.get<ImageAntiSpamResponse>(
+    `/image-anti-spam/${guildId}`,
+    {
+      params: botParams(botId)
+    }
+  );
+  return data;
+}
+
+export async function saveImageAntiSpamSettings(
+  guildId: string,
+  botId: string,
+  payload: SaveImageAntiSpamSettingsPayload
+) {
+  const { data } = await api.patch<{ settings: ImageAntiSpamSettings }>(
+    `/image-anti-spam/${guildId}`,
+    payload,
+    {
+      params: botParams(botId)
+    }
+  );
+  return data.settings;
+}
+
 export async function uploadWelcomeImage(guildId: string, file: File, botId?: string | null) {
   const { data } = await api.put<{ settings: GuildSettings }>(`/settings/${guildId}/welcome-image`, file, {
     headers: {
@@ -315,10 +351,11 @@ export async function getSocialNotifications(
   return data;
 }
 
-export async function getClipsConfig(guildId: string, botId?: string | null) {
+export async function getClipsConfig(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch") {
   const { data } = await api.get<{ config: ClipsConfig | null }>("/clips/config", {
     params: {
       guildId,
+      platform,
       ...botParams(botId)
     }
   });
@@ -332,32 +369,64 @@ export async function saveClipsConfig(payload: SaveClipsConfigPayload, botId?: s
   return data.config;
 }
 
-export async function enableClips(guildId: string, botId?: string | null) {
-  const { data } = await api.post<{ config: ClipsConfig }>("/clips/enable", { guildId }, {
+export async function enableClips(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch") {
+  const { data } = await api.post<{ config: ClipsConfig }>("/clips/enable", { guildId, platform }, {
     params: botParams(botId)
   });
   return data.config;
 }
 
-export async function disableClips(guildId: string, botId?: string | null) {
-  const { data } = await api.post<{ config: ClipsConfig }>("/clips/disable", { guildId }, {
+export async function disableClips(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch") {
+  const { data } = await api.post<{ config: ClipsConfig }>("/clips/disable", { guildId, platform }, {
     params: botParams(botId)
   });
   return data.config;
 }
 
-export async function getClipsHistory(guildId: string, botId?: string | null) {
+export async function getClipsHistory(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch", filter = "all") {
   const { data } = await api.get<{ clips: ClipSent[] }>("/clips/history", {
     params: {
       guildId,
+      filter,
+      platform,
       ...botParams(botId)
     }
   });
   return data.clips;
 }
 
-export async function testClips(guildId: string, botId?: string | null) {
-  await api.post<{ ok: boolean }>("/clips/test", { guildId }, {
+export async function getClipsRanking(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch", filter = "all") {
+  const { data } = await api.get<{ ranking: ClipRankingEntry[] }>("/clips/ranking", {
+    params: {
+      guildId,
+      filter,
+      platform,
+      ...botParams(botId)
+    }
+  });
+  return data.ranking;
+}
+
+export async function getClipsStats(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch") {
+  const { data } = await api.get<{ stats: ClipStats }>("/clips/stats", {
+    params: {
+      guildId,
+      platform,
+      ...botParams(botId)
+    }
+  });
+  return data.stats;
+}
+
+export async function getPublicKickClips(channel: string) {
+  const { data } = await api.get<PublicKickClips>(`/clips/public/kick/${encodeURIComponent(channel)}`, {
+    timeout: 15000
+  });
+  return data;
+}
+
+export async function testClips(guildId: string, botId?: string | null, platform: ClipPlatform = "twitch") {
+  await api.post<{ ok: boolean }>("/clips/test", { guildId, platform }, {
     params: botParams(botId),
     timeout: 15000
   });
@@ -373,11 +442,41 @@ export async function validateClipTwitchChannel(channel: string) {
   return data.channel;
 }
 
+export async function validateClipKickChannel(guildId: string, channel: string, botId?: string | null) {
+  const { data } = await api.get<{ channel: KickClipChannelPreview }>("/clips/validate-kick", {
+    params: {
+      channel,
+      guildId,
+      ...botParams(botId)
+    },
+    timeout: 15000
+  });
+  return data.channel;
+}
+
 export async function getGiveaways(guildId: string, botId?: string | null) {
   const { data } = await api.get<{ giveaways: Giveaway[] }>(`/giveaways/${guildId}`, {
     params: botParams(botId)
   });
   return data.giveaways;
+}
+
+export function giveawayConnectUrl(token: string, platform: "twitch" | "kick") {
+  return `${API_URL}/giveaways/roulette/${encodeURIComponent(token)}/connect/${platform}`;
+}
+
+export async function getGiveawayIdentity(token: string) {
+  const { data } = await api.get<{ identity: GiveawayIdentity }>(`/giveaways/roulette/${encodeURIComponent(token)}/identity`, {
+    timeout: 15000
+  });
+  return data.identity;
+}
+
+export async function enterRouletteGiveaway(token: string) {
+  const { data } = await api.post<GiveawayEntryResult>(`/giveaways/roulette/${encodeURIComponent(token)}/entry`, undefined, {
+    timeout: 30000
+  });
+  return data;
 }
 
 export async function createGiveaway(guildId: string, payload: SaveGiveawayPayload, botId?: string | null) {
@@ -416,6 +515,14 @@ export async function endGiveaway(guildId: string, giveawayId: string, botId?: s
   const { data } = await api.post<{ giveaway: Giveaway }>(`/giveaways/${guildId}/${giveawayId}/end`, undefined, {
     params: botParams(botId),
     timeout: 15000
+  });
+  return data.giveaway;
+}
+
+export async function syncGiveawayParticipants(guildId: string, giveawayId: string, botId?: string | null) {
+  const { data } = await api.post<{ giveaway: Giveaway }>(`/giveaways/${guildId}/${giveawayId}/sync`, undefined, {
+    params: botParams(botId),
+    timeout: 45000
   });
   return data.giveaway;
 }
@@ -476,6 +583,19 @@ export async function testTwitchNotification(guildId: string, id: string, botId?
       timeout: 15000
     }
   );
+}
+
+export async function previewTwitchNotificationPanel(guildId: string, id: string, botId?: string | null) {
+  const { data } = await api.get<{ preview: LivePanelPreview }>(
+    botId
+      ? scopedBotGuildPath(botId, guildId, `/lives/${id}/panel-preview`)
+      : `/social-notifications/${guildId}/twitch/${id}/panel-preview`,
+    {
+      params: botParams(botId),
+      timeout: 15000
+    }
+  );
+  return data.preview;
 }
 
 export async function deleteTwitchNotification(guildId: string, id: string, botId?: string | null) {
@@ -571,6 +691,17 @@ export async function testKickNotification(guildId: string, id: string, botId?: 
     params: botParams(botId),
     timeout: 15000
   });
+}
+
+export async function previewKickNotificationPanel(guildId: string, id: string, botId?: string | null) {
+  const { data } = await api.get<{ preview: LivePanelPreview }>(
+    `/kick-integration/${guildId}/channels/${id}/panel-preview`,
+    {
+      params: botParams(botId),
+      timeout: 15000
+    }
+  );
+  return data.preview;
 }
 
 export async function deleteKickNotification(guildId: string, id: string, botId?: string | null) {

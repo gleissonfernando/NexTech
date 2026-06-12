@@ -1,4 +1,4 @@
-import { ExternalLink, FlaskConical, Settings, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, FlaskConical, Settings, Trash2 } from "lucide-react";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import type { SocialNotification } from "../../types";
@@ -8,12 +8,14 @@ type TwitchChannelItemProps = {
   channelName: string;
   roleName: string;
   testing: boolean;
+  previewing: boolean;
   onEdit: (notification: SocialNotification) => void;
   onDelete: (notification: SocialNotification) => void;
+  onPreview: (notification: SocialNotification) => void;
   onTest: (notification: SocialNotification) => void;
 };
 
-export function TwitchChannelItem({ channelName, notification, onDelete, onEdit, onTest, roleName, testing }: TwitchChannelItemProps) {
+export function TwitchChannelItem({ channelName, notification, onDelete, onEdit, onPreview, onTest, previewing, roleName, testing }: TwitchChannelItemProps) {
   const embedColor = notification.embedColor ?? "#9146FF";
 
   return (
@@ -53,6 +55,10 @@ export function TwitchChannelItem({ channelName, notification, onDelete, onEdit,
         ) : null}
 
         <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button className="h-9 px-3 text-xs" disabled={previewing} onClick={() => onPreview(notification)} type="button" variant="outline">
+            <Eye className="h-3.5 w-3.5" />
+            {previewing ? "Carregando..." : "Visualizar painel"}
+          </Button>
           <Button className="h-9 px-3 text-xs" disabled={testing} onClick={() => onTest(notification)} type="button" variant="outline">
             <FlaskConical className="h-3.5 w-3.5" />
             {testing ? "Testando..." : "Testar"}

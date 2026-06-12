@@ -8,12 +8,18 @@ import {
   type MessageMentionOptions
 } from "discord.js";
 import { env } from "../config/env";
-import type { ApiClient, ClipsConfig } from "./apiClient";
-import { getTwitchClips, type TwitchClip } from "./twitchApiService";
+import type { ApiClient, ClipRewardAssignment, ClipsConfig } from "./apiClient";
+import { createKickClipProvider } from "./clips/providers/kick";
+import { createTwitchClipProvider } from "./clips/providers/twitch";
+import type { ClipProvider, ProviderClip } from "./clips/providers/types";
 
 let running = false;
 const CLIPS_MONITOR_INTERVAL_MS = 30_000;
 const CLIPS_CONFIG_CONCURRENCY = 5;
+const providers: Record<ClipsConfig["platform"], ClipProvider> = {
+  twitch: createTwitchClipProvider(),
+  kick: createKickClipProvider()
+};
 
 export function startClipsMonitor(client: Client, api: ApiClient) {
   const run = () => {
@@ -56,11 +62,12 @@ async function processConfigSafely(client: Client, api: ApiClient, config: Clips
     await api.postLog({
       guildId: config.guildId,
       type: "clips.error",
-      message: error instanceof Error ? error.message : "Erro ao processar clips.",
+      message: error instanceof Error ? error.message : "Erro ao processar clipes.",
       metadata: {
-        module: "clips",
+        module: config.platform === "kick" ? "kick-clips" : "clips",
         configId: config.id,
-        twitchChannelName: config.twitchChannelName
+        platform: config.platform,
+        channelName: config.channelName
       }
     }).catch(() => undefined);
     console.warn(`[clips] config ${config.id} ignorada:`, error instanceof Error ? error.message : error);
@@ -68,21 +75,27 @@ async function processConfigSafely(client: Client, api: ApiClient, config: Clips
 }
 
 async function processConfig(client: Client, api: ApiClient, config: ClipsConfig) {
-  if (!config.twitchBroadcasterId) {
+  const provider = providers[config.platform] ?? providers.twitch;
+  const now = new Date();
+  const liveSession = await provider.getLiveSession(config);
+
+  await api.updateClipLiveSession(config.id, liveSession).catch((error: unknown) => {
+    console.warn(`[clips] nao foi possivel atualizar sessao de live ${config.id}:`, formatErrorMessage(error));
+  });
+
+  if (!provider.supportsClipCapture) {
+    await api.updateClipConfigCheck(config.id, now.toISOString());
     return;
   }
 
   if (!config.discordChannelId) {
-    throw new Error("Canal do Discord nao configurado para o sistema de clips.");
+    throw new Error("Canal do Discord nao configurado para o sistema de clipes.");
   }
 
   const lastCheckAt = config.lastCheckAt ? new Date(config.lastCheckAt) : null;
-  const now = new Date();
-
   const lookupBaseTime = lastCheckAt?.getTime() ?? now.getTime();
   const startedAt = new Date(Math.max(0, lookupBaseTime - env.CLIPS_LOOKBACK_MS));
-  const clips = await getTwitchClips({
-    broadcasterId: config.twitchBroadcasterId,
+  const clips = await provider.listClips(config, {
     endedAt: now.toISOString(),
     first: 20,
     startedAt: startedAt.toISOString()
@@ -109,28 +122,30 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
       messageId = await sendClipAlert(client, config, clip);
     } catch (error) {
       const discordErrorMessage = formatErrorMessage(error);
-      console.warn(`[clips] clip ${clip.id} ainda nao enviado ao Discord: ${discordErrorMessage}`);
+      console.warn(`[clips] clipe ${clip.id} ainda nao enviado ao Discord: ${discordErrorMessage}`);
       await api.postLog({
         guildId: config.guildId,
         type: "clips.discord_retry",
-        message: `Falha temporaria ao enviar clip; nova tentativa em ate 30 segundos: ${discordErrorMessage}`,
+        message: `Falha temporaria ao enviar clipe; nova tentativa em ate 30 segundos: ${discordErrorMessage}`,
         metadata: {
-          module: "clips",
+          module: config.platform === "kick" ? "kick-clips" : "clips",
           configId: config.id,
           clipId: clip.id,
           clipUrl: clip.url,
-          twitchChannelName: config.twitchChannelName
+          platform: config.platform,
+          channelName: config.channelName
         }
       }).catch(() => undefined);
       continue;
     }
 
-    await api.recordClipSent(config.id, {
+    const result = await api.recordClipSent(config.id, {
       clipId: clip.id,
       clipTitle: clip.title,
       clipUrl: clip.url,
       clipThumbnail: clip.thumbnailUrl,
       clipCreatorName: clip.creatorName,
+      clipDuration: clip.durationSeconds,
       createdAtTwitch: clip.createdAt,
       discordChannelId: config.discordChannelId,
       discordMessageId: messageId
@@ -142,14 +157,21 @@ async function processConfig(client: Client, api: ApiClient, config: ClipsConfig
       if (status !== 409) {
         throw error;
       }
+
+      return null;
     });
+
+    if (result?.rewards?.length) {
+      await applyClipRewards(client, api, config, result.rewards);
+    }
+
     await delay(900);
   }
 
   await api.updateClipConfigCheck(config.id, now.toISOString());
 }
 
-async function sendClipAlert(client: Client, config: ClipsConfig, clip: TwitchClip) {
+async function sendClipAlert(client: Client, config: ClipsConfig, clip: ProviderClip) {
   const channel = await client.channels.fetch(config.discordChannelId ?? "").catch(() => null);
 
   if (
@@ -165,37 +187,45 @@ async function sendClipAlert(client: Client, config: ClipsConfig, clip: TwitchCl
     const permissions = channel.permissionsFor(client.user.id);
 
     if (!permissions?.has(PermissionFlagsBits.SendMessages) || !permissions.has(PermissionFlagsBits.EmbedLinks)) {
-      throw new Error("Bot sem permissao para enviar mensagens ou embeds no canal de clips.");
+      throw new Error("Bot sem permissao para enviar mensagens ou embeds no canal de clipes.");
     }
   }
 
-  const streamerName = config.twitchDisplayName || config.twitchChannelName;
+  const streamerName = config.displayName || config.channelName || config.twitchChannelName || config.kickChannelName || "Canal";
   const embed = new EmbedBuilder()
     .setColor(normalizeEmbedColor(config.embedColor))
-    .setTitle("Novo clipe criado!")
+    .setTitle("Novo Clipe Detectado")
     .setDescription(`Um novo corte foi criado na live de ${streamerName}.`)
     .addFields(
-      {
-        name: "Titulo",
-        value: clip.title || "Sem titulo"
-      },
-      {
-        name: "Criado por",
-        value: clip.creatorName || "Desconhecido",
-        inline: true
-      },
       {
         name: "Canal",
         value: streamerName,
         inline: true
       },
       {
-        name: "Assistir",
+        name: "Nome do Clipe",
+        value: clip.title || "Sem titulo"
+      },
+      {
+        name: "Criador",
+        value: clip.creatorName || "Desconhecido",
+        inline: true
+      },
+      {
+        name: "Data",
+        value: new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "short"
+        }).format(new Date(clip.createdAt)),
+        inline: true
+      },
+      {
+        name: "Link",
         value: clip.url
       }
     )
     .setFooter({
-      text: `Sistema de Clips - ${"guild" in channel ? channel.guild.name : config.guildId}`
+      text: `Sistema de Clips ${config.platform === "kick" ? "Kick" : "Twitch"} - ${"guild" in channel ? channel.guild.name : config.guildId}`
     })
     .setTimestamp(new Date(clip.createdAt));
 
@@ -221,6 +251,53 @@ async function sendClipAlert(client: Client, config: ClipsConfig, clip: TwitchCl
   });
 
   return message.id;
+}
+
+async function applyClipRewards(client: Client, api: ApiClient, config: ClipsConfig, rewards: ClipRewardAssignment[]) {
+  const guild = await client.guilds.fetch(config.guildId).catch(() => null);
+
+  if (!guild) {
+    return;
+  }
+
+  const uniqueRewards = new Map(rewards.map((reward) => [`${reward.userId}:${reward.roleId}`, reward]));
+
+  for (const reward of uniqueRewards.values()) {
+    try {
+      const member = await guild.members.fetch(reward.userId);
+
+      if (member.roles.cache.has(reward.roleId)) {
+        continue;
+      }
+
+      await member.roles.add(reward.roleId, `Recompensa por ${reward.clipCount} clipes`);
+      await api.postLog({
+        guildId: config.guildId,
+        type: "clips.reward_role",
+        message: `Cargo ${reward.label} entregue para ${reward.userId} por ${reward.clipCount} clipes.`,
+        metadata: {
+          module: config.platform === "kick" ? "kick-clips" : "clips",
+          platform: config.platform,
+          configId: config.id,
+          roleId: reward.roleId,
+          userId: reward.userId
+        }
+      }).catch(() => undefined);
+    } catch (error) {
+      await api.postLog({
+        guildId: config.guildId,
+        type: "clips.reward_error",
+        message: `Nao foi possivel entregar recompensa de clipes para ${reward.userId}: ${formatErrorMessage(error)}`,
+        metadata: {
+          module: config.platform === "kick" ? "kick-clips" : "clips",
+          platform: config.platform,
+          configId: config.id,
+          roleId: reward.roleId,
+          userId: reward.userId
+        }
+      }).catch(() => undefined);
+    }
+  }
 }
 
 function formatMention(config: ClipsConfig): { content: string | null; allowedMentions: MessageMentionOptions } {

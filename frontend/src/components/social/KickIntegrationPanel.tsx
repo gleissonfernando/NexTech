@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Eye,
   FlaskConical,
   Loader2,
   Plug,
@@ -19,6 +20,7 @@ import {
   getGuildLiveOptions,
   getKickIntegrationStatus,
   getKickNotifications,
+  previewKickNotificationPanel,
   previewKickChannel,
   saveKickApiConfig,
   testKickNotification,
@@ -28,6 +30,7 @@ import {
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { SocialCard } from "./SocialCard";
+import { LivePanelPreviewModal } from "./LivePanelPreviewModal";
 import type {
   CreateKickNotificationPayload,
   DashboardGuild,
@@ -37,6 +40,7 @@ import type {
   KickChannelPreview,
   KickIntegrationStatus,
   KickNotification,
+  LivePanelPreview,
   UpdateKickNotificationPayload
 } from "../../types";
 
@@ -66,6 +70,8 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
   const [savingApi, setSavingApi] = useState(false);
   const [validating, setValidating] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [panelPreview, setPanelPreview] = useState<LivePanelPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -291,6 +297,23 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
     }
   }
 
+  async function handlePreview(notification: KickNotification) {
+    if (!guild) {
+      return;
+    }
+
+    setPreviewingId(notification.id);
+    setPanelPreview(null);
+    setError(null);
+
+    try {
+      setPanelPreview(await previewKickNotificationPanel(guild.id, notification.id, botId));
+    } catch (requestError) {
+      setError(readErrorMessage(requestError));
+      setPreviewingId(null);
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -346,10 +369,12 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
             }}
             onPageChange={setPage}
             onSearchChange={setSearchInput}
+            onPreview={handlePreview}
             onTest={handleTest}
             page={page}
             roles={liveOptions.roles}
             search={searchInput}
+            previewingId={previewingId}
             testingId={testingId}
             total={total}
             totalPages={totalPages}
@@ -380,6 +405,14 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
         notification={deletingNotification}
         onClose={() => setDeletingNotification(null)}
         onConfirm={handleDelete}
+      />
+      <LivePanelPreviewModal
+        loading={Boolean(previewingId && !panelPreview)}
+        onClose={() => {
+          setPanelPreview(null);
+          setPreviewingId(null);
+        }}
+        preview={panelPreview}
       />
     </section>
   );
@@ -432,13 +465,13 @@ function KickApiCard({
 }) {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
-  const [redirectUri, setRedirectUri] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
   const ok = status?.apiStatus === "ok";
 
   useEffect(() => {
     setClientId(status?.apiConfig?.clientId ?? "");
     setClientSecret("");
-    setRedirectUri(status?.apiConfig?.redirectUri ?? defaultKickRedirectUri());
+    setWebhookUrl(status?.apiConfig?.redirectUri ?? defaultKickWebhookUrl());
   }, [status?.apiConfig?.clientId, status?.apiConfig?.redirectUri]);
 
   return (
@@ -449,7 +482,7 @@ function KickApiCard({
         onSave({
           clientId,
           clientSecret: clientSecret || null,
-          redirectUri: redirectUri || null
+          redirectUri: webhookUrl || null
         });
       }}
     >
@@ -459,7 +492,7 @@ function KickApiCard({
             <Plug className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h4 className="text-base font-semibold text-white">Configuracao da API Kick</h4>
+            <h4 className="text-base font-semibold text-white">API Kick</h4>
             <p className="mt-1 text-sm text-zinc-500">{status?.apiMessage ?? "Validacao pendente."}</p>
           </div>
         </div>
@@ -470,10 +503,10 @@ function KickApiCard({
           </Button>
           <Button disabled={loading} onClick={onValidate} type="button" variant="outline">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Validar API
+            Validar
           </Button>
           <Button disabled={loading || !ok} onClick={onValidate} type="button">
-            Testar Conexao
+            Testar
           </Button>
         </div>
       </div>
@@ -483,26 +516,26 @@ function KickApiCard({
           <input
             className="social-input"
             onChange={(event) => setClientId(event.target.value)}
-            placeholder="ID do cliente da Kick"
+            placeholder="Client ID da Kick"
             value={clientId}
           />
         </Field>
-        <Field label="Client Secret">
+        <Field label="API Key">
           <input
             className="social-input"
             onChange={(event) => setClientSecret(event.target.value)}
-            placeholder={status?.apiConfig?.secretConfigured ? "Secret salvo" : "Segredo do cliente da Kick"}
+            placeholder={status?.apiConfig?.secretConfigured ? "API Key salva" : "API Key ou Client Secret"}
             type="password"
             value={clientSecret}
           />
         </Field>
-        <Field label="Redirect URI">
+        <Field label="Webhook URL">
           <input
             className="social-input"
-            onChange={(event) => setRedirectUri(event.target.value)}
-            placeholder="https://seu-site.com"
+            onChange={(event) => setWebhookUrl(event.target.value)}
+            placeholder="https://seu-site.com/api/kick/webhook"
             type="url"
-            value={redirectUri}
+            value={webhookUrl}
           />
         </Field>
       </div>
@@ -520,10 +553,12 @@ function KickNotificationCard({
   onEdit,
   onPageChange,
   onSearchChange,
+  onPreview,
   onTest,
   page,
   roles,
   search,
+  previewingId,
   testingId,
   total,
   totalPages
@@ -540,10 +575,12 @@ function KickNotificationCard({
   onAdd: () => void;
   onEdit: (notification: KickNotification) => void;
   onDelete: (notification: KickNotification) => void;
+  onPreview: (notification: KickNotification) => void;
   onTest: (notification: KickNotification) => void;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
   testingId: string | null;
+  previewingId: string | null;
 }) {
   return (
     <SocialCard
@@ -582,8 +619,10 @@ function KickNotificationCard({
               notification={notification}
               onDelete={onDelete}
               onEdit={onEdit}
+              onPreview={onPreview}
               onTest={onTest}
               roleName={formatRoleName(roles, notification.mentionRoleId)}
+              previewing={previewingId === notification.id}
               testing={testingId === notification.id}
             />
           ))}
@@ -618,7 +657,9 @@ function KickChannelItem({
   notification,
   onDelete,
   onEdit,
+  onPreview,
   onTest,
+  previewing,
   roleName,
   testing
 }: {
@@ -626,8 +667,10 @@ function KickChannelItem({
   channelName: string;
   roleName: string;
   testing: boolean;
+  previewing: boolean;
   onEdit: (notification: KickNotification) => void;
   onDelete: (notification: KickNotification) => void;
+  onPreview: (notification: KickNotification) => void;
   onTest: (notification: KickNotification) => void;
 }) {
   const embedColor = notification.embedColor ?? DEFAULT_EMBED_COLOR;
@@ -670,6 +713,10 @@ function KickChannelItem({
         ) : null}
 
         <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button className="h-9 px-3 text-xs" disabled={previewing} onClick={() => onPreview(notification)} type="button" variant="outline">
+            <Eye className="h-3.5 w-3.5" />
+            {previewing ? "Carregando..." : "Visualizar painel"}
+          </Button>
           <Button className="h-9 px-3 text-xs" disabled={testing} onClick={() => onTest(notification)} type="button" variant="outline">
             <FlaskConical className="h-3.5 w-3.5" />
             {testing ? "Testando..." : "Testar"}
@@ -1119,10 +1166,10 @@ function readErrorMessage(error: unknown) {
   return "Nao foi possivel concluir a acao.";
 }
 
-function defaultKickRedirectUri() {
+function defaultKickWebhookUrl() {
   try {
-    return window.location.origin;
+    return `${window.location.origin}/api/kick/webhook`;
   } catch {
-    return "";
+    return "/api/kick/webhook";
   }
 }

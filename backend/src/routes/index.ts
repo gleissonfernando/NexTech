@@ -8,6 +8,7 @@ import { fivemRouter } from "./fivem";
 import { giveawaysRouter } from "./giveaways";
 import { guildsRouter } from "./guilds";
 import { healthRouter } from "./health";
+import { imageAntiSpamRouter } from "./imageAntiSpam";
 import { kickNotificationsRouter, kickWebhookRouter } from "./kickNotifications";
 import { livesRouter } from "./lives";
 import { logsRouter } from "./logs";
@@ -22,6 +23,7 @@ import { xWebhookRouter } from "./xWebhook";
 export const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
+apiRouter.use("/image-anti-spam", imageAntiSpamRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/bot", botDevApiRouter);
 apiRouter.use("/bots", botLivesRouter);

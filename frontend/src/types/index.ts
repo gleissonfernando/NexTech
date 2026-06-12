@@ -146,6 +146,82 @@ export type GuildSettings = {
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
 };
 
+export type ImageAntiSpamSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  logChannelId: string | null;
+  immuneRoleIds: string[];
+  ignoredChannelIds: string[];
+  maxImages: number;
+  windowSeconds: number;
+  warningsEnabled: boolean;
+  progressiveTimeoutEnabled: boolean;
+  autoKickEnabled: boolean;
+  maxWarnings: number;
+  ignoreAdministrators: boolean;
+  warningResetDays: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamUser = {
+  id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  warningCount: number;
+  totalImagesRemoved: number;
+  lastInfractionAt: string | null;
+  lastPunishment: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamIncident = {
+  id: string;
+  botId: string;
+  guildId: string;
+  incidentKey: string;
+  userId: string;
+  username: string | null;
+  channelId: string;
+  removedImages: number;
+  warningCount: number;
+  timeoutMs: number;
+  action: "none" | "warning" | "timeout" | "kick";
+  actionSucceeded: boolean | null;
+  actionError: string | null;
+  reason: string;
+  status: "pending" | "completed" | "failed";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamResponse = {
+  settings: ImageAntiSpamSettings;
+  users: ImageAntiSpamUser[];
+  incidents: ImageAntiSpamIncident[];
+};
+
+export type SaveImageAntiSpamSettingsPayload = Partial<Pick<
+  ImageAntiSpamSettings,
+  | "enabled"
+  | "logChannelId"
+  | "immuneRoleIds"
+  | "ignoredChannelIds"
+  | "maxImages"
+  | "windowSeconds"
+  | "warningsEnabled"
+  | "progressiveTimeoutEnabled"
+  | "autoKickEnabled"
+  | "maxWarnings"
+  | "ignoreAdministrators"
+  | "warningResetDays"
+>>;
+
 export type LogEntry = {
   id: string;
   botId: string | null;
@@ -286,6 +362,26 @@ export type KickNotificationsPage = {
   filteredTotal: number;
   totalPages: number;
   limit: number;
+};
+
+export type LivePanelPreview = {
+  platform: "twitch" | "kick";
+  dataSource: "live" | "simulated";
+  mention: string | null;
+  color: string;
+  authorName: string;
+  authorIconUrl: string | null;
+  title: string;
+  url: string;
+  description: string;
+  fields: Array<{
+    name: string;
+    value: string;
+    inline: boolean;
+  }>;
+  imageUrl: string | null;
+  footer: string;
+  buttonLabel: string;
 };
 
 export type KickIntegrationStatus = {
@@ -479,15 +575,39 @@ export type SaveXAccountPayload = {
 export type UpdateXAccountPayload = Partial<SaveXAccountPayload>;
 
 export type ClipMentionType = "none" | "everyone" | "role";
+export type ClipPlatform = "twitch" | "kick";
+
+export type ClipRewardRole = {
+  clipCount: number;
+  label: string;
+  roleId: string;
+};
 
 export type ClipsConfig = {
   id: string;
   guildId: string;
   botId: string | null;
+  platform: ClipPlatform;
+  channelName: string;
+  broadcasterId: string;
+  displayName: string | null;
+  avatar: string | null;
+  channelUrl: string | null;
+  followers: number | null;
+  captureAvailable: boolean;
+  providerStatus: string;
   twitchChannelName: string;
   twitchBroadcasterId: string;
   twitchDisplayName: string | null;
   twitchAvatar: string | null;
+  kickChannelName: string | null;
+  kickChannelUrl: string | null;
+  kickChannelId: string | null;
+  kickUserId: string | null;
+  kickDisplayName: string | null;
+  kickAvatar: string | null;
+  kickFollowers: number | null;
+  kickApiTokenConfigured: boolean;
   discordChannelId: string | null;
   enabled: boolean;
   allowedRoleIds: string[];
@@ -495,9 +615,15 @@ export type ClipsConfig = {
   mentionRoleId: string | null;
   embedColor: string;
   customMessage: string | null;
+  clipRewards: ClipRewardRole[];
   checkInterval: number;
   lastCheckAt: string | null;
+  activeLiveSessionId: string | null;
+  activeLiveStartedAt: string | null;
+  activeLiveTitle: string | null;
+  activeLiveThumbnail: string | null;
   totalSent: number;
+  publicUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -506,27 +632,80 @@ export type ClipSent = {
   id: string;
   guildId: string;
   botId: string | null;
+  configId: string | null;
+  platform: ClipPlatform;
+  channelName: string;
+  broadcasterId: string;
   twitchChannelName: string;
   twitchBroadcasterId: string;
+  kickChannelName: string | null;
+  kickUserId: string | null;
   clipId: string;
   clipTitle: string;
   clipUrl: string;
   clipThumbnail: string | null;
   clipCreatorName: string | null;
+  clipDuration: number | null;
   createdAtTwitch: string;
   discordChannelId: string | null;
   discordMessageId: string | null;
   sentAt: string;
 };
 
+export type ClipRankingEntry = {
+  username: string;
+  count: number;
+};
+
+export type ClipStats = {
+  total: number;
+  today: number;
+  week: number;
+  month: number;
+  topCreator: ClipRankingEntry | null;
+  dailyAverage: number;
+  clipsByDay: Array<{ label: string; value: number }>;
+  clipsByWeek: Array<{ label: string; value: number }>;
+  clipsByMonth: Array<{ label: string; value: number }>;
+};
+
+export type PublicKickClips = {
+  channel: ClipsConfig;
+  clips: ClipSent[];
+  ranking: ClipRankingEntry[];
+  stats: ClipStats;
+};
+
 export type GiveawayStatus = "waiting" | "running" | "ended";
+export type GiveawayParticipantMode =
+  | "twitch_subs"
+  | "twitch_followers"
+  | "twitch_subs_followers"
+  | "kick_subs"
+  | "kick_followers"
+  | "twitch_kick"
+  | "all";
 
 export type GiveawayParticipant = {
   id: string;
+  accountId: string | null;
+  platform: "twitch" | "kick";
+  platformUserId: string;
   username: string;
   displayName: string;
   subscriber: boolean;
-  source: "twitch";
+  follower: boolean;
+  source: "twitch" | "kick";
+  subTier: string | null;
+  subTierLabel: string | null;
+  subMonths: number | null;
+  isPrime: boolean;
+  isVip: boolean;
+  isModerator: boolean;
+  isEditor: boolean;
+  tickets: number;
+  eligible: boolean;
+  invalidReason: string | null;
   validatedAt: string;
 };
 
@@ -546,8 +725,15 @@ export type Giveaway = {
   title: string;
   liveName: string;
   liveUrl: string;
-  livePlatform: "twitch";
+  livePlatform: "twitch" | "kick" | "multi";
   twitchBroadcasterId: string;
+  twitchChannelName: string | null;
+  kickChannelName: string | null;
+  kickUserId: string | null;
+  kickChannelId: string | null;
+  participantMode: GiveawayParticipantMode;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
   prizeName: string;
   participants: GiveawayParticipant[];
   winners: GiveawayWinner[];
@@ -574,7 +760,9 @@ export type SaveGiveawayPayload = {
   customMessage?: string | null;
   discordChannelId: string | null;
   endDelayMinutes: number;
+  kickChannelInput?: string | null;
   liveUrl: string;
+  participantMode: GiveawayParticipantMode;
   prizeName: string;
   startDelayMinutes: number;
   title: string;
@@ -586,15 +774,48 @@ export type GiveawaySpinResult = {
   winner: GiveawayWinner;
 };
 
+export type GiveawayConnectedAccount = {
+  id: string;
+  platform: "twitch" | "kick";
+  platformUserId: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  scopes: string[];
+  lastVerifiedAt: string | null;
+};
+
+export type GiveawayIdentity = {
+  accounts: GiveawayConnectedAccount[];
+  entries: GiveawayParticipant[];
+};
+
+export type GiveawayEntryResult = {
+  giveaway: Giveaway;
+  identity: GiveawayIdentity;
+  verifications: Array<{
+    account: GiveawayConnectedAccount;
+    eligible: boolean;
+    participant: GiveawayParticipant;
+    reason: string | null;
+  }>;
+};
+
 export type SaveClipsConfigPayload = {
   guildId: string;
-  twitchChannelInput: string;
+  platform?: ClipPlatform;
+  twitchChannelInput?: string | null;
+  kickChannelInput?: string | null;
+  kickChannelUrl?: string | null;
+  kickChannelId?: string | null;
+  kickApiToken?: string | null;
   discordChannelId: string | null;
   allowedRoleIds: string[];
   mentionType: ClipMentionType;
   mentionRoleId?: string | null;
   embedColor?: string | null;
   customMessage?: string | null;
+  clipRewards?: ClipRewardRole[];
   enabled?: boolean;
 };
 
@@ -604,6 +825,21 @@ export type TwitchClipChannelPreview = {
   twitchDisplayName: string;
   twitchAvatar: string | null;
   twitchUrl: string;
+};
+
+export type KickClipChannelPreview = {
+  kickChannelId: string | null;
+  kickUserId: string;
+  kickUsername: string;
+  kickDisplayName: string;
+  kickAvatar: string | null;
+  kickBanner: string | null;
+  kickFollowers: number;
+  kickVerified: boolean;
+  kickUrl: string;
+  isLive: boolean;
+  streamTitle: string | null;
+  thumbnailUrl: string | null;
 };
 
 export type CreateTwitchNotificationPayload = {

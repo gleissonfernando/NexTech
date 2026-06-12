@@ -8,6 +8,7 @@ import {
   deleteTwitchNotification,
   listActiveTwitchNotifications,
   listSocialNotifications,
+  previewTwitchNotificationPanel,
   previewTwitchChannel,
   sendTwitchNotificationTest,
   updateTwitchNotification,
@@ -170,6 +171,21 @@ botLivesRouter.post("/:botId/guilds/:guildId/lives/:id/test", requireAuth, async
   }
 });
 
+botLivesRouter.get("/:botId/guilds/:guildId/lives/:id/panel-preview", requireAuth, async (req, res, next) => {
+  try {
+    const botId = getRequiredParam(req.params.botId, "botId");
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    const id = getRequiredParam(req.params.id, "id");
+    await assertCanManageGuild(req, guildId, botId, "visualizou previa da live");
+
+    return res.json({
+      preview: await previewTwitchNotificationPanel(guildId, id, botId)
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
 botLivesRouter.delete("/:botId/guilds/:guildId/lives/:id", requireAuth, async (req, res, next) => {
   try {
     const botId = getRequiredParam(req.params.botId, "botId");
@@ -320,6 +336,21 @@ socialNotificationsRouter.post("/:guildId/twitch/:id/test", requireAuth, async (
 
     return res.json({
       ok: true
+    });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+socialNotificationsRouter.get("/:guildId/twitch/:id/panel-preview", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = getRequiredParam(req.params.guildId, "guildId");
+    const botId = await resolveRequestBotId(req);
+    const id = getRequiredParam(req.params.id, "id");
+    await assertCanManageGuild(req, guildId, botId, "visualizou previa da live");
+
+    return res.json({
+      preview: await previewTwitchNotificationPanel(guildId, id, botId)
     });
   } catch (error) {
     return handleRouteError(error, res, next);

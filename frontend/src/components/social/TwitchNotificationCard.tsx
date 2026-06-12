@@ -17,10 +17,12 @@ type TwitchNotificationCardProps = {
   onAdd: () => void;
   onEdit: (notification: SocialNotification) => void;
   onDelete: (notification: SocialNotification) => void;
+  onPreview: (notification: SocialNotification) => void;
   onTest: (notification: SocialNotification) => void;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
   testingId: string | null;
+  previewingId: string | null;
 };
 
 export function TwitchNotificationCard({
@@ -32,9 +34,11 @@ export function TwitchNotificationCard({
   onDelete,
   onEdit,
   onPageChange,
+  onPreview,
   onSearchChange,
   onTest,
   page,
+  previewingId,
   roles,
   search,
   testingId,
@@ -80,8 +84,10 @@ export function TwitchNotificationCard({
               notification={notification}
               onDelete={onDelete}
               onEdit={onEdit}
+              onPreview={onPreview}
               onTest={onTest}
               roleName={formatRoleName(roles, notification.mentionRoleId)}
+              previewing={previewingId === notification.id}
               testing={testingId === notification.id}
             />
           ))}

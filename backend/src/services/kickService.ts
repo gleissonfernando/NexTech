@@ -47,6 +47,25 @@ export type KickStreamDto = {
   url: string;
 };
 
+export type KickOAuthToken = {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn: number;
+  scopes: string[];
+};
+
+export type KickConnectedUser = {
+  accessToken: string;
+  avatar: string | null;
+  displayName: string;
+  email: string | null;
+  expiresAt: Date | null;
+  refreshToken: string | null;
+  scopes: string[];
+  userId: string;
+  username: string;
+};
+
 type KickChannelResponse = {
   data?: Array<{
     active_subscribers_count?: number | null;
@@ -95,7 +114,19 @@ type KickLivestreamsResponse = {
 type KickTokenResponse = {
   access_token: string;
   expires_in: number;
+  refresh_token?: string;
+  scope?: string;
   token_type?: string;
+};
+
+type KickUsersResponse = {
+  data?: Array<{
+    email?: string | null;
+    name?: string | null;
+    profile_picture?: string | null;
+    user_id?: number | string | null;
+  }>;
+  message?: string;
 };
 
 const tokenCache = new Map<string, KickToken>();
@@ -119,7 +150,7 @@ export async function validateKickApiCredentials(input?: {
 }) {
   const token = await requestKickAppAccessToken({
     clientId: input?.clientId?.trim() || env.KICK_CLIENT_ID,
-    clientSecret: input?.clientSecret?.trim() || env.KICK_CLIENT_SECRET
+    clientSecret: input?.clientSecret?.trim() || env.KICK_CLIENT_SECRET || env.KICK_API_KEY
   });
 
   return {
@@ -129,7 +160,7 @@ export async function validateKickApiCredentials(input?: {
 }
 
 export function kickApiConfigured() {
-  return Boolean(env.KICK_CLIENT_ID && env.KICK_CLIENT_SECRET);
+  return Boolean(env.KICK_CLIENT_ID && (env.KICK_CLIENT_SECRET || env.KICK_API_KEY));
 }
 
 export async function getKickChannel(channelName: string, credentials?: KickApiCredentials | null) {
@@ -192,9 +223,103 @@ export async function getKickLivestreamByUserId(userId: string, credentials?: Ki
   return streams.get(userId) ?? null;
 }
 
+export function kickGiveawayScopes() {
+  return ["user:read", "channel:read", "events:subscribe"];
+}
+
+export function buildKickOAuthUrl(input: {
+  codeChallenge: string;
+  redirectUri: string;
+  scopes?: string[];
+  state: string;
+}) {
+  if (!env.KICK_CLIENT_ID) {
+    throw new Error("KICK_CLIENT_ID nao configurado.");
+  }
+
+  const url = new URL("https://id.kick.com/oauth/authorize");
+  url.searchParams.set("client_id", env.KICK_CLIENT_ID);
+  url.searchParams.set("code_challenge", input.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("redirect_uri", input.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", (input.scopes ?? kickGiveawayScopes()).join(" "));
+  url.searchParams.set("state", input.state);
+
+  return url.toString();
+}
+
+export async function exchangeKickOAuthCode(code: string, redirectUri: string, codeVerifier: string): Promise<KickOAuthToken> {
+  const { data } = await axios.post<KickTokenResponse>(
+    KICK_OAUTH_TOKEN_URL,
+    new URLSearchParams({
+      client_id: env.KICK_CLIENT_ID,
+      client_secret: kickClientSecret(),
+      code,
+      code_verifier: codeVerifier,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri
+    }),
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      timeout: 10_000
+    }
+  );
+
+  return normalizeKickOAuthToken(data);
+}
+
+export async function refreshKickOAuthToken(refreshToken: string): Promise<KickOAuthToken> {
+  const { data } = await axios.post<KickTokenResponse>(
+    KICK_OAUTH_TOKEN_URL,
+    new URLSearchParams({
+      client_id: env.KICK_CLIENT_ID,
+      client_secret: kickClientSecret(),
+      grant_type: "refresh_token",
+      refresh_token: refreshToken
+    }),
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      timeout: 10_000
+    }
+  );
+
+  return normalizeKickOAuthToken(data);
+}
+
+export async function getKickAuthenticatedUser(token: KickOAuthToken): Promise<KickConnectedUser> {
+  const { data } = await axios.get<KickUsersResponse>(`${KICK_API_URL}/users`, {
+    headers: kickHeaders(token.accessToken),
+    timeout: 10_000
+  });
+  const user = data.data?.[0];
+
+  if (!user?.user_id) {
+    throw new Error("Usuario Kick nao encontrado.");
+  }
+
+  const username = String(user.name || user.user_id).trim();
+
+  return {
+    accessToken: token.accessToken,
+    avatar: user.profile_picture?.trim() || null,
+    displayName: username,
+    email: user.email?.trim() || null,
+    expiresAt: token.expiresIn > 0 ? new Date(Date.now() + token.expiresIn * 1000) : null,
+    refreshToken: token.refreshToken,
+    scopes: token.scopes,
+    userId: String(user.user_id),
+    username
+  };
+}
+
 async function getKickAppAccessToken(credentials?: KickApiCredentials | null) {
   const clientId = credentials?.clientId?.trim() || env.KICK_CLIENT_ID;
-  const clientSecret = credentials?.clientSecret?.trim() || env.KICK_CLIENT_SECRET;
+  const clientSecret = credentials?.clientSecret?.trim() || env.KICK_CLIENT_SECRET || env.KICK_API_KEY;
   const cacheKey = clientId;
 
   if (!clientId || !clientSecret) {
@@ -309,4 +434,23 @@ function displayNameFromSlug(slug: string) {
     .filter(Boolean)
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ") || slug;
+}
+
+function normalizeKickOAuthToken(data: KickTokenResponse): KickOAuthToken {
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresIn: Number(data.expires_in || 0),
+    scopes: typeof data.scope === "string" ? data.scope.split(/\s+/).filter(Boolean) : []
+  };
+}
+
+function kickClientSecret() {
+  const secret = env.KICK_CLIENT_SECRET || env.KICK_API_KEY;
+
+  if (!env.KICK_CLIENT_ID || !secret) {
+    throw new Error("Credenciais OAuth da Kick nao configuradas.");
+  }
+
+  return secret;
 }

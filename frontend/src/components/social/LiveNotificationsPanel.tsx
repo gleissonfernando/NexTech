@@ -5,6 +5,7 @@ import {
   deleteTwitchNotification,
   getGuildLiveOptions,
   getSocialNotifications,
+  previewTwitchNotificationPanel,
   testTwitchNotification,
   updateTwitchNotification
 } from "../../lib/api";
@@ -12,10 +13,12 @@ import { AddTwitchChannelModal } from "./AddTwitchChannelModal";
 import { DeleteTwitchChannelModal } from "./DeleteTwitchChannelModal";
 import { EditTwitchChannelModal } from "./EditTwitchChannelModal";
 import { TwitchNotificationCard } from "./TwitchNotificationCard";
+import { LivePanelPreviewModal } from "./LivePanelPreviewModal";
 import type {
   CreateTwitchNotificationPayload,
   DashboardGuild,
   GuildLiveOptions,
+  LivePanelPreview,
   SocialNotification,
   UpdateTwitchNotificationPayload
 } from "../../types";
@@ -41,6 +44,8 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [panelPreview, setPanelPreview] = useState<LivePanelPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -229,6 +234,23 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
     }
   }
 
+  async function handlePreview(notification: SocialNotification) {
+    if (!guild) {
+      return;
+    }
+
+    setPreviewingId(notification.id);
+    setPanelPreview(null);
+    setError(null);
+
+    try {
+      setPanelPreview(await previewTwitchNotificationPanel(guild.id, notification.id, botId));
+    } catch (requestError) {
+      setError(readErrorMessage(requestError));
+      setPreviewingId(null);
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -273,12 +295,14 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
             setError(null);
             setEditing(notification);
           }}
+          onPreview={handlePreview}
           onTest={handleTest}
           onPageChange={setPage}
           onSearchChange={setSearchInput}
           page={page}
           roles={liveOptions.roles}
           search={searchInput}
+          previewingId={previewingId}
           testingId={testingId}
           total={total}
           totalPages={totalPages}
@@ -308,6 +332,14 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
         notification={deletingNotification}
         onClose={() => setDeletingNotification(null)}
         onConfirm={handleDelete}
+      />
+      <LivePanelPreviewModal
+        loading={Boolean(previewingId && !panelPreview)}
+        onClose={() => {
+          setPanelPreview(null);
+          setPreviewingId(null);
+        }}
+        preview={panelPreview}
       />
     </section>
   );

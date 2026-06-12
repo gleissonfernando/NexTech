@@ -5,20 +5,45 @@ import {
   getMongoCollections,
   type MongoGiveaway,
   type MongoGiveawayParticipant,
+  type MongoGiveawayParticipantMode,
   type MongoGiveawayStatus,
   type MongoGiveawayWinner
 } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
+import { getDevBotToken } from "./devBotService";
 import { isGuildTextChannel } from "./discordOptionsService";
+import {
+  buildSyncedGiveawayParticipants,
+  getConnectedGiveawayAccounts,
+  verifyConnectedAccountForGiveaway,
+  type GiveawayConnectedAccountDto,
+  type GiveawayEntryVerification
+} from "./giveawayIdentityService";
+import { getKickChannel, normalizeKickChannel } from "./kickService";
 import { createLog } from "./logService";
-import { getTwitchSubscribers, getTwitchUser, normalizeTwitchChannel } from "./twitchService";
+import { getGuildSettings } from "./settingsService";
+import { getTwitchUser, normalizeTwitchChannel } from "./twitchService";
 
 export type GiveawayParticipantDto = {
   id: string;
+  accountId: string | null;
+  platform: "twitch" | "kick";
+  platformUserId: string;
   username: string;
   displayName: string;
   subscriber: boolean;
-  source: "twitch";
+  follower: boolean;
+  source: "twitch" | "kick";
+  subTier: string | null;
+  subTierLabel: string | null;
+  subMonths: number | null;
+  isPrime: boolean;
+  isVip: boolean;
+  isModerator: boolean;
+  isEditor: boolean;
+  tickets: number;
+  eligible: boolean;
+  invalidReason: string | null;
   validatedAt: string;
 };
 
@@ -38,8 +63,15 @@ export type GiveawayDto = {
   title: string;
   liveName: string;
   liveUrl: string;
-  livePlatform: "twitch";
+  livePlatform: "twitch" | "kick" | "multi";
   twitchBroadcasterId: string;
+  twitchChannelName: string | null;
+  kickChannelName: string | null;
+  kickUserId: string | null;
+  kickChannelId: string | null;
+  participantMode: MongoGiveawayParticipantMode;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
   prizeName: string;
   participants: GiveawayParticipantDto[];
   winners: GiveawayWinnerDto[];
@@ -66,7 +98,9 @@ export type SaveGiveawayInput = {
   customMessage?: string | null;
   discordChannelId?: string | null;
   endDelayMinutes?: number | null;
+  kickChannelInput?: string | null;
   liveUrl: string;
+  participantMode?: MongoGiveawayParticipantMode | null;
   prizeName: string;
   startDelayMinutes?: number | null;
   title: string;
@@ -78,11 +112,26 @@ export type GiveawaySpinResult = {
   winner: GiveawayWinnerDto;
 };
 
+export type GiveawayIdentityDto = {
+  accounts: GiveawayConnectedAccountDto[];
+  entries: GiveawayParticipantDto[];
+};
+
+export type GiveawayEntryResult = {
+  giveaway: GiveawayDto;
+  identity: GiveawayIdentityDto;
+  verifications: Array<{
+    account: GiveawayConnectedAccountDto;
+    eligible: boolean;
+    participant: GiveawayParticipantDto;
+    reason: string | null;
+  }>;
+};
+
 const GIVEAWAY_MODULE_ID = "giveaway";
 const DEFAULT_WINNER_COUNT = 1;
 const MAX_WINNER_COUNT = 50;
 const MAX_DELAY_MINUTES = 60 * 24 * 30;
-const MAX_SUBSCRIBERS_PER_SYNC = 5000;
 let schedulerStarted = false;
 let schedulerRunning = false;
 
@@ -169,9 +218,11 @@ export async function createGiveaway(
   }
 
   const live = await resolveTwitchLive(input.liveUrl);
+  const kick = input.kickChannelInput ? await resolveKickGiveawayChannel(input.kickChannelInput) : null;
   const rouletteToken = randomBytes(24).toString("base64url");
   const startDelayMinutes = normalizeDelay(input.startDelayMinutes);
   const endDelayMinutes = normalizeDelay(input.endDelayMinutes);
+  const participantMode = normalizeParticipantMode(input.participantMode);
   const doc: MongoGiveaway = {
     _id: randomUUID(),
     botId: normalizedBotId,
@@ -181,8 +232,15 @@ export async function createGiveaway(
     title: normalizeTitle(input.title),
     liveName: live.displayName,
     liveUrl: live.url,
-    livePlatform: "twitch",
+    livePlatform: kick ? "multi" : "twitch",
     twitchBroadcasterId: live.id,
+    twitchChannelName: live.login,
+    kickChannelName: kick?.slug ?? null,
+    kickUserId: kick?.broadcasterUserId ?? null,
+    kickChannelId: kick?.channelId ?? null,
+    participantMode,
+    lastSyncedAt: null,
+    lastSyncError: null,
     prizeName: normalizePrize(input.prizeName),
     participants: [],
     winners: [],
@@ -238,16 +296,23 @@ export async function updateGiveaway(
   }
 
   const live = await resolveTwitchLive(input.liveUrl);
+  const kick = input.kickChannelInput ? await resolveKickGiveawayChannel(input.kickChannelInput) : null;
   const now = new Date();
   const startDelayMinutes = normalizeDelay(input.startDelayMinutes);
   const endDelayMinutes = normalizeDelay(input.endDelayMinutes);
+  const participantMode = normalizeParticipantMode(input.participantMode);
   const patch: Partial<MongoGiveaway> = {
     discordChannelId,
     title: normalizeTitle(input.title),
     liveName: live.displayName,
     liveUrl: live.url,
-    livePlatform: "twitch",
+    livePlatform: kick ? "multi" : "twitch",
     twitchBroadcasterId: live.id,
+    twitchChannelName: live.login,
+    kickChannelName: kick?.slug ?? null,
+    kickUserId: kick?.broadcasterUserId ?? null,
+    kickChannelId: kick?.channelId ?? null,
+    participantMode,
     prizeName: normalizePrize(input.prizeName),
     winnerCount: normalizeWinnerCount(input.winnerCount),
     allowRepeatWinners: input.allowRepeatWinners === true,
@@ -318,10 +383,11 @@ export async function startGiveaway(giveawayId: string, actorId: string | null, 
     throw createGiveawayError("Cadastre a live antes de iniciar o sorteio.", 400);
   }
 
-  const participants = await fetchSubscriberParticipants(giveaway);
+  const sync = await syncGiveawayParticipantsForDocument(giveaway, actorId, "start");
+  const participants = sync.participants;
 
   if (!participants.length) {
-    throw createGiveawayError("Nenhum sub foi encontrado para esta live.", 400);
+    throw createGiveawayError("Nenhum participante elegivel foi encontrado para este sorteio.", 400);
   }
 
   const now = new Date();
@@ -351,7 +417,7 @@ export async function startGiveaway(giveawayId: string, actorId: string | null, 
     throw createGiveawayError("Sorteio nao encontrado.", 404);
   }
 
-  await writeGiveawayLog(updated, "giveaway.started", actorId, `Sorteio iniciado com ${participants.length} sub(s): ${updated.title}.`);
+  await writeGiveawayLog(updated, "giveaway.started", actorId, `Sorteio iniciado com ${participants.length} participante(s): ${updated.title}.`);
   emitGiveawayUpdated(updated);
   requestGiveawayPanelUpdate(updated, "update");
 
@@ -393,6 +459,146 @@ export async function endGiveaway(giveawayId: string, actorId: string | null, bo
   return toGiveawayDto(updated);
 }
 
+export async function syncGiveawayParticipants(giveawayId: string, actorId: string | null, botId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const giveaway = await findGiveawayById(giveawayId, normalizedBotId);
+
+  if (!giveaway) {
+    throw createGiveawayError("Sorteio nao encontrado.", 404);
+  }
+
+  const sync = await syncGiveawayParticipantsForDocument(giveaway, actorId, "manual");
+  const updated = await findGiveawayById(giveaway._id, normalizedBotId);
+
+  if (!updated) {
+    throw createGiveawayError("Sorteio nao encontrado apos sincronizar.", 404);
+  }
+
+  await writeGiveawayLog(
+    updated,
+    "giveaway.sync.completed",
+    actorId,
+    `Participantes sincronizados: ${sync.participants.length} elegivel(is), ${sync.removed.length} removido(s).`
+  );
+  emitGiveawayUpdated(updated);
+  requestGiveawayPanelUpdate(updated, "update");
+
+  return toGiveawayDto(updated);
+}
+
+export async function getGiveawayIdentity(token: string, accountIds?: { kick?: string; twitch?: string }): Promise<GiveawayIdentityDto> {
+  const giveaway = await findGiveawayByToken(token);
+
+  if (!giveaway) {
+    throw createGiveawayError("Roleta nao encontrada.", 404);
+  }
+
+  const accounts = await getConnectedGiveawayAccounts(accountIds);
+  const accountIdSet = new Set(accounts.map((account) => account.id));
+  const entries = (giveaway.participants ?? [])
+    .filter((participant) => participant.accountId && accountIdSet.has(participant.accountId))
+    .map(toParticipantDto);
+
+  return {
+    accounts,
+    entries
+  };
+}
+
+export async function enterGiveaway(token: string, accountIds: { kick?: string; twitch?: string }): Promise<GiveawayEntryResult> {
+  const giveaway = await findGiveawayByToken(token);
+
+  if (!giveaway) {
+    throw createGiveawayError("Roleta nao encontrada.", 404);
+  }
+
+  if (giveaway.status === "ended") {
+    throw createGiveawayError("Este sorteio ja foi encerrado.", 400);
+  }
+
+  const ids = [accountIds.twitch, accountIds.kick].filter((id): id is string => Boolean(id));
+
+  if (!ids.length) {
+    throw createGiveawayError("Conecte sua Twitch ou Kick antes de entrar no sorteio.", 400);
+  }
+
+  const verifications: GiveawayEntryVerification[] = [];
+  const participantsById = new Map((giveaway.participants ?? []).map((participant) => [participant.id, participant]));
+
+  for (const accountId of ids) {
+    const verification = await verifyConnectedAccountForGiveaway(giveaway, accountId);
+    verifications.push(verification);
+
+    await writeGiveawayLog(
+      giveaway,
+      verification.participant.source === "twitch" ? "giveaway.twitch.verification" : "giveaway.kick.verification",
+      verification.participant.platformUserId ?? verification.participant.id,
+      `${verification.participant.displayName}: ${verification.eligible ? "verificacao aprovada" : verification.reason ?? "verificacao recusada"}.`
+    );
+
+    if (verification.eligible) {
+      participantsById.set(verification.participant.id, verification.participant);
+    } else {
+      participantsById.delete(verification.participant.id);
+    }
+  }
+
+  const participants = [...participantsById.values()].filter((participant) => participant.eligible !== false);
+  const { giveaways } = await getMongoCollections();
+  const updated = await giveaways.findOneAndUpdate(
+    {
+      _id: giveaway._id
+    },
+    {
+      $set: {
+        participants,
+        updatedAt: new Date()
+      }
+    },
+    {
+      returnDocument: "after"
+    }
+  );
+
+  if (!updated) {
+    throw createGiveawayError("Sorteio nao encontrado apos entrar.", 404);
+  }
+
+  for (const verification of verifications) {
+    if (verification.eligible) {
+      await writeGiveawayLog(
+        updated,
+        "giveaway.participant.joined",
+        verification.participant.platformUserId ?? verification.participant.id,
+        `${verification.participant.displayName} entrou no sorteio com ${verification.participant.tickets ?? 1} ticket(s).`
+      );
+    } else {
+      await writeGiveawayLog(
+        updated,
+        "giveaway.participant.removed",
+        verification.participant.platformUserId ?? verification.participant.id,
+        `${verification.participant.displayName} removido do sorteio: ${verification.reason ?? "nao elegivel"}.`
+      );
+    }
+  }
+
+  emitGiveawayUpdated(updated);
+  requestGiveawayPanelUpdate(updated, "update");
+
+  const identity = await getGiveawayIdentity(token, accountIds);
+
+  return {
+    giveaway: toGiveawayDto(updated),
+    identity,
+    verifications: verifications.map((verification) => ({
+      account: verification.account,
+      eligible: verification.eligible,
+      participant: toParticipantDto(verification.participant),
+      reason: verification.reason
+    }))
+  };
+}
+
 export async function spinGiveawayRoulette(token: string): Promise<GiveawaySpinResult> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const giveaway = await findGiveawayByToken(token);
@@ -410,17 +616,18 @@ export async function spinGiveawayRoulette(token: string): Promise<GiveawaySpinR
       throw createGiveawayError(`Limite de ${ended.winnerCount} ganhador(es) ja foi atingido.`, 400);
     }
 
-    const freshParticipants = await fetchSubscriberParticipants(giveaway);
+    const sync = await syncGiveawayParticipantsForDocument(giveaway, null, "spin");
+    const freshParticipants = sync.participants;
     const previousWinnerIds = new Set(giveaway.winners.map((winner) => winner.participantId));
     const eligibleParticipants = freshParticipants.filter((participant) => (
       giveaway.allowRepeatWinners || !previousWinnerIds.has(participant.id)
     ));
 
     if (!eligibleParticipants.length) {
-      throw createGiveawayError("Nao existem subs elegiveis para sortear.", 400);
+      throw createGiveawayError("Nao existem participantes elegiveis para sortear.", 400);
     }
 
-    const participant = eligibleParticipants[randomInt(eligibleParticipants.length)];
+    const participant = pickWeightedParticipant(eligibleParticipants);
 
     if (!participant) {
       throw createGiveawayError("Nao foi possivel selecionar um participante.", 500);
@@ -641,23 +848,84 @@ async function resolveTwitchLive(value: string) {
   };
 }
 
-async function fetchSubscriberParticipants(giveaway: Pick<MongoGiveaway, "twitchBroadcasterId">): Promise<MongoGiveawayParticipant[]> {
-  const subscribers = await getTwitchSubscribers({
-    broadcasterId: giveaway.twitchBroadcasterId,
-    max: MAX_SUBSCRIBERS_PER_SYNC
-  }).catch((error) => {
-    throw createGiveawayError(error instanceof Error ? error.message : "Nao foi possivel validar os subs da Twitch.", 503);
-  });
-  const now = new Date();
+async function resolveKickGiveawayChannel(value: string) {
+  const channel = normalizeKickChannel(value);
 
-  return subscribers.map((subscriber) => ({
-    id: subscriber.id,
-    username: subscriber.login,
-    displayName: subscriber.displayName,
-    subscriber: true,
-    source: "twitch",
-    validatedAt: now
-  }));
+  if (!channel || !/^[a-z0-9_-]{3,25}$/i.test(channel)) {
+    throw createGiveawayError("Informe uma URL ou canal valido da Kick.", 400);
+  }
+
+  const kick = await getKickChannel(channel).catch((error) => {
+    throw createGiveawayError(error instanceof Error ? error.message : "Nao foi possivel consultar a Kick.", 503);
+  });
+
+  if (!kick) {
+    throw createGiveawayError("Canal da Kick nao encontrado.", 404);
+  }
+
+  return kick;
+}
+
+async function syncGiveawayParticipantsForDocument(
+  giveaway: MongoGiveaway,
+  actorId: string | null,
+  reason: "manual" | "spin" | "start"
+) {
+  try {
+    const sync = await buildSyncedGiveawayParticipants(giveaway);
+    const now = new Date();
+    const { giveaways } = await getMongoCollections();
+
+    await giveaways.updateOne(
+      {
+        _id: giveaway._id
+      },
+      {
+        $set: {
+          lastSyncedAt: now,
+          lastSyncError: null,
+          participants: sync.participants,
+          updatedAt: now
+        }
+      }
+    );
+
+    await writeGiveawayLog(
+      giveaway,
+      reason === "manual" ? "giveaway.sync.manual" : reason === "start" ? "giveaway.sync.start" : "giveaway.sync.spin",
+      actorId,
+      `Sincronizacao Twitch/Kick concluida: ${sync.participants.length} participante(s).`
+    );
+
+    for (const removed of sync.removed) {
+      await writeGiveawayLog(
+        giveaway,
+        "giveaway.participant.removed",
+        removed.platformUserId ?? removed.id,
+        `${removed.displayName} removido da lista final.`
+      );
+    }
+
+    return sync;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Nao foi possivel sincronizar participantes.";
+    const { giveaways } = await getMongoCollections();
+
+    await giveaways.updateOne(
+      {
+        _id: giveaway._id
+      },
+      {
+        $set: {
+          lastSyncError: message,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    await writeGiveawayLog(giveaway, "giveaway.sync.failed", actorId, `Falha ao sincronizar participantes: ${message}.`);
+    throw createGiveawayError(message, 503);
+  }
 }
 
 function emitGiveawayUpdated(giveaway: MongoGiveaway) {
@@ -681,7 +949,7 @@ function requestGiveawayPanelUpdate(giveaway: MongoGiveaway, action: "publish" |
 }
 
 async function writeGiveawayLog(giveaway: MongoGiveaway, type: string, userId: string | null, message: string) {
-  await createLog({
+  const log = await createLog({
     botId: normalizeBotId(giveaway.botId),
     guildId: giveaway.guildId,
     userId,
@@ -692,6 +960,56 @@ async function writeGiveawayLog(giveaway: MongoGiveaway, type: string, userId: s
       module: GIVEAWAY_MODULE_ID,
       status: giveaway.status
     }
+  });
+  await sendDiscordGiveawayLog(giveaway, type, message).catch(() => undefined);
+  return log;
+}
+
+async function sendDiscordGiveawayLog(giveaway: MongoGiveaway, type: string, message: string) {
+  const botId = normalizeBotId(giveaway.botId);
+  const settings = await getGuildSettings(giveaway.guildId, botId);
+
+  if (!settings.logChannelId) {
+    return;
+  }
+
+  const token = botId ? await getDevBotToken(botId) : env.DISCORD_BOT_TOKEN;
+
+  if (!token) {
+    return;
+  }
+
+  await fetch(`https://discord.com/api/v10/channels/${settings.logChannelId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      allowed_mentions: {
+        parse: []
+      },
+      embeds: [
+        {
+          color: 0x22c55e,
+          title: "Log de Sorteio",
+          description: message,
+          fields: [
+            {
+              name: "Tipo",
+              value: type,
+              inline: true
+            },
+            {
+              name: "Sorteio",
+              value: giveaway.title,
+              inline: true
+            }
+          ],
+          timestamp: new Date().toISOString()
+        }
+      ]
+    })
   });
 }
 
@@ -705,8 +1023,15 @@ function toGiveawayDto(giveaway: MongoGiveaway): GiveawayDto {
     title: giveaway.title,
     liveName: giveaway.liveName,
     liveUrl: giveaway.liveUrl,
-    livePlatform: "twitch",
+    livePlatform: giveaway.livePlatform ?? "twitch",
     twitchBroadcasterId: giveaway.twitchBroadcasterId,
+    twitchChannelName: giveaway.twitchChannelName ?? null,
+    kickChannelName: giveaway.kickChannelName ?? null,
+    kickUserId: giveaway.kickUserId ?? null,
+    kickChannelId: giveaway.kickChannelId ?? null,
+    participantMode: giveaway.participantMode ?? "twitch_subs",
+    lastSyncedAt: giveaway.lastSyncedAt?.toISOString() ?? null,
+    lastSyncError: giveaway.lastSyncError ?? null,
     prizeName: giveaway.prizeName,
     participants: (giveaway.participants ?? []).map(toParticipantDto),
     winners: (giveaway.winners ?? []).map(toWinnerDto),
@@ -732,10 +1057,24 @@ function toGiveawayDto(giveaway: MongoGiveaway): GiveawayDto {
 function toParticipantDto(participant: MongoGiveawayParticipant): GiveawayParticipantDto {
   return {
     id: participant.id,
+    accountId: participant.accountId ?? null,
+    platform: participant.platform ?? participant.source,
+    platformUserId: participant.platformUserId ?? participant.id,
     username: participant.username,
     displayName: participant.displayName,
-    subscriber: participant.subscriber,
-    source: "twitch",
+    subscriber: participant.subscriber === true,
+    follower: participant.follower === true,
+    source: participant.source,
+    subTier: participant.subTier ?? null,
+    subTierLabel: participant.subTierLabel ?? null,
+    subMonths: participant.subMonths ?? null,
+    isPrime: participant.isPrime === true,
+    isVip: participant.isVip === true,
+    isModerator: participant.isModerator === true,
+    isEditor: participant.isEditor === true,
+    tickets: participant.tickets ?? 1,
+    eligible: participant.eligible !== false,
+    invalidReason: participant.invalidReason ?? null,
     validatedAt: participant.validatedAt.toISOString()
   };
 }
@@ -787,6 +1126,41 @@ function normalizeWinnerCount(value?: number | null) {
 function normalizeDelay(value?: number | null) {
   const minutes = Math.floor(Number(value ?? 0));
   return Math.max(0, Math.min(Number.isFinite(minutes) ? minutes : 0, MAX_DELAY_MINUTES));
+}
+
+function normalizeParticipantMode(value?: MongoGiveawayParticipantMode | null): MongoGiveawayParticipantMode {
+  const modes = new Set<MongoGiveawayParticipantMode>([
+    "all",
+    "kick_followers",
+    "kick_subs",
+    "twitch_followers",
+    "twitch_kick",
+    "twitch_subs",
+    "twitch_subs_followers"
+  ]);
+
+  return value && modes.has(value) ? value : "twitch_subs";
+}
+
+function pickWeightedParticipant(participants: MongoGiveawayParticipant[]) {
+  const totalTickets = participants.reduce((total, participant) => total + Math.max(1, Math.floor(participant.tickets ?? 1)), 0);
+  let cursor = randomInt(Math.max(1, totalTickets));
+
+  for (const participant of participants) {
+    cursor -= Math.max(1, Math.floor(participant.tickets ?? 1));
+
+    if (cursor < 0) {
+      return participant;
+    }
+  }
+
+  const fallback = participants[participants.length - 1];
+
+  if (!fallback) {
+    throw createGiveawayError("Nao foi possivel selecionar um participante.", 500);
+  }
+
+  return fallback;
 }
 
 function addMinutes(date: Date, minutes: number) {

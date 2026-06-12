@@ -32,6 +32,67 @@ export type BotCommandAuthorization = {
   reasonCode: string;
 };
 
+export type ImageAntiSpamSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  logChannelId: string | null;
+  immuneRoleIds: string[];
+  ignoredChannelIds: string[];
+  maxImages: number;
+  windowSeconds: number;
+  warningsEnabled: boolean;
+  progressiveTimeoutEnabled: boolean;
+  autoKickEnabled: boolean;
+  maxWarnings: number;
+  ignoreAdministrators: boolean;
+  warningResetDays: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamIncident = {
+  id: string;
+  botId: string;
+  guildId: string;
+  incidentKey: string;
+  userId: string;
+  username: string | null;
+  channelId: string;
+  removedImages: number;
+  warningCount: number;
+  timeoutMs: number;
+  action: "none" | "warning" | "timeout" | "kick";
+  actionSucceeded: boolean | null;
+  actionError: string | null;
+  reason: string;
+  status: "pending" | "completed" | "failed";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamUser = {
+  id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  warningCount: number;
+  totalImagesRemoved: number;
+  lastInfractionAt: string | null;
+  lastPunishment: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImageAntiSpamIncidentResult = {
+  duplicate: boolean;
+  incident: ImageAntiSpamIncident;
+  settings: ImageAntiSpamSettings;
+  user: ImageAntiSpamUser;
+};
+
 export type SocialNotification = {
   id: string;
   botId: string | null;
@@ -102,15 +163,41 @@ export type KickStream = {
 };
 
 export type ClipMentionType = "none" | "everyone" | "role";
+export type ClipPlatform = "twitch" | "kick";
+
+export type ClipRewardRole = {
+  clipCount: number;
+  label: string;
+  roleId: string;
+};
+
+export type ClipRewardAssignment = ClipRewardRole & {
+  userId: string;
+};
 
 export type ClipsConfig = {
   id: string;
   guildId: string;
   botId: string | null;
+  platform: ClipPlatform;
+  channelName: string;
+  broadcasterId: string;
+  displayName: string | null;
+  avatar: string | null;
+  channelUrl: string | null;
+  captureAvailable: boolean;
+  providerStatus: string;
   twitchChannelName: string;
   twitchBroadcasterId: string;
   twitchDisplayName: string | null;
   twitchAvatar: string | null;
+  kickChannelName: string | null;
+  kickChannelUrl: string | null;
+  kickChannelId: string | null;
+  kickUserId: string | null;
+  kickDisplayName: string | null;
+  kickAvatar: string | null;
+  kickFollowers: number | null;
   discordChannelId: string | null;
   enabled: boolean;
   allowedRoleIds: string[];
@@ -118,7 +205,12 @@ export type ClipsConfig = {
   mentionRoleId: string | null;
   embedColor: string;
   customMessage: string | null;
+  clipRewards: ClipRewardRole[];
   lastCheckAt: string | null;
+  activeLiveSessionId: string | null;
+  activeLiveStartedAt: string | null;
+  activeLiveTitle: string | null;
+  activeLiveThumbnail: string | null;
   totalSent: number;
   createdAt: string;
   updatedAt: string;
@@ -126,10 +218,24 @@ export type ClipsConfig = {
 
 export type GiveawayParticipant = {
   id: string;
+  accountId: string | null;
+  platform: "twitch" | "kick";
+  platformUserId: string;
   username: string;
   displayName: string;
   subscriber: boolean;
-  source: "twitch";
+  follower: boolean;
+  source: "twitch" | "kick";
+  subTier: string | null;
+  subTierLabel: string | null;
+  subMonths: number | null;
+  isPrime: boolean;
+  isVip: boolean;
+  isModerator: boolean;
+  isEditor: boolean;
+  tickets: number;
+  eligible: boolean;
+  invalidReason: string | null;
   validatedAt: string;
 };
 
@@ -151,8 +257,15 @@ export type Giveaway = {
   title: string;
   liveName: string;
   liveUrl: string;
-  livePlatform: "twitch";
+  livePlatform: "twitch" | "kick" | "multi";
   twitchBroadcasterId: string;
+  twitchChannelName: string | null;
+  kickChannelName: string | null;
+  kickUserId: string | null;
+  kickChannelId: string | null;
+  participantMode: "twitch_subs" | "twitch_followers" | "twitch_subs_followers" | "kick_subs" | "kick_followers" | "twitch_kick" | "all";
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
   prizeName: string;
   participants: GiveawayParticipant[];
   winners: GiveawayWinner[];
@@ -388,6 +501,42 @@ export class ApiClient {
     return data.settings;
   }
 
+  async getImageAntiSpamSettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: ImageAntiSpamSettings }>(
+      `/image-anti-spam/bot/${guildId}`
+    );
+    return data.settings;
+  }
+
+  async recordImageAntiSpamIncident(input: {
+    guildId: string;
+    incidentKey: string;
+    userId: string;
+    username?: string | null;
+    channelId: string;
+    removedImages: number;
+  }) {
+    const { data } = await this.http.post<ImageAntiSpamIncidentResult>(
+      "/image-anti-spam/bot/incidents",
+      input
+    );
+    return data;
+  }
+
+  async completeImageAntiSpamIncident(
+    incidentId: string,
+    input: {
+      actionSucceeded: boolean;
+      actionError?: string | null;
+    }
+  ) {
+    const { data } = await this.http.patch<{ incident: ImageAntiSpamIncident }>(
+      `/image-anti-spam/bot/incidents/${incidentId}`,
+      input
+    );
+    return data.incident;
+  }
+
   async getActiveTwitchNotifications() {
     const { data } = await this.http.get<{ notifications: SocialNotification[] }>("/social-notifications/bot/twitch-active", {
       timeout: 30_000
@@ -444,17 +593,31 @@ export class ApiClient {
     });
   }
 
+  async updateClipLiveSession(configId: string, input: {
+    isLive: boolean;
+    startedAt?: string | null;
+    streamId?: string | null;
+    thumbnailUrl?: string | null;
+    title?: string | null;
+  }) {
+    await this.http.patch<{ ok: boolean }>(`/clips/bot/configs/${configId}/live-session`, input);
+  }
+
   async recordClipSent(configId: string, input: {
     clipId: string;
     clipTitle: string;
     clipUrl: string;
     clipThumbnail?: string | null;
     clipCreatorName?: string | null;
+    clipDuration?: number | null;
     createdAtTwitch: string;
     discordChannelId?: string | null;
     discordMessageId?: string | null;
   }) {
-    const { data } = await this.http.post(`/clips/bot/configs/${configId}/sent`, input);
+    const { data } = await this.http.post<{
+      clip: unknown;
+      rewards: ClipRewardAssignment[];
+    }>(`/clips/bot/configs/${configId}/sent`, input);
     return data;
   }
 
