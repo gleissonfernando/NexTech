@@ -26,6 +26,12 @@ type MessageHistoryEntry = {
   normalized: string;
 };
 
+type AttachmentHistoryEntry = {
+  at: number;
+  images: number;
+  mediaTotal: number;
+};
+
 type Violation = {
   moduleId: SelfBotProtectionModuleId;
   infractionType: string;
@@ -42,6 +48,7 @@ type PunishmentResult = {
 const SETTINGS_CACHE_MS = 30_000;
 const settingsCache = new Map<string, CachedSettings>();
 const messageHistory = new Map<string, MessageHistoryEntry[]>();
+const attachmentHistory = new Map<string, AttachmentHistoryEntry[]>();
 const guildJoinWindows = new Map<string, number[]>();
 const guildMutationWindows = new Map<string, number[]>();
 const processingQueues = new Map<string, Promise<boolean>>();
@@ -264,7 +271,7 @@ async function processMessage(message: Message, context: BotContext) {
   const violation = detectMessageViolation(message, settings);
 
   if (!violation) {
-    rememberMessage(message, settings);
+    rememberMessageState(message, settings);
     return false;
   }
 
@@ -277,7 +284,7 @@ async function processMessage(message: Message, context: BotContext) {
     violation
   });
 
-  rememberMessage(message, settings);
+  rememberMessageState(message, settings);
   return result;
 }
 
@@ -359,6 +366,9 @@ function detectMessageViolation(message: Message, settings: SelfBotProtectionSet
   const attachmentStats = countAttachments(message);
   const mediaNotAllowed = !isAllowedChannel(message, settings.mediaChannelIds);
   const linkNotAllowed = !isAllowedChannel(message, settings.linkChannelIds);
+  const recentAttachments = recentAttachmentEntries(message, settings.imageWindowSeconds);
+  const mediaWindowTotal = recentAttachments.reduce((total, entry) => total + entry.mediaTotal, 0) + attachmentStats.mediaTotal;
+  const imageWindowTotal = recentAttachments.reduce((total, entry) => total + entry.images, 0) + attachmentStats.images;
   const now = Date.now();
 
   if (message.webhookId && isModuleEnabled(settings, "anti-webhook")) {
@@ -397,8 +407,13 @@ function detectMessageViolation(message: Message, settings: SelfBotProtectionSet
     return buildViolation("anti-anexos", "Anexo bloqueado", "Anexo enviado fora dos canais permitidos.", attachmentStats);
   }
 
-  if (attachmentStats.mediaTotal > settings.imageLimit && hasAnyModule(settings, ["anti-imagens", "anti-anexos"])) {
-    return buildViolation(activeModule(settings, ["anti-imagens", "anti-anexos"]), "Flood de anexos", "Quantidade de midias acima do limite.", attachmentStats);
+  if (attachmentStats.mediaTotal > 0 && mediaWindowTotal > settings.imageLimit && hasAnyModule(settings, ["anti-imagens", "anti-anexos"])) {
+    return buildViolation(activeModule(settings, ["anti-imagens", "anti-anexos"]), "Flood de anexos", "Quantidade de midias acima do limite.", {
+      ...attachmentStats,
+      imageWindowSeconds: settings.imageWindowSeconds,
+      imageWindowTotal,
+      mediaWindowTotal
+    });
   }
 
   const mentionCount = message.mentions.users.size + message.mentions.roles.size + (message.mentions.everyone ? settings.mentionLimit : 0);
@@ -483,10 +498,8 @@ async function applyPunishment(input: {
   for (const action of input.settings.punishmentSequence) {
     try {
       if (action === "delete_message") {
-        if (input.message?.deletable) {
-          await input.message.delete();
-          actions.push(action);
-        }
+        await deleteSourceMessage(input.message);
+        actions.push(action);
       } else if (action === "warn") {
         await warnMember(input.member, input.message, input.violation.details);
         actions.push(action);
@@ -540,6 +553,14 @@ async function applyPunishment(input: {
     error: errors.length ? errors.join(" | ") : null,
     succeeded: errors.length === 0
   };
+}
+
+async function deleteSourceMessage(message: Message | undefined) {
+  if (!message) {
+    throw new Error("Mensagem original nao disponivel para apagar.");
+  }
+
+  await message.delete();
 }
 
 async function warnMember(member: GuildMember, message: Message | undefined, details: string) {
@@ -636,8 +657,13 @@ async function sendWebhookLog(webhookUrl: string | null, embed: EmbedBuilder) {
   });
 }
 
+function rememberMessageState(message: Message, settings: SelfBotProtectionSettings) {
+  rememberMessage(message, settings);
+  rememberAttachments(message, settings);
+}
+
 function rememberMessage(message: Message, settings: SelfBotProtectionSettings) {
-  const key = `${message.guildId}:${message.author.id}`;
+  const key = keyForMessage(message);
   const normalized = COMMAND_PATTERN.test(message.content)
     ? `cmd:${normalizeMessage(message.content)}`
     : normalizeMessage(message.content);
@@ -657,13 +683,42 @@ function rememberMessage(message: Message, settings: SelfBotProtectionSettings) 
   messageHistory.set(key, entries.slice(-100));
 }
 
+function rememberAttachments(message: Message, settings: SelfBotProtectionSettings) {
+  const stats = countAttachments(message);
+
+  if (stats.mediaTotal === 0) {
+    return;
+  }
+
+  const entries = recentAttachmentEntries(message, settings.imageWindowSeconds);
+  entries.push({
+    at: Date.now(),
+    images: stats.images,
+    mediaTotal: stats.mediaTotal
+  });
+  attachmentHistory.set(keyForMessage(message), entries.slice(-100));
+}
+
 function recentEntries(message: Message, windowSeconds: number) {
-  const key = `${message.guildId}:${message.author.id}`;
+  const key = keyForMessage(message);
   const minAt = Date.now() - windowSeconds * 1_000;
   const entries = (messageHistory.get(key) ?? []).filter((entry) => entry.at >= minAt);
 
   messageHistory.set(key, entries);
   return entries;
+}
+
+function recentAttachmentEntries(message: Message, windowSeconds: number) {
+  const key = keyForMessage(message);
+  const minAt = Date.now() - windowSeconds * 1_000;
+  const entries = (attachmentHistory.get(key) ?? []).filter((entry) => entry.at >= minAt);
+
+  attachmentHistory.set(key, entries);
+  return entries;
+}
+
+function keyForMessage(message: Message) {
+  return `${message.guildId}:${message.author.id}`;
 }
 
 function isChannelProtected(message: Message, settings: SelfBotProtectionSettings) {
@@ -840,6 +895,12 @@ function clearGuildWindows(guildId: string) {
   for (const key of messageHistory.keys()) {
     if (key.startsWith(`${guildId}:`)) {
       messageHistory.delete(key);
+    }
+  }
+
+  for (const key of attachmentHistory.keys()) {
+    if (key.startsWith(`${guildId}:`)) {
+      attachmentHistory.delete(key);
     }
   }
 

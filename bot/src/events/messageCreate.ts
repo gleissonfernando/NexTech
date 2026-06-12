@@ -8,6 +8,12 @@ import type { BotContext } from "../types";
 export async function handleMessageCreate(message: Message, context: BotContext) {
   await handleSafeBotMessage(message, context);
 
+  const imageBlocked = await handleImageAntiSpamMessage(message, context);
+
+  if (imageBlocked) {
+    return;
+  }
+
   const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
 
   if (selfBotBlocked) {
@@ -19,6 +25,4 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   if (linkBlocked) {
     return;
   }
-
-  await handleImageAntiSpamMessage(message, context);
 }

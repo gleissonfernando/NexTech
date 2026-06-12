@@ -528,7 +528,7 @@ export function SelfBotProtectionPanel({
                 emptyText="Nenhum canal disponivel."
                 icon={ImageOff}
                 items={channels.map((channel) => ({ id: channel.id, label: `#${channel.name}` }))}
-                label="Canais de imagem"
+                label="Canais permitidos para fotos"
                 onToggle={(id) => toggleId("mediaChannelIds", id)}
                 selectedIds={settings.mediaChannelIds}
               />
@@ -537,7 +537,7 @@ export function SelfBotProtectionPanel({
                 emptyText="Nenhum canal disponivel."
                 icon={Link2}
                 items={channels.map((channel) => ({ id: channel.id, label: `#${channel.name}` }))}
-                label="Canais de divulgacao"
+                label="Canais permitidos para links"
                 onToggle={(id) => toggleId("linkChannelIds", id)}
                 selectedIds={settings.linkChannelIds}
               />

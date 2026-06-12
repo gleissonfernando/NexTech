@@ -27,10 +27,15 @@ type UserWindow = {
   startedAt: number;
 };
 
+type DeletionResult = {
+  error: string | null;
+  succeeded: boolean;
+};
+
 const SETTINGS_CACHE_MS = 30_000;
 const settingsCache = new Map<string, CachedSettings>();
 const userWindows = new Map<string, UserWindow>();
-const processingQueues = new Map<string, Promise<void>>();
+const processingQueues = new Map<string, Promise<boolean>>();
 let serviceStarted = false;
 
 export function startImageAntiSpamService(context: BotContext) {
@@ -51,22 +56,23 @@ export function startImageAntiSpamService(context: BotContext) {
 
 export async function handleImageAntiSpamMessage(message: Message, context: BotContext) {
   if (!isBotModuleEnabled("image-anti-spam") || !message.guild || message.author.bot) {
-    return;
+    return false;
   }
 
   const imageCount = countImages(message);
 
   if (imageCount === 0) {
-    return;
+    return false;
   }
 
   const key = `${message.guild.id}:${message.author.id}`;
-  const previous = processingQueues.get(key) ?? Promise.resolve();
+  const previous = processingQueues.get(key) ?? Promise.resolve(false);
   const next = previous
-    .catch(() => undefined)
+    .catch(() => false)
     .then(() => processImageMessage(message, imageCount, context))
     .catch((error) => {
       console.warn("[image-anti-spam] falha ao processar mensagem:", errorMessage(error));
+      return false;
     })
     .finally(() => {
       if (processingQueues.get(key) === next) {
@@ -75,26 +81,26 @@ export async function handleImageAntiSpamMessage(message: Message, context: BotC
     });
 
   processingQueues.set(key, next);
-  await next;
+  return next;
 }
 
 async function processImageMessage(message: Message, imageCount: number, context: BotContext) {
   const guild = message.guild;
 
   if (!guild) {
-    return;
+    return false;
   }
 
   const settings = await getCachedSettings(guild.id, context);
 
   if (!settings.enabled || isIgnoredChannel(message, settings)) {
-    return;
+    return false;
   }
 
   const member = message.member ?? await guild.members.fetch(message.author.id).catch(() => null);
 
   if (!member || isImmune(member, settings)) {
-    return;
+    return false;
   }
 
   const key = `${guild.id}:${message.author.id}`;
@@ -118,16 +124,10 @@ async function processImageMessage(message: Message, imageCount: number, context
   window.imageCount = nextImageCount;
 
   if (nextImageCount <= settings.maxImages) {
-    return;
+    return false;
   }
 
-  const deleted = await message.delete().then(() => true).catch((error) => {
-    console.warn(
-      `[image-anti-spam] nao foi possivel apagar a mensagem ${message.id}:`,
-      errorMessage(error)
-    );
-    return false;
-  });
+  const deletion = await deleteImageSpamMessage(message);
   window.incidentKey ??= `${guild.id}:${message.author.id}:${window.startedAt}`;
 
   const result = await context.api.recordImageAntiSpamIncident({
@@ -136,17 +136,53 @@ async function processImageMessage(message: Message, imageCount: number, context
     userId: message.author.id,
     username: message.author.tag,
     channelId: message.channelId,
-    removedImages: deleted ? imageCount : 0
+    removedImages: deletion.succeeded ? imageCount : 0
   });
 
   let incident = result.incident;
 
   if (!result.duplicate) {
-    const outcome = await applyPunishment(member, message, result);
+    const outcome = mergeActionOutcome(deletion, await applyPunishment(member, message, result));
     incident = await context.api.completeImageAntiSpamIncident(incident.id, outcome);
   }
 
   await upsertDiscordLog(message, result.settings, incident, window);
+  return deletion.succeeded;
+}
+
+async function deleteImageSpamMessage(message: Message): Promise<DeletionResult> {
+  try {
+    await message.delete();
+    return {
+      error: null,
+      succeeded: true
+    };
+  } catch (error) {
+    const messageError = errorMessage(error);
+    console.warn(
+      `[image-anti-spam] nao foi possivel apagar a mensagem ${message.id}:`,
+      messageError
+    );
+    return {
+      error: `delete_message: ${messageError}`,
+      succeeded: false
+    };
+  }
+}
+
+function mergeActionOutcome(
+  deletion: DeletionResult,
+  punishment: {
+    actionError: string | null;
+    actionSucceeded: boolean;
+  }
+) {
+  const actionError = [deletion.error, punishment.actionError].filter(Boolean).join(" | ") || null;
+
+  return {
+    actionError,
+    actionSucceeded: deletion.succeeded && punishment.actionSucceeded
+  };
 }
 
 async function getCachedSettings(guildId: string, context: BotContext) {
@@ -344,7 +380,8 @@ function countImages(message: Message) {
       return true;
     }
 
-    return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachment.name ?? attachment.url);
+    const name = `${attachment.name ?? ""} ${attachment.url}`;
+    return /\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])/i.test(name);
   }).size;
 }
 
