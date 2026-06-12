@@ -409,7 +409,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       getLives(selectedGuildId, activeBotId),
       getTickets(selectedGuildId, activeBotId),
       enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
-      enabledModules.includes("kick-integration") ? getKickNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
+      liveModulesEnabled(enabledModules) ? getKickNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
       enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId) : Promise.resolve(null),
       enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null)
     ])
@@ -570,11 +570,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "lives" ? (
           <LiveView
             botId={activeBotId}
-            canManageKick={canManageModule(selectedBot, "kick-integration", canManageDashboard)}
+            canManageKick={canManageModule(selectedBot, "live", canManageDashboard) || canManageModule(selectedBot, "kick-integration", canManageDashboard)}
             canManageTwitch={canManageModule(selectedBot, "live", canManageDashboard)}
             guild={selectedGuild}
             lives={lives}
-            showKick={enabledModules.includes("kick-integration")}
+            showKick={liveModulesEnabled(enabledModules)}
             showTwitch={enabledModules.includes("live")}
           />
         ) : null}
@@ -1477,7 +1477,7 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
   }
 
   if (view === "lives") {
-    return enabledModules.includes("live") || enabledModules.includes("kick-integration");
+    return liveModulesEnabled(enabledModules);
   }
 
   if (view === "fivem") {
@@ -1486,6 +1486,10 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
 
   const requiredModule = viewModuleIds[view];
   return Boolean(requiredModule && enabledModules.includes(requiredModule));
+}
+
+function liveModulesEnabled(enabledModules: string[]) {
+  return enabledModules.includes("live") || enabledModules.includes("kick-integration");
 }
 
 function ensureDashboardGuilds(guilds: DashboardGuild[]) {

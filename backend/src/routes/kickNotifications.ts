@@ -30,6 +30,8 @@ import { resolveRequestBotId } from "../services/requestBotScopeService";
 import type { AuthSessionUser } from "../types/session";
 import { validateKickApiCredentials } from "../services/kickService";
 
+const KICK_LICENSE_MODULE_IDS = ["live", KICK_MODULE_ID];
+
 const createKickSchema = z.object({
   kickChannelInput: z.string(),
   discordChannelId: z.string().min(1),
@@ -332,7 +334,7 @@ kickWebhookRouter.post("/webhook", async (req, res, next) => {
 async function assertCanManageGuild(req: Request, guildId: string, botId: string | null, action: string) {
   const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
 
-  if (botId ? !(await canUseDevBotModule(user, botId, guildId, KICK_MODULE_ID)) : !canManageDashboardGuild(user, guildId)) {
+  if (botId ? !(await canUseAnyKickModule(user, botId, guildId)) : !canManageDashboardGuild(user, guildId)) {
     await writeKickAudit({
       action: `sem permissao tentou ${action}`,
       botId,
@@ -346,7 +348,7 @@ async function assertCanManageGuild(req: Request, guildId: string, botId: string
 async function assertCanReadGuild(req: Request, guildId: string, botId: string | null, action: string) {
   const user = req.res?.locals.dashboardAuth.user as AuthSessionUser;
 
-  if (botId ? !(await canReadDevBotModule(user, botId, guildId, KICK_MODULE_ID)) : !canManageDashboardGuild(user, guildId)) {
+  if (botId ? !(await canReadAnyKickModule(user, botId, guildId)) : !canManageDashboardGuild(user, guildId)) {
     await writeKickAudit({
       action: `sem permissao tentou ${action}`,
       botId,
@@ -355,6 +357,26 @@ async function assertCanReadGuild(req: Request, guildId: string, botId: string |
     });
     throw createServiceError("Voc\u00ea n\u00e3o possui acesso ao m\u00f3dulo Kick Integration.", 403);
   }
+}
+
+async function canUseAnyKickModule(user: AuthSessionUser, botId: string, guildId: string) {
+  for (const moduleId of KICK_LICENSE_MODULE_IDS) {
+    if (await canUseDevBotModule(user, botId, guildId, moduleId)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function canReadAnyKickModule(user: AuthSessionUser, botId: string, guildId: string) {
+  for (const moduleId of KICK_LICENSE_MODULE_IDS) {
+    if (await canReadDevBotModule(user, botId, guildId, moduleId)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function assertChannelBelongsToGuild(guildId: string, channelId: string, botId: string | null) {

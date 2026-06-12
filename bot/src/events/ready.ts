@@ -30,7 +30,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("live")) {
     startSocialNotificationMonitor(client, context.api);
   }
-  if (isBotModuleEnabled("kick-integration")) {
+  if (isBotModuleEnabled("live") || isBotModuleEnabled("kick-integration")) {
     startKickNotificationMonitor(client, context.api);
   }
   if (isBotModuleEnabled("network")) {
