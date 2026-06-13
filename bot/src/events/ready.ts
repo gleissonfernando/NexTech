@@ -1,12 +1,21 @@
 import type { Client } from "discord.js";
-import { env, isBotModuleEnabled } from "../config/env";
+import {
+  configuredBotModules,
+  env,
+  isBotModuleEnabled,
+  setRuntimeEnabledModules
+} from "../config/env";
 import { registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
 import { startFivemFacService } from "../services/fivemFacService";
 import { startGiveawayService } from "../services/giveawayService";
 import { startImageAntiSpamService } from "../services/imageAntiSpamService";
 import { startKickNotificationMonitor } from "../services/kickNotificationMonitor";
-import { ensureSelfBotRoles, isSelfBotModuleEnabled } from "../services/safeBotService";
+import {
+  disableUnreleasedSafeBotChannels,
+  ensureSelfBotRoles,
+  isSelfBotModuleEnabled
+} from "../services/safeBotService";
 import { startSelfBotProtectionService } from "../services/selfBotProtectionService";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
@@ -17,6 +26,34 @@ import type { BotContext } from "../types";
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
   context.api.setDiscordClientId(client.user.id);
+  const runtimeAccess = await context.api.getRuntimeModules().catch((error) => {
+    console.warn("[bot] nao foi possivel carregar modulos liberados:", error instanceof Error ? error.message : error);
+    return null;
+  });
+  const fallbackModules = env.DASHBOARD_BOT_ID || env.BOT_ENABLED_MODULES.trim()
+    ? configuredBotModules()
+    : [];
+  const runtimeBotId = runtimeAccess?.botId ?? (env.DASHBOARD_BOT_ID || null);
+
+  setRuntimeEnabledModules(runtimeAccess?.enabledModules ?? fallbackModules);
+  context.socket.onDevModuleUpdated((payload) => {
+    if (!runtimeBotId || payload.botId !== runtimeBotId) {
+      return;
+    }
+
+    const wasSelfBotEnabled = isSelfBotModuleEnabled();
+    setRuntimeEnabledModules(payload.enabledModules);
+
+    if (!wasSelfBotEnabled && isSelfBotModuleEnabled()) {
+      startSelfBotProtectionService(context);
+      void ensureSelfBotRoles(client, context);
+      return;
+    }
+
+    if (wasSelfBotEnabled && !isSelfBotModuleEnabled()) {
+      void disableUnreleasedSafeBotChannels(client, context);
+    }
+  });
 
   const commandGuildIds = commandRegistrationGuildIds(client);
   const commands = [...context.commands.values()];
@@ -59,7 +96,11 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     startVoiceRecorderService(context);
   }
   startSelfBotProtectionService(context);
-  await ensureSelfBotRoles(client, context);
+  if (isSelfBotModuleEnabled()) {
+    await ensureSelfBotRoles(client, context);
+  } else {
+    await disableUnreleasedSafeBotChannels(client, context);
+  }
   context.socket.connect(client);
   context.socket.emitStatus(client, true);
 

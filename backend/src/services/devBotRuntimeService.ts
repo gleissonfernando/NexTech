@@ -268,7 +268,7 @@ async function canUseMessageContentIntent(bot: DevBotRuntimeConfig) {
 }
 
 function hasEnabledModule(bot: DevBotRuntimeConfig, moduleIds: string[]) {
-  return bot.enabledModules.length === 0 || moduleIds.some((moduleId) => bot.enabledModules.includes(moduleId));
+  return moduleIds.some((moduleId) => bot.enabledModules.includes(moduleId));
 }
 
 function botRuntimeError(message: string) {

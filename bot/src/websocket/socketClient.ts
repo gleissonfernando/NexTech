@@ -68,6 +68,25 @@ export type FivemFacAbsenceUpdateEvent = {
   guildId: string;
 };
 
+export type MissionToolsSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+  settings?: unknown;
+};
+
+export type MissionToolsPanelPublishEvent = {
+  botId?: string | null;
+  guildId: string;
+  settings?: unknown;
+};
+
+export type MissionToolsMissionUpdateEvent = {
+  action: string;
+  botId?: string | null;
+  guildId: string;
+  mission?: unknown;
+};
+
 export type GiveawayPanelUpdateEvent = {
   action: "publish" | "update";
   botId?: string | null;
@@ -83,6 +102,11 @@ export type ImageAntiSpamSettingsEvent = {
 export type SelfBotProtectionSettingsEvent = {
   botId?: string | null;
   guildId: string;
+};
+
+export type DevModuleUpdatedEvent = {
+  botId: string;
+  enabledModules: string[];
 };
 
 export type VoiceRecorderStartEvent = {
@@ -112,9 +136,13 @@ export class BotSocketClient {
   private fivemFacSettingsHandler: ((payload: FivemFacSettingsEvent) => void) | null = null;
   private fivemFacPanelPublishHandler: ((payload: FivemFacPanelPublishEvent) => void) | null = null;
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
+  private missionToolsSettingsHandler: ((payload: MissionToolsSettingsEvent) => void) | null = null;
+  private missionToolsPanelPublishHandler: ((payload: MissionToolsPanelPublishEvent) => void) | null = null;
+  private missionToolsMissionUpdateHandler: ((payload: MissionToolsMissionUpdateEvent) => void) | null = null;
   private giveawayPanelUpdateHandler: ((payload: GiveawayPanelUpdateEvent) => void) | null = null;
   private imageAntiSpamSettingsHandler: ((payload: ImageAntiSpamSettingsEvent) => void) | null = null;
   private selfBotProtectionSettingsHandler: ((payload: SelfBotProtectionSettingsEvent) => void) | null = null;
+  private devModuleUpdatedHandler: ((payload: DevModuleUpdatedEvent) => void) | null = null;
   private voiceRecorderStartHandler: ((payload: VoiceRecorderStartEvent) => void) | null = null;
   private voiceRecorderStopHandler: ((payload: VoiceRecorderStopEvent) => void) | null = null;
 
@@ -189,6 +217,18 @@ export class BotSocketClient {
       this.socket.on("fivem:fac:absence_updated", this.fivemFacAbsenceUpdateHandler);
     }
 
+    if (this.missionToolsSettingsHandler) {
+      this.socket.on("mission-tools:settings_updated", this.missionToolsSettingsHandler);
+    }
+
+    if (this.missionToolsPanelPublishHandler) {
+      this.socket.on("mission-tools:panel_publish", this.missionToolsPanelPublishHandler);
+    }
+
+    if (this.missionToolsMissionUpdateHandler) {
+      this.socket.on("mission-tools:mission_updated", this.missionToolsMissionUpdateHandler);
+    }
+
     if (this.giveawayPanelUpdateHandler) {
       this.socket.on("giveaway:panel_update", this.giveawayPanelUpdateHandler);
     }
@@ -199,6 +239,10 @@ export class BotSocketClient {
 
     if (this.selfBotProtectionSettingsHandler) {
       this.socket.on("self-bot-protection:settings_updated", this.selfBotProtectionSettingsHandler);
+    }
+
+    if (this.devModuleUpdatedHandler) {
+      this.socket.on("dev:module_updated", this.devModuleUpdatedHandler);
     }
 
     if (this.voiceRecorderStartHandler) {
@@ -285,6 +329,24 @@ export class BotSocketClient {
     this.socket?.on("fivem:fac:absence_updated", handler);
   }
 
+  onMissionToolsSettingsUpdated(handler: (payload: MissionToolsSettingsEvent) => void) {
+    this.missionToolsSettingsHandler = handler;
+    this.socket?.off("mission-tools:settings_updated");
+    this.socket?.on("mission-tools:settings_updated", handler);
+  }
+
+  onMissionToolsPanelPublish(handler: (payload: MissionToolsPanelPublishEvent) => void) {
+    this.missionToolsPanelPublishHandler = handler;
+    this.socket?.off("mission-tools:panel_publish");
+    this.socket?.on("mission-tools:panel_publish", handler);
+  }
+
+  onMissionToolsMissionUpdated(handler: (payload: MissionToolsMissionUpdateEvent) => void) {
+    this.missionToolsMissionUpdateHandler = handler;
+    this.socket?.off("mission-tools:mission_updated");
+    this.socket?.on("mission-tools:mission_updated", handler);
+  }
+
   onGiveawayPanelUpdate(handler: (payload: GiveawayPanelUpdateEvent) => void) {
     this.giveawayPanelUpdateHandler = handler;
     this.socket?.off("giveaway:panel_update");
@@ -301,6 +363,12 @@ export class BotSocketClient {
     this.selfBotProtectionSettingsHandler = handler;
     this.socket?.off("self-bot-protection:settings_updated");
     this.socket?.on("self-bot-protection:settings_updated", handler);
+  }
+
+  onDevModuleUpdated(handler: (payload: DevModuleUpdatedEvent) => void) {
+    this.devModuleUpdatedHandler = handler;
+    this.socket?.off("dev:module_updated");
+    this.socket?.on("dev:module_updated", handler);
   }
 
   onVoiceRecorderStart(handler: (payload: VoiceRecorderStartEvent) => void) {

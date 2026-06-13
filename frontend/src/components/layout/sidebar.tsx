@@ -6,6 +6,7 @@ import {
   Building2,
   Film,
   Gift,
+  ListChecks,
   LockKeyhole,
   Mic2,
   Radio,
@@ -26,6 +27,7 @@ export type ViewId =
   | "giveaway"
   | "x-monitor"
   | "moderation"
+  | "mission-tools"
   | "voice-recorder"
   | "self-bot-protection"
   | "security"
@@ -50,6 +52,7 @@ const navItems: NavItem[] = [
   { id: "giveaway", label: "Sorteio", icon: Gift, moduleId: "giveaway" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderacao", icon: Shield, moduleId: "moderation" },
+  { id: "mission-tools", label: "Mission Tools", icon: ListChecks, moduleId: "mission-tools" },
   { id: "voice-recorder", label: "Voice Recorder", icon: Mic2, moduleId: "voice-recorder" },
   { id: "self-bot-protection", label: "SelfBot Protection", icon: ShieldCheck, moduleId: "safe-bot" },
   { id: "security", label: "Seguranca", icon: ShieldAlert, moduleId: "account-age-security" },

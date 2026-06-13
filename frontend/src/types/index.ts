@@ -799,6 +799,87 @@ export type FivemFacResponse = {
 
 export type SaveFivemFacSettingsPayload = Partial<Omit<FivemFacSettings, "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt">>;
 
+export type MissionToolStatus = "open" | "running" | "completed" | "cancelled";
+
+export type MissionToolsMessages = {
+  panelTitle: string;
+  panelDescription: string;
+  joinSuccess: string;
+  leaveSuccess: string;
+  missionStarted: string;
+  missionCompleted: string;
+};
+
+export type MissionToolsSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  participantRoleIds: string[];
+  completionRoleId: string | null;
+  messages: MissionToolsMessages;
+  lastPanelRequestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MissionToolParticipant = {
+  userId: string;
+  username: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+};
+
+export type MissionToolMission = {
+  id: string;
+  botId: string;
+  guildId: string;
+  title: string;
+  description: string | null;
+  status: MissionToolStatus;
+  participantLimit: number;
+  participants: MissionToolParticipant[];
+  activeParticipantCount: number;
+  createdBy: string | null;
+  startedBy: string | null;
+  completedBy: string | null;
+  cancelledBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  updatedAt: string;
+};
+
+export type MissionToolsStats = {
+  activeParticipants: number;
+  completedMissions: number;
+  openMissions: number;
+  totalMissions: number;
+};
+
+export type MissionToolsResponse = {
+  activeMission: MissionToolMission | null;
+  missions: MissionToolMission[];
+  settings: MissionToolsSettings;
+  stats: MissionToolsStats;
+};
+
+export type SaveMissionToolsSettingsPayload = Partial<Omit<
+  MissionToolsSettings,
+  "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt"
+>>;
+
+export type CreateMissionToolMissionPayload = {
+  description?: string | null;
+  participantLimit?: number | null;
+  title: string;
+};
+
 export type SaveXAccountPayload = {
   active: boolean;
   channelId: string;

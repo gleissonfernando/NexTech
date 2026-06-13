@@ -12,6 +12,7 @@ import {
   Gift,
   Globe2,
   Hash,
+  ListChecks,
   Loader2,
   LockKeyhole,
   Mic2,
@@ -33,6 +34,7 @@ import type { ViewId } from "../components/layout/sidebar";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
+import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
 import { AccountAgeSecurityPanel } from "../components/security/AccountAgeSecurityPanel";
@@ -189,6 +191,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "moderation"
   },
   {
+    id: "mission-tools",
+    title: "Mission Tools",
+    description: "Cria painel de missoes, fila de participantes e historico do servidor.",
+    icon: ListChecks,
+    view: "mission-tools"
+  },
+  {
     id: "voice-recorder",
     title: "Voice Recorder",
     description: "Grava canais de voz, salva arquivos MP3 e organiza historico na dashboard.",
@@ -280,6 +289,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "kick-clips": "kick-clips",
   giveaway: "giveaway",
   "x-monitor": "x-monitor",
+  "mission-tools": "mission-tools",
   logs: "logs",
   fivem: "fivem-fac",
   "voice-recorder": "voice-recorder",
@@ -665,6 +675,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             onToggle={updateSetting}
             savingKey={savingKey}
             settings={settings}
+          />
+        ) : null}
+        {activeView === "mission-tools" ? (
+          <MissionToolsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "mission-tools", canManageDashboard)}
+            guild={selectedGuild}
           />
         ) : null}
         {activeView === "voice-recorder" ? (
@@ -1412,6 +1429,14 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
     };
   }
 
+  if (moduleId === "mission-tools") {
+    return {
+      active: true,
+      configured: true,
+      configuredText: "Disponivel"
+    };
+  }
+
   if (moduleId === "voice-recorder") {
     return {
       active: true,
@@ -1543,7 +1568,15 @@ function friendlyLog(log: LogEntry) {
     "fivem.fac.request_approved": { badge: "FiveM", title: "Solicitacao de ausencia aprovada" },
     "fivem.fac.request_rejected": { badge: "FiveM", title: "Solicitacao de ausencia reprovada" },
     "fivem.fac.absence_started": { badge: "FiveM", title: "Ausencia iniciada" },
-    "fivem.fac.absence_finished": { badge: "FiveM", title: "Ausencia finalizada" }
+    "fivem.fac.absence_finished": { badge: "FiveM", title: "Ausencia finalizada" },
+    "mission_tools.settings_updated": { badge: "Mission", title: "Mission Tools atualizado" },
+    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Publicacao do painel solicitada" },
+    "mission_tools.mission_created": { badge: "Mission", title: "Missao criada" },
+    "mission_tools.mission_started": { badge: "Mission", title: "Missao iniciada" },
+    "mission_tools.mission_completed": { badge: "Mission", title: "Missao concluida" },
+    "mission_tools.mission_cancelled": { badge: "Mission", title: "Missao cancelada" },
+    "mission_tools.participant_joined": { badge: "Mission", title: "Participante entrou na missao" },
+    "mission_tools.participant_left": { badge: "Mission", title: "Participante saiu da missao" }
   };
   const mapped = byType[log.type];
 
@@ -1576,6 +1609,10 @@ function friendlyLog(log: LogEntry) {
 
   if (log.type.includes("fivem.fac")) {
     return { badge: "FiveM", title: message || "FAC atualizado", description: message };
+  }
+
+  if (log.type.includes("mission_tools")) {
+    return { badge: "Mission", title: message || "Mission Tools atualizado", description: message };
   }
 
   if (log.type.includes("image_anti_spam")) {

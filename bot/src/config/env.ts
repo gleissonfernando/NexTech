@@ -149,9 +149,24 @@ const enabledModules = new Set(
     .map((moduleId) => moduleId.trim())
     .filter(Boolean)
 );
+let runtimeEnabledModules: Set<string> | null = null;
 
 export function isBotModuleEnabled(moduleId: string) {
-  return enabledModules.size === 0 || enabledModules.has(moduleId);
+  const modules = runtimeEnabledModules ?? enabledModules;
+
+  if (modules.size > 0) {
+    return modules.has(moduleId);
+  }
+
+  return runtimeEnabledModules === null && !env.DASHBOARD_BOT_ID;
+}
+
+export function configuredBotModules() {
+  return [...enabledModules];
+}
+
+export function setRuntimeEnabledModules(moduleIds: string[]) {
+  runtimeEnabledModules = new Set(moduleIds.map((moduleId) => moduleId.trim()).filter(Boolean));
 }
 
 if (env.NODE_ENV === "production") {

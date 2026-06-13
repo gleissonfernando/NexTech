@@ -25,7 +25,7 @@ const ACCESS_LEVEL_RANK: Record<DashboardAccessLevel, number> = {
   admin: 4
 };
 
-const PREMIUM_MODULE_IDS = new Set(["live", "kick-integration", "clips", "kick-clips", "giveaway", "network", "x-monitor", "voice-recorder", "account-age-security", "safe-bot", "fivem", "fivem-fac"]);
+const PREMIUM_MODULE_IDS = new Set(["live", "kick-integration", "clips", "kick-clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "account-age-security", "safe-bot", "fivem", "fivem-fac"]);
 const BASIC_READ_MODULE_IDS = new Set(["logs", "tickets"]);
 const CRITICAL_MODULE_IDS = new Set(["verification"]);
 

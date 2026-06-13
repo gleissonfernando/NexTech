@@ -38,6 +38,7 @@ export const DEV_MODULES = [
   { id: "roles", label: "Sistema de Cargos" },
   { id: "tickets", label: "Sistema de Tickets" },
   { id: "moderation", label: "Sistema de Moderacao" },
+  { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
@@ -866,6 +867,9 @@ export async function updateDevBotModules(botId: string, enabledModules: string[
     if (!hadSelfBot && bot.enabledModules.includes("safe-bot")) {
       await enableSelfBotDefaults(bot);
     }
+    if (hadSelfBot && !bot.enabledModules.includes("safe-bot")) {
+      await disableSelfBotDefaults(bot);
+    }
 
     emitRealtime("dev:module_updated", {
       type: "MODULE_UPDATED",
@@ -1373,6 +1377,33 @@ async function enableSelfBotDefaults(bot: DevBotDto) {
 
   emitRealtime("settings:updated", settings);
   emitRealtime("self-bot-protection:settings_updated", protection);
+}
+
+async function disableSelfBotDefaults(bot: DevBotDto) {
+  const runtime = await getDevBotRuntimeConfig(bot.id);
+  const guildIds = runtime?.guildIds ?? [bot.mainGuildId];
+  const updates = await Promise.all(
+    guildIds.map(async (guildId) => {
+      const [settings, protection] = await Promise.all([
+        updateGuildSettings(guildId, {
+          safeBotEnabled: false
+        }, bot.id),
+        saveSelfBotProtectionSettings(guildId, bot.id, {
+          enabled: false
+        }, null)
+      ]);
+
+      return {
+        protection,
+        settings
+      };
+    })
+  );
+
+  for (const update of updates) {
+    emitRealtime("settings:updated", update.settings);
+    emitRealtime("self-bot-protection:settings_updated", update.protection);
+  }
 }
 
 function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], accessLevel: DashboardAccessLevel = "admin"): DevBotDto {

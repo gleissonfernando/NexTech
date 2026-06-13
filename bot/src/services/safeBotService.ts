@@ -1,7 +1,9 @@
 import {
   ChannelType,
+  ContainerBuilder,
   EmbedBuilder,
   PermissionFlagsBits,
+  TextDisplayBuilder,
   type Client,
   type Guild,
   type GuildMember,
@@ -17,7 +19,6 @@ import type {
 } from "./apiClient";
 
 const MODULE_ID = "safe-bot";
-const FALLBACK_MODULE_ID = "moderation";
 const SELF_BOT_ROLE_NAME = "Self Bot";
 const FILTER_CHANNEL_NAME = "♻・filter";
 const LOG_CHANNEL_NAME = "📋・selfbot-logs";
@@ -61,16 +62,7 @@ type PunishmentOutcome = {
 
 const FILTER_WARNING_MESSAGE = [
   "⚠️ Qualquer mensagem enviada nesta sala resultará automaticamente em punição.",
-  "",
-  "Sistema criado para identificar contas suspeitas que realizam:",
-  "",
-  "• Flood de mensagens",
-  "• Flood de imagens",
-  "• Flood de links",
-  "• Conteúdo automático",
-  "• Comportamentos de SelfBot",
-  "",
-  "Todas as ações serão registradas nos logs."
+  "Sistema criado para identificar contas invadidas que realizam flood de links maliciosos, imagens e conteúdos automáticos, ajudando a impedir a divulgação de spam no servidor."
 ].join("\n");
 
 export async function ensureSafeBotSetup(guild: Guild, context: BotContext, knownSettings?: GuildSettings | null) {
@@ -158,6 +150,44 @@ export async function ensureSelfBotRoles(client: Client<true>, context: BotConte
 
   await Promise.allSettled(
     client.guilds.cache.map((guild) => ensureSafeBotSetup(guild, context))
+  );
+}
+
+export async function disableUnreleasedSafeBotChannels(client: Client<true>, context: BotContext) {
+  if (isSelfBotModuleEnabled()) {
+    return;
+  }
+
+  await Promise.allSettled(
+    client.guilds.cache.map(async (guild) => {
+      clearSafeBotSetupCache(guild.id);
+      const settings = await context.api.getSettings(guild.id, client.user.id).catch((error) => {
+        console.warn(`[safe-bot] nao foi possivel carregar canal para desativar em ${guild.id}:`, errorMessage(error));
+        return null;
+      });
+
+      if (!settings?.safeBotChannelId) {
+        return;
+      }
+
+      const channel = await guild.channels.fetch(settings.safeBotChannelId).catch(() => null);
+
+      if (channel?.type !== ChannelType.GuildText) {
+        return;
+      }
+
+      await channel.permissionOverwrites.edit(
+        guild.roles.everyone,
+        {
+          SendMessages: false
+        },
+        {
+          reason: "Self Bot: modulo nao liberado para este bot"
+        }
+      ).catch((error) => {
+        console.warn(`[safe-bot] nao foi possivel desativar o canal em ${guild.id}:`, errorMessage(error));
+      });
+    })
   );
 }
 
@@ -818,17 +848,48 @@ async function ensureFilterWarning(channel: Awaited<ReturnType<typeof findTextCh
   }
 
   const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
-  const exists = messages?.some((message) => message.author.id === channel.client.user?.id && message.content.includes("Qualquer mensagem enviada nesta sala"));
+  const warning = messages?.find((message) => {
+    if (message.author.id !== channel.client.user?.id) {
+      return false;
+    }
 
-  if (exists) {
-    return;
+    const serializedComponents = JSON.stringify(message.components.map((component) => component.toJSON()));
+    return message.content.includes("Qualquer mensagem enviada nesta sala")
+      || serializedComponents.includes("Qualquer mensagem enviada nesta sala");
+  });
+  const container = new ContainerBuilder()
+    .setAccentColor(0xed4245)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(FILTER_WARNING_MESSAGE)
+    );
+
+  if (warning) {
+    try {
+      await warning.edit({
+        allowedMentions: {
+          parse: []
+        },
+        components: [container],
+        content: null,
+        embeds: [],
+        flags: "IsComponentsV2"
+      });
+      return;
+    } catch (editError) {
+      const deleted = await warning.delete().then(() => true).catch(() => false);
+
+      if (!deleted) {
+        throw editError;
+      }
+    }
   }
 
   await channel.send({
     allowedMentions: {
       parse: []
     },
-    content: FILTER_WARNING_MESSAGE
+    components: [container],
+    flags: "IsComponentsV2"
   });
 }
 
@@ -841,7 +902,7 @@ function punishmentLabel(action: SelfBotPunishmentAction | "none") {
 }
 
 export function isSelfBotModuleEnabled() {
-  return isBotModuleEnabled(MODULE_ID) || isBotModuleEnabled(FALLBACK_MODULE_ID);
+  return isBotModuleEnabled(MODULE_ID);
 }
 
 function isDevBotMainGuild(guildId: string) {

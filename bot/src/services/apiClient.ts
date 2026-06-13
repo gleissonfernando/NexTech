@@ -32,6 +32,11 @@ export type BotCommandAuthorization = {
   reasonCode: string;
 };
 
+export type BotRuntimeModules = {
+  botId: string;
+  enabledModules: string[];
+};
+
 export type ImageAntiSpamSettings = {
   id: string;
   botId: string;
@@ -581,6 +586,62 @@ export type FivemFacAbsence = {
   updatedAt: string;
 };
 
+export type MissionToolStatus = "open" | "running" | "completed" | "cancelled";
+
+export type MissionToolsMessages = {
+  panelTitle: string;
+  panelDescription: string;
+  joinSuccess: string;
+  leaveSuccess: string;
+  missionStarted: string;
+  missionCompleted: string;
+};
+
+export type MissionToolsSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  participantRoleIds: string[];
+  completionRoleId: string | null;
+  messages: MissionToolsMessages;
+  lastPanelRequestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MissionToolParticipant = {
+  userId: string;
+  username: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+};
+
+export type MissionToolMission = {
+  id: string;
+  botId: string;
+  guildId: string;
+  title: string;
+  description: string | null;
+  status: MissionToolStatus;
+  participantLimit: number;
+  participants: MissionToolParticipant[];
+  activeParticipantCount: number;
+  createdBy: string | null;
+  startedBy: string | null;
+  completedBy: string | null;
+  cancelledBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  updatedAt: string;
+};
+
 export class ApiClient {
   private readonly http: AxiosInstance;
 
@@ -642,6 +703,11 @@ export class ApiClient {
 
       throw error;
     }
+  }
+
+  async getRuntimeModules() {
+    const { data } = await this.http.get<BotRuntimeModules>("/bot/runtime/modules");
+    return data;
   }
 
   async createTicket(input: { guildId: string; channelId?: string | null; openerId: string; subject: string }) {
@@ -1098,6 +1164,67 @@ export class ApiClient {
       roleRemoved
     });
     return data.absence;
+  }
+
+  async getActiveMissionToolsConfigs() {
+    const { data } = await this.http.get<{ configs: MissionToolsSettings[] }>("/mission-tools/bot/configs");
+    return data.configs;
+  }
+
+  async getMissionToolsSettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: MissionToolsSettings }>(`/mission-tools/bot/${guildId}`);
+    return data.settings;
+  }
+
+  async updateMissionToolsPanelState(input: { guildId: string; messageId?: string | null }) {
+    const { data } = await this.http.post<{ settings: MissionToolsSettings }>("/mission-tools/bot/panel-state", input);
+    return data.settings;
+  }
+
+  async getActiveMissionToolMission(guildId: string) {
+    const { data } = await this.http.get<{ mission: MissionToolMission | null }>(`/mission-tools/bot/${guildId}/active`);
+    return data.mission;
+  }
+
+  async getMissionToolMission(missionId: string) {
+    const { data } = await this.http.get<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}`);
+    return data.mission;
+  }
+
+  async createMissionToolMission(input: {
+    createdBy?: string | null;
+    description?: string | null;
+    guildId: string;
+    participantLimit?: number | null;
+    title: string;
+  }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>("/mission-tools/bot/missions", input);
+    return data.mission;
+  }
+
+  async joinMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; username?: string | null }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/join`, input);
+    return data.mission;
+  }
+
+  async leaveMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; username?: string | null }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/leave`, input);
+    return data.mission;
+  }
+
+  async startMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; username?: string | null }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/start`, input);
+    return data.mission;
+  }
+
+  async completeMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; username?: string | null }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/complete`, input);
+    return data.mission;
+  }
+
+  async cancelMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; username?: string | null }) {
+    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/cancel`, input);
+    return data.mission;
   }
 }
 

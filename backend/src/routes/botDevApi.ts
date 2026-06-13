@@ -13,6 +13,26 @@ const commandAuthorizationSchema = z.object({
 
 botDevApiRouter.use(requireBot);
 
+botDevApiRouter.get("/runtime/modules", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const permissions = botId ? await getBotApiPermissions(botId) : null;
+
+    if (!permissions) {
+      return res.status(404).json({
+        error: "Bot nao encontrado."
+      });
+    }
+
+    return res.json({
+      botId,
+      enabledModules: permissions.enabledModules
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 botDevApiRouter.post("/guilds/:guildId/commands/:commandName/authorize", async (req, res, next) => {
   try {
     const { commandName, guildId } = req.params;

@@ -621,6 +621,63 @@ export type MongoVoiceRecording = {
   updatedAt: Date;
 };
 
+export type MongoMissionToolStatus = "open" | "running" | "completed" | "cancelled";
+
+export type MongoMissionToolParticipant = {
+  userId: string;
+  username: string | null;
+  joinedAt: Date;
+  leftAt: Date | null;
+};
+
+export type MongoMissionToolsMessages = {
+  panelTitle: string;
+  panelDescription: string;
+  joinSuccess: string;
+  leaveSuccess: string;
+  missionStarted: string;
+  missionCompleted: string;
+};
+
+export type MongoMissionToolsSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  participantRoleIds: string[];
+  completionRoleId: string | null;
+  messages: MongoMissionToolsMessages;
+  lastPanelRequestedAt?: Date | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoMissionToolMission = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  title: string;
+  description: string | null;
+  status: MongoMissionToolStatus;
+  participantLimit: number;
+  participants: MongoMissionToolParticipant[];
+  createdBy: string | null;
+  startedBy: string | null;
+  completedBy: string | null;
+  cancelledBy: string | null;
+  createdAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  updatedAt: Date;
+};
+
 export type MongoSelfBotProtectionModuleId =
   | "anti-spam"
   | "anti-flood"
@@ -836,6 +893,8 @@ export async function getMongoCollections() {
     imageAntiSpamIncidents: db.collection<MongoImageAntiSpamIncident>("image_anti_spam_incidents"),
     voiceRecorderSettings: db.collection<MongoVoiceRecorderSettings>("voice_recorder_settings"),
     voiceRecordings: db.collection<MongoVoiceRecording>("voice_recordings"),
+    missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
+    missionToolsMissions: db.collection<MongoMissionToolMission>("mission_tools_missions"),
     selfBotProtectionSettings: db.collection<MongoSelfBotProtectionSettings>("self_bot_protection_settings"),
     selfBotProtectionIncidents: db.collection<MongoSelfBotProtectionIncident>("self_bot_protection_incidents"),
     devBots: db.collection<MongoDevBot>("Bot"),
@@ -902,6 +961,7 @@ async function createMongoIndexes(db: Db) {
     ensureFivemFacIndexes(db),
     ensureImageAntiSpamIndexes(db),
     ensureVoiceRecorderIndexes(db),
+    ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
     db.collection<MongoSocialNotification>("social_notifications").createIndex(
       {
@@ -1278,6 +1338,30 @@ async function ensureVoiceRecorderIndexes(db: Db) {
         partialFilterExpression: {
           status: {
             $in: ["starting", "recording", "processing"]
+          }
+        },
+        unique: true
+      }
+    )
+  ]);
+}
+
+async function ensureMissionToolsIndexes(db: Db) {
+  const settings = db.collection<MongoMissionToolsSettings>("mission_tools_settings");
+  const missions = db.collection<MongoMissionToolMission>("mission_tools_missions");
+
+  await Promise.all([
+    settings.createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    settings.createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
+    missions.createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    missions.createIndex({ botId: 1, guildId: 1, status: 1, updatedAt: -1 }),
+    missions.createIndex(
+      { botId: 1, guildId: 1, status: 1 },
+      {
+        name: "mission_tools_active_unique",
+        partialFilterExpression: {
+          status: {
+            $in: ["open", "running"]
           }
         },
         unique: true

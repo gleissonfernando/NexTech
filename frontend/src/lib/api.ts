@@ -36,11 +36,16 @@ import type {
   ImageAntiSpamSettings,
   LiveEvent,
   LogEntry,
+  CreateMissionToolMissionPayload,
+  MissionToolMission,
+  MissionToolsResponse,
+  MissionToolsSettings,
   PublicKickClips,
   SaveClipsConfigPayload,
   SaveFivemFacSettingsPayload,
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
+  SaveMissionToolsSettingsPayload,
   SaveSelfBotProtectionSettingsPayload,
   SaveSocialPanelPayload,
   SaveVoiceRecorderSettingsPayload,
@@ -996,6 +1001,63 @@ export async function removeFivemFacAbsencePhoto(guildId: string, botId: string,
     }
   );
   return data.absence;
+}
+
+export async function getMissionTools(guildId: string, botId: string) {
+  const { data } = await api.get<MissionToolsResponse>(`/mission-tools/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function getMissionToolsOptions(guildId: string, botId: string) {
+  const { data } = await api.get<{ options: GuildLiveOptions }>(`/mission-tools/${guildId}/options`, {
+    params: botParams(botId)
+  });
+  return data.options;
+}
+
+export async function saveMissionToolsSettings(guildId: string, botId: string, payload: SaveMissionToolsSettingsPayload) {
+  const { data } = await api.patch<{ settings: MissionToolsSettings }>(`/mission-tools/${guildId}/settings`, payload, {
+    params: botParams(botId)
+  });
+  return data.settings;
+}
+
+export async function publishMissionToolsPanel(guildId: string, botId: string) {
+  const { data } = await api.post<{ settings: MissionToolsSettings }>(`/mission-tools/${guildId}/panel`, undefined, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.settings;
+}
+
+export async function createMissionToolMission(guildId: string, botId: string, payload: CreateMissionToolMissionPayload) {
+  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions`, payload, {
+    params: botParams(botId)
+  });
+  return data.mission;
+}
+
+export async function startMissionToolMission(guildId: string, botId: string, missionId: string) {
+  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/start`, undefined, {
+    params: botParams(botId)
+  });
+  return data.mission;
+}
+
+export async function completeMissionToolMission(guildId: string, botId: string, missionId: string) {
+  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/complete`, undefined, {
+    params: botParams(botId)
+  });
+  return data.mission;
+}
+
+export async function cancelMissionToolMission(guildId: string, botId: string, missionId: string) {
+  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/cancel`, undefined, {
+    params: botParams(botId)
+  });
+  return data.mission;
 }
 
 export async function getDevModules() {
