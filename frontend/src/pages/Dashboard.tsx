@@ -193,7 +193,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "mission-tools",
     title: "Mission Tools",
-    description: "Cria painel de missoes, fila de participantes e historico do servidor.",
+    description: "Libera o Control Center com Mission, Clean, Voice, Rich Presence e Username Checker.",
     icon: ListChecks,
     view: "mission-tools"
   },
@@ -1570,13 +1570,7 @@ function friendlyLog(log: LogEntry) {
     "fivem.fac.absence_started": { badge: "FiveM", title: "Ausencia iniciada" },
     "fivem.fac.absence_finished": { badge: "FiveM", title: "Ausencia finalizada" },
     "mission_tools.settings_updated": { badge: "Mission", title: "Mission Tools atualizado" },
-    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Publicacao do painel solicitada" },
-    "mission_tools.mission_created": { badge: "Mission", title: "Missao criada" },
-    "mission_tools.mission_started": { badge: "Mission", title: "Missao iniciada" },
-    "mission_tools.mission_completed": { badge: "Mission", title: "Missao concluida" },
-    "mission_tools.mission_cancelled": { badge: "Mission", title: "Missao cancelada" },
-    "mission_tools.participant_joined": { badge: "Mission", title: "Participante entrou na missao" },
-    "mission_tools.participant_left": { badge: "Mission", title: "Participante saiu da missao" }
+    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Publicacao do Control Center solicitada" }
   };
   const mapped = byType[log.type];
 

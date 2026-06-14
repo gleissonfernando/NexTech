@@ -799,15 +799,57 @@ export type FivemFacResponse = {
 
 export type SaveFivemFacSettingsPayload = Partial<Omit<FivemFacSettings, "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt">>;
 
-export type MissionToolStatus = "open" | "running" | "completed" | "cancelled";
+export type MissionToolsFeatureId =
+  | "mission"
+  | "clear"
+  | "voice"
+  | "rich-presence"
+  | "username-checker";
 
-export type MissionToolsMessages = {
-  panelTitle: string;
-  panelDescription: string;
-  joinSuccess: string;
-  leaveSuccess: string;
-  missionStarted: string;
-  missionCompleted: string;
+export type MissionToolsStatus =
+  | "active"
+  | "inactive"
+  | "deactivated"
+  | "waiting"
+  | "running"
+  | "completed"
+  | "error";
+
+export type MissionToolsClearMode = "bulk" | "userDm";
+export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
+export type MissionToolsRichPresenceStatus = "active" | "inactive";
+export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
+
+export type MissionToolsRichPresenceConfig = {
+  applicationId?: string;
+  activityType?: MissionToolsRichPresenceActivityType;
+  name?: string;
+  description?: string;
+  state?: string;
+  details?: string;
+  buttonLabel?: string;
+  buttonUrl?: string;
+  largeImage?: string;
+  largeText?: string;
+  smallImage?: string;
+  smallText?: string;
+  startTimestamp?: string;
+};
+
+export type MissionToolsUsernameCheckerOptions = {
+  usernameLength?: number;
+  concurrency?: number;
+  requestDelay?: number;
+};
+
+export type MissionToolsUsernameCheckerStats = {
+  hits: number;
+  taken: number;
+  errors: number;
+  activeProxies: number;
+  deadProxies: number;
+  bannedProxies: number;
+  workersRunning: number;
 };
 
 export type MissionToolsSettings = {
@@ -819,53 +861,66 @@ export type MissionToolsSettings = {
   panelMessageId: string | null;
   logChannelId: string | null;
   managerRoleIds: string[];
-  participantRoleIds: string[];
-  completionRoleId: string | null;
-  messages: MissionToolsMessages;
+  allowedRoleIds: string[];
+  enabledFeatures: MissionToolsFeatureId[];
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type MissionToolParticipant = {
-  userId: string;
-  username: string | null;
-  joinedAt: string;
-  leftAt: string | null;
-};
-
-export type MissionToolMission = {
+export type MissionToolsUserPanel = {
   id: string;
   botId: string;
   guildId: string;
-  title: string;
-  description: string | null;
-  status: MissionToolStatus;
-  participantLimit: number;
-  participants: MissionToolParticipant[];
-  activeParticipantCount: number;
-  createdBy: string | null;
-  startedBy: string | null;
-  completedBy: string | null;
-  cancelledBy: string | null;
+  userId: string;
+  username: string | null;
+  dmChannelId: string | null;
+  clearMessageId: string | null;
+  missionMessageId: string | null;
+  voiceMessageId: string | null;
+  richPresenceMessageId: string | null;
+  usernameCheckerMessageId: string | null;
+  tokenConfigured: boolean;
+  clearStatus: MissionToolsStatus;
+  clearMode: MissionToolsClearMode;
+  clearTargetUserId: string | null;
+  missionStatus: MissionToolsStatus;
+  voiceStatus: MissionToolsVoiceStatus;
+  richPresenceStatus: MissionToolsRichPresenceStatus;
+  usernameCheckerStatus: MissionToolsStatus;
+  currentMission: string | null;
+  missionDetail: string | null;
+  voiceGuildId: string | null;
+  voiceGuildName: string | null;
+  voiceChannelId: string | null;
+  voiceChannelName: string | null;
+  voiceConnectedAt: string | null;
+  richPresenceConfig: MissionToolsRichPresenceConfig;
+  richPresenceUpdatedAt: string | null;
+  usernameCheckerOptions: MissionToolsUsernameCheckerOptions;
+  usernameCheckerStats: MissionToolsUsernameCheckerStats;
+  usernameCheckerLastEvent: string | null;
+  usernameCheckerUpdatedAt: string | null;
+  completedCount: number;
+  totalMissions: number;
+  progress: number;
   createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  cancelledAt: string | null;
   updatedAt: string;
 };
 
 export type MissionToolsStats = {
-  activeParticipants: number;
-  completedMissions: number;
-  openMissions: number;
-  totalMissions: number;
+  configuredUsers: number;
+  usersWithToken: number;
+  runningMissions: number;
+  runningCleanups: number;
+  activeVoiceSessions: number;
+  activeRichPresence: number;
+  usernameHits: number;
 };
 
 export type MissionToolsResponse = {
-  activeMission: MissionToolMission | null;
-  missions: MissionToolMission[];
   settings: MissionToolsSettings;
+  users: MissionToolsUserPanel[];
   stats: MissionToolsStats;
 };
 
@@ -873,12 +928,6 @@ export type SaveMissionToolsSettingsPayload = Partial<Omit<
   MissionToolsSettings,
   "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt"
 >>;
-
-export type CreateMissionToolMissionPayload = {
-  description?: string | null;
-  participantLimit?: number | null;
-  title: string;
-};
 
 export type SaveXAccountPayload = {
   active: boolean;

@@ -586,15 +586,57 @@ export type FivemFacAbsence = {
   updatedAt: string;
 };
 
-export type MissionToolStatus = "open" | "running" | "completed" | "cancelled";
+export type MissionToolsFeatureId =
+  | "mission"
+  | "clear"
+  | "voice"
+  | "rich-presence"
+  | "username-checker";
 
-export type MissionToolsMessages = {
-  panelTitle: string;
-  panelDescription: string;
-  joinSuccess: string;
-  leaveSuccess: string;
-  missionStarted: string;
-  missionCompleted: string;
+export type MissionToolsStatus =
+  | "active"
+  | "inactive"
+  | "deactivated"
+  | "waiting"
+  | "running"
+  | "completed"
+  | "error";
+
+export type MissionToolsClearMode = "bulk" | "userDm";
+export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
+export type MissionToolsRichPresenceStatus = "active" | "inactive";
+export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
+
+export type MissionToolsRichPresenceConfig = {
+  applicationId?: string;
+  activityType?: MissionToolsRichPresenceActivityType;
+  name?: string;
+  description?: string;
+  state?: string;
+  details?: string;
+  buttonLabel?: string;
+  buttonUrl?: string;
+  largeImage?: string;
+  largeText?: string;
+  smallImage?: string;
+  smallText?: string;
+  startTimestamp?: string;
+};
+
+export type MissionToolsUsernameCheckerOptions = {
+  usernameLength?: number;
+  concurrency?: number;
+  requestDelay?: number;
+};
+
+export type MissionToolsUsernameCheckerStats = {
+  hits: number;
+  taken: number;
+  errors: number;
+  activeProxies: number;
+  deadProxies: number;
+  bannedProxies: number;
+  workersRunning: number;
 };
 
 export type MissionToolsSettings = {
@@ -606,39 +648,62 @@ export type MissionToolsSettings = {
   panelMessageId: string | null;
   logChannelId: string | null;
   managerRoleIds: string[];
-  participantRoleIds: string[];
-  completionRoleId: string | null;
-  messages: MissionToolsMessages;
+  allowedRoleIds: string[];
+  enabledFeatures: MissionToolsFeatureId[];
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type MissionToolParticipant = {
-  userId: string;
-  username: string | null;
-  joinedAt: string;
-  leftAt: string | null;
-};
-
-export type MissionToolMission = {
+export type MissionToolsUserPanel = {
   id: string;
   botId: string;
   guildId: string;
-  title: string;
-  description: string | null;
-  status: MissionToolStatus;
-  participantLimit: number;
-  participants: MissionToolParticipant[];
-  activeParticipantCount: number;
-  createdBy: string | null;
-  startedBy: string | null;
-  completedBy: string | null;
-  cancelledBy: string | null;
+  userId: string;
+  username: string | null;
+  dmChannelId: string | null;
+  clearMessageId: string | null;
+  missionMessageId: string | null;
+  voiceMessageId: string | null;
+  richPresenceMessageId: string | null;
+  usernameCheckerMessageId: string | null;
+  tokenConfigured: boolean;
+  clearStatus: MissionToolsStatus;
+  clearMode: MissionToolsClearMode;
+  clearTargetUserId: string | null;
+  missionStatus: MissionToolsStatus;
+  voiceStatus: MissionToolsVoiceStatus;
+  richPresenceStatus: MissionToolsRichPresenceStatus;
+  usernameCheckerStatus: MissionToolsStatus;
+  currentMission: string | null;
+  missionDetail: string | null;
+  voiceGuildId: string | null;
+  voiceGuildName: string | null;
+  voiceChannelId: string | null;
+  voiceChannelName: string | null;
+  voiceConnectedAt: string | null;
+  richPresenceConfig: MissionToolsRichPresenceConfig;
+  richPresenceUpdatedAt: string | null;
+  usernameCheckerOptions: MissionToolsUsernameCheckerOptions;
+  usernameCheckerStats: MissionToolsUsernameCheckerStats;
+  usernameCheckerLastEvent: string | null;
+  usernameCheckerUpdatedAt: string | null;
+  completedCount: number;
+  totalMissions: number;
+  progress: number;
   createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  cancelledAt: string | null;
+  updatedAt: string;
+};
+
+export type MissionToolsUserPatch = Partial<Omit<
+  MissionToolsUserPanel,
+  "id" | "botId" | "guildId" | "userId" | "createdAt" | "updatedAt"
+>>;
+
+export type MissionToolsTokenResponse = {
+  token: string;
+  tokenConfigured: boolean;
+  tokenLast4: string | null;
   updatedAt: string;
 };
 
@@ -1186,52 +1251,41 @@ export class ApiClient {
     return data.settings;
   }
 
-  async getActiveMissionToolMission(guildId: string) {
-    const { data } = await this.http.get<{ mission: MissionToolMission | null }>(`/mission-tools/bot/${guildId}/active`);
-    return data.mission;
+  async getMissionToolsUser(guildId: string, userId: string) {
+    const { data } = await this.http.get<{ user: MissionToolsUserPanel }>(
+      `/mission-tools/bot/${guildId}/users/${userId}`
+    );
+    return data.user;
   }
 
-  async getMissionToolMission(missionId: string) {
-    const { data } = await this.http.get<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}`);
-    return data.mission;
+  async updateMissionToolsUser(guildId: string, userId: string, input: MissionToolsUserPatch) {
+    const { data } = await this.http.patch<{ user: MissionToolsUserPanel }>(
+      `/mission-tools/bot/${guildId}/users/${userId}`,
+      input
+    );
+    return data.user;
   }
 
-  async createMissionToolMission(input: {
-    actorRoleIds: string[];
-    canManageGuild: boolean;
-    createdBy?: string | null;
-    description?: string | null;
-    guildId: string;
-    participantLimit?: number | null;
-    title: string;
-  }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>("/mission-tools/bot/missions", input);
-    return data.mission;
+  async saveMissionToolsToken(guildId: string, userId: string, token: string) {
+    const { data } = await this.http.post<{ tokenConfigured: boolean; tokenLast4: string | null }>(
+      `/mission-tools/bot/${guildId}/users/${userId}/token`,
+      { token }
+    );
+    return data;
   }
 
-  async joinMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; canManageGuild: boolean; guildId: string; username?: string | null }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/join`, input);
-    return data.mission;
+  async deleteMissionToolsToken(guildId: string, userId: string) {
+    const { data } = await this.http.delete<{ tokenConfigured: boolean }>(
+      `/mission-tools/bot/${guildId}/users/${userId}/token`
+    );
+    return data;
   }
 
-  async leaveMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; canManageGuild: boolean; guildId: string; username?: string | null }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/leave`, input);
-    return data.mission;
-  }
-
-  async startMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; canManageGuild: boolean; guildId: string; username?: string | null }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/start`, input);
-    return data.mission;
-  }
-
-  async completeMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; canManageGuild: boolean; guildId: string; username?: string | null }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/complete`, input);
-    return data.mission;
-  }
-
-  async cancelMissionToolMission(missionId: string, input: { actorId: string; actorRoleIds: string[]; canManageGuild: boolean; guildId: string; username?: string | null }) {
-    const { data } = await this.http.post<{ mission: MissionToolMission }>(`/mission-tools/bot/missions/${missionId}/cancel`, input);
-    return data.mission;
+  async getMissionToolsToken(guildId: string, userId: string) {
+    const { data } = await this.http.get<MissionToolsTokenResponse>(
+      `/mission-tools/bot/${guildId}/users/${userId}/token`
+    );
+    return data;
   }
 }
 

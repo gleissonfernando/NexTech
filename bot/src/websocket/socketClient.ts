@@ -80,11 +80,10 @@ export type MissionToolsPanelPublishEvent = {
   settings?: unknown;
 };
 
-export type MissionToolsMissionUpdateEvent = {
-  action: string;
+export type MissionToolsUserUpdateEvent = {
   botId?: string | null;
   guildId: string;
-  mission?: unknown;
+  user?: unknown;
 };
 
 export type GiveawayPanelUpdateEvent = {
@@ -138,7 +137,7 @@ export class BotSocketClient {
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
   private missionToolsSettingsHandler: ((payload: MissionToolsSettingsEvent) => void) | null = null;
   private missionToolsPanelPublishHandler: ((payload: MissionToolsPanelPublishEvent) => void) | null = null;
-  private missionToolsMissionUpdateHandler: ((payload: MissionToolsMissionUpdateEvent) => void) | null = null;
+  private missionToolsUserUpdateHandler: ((payload: MissionToolsUserUpdateEvent) => void) | null = null;
   private giveawayPanelUpdateHandler: ((payload: GiveawayPanelUpdateEvent) => void) | null = null;
   private imageAntiSpamSettingsHandler: ((payload: ImageAntiSpamSettingsEvent) => void) | null = null;
   private selfBotProtectionSettingsHandler: ((payload: SelfBotProtectionSettingsEvent) => void) | null = null;
@@ -225,8 +224,8 @@ export class BotSocketClient {
       this.socket.on("mission-tools:panel_publish", this.missionToolsPanelPublishHandler);
     }
 
-    if (this.missionToolsMissionUpdateHandler) {
-      this.socket.on("mission-tools:mission_updated", this.missionToolsMissionUpdateHandler);
+    if (this.missionToolsUserUpdateHandler) {
+      this.socket.on("mission-tools:user_updated", this.missionToolsUserUpdateHandler);
     }
 
     if (this.giveawayPanelUpdateHandler) {
@@ -341,10 +340,10 @@ export class BotSocketClient {
     this.socket?.on("mission-tools:panel_publish", handler);
   }
 
-  onMissionToolsMissionUpdated(handler: (payload: MissionToolsMissionUpdateEvent) => void) {
-    this.missionToolsMissionUpdateHandler = handler;
-    this.socket?.off("mission-tools:mission_updated");
-    this.socket?.on("mission-tools:mission_updated", handler);
+  onMissionToolsUserUpdated(handler: (payload: MissionToolsUserUpdateEvent) => void) {
+    this.missionToolsUserUpdateHandler = handler;
+    this.socket?.off("mission-tools:user_updated");
+    this.socket?.on("mission-tools:user_updated", handler);
   }
 
   onGiveawayPanelUpdate(handler: (payload: GiveawayPanelUpdateEvent) => void) {

@@ -1,41 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Ban,
+  Activity,
   CheckCircle2,
-  Flag,
   Hash,
-  ListChecks,
+  KeyRound,
   Loader2,
   MessageSquareText,
-  Play,
-  Plus,
+  MonitorPlay,
   RefreshCw,
   Send,
   ShieldCheck,
-  Trophy,
+  Sparkles,
   UserCheck,
-  Users
+  Users,
+  Volume2
 } from "lucide-react";
 import {
-  cancelMissionToolMission,
-  completeMissionToolMission,
-  createMissionToolMission,
   getMissionTools,
   getMissionToolsOptions,
   publishMissionToolsPanel,
-  saveMissionToolsSettings,
-  startMissionToolMission
+  saveMissionToolsSettings
 } from "../../lib/api";
 import type {
   DashboardGuild,
   GuildChannelOption,
   GuildLiveOptions,
   GuildRoleOption,
-  MissionToolMission,
-  MissionToolStatus,
-  MissionToolsMessages,
+  MissionToolsFeatureId,
   MissionToolsSettings,
-  MissionToolsStats
+  MissionToolsStats,
+  MissionToolsUserPanel
 } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -48,14 +42,37 @@ type MissionToolsPanelProps = {
   guild: DashboardGuild | null;
 };
 
-const defaultMessages: MissionToolsMessages = {
-  panelTitle: "Mission Tools",
-  panelDescription: "Entre na missao ativa, acompanhe a fila e veja o status pelo painel.",
-  joinSuccess: "Voce entrou na missao.",
-  leaveSuccess: "Voce saiu da missao.",
-  missionStarted: "A missao foi iniciada.",
-  missionCompleted: "A missao foi concluida."
-};
+const featureDefinitions: Array<{
+  id: MissionToolsFeatureId;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "mission",
+    label: "Mission System",
+    description: "Automacao de missoes/quests e progresso por usuario."
+  },
+  {
+    id: "clear",
+    label: "Clean System",
+    description: "Limpeza de DM e contatos pelo painel privado."
+  },
+  {
+    id: "voice",
+    label: "Voice Session",
+    description: "Sessao persistente em canal de voz."
+  },
+  {
+    id: "rich-presence",
+    label: "Rich Presence",
+    description: "Atividade personalizada do perfil."
+  },
+  {
+    id: "username-checker",
+    label: "Username Checker",
+    description: "Consulta de disponibilidade de usernames."
+  }
+];
 
 const emptySettings: MissionToolsSettings = {
   id: "",
@@ -66,43 +83,37 @@ const emptySettings: MissionToolsSettings = {
   panelMessageId: null,
   logChannelId: null,
   managerRoleIds: [],
-  participantRoleIds: [],
-  completionRoleId: null,
-  messages: defaultMessages,
+  allowedRoleIds: [],
+  enabledFeatures: featureDefinitions.map((feature) => feature.id),
   lastPanelRequestedAt: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
 
 const emptyStats: MissionToolsStats = {
-  activeParticipants: 0,
-  completedMissions: 0,
-  openMissions: 0,
-  totalMissions: 0
+  activeRichPresence: 0,
+  activeVoiceSessions: 0,
+  configuredUsers: 0,
+  runningCleanups: 0,
+  runningMissions: 0,
+  usernameHits: 0,
+  usersWithToken: 0
 };
 
 export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanelProps) {
   const [settings, setSettings] = useState<MissionToolsSettings>(emptySettings);
-  const [missions, setMissions] = useState<MissionToolMission[]>([]);
-  const [activeMission, setActiveMission] = useState<MissionToolMission | null>(null);
   const [stats, setStats] = useState<MissionToolsStats>(emptyStats);
+  const [users, setUsers] = useState<MissionToolsUserPanel[]>([]);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [participantLimit, setParticipantLimit] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [actingMissionId, setActingMissionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
   const regularRoles = useMemo(() => roles.filter((role) => role.id !== guild?.id), [roles, guild?.id]);
-  const assignableRoles = useMemo(() => regularRoles.filter((role) => role.assignable), [regularRoles]);
-  const activeParticipants = activeMission?.participants.filter((participant) => !participant.leftAt) ?? [];
 
   useEffect(() => {
     let mounted = true;
@@ -124,9 +135,8 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
       if (!mounted) return;
 
       setSettings(missionTools.settings);
-      setMissions(missionTools.missions);
-      setActiveMission(missionTools.activeMission);
       setStats(missionTools.stats);
+      setUsers(missionTools.users);
       setChannels(options.channels);
       setRoles(options.roles);
     }
@@ -155,17 +165,7 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
     }));
   }
 
-  function updateMessage(key: keyof MissionToolsMessages, value: string) {
-    setSettings((current) => ({
-      ...current,
-      messages: {
-        ...current.messages,
-        [key]: value
-      }
-    }));
-  }
-
-  function toggleRole(key: "managerRoleIds" | "participantRoleIds", roleId: string) {
+  function toggleRole(key: "managerRoleIds" | "allowedRoleIds", roleId: string) {
     setSettings((current) => {
       const selected = new Set(current[key]);
 
@@ -182,15 +182,20 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
     });
   }
 
-  function updateMission(updatedMission: MissionToolMission) {
-    setActiveMission(["open", "running"].includes(updatedMission.status) ? updatedMission : null);
-    setMissions((current) => {
-      const exists = current.some((mission) => mission.id === updatedMission.id);
-      const next = exists
-        ? current.map((mission) => mission.id === updatedMission.id ? updatedMission : mission)
-        : [updatedMission, ...current];
+  function toggleFeature(featureId: MissionToolsFeatureId) {
+    setSettings((current) => {
+      const selected = new Set(current.enabledFeatures);
 
-      return next.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+      if (selected.has(featureId)) {
+        selected.delete(featureId);
+      } else {
+        selected.add(featureId);
+      }
+
+      return {
+        ...current,
+        enabledFeatures: selected.size ? [...selected] : [featureId]
+      };
     });
   }
 
@@ -202,13 +207,12 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
 
     try {
       const saved = await saveMissionToolsSettings(guild.id, botId, {
-        completionRoleId: settings.completionRoleId,
+        allowedRoleIds: settings.allowedRoleIds,
         enabled: settings.enabled,
+        enabledFeatures: settings.enabledFeatures,
         logChannelId: settings.logChannelId,
         managerRoleIds: settings.managerRoleIds,
-        messages: settings.messages,
-        panelChannelId: settings.panelChannelId,
-        participantRoleIds: settings.participantRoleIds
+        panelChannelId: settings.panelChannelId
       });
 
       setSettings(saved);
@@ -229,7 +233,7 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
     try {
       const saved = await publishMissionToolsPanel(guild.id, botId);
       setSettings(saved);
-      setMessage("Publicacao do painel solicitada ao bot.");
+      setMessage("Publicacao do Control Center solicitada ao bot.");
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel publicar o painel.");
     } finally {
@@ -254,53 +258,6 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
       setMessage(readRequestMessage(error) ?? "Nao foi possivel sincronizar com o Discord.");
     } finally {
       setSyncing(false);
-    }
-  }
-
-  async function handleCreateMission() {
-    if (!botId || !guild || !title.trim()) return;
-
-    setCreating(true);
-    setMessage(null);
-
-    try {
-      const mission = await createMissionToolMission(guild.id, botId, {
-        description: description.trim() || null,
-        participantLimit,
-        title: title.trim()
-      });
-
-      updateMission(mission);
-      setTitle("");
-      setDescription("");
-      setParticipantLimit(0);
-      setMessage("Missao criada e aberta no painel.");
-    } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel criar a missao.");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleMissionAction(action: "start" | "complete" | "cancel", missionId: string) {
-    if (!botId || !guild) return;
-
-    setActingMissionId(missionId);
-    setMessage(null);
-
-    try {
-      const mission = action === "start"
-        ? await startMissionToolMission(guild.id, botId, missionId)
-        : action === "complete"
-          ? await completeMissionToolMission(guild.id, botId, missionId)
-          : await cancelMissionToolMission(guild.id, botId, missionId);
-
-      updateMission(mission);
-      setMessage(action === "start" ? "Missao iniciada." : action === "complete" ? "Missao concluida." : "Missao cancelada.");
-    } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel atualizar a missao.");
-    } finally {
-      setActingMissionId(null);
     }
   }
 
@@ -332,16 +289,16 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
         <Card className="hover:translate-y-0">
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <ListChecks className="h-5 w-5 text-zinc-300" />
+                  <MonitorPlay className="h-5 w-5 text-zinc-300" />
                   Mission Tools
                 </CardTitle>
-                <CardDescription>Painel de missao, fila e participantes do servidor.</CardDescription>
+                <CardDescription>Libera e publica o Control Center do Mission Tools para este bot.</CardDescription>
               </div>
               <Switch
                 checked={settings.enabled}
@@ -355,7 +312,7 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
               <SelectField
                 disabled={!canManage}
                 icon={Hash}
-                label="Canal do painel"
+                label="Canal do Control Center"
                 onChange={(value) => updateSetting("panelChannelId", value)}
                 options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))}
                 value={settings.panelChannelId}
@@ -368,19 +325,17 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
                 options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))}
                 value={settings.logChannelId}
               />
-              <SelectField
-                disabled={!canManage}
-                icon={Trophy}
-                label="Cargo ao concluir"
-                onChange={(value) => updateSetting("completionRoleId", value)}
-                options={assignableRoles.map((role) => ({ label: role.name, value: role.id }))}
-                value={settings.completionRoleId}
-              />
             </div>
+
+            <FeatureGrid
+              disabled={!canManage}
+              enabledFeatures={settings.enabledFeatures}
+              onToggle={toggleFeature}
+            />
 
             <RoleChecklist
               disabled={!canManage}
-              label="Cargos gerentes"
+              label="Cargos que podem gerenciar"
               onToggle={(roleId) => toggleRole("managerRoleIds", roleId)}
               roles={regularRoles}
               selectedRoleIds={settings.managerRoleIds}
@@ -388,22 +343,11 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
 
             <RoleChecklist
               disabled={!canManage}
-              label="Cargos participantes"
-              onToggle={(roleId) => toggleRole("participantRoleIds", roleId)}
+              label="Cargos que podem usar o painel"
+              onToggle={(roleId) => toggleRole("allowedRoleIds", roleId)}
               roles={regularRoles}
-              selectedRoleIds={settings.participantRoleIds}
+              selectedRoleIds={settings.allowedRoleIds}
             />
-
-            <div className="grid gap-3">
-              <TextField disabled={!canManage} label="Titulo do painel" onChange={(value) => updateMessage("panelTitle", value)} value={settings.messages.panelTitle} />
-              <TextareaField disabled={!canManage} label="Descricao do painel" onChange={(value) => updateMessage("panelDescription", value)} value={settings.messages.panelDescription} />
-              <div className="grid gap-3 md:grid-cols-2">
-                <TextField disabled={!canManage} label="Mensagem de entrada" onChange={(value) => updateMessage("joinSuccess", value)} value={settings.messages.joinSuccess} />
-                <TextField disabled={!canManage} label="Mensagem de saida" onChange={(value) => updateMessage("leaveSuccess", value)} value={settings.messages.leaveSuccess} />
-                <TextField disabled={!canManage} label="Mensagem iniciada" onChange={(value) => updateMessage("missionStarted", value)} value={settings.messages.missionStarted} />
-                <TextField disabled={!canManage} label="Mensagem concluida" onChange={(value) => updateMessage("missionCompleted", value)} value={settings.messages.missionCompleted} />
-              </div>
-            </div>
 
             <div className="flex flex-wrap gap-2 border-t border-zinc-900 pt-4">
               <Button disabled={!canManage || syncing} onClick={() => void handleSyncOptions()} variant="outline">
@@ -416,7 +360,7 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
               </Button>
               <Button disabled={!canManage || publishing || !settings.enabled || !settings.panelChannelId} onClick={() => void handlePublishPanel()} variant="outline">
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar painel
+                Publicar Control Center
               </Button>
               {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel nao publicado</Badge>}
             </div>
@@ -424,146 +368,114 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
         </Card>
 
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric icon={Flag} label="Missoes" value={String(stats.totalMissions)} />
-            <Metric icon={Users} label="Participantes ativos" value={String(stats.activeParticipants)} />
-            <Metric icon={CheckCircle2} label="Concluidas" value={String(stats.completedMissions)} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Metric icon={Users} label="Usuarios com painel" value={String(stats.configuredUsers)} />
+            <Metric icon={KeyRound} label="Tokens configurados" value={String(stats.usersWithToken)} />
+            <Metric icon={Activity} label="Missoes rodando" value={String(stats.runningMissions)} />
+            <Metric icon={Volume2} label="Voz ativa" value={String(stats.activeVoiceSessions)} />
+            <Metric icon={Sparkles} label="Rich ativo" value={String(stats.activeRichPresence)} />
+            <Metric icon={CheckCircle2} label="Hits username" value={String(stats.usernameHits)} />
           </div>
 
           <Card className="hover:translate-y-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5 text-zinc-300" />
-                Nova missao
+                <KeyRound className="h-5 w-5 text-zinc-300" />
+                Tokens por usuario
               </CardTitle>
-              <CardDescription>{activeMission ? "Conclua ou cancele a missao atual antes de abrir outra." : "Crie uma missao para o painel do Discord."}</CardDescription>
+              <CardDescription>O token nao aparece no site; fica criptografado no backend.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <TextField disabled={!canManage || Boolean(activeMission)} label="Titulo" onChange={setTitle} value={title} />
-              <TextareaField disabled={!canManage || Boolean(activeMission)} label="Descricao" onChange={setDescription} value={description} />
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-200">Limite de participantes</span>
-                <input
-                  className="social-input h-11"
-                  disabled={!canManage || Boolean(activeMission)}
-                  min={0}
-                  onChange={(event) => setParticipantLimit(Number(event.target.value))}
-                  type="number"
-                  value={participantLimit}
-                />
-              </label>
-              <Button disabled={!canManage || creating || Boolean(activeMission) || !title.trim()} onClick={() => void handleCreateMission()}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Criar missao
-              </Button>
+            <CardContent>
+              <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm text-zinc-400">
+                Cada pessoa configura o proprio token no painel privado do Discord. A dashboard apenas libera o sistema e publica o Control Center.
+              </div>
             </CardContent>
           </Card>
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card className="hover:translate-y-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Flag className="h-5 w-5 text-zinc-300" />
-              Missao ativa
-            </CardTitle>
-            <CardDescription>{activeMission ? `${activeMission.activeParticipantCount} participante(s)` : "Nenhuma missao aberta."}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {activeMission ? (
-              <div className="space-y-4">
-                <MissionSummary mission={activeMission} />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={!canManage || actingMissionId === activeMission.id || activeMission.status === "running"}
-                    onClick={() => void handleMissionAction("start", activeMission.id)}
-                    variant="outline"
-                  >
-                    {actingMissionId === activeMission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    Iniciar
-                  </Button>
-                  <Button
-                    disabled={!canManage || actingMissionId === activeMission.id}
-                    onClick={() => void handleMissionAction("complete", activeMission.id)}
-                  >
-                    {actingMissionId === activeMission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Concluir
-                  </Button>
-                  <Button
-                    disabled={!canManage || actingMissionId === activeMission.id}
-                    onClick={() => void handleMissionAction("cancel", activeMission.id)}
-                    variant="destructive"
-                  >
-                    {actingMissionId === activeMission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
-                    Cancelar
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-zinc-200">Participantes</p>
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
-                    {activeParticipants.length ? activeParticipants.map((participant) => (
-                      <div className="flex min-h-9 items-center justify-between gap-3 rounded-md bg-black/20 px-2 text-sm" key={participant.userId}>
-                        <span className="min-w-0 truncate text-zinc-200">{participant.username ?? participant.userId}</span>
-                        <span className="shrink-0 text-xs text-zinc-500">{formatDate(participant.joinedAt)}</span>
-                      </div>
-                    )) : (
-                      <span className="block py-4 text-center text-sm text-zinc-500">Nenhum participante ativo.</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <EmptyBlock icon={Flag} title="Nenhuma missao ativa" />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="hover:translate-y-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ListChecks className="h-5 w-5 text-zinc-300" />
-              Historico
-            </CardTitle>
-            <CardDescription>{missions.length} registro(s) recentes.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {missions.length ? (
-              <div className="space-y-3">
-                {missions.map((mission) => (
-                  <MissionSummary key={mission.id} mission={mission} compact />
-                ))}
-              </div>
-            ) : (
-              <EmptyBlock icon={ListChecks} title="Nenhuma missao registrada" />
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <Card className="hover:translate-y-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-zinc-300" />
+            Usuarios recentes
+          </CardTitle>
+          <CardDescription>{users.length} usuario(s) que abriram painel privado.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.length ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {users.map((user) => (
+                <UserCard key={user.userId} user={user} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-sm text-zinc-500">
+              Nenhum usuario abriu o painel ainda.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function MissionSummary({ compact = false, mission }: { compact?: boolean; mission: MissionToolMission }) {
+function FeatureGrid({
+  disabled,
+  enabledFeatures,
+  onToggle
+}: {
+  disabled: boolean;
+  enabledFeatures: MissionToolsFeatureId[];
+  onToggle: (featureId: MissionToolsFeatureId) => void;
+}) {
+  const enabled = new Set(enabledFeatures);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-zinc-200">Modulos dentro do Control Center</p>
+      <div className="grid gap-2 md:grid-cols-2">
+        {featureDefinitions.map((feature) => (
+          <label className="flex min-h-20 gap-3 rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm" key={feature.id}>
+            <input
+              checked={enabled.has(feature.id)}
+              disabled={disabled}
+              onChange={() => onToggle(feature.id)}
+              type="checkbox"
+            />
+            <span>
+              <span className="block font-semibold text-zinc-100">{feature.label}</span>
+              <span className="mt-1 block text-xs text-zinc-500">{feature.description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UserCard({ user }: { user: MissionToolsUserPanel }) {
   return (
     <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">{mission.title}</p>
-          {mission.description && !compact ? <p className="mt-1 text-sm text-zinc-500">{mission.description}</p> : null}
+          <p className="truncate text-sm font-semibold text-white">{user.username ?? user.userId}</p>
+          <p className="mt-1 truncate text-xs text-zinc-500">{user.userId}</p>
         </div>
-        <Badge variant={statusVariant(mission.status)}>{statusLabel(mission.status)}</Badge>
+        {user.tokenConfigured ? <Badge variant="success">Token</Badge> : <Badge variant="muted">Sem token</Badge>}
       </div>
-      <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-3">
-        <span>Participantes: {mission.activeParticipantCount}{mission.participantLimit ? `/${mission.participantLimit}` : ""}</span>
-        <span>Criada: {formatDate(mission.createdAt)}</span>
-        <span>Atualizada: {formatDate(mission.updatedAt)}</span>
+      <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+        <span>Mission: {statusLabel(user.missionStatus)}</span>
+        <span>Clean: {statusLabel(user.clearStatus)}</span>
+        <span>Voice: {user.voiceStatus}</span>
+        <span>Rich: {user.richPresenceStatus}</span>
       </div>
+      {user.usernameCheckerLastEvent ? <p className="mt-3 truncate text-xs text-zinc-400">{user.usernameCheckerLastEvent}</p> : null}
     </div>
   );
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof Flag; label: string; value: string }) {
+function Metric({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
   return (
     <div className="flex min-h-20 items-center gap-3 rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black text-zinc-300">
@@ -654,72 +566,31 @@ function RoleChecklist({
   );
 }
 
-function TextField({ disabled, label, onChange, value }: { disabled: boolean; label: string; onChange: (value: string) => void; value: string }) {
-  return (
-    <label className="space-y-2">
-      <span className="text-sm font-medium text-zinc-200">{label}</span>
-      <input className="social-input h-11" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} />
-    </label>
-  );
-}
-
-function TextareaField({ disabled, label, onChange, value }: { disabled: boolean; label: string; onChange: (value: string) => void; value: string }) {
-  return (
-    <label className="space-y-2">
-      <span className="text-sm font-medium text-zinc-200">{label}</span>
-      <textarea className="social-input min-h-24 resize-y" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} />
-    </label>
-  );
-}
-
-function EmptyBlock({ icon: Icon, title }: { icon: typeof Flag; title: string }) {
-  return (
-    <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-center">
-      <Icon className="mb-3 h-7 w-7 text-zinc-500" />
-      <p className="text-sm font-medium text-zinc-500">{title}</p>
-    </div>
-  );
-}
-
-function statusVariant(status: MissionToolStatus) {
-  if (status === "completed") return "success";
-  if (status === "cancelled") return "danger";
-  if (status === "running") return "warning";
-  return "muted";
-}
-
-function statusLabel(status: MissionToolStatus) {
-  const labels: Record<MissionToolStatus, string> = {
-    cancelled: "Cancelada",
-    completed: "Concluida",
-    open: "Aberta",
-    running: "Em andamento"
-  };
-
-  return labels[status];
-}
-
 function pruneSettingsForOptions(settings: MissionToolsSettings, options: GuildLiveOptions): MissionToolsSettings {
   const channelIds = new Set(options.channels.map((channel) => channel.id));
   const roleIds = new Set(options.roles.map((role) => role.id));
 
   return {
     ...settings,
-    completionRoleId: settings.completionRoleId && roleIds.has(settings.completionRoleId) ? settings.completionRoleId : null,
+    allowedRoleIds: settings.allowedRoleIds.filter((roleId) => roleIds.has(roleId)),
     logChannelId: settings.logChannelId && channelIds.has(settings.logChannelId) ? settings.logChannelId : null,
     managerRoleIds: settings.managerRoleIds.filter((roleId) => roleIds.has(roleId)),
-    panelChannelId: settings.panelChannelId && channelIds.has(settings.panelChannelId) ? settings.panelChannelId : null,
-    participantRoleIds: settings.participantRoleIds.filter((roleId) => roleIds.has(roleId))
+    panelChannelId: settings.panelChannelId && channelIds.has(settings.panelChannelId) ? settings.panelChannelId : null
   };
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "2-digit"
-  }).format(new Date(value));
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    active: "Ativo",
+    completed: "Concluido",
+    deactivated: "Desativado",
+    error: "Erro",
+    inactive: "Inativo",
+    running: "Rodando",
+    waiting: "Aguardando"
+  };
+
+  return labels[status] ?? status;
 }
 
 function readRequestMessage(error: unknown) {

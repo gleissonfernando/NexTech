@@ -1,7 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { ensureGuild, getMongoCollections, type MongoMissionToolMission, type MongoMissionToolParticipant, type MongoMissionToolStatus, type MongoMissionToolsMessages, type MongoMissionToolsSettings } from "../database/mongo";
+import {
+  ensureGuild,
+  getMongoCollections,
+  type MongoMissionToolsClearMode,
+  type MongoMissionToolsFeatureId,
+  type MongoMissionToolsRichPresenceActivityType,
+  type MongoMissionToolsRichPresenceConfig,
+  type MongoMissionToolsRichPresenceStatus,
+  type MongoMissionToolsSettings,
+  type MongoMissionToolsStatus,
+  type MongoMissionToolsToken,
+  type MongoMissionToolsUserPanel,
+  type MongoMissionToolsUsernameCheckerOptions,
+  type MongoMissionToolsUsernameCheckerStats,
+  type MongoMissionToolsVoiceStatus
+} from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
+import { decryptSecret, encryptSecret } from "./secretCryptoService";
 
 export type MissionToolsSettingsDto = {
   id: string;
@@ -12,53 +28,66 @@ export type MissionToolsSettingsDto = {
   panelMessageId: string | null;
   logChannelId: string | null;
   managerRoleIds: string[];
-  participantRoleIds: string[];
-  completionRoleId: string | null;
-  messages: MongoMissionToolsMessages;
+  allowedRoleIds: string[];
+  enabledFeatures: MongoMissionToolsFeatureId[];
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type MissionToolParticipantDto = {
-  userId: string;
-  username: string | null;
-  joinedAt: string;
-  leftAt: string | null;
-};
-
-export type MissionToolMissionDto = {
+export type MissionToolsUserPanelDto = {
   id: string;
   botId: string;
   guildId: string;
-  title: string;
-  description: string | null;
-  status: MongoMissionToolStatus;
-  participantLimit: number;
-  participants: MissionToolParticipantDto[];
-  activeParticipantCount: number;
-  createdBy: string | null;
-  startedBy: string | null;
-  completedBy: string | null;
-  cancelledBy: string | null;
+  userId: string;
+  username: string | null;
+  dmChannelId: string | null;
+  clearMessageId: string | null;
+  missionMessageId: string | null;
+  voiceMessageId: string | null;
+  richPresenceMessageId: string | null;
+  usernameCheckerMessageId: string | null;
+  tokenConfigured: boolean;
+  clearStatus: MongoMissionToolsStatus;
+  clearMode: MongoMissionToolsClearMode;
+  clearTargetUserId: string | null;
+  missionStatus: MongoMissionToolsStatus;
+  voiceStatus: MongoMissionToolsVoiceStatus;
+  richPresenceStatus: MongoMissionToolsRichPresenceStatus;
+  usernameCheckerStatus: MongoMissionToolsStatus;
+  currentMission: string | null;
+  missionDetail: string | null;
+  voiceGuildId: string | null;
+  voiceGuildName: string | null;
+  voiceChannelId: string | null;
+  voiceChannelName: string | null;
+  voiceConnectedAt: string | null;
+  richPresenceConfig: MongoMissionToolsRichPresenceConfig;
+  richPresenceUpdatedAt: string | null;
+  usernameCheckerOptions: MongoMissionToolsUsernameCheckerOptions;
+  usernameCheckerStats: MongoMissionToolsUsernameCheckerStats;
+  usernameCheckerLastEvent: string | null;
+  usernameCheckerUpdatedAt: string | null;
+  completedCount: number;
+  totalMissions: number;
+  progress: number;
   createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  cancelledAt: string | null;
   updatedAt: string;
 };
 
 export type MissionToolsStatsDto = {
-  activeParticipants: number;
-  completedMissions: number;
-  openMissions: number;
-  totalMissions: number;
+  configuredUsers: number;
+  usersWithToken: number;
+  runningMissions: number;
+  runningCleanups: number;
+  activeVoiceSessions: number;
+  activeRichPresence: number;
+  usernameHits: number;
 };
 
 export type MissionToolsDashboardDto = {
-  activeMission: MissionToolMissionDto | null;
-  missions: MissionToolMissionDto[];
   settings: MissionToolsSettingsDto;
+  users: MissionToolsUserPanelDto[];
   stats: MissionToolsStatsDto;
 };
 
@@ -67,41 +96,77 @@ export type SaveMissionToolsSettingsInput = {
   panelChannelId?: string | null;
   logChannelId?: string | null;
   managerRoleIds?: string[];
-  participantRoleIds?: string[];
-  completionRoleId?: string | null;
-  messages?: Partial<MongoMissionToolsMessages>;
+  allowedRoleIds?: string[];
+  enabledFeatures?: string[];
 };
 
-export type CreateMissionToolMissionInput = {
-  actorRoleIds?: string[];
-  botId: string;
-  canManageGuild?: boolean;
-  guildId: string;
-  title: string;
-  description?: string | null;
-  participantLimit?: number | null;
-  createdBy?: string | null;
-  skipManagerCheck?: boolean;
-};
-
-export type MissionToolActorInput = {
-  actorId: string;
-  actorRoleIds?: string[];
-  canManageGuild?: boolean;
-  guildId?: string;
-  skipManagerCheck?: boolean;
-  username?: string | null;
-};
+export type SaveMissionToolsUserInput = Partial<{
+  username: string | null;
+  dmChannelId: string | null;
+  clearMessageId: string | null;
+  missionMessageId: string | null;
+  voiceMessageId: string | null;
+  richPresenceMessageId: string | null;
+  usernameCheckerMessageId: string | null;
+  tokenConfigured: boolean;
+  clearStatus: MongoMissionToolsStatus;
+  clearMode: MongoMissionToolsClearMode;
+  clearTargetUserId: string | null;
+  missionStatus: MongoMissionToolsStatus;
+  voiceStatus: MongoMissionToolsVoiceStatus;
+  richPresenceStatus: MongoMissionToolsRichPresenceStatus;
+  usernameCheckerStatus: MongoMissionToolsStatus;
+  currentMission: string | null;
+  missionDetail: string | null;
+  voiceGuildId: string | null;
+  voiceGuildName: string | null;
+  voiceChannelId: string | null;
+  voiceChannelName: string | null;
+  voiceConnectedAt: string | null;
+  richPresenceConfig: MongoMissionToolsRichPresenceConfig;
+  richPresenceUpdatedAt: string | null;
+  usernameCheckerOptions: MongoMissionToolsUsernameCheckerOptions;
+  usernameCheckerStats: Partial<MongoMissionToolsUsernameCheckerStats>;
+  usernameCheckerLastEvent: string | null;
+  usernameCheckerUpdatedAt: string | null;
+  completedCount: number;
+  totalMissions: number;
+  progress: number;
+}>;
 
 const MODULE_ID = "mission-tools";
-const ACTIVE_MISSION_STATUSES: MongoMissionToolStatus[] = ["open", "running"];
-const DEFAULT_MESSAGES: MongoMissionToolsMessages = {
-  panelTitle: "Mission Tools",
-  panelDescription: "Entre na missao ativa, acompanhe a fila e veja o status pelo painel.",
-  joinSuccess: "Voce entrou na missao.",
-  leaveSuccess: "Voce saiu da missao.",
-  missionStarted: "A missao foi iniciada.",
-  missionCompleted: "A missao foi concluida."
+const FEATURE_IDS: MongoMissionToolsFeatureId[] = [
+  "mission",
+  "clear",
+  "voice",
+  "rich-presence",
+  "username-checker"
+];
+const STATUS_IDS: MongoMissionToolsStatus[] = [
+  "active",
+  "inactive",
+  "deactivated",
+  "waiting",
+  "running",
+  "completed",
+  "error"
+];
+const VOICE_STATUS_IDS: MongoMissionToolsVoiceStatus[] = ["connected", "disconnected", "reconnecting"];
+const RICH_STATUS_IDS: MongoMissionToolsRichPresenceStatus[] = ["active", "inactive"];
+const CLEAR_MODE_IDS: MongoMissionToolsClearMode[] = ["bulk", "userDm"];
+const ACTIVITY_TYPES: MongoMissionToolsRichPresenceActivityType[] = [0, 1, 2, 3, 5];
+const DEFAULT_USERNAME_CHECKER_OPTIONS: MongoMissionToolsUsernameCheckerOptions = {
+  requestDelay: 2000,
+  usernameLength: 4
+};
+const DEFAULT_USERNAME_CHECKER_STATS: MongoMissionToolsUsernameCheckerStats = {
+  activeProxies: 0,
+  bannedProxies: 0,
+  deadProxies: 0,
+  errors: 0,
+  hits: 0,
+  taken: 0,
+  workersRunning: 0
 };
 
 export function defaultMissionToolsSettings(botId: string, guildId: string): MissionToolsSettingsDto {
@@ -116,33 +181,74 @@ export function defaultMissionToolsSettings(botId: string, guildId: string): Mis
     panelMessageId: null,
     logChannelId: null,
     managerRoleIds: [],
-    participantRoleIds: [],
-    completionRoleId: null,
-    messages: DEFAULT_MESSAGES,
+    allowedRoleIds: [],
+    enabledFeatures: [...FEATURE_IDS],
     lastPanelRequestedAt: null,
     createdAt: now,
     updatedAt: now
   };
 }
 
-export async function getMissionToolsDashboard(guildId: string, botId: string): Promise<MissionToolsDashboardDto> {
-  const { missionToolsMissions } = await getMongoCollections();
-  const [settings, missions, stats] = await Promise.all([
-    getMissionToolsSettings(guildId, botId),
-    missionToolsMissions
-      .find({ botId, guildId })
-      .sort({ updatedAt: -1 })
-      .limit(50)
-      .toArray(),
-    missionToolsStats(botId, guildId)
-  ]);
-  const missionDtos = missions.map(toMissionDto);
+export function defaultMissionToolsUserPanel(botId: string, guildId: string, userId: string): MissionToolsUserPanelDto {
+  const now = new Date().toISOString();
 
   return {
-    activeMission: missionDtos.find((mission) => ACTIVE_MISSION_STATUSES.includes(mission.status)) ?? null,
-    missions: missionDtos,
+    id: "",
+    botId,
+    guildId,
+    userId,
+    username: null,
+    dmChannelId: null,
+    clearMessageId: null,
+    missionMessageId: null,
+    voiceMessageId: null,
+    richPresenceMessageId: null,
+    usernameCheckerMessageId: null,
+    tokenConfigured: false,
+    clearStatus: "deactivated",
+    clearMode: "bulk",
+    clearTargetUserId: null,
+    missionStatus: "inactive",
+    voiceStatus: "disconnected",
+    richPresenceStatus: "inactive",
+    usernameCheckerStatus: "inactive",
+    currentMission: null,
+    missionDetail: null,
+    voiceGuildId: null,
+    voiceGuildName: null,
+    voiceChannelId: null,
+    voiceChannelName: null,
+    voiceConnectedAt: null,
+    richPresenceConfig: {},
+    richPresenceUpdatedAt: null,
+    usernameCheckerOptions: { ...DEFAULT_USERNAME_CHECKER_OPTIONS },
+    usernameCheckerStats: { ...DEFAULT_USERNAME_CHECKER_STATS },
+    usernameCheckerLastEvent: null,
+    usernameCheckerUpdatedAt: null,
+    completedCount: 0,
+    totalMissions: 0,
+    progress: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export async function getMissionToolsDashboard(guildId: string, botId: string): Promise<MissionToolsDashboardDto> {
+  const { missionToolsUsers } = await getMongoCollections();
+  const [settings, users] = await Promise.all([
+    getMissionToolsSettings(guildId, botId),
+    missionToolsUsers
+      .find({ botId, guildId })
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .toArray()
+  ]);
+  const userDtos = users.map(toUserDto);
+
+  return {
     settings,
-    stats
+    users: userDtos,
+    stats: missionToolsStats(userDtos)
   };
 }
 
@@ -171,16 +277,12 @@ export async function saveMissionToolsSettings(guildId: string, botId: string, i
   const current = await getMissionToolsSettings(guildId, botId);
   const now = new Date();
   const next = {
+    allowedRoleIds: input.allowedRoleIds ? normalizeSnowflakes(input.allowedRoleIds) : current.allowedRoleIds,
     enabled: input.enabled ?? current.enabled,
-    panelChannelId: normalizeNullableSnowflake(input.panelChannelId, current.panelChannelId),
+    enabledFeatures: input.enabledFeatures ? normalizeFeatureIds(input.enabledFeatures) : current.enabledFeatures,
     logChannelId: normalizeNullableSnowflake(input.logChannelId, current.logChannelId),
     managerRoleIds: input.managerRoleIds ? normalizeSnowflakes(input.managerRoleIds) : current.managerRoleIds,
-    participantRoleIds: input.participantRoleIds ? normalizeSnowflakes(input.participantRoleIds) : current.participantRoleIds,
-    completionRoleId: normalizeNullableSnowflake(input.completionRoleId, current.completionRoleId),
-    messages: normalizeMessages({
-      ...current.messages,
-      ...(input.messages ?? {})
-    })
+    panelChannelId: normalizeNullableSnowflake(input.panelChannelId, current.panelChannelId)
   };
 
   await ensureGuild(guildId);
@@ -201,8 +303,8 @@ export async function saveMissionToolsSettings(guildId: string, botId: string, i
         _id: randomUUID(),
         createdAt: now,
         createdBy: actorId,
-        panelMessageId: null,
-        lastPanelRequestedAt: null
+        lastPanelRequestedAt: null,
+        panelMessageId: null
       }
     },
     {
@@ -304,334 +406,125 @@ export async function updateMissionToolsPanelMessageState(botId: string, guildId
   return getMissionToolsSettings(guildId, botId);
 }
 
-export async function createMissionToolMission(input: CreateMissionToolMissionInput) {
-  const settings = await getMissionToolsSettings(input.guildId, input.botId);
+export async function getMissionToolsUserPanel(guildId: string, botId: string, userId: string) {
+  const { missionToolsUsers } = await getMongoCollections();
+  const user = await missionToolsUsers.findOne({ botId, guildId, userId });
 
-  validateSettingsReady(settings);
-  if (!input.skipManagerCheck) {
-    ensureManagerAllowed(settings, input.actorRoleIds ?? [], input.canManageGuild === true);
-  }
-  await assertNoActiveMission(input.botId, input.guildId);
+  return user ? toUserDto(user) : defaultMissionToolsUserPanel(botId, guildId, userId);
+}
 
-  const { missionToolsMissions } = await getMongoCollections();
+export async function saveMissionToolsUserPanel(guildId: string, botId: string, userId: string, input: SaveMissionToolsUserInput) {
+  const { missionToolsUsers } = await getMongoCollections();
+  const current = await getMissionToolsUserPanel(guildId, botId, userId);
   const now = new Date();
-  const mission: MongoMissionToolMission = {
-    _id: randomUUID(),
-    botId: input.botId,
-    guildId: input.guildId,
-    title: normalizeRequiredText(input.title, 120, "Informe o titulo da missao."),
-    description: normalizeShortText(input.description, 1000),
-    status: "open",
-    participantLimit: normalizeParticipantLimit(input.participantLimit),
-    participants: [],
-    createdBy: input.createdBy ?? null,
-    startedBy: null,
-    completedBy: null,
-    cancelledBy: null,
-    createdAt: now,
-    startedAt: null,
-    completedAt: null,
-    cancelledAt: null,
-    updatedAt: now
-  };
+  const next = normalizeUserInput(input, current);
 
-  await missionToolsMissions.insertOne(mission);
-  const dto = toMissionDto(mission);
-  const log = await createMissionLog({
-    botId: input.botId,
-    guildId: input.guildId,
-    type: "mission_tools.mission_created",
-    userId: input.createdBy ?? null,
-    message: "Missao criada no Mission Tools.",
-    metadata: missionMetadata(dto, {
-      action: "mission_created",
-      module: MODULE_ID
-    })
-  });
-
-  emitMissionUpdated("created", dto, log);
-  return dto;
-}
-
-export async function getMissionToolMission(missionId: string, botId: string) {
-  const { missionToolsMissions } = await getMongoCollections();
-  const mission = await missionToolsMissions.findOne({ _id: missionId, botId });
-
-  return mission ? toMissionDto(mission) : null;
-}
-
-export async function getActiveMissionToolMission(guildId: string, botId: string) {
-  const { missionToolsMissions } = await getMongoCollections();
-  const mission = await missionToolsMissions.findOne({
-    botId,
-    guildId,
-    status: {
-      $in: ACTIVE_MISSION_STATUSES
-    }
-  });
-
-  return mission ? toMissionDto(mission) : null;
-}
-
-export async function joinMissionToolMission(missionId: string, botId: string, actor: MissionToolActorInput) {
-  const mission = await getMissionDocument(missionId, botId);
-  ensureActorGuild(mission, actor.guildId);
-  const settings = await getMissionToolsSettings(mission.guildId, botId);
-
-  validateSettingsReady(settings);
-  ensureParticipantAllowed(settings, actor.actorRoleIds ?? []);
-
-  if (!ACTIVE_MISSION_STATUSES.includes(mission.status)) {
-    throw createMissionError("Esta missao nao esta aberta para entrada.", 409);
-  }
-
-  const now = new Date();
-  const activeParticipants = mission.participants.filter((participant) => !participant.leftAt);
-  const existingIndex = mission.participants.findIndex((participant) => participant.userId === actor.actorId);
-
-  if (existingIndex >= 0 && !mission.participants[existingIndex]?.leftAt) {
-    return toMissionDto(mission);
-  }
-
-  if (mission.participantLimit > 0 && activeParticipants.length >= mission.participantLimit) {
-    throw createMissionError("A missao atingiu o limite de participantes.", 409);
-  }
-
-  const participants = [...mission.participants];
-  const participant: MongoMissionToolParticipant = {
-    userId: actor.actorId,
-    username: normalizeShortText(actor.username, 100),
-    joinedAt: now,
-    leftAt: null
-  };
-
-  if (existingIndex >= 0) {
-    participants[existingIndex] = participant;
-  } else {
-    participants.push(participant);
-  }
-
-  const updated = await updateMissionParticipants(mission, participants, now);
-  const dto = toMissionDto(updated);
-  const log = await createMissionLog({
-    botId,
-    guildId: dto.guildId,
-    type: "mission_tools.participant_joined",
-    userId: actor.actorId,
-    message: "Participante entrou na missao.",
-    metadata: missionMetadata(dto, {
-      action: "participant_joined",
-      module: MODULE_ID
-    })
-  });
-
-  emitMissionUpdated("participant_joined", dto, log);
-  return dto;
-}
-
-export async function leaveMissionToolMission(missionId: string, botId: string, actor: MissionToolActorInput) {
-  const mission = await getMissionDocument(missionId, botId);
-  ensureActorGuild(mission, actor.guildId);
-
-  if (!ACTIVE_MISSION_STATUSES.includes(mission.status)) {
-    throw createMissionError("Esta missao nao aceita mais saidas.", 409);
-  }
-
-  const now = new Date();
-  const participants = mission.participants.map((participant) => (
-    participant.userId === actor.actorId && !participant.leftAt
-      ? {
-          ...participant,
-          leftAt: now
-        }
-      : participant
-  ));
-
-  const updated = await updateMissionParticipants(mission, participants, now);
-  const dto = toMissionDto(updated);
-  const log = await createMissionLog({
-    botId,
-    guildId: dto.guildId,
-    type: "mission_tools.participant_left",
-    userId: actor.actorId,
-    message: "Participante saiu da missao.",
-    metadata: missionMetadata(dto, {
-      action: "participant_left",
-      module: MODULE_ID
-    })
-  });
-
-  emitMissionUpdated("participant_left", dto, log);
-  return dto;
-}
-
-export async function startMissionToolMission(missionId: string, botId: string, actor: MissionToolActorInput) {
-  const mission = await getMissionDocument(missionId, botId);
-  ensureActorGuild(mission, actor.guildId);
-  const settings = await getMissionToolsSettings(mission.guildId, botId);
-
-  if (!actor.skipManagerCheck) {
-    ensureManagerAllowed(settings, actor.actorRoleIds ?? [], actor.canManageGuild === true);
-  }
-
-  if (mission.status !== "open" && mission.status !== "running") {
-    throw createMissionError("Esta missao nao pode ser iniciada.", 409);
-  }
-
-  return updateMissionStatus(mission, botId, "running", actor.actorId, "mission_tools.mission_started", "Missao iniciada.");
-}
-
-export async function completeMissionToolMission(missionId: string, botId: string, actor: MissionToolActorInput) {
-  const mission = await getMissionDocument(missionId, botId);
-  ensureActorGuild(mission, actor.guildId);
-  const settings = await getMissionToolsSettings(mission.guildId, botId);
-
-  if (!actor.skipManagerCheck) {
-    ensureManagerAllowed(settings, actor.actorRoleIds ?? [], actor.canManageGuild === true);
-  }
-
-  if (mission.status !== "open" && mission.status !== "running") {
-    throw createMissionError("Esta missao nao pode ser concluida.", 409);
-  }
-
-  return updateMissionStatus(mission, botId, "completed", actor.actorId, "mission_tools.mission_completed", "Missao concluida.");
-}
-
-export async function cancelMissionToolMission(missionId: string, botId: string, actor: MissionToolActorInput) {
-  const mission = await getMissionDocument(missionId, botId);
-  ensureActorGuild(mission, actor.guildId);
-  const settings = await getMissionToolsSettings(mission.guildId, botId);
-
-  if (!actor.skipManagerCheck) {
-    ensureManagerAllowed(settings, actor.actorRoleIds ?? [], actor.canManageGuild === true);
-  }
-
-  if (mission.status === "completed" || mission.status === "cancelled") {
-    return toMissionDto(mission);
-  }
-
-  return updateMissionStatus(mission, botId, "cancelled", actor.actorId, "mission_tools.mission_cancelled", "Missao cancelada.");
-}
-
-async function missionToolsStats(botId: string, guildId: string): Promise<MissionToolsStatsDto> {
-  const { missionToolsMissions } = await getMongoCollections();
-  const missions = await missionToolsMissions
-    .find({ botId, guildId })
-    .project<Pick<MongoMissionToolMission, "status" | "participants">>({
-      status: 1,
-      participants: 1
-    })
-    .toArray();
-  const active = missions.filter((mission) => ACTIVE_MISSION_STATUSES.includes(mission.status));
-
-  return {
-    activeParticipants: active.reduce((total, mission) => total + activeParticipantCount(mission.participants ?? []), 0),
-    completedMissions: missions.filter((mission) => mission.status === "completed").length,
-    openMissions: active.length,
-    totalMissions: missions.length
-  };
-}
-
-async function assertNoActiveMission(botId: string, guildId: string) {
-  const active = await getActiveMissionToolMission(guildId, botId);
-
-  if (active) {
-    throw createMissionError("Ja existe uma missao aberta ou em andamento.", 409);
-  }
-}
-
-async function getMissionDocument(missionId: string, botId: string) {
-  const { missionToolsMissions } = await getMongoCollections();
-  const mission = await missionToolsMissions.findOne({ _id: missionId, botId });
-
-  if (!mission) {
-    throw createMissionError("Missao nao encontrada.", 404);
-  }
-
-  return mission;
-}
-
-async function updateMissionParticipants(mission: MongoMissionToolMission, participants: MongoMissionToolParticipant[], updatedAt: Date) {
-  const { missionToolsMissions } = await getMongoCollections();
-
-  await missionToolsMissions.updateOne(
+  await ensureGuild(guildId);
+  await missionToolsUsers.updateOne(
     {
-      _id: mission._id,
-      botId: mission.botId
+      botId,
+      guildId,
+      userId
     },
     {
       $set: {
-        participants,
-        updatedAt
+        ...next,
+        botId,
+        guildId,
+        userId,
+        updatedAt: now
+      },
+      $setOnInsert: {
+        _id: randomUUID(),
+        createdAt: now
       }
-    }
-  );
-
-  const updated = await missionToolsMissions.findOne({ _id: mission._id, botId: mission.botId });
-
-  if (!updated) {
-    throw createMissionError("Missao nao encontrada apos atualizar participantes.", 404);
-  }
-
-  return updated;
-}
-
-async function updateMissionStatus(
-  mission: MongoMissionToolMission,
-  botId: string,
-  status: MongoMissionToolStatus,
-  actorId: string,
-  logType: string,
-  logMessage: string
-) {
-  const { missionToolsMissions } = await getMongoCollections();
-  const now = new Date();
-  const set: Partial<MongoMissionToolMission> = {
-    status,
-    updatedAt: now
-  };
-
-  if (status === "running") {
-    set.startedAt = mission.startedAt ?? now;
-    set.startedBy = actorId;
-  }
-
-  if (status === "completed") {
-    set.completedAt = mission.completedAt ?? now;
-    set.completedBy = actorId;
-  }
-
-  if (status === "cancelled") {
-    set.cancelledAt = mission.cancelledAt ?? now;
-    set.cancelledBy = actorId;
-  }
-
-  await missionToolsMissions.updateOne(
-    {
-      _id: mission._id,
-      botId
     },
     {
-      $set: set
+      upsert: true
     }
   );
 
-  const updated = await getMissionDocument(mission._id, botId);
-  const dto = toMissionDto(updated);
-  const log = await createMissionLog({
-    botId,
-    guildId: dto.guildId,
-    type: logType,
-    userId: actorId,
-    message: logMessage,
-    metadata: missionMetadata(dto, {
-      action: status,
-      module: MODULE_ID
-    })
+  const saved = await getMissionToolsUserPanel(guildId, botId, userId);
+  emitMissionUserUpdated(saved);
+  return saved;
+}
+
+export async function saveMissionToolsToken(guildId: string, botId: string, userId: string, token: string) {
+  const { missionToolsTokens } = await getMongoCollections();
+  const normalized = token.trim();
+
+  if (normalized.length < 10) {
+    throw createMissionError("Token invalido.", 400);
+  }
+
+  const now = new Date();
+  await missionToolsTokens.updateOne(
+    {
+      botId,
+      guildId,
+      userId
+    },
+    {
+      $set: {
+        botId,
+        guildId,
+        tokenEncrypted: encryptSecret(normalized),
+        tokenLast4: tokenLast4(normalized),
+        updatedAt: now,
+        userId
+      },
+      $setOnInsert: {
+        _id: randomUUID(),
+        createdAt: now
+      }
+    },
+    {
+      upsert: true
+    }
+  );
+
+  await saveMissionToolsUserPanel(guildId, botId, userId, {
+    tokenConfigured: true
   });
 
-  emitMissionUpdated(status, dto, log);
-  return dto;
+  return {
+    tokenConfigured: true,
+    tokenLast4: tokenLast4(normalized)
+  };
+}
+
+export async function deleteMissionToolsToken(guildId: string, botId: string, userId: string) {
+  const { missionToolsTokens } = await getMongoCollections();
+
+  await missionToolsTokens.deleteOne({ botId, guildId, userId });
+  await saveMissionToolsUserPanel(guildId, botId, userId, {
+    tokenConfigured: false,
+    voiceStatus: "disconnected",
+    richPresenceStatus: "inactive"
+  });
+
+  return {
+    tokenConfigured: false
+  };
+}
+
+export async function getMissionToolsUserToken(guildId: string, botId: string, userId: string) {
+  const { missionToolsTokens } = await getMongoCollections();
+  const token = await missionToolsTokens.findOne({ botId, guildId, userId });
+
+  return token ? toTokenDto(token) : null;
+}
+
+function missionToolsStats(users: MissionToolsUserPanelDto[]): MissionToolsStatsDto {
+  return {
+    activeRichPresence: users.filter((user) => user.richPresenceStatus === "active").length,
+    activeVoiceSessions: users.filter((user) => user.voiceStatus === "connected" || user.voiceStatus === "reconnecting").length,
+    configuredUsers: users.length,
+    runningCleanups: users.filter((user) => user.clearStatus === "running" || user.clearStatus === "waiting").length,
+    runningMissions: users.filter((user) => user.missionStatus === "running" || user.missionStatus === "waiting").length,
+    usernameHits: users.reduce((total, user) => total + user.usernameCheckerStats.hits, 0),
+    usersWithToken: users.filter((user) => user.tokenConfigured).length
+  };
 }
 
 function validateSettingsReady(settings: MissionToolsSettingsDto) {
@@ -644,77 +537,139 @@ function validateSettingsReady(settings: MissionToolsSettingsDto) {
   }
 }
 
-function ensureParticipantAllowed(settings: MissionToolsSettingsDto, roleIds: string[]) {
-  if (!settings.participantRoleIds.length) {
-    return;
-  }
-
-  const allowed = new Set(settings.participantRoleIds);
-
-  if (!roleIds.some((roleId) => allowed.has(roleId))) {
-    throw createMissionError("Voce nao possui cargo autorizado para entrar nesta missao.", 403);
-  }
-}
-
-function ensureManagerAllowed(settings: MissionToolsSettingsDto, roleIds: string[], canManageGuild: boolean) {
-  if (canManageGuild) {
-    return;
-  }
-
-  const allowed = new Set(settings.managerRoleIds);
-
-  if (!settings.managerRoleIds.length || !roleIds.some((roleId) => allowed.has(roleId))) {
-    throw createMissionError("Voce nao possui cargo autorizado para gerenciar missoes.", 403);
-  }
-}
-
-function ensureActorGuild(mission: MongoMissionToolMission, guildId?: string) {
-  if (guildId && mission.guildId !== guildId) {
-    throw createMissionError("Esta missao pertence a outro servidor.", 403);
-  }
-}
-
-function normalizeMessages(messages: Partial<MongoMissionToolsMessages>): MongoMissionToolsMessages {
+function normalizeUserInput(input: SaveMissionToolsUserInput, current: MissionToolsUserPanelDto): Partial<MongoMissionToolsUserPanel> {
   return {
-    panelTitle: normalizeMessage(messages.panelTitle, DEFAULT_MESSAGES.panelTitle, 120),
-    panelDescription: normalizeMessage(messages.panelDescription, DEFAULT_MESSAGES.panelDescription, 1000),
-    joinSuccess: normalizeMessage(messages.joinSuccess, DEFAULT_MESSAGES.joinSuccess, 500),
-    leaveSuccess: normalizeMessage(messages.leaveSuccess, DEFAULT_MESSAGES.leaveSuccess, 500),
-    missionStarted: normalizeMessage(messages.missionStarted, DEFAULT_MESSAGES.missionStarted, 500),
-    missionCompleted: normalizeMessage(messages.missionCompleted, DEFAULT_MESSAGES.missionCompleted, 500)
+    clearMessageId: normalizeNullableSnowflake(input.clearMessageId, current.clearMessageId),
+    clearMode: normalizeClearMode(input.clearMode, current.clearMode),
+    clearStatus: normalizeStatus(input.clearStatus, current.clearStatus),
+    clearTargetUserId: normalizeNullableSnowflake(input.clearTargetUserId, current.clearTargetUserId),
+    completedCount: normalizeCount(input.completedCount, current.completedCount),
+    currentMission: normalizeOptionalText(input.currentMission, current.currentMission, 256),
+    dmChannelId: normalizeNullableSnowflake(input.dmChannelId, current.dmChannelId),
+    missionDetail: normalizeOptionalText(input.missionDetail, current.missionDetail, 1000),
+    missionMessageId: normalizeNullableSnowflake(input.missionMessageId, current.missionMessageId),
+    missionStatus: normalizeStatus(input.missionStatus, current.missionStatus),
+    progress: normalizePercent(input.progress, current.progress),
+    richPresenceConfig: normalizeRichPresenceConfig(input.richPresenceConfig ?? current.richPresenceConfig),
+    richPresenceMessageId: normalizeNullableSnowflake(input.richPresenceMessageId, current.richPresenceMessageId),
+    richPresenceStatus: normalizeRichStatus(input.richPresenceStatus, current.richPresenceStatus),
+    richPresenceUpdatedAt: normalizeOptionalText(input.richPresenceUpdatedAt, current.richPresenceUpdatedAt, 80),
+    tokenConfigured: input.tokenConfigured ?? current.tokenConfigured,
+    totalMissions: normalizeCount(input.totalMissions, current.totalMissions),
+    username: normalizeOptionalText(input.username, current.username, 120),
+    usernameCheckerLastEvent: normalizeOptionalText(input.usernameCheckerLastEvent, current.usernameCheckerLastEvent, 500),
+    usernameCheckerMessageId: normalizeNullableSnowflake(input.usernameCheckerMessageId, current.usernameCheckerMessageId),
+    usernameCheckerOptions: normalizeUsernameCheckerOptions(input.usernameCheckerOptions ?? current.usernameCheckerOptions),
+    usernameCheckerStats: normalizeUsernameCheckerStats(input.usernameCheckerStats ?? current.usernameCheckerStats),
+    usernameCheckerStatus: normalizeStatus(input.usernameCheckerStatus, current.usernameCheckerStatus),
+    usernameCheckerUpdatedAt: normalizeOptionalText(input.usernameCheckerUpdatedAt, current.usernameCheckerUpdatedAt, 80),
+    voiceChannelId: normalizeNullableSnowflake(input.voiceChannelId, current.voiceChannelId),
+    voiceChannelName: normalizeOptionalText(input.voiceChannelName, current.voiceChannelName, 120),
+    voiceConnectedAt: normalizeOptionalText(input.voiceConnectedAt, current.voiceConnectedAt, 80),
+    voiceGuildId: normalizeNullableSnowflake(input.voiceGuildId, current.voiceGuildId),
+    voiceGuildName: normalizeOptionalText(input.voiceGuildName, current.voiceGuildName, 120),
+    voiceMessageId: normalizeNullableSnowflake(input.voiceMessageId, current.voiceMessageId),
+    voiceStatus: normalizeVoiceStatus(input.voiceStatus, current.voiceStatus)
   };
 }
 
-function normalizeMessage(value: unknown, fallback: string, maxLength: number) {
-  if (typeof value !== "string") {
+function normalizeFeatureIds(values: string[]) {
+  const allowed = new Set(FEATURE_IDS);
+  const features = [...new Set(values.filter((value): value is MongoMissionToolsFeatureId => allowed.has(value as MongoMissionToolsFeatureId)))];
+
+  return features.length ? features : [...FEATURE_IDS];
+}
+
+function normalizeRichPresenceConfig(input: MongoMissionToolsRichPresenceConfig): MongoMissionToolsRichPresenceConfig {
+  return {
+    activityType: ACTIVITY_TYPES.includes(input.activityType as MongoMissionToolsRichPresenceActivityType) ? input.activityType : 0,
+    applicationId: normalizePlainText(input.applicationId, 32),
+    buttonLabel: normalizePlainText(input.buttonLabel, 80),
+    buttonUrl: normalizePlainText(input.buttonUrl, 512),
+    description: normalizePlainText(input.description, 256),
+    details: normalizePlainText(input.details, 128),
+    largeImage: normalizePlainText(input.largeImage, 1024),
+    largeText: normalizePlainText(input.largeText, 128),
+    name: normalizePlainText(input.name, 128),
+    smallImage: normalizePlainText(input.smallImage, 1024),
+    smallText: normalizePlainText(input.smallText, 128),
+    startTimestamp: normalizePlainText(input.startTimestamp, 64),
+    state: normalizePlainText(input.state, 128)
+  };
+}
+
+function normalizeUsernameCheckerOptions(input: MongoMissionToolsUsernameCheckerOptions): MongoMissionToolsUsernameCheckerOptions {
+  return {
+    concurrency: normalizeOptionalNumber(input.concurrency, 1, 1, 5),
+    requestDelay: normalizeOptionalNumber(input.requestDelay, 2000, 1500, 60_000),
+    usernameLength: normalizeOptionalNumber(input.usernameLength, 4, 2, 20)
+  };
+}
+
+function normalizeUsernameCheckerStats(input: Partial<MongoMissionToolsUsernameCheckerStats>): MongoMissionToolsUsernameCheckerStats {
+  return {
+    activeProxies: normalizeCount(input.activeProxies, 0),
+    bannedProxies: normalizeCount(input.bannedProxies, 0),
+    deadProxies: normalizeCount(input.deadProxies, 0),
+    errors: normalizeCount(input.errors, 0),
+    hits: normalizeCount(input.hits, 0),
+    taken: normalizeCount(input.taken, 0),
+    workersRunning: normalizeCount(input.workersRunning, 0)
+  };
+}
+
+function normalizeStatus(value: MongoMissionToolsStatus | undefined, fallback: MongoMissionToolsStatus) {
+  return value && STATUS_IDS.includes(value) ? value : fallback;
+}
+
+function normalizeVoiceStatus(value: MongoMissionToolsVoiceStatus | undefined, fallback: MongoMissionToolsVoiceStatus) {
+  return value && VOICE_STATUS_IDS.includes(value) ? value : fallback;
+}
+
+function normalizeRichStatus(value: MongoMissionToolsRichPresenceStatus | undefined, fallback: MongoMissionToolsRichPresenceStatus) {
+  return value && RICH_STATUS_IDS.includes(value) ? value : fallback;
+}
+
+function normalizeClearMode(value: MongoMissionToolsClearMode | undefined, fallback: MongoMissionToolsClearMode) {
+  return value && CLEAR_MODE_IDS.includes(value) ? value : fallback;
+}
+
+function normalizeOptionalText(value: unknown, fallback: string | null, maxLength: number) {
+  if (value === undefined) {
     return fallback;
   }
 
-  const normalized = value.trim();
-  return normalized ? normalized.slice(0, maxLength) : fallback;
+  return normalizePlainText(value, maxLength) ?? null;
 }
 
-function normalizeRequiredText(value: unknown, maxLength: number, message: string) {
+function normalizePlainText(value: unknown, maxLength: number) {
   if (typeof value !== "string") {
-    throw createMissionError(message, 400);
+    return undefined;
   }
 
   const normalized = value.trim();
-
-  if (!normalized) {
-    throw createMissionError(message, 400);
-  }
-
-  return normalized.slice(0, maxLength);
+  return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 
-function normalizeShortText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") {
-    return null;
+function normalizeOptionalNumber(value: unknown, fallback: number, min: number, max: number) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
   }
 
-  const normalized = value.trim();
-  return normalized ? normalized.slice(0, maxLength) : null;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.trunc(normalized)));
+}
+
+function normalizeCount(value: unknown, fallback: number) {
+  return normalizeOptionalNumber(value, fallback, 0, 1_000_000);
+}
+
+function normalizePercent(value: unknown, fallback: number) {
+  return normalizeOptionalNumber(value, fallback, 0, 100);
 }
 
 function normalizeNullableSnowflake(value: unknown, fallback: string | null) {
@@ -735,30 +690,6 @@ function normalizeNullableSnowflake(value: unknown, fallback: string | null) {
 
 function normalizeSnowflakes(values: string[]) {
   return [...new Set(values.map((value) => normalizeNullableSnowflake(value, null)).filter((value): value is string => Boolean(value)))];
-}
-
-function normalizeParticipantLimit(value: number | null | undefined) {
-  const normalized = Number(value ?? 0);
-
-  if (!Number.isFinite(normalized)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(500, Math.trunc(normalized)));
-}
-
-function activeParticipantCount(participants: MongoMissionToolParticipant[]) {
-  return participants.filter((participant) => !participant.leftAt).length;
-}
-
-function missionMetadata(mission: MissionToolMissionDto, extra: Record<string, unknown>) {
-  return {
-    activeParticipantCount: mission.activeParticipantCount,
-    missionId: mission.id,
-    status: mission.status,
-    title: mission.title,
-    ...extra
-  };
 }
 
 async function createMissionLog(input: Parameters<typeof createLog>[0]) {
@@ -789,23 +720,20 @@ function emitMissionPanelPublish(settings: MissionToolsSettingsDto) {
   emitRealtimeToRoom(devBotRealtimeRoom(settings.botId), "mission-tools:panel_publish", payload);
 }
 
-function emitMissionUpdated(action: string, mission: MissionToolMissionDto, log: Awaited<ReturnType<typeof createMissionLog>>) {
+function emitMissionUserUpdated(user: MissionToolsUserPanelDto) {
   const payload = {
-    action,
-    botId: mission.botId,
-    guildId: mission.guildId,
-    mission
+    botId: user.botId,
+    guildId: user.guildId,
+    user
   };
 
-  emitRealtime("mission-tools:mission_updated", payload);
-  emitRealtimeToRoom(devBotRealtimeRoom(mission.botId), "mission-tools:mission_updated", payload);
-
-  if (log) {
-    emitRealtime("logs:new", log);
-  }
+  emitRealtime("mission-tools:user_updated", payload);
+  emitRealtimeToRoom(devBotRealtimeRoom(user.botId), "mission-tools:user_updated", payload);
 }
 
 function toSettingsDto(settings: MongoMissionToolsSettings): MissionToolsSettingsDto {
+  const legacySettings = settings as Partial<MongoMissionToolsSettings>;
+
   return {
     id: settings._id,
     botId: settings.botId,
@@ -815,47 +743,70 @@ function toSettingsDto(settings: MongoMissionToolsSettings): MissionToolsSetting
     panelMessageId: settings.panelMessageId ?? null,
     logChannelId: settings.logChannelId ?? null,
     managerRoleIds: normalizeSnowflakes(settings.managerRoleIds ?? []),
-    participantRoleIds: normalizeSnowflakes(settings.participantRoleIds ?? []),
-    completionRoleId: settings.completionRoleId ?? null,
-    messages: normalizeMessages(settings.messages ?? DEFAULT_MESSAGES),
-    lastPanelRequestedAt: settings.lastPanelRequestedAt?.toISOString?.() ?? null,
-    createdAt: settings.createdAt.toISOString(),
-    updatedAt: settings.updatedAt.toISOString()
+    allowedRoleIds: normalizeSnowflakes(settings.allowedRoleIds ?? []),
+    enabledFeatures: normalizeFeatureIds(settings.enabledFeatures ?? FEATURE_IDS),
+    lastPanelRequestedAt: legacySettings.lastPanelRequestedAt?.toISOString?.() ?? null,
+    createdAt: settings.createdAt?.toISOString?.() ?? new Date().toISOString(),
+    updatedAt: settings.updatedAt?.toISOString?.() ?? new Date().toISOString()
   };
 }
 
-function toMissionDto(mission: MongoMissionToolMission): MissionToolMissionDto {
-  const participants = (mission.participants ?? []).map(toParticipantDto);
+function toUserDto(user: MongoMissionToolsUserPanel): MissionToolsUserPanelDto {
+  const defaults = defaultMissionToolsUserPanel(user.botId, user.guildId, user.userId);
 
   return {
-    id: mission._id,
-    botId: mission.botId,
-    guildId: mission.guildId,
-    title: mission.title,
-    description: mission.description ?? null,
-    status: mission.status,
-    participantLimit: mission.participantLimit,
-    participants,
-    activeParticipantCount: participants.filter((participant) => !participant.leftAt).length,
-    createdBy: mission.createdBy ?? null,
-    startedBy: mission.startedBy ?? null,
-    completedBy: mission.completedBy ?? null,
-    cancelledBy: mission.cancelledBy ?? null,
-    createdAt: mission.createdAt.toISOString(),
-    startedAt: mission.startedAt?.toISOString?.() ?? null,
-    completedAt: mission.completedAt?.toISOString?.() ?? null,
-    cancelledAt: mission.cancelledAt?.toISOString?.() ?? null,
-    updatedAt: mission.updatedAt.toISOString()
+    ...defaults,
+    id: user._id,
+    botId: user.botId,
+    guildId: user.guildId,
+    userId: user.userId,
+    username: user.username ?? null,
+    dmChannelId: user.dmChannelId ?? null,
+    clearMessageId: user.clearMessageId ?? null,
+    missionMessageId: user.missionMessageId ?? null,
+    voiceMessageId: user.voiceMessageId ?? null,
+    richPresenceMessageId: user.richPresenceMessageId ?? null,
+    usernameCheckerMessageId: user.usernameCheckerMessageId ?? null,
+    tokenConfigured: user.tokenConfigured === true,
+    clearStatus: normalizeStatus(user.clearStatus, defaults.clearStatus),
+    clearMode: normalizeClearMode(user.clearMode, defaults.clearMode),
+    clearTargetUserId: user.clearTargetUserId ?? null,
+    missionStatus: normalizeStatus(user.missionStatus, defaults.missionStatus),
+    voiceStatus: normalizeVoiceStatus(user.voiceStatus, defaults.voiceStatus),
+    richPresenceStatus: normalizeRichStatus(user.richPresenceStatus, defaults.richPresenceStatus),
+    usernameCheckerStatus: normalizeStatus(user.usernameCheckerStatus, defaults.usernameCheckerStatus),
+    currentMission: user.currentMission ?? null,
+    missionDetail: user.missionDetail ?? null,
+    voiceGuildId: user.voiceGuildId ?? null,
+    voiceGuildName: user.voiceGuildName ?? null,
+    voiceChannelId: user.voiceChannelId ?? null,
+    voiceChannelName: user.voiceChannelName ?? null,
+    voiceConnectedAt: user.voiceConnectedAt ?? null,
+    richPresenceConfig: normalizeRichPresenceConfig(user.richPresenceConfig ?? {}),
+    richPresenceUpdatedAt: user.richPresenceUpdatedAt ?? null,
+    usernameCheckerOptions: normalizeUsernameCheckerOptions(user.usernameCheckerOptions ?? {}),
+    usernameCheckerStats: normalizeUsernameCheckerStats(user.usernameCheckerStats ?? DEFAULT_USERNAME_CHECKER_STATS),
+    usernameCheckerLastEvent: user.usernameCheckerLastEvent ?? null,
+    usernameCheckerUpdatedAt: user.usernameCheckerUpdatedAt ?? null,
+    completedCount: normalizeCount(user.completedCount, 0),
+    totalMissions: normalizeCount(user.totalMissions, 0),
+    progress: normalizePercent(user.progress, 0),
+    createdAt: user.createdAt?.toISOString?.() ?? defaults.createdAt,
+    updatedAt: user.updatedAt?.toISOString?.() ?? defaults.updatedAt
   };
 }
 
-function toParticipantDto(participant: MongoMissionToolParticipant): MissionToolParticipantDto {
+function toTokenDto(token: MongoMissionToolsToken) {
   return {
-    userId: participant.userId,
-    username: participant.username ?? null,
-    joinedAt: participant.joinedAt.toISOString(),
-    leftAt: participant.leftAt?.toISOString?.() ?? null
+    token: decryptSecret(token.tokenEncrypted),
+    tokenConfigured: true,
+    tokenLast4: token.tokenLast4 ?? null,
+    updatedAt: token.updatedAt.toISOString()
   };
+}
+
+function tokenLast4(token: string) {
+  return token.trim().slice(-4) || null;
 }
 
 function createMissionError(message: string, statusCode: number) {

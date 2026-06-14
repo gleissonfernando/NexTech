@@ -621,22 +621,63 @@ export type MongoVoiceRecording = {
   updatedAt: Date;
 };
 
-export type MongoMissionToolStatus = "open" | "running" | "completed" | "cancelled";
+export type MongoMissionToolsFeatureId =
+  | "mission"
+  | "clear"
+  | "voice"
+  | "rich-presence"
+  | "username-checker";
 
-export type MongoMissionToolParticipant = {
-  userId: string;
-  username: string | null;
-  joinedAt: Date;
-  leftAt: Date | null;
+export type MongoMissionToolsStatus =
+  | "active"
+  | "inactive"
+  | "deactivated"
+  | "waiting"
+  | "running"
+  | "completed"
+  | "error";
+
+export type MongoMissionToolsVoiceStatus =
+  | "connected"
+  | "disconnected"
+  | "reconnecting";
+
+export type MongoMissionToolsClearMode = "bulk" | "userDm";
+
+export type MongoMissionToolsRichPresenceStatus = "active" | "inactive";
+
+export type MongoMissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
+
+export type MongoMissionToolsRichPresenceConfig = {
+  applicationId?: string;
+  activityType?: MongoMissionToolsRichPresenceActivityType;
+  name?: string;
+  description?: string;
+  state?: string;
+  details?: string;
+  buttonLabel?: string;
+  buttonUrl?: string;
+  largeImage?: string;
+  largeText?: string;
+  smallImage?: string;
+  smallText?: string;
+  startTimestamp?: string;
 };
 
-export type MongoMissionToolsMessages = {
-  panelTitle: string;
-  panelDescription: string;
-  joinSuccess: string;
-  leaveSuccess: string;
-  missionStarted: string;
-  missionCompleted: string;
+export type MongoMissionToolsUsernameCheckerStats = {
+  hits: number;
+  taken: number;
+  errors: number;
+  activeProxies: number;
+  deadProxies: number;
+  bannedProxies: number;
+  workersRunning: number;
+};
+
+export type MongoMissionToolsUsernameCheckerOptions = {
+  usernameLength?: number;
+  concurrency?: number;
+  requestDelay?: number;
 };
 
 export type MongoMissionToolsSettings = {
@@ -648,9 +689,8 @@ export type MongoMissionToolsSettings = {
   panelMessageId: string | null;
   logChannelId: string | null;
   managerRoleIds: string[];
-  participantRoleIds: string[];
-  completionRoleId: string | null;
-  messages: MongoMissionToolsMessages;
+  allowedRoleIds: string[];
+  enabledFeatures: MongoMissionToolsFeatureId[];
   lastPanelRequestedAt?: Date | null;
   createdBy: string | null;
   updatedBy: string | null;
@@ -658,23 +698,54 @@ export type MongoMissionToolsSettings = {
   updatedAt: Date;
 };
 
-export type MongoMissionToolMission = {
+export type MongoMissionToolsUserPanel = {
   _id: string;
   botId: string;
   guildId: string;
-  title: string;
-  description: string | null;
-  status: MongoMissionToolStatus;
-  participantLimit: number;
-  participants: MongoMissionToolParticipant[];
-  createdBy: string | null;
-  startedBy: string | null;
-  completedBy: string | null;
-  cancelledBy: string | null;
+  userId: string;
+  username: string | null;
+  dmChannelId: string | null;
+  clearMessageId: string | null;
+  missionMessageId: string | null;
+  voiceMessageId: string | null;
+  richPresenceMessageId: string | null;
+  usernameCheckerMessageId: string | null;
+  tokenConfigured: boolean;
+  clearStatus: MongoMissionToolsStatus;
+  clearMode: MongoMissionToolsClearMode;
+  clearTargetUserId: string | null;
+  missionStatus: MongoMissionToolsStatus;
+  voiceStatus: MongoMissionToolsVoiceStatus;
+  richPresenceStatus: MongoMissionToolsRichPresenceStatus;
+  usernameCheckerStatus: MongoMissionToolsStatus;
+  currentMission: string | null;
+  missionDetail: string | null;
+  voiceGuildId: string | null;
+  voiceGuildName: string | null;
+  voiceChannelId: string | null;
+  voiceChannelName: string | null;
+  voiceConnectedAt: string | null;
+  richPresenceConfig: MongoMissionToolsRichPresenceConfig;
+  richPresenceUpdatedAt: string | null;
+  usernameCheckerOptions: MongoMissionToolsUsernameCheckerOptions;
+  usernameCheckerStats: MongoMissionToolsUsernameCheckerStats;
+  usernameCheckerLastEvent: string | null;
+  usernameCheckerUpdatedAt: string | null;
+  completedCount: number;
+  totalMissions: number;
+  progress: number;
   createdAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
-  cancelledAt: Date | null;
+  updatedAt: Date;
+};
+
+export type MongoMissionToolsToken = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  tokenEncrypted: string;
+  tokenLast4: string | null;
+  createdAt: Date;
   updatedAt: Date;
 };
 
@@ -894,7 +965,8 @@ export async function getMongoCollections() {
     voiceRecorderSettings: db.collection<MongoVoiceRecorderSettings>("voice_recorder_settings"),
     voiceRecordings: db.collection<MongoVoiceRecording>("voice_recordings"),
     missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
-    missionToolsMissions: db.collection<MongoMissionToolMission>("mission_tools_missions"),
+    missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
+    missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
     selfBotProtectionSettings: db.collection<MongoSelfBotProtectionSettings>("self_bot_protection_settings"),
     selfBotProtectionIncidents: db.collection<MongoSelfBotProtectionIncident>("self_bot_protection_incidents"),
     devBots: db.collection<MongoDevBot>("Bot"),
@@ -1348,25 +1420,15 @@ async function ensureVoiceRecorderIndexes(db: Db) {
 
 async function ensureMissionToolsIndexes(db: Db) {
   const settings = db.collection<MongoMissionToolsSettings>("mission_tools_settings");
-  const missions = db.collection<MongoMissionToolMission>("mission_tools_missions");
+  const users = db.collection<MongoMissionToolsUserPanel>("mission_tools_users");
+  const tokens = db.collection<MongoMissionToolsToken>("mission_tools_tokens");
 
   await Promise.all([
     settings.createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     settings.createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
-    missions.createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
-    missions.createIndex({ botId: 1, guildId: 1, status: 1, updatedAt: -1 }),
-    missions.createIndex(
-      { botId: 1, guildId: 1, status: 1 },
-      {
-        name: "mission_tools_active_unique",
-        partialFilterExpression: {
-          status: {
-            $in: ["open", "running"]
-          }
-        },
-        unique: true
-      }
-    )
+    users.createIndex({ botId: 1, guildId: 1, updatedAt: -1 }),
+    users.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    tokens.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true })
   ]);
 }
 

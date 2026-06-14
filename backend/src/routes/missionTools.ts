@@ -1,23 +1,19 @@
 import { Router } from "express";
-import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
-import { areGuildAssignableRoles, areGuildRoles, getGuildLiveOptions, isGuildTextChannel, validateGuildPanelChannel } from "../services/discordOptionsService";
+import { areGuildRoles, getGuildLiveOptions, isGuildTextChannel, validateGuildPanelChannel } from "../services/discordOptionsService";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
 import {
-  cancelMissionToolMission,
-  completeMissionToolMission,
-  createMissionToolMission,
-  getActiveMissionToolMission,
-  getMissionToolMission,
+  deleteMissionToolsToken,
   getMissionToolsDashboard,
   getMissionToolsSettings,
-  joinMissionToolMission,
-  leaveMissionToolMission,
+  getMissionToolsUserPanel,
+  getMissionToolsUserToken,
   listActiveMissionToolsSettings,
   requestMissionToolsPanelPublish,
   saveMissionToolsSettings,
-  startMissionToolMission,
+  saveMissionToolsToken,
+  saveMissionToolsUserPanel,
   updateMissionToolsPanelMessageState
 } from "../services/missionToolsService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
@@ -27,43 +23,89 @@ const MODULE_ID = "mission-tools";
 const guildIdSchema = z.string().regex(/^\d{5,32}$/);
 const snowflakeSchema = z.string().regex(/^\d{5,32}$/);
 const optionalSnowflakeSchema = z.union([snowflakeSchema, z.literal(""), z.null()]).optional();
+const statusSchema = z.enum(["active", "inactive", "deactivated", "waiting", "running", "completed", "error"]);
+const voiceStatusSchema = z.enum(["connected", "disconnected", "reconnecting"]);
+const richPresenceStatusSchema = z.enum(["active", "inactive"]);
+const clearModeSchema = z.enum(["bulk", "userDm"]);
+const featureSchema = z.enum(["mission", "clear", "voice", "rich-presence", "username-checker"]);
+const activityTypeSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(5)]);
+
 const settingsSchema = z.object({
+  allowedRoleIds: z.array(snowflakeSchema).max(100).optional(),
   enabled: z.boolean().optional(),
-  panelChannelId: optionalSnowflakeSchema,
+  enabledFeatures: z.array(featureSchema).max(5).optional(),
   logChannelId: optionalSnowflakeSchema,
   managerRoleIds: z.array(snowflakeSchema).max(100).optional(),
-  participantRoleIds: z.array(snowflakeSchema).max(100).optional(),
-  completionRoleId: optionalSnowflakeSchema,
-  messages: z.object({
-    panelTitle: z.string().max(120).optional(),
-    panelDescription: z.string().max(1000).optional(),
-    joinSuccess: z.string().max(500).optional(),
-    leaveSuccess: z.string().max(500).optional(),
-    missionStarted: z.string().max(500).optional(),
-    missionCompleted: z.string().max(500).optional()
-  }).partial().optional()
+  panelChannelId: optionalSnowflakeSchema
 });
-const createMissionSchema = z.object({
-  description: z.string().max(1000).nullable().optional(),
-  participantLimit: z.coerce.number().int().min(0).max(500).nullable().optional(),
-  title: z.string().min(1).max(120)
-});
+
 const botPanelStateSchema = z.object({
   guildId: guildIdSchema,
   messageId: optionalSnowflakeSchema
 });
-const botCreateMissionSchema = createMissionSchema.extend({
-  actorRoleIds: z.array(snowflakeSchema).default([]),
-  canManageGuild: z.boolean().default(false),
-  guildId: guildIdSchema,
-  createdBy: snowflakeSchema.nullable().optional()
+
+const userPatchSchema = z.object({
+  username: z.string().max(120).nullable().optional(),
+  dmChannelId: optionalSnowflakeSchema,
+  clearMessageId: optionalSnowflakeSchema,
+  missionMessageId: optionalSnowflakeSchema,
+  voiceMessageId: optionalSnowflakeSchema,
+  richPresenceMessageId: optionalSnowflakeSchema,
+  usernameCheckerMessageId: optionalSnowflakeSchema,
+  tokenConfigured: z.boolean().optional(),
+  clearStatus: statusSchema.optional(),
+  clearMode: clearModeSchema.optional(),
+  clearTargetUserId: optionalSnowflakeSchema,
+  missionStatus: statusSchema.optional(),
+  voiceStatus: voiceStatusSchema.optional(),
+  richPresenceStatus: richPresenceStatusSchema.optional(),
+  usernameCheckerStatus: statusSchema.optional(),
+  currentMission: z.string().max(256).nullable().optional(),
+  missionDetail: z.string().max(1000).nullable().optional(),
+  voiceGuildId: optionalSnowflakeSchema,
+  voiceGuildName: z.string().max(120).nullable().optional(),
+  voiceChannelId: optionalSnowflakeSchema,
+  voiceChannelName: z.string().max(120).nullable().optional(),
+  voiceConnectedAt: z.string().max(80).nullable().optional(),
+  richPresenceConfig: z.object({
+    applicationId: z.string().max(32).optional(),
+    activityType: activityTypeSchema.optional(),
+    name: z.string().max(128).optional(),
+    description: z.string().max(256).optional(),
+    state: z.string().max(128).optional(),
+    details: z.string().max(128).optional(),
+    buttonLabel: z.string().max(80).optional(),
+    buttonUrl: z.string().max(512).optional(),
+    largeImage: z.string().max(1024).optional(),
+    largeText: z.string().max(128).optional(),
+    smallImage: z.string().max(1024).optional(),
+    smallText: z.string().max(128).optional(),
+    startTimestamp: z.string().max(64).optional()
+  }).partial().optional(),
+  richPresenceUpdatedAt: z.string().max(80).nullable().optional(),
+  usernameCheckerOptions: z.object({
+    usernameLength: z.coerce.number().int().min(2).max(20).optional(),
+    concurrency: z.coerce.number().int().min(1).max(5).optional(),
+    requestDelay: z.coerce.number().int().min(1500).max(60000).optional()
+  }).partial().optional(),
+  usernameCheckerStats: z.object({
+    hits: z.coerce.number().int().min(0).optional(),
+    taken: z.coerce.number().int().min(0).optional(),
+    errors: z.coerce.number().int().min(0).optional(),
+    activeProxies: z.coerce.number().int().min(0).optional(),
+    deadProxies: z.coerce.number().int().min(0).optional(),
+    bannedProxies: z.coerce.number().int().min(0).optional(),
+    workersRunning: z.coerce.number().int().min(0).optional()
+  }).partial().optional(),
+  usernameCheckerLastEvent: z.string().max(500).nullable().optional(),
+  usernameCheckerUpdatedAt: z.string().max(80).nullable().optional(),
+  completedCount: z.coerce.number().int().min(0).optional(),
+  totalMissions: z.coerce.number().int().min(0).optional(),
+  progress: z.coerce.number().int().min(0).max(100).optional()
 });
-const botActorSchema = z.object({
-  actorId: snowflakeSchema,
-  actorRoleIds: z.array(snowflakeSchema).default([]),
-  canManageGuild: z.boolean().default(false),
-  guildId: guildIdSchema,
-  username: z.string().max(100).nullable().optional()
+
+const tokenSchema = z.object({
+  token: z.string().min(10).max(4096)
 });
 
 export const missionToolsRouter = Router();
@@ -109,134 +151,79 @@ missionToolsRouter.get("/bot/:guildId", requireBot, async (req, res, next) => {
   }
 });
 
-missionToolsRouter.get("/bot/:guildId/active", requireBot, async (req, res, next) => {
+missionToolsRouter.get("/bot/:guildId/users/:userId", requireBot, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
 
     return res.json({
-      mission: await getActiveMissionToolMission(guildId, botId)
+      user: await getMissionToolsUserPanel(guildId, botId, userId)
     });
   } catch (error) {
     return next(error);
   }
 });
 
-missionToolsRouter.post("/bot/missions", requireBot, async (req, res, next) => {
+missionToolsRouter.patch("/bot/:guildId/users/:userId", requireBot, async (req, res, next) => {
   try {
-    const input = botCreateMissionSchema.parse(req.body);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const input = userPatchSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
 
-    return res.status(201).json({
-      mission: await createMissionToolMission({
-        actorRoleIds: input.actorRoleIds,
-        botId,
-        canManageGuild: input.canManageGuild,
-        createdBy: input.createdBy ?? null,
-        description: input.description ?? null,
-        guildId: input.guildId,
-        participantLimit: input.participantLimit ?? 0,
-        title: input.title
-      })
+    return res.json({
+      user: await saveMissionToolsUserPanel(guildId, botId, userId, input)
     });
   } catch (error) {
     return next(error);
   }
 });
 
-missionToolsRouter.get("/bot/missions/:missionId", requireBot, async (req, res, next) => {
+missionToolsRouter.post("/bot/:guildId/users/:userId/token", requireBot, async (req, res, next) => {
   try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const input = tokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
-    const mission = await getMissionToolMission(missionId, botId);
 
-    if (!mission) {
+    return res.json(await saveMissionToolsToken(guildId, botId, userId, input.token));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+missionToolsRouter.delete("/bot/:guildId/users/:userId/token", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    await assertBotMissionToolsLicense(botId);
+
+    return res.json(await deleteMissionToolsToken(guildId, botId, userId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+missionToolsRouter.get("/bot/:guildId/users/:userId/token", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    await assertBotMissionToolsLicense(botId);
+    const token = await getMissionToolsUserToken(guildId, botId, userId);
+
+    if (!token) {
       return res.status(404).json({
-        message: "Missao nao encontrada."
+        message: "Token nao configurado."
       });
     }
 
-    return res.json({
-      mission
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/bot/missions/:missionId/join", requireBot, async (req, res, next) => {
-  try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const input = botActorSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotMissionToolsLicense(botId);
-
-    return res.json({
-      mission: await joinMissionToolMission(missionId, botId, input)
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/bot/missions/:missionId/leave", requireBot, async (req, res, next) => {
-  try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const input = botActorSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotMissionToolsLicense(botId);
-
-    return res.json({
-      mission: await leaveMissionToolMission(missionId, botId, input)
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/bot/missions/:missionId/start", requireBot, async (req, res, next) => {
-  try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const input = botActorSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotMissionToolsLicense(botId);
-
-    return res.json({
-      mission: await startMissionToolMission(missionId, botId, input)
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/bot/missions/:missionId/complete", requireBot, async (req, res, next) => {
-  try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const input = botActorSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotMissionToolsLicense(botId);
-
-    return res.json({
-      mission: await completeMissionToolMission(missionId, botId, input)
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/bot/missions/:missionId/cancel", requireBot, async (req, res, next) => {
-  try {
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const input = botActorSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotMissionToolsLicense(botId);
-
-    return res.json({
-      mission: await cancelMissionToolMission(missionId, botId, input)
-    });
+    return res.json(token);
   } catch (error) {
     return next(error);
   }
@@ -311,78 +298,6 @@ missionToolsRouter.post("/:guildId/panel", requireAuth, async (req, res, next) =
   }
 });
 
-missionToolsRouter.post("/:guildId/missions", requireAuth, async (req, res, next) => {
-  try {
-    const guildId = guildIdSchema.parse(req.params.guildId);
-    const botId = await readRequiredBotId(req);
-    const user = res.locals.dashboardAuth.user as AuthSessionUser;
-    const input = createMissionSchema.parse(req.body);
-
-    await assertCanManageMissionTools(user, guildId, botId);
-
-    return res.status(201).json({
-      mission: await createMissionToolMission({
-        botId,
-        createdBy: user.discordId,
-        description: input.description ?? null,
-        guildId,
-        participantLimit: input.participantLimit ?? 0,
-        skipManagerCheck: true,
-        title: input.title
-      })
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-missionToolsRouter.post("/:guildId/missions/:missionId/start", requireAuth, async (req, res, next) => {
-  return runDashboardMissionAction(req, res, next, "start");
-});
-
-missionToolsRouter.post("/:guildId/missions/:missionId/complete", requireAuth, async (req, res, next) => {
-  return runDashboardMissionAction(req, res, next, "complete");
-});
-
-missionToolsRouter.post("/:guildId/missions/:missionId/cancel", requireAuth, async (req, res, next) => {
-  return runDashboardMissionAction(req, res, next, "cancel");
-});
-
-async function runDashboardMissionAction(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-  action: "start" | "complete" | "cancel"
-) {
-  try {
-    const guildId = guildIdSchema.parse(req.params.guildId);
-    const missionId = z.string().min(1).max(80).parse(req.params.missionId);
-    const botId = await readRequiredBotId(req);
-    const user = res.locals.dashboardAuth.user as AuthSessionUser;
-
-    await assertCanManageMissionTools(user, guildId, botId);
-
-    const actor = {
-      actorId: user.discordId,
-      actorRoleIds: [],
-      guildId,
-      skipManagerCheck: true,
-      username: user.globalName || user.username
-    };
-    const mission = action === "start"
-      ? await startMissionToolMission(missionId, botId, actor)
-      : action === "complete"
-        ? await completeMissionToolMission(missionId, botId, actor)
-        : await cancelMissionToolMission(missionId, botId, actor);
-
-    return res.json({
-      mission
-    });
-  } catch (error) {
-    return next(error);
-  }
-}
-
 async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0]) {
   const botId = await resolveRequestBotId(req);
 
@@ -446,16 +361,11 @@ async function validateMissionToolsResources(guildId: string, botId: string, inp
 
   const roleIds = [
     ...(input.managerRoleIds ?? []),
-    ...(input.participantRoleIds ?? []),
-    input.completionRoleId
-  ].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
+    ...(input.allowedRoleIds ?? [])
+  ];
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
     throw createRouteError("Um dos cargos selecionados nao pertence a este servidor.", 400);
-  }
-
-  if (input.completionRoleId && !(await areGuildAssignableRoles(guildId, [input.completionRoleId], botToken))) {
-    throw createRouteError("O cargo de conclusao precisa ficar abaixo do cargo do bot e o bot precisa gerenciar cargos.", 400);
   }
 }
 
@@ -471,13 +381,7 @@ async function assertPanelChannelReady(guildId: string, botId: string, channelId
 }
 
 function normalizeSettingsInput(input: z.infer<typeof settingsSchema>) {
-  const normalized = {
-    ...input,
-  };
-
-  if ("completionRoleId" in input) {
-    normalized.completionRoleId = normalizeOptionalId(input.completionRoleId);
-  }
+  const normalized = { ...input };
 
   if ("logChannelId" in input) {
     normalized.logChannelId = normalizeOptionalId(input.logChannelId);

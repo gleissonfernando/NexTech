@@ -36,8 +36,6 @@ import type {
   ImageAntiSpamSettings,
   LiveEvent,
   LogEntry,
-  CreateMissionToolMissionPayload,
-  MissionToolMission,
   MissionToolsResponse,
   MissionToolsSettings,
   PublicKickClips,
@@ -1033,34 +1031,6 @@ export async function publishMissionToolsPanel(guildId: string, botId: string) {
     timeout: 15000
   });
   return data.settings;
-}
-
-export async function createMissionToolMission(guildId: string, botId: string, payload: CreateMissionToolMissionPayload) {
-  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions`, payload, {
-    params: botParams(botId)
-  });
-  return data.mission;
-}
-
-export async function startMissionToolMission(guildId: string, botId: string, missionId: string) {
-  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/start`, undefined, {
-    params: botParams(botId)
-  });
-  return data.mission;
-}
-
-export async function completeMissionToolMission(guildId: string, botId: string, missionId: string) {
-  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/complete`, undefined, {
-    params: botParams(botId)
-  });
-  return data.mission;
-}
-
-export async function cancelMissionToolMission(guildId: string, botId: string, missionId: string) {
-  const { data } = await api.post<{ mission: MissionToolMission }>(`/mission-tools/${guildId}/missions/${missionId}/cancel`, undefined, {
-    params: botParams(botId)
-  });
-  return data.mission;
 }
 
 export async function getDevModules() {
