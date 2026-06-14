@@ -259,8 +259,16 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
         const updated = await syncGiveawayParticipants(guild.id, giveaway.id, botId);
         setGiveaways((current) => upsertGiveaway(current, updated));
         syncedAny = true;
-      } catch {
-        // A sincronizacao manual mostra o erro; a automatica nao deve interromper o painel.
+      } catch (error) {
+        const syncError = readRequestMessage(error) ?? "Nao foi possivel sincronizar participantes.";
+        setGiveaways((current) => current.map((item) => (
+          item.id === giveaway.id
+            ? {
+                ...item,
+                lastSyncError: syncError
+              }
+            : item
+        )));
       }
     }
 
@@ -294,7 +302,9 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       setGiveaways((current) => upsertGiveaway(current, saved));
       setEditingId(saved.id);
       void refreshKickStatus();
-      setMessage(`${editingId ? "Sorteio atualizado" : "Sorteio criado"} com ${saved.participants.length} participante(s) sincronizado(s).`);
+      setMessage(saved.lastSyncError
+        ? `${editingId ? "Sorteio atualizado" : "Sorteio criado"}, mas os participantes nao foram sincronizados: ${saved.lastSyncError}`
+        : `${editingId ? "Sorteio atualizado" : "Sorteio criado"} com ${saved.participants.length} participante(s) sincronizado(s).`);
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o sorteio.");
     } finally {

@@ -1129,7 +1129,12 @@ function summarizeParticipantNames(participants: MongoGiveawayParticipant[]) {
 }
 
 async function syncGiveawayForPanel(giveaway: MongoGiveaway, actorId: string | null, botId: string | null) {
-  await syncGiveawayParticipantsForDocument(giveaway, actorId, "panel");
+  try {
+    await syncGiveawayParticipantsForDocument(giveaway, actorId, "panel");
+  } catch {
+    // The giveaway remains saved; the sync routine persists the actionable error for the panel.
+  }
+
   return (await findGiveawayById(giveaway._id, botId)) ?? giveaway;
 }
 

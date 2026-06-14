@@ -167,7 +167,7 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
     const subscribers = await getTwitchSubscribers({
       broadcasterId: giveaway.twitchBroadcasterId,
       max: MAX_PLATFORM_PARTICIPANTS_PER_SYNC
-    }).catch(() => []);
+    });
     twitchSubscribers = subscribers.length;
 
     for (const subscriber of subscribers) {
@@ -191,7 +191,7 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
     const followers = await getTwitchFollowers({
       broadcasterId: giveaway.twitchBroadcasterId,
       max: MAX_PLATFORM_PARTICIPANTS_PER_SYNC
-    }).catch(() => []);
+    });
     twitchFollowers = followers.length;
 
     for (const follower of followers) {
