@@ -21,15 +21,17 @@ const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "ac
   || managedRuntimeBot;
 const selfBotModuleEnabled = isSelfBotModuleEnabled();
 const needsLegacyMessageModeration = !selfBotModuleEnabled && (isBotModuleEnabled("image-anti-spam") || isLinkAntiSpamEnabled());
+const needsMessageLogs = managedRuntimeBot || isBotModuleEnabled("logs") || env.BOT_MESSAGE_LOGS_ENABLED;
 const needsMessageEvents = needsLegacyMessageModeration
   || selfBotModuleEnabled
-  || managedRuntimeBot;
+  || managedRuntimeBot
+  || needsMessageLogs;
 
 if (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) {
   intents.push(GatewayIntentBits.GuildMembers);
 }
 
-if (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) {
+if (needsMessageLogs) {
   intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
 }
 
@@ -52,7 +54,7 @@ if (needsVoiceRecorder) {
 
 const partials = [Partials.Channel, Partials.User];
 
-if ((env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) || (!selfBotModuleEnabled && isBotModuleEnabled("image-anti-spam")) || managedRuntimeBot) {
+if (needsMessageLogs || (!selfBotModuleEnabled && isBotModuleEnabled("image-anti-spam")) || managedRuntimeBot) {
   partials.push(Partials.Message);
 }
 
@@ -67,11 +69,11 @@ const client = new Client({
     },
     DMMessageManager: 0,
     GuildForumThreadManager: 0,
-    GuildMessageManager: env.BOT_MESSAGE_LOGS_ENABLED ? env.BOT_CACHE_MESSAGES_PER_CHANNEL : 0,
+    GuildMessageManager: needsMessageLogs ? env.BOT_CACHE_MESSAGES_PER_CHANNEL : 0,
     GuildScheduledEventManager: 0,
     GuildStickerManager: 0,
     GuildTextThreadManager: 0,
-    MessageManager: env.BOT_MESSAGE_LOGS_ENABLED ? env.BOT_CACHE_MESSAGES_PER_CHANNEL : 0,
+    MessageManager: needsMessageLogs ? env.BOT_CACHE_MESSAGES_PER_CHANNEL : 0,
     PresenceManager: env.BOT_PRESENCE_MONITOR_ENABLED ? env.BOT_CACHE_PRESENCES_MAX : 0,
     ReactionManager: 0,
     ReactionUserManager: 0,

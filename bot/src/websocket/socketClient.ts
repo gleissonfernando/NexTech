@@ -106,6 +106,17 @@ export type SelfBotProtectionSettingsEvent = {
 
 export type SettingsUpdatedEvent = GuildSettings;
 
+export type DiscordLogDispatchEvent = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  userId?: string | null;
+  type: string;
+  message: string;
+  metadata?: unknown;
+  createdAt: string;
+};
+
 export type DevModuleUpdatedEvent = {
   botId: string;
   enabledModules: string[];
@@ -145,6 +156,7 @@ export class BotSocketClient {
   private imageAntiSpamSettingsHandler: ((payload: ImageAntiSpamSettingsEvent) => void) | null = null;
   private selfBotProtectionSettingsHandler: ((payload: SelfBotProtectionSettingsEvent) => void) | null = null;
   private settingsUpdatedHandler: ((payload: SettingsUpdatedEvent) => void) | null = null;
+  private discordLogDispatchHandler: ((payload: DiscordLogDispatchEvent) => void) | null = null;
   private devModuleUpdatedHandler: ((payload: DevModuleUpdatedEvent) => void) | null = null;
   private voiceRecorderStartHandler: ((payload: VoiceRecorderStartEvent) => void) | null = null;
   private voiceRecorderStopHandler: ((payload: VoiceRecorderStopEvent) => void) | null = null;
@@ -248,6 +260,10 @@ export class BotSocketClient {
 
     if (this.settingsUpdatedHandler) {
       this.socket.on("settings:updated", this.settingsUpdatedHandler);
+    }
+
+    if (this.discordLogDispatchHandler) {
+      this.socket.on("logs:discord_dispatch", this.discordLogDispatchHandler);
     }
 
     if (this.devModuleUpdatedHandler) {
@@ -378,6 +394,12 @@ export class BotSocketClient {
     this.settingsUpdatedHandler = handler;
     this.socket?.off("settings:updated");
     this.socket?.on("settings:updated", handler);
+  }
+
+  onDiscordLogDispatch(handler: (payload: DiscordLogDispatchEvent) => void) {
+    this.discordLogDispatchHandler = handler;
+    this.socket?.off("logs:discord_dispatch");
+    this.socket?.on("logs:discord_dispatch", handler);
   }
 
   onDevModuleUpdated(handler: (payload: DevModuleUpdatedEvent) => void) {

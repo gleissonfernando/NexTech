@@ -63,6 +63,10 @@ export type MongoGuildSettings = {
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
   logChannelId: string | null;
+  discordLogsEnabled?: boolean;
+  siteLogsEnabled?: boolean;
+  discordLogCategories?: Array<"members" | "messages" | "roles" | "moderation" | "dashboard" | "automation">;
+  siteLogCategories?: Array<"members" | "messages" | "roles" | "moderation" | "dashboard" | "automation">;
   moderationEnabled: boolean;
   accountAgeSecurityEnabled?: boolean;
   accountAgeMinDays?: number;

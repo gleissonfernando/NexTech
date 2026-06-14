@@ -8,7 +8,7 @@ import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dash
 import { canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
 import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
-import { getGuildSettings, MAX_AUTOMATIC_ROLES, updateGuildSettings } from "../services/settingsService";
+import { getGuildSettings, LOG_CATEGORIES, MAX_AUTOMATIC_ROLES, updateGuildSettings } from "../services/settingsService";
 import { getSelfBotProtectionSettings, saveSelfBotProtectionSettings } from "../services/selfBotProtectionService";
 import { saveLeaveImage, saveWelcomeImage, sendLeavePanelToDiscord, sendWelcomePanelToDiscord } from "../services/welcomePanelService";
 import {
@@ -47,6 +47,10 @@ const settingsSchema = z.object({
   ticketEnabled: z.boolean().optional(),
   ticketCategoryId: z.string().nullable().optional(),
   logChannelId: z.string().nullable().optional(),
+  discordLogsEnabled: z.boolean().optional(),
+  siteLogsEnabled: z.boolean().optional(),
+  discordLogCategories: z.array(z.enum(LOG_CATEGORIES)).optional(),
+  siteLogCategories: z.array(z.enum(LOG_CATEGORIES)).optional(),
   moderationEnabled: z.boolean().optional(),
   accountAgeSecurityEnabled: z.boolean().optional(),
   accountAgeMinDays: z.coerce.number().int().min(0).max(3650).optional(),
@@ -467,6 +471,8 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
     await validateGuildResources(guildId, botId, input);
 
     const settings = await updateGuildSettings(guildId, input, botId);
+    emitRealtime("settings:updated", settings);
+
     const settingsLog = await createLog({
       botId,
       guildId,
@@ -482,7 +488,6 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
       }
     }).catch(() => null);
 
-    emitRealtime("settings:updated", settings);
     if (settingsLog) {
       emitRealtime("logs:new", settingsLog);
     }
@@ -596,6 +601,10 @@ async function canPatchSettings(
     ticketEnabled: ["tickets"],
     ticketCategoryId: ["tickets"],
     logChannelId: ["logs"],
+    discordLogsEnabled: ["logs"],
+    siteLogsEnabled: ["logs"],
+    discordLogCategories: ["logs"],
+    siteLogCategories: ["logs"],
     moderationEnabled: ["moderation"],
     accountAgeSecurityEnabled: ["account-age-security"],
     accountAgeMinDays: ["account-age-security"],
@@ -678,6 +687,33 @@ async function validateGuildResources(
   }
 
   if (
+    input.discordLogsEnabled !== undefined
+    || input.siteLogsEnabled !== undefined
+    || input.logChannelId !== undefined
+    || input.discordLogCategories !== undefined
+    || input.siteLogCategories !== undefined
+  ) {
+    const current = await getGuildSettings(guildId, botId);
+    const logChannelId = "logChannelId" in input ? input.logChannelId : current.logChannelId;
+    const discordLogsEnabled = input.discordLogsEnabled ?? current.discordLogsEnabled;
+    const siteLogsEnabled = input.siteLogsEnabled ?? current.siteLogsEnabled;
+    const discordLogCategories = input.discordLogCategories ?? current.discordLogCategories;
+    const siteLogCategories = input.siteLogCategories ?? current.siteLogCategories;
+
+    if (discordLogsEnabled && !logChannelId) {
+      throw createSettingsError("Selecione o canal que recebera os logs do Discord.");
+    }
+
+    if (discordLogsEnabled && !discordLogCategories.length) {
+      throw createSettingsError("Selecione pelo menos uma categoria para os logs do Discord.");
+    }
+
+    if (siteLogsEnabled && !siteLogCategories.length) {
+      throw createSettingsError("Selecione pelo menos uma categoria para os logs do site.");
+    }
+  }
+
+  if (
     input.ticketCategoryId
     && !(await isGuildCategoryChannel(guildId, input.ticketCategoryId, botToken))
   ) {
@@ -737,7 +773,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
-  if ([...keys].some((key) => key.startsWith("log"))) return "logs";
+  if ([...keys].some((key) => key.startsWith("log") || key.startsWith("discordLog") || key.startsWith("siteLog"))) return "logs";
   if ([...keys].some((key) => key.startsWith("moderation"))) return "moderation";
   if ([...keys].some((key) => key.startsWith("twitch") || key.startsWith("booster"))) return "roles";
 
@@ -753,8 +789,14 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
     return input.verificationEnabled ? "Sistema de permissoes ativado." : "Sistema de permissoes desativado.";
   }
 
-  if (input.logChannelId !== undefined) {
-    return "Canal de logs atualizado.";
+  if (
+    input.logChannelId !== undefined
+    || input.discordLogsEnabled !== undefined
+    || input.siteLogsEnabled !== undefined
+    || input.discordLogCategories !== undefined
+    || input.siteLogCategories !== undefined
+  ) {
+    return "Sistema de logs atualizado.";
   }
 
   if (input.moderationEnabled !== undefined) {

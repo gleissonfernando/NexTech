@@ -1770,7 +1770,7 @@ async function isRuntimeModuleEnabled(input: {
 
   if (input.moduleId === "logs") {
     const settings = await getGuildSettings(input.guildId, input.botId);
-    return Boolean(settings.logChannelId);
+    return settings.siteLogsEnabled || (settings.discordLogsEnabled && Boolean(settings.logChannelId));
   }
 
   if (input.moduleConfig?.enabled === true) {

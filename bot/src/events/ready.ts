@@ -7,6 +7,7 @@ import {
 } from "../config/env";
 import { registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
+import { startDiscordLogDelivery } from "../services/discordLogDeliveryService";
 import { startFivemFacService } from "../services/fivemFacService";
 import { startGiveawayService } from "../services/giveawayService";
 import { startGuildSettingsCache } from "../services/guildSettingsCache";
@@ -67,6 +68,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     }
   });
   startGuildSettingsCache(context);
+  startDiscordLogDelivery(context);
 
   const commandGuildIds = commandRegistrationGuildIds(client);
   const commands = [...context.commands.values()];

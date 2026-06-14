@@ -12,7 +12,7 @@ import {
   syncDevBotProfile,
   updateDevBotRuntimeStatus
 } from "../services/devBotService";
-import { devBotRealtimeRoom, setRealtimeServer } from "./events";
+import { botRealtimeRoom, devBotRealtimeRoom, setRealtimeServer } from "./events";
 
 const BOT_SOCKET_OFFLINE_GRACE_MS = 45_000;
 const RECENT_BOT_OFFLINE_SIGNAL_MS = 60_000;
@@ -43,6 +43,9 @@ export function createSocketServer(httpServer: HttpServer) {
 
     socket.data.isBot = isBot;
     socket.data.botId = botId;
+    if (isBot) {
+      await socket.join(botRealtimeRoom());
+    }
     if (botId) {
       clearPendingBotDisconnect(botId);
       await socket.join(devBotRealtimeRoom(botId));

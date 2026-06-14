@@ -1,0 +1,316 @@
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Bot,
+  CheckSquare2,
+  Gauge,
+  Hash,
+  LayoutDashboard,
+  Loader2,
+  MessageSquareText,
+  Save,
+  Shield,
+  UserRound,
+  UsersRound
+} from "lucide-react";
+import { getGuildLiveOptions, patchGuildSettings } from "../lib/api";
+import type {
+  DashboardGuild,
+  GuildChannelOption,
+  GuildSettings,
+  LogCategory
+} from "../types";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Switch } from "./ui/switch";
+
+type LogsSettingsPanelProps = {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  loading?: boolean;
+  onSettingsChange: (settings: GuildSettings) => void;
+  settings: GuildSettings | null;
+};
+
+type Draft = Pick<
+  GuildSettings,
+  | "discordLogsEnabled"
+  | "siteLogsEnabled"
+  | "logChannelId"
+  | "discordLogCategories"
+  | "siteLogCategories"
+>;
+
+const LOG_CATEGORIES: Array<{
+  id: LogCategory;
+  label: string;
+  icon: typeof Bot;
+}> = [
+  { id: "members", label: "Entrada e saida de membros", icon: UsersRound },
+  { id: "messages", label: "Mensagens editadas e apagadas", icon: MessageSquareText },
+  { id: "roles", label: "Alteracoes de cargos", icon: UserRound },
+  { id: "moderation", label: "Moderacao e seguranca", icon: Shield },
+  { id: "dashboard", label: "Acoes feitas na dashboard", icon: LayoutDashboard },
+  { id: "automation", label: "Automacoes e modulos", icon: Gauge }
+];
+
+const DEFAULT_DRAFT: Draft = {
+  discordLogsEnabled: false,
+  siteLogsEnabled: true,
+  logChannelId: null,
+  discordLogCategories: LOG_CATEGORIES.map((category) => category.id),
+  siteLogCategories: LOG_CATEGORIES.map((category) => category.id)
+};
+
+export function LogsSettingsPanel({
+  botId,
+  canManage,
+  guild,
+  loading = false,
+  onSettingsChange,
+  settings
+}: LogsSettingsPanelProps) {
+  const [draft, setDraft] = useState<Draft>(DEFAULT_DRAFT);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(settings ? {
+      discordLogsEnabled: settings.discordLogsEnabled,
+      siteLogsEnabled: settings.siteLogsEnabled,
+      logChannelId: settings.logChannelId,
+      discordLogCategories: settings.discordLogCategories,
+      siteLogCategories: settings.siteLogCategories
+    } : DEFAULT_DRAFT);
+  }, [settings]);
+
+  useEffect(() => {
+    if (!guild) {
+      setChannels([]);
+      return;
+    }
+
+    setLoadingChannels(true);
+    setError(null);
+
+    getGuildLiveOptions(guild.id, botId)
+      .then((options) => setChannels(options.channels))
+      .catch((requestError) => {
+        setChannels([]);
+        setError(readErrorMessage(requestError, "Nao foi possivel carregar os canais deste servidor."));
+      })
+      .finally(() => setLoadingChannels(false));
+  }, [botId, guild]);
+
+  function updateDraft<K extends keyof Draft>(key: K, value: Draft[K]) {
+    setDraft((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function toggleCategory(destination: "discord" | "site", category: LogCategory) {
+    const key = destination === "discord" ? "discordLogCategories" : "siteLogCategories";
+    const current = draft[key];
+    const next = current.includes(category)
+      ? current.filter((item) => item !== category)
+      : [...current, category];
+
+    updateDraft(key, next);
+  }
+
+  async function save() {
+    if (!guild || !settings || !canManage) {
+      return;
+    }
+
+    if (draft.discordLogsEnabled && !draft.logChannelId) {
+      setStatus(null);
+      setError("Selecione o canal que recebera os logs do Discord.");
+      return;
+    }
+
+    if (draft.discordLogsEnabled && !draft.discordLogCategories.length) {
+      setStatus(null);
+      setError("Selecione pelo menos uma categoria para os logs do Discord.");
+      return;
+    }
+
+    if (draft.siteLogsEnabled && !draft.siteLogCategories.length) {
+      setStatus(null);
+      setError("Selecione pelo menos uma categoria para os logs do site.");
+      return;
+    }
+
+    setSaving(true);
+    setStatus(null);
+    setError(null);
+
+    try {
+      const saved = await patchGuildSettings(guild.id, draft, botId);
+      onSettingsChange(saved);
+      setStatus("Configuracao de logs salva.");
+    } catch (requestError) {
+      setError(readErrorMessage(requestError, "Nao foi possivel salvar a configuracao de logs."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!guild) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
+          Escolha um servidor para configurar os logs.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const disabled = !settings || !canManage || loading || loadingChannels || saving;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <DestinationCard
+          categories={draft.discordLogCategories}
+          disabled={disabled}
+          enabled={draft.discordLogsEnabled}
+          icon={Bot}
+          onCategoryToggle={(category) => toggleCategory("discord", category)}
+          onEnabledChange={(checked) => updateDraft("discordLogsEnabled", checked)}
+          title="Logs no Discord"
+        >
+          <label className="grid gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium text-zinc-200">
+              <Hash className="h-4 w-4 text-zinc-400" />
+              Canal de logs
+            </span>
+            <select
+              className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-500/60"
+              disabled={disabled || !draft.discordLogsEnabled}
+              onChange={(event) => updateDraft("logChannelId", event.target.value || null)}
+              value={draft.logChannelId ?? ""}
+            >
+              <option value="">Selecione um canal</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>#{channel.name}</option>
+              ))}
+            </select>
+          </label>
+        </DestinationCard>
+
+        <DestinationCard
+          categories={draft.siteLogCategories}
+          disabled={disabled}
+          enabled={draft.siteLogsEnabled}
+          icon={LayoutDashboard}
+          onCategoryToggle={(category) => toggleCategory("site", category)}
+          onEnabledChange={(checked) => updateDraft("siteLogsEnabled", checked)}
+          title="Logs no site"
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-h-5 text-sm">
+          {error ? <p className="text-red-300">{error}</p> : null}
+          {status ? <p className="text-emerald-300">{status}</p> : null}
+        </div>
+        <Button disabled={disabled} onClick={() => void save()}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Salvar logs
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DestinationCard({
+  categories,
+  children,
+  disabled,
+  enabled,
+  icon: Icon,
+  onCategoryToggle,
+  onEnabledChange,
+  title
+}: {
+  categories: LogCategory[];
+  children?: ReactNode;
+  disabled: boolean;
+  enabled: boolean;
+  icon: typeof Bot;
+  onCategoryToggle: (category: LogCategory) => void;
+  onEnabledChange: (checked: boolean) => void;
+  title: string;
+}) {
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black">
+              <Icon className="h-5 w-5 text-zinc-200" />
+            </div>
+            <div className="min-w-0">
+              <CardTitle>{title}</CardTitle>
+              <CardDescription>{categories.length} categoria(s) selecionada(s)</CardDescription>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <Badge variant={enabled ? "success" : "muted"}>{enabled ? "Ativo" : "Inativo"}</Badge>
+            <Switch checked={enabled} disabled={disabled} onCheckedChange={onEnabledChange} />
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        {children}
+
+        <div className="grid gap-2">
+          {LOG_CATEGORIES.map((category) => {
+            const selected = categories.includes(category.id);
+            const CategoryIcon = category.icon;
+
+            return (
+              <label
+                className={[
+                  "flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                  selected
+                    ? "border-zinc-700 bg-zinc-900 text-white"
+                    : "border-zinc-900 bg-zinc-950/70 text-zinc-500",
+                  disabled || !enabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-zinc-700"
+                ].join(" ")}
+                key={category.id}
+              >
+                <input
+                  checked={selected}
+                  className="h-4 w-4 accent-white"
+                  disabled={disabled || !enabled}
+                  onChange={() => onCategoryToggle(category.id)}
+                  type="checkbox"
+                />
+                <CategoryIcon className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1">{category.label}</span>
+                {selected ? <CheckSquare2 className="h-4 w-4 shrink-0 text-emerald-300" /> : null}
+              </label>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function readErrorMessage(error: unknown, fallback: string) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return fallback;
+  }
+
+  const response = (error as { response?: { data?: { message?: unknown } } }).response;
+  return typeof response?.data?.message === "string" ? response.data.message : fallback;
+}

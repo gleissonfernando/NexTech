@@ -1,12 +1,12 @@
 import type { Message, PartialMessage } from "discord.js";
-import { env, isBotModuleEnabled } from "../config/env";
+import { isBotModuleEnabled } from "../config/env";
 import { handleImageAntiSpamMessage } from "../services/imageAntiSpamService";
 import { logMessageUpdate } from "../services/logService";
 import { isSelfBotModuleEnabled } from "../services/safeBotService";
 import type { BotContext } from "../types";
 
 export async function handleMessageUpdate(oldMessage: Message | PartialMessage, newMessage: Message | PartialMessage, context: BotContext) {
-  if (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) {
+  if (isBotModuleEnabled("logs")) {
     await logMessageUpdate(context, oldMessage, newMessage);
   }
 

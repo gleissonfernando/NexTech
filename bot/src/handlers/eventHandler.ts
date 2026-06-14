@@ -49,11 +49,11 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) {
+  if (managedRuntimeBot || isBotModuleEnabled("logs")) {
     client.on(Events.MessageDelete, (message) => void handleMessageDelete(message, context));
   }
 
-  if (managedRuntimeBot || (env.BOT_MESSAGE_LOGS_ENABLED && isBotModuleEnabled("logs")) || (isBotModuleEnabled("image-anti-spam") && !isSelfBotModuleEnabled())) {
+  if (managedRuntimeBot || isBotModuleEnabled("logs") || (isBotModuleEnabled("image-anti-spam") && !isSelfBotModuleEnabled())) {
     client.on(Events.MessageUpdate, (oldMessage, newMessage) => void handleMessageUpdate(oldMessage, newMessage, context));
   }
 

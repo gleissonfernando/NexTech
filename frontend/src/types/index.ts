@@ -138,6 +138,10 @@ export type GuildSettings = {
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
   logChannelId: string | null;
+  discordLogsEnabled: boolean;
+  siteLogsEnabled: boolean;
+  discordLogCategories: LogCategory[];
+  siteLogCategories: LogCategory[];
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;
@@ -153,6 +157,14 @@ export type GuildSettings = {
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
 };
+
+export type LogCategory =
+  | "members"
+  | "messages"
+  | "roles"
+  | "moderation"
+  | "dashboard"
+  | "automation";
 
 export type ImageAntiSpamSettings = {
   id: string;

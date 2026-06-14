@@ -16,6 +16,8 @@ import { assertPanelChannelPermissions, pinPanelMessage } from "./panelDeliveryS
 type WritableGuildTextChannel = GuildTextBasedChannel;
 
 const syncingPanels = new Set<string>();
+const MAX_EMBED_TOTAL_CHARS = 5400;
+const MAX_MEMBER_FIELDS = 20;
 const SOCIAL_META: Array<{
   buttonLabel: string;
   icon: string;
@@ -191,14 +193,27 @@ async function fetchMessage(channel: WritableGuildTextChannel, messageId: string
 }
 
 function buildPanelMessage(payload: SocialPanelPayload): MessageCreateOptions {
+  const summary = buildSummary(payload.members);
   const embed = new EmbedBuilder()
-    .setTitle("🌐 Network")
+    .setTitle("Network da comunidade")
     .setColor(parseEmbedColor(payload.panel.embedColor))
-    .setDescription(buildDescription(payload.members))
+    .setDescription(summary)
     .setFooter({
-      text: `Network atualizada em ${formatDateTime(new Date())}`
+      text: `Atualizado em ${formatDateTime(new Date())}`
     })
     .setTimestamp(new Date());
+
+  const thumbnail = singleMemberAvatar(payload.members);
+
+  if (thumbnail) {
+    embed.setThumbnail(thumbnail);
+  }
+
+  const fields = buildMemberFields(payload.members, summary.length);
+
+  if (fields.length) {
+    embed.addFields(fields);
+  }
 
   return {
     allowedMentions: {
@@ -210,13 +225,22 @@ function buildPanelMessage(payload: SocialPanelPayload): MessageCreateOptions {
   };
 }
 
-function buildDescription(members: SocialMember[]) {
-  const separator = "━━━━━━━━━━━━━━";
-  let description = `Todas as redes sociais dos nossos membros.\n\n${separator}`;
-
+function buildSummary(members: SocialMember[]) {
   if (!members.length) {
-    return `${description}\n\nNenhum membro cadastrado ainda.\n\n${separator}`;
+    return "Nenhum membro cadastrado ainda. Adicione membros pelo painel para publicar as redes da comunidade.";
   }
+
+  const linkCount = members.reduce((total, member) => total + activeLinks(member).length, 0);
+
+  return [
+    "Acesse as redes oficiais dos membros da comunidade.",
+    `**${members.length} ${members.length === 1 ? "membro cadastrado" : "membros cadastrados"}** - **${linkCount} ${linkCount === 1 ? "link ativo" : "links ativos"}**`
+  ].join("\n");
+}
+
+function buildMemberFields(members: SocialMember[], baseLength: number) {
+  const fields: Array<{ inline: boolean; name: string; value: string }> = [];
+  let totalLength = baseLength;
 
   for (let index = 0; index < members.length; index += 1) {
     const member = members[index];
@@ -225,38 +249,53 @@ function buildDescription(members: SocialMember[]) {
       continue;
     }
 
-    const section = `\n\n${formatMemberSection(member)}\n\n${separator}`;
+    const field = formatMemberField(member);
+    const nextLength = totalLength + field.name.length + field.value.length;
 
-    if (description.length + section.length > 3900) {
+    if (fields.length >= MAX_MEMBER_FIELDS || nextLength > MAX_EMBED_TOTAL_CHARS) {
       const remaining = members.length - index;
-      description += `\n\nMais ${remaining} membro${remaining === 1 ? "" : "s"} cadastrado${remaining === 1 ? "" : "s"} no painel.`;
+
+      if (remaining > 0) {
+        fields.push({
+          inline: false,
+          name: "Mais membros",
+          value: `Mais ${remaining} ${remaining === 1 ? "membro cadastrado" : "membros cadastrados"} no painel.`
+        });
+      }
+
       break;
     }
 
-    description += section;
+    fields.push(field);
+    totalLength = nextLength;
   }
 
-  return description;
+  return fields;
 }
 
-function formatMemberSection(member: SocialMember) {
+function formatMemberField(member: SocialMember) {
   const links = activeLinks(member);
-  const lines = [`👤 ${escapeMarkdownText(member.name)}`];
-
-  if (member.role) {
-    lines.push(`Cargo: ${escapeMarkdownText(member.role)}`);
-  }
+  const name = truncateFieldName(
+    member.role
+      ? `${escapeMarkdownText(member.name)} - ${escapeMarkdownText(member.role)}`
+      : escapeMarkdownText(member.name)
+  );
 
   if (!links.length) {
-    lines.push("Sem redes cadastradas.");
-    return lines.join("\n");
+    return {
+      inline: false,
+      name,
+      value: "Nenhuma rede cadastrada."
+    };
   }
 
-  for (const link of links) {
-    lines.push(`${link.icon} [${link.label}](${link.url})`);
-  }
-
-  return lines.join("\n");
+  return {
+    inline: false,
+    name,
+    value: truncateFieldValue(
+      links.map((link) => `**${platformTag(link.id)}** [${escapeMarkdownText(link.label)}](${link.url})`).join("  |  ")
+    )
+  };
 }
 
 function buildComponents(members: SocialMember[]) {
@@ -270,7 +309,7 @@ function buildComponents(members: SocialMember[]) {
 
       buttons.push(
         new ButtonBuilder()
-          .setLabel(truncateButtonLabel(`${member.name} - ${link.buttonLabel}`))
+          .setLabel(buttonLabel(member, link, members.length))
           .setStyle(ButtonStyle.Link)
           .setURL(link.url)
       );
@@ -288,6 +327,10 @@ function buildComponents(members: SocialMember[]) {
   }
 
   return rows;
+}
+
+function buttonLabel(member: SocialMember, link: ReturnType<typeof activeLinks>[number], memberCount: number) {
+  return truncateButtonLabel(memberCount === 1 ? link.buttonLabel : `${member.name} - ${link.buttonLabel}`);
 }
 
 function activeLinks(member: SocialMember) {
@@ -312,6 +355,38 @@ function isHttpUrl(value: string) {
 
 function truncateButtonLabel(value: string) {
   return value.length > 80 ? `${value.slice(0, 77)}...` : value;
+}
+
+function truncateFieldName(value: string) {
+  return value.length > 256 ? `${value.slice(0, 253)}...` : value;
+}
+
+function truncateFieldValue(value: string) {
+  return value.length > 1024 ? `${value.slice(0, 1020)}...` : value;
+}
+
+function singleMemberAvatar(members: SocialMember[]) {
+  if (members.length !== 1) {
+    return null;
+  }
+
+  const avatar = members[0]?.avatar?.trim() ?? "";
+  return isHttpUrl(avatar) ? avatar : null;
+}
+
+function platformTag(platform: SocialPlatform) {
+  const tags: Record<SocialPlatform, string> = {
+    facebook: "FB",
+    instagram: "IG",
+    kick: "KICK",
+    tiktok: "TT",
+    twitch: "TV",
+    twitter: "X",
+    website: "WEB",
+    youtube: "YT"
+  };
+
+  return tags[platform];
 }
 
 function parseEmbedColor(value?: string | null) {

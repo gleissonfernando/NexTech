@@ -34,6 +34,7 @@ import type { ViewId } from "../components/layout/sidebar";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
+import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
 import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
@@ -79,6 +80,7 @@ import type {
   KickNotification,
   LiveEvent,
   LogEntry,
+  LogCategory,
   SelfBotProtectionSettings,
   SocialNotification,
   Ticket,
@@ -520,7 +522,12 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       } : current);
     });
     socket.on("logs:new", (log: LogEntry) => {
-      if (log.guildId === selectedGuildId && (log.botId ?? null) === activeBotId && isUserVisibleLog(log)) {
+      if (
+        log.guildId === selectedGuildId
+        && (log.botId ?? null) === activeBotId
+        && isUserVisibleLog(log)
+        && isSiteLogEnabled(log, settings)
+      ) {
         setLogs((current) => [log, ...current].slice(0, 50));
       }
     });
@@ -547,13 +554,33 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     socket.on("settings:updated", (nextSettings: GuildSettings) => {
       if (nextSettings.guildId === selectedGuildId && (nextSettings.botId ?? null) === activeBotId) {
         setSettings(nextSettings);
+        void getLogs(selectedGuildId, activeBotId)
+          .then((nextLogs) => setLogs(userVisibleLogs(nextLogs)))
+          .catch(() => undefined);
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [activeBotId, selectedGuildId]);
+  }, [
+    activeBotId,
+    selectedGuildId,
+    settings?.siteLogsEnabled,
+    settings?.siteLogCategories.join("|")
+  ]);
+
+  async function handleLogsSettingsChange(nextSettings: GuildSettings) {
+    setSettings(nextSettings);
+
+    if (!selectedGuildId) {
+      setLogs([]);
+      return;
+    }
+
+    const nextLogs = await getLogs(selectedGuildId, activeBotId).catch(() => []);
+    setLogs(userVisibleLogs(nextLogs));
+  }
 
   async function updateSetting(key: BooleanSettingKey, checked: boolean) {
     if (!settings || !selectedGuildId || !canManageDashboard) {
@@ -727,7 +754,17 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             settings={settings}
           />
         ) : null}
-        {activeView === "logs" ? <LogsView logs={logs} /> : null}
+        {activeView === "logs" ? (
+          <LogsView
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "logs", canManageDashboard)}
+            guild={selectedGuild}
+            loading={settingsLoading}
+            logs={logs}
+            onSettingsChange={(nextSettings) => void handleLogsSettingsChange(nextSettings)}
+            settings={settings}
+          />
+        ) : null}
         {activeView === "fivem" ? (
           <FivemView
             botId={activeBotId}
@@ -1351,17 +1388,44 @@ function EntryLeaveManager({
   );
 }
 
-function LogsView({ logs }: { logs: LogEntry[] }) {
+function LogsView({
+  botId,
+  canManage,
+  guild,
+  loading,
+  logs,
+  onSettingsChange,
+  settings
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  loading: boolean;
+  logs: LogEntry[];
+  onSettingsChange: (settings: GuildSettings) => void;
+  settings: GuildSettings | null;
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Logs do servidor</CardTitle>
-        <CardDescription>Eventos importantes em linguagem simples.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FriendlyLogList logs={logs} />
-      </CardContent>
-    </Card>
+    <div className="space-y-5">
+      <LogsSettingsPanel
+        botId={botId}
+        canManage={canManage}
+        guild={guild}
+        loading={loading}
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historico do site</CardTitle>
+          <CardDescription>Eventos das categorias selecionadas para a dashboard.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FriendlyLogList logs={logs} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -1572,10 +1636,19 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
   }
 
   if (moduleId === "logs") {
+    const discordActive = Boolean(settings?.discordLogsEnabled && settings.logChannelId);
+    const siteActive = Boolean(settings?.siteLogsEnabled);
+
     return {
-      active: Boolean(settings?.logChannelId),
-      configured: Boolean(settings?.logChannelId),
-      configuredText: settings?.logChannelId ? "Canal configurado" : "Falta canal"
+      active: discordActive || siteActive,
+      configured: discordActive || siteActive,
+      configuredText: discordActive && siteActive
+        ? "Discord e site"
+        : discordActive
+          ? "Discord"
+          : siteActive
+            ? "Site"
+            : "Falta configurar"
     };
   }
 
@@ -1721,6 +1794,38 @@ function userVisibleLogs(logs: LogEntry[]) {
 
 function isUserVisibleLog(log: LogEntry) {
   return log.type !== "audit.dev_bot";
+}
+
+function isSiteLogEnabled(log: LogEntry, settings: GuildSettings | null) {
+  return Boolean(
+    settings?.siteLogsEnabled
+    && settings.siteLogCategories.includes(logCategoryForType(log.type))
+  );
+}
+
+function logCategoryForType(type: string): LogCategory {
+  const normalized = type.trim().toLowerCase();
+
+  if (normalized.startsWith("member.")) return "members";
+  if (normalized.startsWith("message.")) return "messages";
+  if (normalized.startsWith("roles.")) return "roles";
+  if (
+    normalized.startsWith("moderation.")
+    || normalized.startsWith("security.")
+    || normalized.startsWith("image_anti_spam.")
+    || normalized.startsWith("self_bot_protection.")
+  ) {
+    return "moderation";
+  }
+  if (
+    normalized.startsWith("dashboard.")
+    || normalized.startsWith("audit.")
+    || normalized.startsWith("access.")
+  ) {
+    return "dashboard";
+  }
+
+  return "automation";
 }
 
 function readResponseStatus(error: unknown) {

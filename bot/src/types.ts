@@ -53,6 +53,10 @@ export type GuildSettings = {
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
   logChannelId: string | null;
+  discordLogsEnabled: boolean;
+  siteLogsEnabled: boolean;
+  discordLogCategories: LogCategory[];
+  siteLogCategories: LogCategory[];
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;
@@ -66,3 +70,11 @@ export type GuildSettings = {
   verificationRoleId: string | null;
   verificationRoleIds: string[];
 };
+
+export type LogCategory =
+  | "members"
+  | "messages"
+  | "roles"
+  | "moderation"
+  | "dashboard"
+  | "automation";

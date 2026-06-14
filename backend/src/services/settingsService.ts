@@ -35,6 +35,10 @@ export type GuildSettingsDto = {
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
   logChannelId: string | null;
+  discordLogsEnabled: boolean;
+  siteLogsEnabled: boolean;
+  discordLogCategories: LogCategory[];
+  siteLogCategories: LogCategory[];
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;
@@ -50,6 +54,16 @@ export type GuildSettingsDto = {
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
 };
+
+export const LOG_CATEGORIES = [
+  "members",
+  "messages",
+  "roles",
+  "moderation",
+  "dashboard",
+  "automation"
+] as const;
+export type LogCategory = (typeof LOG_CATEGORIES)[number];
 
 export type PersistedDashboardAccess = {
   botId: string;
@@ -109,6 +123,7 @@ const LEGACY_LEAVE_MESSAGE = "Ate mais, {user}.";
 export const MAX_AUTOMATIC_ROLES = 2;
 const DEFAULT_ACCOUNT_AGE_MIN_DAYS = 10;
 const MAX_ACCOUNT_AGE_MIN_DAYS = 3_650;
+const DEFAULT_LOG_CATEGORIES = [...LOG_CATEGORIES];
 
 export function defaultSettings(guildId: string, botId: string | null = null): GuildSettingsDto {
   return {
@@ -141,6 +156,10 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     ticketEnabled: true,
     ticketCategoryId: null,
     logChannelId: null,
+    discordLogsEnabled: false,
+    siteLogsEnabled: true,
+    discordLogCategories: [...DEFAULT_LOG_CATEGORIES],
+    siteLogCategories: [...DEFAULT_LOG_CATEGORIES],
     moderationEnabled: true,
     accountAgeSecurityEnabled: false,
     accountAgeMinDays: DEFAULT_ACCOUNT_AGE_MIN_DAYS,
@@ -241,6 +260,12 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
   const accountAgeAllowedUserIds = "accountAgeAllowedUserIds" in input
     ? normalizeSnowflakes(input.accountAgeAllowedUserIds ?? [])
     : current.accountAgeAllowedUserIds;
+  const discordLogCategories = "discordLogCategories" in input
+    ? normalizeLogCategories(input.discordLogCategories)
+    : current.discordLogCategories;
+  const siteLogCategories = "siteLogCategories" in input
+    ? normalizeLogCategories(input.siteLogCategories)
+    : current.siteLogCategories;
   const next = normalizeVerificationRoles({
     ...current,
     ...input,
@@ -254,6 +279,8 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
       "accountAgeLogChannelId" in input ? input.accountAgeLogChannelId : current.accountAgeLogChannelId
     ),
     accountAgeAllowedUserIds,
+    discordLogCategories,
+    siteLogCategories,
     safeBotChannelId: normalizeSnowflake(
       "safeBotChannelId" in input ? input.safeBotChannelId : current.safeBotChannelId
     ),
@@ -363,6 +390,10 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           ticketEnabled: next.ticketEnabled,
           ticketCategoryId: next.ticketCategoryId,
           logChannelId: next.logChannelId,
+          discordLogsEnabled: next.discordLogsEnabled,
+          siteLogsEnabled: next.siteLogsEnabled,
+          discordLogCategories: next.discordLogCategories,
+          siteLogCategories: next.siteLogCategories,
           moderationEnabled: next.moderationEnabled,
           accountAgeSecurityEnabled: next.accountAgeSecurityEnabled,
           accountAgeMinDays: next.accountAgeMinDays,
@@ -451,6 +482,10 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     ticketEnabled: settings.ticketEnabled,
     ticketCategoryId: settings.ticketCategoryId,
     logChannelId: settings.logChannelId,
+    discordLogsEnabled: settings.discordLogsEnabled ?? Boolean(settings.logChannelId),
+    siteLogsEnabled: settings.siteLogsEnabled ?? defaults.siteLogsEnabled,
+    discordLogCategories: normalizeLogCategories(settings.discordLogCategories),
+    siteLogCategories: normalizeLogCategories(settings.siteLogCategories),
     moderationEnabled: settings.moderationEnabled,
     accountAgeSecurityEnabled: settings.accountAgeSecurityEnabled ?? defaults.accountAgeSecurityEnabled,
     accountAgeMinDays: clampInteger(
@@ -571,6 +606,15 @@ function normalizeUserPermissionMap(
 
 function normalizeSnowflakes(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter((value) => /^\d{5,32}$/.test(value)))];
+}
+
+function normalizeLogCategories(values: LogCategory[] | null | undefined) {
+  if (!Array.isArray(values)) {
+    return [...DEFAULT_LOG_CATEGORIES];
+  }
+
+  const allowed = new Set<string>(LOG_CATEGORIES);
+  return [...new Set(values.filter((value): value is LogCategory => allowed.has(value)))];
 }
 
 function normalizeSnowflake(value: string | null | undefined) {
