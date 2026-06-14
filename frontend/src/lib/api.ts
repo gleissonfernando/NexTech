@@ -1054,6 +1054,24 @@ export async function saveMissionToolsUserToken(
   return data;
 }
 
+export async function saveMissionToolsMyToken(
+  guildId: string,
+  botId: string,
+  payload: {
+    token: string;
+  }
+) {
+  const { data } = await api.post<{
+    tokenConfigured: boolean;
+    tokenLast4: string | null;
+    user: MissionToolsUserPanel;
+  }>(`/mission-tools/${guildId}/me/token`, payload, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data;
+}
+
 export async function getDevModules() {
   const { data } = await api.get<{ modules: DevModuleDefinition[] }>("/dev/modules");
   return data.modules;

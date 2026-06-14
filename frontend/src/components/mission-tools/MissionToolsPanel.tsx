@@ -19,10 +19,11 @@ import {
   getMissionTools,
   getMissionToolsOptions,
   publishMissionToolsPanel,
+  saveMissionToolsMyToken,
   saveMissionToolsSettings,
-  saveMissionToolsUserToken
 } from "../../lib/api";
 import type {
+  AuthUser,
   DashboardGuild,
   GuildChannelOption,
   GuildLiveOptions,
@@ -41,6 +42,7 @@ type MissionToolsPanelProps = {
   botId?: string | null;
   canManage: boolean;
   guild: DashboardGuild | null;
+  user: AuthUser;
 };
 
 const featureDefinitions: Array<{
@@ -101,7 +103,7 @@ const emptyStats: MissionToolsStats = {
   usersWithToken: 0
 };
 
-export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanelProps) {
+export function MissionToolsPanel({ botId, canManage, guild, user }: MissionToolsPanelProps) {
   const [settings, setSettings] = useState<MissionToolsSettings>(emptySettings);
   const [stats, setStats] = useState<MissionToolsStats>(emptyStats);
   const [users, setUsers] = useState<MissionToolsUserPanel[]>([]);
@@ -112,13 +114,15 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [savingToken, setSavingToken] = useState(false);
-  const [tokenUserId, setTokenUserId] = useState("");
-  const [tokenUsername, setTokenUsername] = useState("");
   const [tokenValue, setTokenValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
   const regularRoles = useMemo(() => roles.filter((role) => role.id !== guild?.id), [roles, guild?.id]);
+  const currentUserPanel = useMemo(
+    () => users.find((item) => item.userId === user.discordId) ?? null,
+    [user.discordId, users]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -269,16 +273,10 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
   async function handleSaveUserToken() {
     if (!botId || !guild) return;
 
-    const userId = tokenUserId.trim();
     const token = tokenValue.trim();
 
-    if (!/^\d{5,32}$/.test(userId)) {
-      setMessage("Informe um User ID valido para salvar o token.");
-      return;
-    }
-
     if (token.length < 10) {
-      setMessage("Informe um token valido para o usuario.");
+      setMessage("Informe um token valido para salvar no seu painel.");
       return;
     }
 
@@ -286,21 +284,16 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
     setMessage(null);
 
     try {
-      const saved = await saveMissionToolsUserToken(guild.id, botId, userId, {
-        token,
-        username: tokenUsername.trim() || null
-      });
+      const saved = await saveMissionToolsMyToken(guild.id, botId, { token });
       const missionTools = await getMissionTools(guild.id, botId);
 
       setSettings(missionTools.settings);
       setStats(missionTools.stats);
       setUsers(missionTools.users);
-      setTokenUserId("");
-      setTokenUsername("");
       setTokenValue("");
-      setMessage(`Token salvo para ${saved.user.username ?? saved.user.userId}.`);
+      setMessage(`Token salvo para ${saved.user.username ?? user.globalName ?? user.username}.`);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o token do usuario.");
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o seu token.");
     } finally {
       setSavingToken(false);
     }
@@ -426,55 +419,42 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-zinc-300" />
-                Adicionar token do usuario
+                Meu token do Mission Tools
               </CardTitle>
-              <CardDescription>Salva o token criptografado para o User ID informado.</CardDescription>
+              <CardDescription>Salve seu proprio token pelo painel para usar Mission, Clean, Voice e Rich Presence.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-sm font-medium text-zinc-200">User ID</span>
-                  <input
-                    className="social-input h-12"
-                    disabled={!canManage || savingToken}
-                    inputMode="numeric"
-                    onChange={(event) => setTokenUserId(event.target.value)}
-                    placeholder="ID do usuario"
-                    value={tokenUserId}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-sm font-medium text-zinc-200">Nome opcional</span>
-                  <input
-                    className="social-input h-12"
-                    disabled={!canManage || savingToken}
-                    onChange={(event) => setTokenUsername(event.target.value)}
-                    placeholder="Nome para identificar"
-                    value={tokenUsername}
-                  />
-                </label>
+              <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Conta vinculada</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{user.globalName ?? user.username}</p>
+                    <p className="mt-1 truncate font-mono text-xs text-zinc-500">{user.discordId}</p>
+                  </div>
+                  {currentUserPanel?.tokenConfigured ? <Badge variant="success">Token configurado</Badge> : <Badge variant="muted">Sem token</Badge>}
+                </div>
               </div>
               <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-200">Token do usuario</span>
+                <span className="text-sm font-medium text-zinc-200">Seu token</span>
                 <input
                   autoComplete="off"
                   className="social-input h-12"
-                  disabled={!canManage || savingToken}
+                  disabled={savingToken}
                   onChange={(event) => setTokenValue(event.target.value)}
-                  placeholder="Cole o token do usuario"
+                  placeholder="Cole o seu token"
                   type="password"
                   value={tokenValue}
                 />
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button disabled={!canManage || savingToken} onClick={() => void handleSaveUserToken()}>
+                <Button disabled={savingToken || !tokenValue.trim()} onClick={() => void handleSaveUserToken()}>
                   {savingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                  Salvar token
+                  Salvar meu token
                 </Button>
                 <span className="text-xs text-zinc-500">O valor nao aparece depois de salvo.</span>
               </div>
               <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm text-zinc-400">
-                O backend valida se o token pertence ao User ID informado e guarda somente a versao criptografada.
+                O backend valida se o token pertence ao seu Discord ID e guarda somente a versao criptografada.
               </div>
             </CardContent>
           </Card>

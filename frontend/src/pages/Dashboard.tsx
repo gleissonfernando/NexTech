@@ -682,6 +682,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "mission-tools", canManageDashboard)}
             guild={selectedGuild}
+            user={auth.user}
           />
         ) : null}
         {activeView === "voice-recorder" ? (

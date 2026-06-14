@@ -103,7 +103,13 @@ export function startMissionToolsService(client: Client, context: BotContext) {
       return;
     }
 
-    console.log(`[mission-tools] painel de usuario atualizado em ${payload.guildId}.`);
+    void refreshExistingUserDmPanels(context, payload.guildId, payload.user)
+      .then((updated) => {
+        console.log(`[mission-tools] painel de usuario atualizado em ${payload.guildId}: ${updated} mensagem(ns).`);
+      })
+      .catch((error) => {
+        console.warn(`[mission-tools] falha ao atualizar painel privado em ${payload.guildId}:`, errorMessage(error));
+      });
   });
 
   void context.api.getActiveMissionToolsConfigs()
@@ -1207,6 +1213,47 @@ async function editOrCreateDmPanel(context: BotContext, guildId: string, userId:
   return record;
 }
 
+async function refreshExistingUserDmPanels(context: BotContext, guildId: string, payloadUser: unknown) {
+  const userId = missionToolsPayloadUserId(payloadUser);
+  if (!userId) {
+    return 0;
+  }
+
+  const record = await context.api.getMissionToolsUser(guildId, userId);
+  const user = await context.client.users.fetch(userId).catch(() => null);
+  if (!user) {
+    return 0;
+  }
+
+  const dm = await user.createDM().catch(() => null);
+  if (!dm) {
+    return 0;
+  }
+
+  let updated = 0;
+  const panelTypes: PanelType[] = ["clear", "mission", "voice", "richPresence", "usernameChecker"];
+
+  for (const panelType of panelTypes) {
+    const messageId = messageIdForPanel(record, panelType);
+    if (!messageId) {
+      continue;
+    }
+
+    const message = await dm.messages.fetch(messageId).catch(() => null);
+    if (!message) {
+      continue;
+    }
+
+    const payload = payloadForPanel(record, panelType, {});
+    const edited = await message.edit(payload).then(() => true).catch(() => false);
+    if (edited) {
+      updated += 1;
+    }
+  }
+
+  return updated;
+}
+
 async function deleteBotDmPanels(interaction: StringSelectMenuInteraction, context: BotContext, guildId: string) {
   await deferMissionReply(interaction);
   const user = await context.client.users.fetch(interaction.user.id);
@@ -1456,7 +1503,7 @@ function tokenDashboardInstructions(userId: string, guildId: string) {
     dashboardLine,
     `User ID: ${userId}`,
     `Servidor: ${guildId}`,
-    "No Mission Tools, use Adicionar token do usuario e depois volte ao painel privado."
+    "No Mission Tools, use Meu token do Mission Tools e depois volte ao painel privado."
   ].join("\n");
 }
 
@@ -1489,6 +1536,15 @@ function originFromUrl(value: string) {
   } catch {
     return null;
   }
+}
+
+function missionToolsPayloadUserId(value: unknown) {
+  if (!value || typeof value !== "object" || !("userId" in value)) {
+    return null;
+  }
+
+  const userId = (value as { userId?: unknown }).userId;
+  return typeof userId === "string" && /^\d{5,32}$/.test(userId) ? userId : null;
 }
 
 function panelTypeFromMainValue(value: string | undefined): PanelType | null {

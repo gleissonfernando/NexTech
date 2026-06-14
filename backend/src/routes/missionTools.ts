@@ -251,6 +251,24 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
   }
 });
 
+missionToolsRouter.post("/:guildId/me/token", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = tokenSchema.parse(req.body);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    await assertCanReadMissionTools(user, guildId, botId);
+
+    return res.json(await saveMissionToolsToken(guildId, botId, user.discordId, input.token, {
+      username: user.globalName ?? user.username,
+      validateOwner: true
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 missionToolsRouter.get("/:guildId", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
