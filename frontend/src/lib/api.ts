@@ -38,6 +38,7 @@ import type {
   LogEntry,
   MissionToolsResponse,
   MissionToolsSettings,
+  MissionToolsUserPanel,
   PublicKickClips,
   SaveClipsConfigPayload,
   SaveFivemFacSettingsPayload,
@@ -1031,6 +1032,26 @@ export async function publishMissionToolsPanel(guildId: string, botId: string) {
     timeout: 15000
   });
   return data.settings;
+}
+
+export async function saveMissionToolsUserToken(
+  guildId: string,
+  botId: string,
+  userId: string,
+  payload: {
+    token: string;
+    username?: string | null;
+  }
+) {
+  const { data } = await api.post<{
+    tokenConfigured: boolean;
+    tokenLast4: string | null;
+    user: MissionToolsUserPanel;
+  }>(`/mission-tools/${guildId}/users/${encodeURIComponent(userId)}/token`, payload, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data;
 }
 
 export async function getDevModules() {

@@ -107,6 +107,9 @@ const userPatchSchema = z.object({
 const tokenSchema = z.object({
   token: z.string().min(10).max(4096)
 });
+const dashboardTokenSchema = tokenSchema.extend({
+  username: z.string().max(120).nullable().optional()
+});
 
 export const missionToolsRouter = Router();
 
@@ -224,6 +227,25 @@ missionToolsRouter.get("/bot/:guildId/users/:userId/token", requireBot, async (r
     }
 
     return res.json(token);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const input = dashboardTokenSchema.parse(req.body);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    await assertCanManageMissionTools(user, guildId, botId);
+
+    return res.json(await saveMissionToolsToken(guildId, botId, userId, input.token, {
+      username: input.username ?? null,
+      validateOwner: true
+    }));
   } catch (error) {
     return next(error);
   }

@@ -19,7 +19,8 @@ import {
   getMissionTools,
   getMissionToolsOptions,
   publishMissionToolsPanel,
-  saveMissionToolsSettings
+  saveMissionToolsSettings,
+  saveMissionToolsUserToken
 } from "../../lib/api";
 import type {
   DashboardGuild,
@@ -110,6 +111,10 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [savingToken, setSavingToken] = useState(false);
+  const [tokenUserId, setTokenUserId] = useState("");
+  const [tokenUsername, setTokenUsername] = useState("");
+  const [tokenValue, setTokenValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
@@ -261,6 +266,46 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
     }
   }
 
+  async function handleSaveUserToken() {
+    if (!botId || !guild) return;
+
+    const userId = tokenUserId.trim();
+    const token = tokenValue.trim();
+
+    if (!/^\d{5,32}$/.test(userId)) {
+      setMessage("Informe um User ID valido para salvar o token.");
+      return;
+    }
+
+    if (token.length < 10) {
+      setMessage("Informe um token valido para o usuario.");
+      return;
+    }
+
+    setSavingToken(true);
+    setMessage(null);
+
+    try {
+      const saved = await saveMissionToolsUserToken(guild.id, botId, userId, {
+        token,
+        username: tokenUsername.trim() || null
+      });
+      const missionTools = await getMissionTools(guild.id, botId);
+
+      setSettings(missionTools.settings);
+      setStats(missionTools.stats);
+      setUsers(missionTools.users);
+      setTokenUserId("");
+      setTokenUsername("");
+      setTokenValue("");
+      setMessage(`Token salvo para ${saved.user.username ?? saved.user.userId}.`);
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o token do usuario.");
+    } finally {
+      setSavingToken(false);
+    }
+  }
+
   if (!canUse) {
     return (
       <Card>
@@ -381,13 +426,55 @@ export function MissionToolsPanel({ botId, canManage, guild }: MissionToolsPanel
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-zinc-300" />
-                Tokens por usuario
+                Adicionar token do usuario
               </CardTitle>
-              <CardDescription>O token nao aparece no site; fica criptografado no backend.</CardDescription>
+              <CardDescription>Salva o token criptografado para o User ID informado.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-zinc-200">User ID</span>
+                  <input
+                    className="social-input h-12"
+                    disabled={!canManage || savingToken}
+                    inputMode="numeric"
+                    onChange={(event) => setTokenUserId(event.target.value)}
+                    placeholder="ID do usuario"
+                    value={tokenUserId}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-zinc-200">Nome opcional</span>
+                  <input
+                    className="social-input h-12"
+                    disabled={!canManage || savingToken}
+                    onChange={(event) => setTokenUsername(event.target.value)}
+                    placeholder="Nome para identificar"
+                    value={tokenUsername}
+                  />
+                </label>
+              </div>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-zinc-200">Token do usuario</span>
+                <input
+                  autoComplete="off"
+                  className="social-input h-12"
+                  disabled={!canManage || savingToken}
+                  onChange={(event) => setTokenValue(event.target.value)}
+                  placeholder="Cole o token do usuario"
+                  type="password"
+                  value={tokenValue}
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={!canManage || savingToken} onClick={() => void handleSaveUserToken()}>
+                  {savingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                  Salvar token
+                </Button>
+                <span className="text-xs text-zinc-500">O valor nao aparece depois de salvo.</span>
+              </div>
               <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm text-zinc-400">
-                Cada pessoa configura o proprio token no painel privado do Discord. A dashboard apenas libera o sistema e publica o Control Center.
+                O backend valida se o token pertence ao User ID informado e guarda somente a versao criptografada.
               </div>
             </CardContent>
           </Card>

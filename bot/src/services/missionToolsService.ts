@@ -133,17 +133,23 @@ export async function handleMissionToolsInteraction(interaction: Interaction, co
     return true;
   }
 
-  if (interaction.isStringSelectMenu()) {
-    await handleSelectMenu(interaction, context);
-    return true;
+  try {
+    if (interaction.isStringSelectMenu()) {
+      await handleSelectMenu(interaction, context);
+      return true;
+    }
+
+    if (interaction.isModalSubmit()) {
+      await handleModal(interaction, context);
+      return true;
+    }
+
+    await handleButton(interaction, context);
+  } catch (error) {
+    console.error("[mission-tools] falha ao processar interacao:", error);
+    await replySafely(interaction, readRequestErrorMessage(error) ?? "Nao foi possivel processar essa interacao do Mission Tools.");
   }
 
-  if (interaction.isModalSubmit()) {
-    await handleModal(interaction, context);
-    return true;
-  }
-
-  await handleButton(interaction, context);
   return true;
 }
 
@@ -179,7 +185,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
   }
 
   if (scope === "voice" && action === "guild" && selected) {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
 
@@ -202,7 +208,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
   }
 
   if (scope === "voice" && action === "channel" && selected) {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
@@ -321,7 +327,7 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
 
 async function handleMissionButton(interaction: ButtonInteraction, context: BotContext, guildId: string, action: string) {
   if (action === "start") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
 
@@ -363,7 +369,7 @@ async function handleMissionButton(interaction: ButtonInteraction, context: BotC
   }
 
   if (action === "deactivate") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const cancelled = missionQueue.cancelUser(sessionKey(guildId, interaction.user.id), "Mission System desativado pelo usuario.");
     await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
       missionDetail: cancelled ? "Operacao cancelada." : "Nenhuma operacao em andamento.",
@@ -376,7 +382,7 @@ async function handleMissionButton(interaction: ButtonInteraction, context: BotC
 
 async function handleClearButton(interaction: ButtonInteraction, context: BotContext, guildId: string, action: string) {
   if (action === "bulk") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
       clearMode: "bulk",
       username: displayUserName(interaction)
@@ -407,7 +413,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
   }
 
   if (action === "start") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
     const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
@@ -448,7 +454,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
   }
 
   if (action === "deactivate") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     cleanupControllers.get(sessionKey(guildId, interaction.user.id))?.abort("Clean System desativado pelo usuario.");
     cleanupControllers.delete(sessionKey(guildId, interaction.user.id));
     await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
@@ -461,7 +467,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
 
 async function handleVoiceButton(interaction: ButtonInteraction, context: BotContext, guildId: string, action: string) {
   if (action === "load") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
     const guildOptions = await fetchDiscordGuildOptions(token);
@@ -507,7 +513,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
   }
 
   if (action === "start") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
     const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
@@ -537,7 +543,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
   }
 
   if (action === "stop") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const key = sessionKey(guildId, interaction.user.id);
     voiceSessions.get(key)?.session.stop();
     voiceSessions.delete(key);
@@ -568,7 +574,7 @@ async function handleRichPresenceButton(interaction: ButtonInteraction, context:
   }
 
   if (action === "start") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const token = await requireUserToken(interaction, context, guildId);
     if (!token) return;
     const validation = validateRichPresenceConfig(record.richPresenceConfig);
@@ -596,7 +602,7 @@ async function handleRichPresenceButton(interaction: ButtonInteraction, context:
   }
 
   if (action === "stop") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const key = sessionKey(guildId, interaction.user.id);
     richPresenceSessions.get(key)?.session.stop();
     richPresenceSessions.delete(key);
@@ -608,7 +614,7 @@ async function handleRichPresenceButton(interaction: ButtonInteraction, context:
   }
 
   if (action === "reset") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     await updateUserAndPanel(context, guildId, interaction.user.id, "richPresence", {
       richPresenceConfig: {},
       richPresenceStatus: "inactive",
@@ -649,7 +655,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
   }
 
   if (action === "start") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const key = sessionKey(guildId, interaction.user.id);
     if (usernameCheckerSessions.has(key)) {
       await interaction.editReply("Username Checker ja esta rodando.");
@@ -706,7 +712,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
   }
 
   if (action === "stop") {
-    await interaction.deferReply({ ephemeral: true });
+    await deferMissionReply(interaction);
     const key = sessionKey(guildId, interaction.user.id);
     await usernameCheckerSessions.get(key)?.stop();
     usernameCheckerSessions.delete(key);
@@ -733,7 +739,7 @@ async function openTokenModal(interaction: ButtonInteraction, guildId: string, p
         new TextInputBuilder()
           .setCustomId("user_token")
           .setLabel("Token autorizado")
-          .setMaxLength(4096)
+          .setMaxLength(2048)
           .setMinLength(10)
           .setPlaceholder("Cole o token autorizado.")
           .setRequired(true)
@@ -745,7 +751,7 @@ async function openTokenModal(interaction: ButtonInteraction, guildId: string, p
 }
 
 async function handleTokenModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string, panelType: PanelType) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const token = interaction.fields.getTextInputValue("user_token").trim();
   const validation = await validateDiscordToken(token).catch(() => ({ valid: false }));
 
@@ -763,7 +769,7 @@ async function handleTokenModal(interaction: ModalSubmitInteraction, context: Bo
 }
 
 async function handleClearTargetModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const targetUserId = interaction.fields.getTextInputValue("clear_target_user_id").trim();
   await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
     clearMode: "userDm",
@@ -774,7 +780,7 @@ async function handleClearTargetModal(interaction: ModalSubmitInteraction, conte
 }
 
 async function handleVoiceConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const voiceGuildId = interaction.fields.getTextInputValue("voice_guild_id").trim();
   const voiceChannelId = interaction.fields.getTextInputValue("voice_channel_id").trim();
   await updateUserAndPanel(context, guildId, interaction.user.id, "voice", {
@@ -788,7 +794,7 @@ async function handleVoiceConfigModal(interaction: ModalSubmitInteraction, conte
 }
 
 async function handleRichPresenceConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
   const config = {
     ...record.richPresenceConfig,
@@ -808,7 +814,7 @@ async function handleRichPresenceConfigModal(interaction: ModalSubmitInteraction
 }
 
 async function handleRichPresenceButtonModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
   const config = {
     ...record.richPresenceConfig,
@@ -826,7 +832,7 @@ async function handleRichPresenceButtonModal(interaction: ModalSubmitInteraction
 }
 
 async function handleRichPresenceAdvancedModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
   const rawType = Number(optionalField(interaction, "rich_activity_type") ?? 0);
   const config = {
@@ -843,7 +849,7 @@ async function handleRichPresenceAdvancedModal(interaction: ModalSubmitInteracti
 }
 
 async function handleUsernameCheckerConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const usernameLength = Number(interaction.fields.getTextInputValue("username_length"));
   const requestDelay = Number(interaction.fields.getTextInputValue("username_delay"));
   await updateUserAndPanel(context, guildId, interaction.user.id, "usernameChecker", {
@@ -1190,7 +1196,7 @@ function buildUsernameCheckerPanelPayload(record: MissionToolsUserPanel) {
 }
 
 async function sendDmPanel(interaction: StringSelectMenuInteraction, context: BotContext, guildId: string, panelType: PanelType) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const settings = await context.api.getMissionToolsSettings(guildId);
   const feature = featureFromPanelType(panelType);
 
@@ -1239,7 +1245,7 @@ async function editOrCreateDmPanel(context: BotContext, guildId: string, userId:
 }
 
 async function deleteBotDmPanels(interaction: StringSelectMenuInteraction, context: BotContext, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await deferMissionReply(interaction);
   const user = await context.client.users.fetch(interaction.user.id);
   const dm = await user.createDM();
   const messages = await dm.messages.fetch({ limit: 100 }).catch(() => null);
@@ -1556,30 +1562,57 @@ async function replySafely(interaction: Interaction, content: string) {
     return;
   }
 
-  if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({
-      content,
-      ephemeral: true
-    });
-    return;
-  }
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(missionReplyPayload(interaction, content));
+      return;
+    }
 
-  await interaction.reply({
-    content,
-    ephemeral: true
-  });
+    await interaction.reply(missionReplyPayload(interaction, content));
+  } catch (error) {
+    console.warn("[mission-tools] nao foi possivel responder interacao:", errorMessage(error));
+  }
 }
 
 async function editReplySafely(interaction: ButtonInteraction | StringSelectMenuInteraction, content: string) {
-  if (interaction.replied || interaction.deferred) {
-    await interaction.editReply(content);
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.editReply(content);
+      return;
+    }
+
+    await interaction.reply(missionReplyPayload(interaction, content));
+  } catch (error) {
+    console.warn("[mission-tools] nao foi possivel editar resposta da interacao:", errorMessage(error));
+  }
+}
+
+async function deferMissionReply(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction) {
+  const options = missionReplyOptions(interaction);
+
+  if (options) {
+    await interaction.deferReply(options);
     return;
   }
 
-  await interaction.reply({
-    content,
-    ephemeral: true
-  });
+  await interaction.deferReply();
+}
+
+function missionReplyPayload(interaction: Interaction, content: string) {
+  return interaction.inGuild()
+    ? {
+        content,
+        flags: MessageFlags.Ephemeral as const
+      }
+    : {
+        content
+      };
+}
+
+function missionReplyOptions(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction) {
+  return interaction.inGuild()
+    ? { flags: MessageFlags.Ephemeral as const }
+    : undefined;
 }
 
 function displayUserName(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction) {

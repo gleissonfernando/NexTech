@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import axios from "axios";
 import {
   ensureGuild,
   getMongoCollections,
@@ -135,6 +136,19 @@ export type SaveMissionToolsUserInput = Partial<{
 }>;
 
 const MODULE_ID = "mission-tools";
+const DISCORD_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
+const DISCORD_SUPER_PROPERTIES = Buffer.from(JSON.stringify({
+  browser: "Chrome",
+  browser_user_agent: DISCORD_USER_AGENT,
+  browser_version: "138.0.0.0",
+  client_build_number: 9999,
+  client_event_source: null,
+  design_id: 0,
+  device: "",
+  os: "Windows",
+  os_version: "10"
+})).toString("base64");
 const FEATURE_IDS: MongoMissionToolsFeatureId[] = [
   "mission",
   "clear",
@@ -449,12 +463,25 @@ export async function saveMissionToolsUserPanel(guildId: string, botId: string, 
   return saved;
 }
 
-export async function saveMissionToolsToken(guildId: string, botId: string, userId: string, token: string) {
+export type SaveMissionToolsTokenOptions = {
+  username?: string | null;
+  validateOwner?: boolean;
+};
+
+export async function saveMissionToolsToken(guildId: string, botId: string, userId: string, token: string, options: SaveMissionToolsTokenOptions = {}) {
   const { missionToolsTokens } = await getMongoCollections();
   const normalized = token.trim();
 
   if (normalized.length < 10) {
     throw createMissionError("Token invalido.", 400);
+  }
+
+  if (options.validateOwner) {
+    const tokenUserId = await validateDiscordUserToken(normalized);
+
+    if (tokenUserId !== userId) {
+      throw createMissionError("Esse token nao pertence ao User ID informado.", 400);
+    }
   }
 
   const now = new Date();
@@ -483,13 +510,15 @@ export async function saveMissionToolsToken(guildId: string, botId: string, user
     }
   );
 
-  await saveMissionToolsUserPanel(guildId, botId, userId, {
-    tokenConfigured: true
+  const user = await saveMissionToolsUserPanel(guildId, botId, userId, {
+    tokenConfigured: true,
+    ...(options.username !== undefined ? { username: options.username } : {})
   });
 
   return {
     tokenConfigured: true,
-    tokenLast4: tokenLast4(normalized)
+    tokenLast4: tokenLast4(normalized),
+    user
   };
 }
 
@@ -807,6 +836,31 @@ function toTokenDto(token: MongoMissionToolsToken) {
 
 function tokenLast4(token: string) {
   return token.trim().slice(-4) || null;
+}
+
+async function validateDiscordUserToken(token: string) {
+  const response = await axios.get<{ id?: string }>("https://discord.com/api/v10/users/@me", {
+    headers: {
+      "Accept-Language": "en-US",
+      Authorization: token,
+      "Content-Type": "application/json",
+      "User-Agent": DISCORD_USER_AGENT,
+      origin: "https://discord.com",
+      referer: "https://discord.com/channels/@me",
+      "x-debug-options": "bugReporterEnabled",
+      "x-discord-locale": "en-US",
+      "x-discord-timezone": "America/Sao_Paulo",
+      "x-super-properties": DISCORD_SUPER_PROPERTIES
+    },
+    timeout: 10_000,
+    validateStatus: () => true
+  });
+
+  if (response.status !== 200 || !response.data?.id) {
+    throw createMissionError("Token do usuario invalido ou expirado.", 400);
+  }
+
+  return response.data.id;
 }
 
 function createMissionError(message: string, statusCode: number) {
