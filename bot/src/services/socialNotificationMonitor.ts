@@ -22,6 +22,8 @@ const TWITCH_LOOKUP_PREFIX = {
 } as const;
 
 export function startSocialNotificationMonitor(client: Client, api: ApiClient) {
+  console.log(`[social-notifications] monitor Twitch iniciado; intervalo ${env.TWITCH_MONITOR_INTERVAL_MS}ms.`);
+
   const run = () => {
     void monitorTwitchNotifications(client, api).catch((error) => {
       console.warn("[social-notifications] monitor falhou:", error instanceof Error ? error.message : error);

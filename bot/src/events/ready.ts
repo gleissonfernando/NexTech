@@ -34,16 +34,17 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     console.warn("[bot] nao foi possivel carregar modulos liberados:", error instanceof Error ? error.message : error);
     return null;
   });
-  const fallbackModules = env.DASHBOARD_BOT_ID || env.BOT_ENABLED_MODULES.trim()
-    ? configuredBotModules()
-    : [];
+  const fallbackModules = configuredBotModules();
+  const shouldApplyRuntimeModules = Boolean(runtimeAccess || env.DASHBOARD_BOT_ID || env.BOT_ENABLED_MODULES.trim());
   const runtimeBotId = runtimeAccess?.botId ?? (env.DASHBOARD_BOT_ID || null);
 
   const runtimeModules = runtimeAccess
     ? (runtimeAccess.active ? runtimeAccess.enabledModules : [])
     : fallbackModules;
 
-  setRuntimeEnabledModules(runtimeModules, runtimeBotId);
+  if (shouldApplyRuntimeModules) {
+    setRuntimeEnabledModules(runtimeModules, runtimeBotId);
+  }
   context.socket.onDevModuleUpdated((payload) => {
     if (!runtimeBotId || payload.botId !== runtimeBotId) {
       return;
