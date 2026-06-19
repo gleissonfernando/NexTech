@@ -1345,8 +1345,31 @@ function normalizeDelay(value?: number | null) {
   return Math.max(0, Math.min(Number.isFinite(minutes) ? minutes : 0, MAX_DELAY_MINUTES));
 }
 
-function normalizeParticipantMode(_value?: MongoGiveawayParticipantMode | null, _platform: "twitch" | "kick" | "multi" = "twitch"): MongoGiveawayParticipantMode {
-  return "all";
+function normalizeParticipantMode(value?: MongoGiveawayParticipantMode | null, platform: "twitch" | "kick" | "multi" = "twitch"): MongoGiveawayParticipantMode {
+  const requested = value ?? "all";
+  const allModes: MongoGiveawayParticipantMode[] = [
+    "all",
+    "kick_followers",
+    "kick_subs",
+    "twitch_followers",
+    "twitch_kick",
+    "twitch_subs",
+    "twitch_subs_followers"
+  ];
+
+  if (!allModes.includes(requested)) {
+    return "all";
+  }
+
+  if (platform === "kick") {
+    return ["all", "kick_followers", "kick_subs"].includes(requested) ? requested : "all";
+  }
+
+  if (platform === "multi") {
+    return requested;
+  }
+
+  return ["all", "twitch_followers", "twitch_kick", "twitch_subs", "twitch_subs_followers"].includes(requested) ? requested : "all";
 }
 
 function detectGiveawayPlatform(value: string) {

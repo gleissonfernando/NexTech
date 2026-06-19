@@ -833,11 +833,11 @@ function readDate(value: unknown) {
 }
 
 function modeUsesTwitchSubscribers(mode: MongoGiveawayParticipantMode) {
-  return ["twitch_kick", "twitch_subs", "twitch_subs_followers"].includes(mode);
+  return ["all", "twitch_kick", "twitch_subs", "twitch_subs_followers"].includes(mode);
 }
 
 function modeUsesTwitchFollowers(mode: MongoGiveawayParticipantMode) {
-  return ["twitch_kick", "twitch_followers", "twitch_subs_followers"].includes(mode);
+  return ["all", "twitch_kick", "twitch_followers", "twitch_subs_followers"].includes(mode);
 }
 
 function modeUsesKick(mode: MongoGiveawayParticipantMode) {

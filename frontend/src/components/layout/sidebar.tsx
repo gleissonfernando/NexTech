@@ -58,7 +58,7 @@ const navItems: NavItem[] = [
   { id: "security", label: "Seguranca", icon: ShieldAlert, moduleId: "account-age-security" },
   { id: "permissions", label: "Permissoes", icon: LockKeyhole, moduleId: "verification" },
   { id: "logs", label: "Logs", icon: ScrollText, moduleId: "logs" },
-  { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-fac"] },
+  { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"] },
   { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["welcome", "leave", "roles", "tickets", "avisos", "network"] }
 ];
 

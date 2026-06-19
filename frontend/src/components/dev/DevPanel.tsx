@@ -64,6 +64,12 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "fivem", label: "FiveM" },
+  { id: "fivem-factions", label: "FiveM - Sistema de Faccao" },
+  { id: "fivem-corporations", label: "FiveM - Sistema de Corporacoes" },
+  { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
+  { id: "fivem-orders", label: "FiveM - Sistema de Encomendas" },
+  { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
+  { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }
 ];
@@ -514,7 +520,7 @@ export function DevPanel({
                 <CardTitle>Configuracoes de bot</CardTitle>
                 <CardDescription>Modulos visiveis na dashboard de {selectedBot.name}.</CardDescription>
               </div>
-              <Badge variant="muted">{selectedBot.enabledModules.length}/{modules.length} ativos</Badge>
+              <Badge variant="muted">{countBotModules(selectedBot.enabledModules)}/{modules.filter((module) => !isFiveMModule(module.id)).length} ativos</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0">
@@ -769,9 +775,11 @@ function ModuleSwitchGrid({
   modules: DevModuleDefinition[];
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
+  const botModules = modules.filter((module) => !isFiveMModule(module.id));
+
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      {modules.map((module) => {
+      {botModules.map((module) => {
         const enabled = enabledModules.includes(module.id);
 
         return (
@@ -791,6 +799,14 @@ function ModuleSwitchGrid({
       })}
     </div>
   );
+}
+
+function isFiveMModule(moduleId: string) {
+  return moduleId === "fivem" || moduleId.startsWith("fivem-");
+}
+
+function countBotModules(moduleIds: string[]) {
+  return moduleIds.filter((moduleId) => !isFiveMModule(moduleId)).length;
 }
 
 function StatusBadge({ status }: { status: DevBotStatus }) {

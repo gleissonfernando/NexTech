@@ -101,3 +101,15 @@
     box-shadow: 0 0 0 3px rgba(161, 161, 170, 0.14);
   }
 }
+
+@keyframes roulette-confetti {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, -20px, 0) rotate(0deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-x, 40px), 105vh, 0) rotate(760deg);
+  }
+}

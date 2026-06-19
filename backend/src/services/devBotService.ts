@@ -51,12 +51,19 @@ export const DEV_MODULES = [
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "fivem", label: "FiveM" },
+  { id: "fivem-factions", label: "FiveM - Sistema de Faccao" },
+  { id: "fivem-corporations", label: "FiveM - Sistema de Corporacoes" },
+  { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
+  { id: "fivem-orders", label: "FiveM - Sistema de Encomendas" },
+  { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
+  { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }
 ] as const;
 
 const DEV_MODULE_IDS = new Set(DEV_MODULES.map((module) => module.id));
 const LEGACY_MODULE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
+  "fivem-fac": "fivem-absences",
   "image-anti-spam": "safe-bot",
   "link-anti-spam": "safe-bot"
 };

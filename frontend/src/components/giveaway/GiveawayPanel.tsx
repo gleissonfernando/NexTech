@@ -22,7 +22,6 @@ import {
   createGiveaway,
   endGiveaway,
   getGiveaways,
-  getKickIntegrationStatus,
   getGuildLiveOptions,
   previewGiveawayLive,
   publishGiveawayPanel,
@@ -30,7 +29,7 @@ import {
   syncGiveawayParticipants,
   updateGiveaway
 } from "../../lib/api";
-import type { DashboardGuild, Giveaway, GiveawayLivePreview, GiveawayParticipantMode, GuildLiveOptions, KickIntegrationStatus, SaveGiveawayPayload } from "../../types";
+import type { DashboardGuild, Giveaway, GiveawayLivePreview, GiveawayParticipantMode, GuildLiveOptions, SaveGiveawayPayload } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -71,9 +70,6 @@ const emptyForm: GiveawayForm = {
 export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
   const [giveaways, setGiveaways] = useState<Giveaway[]>([]);
   const [options, setOptions] = useState<GuildLiveOptions | null>(null);
-  const [kickStatus, setKickStatus] = useState<KickIntegrationStatus | null>(null);
-  const [kickStatusError, setKickStatusError] = useState<string | null>(null);
-  const [kickStatusLoading, setKickStatusLoading] = useState(true);
   const [form, setForm] = useState<GiveawayForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,9 +102,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     if (!guild) {
       setGiveaways([]);
       setOptions(null);
-      setKickStatus(null);
-      setKickStatusError(null);
-      setKickStatusLoading(false);
       setLoading(false);
       return;
     }
@@ -119,16 +112,12 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     setMessage(null);
     setGiveaways([]);
     setOptions(null);
-    setKickStatus(null);
-    setKickStatusError(null);
-    setKickStatusLoading(true);
 
     Promise.allSettled([
       getGiveaways(guild.id, botId),
-      getGuildLiveOptions(guild.id, botId),
-      getKickIntegrationStatus(guild.id, botId)
+      getGuildLiveOptions(guild.id, botId)
     ])
-      .then(([giveawaysResult, optionsResult, kickStatusResult]) => {
+      .then(([giveawaysResult, optionsResult]) => {
         if (!mounted) return;
 
         const loadErrors: string[] = [];
@@ -149,17 +138,10 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
           loadErrors.push(readRequestMessage(optionsResult.reason) ?? "Nao foi possivel carregar os canais do Discord.");
         }
 
-        if (kickStatusResult.status === "fulfilled") {
-          setKickStatus(kickStatusResult.value);
-        } else {
-          setKickStatusError(readRequestMessage(kickStatusResult.reason) ?? "Nao foi possivel verificar a API Kick.");
-        }
-
         setMessage(loadErrors[0] ?? null);
       })
       .finally(() => {
         if (mounted) {
-          setKickStatusLoading(false);
           setLoading(false);
         }
       });
@@ -168,27 +150,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       mounted = false;
     };
   }, [botId, canManage, guild?.id]);
-
-  async function refreshKickStatus() {
-    if (!guild) {
-      setKickStatus(null);
-      setKickStatusError(null);
-      setKickStatusLoading(false);
-      return;
-    }
-
-    setKickStatusLoading(true);
-    setKickStatusError(null);
-
-    try {
-      setKickStatus(await getKickIntegrationStatus(guild.id, botId));
-    } catch (error) {
-      setKickStatus(null);
-      setKickStatusError(readRequestMessage(error) ?? "Nao foi possivel verificar a API Kick.");
-    } finally {
-      setKickStatusLoading(false);
-    }
-  }
 
   useEffect(() => {
     if (!guild || !canManage) {
@@ -287,8 +248,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     }
 
     const activeGiveaways = items.filter((giveaway) => giveaway.status !== "ended");
-    let syncedAny = false;
-
     for (const giveaway of activeGiveaways) {
       const syncedRecently = giveaway.lastSyncedAt && Date.now() - new Date(giveaway.lastSyncedAt).getTime() < 29 * 60 * 1000;
 
@@ -299,7 +258,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       try {
         const updated = await syncGiveawayParticipants(guild.id, giveaway.id, botId);
         setGiveaways((current) => upsertGiveaway(current, updated));
-        syncedAny = true;
       } catch (error) {
         const syncError = readRequestMessage(error) ?? "Nao foi possivel sincronizar participantes.";
         setGiveaways((current) => current.map((item) => (
@@ -311,10 +269,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
             : item
         )));
       }
-    }
-
-    if (syncedAny) {
-      void refreshKickStatus();
     }
   }
 
@@ -342,7 +296,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
 
       setGiveaways((current) => upsertGiveaway(current, saved));
       setEditingId(saved.id);
-      void refreshKickStatus();
       setMessage(saved.lastSyncError
         ? `${editingId ? "Sorteio atualizado" : "Sorteio criado"}, mas os participantes nao foram sincronizados: ${saved.lastSyncError}`
         : `${editingId ? "Sorteio atualizado" : "Sorteio criado"} com ${saved.participants.length} participante(s) sincronizado(s).`);
@@ -371,7 +324,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
             : await endGiveaway(guild.id, giveaway.id, botId);
 
       setGiveaways((current) => upsertGiveaway(current, updated));
-      void refreshKickStatus();
       setMessage(action === "panel" ? "Painel enviado para o Discord." : action === "start" ? "Sorteio iniciado." : action === "sync" ? "Participantes atualizados." : "Sorteio encerrado.");
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel executar essa acao.");
@@ -438,13 +390,6 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
           {message}
         </div>
       ) : null}
-
-      <KickDiagnosticsPanel
-        error={kickStatusError}
-        giveaways={giveaways}
-        loading={kickStatusLoading}
-        status={kickStatus}
-      />
 
       <Card className="border-zinc-800 bg-zinc-950/80">
         <CardHeader className="border-b border-zinc-900 p-5 sm:p-6">
@@ -517,7 +462,11 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
             value={normalizedLiveUrl}
           />
 
-          <ParticipantModeCard platform={livePreview?.platform ?? (livePlatform === "youtube" ? null : livePlatform)} />
+          <ParticipantModeCard
+            onChange={(value) => updateForm("participantMode", value)}
+            platform={livePreview?.platform ?? (livePlatform === "youtube" ? null : livePlatform)}
+            value={form.participantMode}
+          />
 
           <FormField label="Canal do Discord">
             <select
@@ -699,144 +648,6 @@ function GiveawayRow({
   );
 }
 
-function KickDiagnosticsPanel({
-  error,
-  giveaways,
-  loading,
-  status
-}: {
-  error: string | null;
-  giveaways: Giveaway[];
-  loading: boolean;
-  status: KickIntegrationStatus | null;
-}) {
-  const kickGiveaways = giveaways.filter((giveaway) => giveaway.livePlatform === "kick" || giveaway.livePlatform === "multi" || giveaway.kickChannelName || giveaway.kickUserId);
-  const fallbackKickParticipants = kickGiveaways.reduce((total, giveaway) => {
-    return total + giveaway.participants.filter((participant) => participant.source === "kick").length;
-  }, 0);
-  const webhook = status?.webhook ?? null;
-  const apiOnline = status?.apiStatus === "ok";
-  const apiFailed = status?.apiStatus === "error";
-  const apiNotConfigured = status?.apiStatus === "not_configured";
-  const webhookActive = webhook?.status === "active";
-  const hasKickGiveaway = kickGiveaways.length > 0;
-  const webhookLabel = webhookActive
-    ? "Ativo"
-    : hasKickGiveaway
-      ? "Aguardando evento"
-      : "Aguardando sorteio Kick";
-  const apiBadgeLabel = loading
-    ? "Verificando API"
-    : apiOnline
-      ? "API Conectada"
-      : apiFailed
-        ? "API com erro"
-        : apiNotConfigured
-          ? "API nao configurada"
-          : "API nao verificada";
-  const tokenTone = apiOnline ? "success" : apiFailed ? "danger" : apiNotConfigured ? "warning" : "neutral";
-  const tokenLabel = loading
-    ? "Verificando"
-    : apiOnline
-      ? "Valido"
-      : apiFailed
-        ? "Erro na validacao"
-        : apiNotConfigured
-          ? "Nao configurado"
-          : "Nao verificado";
-  const totalParticipants = webhook?.totalParticipants ?? kickGiveaways.reduce((total, giveaway) => total + giveaway.participants.length, 0);
-  const kickParticipants = webhook?.kickParticipants ?? fallbackKickParticipants;
-  const kickSubscribers = webhook?.kickSubscribers ?? countKickParticipantsByFlag(kickGiveaways, "subscriber");
-  const kickFollowers = webhook?.kickFollowers ?? countKickParticipantsByFlag(kickGiveaways, "follower");
-
-  return (
-    <Card className="border-zinc-800 bg-zinc-950/80">
-      <CardHeader className="border-b border-zinc-900 p-5 sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle>Diagnostico Kick</CardTitle>
-            <CardDescription>Sorteios, API e webhook</CardDescription>
-          </div>
-          <Badge
-            className={apiOnline
-              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-              : apiFailed
-                ? "border-red-500/25 bg-red-500/10 text-red-300"
-                : "border-yellow-500/25 bg-yellow-500/10 text-yellow-200"}
-            variant="muted"
-          >
-            {apiBadgeLabel}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
-        <DiagnosticMetric
-          icon={apiOnline ? CheckCircle2 : AlertTriangle}
-          label="Token"
-          tone={tokenTone}
-          value={tokenLabel}
-        />
-        <DiagnosticMetric
-          icon={webhookActive ? Radio : hasKickGiveaway ? AlertTriangle : Clock}
-          label="Webhook"
-          tone={webhookActive ? "success" : hasKickGiveaway ? "warning" : "neutral"}
-          value={webhookLabel}
-        />
-        <DiagnosticMetric icon={Users} label="Participantes" value={`${totalParticipants} total / ${kickParticipants} Kick`} />
-        <DiagnosticMetric icon={Trophy} label="Kick encontrados" value={`${kickSubscribers} subs / ${kickFollowers} seguidores`} />
-
-        <div className="min-w-0 rounded-lg border border-zinc-900 bg-black/35 p-3 xl:col-span-2">
-          <p className="text-xs text-zinc-500">URL do webhook</p>
-          <p className="mt-1 truncate font-mono text-xs text-zinc-200">{webhook?.url ?? "Nao configurada"}</p>
-        </div>
-        <div className="min-w-0 rounded-lg border border-zinc-900 bg-black/35 p-3">
-          <p className="text-xs text-zinc-500">Ultima sincronizacao</p>
-          <p className="mt-1 truncate text-sm font-medium text-zinc-200">{formatDateTime(webhook?.lastSyncAt)}</p>
-        </div>
-        <div className="min-w-0 rounded-lg border border-zinc-900 bg-black/35 p-3">
-          <p className="text-xs text-zinc-500">Ultimo evento</p>
-          <p className="mt-1 truncate text-sm font-medium text-zinc-200">{formatDateTime(webhook?.lastEventAt)}</p>
-        </div>
-        {error || status?.apiMessage || webhook?.lastSyncError ? (
-          <div className="rounded-lg border border-zinc-900 bg-black/35 p-3 text-xs leading-5 text-zinc-300 sm:col-span-2 xl:col-span-4">
-            {webhook?.lastSyncError ?? error ?? status?.apiMessage}
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function DiagnosticMetric({
-  icon: Icon,
-  label,
-  tone = "neutral",
-  value
-}: {
-  icon: typeof Gift;
-  label: string;
-  tone?: "danger" | "neutral" | "success" | "warning";
-  value: string;
-}) {
-  const toneClass = tone === "success"
-    ? "text-emerald-300"
-    : tone === "danger"
-      ? "text-red-300"
-      : tone === "warning"
-        ? "text-yellow-200"
-        : "text-zinc-200";
-
-  return (
-    <div className="min-w-0 rounded-lg border border-zinc-900 bg-black/35 p-3">
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
-        <Icon className={`h-4 w-4 shrink-0 ${toneClass}`} />
-        <span>{label}</span>
-      </div>
-      <p className={`mt-2 truncate text-sm font-semibold ${toneClass}`}>{value}</p>
-    </div>
-  );
-}
-
 function LivePreviewCard({
   className = "",
   error,
@@ -944,18 +755,59 @@ function LivePreviewCard({
   );
 }
 
-function ParticipantModeCard({ platform }: { platform: "twitch" | "kick" | null }) {
+function ParticipantModeCard({
+  onChange,
+  platform,
+  value
+}: {
+  onChange: (value: GiveawayParticipantMode) => void;
+  platform: "twitch" | "kick" | null;
+  value: GiveawayParticipantMode;
+}) {
+  const options = participantModeOptions(platform);
+
   return (
     <div className="rounded-lg border border-zinc-900 bg-black/35 p-4">
-      <div className="flex items-center gap-3">
-        <Users className="h-4 w-4 text-emerald-300" />
-        <div>
-          <p className="text-sm font-medium text-white">Participantes automaticos</p>
-          <p className="mt-1 text-xs text-zinc-500">{platform ? `${platformLabel(platform)} detectado` : "Aguardando canal verificado"}</p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <Users className="h-4 w-4 text-emerald-300" />
+          <div>
+            <p className="text-sm font-medium text-white">Modo de participacao</p>
+            <p className="mt-1 text-xs text-zinc-500">{platform ? `${platformLabel(platform)} detectado` : "Aguardando canal verificado"}</p>
+          </div>
         </div>
+        <select
+          className="social-input h-11"
+          onChange={(event) => onChange(event.target.value as GiveawayParticipantMode)}
+          value={options.some((option) => option.value === value) ? value : options[0]?.value ?? "all"}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
+}
+
+function participantModeOptions(platform: "twitch" | "kick" | null): Array<{ label: string; value: GiveawayParticipantMode }> {
+  if (platform === "kick") {
+    return [
+      { label: "Todos do chat/eventos Kick", value: "all" },
+      { label: "Somente subs Kick", value: "kick_subs" },
+      { label: "Somente seguidores Kick", value: "kick_followers" }
+    ];
+  }
+
+  return [
+    { label: "Todos elegiveis", value: "all" },
+    { label: "Somente subs Twitch", value: "twitch_subs" },
+    { label: "Somente seguidores Twitch", value: "twitch_followers" },
+    { label: "Subs + seguidores Twitch", value: "twitch_subs_followers" },
+    { label: "Unificado Twitch + Kick", value: "twitch_kick" }
+  ];
 }
 
 function PreviewFact({ label, value }: { label: string; value: string }) {
@@ -1076,12 +928,6 @@ function platformClass(platform: "twitch" | "kick") {
 
 function formatNumber(value: number) {
   return value.toLocaleString("pt-BR");
-}
-
-function countKickParticipantsByFlag(giveaways: Giveaway[], flag: "follower" | "subscriber") {
-  return giveaways.reduce((total, giveaway) => {
-    return total + giveaway.participants.filter((participant) => participant.source === "kick" && participant[flag]).length;
-  }, 0);
 }
 
 function formatDateTime(value?: string | null) {

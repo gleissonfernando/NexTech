@@ -221,9 +221,9 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "security"
   },
   {
-    id: "fivem-fac",
-    title: "FiveM FAC",
-    description: "Gerencia solicitacoes de ausencia para faccoes e organizacoes.",
+    id: "fivem-absences",
+    title: "Ausencias FiveM",
+    description: "Gerencia solicitacoes de ausencia para faccoes, corporacoes e organizacoes.",
     icon: Building2,
     view: "fivem"
   },
@@ -293,7 +293,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "x-monitor": "x-monitor",
   "mission-tools": "mission-tools",
   logs: "logs",
-  fivem: "fivem-fac",
+  fivem: "fivem",
   "voice-recorder": "voice-recorder",
   "self-bot-protection": "safe-bot",
   security: "account-age-security",
@@ -768,7 +768,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "fivem" ? (
           <FivemView
             botId={activeBotId}
-            canManage={canManageModule(selectedBot, "fivem-fac", canManageDashboard)}
+            canManage={canManageModule(selectedBot, "fivem-absences", canManageDashboard) || canManageModule(selectedBot, "fivem-fac", canManageDashboard)}
             enabledModules={enabledModules}
             guild={selectedGuild}
           />
@@ -806,27 +806,52 @@ function FivemView({
   enabledModules: string[];
   guild: DashboardGuild | null;
 }) {
-  if (!enabledModules.includes("fivem-fac")) {
+  const modules = fivemUserModules(enabledModules);
+
+  if (!modules.length) {
     return (
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
-          O sistema FAC ainda nao foi liberado para este cliente FiveM.
+          Nenhum modulo FiveM foi liberado para este usuario.
         </CardContent>
       </Card>
     );
   }
+  const absencesEnabled = enabledModules.includes("fivem-absences") || enabledModules.includes("fivem-fac");
 
   return (
     <div className="space-y-5">
-      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
-        <button className="flex h-9 items-center gap-2 rounded-md bg-white px-3 text-sm font-medium text-black" type="button">
-          <Building2 className="h-4 w-4" />
-          FAC
-        </button>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {modules.map((module) => (
+          <Card className="border-zinc-800 bg-zinc-950/75" key={module.id}>
+            <CardContent className="flex min-h-28 items-center gap-3 p-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
+                <module.icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{module.label}</p>
+                <p className="mt-1 text-xs text-zinc-500">{module.description}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-      <FacAbsencePanel botId={botId} canManage={canManage} guild={guild} />
+      {absencesEnabled ? <FacAbsencePanel botId={botId} canManage={canManage} guild={guild} /> : null}
     </div>
   );
+}
+
+function fivemUserModules(enabledModules: string[]) {
+  const catalog = [
+    { description: "Controle de membros, cargos e operacao das faccoes.", icon: Building2, id: "fivem-factions", label: "Faccoes" },
+    { description: "Gestao operacional de corporacoes e equipes.", icon: Server, id: "fivem-corporations", label: "Corporacoes" },
+    { description: "Solicitacoes e aprovacao de ausencias RP.", icon: CalendarClock, id: "fivem-absences", label: "Ausencias" },
+    { description: "Pedidos, entregas e acompanhamento de encomendas.", icon: ListChecks, id: "fivem-orders", label: "Encomendas" },
+    { description: "Controle de municoes, estoque e distribuicao.", icon: Shield, id: "fivem-ammo", label: "Municoes" },
+    { description: "Fluxo financeiro, caixa e lancamentos RP.", icon: Activity, id: "fivem-finance", label: "Financeiro" }
+  ];
+  const enabled = new Set(enabledModules.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
+  return catalog.filter((module) => enabled.has(module.id) || enabled.has("fivem"));
 }
 
 function DashboardRouteError({ message }: { message: string }) {
@@ -864,7 +889,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
   }
 
   if (bot.accessLevel === "premium") {
-    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "account-age-security", "safe-bot", "fivem", "fivem-fac"].includes(moduleId);
+    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "account-age-security", "safe-bot", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"].includes(moduleId);
   }
 
   return false;
@@ -1864,7 +1889,7 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
   }
 
   if (view === "fivem") {
-    return enabledModules.includes("fivem") || enabledModules.includes("fivem-fac");
+    return enabledModules.some((moduleId) => moduleId === "fivem" || moduleId.startsWith("fivem-"));
   }
 
   const requiredModule = viewModuleIds[view];
