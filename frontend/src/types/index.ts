@@ -1202,6 +1202,31 @@ export type GiveawayEntryResult = {
   }>;
 };
 
+export type GiveawayPlatformDiagnostics = {
+  channel: string | null;
+  connected: boolean;
+  lastError: string | null;
+  lastEvent: string | null;
+  lastMessage: string | null;
+  tokenStatus: "invalid" | "missing" | "unknown" | "valid";
+  usersReceived: number;
+};
+
+export type GiveawayDiagnosticLog = {
+  at: string;
+  level: "debug" | "error" | "info";
+  message: string;
+  platform: "system" | "twitch" | "kick";
+  payload?: unknown;
+};
+
+export type GiveawayDiagnostics = {
+  debug: boolean;
+  kick: GiveawayPlatformDiagnostics;
+  logs: GiveawayDiagnosticLog[];
+  twitch: GiveawayPlatformDiagnostics;
+};
+
 export type SaveClipsConfigPayload = {
   guildId: string;
   platform?: ClipPlatform;

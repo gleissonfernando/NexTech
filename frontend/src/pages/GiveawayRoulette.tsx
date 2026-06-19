@@ -9,13 +9,16 @@ import {
   RefreshCw,
   Trophy,
   Users,
+  Bug,
+  CheckCircle2,
   Volume2,
-  VolumeX
+  VolumeX,
+  XCircle
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { createDashboardSocket } from "../lib/socket";
-import { getRouletteGiveaway, spinRoulette } from "../lib/api";
-import type { Giveaway, GiveawayParticipant, GiveawayWinner } from "../types";
+import { getRouletteDiagnostics, getRouletteGiveaway, setRouletteDebug, spinRoulette, testRouletteIntegration } from "../lib/api";
+import type { Giveaway, GiveawayDiagnostics, GiveawayParticipant, GiveawayWinner } from "../types";
 import { Button } from "../components/ui/button";
 
 type GiveawayRoulettePageProps = {
@@ -53,6 +56,9 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
   const [theme, setTheme] = useState<"dark" | "light">(() => readTheme());
   const [history, setHistory] = useState<SpinSnapshot[]>(() => readHistory(token));
   const [showConfetti, setShowConfetti] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<GiveawayDiagnostics | null>(null);
+  const [testingIntegration, setTestingIntegration] = useState(false);
+  const [testReport, setTestReport] = useState<string[]>([]);
   const audioRef = useRef<RouletteAudio | null>(null);
 
   const overlay = isOverlayMode();
@@ -73,8 +79,10 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
     async function load() {
       try {
         const next = await getRouletteGiveaway(token);
+        const nextDiagnostics = await getRouletteDiagnostics(token).catch(() => null);
         if (!mounted) return;
         setGiveaway(next);
+        if (nextDiagnostics) setDiagnostics(nextDiagnostics);
         setLastWinner(next.winners.at(-1) ?? null);
       } catch (error) {
         if (mounted) setMessage(readRequestMessage(error) ?? "Roleta nao encontrada.");
@@ -90,6 +98,11 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
       if (updated.rouletteToken === token) {
         setGiveaway(updated);
         setLastWinner(updated.winners.at(-1) ?? null);
+      }
+    });
+    socket.on("giveaway:diagnostics", (event: { diagnostics: GiveawayDiagnostics; token: string }) => {
+      if (event.token === token) {
+        setDiagnostics(event.diagnostics);
       }
     });
 
@@ -142,6 +155,28 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
       setMessage(readRequestMessage(error) ?? "Nao foi possivel girar a roleta.");
       setSpinning(false);
       audioRef.current?.stop();
+    }
+  }
+
+  async function handleToggleDebug(debug: boolean) {
+    try {
+      setDiagnostics(await setRouletteDebug(token, debug));
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel alterar o modo debug.");
+    }
+  }
+
+  async function handleTestIntegration() {
+    setTestingIntegration(true);
+    setMessage(null);
+    try {
+      const result = await testRouletteIntegration(token);
+      setDiagnostics(result.diagnostics);
+      setTestReport(result.report);
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel testar a integracao.");
+    } finally {
+      setTestingIntegration(false);
     }
   }
 
@@ -285,6 +320,13 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
         {!overlay ? (
           <aside className="grid gap-4">
             {message ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{message}</div> : null}
+            <DiagnosticsPanel
+              diagnostics={diagnostics}
+              onTest={() => void handleTestIntegration()}
+              onToggleDebug={(debug) => void handleToggleDebug(debug)}
+              testReport={testReport}
+              testing={testingIntegration}
+            />
             <ParticipantList participants={participants} />
             <HistoryPanel giveaway={giveaway} history={history} />
           </aside>
@@ -375,6 +417,111 @@ function ParticipantList({ participants }: { participants: GiveawayParticipant[]
         )}
       </div>
     </section>
+  );
+}
+
+function DiagnosticsPanel({
+  diagnostics,
+  onTest,
+  onToggleDebug,
+  testing,
+  testReport
+}: {
+  diagnostics: GiveawayDiagnostics | null;
+  onTest: () => void;
+  onToggleDebug: (debug: boolean) => void;
+  testing: boolean;
+  testReport: string[];
+}) {
+  const twitch = diagnostics?.twitch ?? null;
+  const kick = diagnostics?.kick ?? null;
+
+  return (
+    <section className="rounded-lg border border-white/10 bg-zinc-950/86 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-white">Diagnostico em tempo real</h2>
+        <Button disabled={testing} onClick={onTest} size="sm" variant="outline">
+          {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          Testar Integracao
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <PlatformDiagnostic name="Twitch" platform="twitch" state={twitch} />
+        <PlatformDiagnostic name="Kick" platform="kick" state={kick} />
+      </div>
+
+      <label className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-900 bg-black/35 p-3">
+        <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+          <Bug className="h-4 w-4 text-zinc-400" />
+          Modo Debug
+        </span>
+        <input
+          checked={diagnostics?.debug === true}
+          className="h-4 w-4 accent-emerald-400"
+          onChange={(event) => onToggleDebug(event.target.checked)}
+          type="checkbox"
+        />
+      </label>
+
+      {testReport.length ? (
+        <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-100">
+          {testReport.map((line) => <p key={line}>{line}</p>)}
+        </div>
+      ) : null}
+
+      <div className="mt-4 max-h-52 space-y-2 overflow-y-auto pr-1 discord-scrollbar">
+        {diagnostics?.logs.length ? diagnostics.logs.map((log) => (
+          <div className="rounded-md border border-zinc-900 bg-black/35 px-3 py-2" key={`${log.at}:${log.message}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className={log.level === "error" ? "text-xs font-semibold text-red-300" : log.level === "debug" ? "text-xs font-semibold text-yellow-200" : "text-xs font-semibold text-zinc-300"}>
+                [{log.platform.toUpperCase()}]
+              </span>
+              <span className="text-[11px] text-zinc-600">{formatDateTime(log.at)}</span>
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">{log.message}</p>
+            {diagnostics.debug && log.payload !== undefined ? (
+              <pre className="mt-2 max-h-28 overflow-auto rounded bg-black/50 p-2 text-[11px] text-zinc-500">{JSON.stringify(log.payload, null, 2)}</pre>
+            ) : null}
+          </div>
+        )) : (
+          <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
+            Aguardando eventos Twitch/Kick.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PlatformDiagnostic({
+  name,
+  platform,
+  state
+}: {
+  name: string;
+  platform: "twitch" | "kick";
+  state: GiveawayDiagnostics["twitch"] | null;
+}) {
+  const connected = state?.connected === true;
+
+  return (
+    <div className="rounded-lg border border-zinc-900 bg-black/35 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {connected ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <XCircle className="h-4 w-4 text-red-300" />}
+          <p className="text-sm font-semibold text-white">{name}</p>
+        </div>
+        <span className={platformPillClass(platform)}>{connected ? "Conectado" : "Desconectado"}</span>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-zinc-500">
+        <p>Canal: <span className="text-zinc-300">{state?.channel ?? "Nao configurado"}</span></p>
+        <p>Usuarios recebidos: <span className="text-zinc-300">{state?.usersReceived ?? 0}</span></p>
+        <p>Token: <span className="text-zinc-300">{state?.tokenStatus ?? "unknown"}</span></p>
+        <p className="truncate">Ultima msg: <span className="text-zinc-300">{state?.lastMessage ?? "Nenhuma"}</span></p>
+        {state?.lastError ? <p className="text-red-300">Erro: {state.lastError}</p> : null}
+      </div>
+    </div>
   );
 }
 

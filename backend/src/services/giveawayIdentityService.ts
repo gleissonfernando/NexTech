@@ -167,6 +167,9 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
     const subscribers = await getTwitchSubscribers({
       broadcasterId: giveaway.twitchBroadcasterId,
       max: MAX_PLATFORM_PARTICIPANTS_PER_SYNC
+    }).catch((error) => {
+      console.warn("[giveaway:twitch] falha ao buscar subscribers:", error instanceof Error ? error.message : error);
+      return [];
     });
     twitchSubscribers = subscribers.length;
 
@@ -191,6 +194,9 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
     const followers = await getTwitchFollowers({
       broadcasterId: giveaway.twitchBroadcasterId,
       max: MAX_PLATFORM_PARTICIPANTS_PER_SYNC
+    }).catch((error) => {
+      console.warn("[giveaway:twitch] falha ao buscar followers:", error instanceof Error ? error.message : error);
+      return [];
     });
     twitchFollowers = followers.length;
 
@@ -200,7 +206,10 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
   }
 
   if (modeUsesKick(participantMode)) {
-    const events = await listKickGiveawayEvents(giveaway);
+    const events = await listKickGiveawayEvents(giveaway).catch((error) => {
+      console.warn("[giveaway:kick] falha ao listar eventos:", error instanceof Error ? error.message : error);
+      return [];
+    });
     kickEvents = events.length;
 
     for (const event of events) {
@@ -222,6 +231,9 @@ export async function buildSyncedGiveawayParticipants(giveaway: MongoGiveaway): 
 
   for (const participant of previousEntries) {
     if (!participant.accountId) {
+      if (participant.eligible !== false && participantIsEligible(participant, participantMode)) {
+        upsertParticipant(byId, participant);
+      }
       continue;
     }
 
@@ -354,6 +366,17 @@ export function participantTickets(participant: Pick<MongoGiveawayParticipant, "
   }
 
   return 1;
+}
+
+export function normalizeGiveawayParticipant(input: Partial<MongoGiveawayParticipant> & {
+  displayName: string;
+  id: string;
+  platform: MongoGiveawayParticipantSource;
+  platformUserId: string;
+  source: MongoGiveawayParticipantSource;
+  username: string;
+}, mode: MongoGiveawayParticipantMode): MongoGiveawayParticipant {
+  return normalizeParticipant(input, mode);
 }
 
 export function participantIsEligible(participant: MongoGiveawayParticipant, mode: MongoGiveawayParticipantMode) {

@@ -11,6 +11,7 @@ import {
   createGiveaway,
   endGiveaway,
   enterGiveaway,
+  getGiveawayDiagnostics,
   getGiveaway,
   getGiveawayIdentity,
   getRouletteGiveaway,
@@ -18,9 +19,12 @@ import {
   listGiveaways,
   previewGiveawayLive,
   publishGiveawayPanel,
+  recordGiveawayChatEvent,
+  setGiveawayDebugMode,
   spinGiveawayRoulette,
   startGiveaway,
   syncGiveawayParticipants,
+  testGiveawayIntegration,
   updateGiveaway,
   updateGiveawayPanelState
 } from "../services/giveawayService";
@@ -60,6 +64,23 @@ const previewGiveawayLiveSchema = z.object({
 const panelStateSchema = z.object({
   panelMessageId: z.string().regex(/^\d{5,32}$/).nullable().optional()
 });
+const chatEventSchema = z.object({
+  displayName: z.string().max(100).nullable().optional(),
+  eventType: z.string().max(100).nullable().optional(),
+  follower: z.boolean().optional(),
+  isModerator: z.boolean().optional(),
+  isVip: z.boolean().optional(),
+  message: z.string().max(1000).nullable().optional(),
+  platform: z.enum(["twitch", "kick"]),
+  platformUserId: z.string().max(100).nullable().optional(),
+  raw: z.unknown().optional(),
+  subscriber: z.boolean().optional(),
+  subTier: z.string().max(40).nullable().optional(),
+  username: z.string().min(1).max(100)
+});
+const debugSchema = z.object({
+  debug: z.boolean()
+});
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const rouletteRateLimits = new Map<string, { count: number; resetAt: number }>();
 
@@ -82,6 +103,43 @@ giveawaysRouter.post("/roulette/:token/spin", async (req, res, next) => {
     const token = rouletteTokenSchema.parse(req.params.token);
 
     return res.json(await spinGiveawayRoulette(token));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+giveawaysRouter.get("/roulette/:token/diagnostics", async (req, res, next) => {
+  try {
+    const token = rouletteTokenSchema.parse(req.params.token);
+
+    return res.json({
+      diagnostics: await getGiveawayDiagnostics(token)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+giveawaysRouter.post("/roulette/:token/debug", async (req, res, next) => {
+  try {
+    assertRouletteRateLimit(req, "debug", 20, 60_000);
+    const token = rouletteTokenSchema.parse(req.params.token);
+    const input = debugSchema.parse(req.body ?? {});
+
+    return res.json({
+      diagnostics: await setGiveawayDebugMode(token, input.debug)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+giveawaysRouter.post("/roulette/:token/test-integration", async (req, res, next) => {
+  try {
+    assertRouletteRateLimit(req, "test-integration", 6, 60_000);
+    const token = rouletteTokenSchema.parse(req.params.token);
+
+    return res.json(await testGiveawayIntegration(token));
   } catch (error) {
     return next(error);
   }
@@ -236,6 +294,20 @@ giveawaysRouter.patch("/bot/:giveawayId/panel-state", requireBot, async (req, re
 
     return res.json({
       giveaway: await updateGiveawayPanelState(giveawayId, input, botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+giveawaysRouter.post("/bot/:giveawayId/chat-event", requireBot, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const giveawayId = giveawayIdSchema.parse(req.params.giveawayId);
+    const input = chatEventSchema.parse(req.body ?? {});
+
+    return res.json({
+      giveaway: await recordGiveawayChatEvent(giveawayId, input, botId)
     });
   } catch (error) {
     return next(error);

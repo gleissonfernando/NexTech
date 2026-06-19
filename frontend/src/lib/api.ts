@@ -19,6 +19,7 @@ import type {
   FivemFacResponse,
   FivemFacSettings,
   Giveaway,
+  GiveawayDiagnostics,
   GiveawayEntryResult,
   GiveawayIdentity,
   GiveawayLivePreview,
@@ -675,6 +676,29 @@ export async function getRouletteGiveaway(token: string) {
 
 export async function spinRoulette(token: string) {
   const { data } = await api.post<GiveawaySpinResult>(`/giveaways/roulette/${encodeURIComponent(token)}/spin`, undefined, {
+    timeout: 30000
+  });
+  return data;
+}
+
+export async function getRouletteDiagnostics(token: string) {
+  const { data } = await api.get<{ diagnostics: GiveawayDiagnostics }>(`/giveaways/roulette/${encodeURIComponent(token)}/diagnostics`, {
+    timeout: 15000
+  });
+  return data.diagnostics;
+}
+
+export async function setRouletteDebug(token: string, debug: boolean) {
+  const { data } = await api.post<{ diagnostics: GiveawayDiagnostics }>(`/giveaways/roulette/${encodeURIComponent(token)}/debug`, {
+    debug
+  }, {
+    timeout: 15000
+  });
+  return data.diagnostics;
+}
+
+export async function testRouletteIntegration(token: string) {
+  const { data } = await api.post<{ diagnostics: GiveawayDiagnostics; report: string[] }>(`/giveaways/roulette/${encodeURIComponent(token)}/test-integration`, undefined, {
     timeout: 30000
   });
   return data;

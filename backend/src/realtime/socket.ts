@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import { env } from "../config/env";
 import { createLiveEvent } from "../services/liveService";
 import { createLog } from "../services/logService";
+import { recordGiveawayChatEvent, type GiveawayChatEventInput } from "../services/giveawayService";
 import { getBotStatus, updateBotStatus } from "../services/statsService";
 import {
   authorizeBotRuntimeModule,
@@ -181,6 +182,22 @@ export function createSocketServer(httpServer: HttpServer) {
 
       io.emit("logs:new", log);
       io.emit("live:ended", event);
+    });
+
+    socket.on("giveaway:chat_event", async (payload: { botId?: string | null; giveawayId: string } & GiveawayChatEventInput, callback?: (response: { error?: string; ok: boolean }) => void) => {
+      if (!socket.data.isBot) {
+        callback?.({ ok: false, error: "unauthorized" });
+        return;
+      }
+
+      try {
+        await recordGiveawayChatEvent(payload.giveawayId, payload, socket.data.botId ?? payload.botId ?? null);
+        callback?.({ ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[giveaway:socket] falha ao registrar chat:", message);
+        callback?.({ ok: false, error: message });
+      }
     });
   });
 
