@@ -44,7 +44,7 @@ jobs:
         run: |
           check_api_health() {
             endpoint="$1"
-            url="https://ricardinho98.shardweb.app$endpoint"
+            url="https://bots-orvitek.shardweb.app$endpoint"
             echo "Checking $url"
             for attempt in $(seq 1 24); do
               if curl --fail --silent --show-error --max-time 30 "$url" > /tmp/health.json && grep -q '"status":"ok"' /tmp/health.json; then
@@ -60,7 +60,7 @@ jobs:
           }
 
           check_root() {
-            url="https://ricardinho98.shardweb.app/"
+            url="https://bots-orvitek.shardweb.app/"
             echo "Checking $url"
             for attempt in $(seq 1 12); do
               if curl --fail --silent --show-error --max-time 30 "$url" > /tmp/root.html \
