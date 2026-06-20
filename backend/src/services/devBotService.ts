@@ -429,13 +429,9 @@ export async function scanAccessibleDevBots(user: AuthSessionUser, options: Acce
     botGuildConfigs.find().toArray()
   ]);
   const guildIdsByBot = groupGuildIdsByBot(configs);
-  const userGuildIds = new Set(user.guilds.map((guild) => guild.id));
-
   const scans = await Promise.all(bots.map(async (bot) => {
     const allGuildIds = allBotGuildIds(bot, guildIdsByBot.get(bot._id));
-    const candidateGuildIds = userGuildIds.size
-      ? allGuildIds.filter((guildId) => userGuildIds.has(guildId))
-      : allGuildIds;
+    const candidateGuildIds = allGuildIds;
 
     if (!candidateGuildIds.length) {
       return {
