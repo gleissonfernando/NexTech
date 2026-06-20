@@ -1,4 +1,4 @@
-const PRODUCTION_ORIGIN = "";
+const PRODUCTION_ORIGIN = "https://bots-orvitek.shardweb.app";
 
 function normalizeUrl(value?: string) {
   const trimmed = value?.trim();
@@ -11,7 +11,11 @@ function isPublicUrl(value?: string): value is string {
   }
 
   const url = new URL(value);
-  return !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname);
+  if (["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname)) {
+    return false;
+  }
+
+  return !url.hostname.endsWith(".shardweb.app") || url.hostname === "bots-orvitek.shardweb.app";
 }
 
 export function publicOrigin() {
