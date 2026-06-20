@@ -1,4 +1,4 @@
-# OrviteK
+# Projeto Discord Dashboard
 
 Dashboard, API e bots Discord para uso em hospedagem.
 
@@ -8,7 +8,7 @@ Este repositorio nao deve conter tokens, secrets, IDs reais de servidor, IDs rea
 
 Use o projeto pela raiz.
 
-Na ShardCloud/Sharclaude, configure:
+Na hospedagem, configure:
 
 ```text
 Build command: npm install && npm run build
@@ -16,7 +16,7 @@ Start command: npm start
 Node entry: index.js
 ```
 
-O projeto ja deve estar configurado no painel da ShardCloud com `npm start` e `index.js`. Nao versionamos `.shardcloud`, porque a integracao pode tentar atualizar o projeto e falhar com `user cannot update project`. O script de start define `NODE_ENV=production`, `HOST=0.0.0.0` e `PORT=80` quando a hospedagem nao informar esses valores. Nao use URL local na hospedagem.
+O projeto deve estar configurado no painel da hospedagem com `npm start` e `index.js`. Nao versionamos arquivos de configuracao sensiveis da hospedagem. O script de start define `NODE_ENV=production`, `HOST=0.0.0.0` e `PORT=80` quando a hospedagem nao informar esses valores. Nao use URL local na hospedagem.
 
 Build:
 
@@ -64,14 +64,14 @@ git commit -m "sua mensagem"
 git push origin main
 ```
 
-O GitHub Actions executa `npm run deploy:check`, `npm run build`, `shard-cloud/action@main`, `commit 5b061ec4-2c46-4506-b567-56c463f7a9d9`, `start 5b061ec4-2c46-4506-b567-56c463f7a9d9` e valida:
+O GitHub Actions pode executar `npm run deploy:check`, `npm run build` e validar URLs de exemplo como:
 
 ```text
-https://bots-orvitek.shardweb.app/
-https://bots-orvitek.shardweb.app/api/health
+https://seu-dominio.example.com/
+https://seu-dominio.example.com/api/health
 ```
 
-Nao suba direto sem rodar `npm run deploy:check`. Segredos ficam na ShardCloud/GitHub, nunca no Git.
+Nao suba direto sem rodar `npm run deploy:check`. Segredos ficam no painel da hospedagem/GitHub, nunca no Git.
 
 ## Variaveis Na Hospedagem
 
@@ -87,8 +87,8 @@ Exemplo de estrutura, sem valores reais:
 
 ```json
 {
-  "SITE_ORIGIN": "https://bots-orvitek.shardweb.app",
-  "FRONTEND_URL": "https://bots-orvitek.shardweb.app",
+  "SITE_ORIGIN": "https://seu-dominio.example.com",
+  "FRONTEND_URL": "https://seu-dominio.example.com",
   "MONGODB_URI": "mongodb+srv://usuario:senha@cluster.example.net/nome-do-banco?retryWrites=true&w=majority",
   "SESSION_SECRET": "gere-um-segredo-forte",
   "JWT_SECRET": "gere-outro-segredo-forte",
@@ -185,5 +185,5 @@ Colecoes usadas pelo sistema incluem:
 Repositorio de destino:
 
 ```text
-https://github.com/gleissonfernando/OrviteK.git
+https://github.com/seu-usuario/seu-repositorio.git
 ```
