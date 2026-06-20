@@ -992,8 +992,9 @@ function BotGlobalSelect({
   }, [bots, query]);
 
   return (
-    <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)] hover:translate-y-0">
-      <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+    <Card className={`relative overflow-visible border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)] hover:translate-y-0 ${open ? "z-[120]" : "z-0"}`}>
+      <CardContent className="overflow-visible p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold text-white">Selecionar Bot</p>
           <p className="mt-1 text-xs font-medium text-zinc-300">Tudo nesta aba DEV carrega e salva apenas para o bot selecionado.</p>
@@ -1018,7 +1019,7 @@ function BotGlobalSelect({
           </button>
 
           {open ? (
-            <div className="absolute right-0 top-16 z-30 w-full overflow-hidden rounded-xl border border-purple-500/25 bg-[#101014] shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="absolute right-0 top-16 z-[9999] w-full overflow-hidden rounded-xl border border-purple-500/25 bg-[#101014] shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur-xl">
               <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
                 <Search className="h-4 w-4 text-purple-200" />
                 <input
@@ -1072,6 +1073,7 @@ function BotGlobalSelect({
               </div>
             </div>
           ) : null}
+        </div>
         </div>
       </CardContent>
     </Card>
