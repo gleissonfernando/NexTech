@@ -191,7 +191,8 @@ const envSchema = z
     FRONTEND_URL: envUrl("FRONTEND_URL", defaultSiteOrigin),
     DASHBOARD_DEV_USER_IDS: z.string().optional().default(""),
     DASHBOARD_GUILD_IDS: z.string().optional().default(defaultDashboardGuildIds),
-    DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles")
+    DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles"),
+    START_REGISTERED_DEV_BOTS: envBoolean(!isProduction)
   })
   .transform((value) => {
     const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";

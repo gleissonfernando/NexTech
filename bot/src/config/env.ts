@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const isProduction = process.env.NODE_ENV === "production";
 const productionPublicUrl = "";
+const defaultCacheSize = isProduction ? 50 : 200;
+const defaultMessageCacheSize = isProduction ? 5 : 10;
 
 function cleanEnvValue(value: unknown) {
   if (typeof value !== "string") {
@@ -120,13 +122,14 @@ const envSchema = z
     BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", defaultBackendUrl),
     BOT_API_TOKEN: z.string().default(""),
     BOT_ENABLED_MODULES: z.string().optional().default(""),
+    BOT_DEFAULT_ALL_MODULES: envBoolean(!isProduction),
     BOT_MEMBER_EVENTS_ENABLED: envBoolean(true),
     BOT_MESSAGE_LOGS_ENABLED: envBoolean(false),
     BOT_PRESENCE_MONITOR_ENABLED: envBoolean(false),
-    BOT_CACHE_MEMBERS_MAX: envNumber(200),
-    BOT_CACHE_MESSAGES_PER_CHANNEL: envNumber(10),
+    BOT_CACHE_MEMBERS_MAX: envNumber(defaultCacheSize),
+    BOT_CACHE_MESSAGES_PER_CHANNEL: envNumber(defaultMessageCacheSize),
     BOT_CACHE_PRESENCES_MAX: envNumber(0),
-    BOT_CACHE_USERS_MAX: envNumber(200),
+    BOT_CACHE_USERS_MAX: envNumber(defaultCacheSize),
     CLIPS_MAX_PER_CHECK: envNumber(3),
     CLIPS_LOOKBACK_MS: envNumber(15 * 60_000),
     TWITCH_CLIENT_ID: z.string().default(""),
@@ -155,7 +158,7 @@ export function isBotModuleEnabled(moduleId: string) {
     return modules.has(moduleId);
   }
 
-  return runtimeEnabledModules === null && !env.DASHBOARD_BOT_ID;
+  return runtimeEnabledModules === null && !env.DASHBOARD_BOT_ID && env.BOT_DEFAULT_ALL_MODULES;
 }
 
 export function configuredBotModules() {

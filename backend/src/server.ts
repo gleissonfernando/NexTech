@@ -20,7 +20,11 @@ httpServer.listen(env.PORT, env.HOST, () => {
       console.warn("[access-audit] varredura inicial falhou:", error instanceof Error ? error.message : error);
     })
     .finally(() => {
-      void startRegisteredDevBots();
+      if (env.START_REGISTERED_DEV_BOTS) {
+        void startRegisteredDevBots();
+      } else {
+        console.log("[dev-bot] start automatico desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
+      }
     });
 });
 

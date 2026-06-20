@@ -99,7 +99,10 @@ function isBuildStale(buildFiles, sourcePaths) {
 function startProcess(name, command, args, options = {}) {
   const { critical = false, once = false, restartDelayMs = 10_000 } = options;
   const child = spawn(command, args, {
-    env: process.env,
+    env: {
+      ...process.env,
+      NODE_OPTIONS: process.env.NODE_OPTIONS || "--max-old-space-size=192"
+    },
     shell: process.platform === "win32",
     stdio: "inherit"
   });

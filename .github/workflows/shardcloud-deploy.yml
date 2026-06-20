@@ -13,6 +13,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check Shard Cloud API key
+        env:
+          SHARD_CLOUD_API_KEY: ${{ secrets.SHARD_CLOUD_API_KEY }}
+        run: |
+          if [ -z "$SHARD_CLOUD_API_KEY" ]; then
+            echo "::error::Missing repository secret SHARD_CLOUD_API_KEY"
+            exit 1
+          fi
+
+      - name: Build project
+        run: |
+          npm ci
+          npm run build
+
       - name: Deploy and restart application
         uses: shard-cloud/action@main
         with:
