@@ -20,7 +20,7 @@ const ASSET_EXTENSIONS = new Set([
 
 export async function maintenanceMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    if (isMaintenanceBypass(req.path)) {
+    if (isMaintenanceBypass(req)) {
       return next();
     }
 
@@ -41,7 +41,9 @@ export async function maintenanceMiddleware(req: Request, res: Response, next: N
   }
 }
 
-function isMaintenanceBypass(path: string) {
+function isMaintenanceBypass(req: Request) {
+  const path = req.path;
+
   if (
     path === "/health"
     || path === "/_shardcloud/health"
@@ -51,9 +53,14 @@ function isMaintenanceBypass(path: string) {
     || path.startsWith("/api/auth")
     || path.startsWith("/dev")
     || path.startsWith("/api/dev")
+    || path === "/api/dashboard/me"
     || path.startsWith("/api/bot/maintenance")
     || path.startsWith("/uploads")
   ) {
+    return true;
+  }
+
+  if (requestCameFromDevPanel(req) && path.startsWith("/api/logs")) {
     return true;
   }
 
@@ -63,6 +70,21 @@ function isMaintenanceBypass(path: string) {
 
   const extension = path.includes(".") ? path.slice(path.lastIndexOf(".")).toLowerCase() : "";
   return ASSET_EXTENSIONS.has(extension);
+}
+
+function requestCameFromDevPanel(req: Request) {
+  const referer = req.get("referer") ?? req.get("referrer") ?? "";
+
+  if (!referer) {
+    return false;
+  }
+
+  try {
+    const url = new URL(referer);
+    return url.pathname === "/dev" || url.pathname.startsWith("/dev/");
+  } catch {
+    return referer.includes("/dev");
+  }
 }
 
 function maintenanceHtml() {
