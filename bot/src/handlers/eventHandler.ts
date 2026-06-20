@@ -49,7 +49,7 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (managedRuntimeBot || isBotModuleEnabled("logs")) {
+  if (managedRuntimeBot || isBotModuleEnabled("logs") || isSelfBotModuleEnabled()) {
     client.on(Events.MessageDelete, (message) => void handleMessageDelete(message, context));
   }
 

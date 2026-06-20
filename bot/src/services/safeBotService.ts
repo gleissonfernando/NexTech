@@ -230,6 +230,38 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
   return next;
 }
 
+export async function restoreSelfBotWarningAfterDelete(message: Message | { channelId?: string | null; guild?: Guild | null }, context: BotContext) {
+  const guild = message.guild ?? null;
+
+  if (!shouldCheckSelfBotRuntime() || !guild || !message.channelId) {
+    return false;
+  }
+
+  if (!(await isRuntimeModuleAuthorized(context, guild.id, MODULE_ID))) {
+    return false;
+  }
+
+  const runtime = await getSafeBotRuntime(guild, context).catch((error) => {
+    console.warn("[safe-bot] nao foi possivel restaurar aviso no canal filter:", errorMessage(error));
+    return null;
+  });
+
+  if (!runtime || message.channelId !== runtime.filterChannelId) {
+    return false;
+  }
+
+  const channel = await guild.channels.fetch(runtime.filterChannelId).catch(() => null);
+
+  if (channel?.type !== ChannelType.GuildText) {
+    return false;
+  }
+
+  await ensureFilterWarning(channel).catch((error) => {
+    console.warn("[safe-bot] nao foi possivel recriar aviso no canal filter:", errorMessage(error));
+  });
+  return true;
+}
+
 async function processSafeBotMessage(message: Message, context: BotContext) {
   const guild = message.guild;
 
