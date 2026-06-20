@@ -1,5 +1,6 @@
 import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
+import { requireModerationLogDestination } from "../services/moderationLogGuard";
 
 type BulkDeletableChannel = {
   bulkDelete: (messages: ClearableMessage[], filterOld?: boolean) => Promise<{ size: number }>;
@@ -52,6 +53,12 @@ export const clearCommand: BotCommand = {
       await interaction.editReply({
         content: `O /clear esta bloqueado neste servidor: ${authorization.reason}`
       });
+      return;
+    }
+
+    const logDestination = await requireModerationLogDestination(interaction, context);
+
+    if (!logDestination) {
       return;
     }
 
@@ -121,23 +128,6 @@ export const clearCommand: BotCommand = {
         channelId: channel.id
       }
     }).catch(() => undefined);
-
-    try {
-      context.socket.emitLog({
-        guildId: interaction.guild.id,
-        userId: interaction.user.id,
-        type: "moderation.clear",
-        message: `${result.deleted} mensagens apagadas.`,
-        metadata: {
-          amount,
-          deleted: result.deleted,
-          failed: result.failed,
-          channelId: channel.id
-        }
-      });
-    } catch {
-      // A limpeza ja foi executada; falha no realtime nao deve falhar o comando.
-    }
 
     await interaction.editReply({
       content: clearResultMessage(result)
@@ -211,11 +201,6 @@ async function logClearDiagnostic(
     console.warn("[clear] nao foi possivel registrar log na API:", error instanceof Error ? error.message : error);
   });
 
-  try {
-    context.socket.emitLog(payload);
-  } catch {
-    // Log via socket e apenas diagnostico; nao deve interferir no comando.
-  }
 }
 
 async function deleteChannelMessages(channel: BulkDeletableChannel, amount: number) {

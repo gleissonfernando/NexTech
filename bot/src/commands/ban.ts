@@ -1,5 +1,6 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { BotCommand } from "../types";
+import { requireModerationLogDestination } from "../services/moderationLogGuard";
 
 export const banCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -20,6 +21,11 @@ export const banCommand: BotCommand = {
 
     const user = interaction.options.getUser("usuario", true);
     const reason = interaction.options.getString("motivo") ?? "Sem motivo informado";
+    const logDestination = await requireModerationLogDestination(interaction, context);
+
+    if (!logDestination) {
+      return;
+    }
 
     await interaction.guild.members.ban(user, {
       reason
@@ -30,16 +36,6 @@ export const banCommand: BotCommand = {
       userId: user.id,
       type: "moderation.ban",
       message: `${user.tag} foi banido por ${interaction.user.tag}.`,
-      metadata: {
-        reason
-      }
-    });
-
-    context.socket.emitLog({
-      guildId: interaction.guild.id,
-      userId: user.id,
-      type: "moderation.ban",
-      message: `${user.tag} foi banido.`,
       metadata: {
         reason
       }
