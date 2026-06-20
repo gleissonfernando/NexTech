@@ -83,7 +83,7 @@ if (fs.existsSync(frontendDistPath)) {
 } else {
   app.get("/", (_req, res) => {
     res.json({
-      name: "Painel de Orviteck Bots API",
+      name: "Painel de OrviteK Bots API",
       status: "online"
     });
   });

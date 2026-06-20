@@ -936,9 +936,9 @@ function databaseNameFromUri(uri: string) {
   try {
     const url = new URL(uri);
     const dbName = decodeURIComponent(url.pathname.replace(/^\/+/, "").split("/")[0] ?? "");
-    return dbName || "ricardinho98";
+    return dbName || "orvitek";
   } catch {
-    return "ricardinho98";
+    return "orvitek";
   }
 }
 

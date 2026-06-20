@@ -1,4 +1,4 @@
-# Ricardinho98
+# OrviteK
 
 Dashboard, API e bots Discord para uso em hospedagem.
 
@@ -67,8 +67,8 @@ git push origin main
 O GitHub Actions executa `npm run deploy:check`, `npm run build`, `shard-cloud/action@main`, `commit 5b061ec4-2c46-4506-b567-56c463f7a9d9`, `start 5b061ec4-2c46-4506-b567-56c463f7a9d9` e valida:
 
 ```text
-https://ricardinho98.shardweb.app/
-https://ricardinho98.shardweb.app/api/health
+https://bots-orvitek.shardweb.app/
+https://bots-orvitek.shardweb.app/api/health
 ```
 
 Nao suba direto sem rodar `npm run deploy:check`. Segredos ficam na ShardCloud/GitHub, nunca no Git.
@@ -87,8 +87,8 @@ Exemplo de estrutura, sem valores reais:
 
 ```json
 {
-  "SITE_ORIGIN": "https://seu-dominio-da-hospedagem.example.com",
-  "FRONTEND_URL": "https://seu-dominio-da-hospedagem.example.com",
+  "SITE_ORIGIN": "https://bots-orvitek.shardweb.app",
+  "FRONTEND_URL": "https://bots-orvitek.shardweb.app",
   "MONGODB_URI": "mongodb+srv://usuario:senha@cluster.example.net/nome-do-banco?retryWrites=true&w=majority",
   "SESSION_SECRET": "gere-um-segredo-forte",
   "JWT_SECRET": "gere-outro-segredo-forte",
@@ -185,5 +185,5 @@ Colecoes usadas pelo sistema incluem:
 Repositorio de destino:
 
 ```text
-https://github.com/gleissonfernando/Ricardinho98.git
+https://github.com/gleissonfernando/OrviteK.git
 ```

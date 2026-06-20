@@ -39,7 +39,7 @@ type WelcomePanelProps = {
 };
 
 const DEFAULT_WELCOME_IMAGE_URL = "/uploads/welcome/default.gif?v=3";
-const DEFAULT_WELCOME_TITLE = "Ricardin98";
+const DEFAULT_WELCOME_TITLE = "OrviteK";
 const DEFAULT_WELCOME_MESSAGE = [
   "Seja bem-vindo(a), {user}, \u00e0 nossa comunidade de lives.",
   "Aqui a galera acompanha transmiss\u00f5es, eventos da comunidade, avisos e momentos ao vivo juntos."
@@ -53,8 +53,8 @@ const DEFAULT_WELCOME_RULES = [
   "Converse, fa\u00e7a amizades e aproveite sua estadia."
 ].join("\n");
 const DEFAULT_WELCOME_CHANNEL_LABEL = "Acesse o canal:";
-const DEFAULT_WELCOME_FOOTER_TEXT = "Ricardin98 - Comunidade de Lives";
-const DEFAULT_LEAVE_TITLE = "Ricardinn98";
+const DEFAULT_WELCOME_FOOTER_TEXT = "OrviteK - Comunidade de Lives";
+const DEFAULT_LEAVE_TITLE = "OrviteK";
 const DEFAULT_LEAVE_MESSAGE = [
   "Ate mais, {user}. Obrigado por ter feito parte da nossa comunidade de lives.",
   "As portas continuam abertas para quando quiser voltar e acompanhar as transmissoes com a galera."
@@ -68,7 +68,7 @@ const DEFAULT_LEAVE_RULES = [
   "Valeu pela passagem e ate a proxima."
 ].join("\n");
 const DEFAULT_LEAVE_CHANNEL_LABEL = "Canal da comunidade:";
-const DEFAULT_LEAVE_FOOTER_TEXT = "Ricardinn98 - Comunidade de lives";
+const DEFAULT_LEAVE_FOOTER_TEXT = "OrviteK - Comunidade de lives";
 
 const panelConfig = {
   welcome: {

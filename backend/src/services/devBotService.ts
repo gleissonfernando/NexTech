@@ -901,7 +901,7 @@ export async function ensurePrimaryDevBotListed(input: EnsurePrimaryDevBotListed
   }
 
   return registerPrimaryDevBot({
-    name: connection.username || "Bot do Ricardinho",
+    name: connection.username || "Bot OrviteK",
     ownerName: input.ownerName,
     ownerId: input.ownerId,
     mainGuildId,

@@ -42,7 +42,7 @@ export function Login({
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950">
             <Bot className="h-6 w-6 text-zinc-200" />
           </div>
-          <h1 className="text-2xl font-semibold text-white">Painel de Orviteck Bots</h1>
+          <h1 className="text-2xl font-semibold text-white">Painel de OrviteK Bots</h1>
           <p className="mt-2 text-sm text-zinc-500">{auth ? "Confirme seu acesso ao painel." : "Verifique sua conta Discord para acessar o painel."}</p>
         </div>
 

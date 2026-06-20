@@ -6,7 +6,7 @@ import { z } from "zod";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const productionPublicUrl = "";
+const productionPublicUrl = "https://bots-orvitek.shardweb.app";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
 const requiredDiscordScopes = "identify email guilds guilds.members.read";
@@ -26,7 +26,7 @@ function applyPackedEnv() {
   const base64Config =
     cleanEnvValue(process.env.APP_CONFIG_B64)
     ?? cleanEnvValue(process.env.APP_CONFIG_BASE64)
-    ?? cleanEnvValue(process.env.RICARDINHO_CONFIG_B64);
+    ?? cleanEnvValue(process.env.ORVITEK_CONFIG_B64);
   const rawConfig = jsonConfig ?? (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : undefined);
 
   if (!rawConfig) {
@@ -94,7 +94,7 @@ function envUrl(name: string, fallback: string) {
     (value) => {
       const cleaned = cleanEnvValue(value);
 
-      if (cleaned && isLocalUrl(cleaned)) {
+      if (cleaned && (isLocalUrl(cleaned) || isNonCanonicalShardUrl(cleaned))) {
         return fallback;
       }
 
@@ -132,10 +132,20 @@ function isLocalUrl(value: string) {
   }
 }
 
+function isNonCanonicalShardUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname.endsWith(".shardweb.app") && url.hostname !== "bots-orvitek.shardweb.app";
+  } catch {
+    return false;
+  }
+}
+
 applyPackedEnv();
 
 const configuredSiteOrigin = cleanEnvValue(process.env.SITE_ORIGIN) ?? cleanEnvValue(process.env.FRONTEND_URL);
 const productionSiteOrigin = configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin)
+  && !isNonCanonicalShardUrl(configuredSiteOrigin)
   ? normalizeUrl(configuredSiteOrigin)
   : productionPublicUrl;
 const defaultSiteOrigin = productionSiteOrigin;
@@ -198,6 +208,7 @@ const envSchema = z
     const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";
     const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
     const oauthFrontendUrl = configuredOrigin && !isLocalUrl(configuredOrigin)
+      && !isNonCanonicalShardUrl(configuredOrigin)
       ? normalizeUrl(configuredOrigin)
       : productionSiteOrigin;
     const oauthCallbackUrl = oauthFrontendUrl ? discordRedirectUriFor(oauthFrontendUrl) : "";

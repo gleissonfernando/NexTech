@@ -15,7 +15,7 @@ function packedConfigValue(key) {
   const base64Config =
     process.env.APP_CONFIG_B64?.trim()
     || process.env.APP_CONFIG_BASE64?.trim()
-    || process.env.RICARDINHO_CONFIG_B64?.trim();
+    || process.env.ORVITEK_CONFIG_B64?.trim();
   const rawConfig = jsonConfig || (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : "");
 
   if (!rawConfig) {

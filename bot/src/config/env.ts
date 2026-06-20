@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const isProduction = process.env.NODE_ENV === "production";
-const productionPublicUrl = "";
+const productionPublicUrl = "https://bots-orvitek.shardweb.app";
 const defaultCacheSize = isProduction ? 50 : 200;
 const defaultMessageCacheSize = isProduction ? 5 : 10;
 
@@ -24,7 +24,7 @@ function applyPackedEnv() {
   const base64Config =
     cleanEnvValue(process.env.APP_CONFIG_B64)
     ?? cleanEnvValue(process.env.APP_CONFIG_BASE64)
-    ?? cleanEnvValue(process.env.RICARDINHO_CONFIG_B64);
+    ?? cleanEnvValue(process.env.ORVITEK_CONFIG_B64);
   const rawConfig = jsonConfig ?? (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : undefined);
 
   if (!rawConfig) {
@@ -101,11 +101,22 @@ function isLocalUrl(value: string) {
   }
 }
 
+function isNonCanonicalShardUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname.endsWith(".shardweb.app") && url.hostname !== "bots-orvitek.shardweb.app";
+  } catch {
+    return false;
+  }
+}
+
 applyPackedEnv();
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
 const productionFrontendUrl =
-  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) ? normalizeUrl(configuredFrontendUrl) : productionPublicUrl;
+  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) && !isNonCanonicalShardUrl(configuredFrontendUrl)
+    ? normalizeUrl(configuredFrontendUrl)
+    : productionPublicUrl;
 const defaultBackendUrl = productionFrontendUrl;
 const defaultBackendApiUrl = defaultBackendUrl ? `${defaultBackendUrl}/api` : "";
 
