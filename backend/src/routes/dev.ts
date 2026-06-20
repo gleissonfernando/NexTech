@@ -25,10 +25,20 @@ import {
   startDevBotProcess,
   stopDevBotProcess
 } from "../services/devBotRuntimeService";
+import {
+  createFivemModule,
+  deleteFivemModule,
+  isCustomFivemModuleId,
+  listFivemModules,
+  updateFivemModule
+} from "../services/fivemModuleService";
 import { createLog } from "../services/logService";
 import type { DashboardAuth } from "../services/tokenService";
 
 const moduleIds = DEV_MODULES.map((module) => module.id) as [string, ...string[]];
+const devModuleIdSchema = z.string().refine((moduleId) => (
+  (moduleIds as readonly string[]).includes(moduleId) || isCustomFivemModuleId(moduleId)
+), "Modulo invalido.");
 
 const createBotSchema = z.object({
   token: z.string().min(10),
@@ -44,11 +54,11 @@ const updateBotSchema = z.object({
   ownerName: z.string().min(2).max(80).optional(),
   ownerId: z.string().regex(/^\d{5,32}$/).optional(),
   mainGuildId: z.string().regex(/^\d{5,32}$/).optional(),
-  enabledModules: z.array(z.enum(moduleIds)).optional()
+  enabledModules: z.array(devModuleIdSchema).optional()
 });
 
 const modulesSchema = z.object({
-  enabledModules: z.array(z.enum(moduleIds))
+  enabledModules: z.array(devModuleIdSchema)
 });
 
 const registerPrimaryBotSchema = z.object({
@@ -56,8 +66,16 @@ const registerPrimaryBotSchema = z.object({
   ownerName: z.string().min(2).max(80).optional(),
   ownerId: z.string().regex(/^\d{5,32}$/).optional(),
   mainGuildId: z.string().regex(/^\d{5,32}$/),
-  enabledModules: z.array(z.enum(moduleIds)).default([])
+  enabledModules: z.array(devModuleIdSchema).default([])
 });
+
+const fivemModuleSchema = z.object({
+  description: z.string().min(1).max(240),
+  permissions: z.string().min(1).max(120).default("Admin FiveM"),
+  title: z.string().min(2).max(80)
+});
+
+const fivemModulePatchSchema = fivemModuleSchema.partial();
 
 const guildConfigSchema = z.object({
   guildName: z.string().min(1).max(100).default("Servidor"),
@@ -72,6 +90,82 @@ devRouter.get("/modules", (_req, res) => {
   return res.json({
     modules: DEV_MODULES
   });
+});
+
+devRouter.get("/fivem/modules", async (_req, res, next) => {
+  try {
+    return res.json({
+      modules: await listFivemModules()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/fivem/modules", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = fivemModuleSchema.parse(req.body);
+
+    const module = await createFivemModule(input, auth.user.discordId);
+
+    await writeDevBotAudit(auth, auth.user.selectedGuildId ?? "global", null, "fivem_module_create", `Modulo FiveM criado: ${module.title}.`, {
+      moduleId: module.id
+    });
+
+    return res.status(201).json({
+      module
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/fivem/modules/:moduleId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = fivemModulePatchSchema.parse(req.body);
+    const module = await updateFivemModule(req.params.moduleId, input, auth.user.discordId);
+
+    if (!module) {
+      return res.status(404).json({
+        message: "Modulo FiveM personalizado nao encontrado."
+      });
+    }
+
+    await writeDevBotAudit(auth, auth.user.selectedGuildId ?? "global", null, "fivem_module_update", `Modulo FiveM atualizado: ${module.title}.`, {
+      moduleId: module.id
+    });
+
+    return res.json({
+      module
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/fivem/modules/:moduleId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const deleted = await deleteFivemModule(req.params.moduleId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        message: "Modulo FiveM personalizado nao encontrado."
+      });
+    }
+
+    await writeDevBotAudit(auth, auth.user.selectedGuildId ?? "global", null, "fivem_module_delete", "Modulo FiveM removido.", {
+      moduleId: req.params.moduleId
+    });
+
+    return res.json({
+      ok: true
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 devRouter.get("/bots", async (_req, res, next) => {
@@ -504,7 +598,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/config", async (req, res, next) =>
 async function writeDevBotAudit(
   auth: DashboardAuth,
   guildId: string,
-  botId: string,
+  botId: string | null,
   action: string,
   message: string,
   metadata: Record<string, unknown> = {}

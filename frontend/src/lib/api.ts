@@ -18,6 +18,7 @@ import type {
   FivemFacAbsence,
   FivemFacResponse,
   FivemFacSettings,
+  FivemModuleDefinition,
   Giveaway,
   GiveawayDiagnostics,
   GiveawayEntryResult,
@@ -43,6 +44,7 @@ import type {
   PublicKickClips,
   SaveClipsConfigPayload,
   SaveFivemFacSettingsPayload,
+  SaveFivemModulePayload,
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
   SaveMissionToolsSettingsPayload,
@@ -980,6 +982,30 @@ export async function getFivemFac(guildId: string, botId: string) {
     params: botParams(botId)
   });
   return data;
+}
+
+export async function getFivemModules() {
+  const { data } = await api.get<{ modules: FivemModuleDefinition[] }>("/fivem/modules");
+  return data.modules;
+}
+
+export async function getDevFivemModules() {
+  const { data } = await api.get<{ modules: FivemModuleDefinition[] }>("/dev/fivem/modules");
+  return data.modules;
+}
+
+export async function createDevFivemModule(payload: SaveFivemModulePayload) {
+  const { data } = await api.post<{ module: FivemModuleDefinition }>("/dev/fivem/modules", payload);
+  return data.module;
+}
+
+export async function updateDevFivemModule(moduleId: string, payload: Partial<SaveFivemModulePayload>) {
+  const { data } = await api.patch<{ module: FivemModuleDefinition }>(`/dev/fivem/modules/${encodeURIComponent(moduleId)}`, payload);
+  return data.module;
+}
+
+export async function deleteDevFivemModule(moduleId: string) {
+  await api.delete(`/dev/fivem/modules/${encodeURIComponent(moduleId)}`);
 }
 
 export async function getFivemFacOptions(guildId: string, botId: string) {

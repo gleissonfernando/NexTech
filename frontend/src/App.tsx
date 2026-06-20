@@ -24,7 +24,8 @@ export function App() {
   const rouletteToken = rouletteTokenFromPath(path);
   const routeError = path === "/auth/error" ? readAuthError() : null;
   const dashboardPath = isDashboardRoutePath(path);
-  const protectedPanelPath = dashboardPath || path === "/dev";
+  const devPanelPath = path === "/dev" || path.startsWith("/dev/");
+  const protectedPanelPath = dashboardPath || devPanelPath;
 
   useEffect(() => {
     if (rouletteToken) {
@@ -75,8 +76,8 @@ export function App() {
     );
   }
 
-  if (path === "/dev") {
-    return <DevDashboard auth={auth} onLogout={logout} />;
+  if (devPanelPath) {
+    return <DevDashboard auth={auth} initialView={devViewFromPath(path)} onLogout={logout} />;
   }
 
   return <Dashboard auth={auth} initialBotSlug={dashboardSlugFromPath(path)} onLogout={logout} />;
@@ -112,6 +113,18 @@ function rouletteTokenFromPath(path: string) {
   } catch {
     return null;
   }
+}
+
+function devViewFromPath(path: string): "bots" | "fivem" | "logs" {
+  if (path.startsWith("/dev/fivem")) {
+    return "fivem";
+  }
+
+  if (path.startsWith("/dev/logs")) {
+    return "logs";
+  }
+
+  return "bots";
 }
 
 function LoadingScreen() {

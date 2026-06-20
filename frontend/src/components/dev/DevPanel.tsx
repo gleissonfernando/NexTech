@@ -63,14 +63,6 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
-  { id: "fivem", label: "FiveM" },
-  { id: "fivem-factions", label: "FiveM - Sistema de Faccao" },
-  { id: "fivem-corporations", label: "FiveM - Sistema de Corporacoes" },
-  { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
-  { id: "fivem-orders", label: "FiveM - Sistema de Encomendas" },
-  { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
-  { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
-  { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }
 ];
 
@@ -545,10 +537,11 @@ export function DevPanel({
 
 function mergeDevModules(modules: DevModuleDefinition[]) {
   const apiModules = new Map(modules.map((module) => [module.id, module]));
+  const botModules = modules.filter((module) => !isFiveMModule(module.id));
 
   return [
     ...fallbackModules.map((module) => apiModules.get(module.id) ?? module),
-    ...modules.filter((module) => !fallbackModules.some((fallback) => fallback.id === module.id))
+    ...botModules.filter((module) => !fallbackModules.some((fallback) => fallback.id === module.id))
   ];
 }
 
@@ -775,11 +768,9 @@ function ModuleSwitchGrid({
   modules: DevModuleDefinition[];
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
-  const botModules = modules.filter((module) => !isFiveMModule(module.id));
-
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      {botModules.map((module) => {
+      {modules.map((module) => {
         const enabled = enabledModules.includes(module.id);
 
         return (

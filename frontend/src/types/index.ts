@@ -809,6 +809,20 @@ export type FivemFacResponse = {
   settings: FivemFacSettings;
 };
 
+export type FivemModuleDefinition = {
+  builtIn: boolean;
+  description: string;
+  id: string;
+  permissions: string;
+  title: string;
+};
+
+export type SaveFivemModulePayload = {
+  description: string;
+  permissions: string;
+  title: string;
+};
+
 export type SaveFivemFacSettingsPayload = Partial<Omit<FivemFacSettings, "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt">>;
 
 export type MissionToolsFeatureId =

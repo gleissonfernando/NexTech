@@ -57,6 +57,7 @@ import {
   getClipsConfig,
   getDashboardBySlug,
   getDashboardMe,
+  getFivemModules,
   getGuildSettings,
   getKickNotifications,
   getLives,
@@ -77,6 +78,7 @@ import type {
   DashboardGuild,
   DashboardMeGuild,
   DashboardMeResponse,
+  FivemModuleDefinition,
   GuildSettings,
   KickNotification,
   LiveEvent,
@@ -321,6 +323,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const [overviewDetails, setOverviewDetails] = useState<OverviewDetails>(emptyOverviewDetails);
+  const [fivemModules, setFivemModules] = useState<FivemModuleDefinition[]>([]);
 
   const panelBots = dashboardProfile?.bots ?? emptyPanelBots;
   const dashboardProfileGuilds = dashboardProfile?.guilds ?? null;
@@ -430,6 +433,27 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       setActiveView("overview");
     }
   }, [activeView, enabledModulesKey]);
+
+  useEffect(() => {
+    if (!enabledModules.some((moduleId) => moduleId === "fivem" || moduleId.startsWith("fivem-"))) {
+      setFivemModules([]);
+      return;
+    }
+
+    let mounted = true;
+
+    getFivemModules()
+      .then((modules) => {
+        if (mounted) setFivemModules(modules);
+      })
+      .catch(() => {
+        if (mounted) setFivemModules([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [enabledModulesKey]);
 
   useEffect(() => {
     const selectedGuildIsAvailable = selectedGuildId
@@ -771,6 +795,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "fivem-absences", canManageDashboard) || canManageModule(selectedBot, "fivem-fac", canManageDashboard)}
             enabledModules={enabledModules}
+            fivemModules={fivemModules}
             guild={selectedGuild}
           />
         ) : null}
@@ -800,14 +825,16 @@ function FivemView({
   botId,
   canManage,
   enabledModules,
+  fivemModules,
   guild
 }: {
   botId?: string | null;
   canManage: boolean;
   enabledModules: string[];
+  fivemModules: FivemModuleDefinition[];
   guild: DashboardGuild | null;
 }) {
-  const modules = fivemUserModules(enabledModules);
+  const modules = fivemUserModules(enabledModules, fivemModules);
 
   if (!modules.length) {
     return (
@@ -842,50 +869,46 @@ function FivemView({
   );
 }
 
-function fivemUserModules(enabledModules: string[]) {
-  const catalog = [
-    { description: "Controle de membros, cargos e operacao das faccoes.", icon: Building2, id: "fivem-factions", label: "Faccoes" },
-    { description: "Gestao operacional de corporacoes e equipes.", icon: Server, id: "fivem-corporations", label: "Corporacoes" },
-    { description: "Solicitacoes e aprovacao de ausencias RP.", icon: CalendarClock, id: "fivem-absences", label: "Ausencias" },
-    { description: "Pedidos, entregas e acompanhamento de encomendas.", icon: ListChecks, id: "fivem-orders", label: "Encomendas" },
-    { description: "Controle de municoes, estoque e distribuicao.", icon: Shield, id: "fivem-ammo", label: "Municoes" },
-    { description: "Fluxo financeiro, caixa e lancamentos RP.", icon: Activity, id: "fivem-finance", label: "Financeiro" }
+function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDefinition[]) {
+  const fallbackCatalog: FivemModuleDefinition[] = [
+    { builtIn: true, description: "Controle de membros, cargos e operacao das faccoes.", id: "fivem-factions", permissions: "Admin FiveM", title: "Faccoes" },
+    { builtIn: true, description: "Gestao operacional de corporacoes e equipes.", id: "fivem-corporations", permissions: "Admin FiveM", title: "Corporacoes" },
+    { builtIn: true, description: "Solicitacoes e aprovacao de ausencias RP.", id: "fivem-absences", permissions: "Admin FiveM", title: "Ausencias" },
+    { builtIn: true, description: "Pedidos, entregas e acompanhamento de encomendas.", id: "fivem-orders", permissions: "Admin FiveM", title: "Encomendas" },
+    { builtIn: true, description: "Controle de municoes, estoque e distribuicao.", id: "fivem-ammo", permissions: "Admin FiveM", title: "Municoes" },
+    { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" }
   ];
+  const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
   const enabled = new Set(enabledModules.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
-  const enabledCatalogModules = catalog.filter((module) => enabled.has(module.id));
-  const customModules = enabled.has("fivem") ? readActiveCustomFiveMModules() : [];
 
-  return [
-    ...enabledCatalogModules,
-    ...customModules
-  ];
+  return catalog
+    .filter((module) => enabled.has(module.id))
+    .map((module) => ({
+      description: module.description,
+      icon: fivemIconForModule(module.id),
+      id: module.id,
+      label: userFivemModuleLabel(module)
+    }));
 }
 
-function readActiveCustomFiveMModules() {
-  try {
-    const modules = JSON.parse(window.localStorage.getItem("dev.fivem.customModules") ?? "[]");
-    const activeIds = new Set(JSON.parse(window.localStorage.getItem("dev.fivem.activeCustomModules") ?? "[]"));
+function fivemIconForModule(moduleId: string) {
+  const icons: Record<string, typeof Bot> = {
+    "fivem-ammo": Shield,
+    "fivem-absences": CalendarClock,
+    "fivem-corporations": Server,
+    "fivem-factions": Building2,
+    "fivem-finance": Activity,
+    "fivem-orders": ListChecks
+  };
 
-    if (!Array.isArray(modules) || !activeIds.size) {
-      return [];
-    }
+  return icons[moduleId] ?? Boxes;
+}
 
-    return modules
-      .filter((module): module is { description?: unknown; id: string; permissions?: unknown; title?: unknown } => (
-        Boolean(module)
-        && typeof module === "object"
-        && typeof module.id === "string"
-        && activeIds.has(module.id)
-      ))
-      .map((module) => ({
-        description: typeof module.description === "string" ? module.description : "Modulo personalizado liberado pelo desenvolvedor.",
-        icon: Boxes,
-        id: module.id,
-        label: typeof module.title === "string" ? module.title : "Modulo personalizado"
-      }));
-  } catch {
-    return [];
-  }
+function userFivemModuleLabel(module: FivemModuleDefinition) {
+  return module.title
+    .replace(/^Sistema\s+de\s+/i, "")
+    .replace(/^Sistema\s+/i, "")
+    .trim();
 }
 
 function DashboardRouteError({ message }: { message: string }) {

@@ -23,6 +23,7 @@ import {
   updateFivemFacAbsencePhoto,
   updateFivemFacPanelMessageState
 } from "../services/fivemFacService";
+import { listFivemModules } from "../services/fivemModuleService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import type { AuthSessionUser } from "../types/session";
 
@@ -84,6 +85,16 @@ const facPhotoUpload = raw({
 const allowedFacPhotoMimeTypes = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
 export const fivemRouter = Router();
+
+fivemRouter.get("/modules", requireAuth, async (_req, res, next) => {
+  try {
+    return res.json({
+      modules: await listFivemModules()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 fivemRouter.get("/:guildId/fac", requireAuth, async (req, res, next) => {
   try {

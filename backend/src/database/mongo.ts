@@ -502,6 +502,18 @@ export type MongoFivemFacAbsence = {
   updatedAt: Date;
 };
 
+export type MongoFivemModule = {
+  _id: string;
+  title: string;
+  description: string;
+  permissions: string;
+  builtIn: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type MongoImageAntiSpamSettings = {
   _id: string;
   botId: string;
@@ -971,6 +983,7 @@ export async function getMongoCollections() {
     giveaways: db.collection<MongoGiveaway>("giveaways"),
     giveawayPlatformAccounts: db.collection<MongoGiveawayPlatformAccount>("giveaway_platform_accounts"),
     giveawayKickEvents: db.collection<MongoGiveawayKickEvent>("giveaway_kick_events"),
+    fivemModules: db.collection<MongoFivemModule>("fivem_modules"),
     fivemFacSettings: db.collection<MongoFivemFacSettings>("fivem_fac_settings"),
     fivemFacAbsences: db.collection<MongoFivemFacAbsence>("fivem_fac_absences"),
     imageAntiSpamSettings: db.collection<MongoImageAntiSpamSettings>("image_anti_spam_settings"),
@@ -1044,6 +1057,7 @@ async function createMongoIndexes(db: Db) {
     ensureXMonitorIndexes(db),
     ensureClipsIndexes(db),
     ensureGiveawayIndexes(db),
+    ensureFivemModuleIndexes(db),
     ensureFivemFacIndexes(db),
     ensureImageAntiSpamIndexes(db),
     ensureVoiceRecorderIndexes(db),
@@ -1361,6 +1375,13 @@ async function ensureGiveawayIndexes(db: Db) {
       isSubscriber: 1,
       updatedAt: -1
     })
+  ]);
+}
+
+async function ensureFivemModuleIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoFivemModule>("fivem_modules").createIndex({ builtIn: 1, createdAt: -1 }),
+    db.collection<MongoFivemModule>("fivem_modules").createIndex({ title: 1 })
   ]);
 }
 

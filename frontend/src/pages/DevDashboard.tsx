@@ -25,40 +25,37 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Switch } from "../components/ui/switch";
-import { getDashboardMe, getLogs, updateDevBotModules } from "../lib/api";
+import {
+  createDevFivemModule,
+  deleteDevFivemModule,
+  getDashboardMe,
+  getDevBots,
+  getDevFivemModules,
+  getLogs,
+  updateDevBotModules,
+  updateDevFivemModule
+} from "../lib/api";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, DashboardBot, DashboardMeResponse, LogEntry } from "../types";
+import type { AuthResponse, DashboardBot, DashboardMeResponse, FivemModuleDefinition, LogEntry } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
+  initialView?: DevView;
   onLogout: () => void;
 };
 
 type DevView = "bots" | "fivem" | "logs";
 
-type FiveMModule = {
-  description: string;
+type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
-  id: string;
-  permissions: string;
-  title: string;
 };
 
-const fiveMModules: FiveMModule[] = [
-  { description: "Gestao de membros, hierarquia, cargos e operacao das faccoes.", icon: Building2, id: "fivem-factions", permissions: "Admin FiveM, Gerente de faccao", title: "Sistema de Faccoes" },
-  { description: "Controle de departamentos, corporacoes e equipes operacionais.", icon: BriefcaseBusiness, id: "fivem-corporations", permissions: "Admin FiveM, Diretor de corporacao", title: "Sistema de Corporacoes" },
-  { description: "Fluxo de ausencias, aprovacoes e historico de justificativas.", icon: CalendarClock, id: "fivem-absences", permissions: "Admin FiveM, Lideranca", title: "Sistema de Ausencias" },
-  { description: "Solicitacoes, filas, entregas e status de encomendas RP.", icon: PackagePlus, id: "fivem-orders", permissions: "Admin FiveM, Operador", title: "Sistema de Encomendas" },
-  { description: "Estoque, retirada, distribuicao e auditoria de municoes.", icon: Shield, id: "fivem-ammo", permissions: "Admin FiveM, Arsenal", title: "Sistema de Municoes" },
-  { description: "Caixa, entradas, saidas e acompanhamento financeiro.", icon: Activity, id: "fivem-finance", permissions: "Admin FiveM, Financeiro", title: "Sistema Financeiro" }
-];
-
-export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
+export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashboardProps) {
   const [profile, setProfile] = useState<DashboardMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedGuildId, setSelectedGuildId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<DevView>("bots");
+  const [activeView, setActiveView] = useState<DevView>(initialView);
 
   useEffect(() => {
     let mounted = true;
@@ -143,9 +140,14 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
     );
   }
 
+  function handleChangeView(view: DevView) {
+    setActiveView(view);
+    window.history.replaceState(null, "", devPathForView(view));
+  }
+
   return (
     <main className="min-h-screen bg-[#050505] lg:pl-72">
-      <DevSidebar activeView={activeView} onChangeView={setActiveView} />
+      <DevSidebar activeView={activeView} onChangeView={handleChangeView} />
       <header className="sticky top-0 z-20 border-b border-zinc-900/80 bg-[#050505]/95 px-4 py-4 backdrop-blur-xl lg:px-8">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
@@ -156,6 +158,7 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
               <h1 className="truncate text-xl font-semibold text-white">Painel DEV</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-100" variant="muted">Bots</Badge>
+                <Badge variant="muted">FiveM</Badge>
                 <Badge variant="muted">Modulos globais</Badge>
                 <Badge variant="muted">Logs tecnicos</Badge>
               </div>
@@ -181,7 +184,7 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
           ].map((item) => (
             <Button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleChangeView(item.id)}
               size="sm"
               variant={activeView === item.id ? "default" : "outline"}
             >
@@ -219,6 +222,12 @@ export function DevDashboard({ auth, onLogout }: DevDashboardProps) {
       </div>
     </main>
   );
+}
+
+function devPathForView(view: DevView) {
+  if (view === "fivem") return "/dev/fivem";
+  if (view === "logs") return "/dev/logs";
+  return "/dev";
 }
 
 function DevSidebar({ activeView, onChangeView }: { activeView: DevView; onChangeView: (view: DevView) => void }) {
@@ -271,101 +280,139 @@ function DevFiveMManager({
   selectedBotId: string | null;
 }) {
   const [savingModuleId, setSavingModuleId] = useState<string | null>(null);
-  const [customModules, setCustomModules] = useState<FiveMModule[]>(() => readCustomFiveMModules());
-  const [activeCustomIds, setActiveCustomIds] = useState<string[]>(() => readActiveCustomFiveMModules());
-  const selectedBot = bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null;
-  const modules = [...fiveMModules, ...customModules];
+  const [botList, setBotList] = useState<DashboardBot[]>(bots);
+  const [modules, setModules] = useState<FivemModuleDefinition[]>([]);
+  const [loadingModules, setLoadingModules] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+  const selectedBot = botList.find((bot) => bot.id === selectedBotId) ?? botList[0] ?? null;
+  const viewModules = modules.map(toFiveMModuleView);
   const enabled = new Set((selectedBot?.enabledModules ?? []).map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
-  const activeCustomSet = new Set(activeCustomIds);
-  const activeModuleCount = modules.filter((module) => enabled.has(module.id) || activeCustomSet.has(module.id)).length;
+  const activeModuleCount = viewModules.filter((module) => enabled.has(module.id)).length;
   const stats = {
     active: activeModuleCount,
     corporations: enabled.has("fivem-corporations") ? 1 : 0,
-    disabled: modules.length - activeModuleCount,
+    disabled: viewModules.length - activeModuleCount,
     factions: enabled.has("fivem-factions") ? 1 : 0,
-    total: modules.length,
-    users: bots.reduce((total, bot) => total + (bot.enabledModules.some((moduleId) => moduleId === "fivem" || moduleId.startsWith("fivem-")) ? 1 : 0), 0)
+    total: viewModules.length,
+    users: botList.reduce((total, bot) => total + (bot.enabledModules.some((moduleId) => moduleId === "fivem" || moduleId.startsWith("fivem-")) ? 1 : 0), 0)
   };
 
+  useEffect(() => {
+    setBotList(bots);
+  }, [bots]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoadingModules(true);
+    Promise.all([getDevFivemModules(), getDevBots()])
+      .then(([nextModules, nextBots]) => {
+        if (!mounted) return;
+
+        setModules(nextModules);
+        setBotList(nextBots);
+        onSelectBot(selectedBotId ?? nextBots[0]?.id ?? null);
+      })
+      .catch(() => {
+        if (mounted) setMessage("Nao foi possivel carregar os modulos FiveM.");
+      })
+      .finally(() => {
+        if (mounted) setLoadingModules(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   async function handleToggle(moduleId: string, checked: boolean) {
-    if (moduleId.startsWith("fivem-custom-")) {
-      const next = checked
-        ? [...new Set([...activeCustomIds, moduleId])]
-        : activeCustomIds.filter((item) => item !== moduleId);
-      setActiveCustomIds(next);
-      storeActiveCustomFiveMModules(next);
-
-      if (selectedBot) {
-        const standardModules = normalizeFiveMModules(selectedBot.enabledModules);
-        const hasStandardFiveMModule = standardModules.some((item) => item.startsWith("fivem-"));
-        const nextModules = next.length || hasStandardFiveMModule
-          ? [...new Set([...standardModules, "fivem"])]
-          : standardModules.filter((item) => item !== "fivem");
-
-        setSavingModuleId(moduleId);
-        try {
-          onBotUpdated(await updateDevBotModules(selectedBot.id, nextModules));
-        } finally {
-          setSavingModuleId(null);
-        }
-      }
-
-      return;
-    }
-
     if (!selectedBot) return;
 
     const normalizedModules = normalizeFiveMModules(selectedBot.enabledModules);
     const nextModules = checked
       ? [...new Set([...normalizedModules, "fivem", moduleId])]
-      : nextFiveMModulesAfterDisable(normalizedModules, moduleId, activeCustomIds.length > 0);
+      : nextFiveMModulesAfterDisable(normalizedModules, moduleId);
 
     setSavingModuleId(moduleId);
     try {
-      onBotUpdated(await updateDevBotModules(selectedBot.id, nextModules));
+      const updated = await updateDevBotModules(selectedBot.id, nextModules);
+      setBotList((current) => current.map((bot) => bot.id === updated.id ? updated : bot));
+      onBotUpdated(updated);
     } finally {
       setSavingModuleId(null);
     }
   }
 
-  function handleCreateModule() {
+  async function handleCreateModule() {
     const name = window.prompt("Nome do novo modulo FiveM");
     if (!name?.trim()) return;
 
-    const module: FiveMModule = {
-      description: "Modulo personalizado criado pelo desenvolvedor.",
-      icon: Boxes,
-      id: `fivem-custom-${Date.now()}`,
-      permissions: "Admin FiveM",
-      title: name.trim().slice(0, 60)
-    };
-    const next = [module, ...customModules];
-    setCustomModules(next);
-    storeCustomFiveMModules(next);
+    const description = window.prompt("Descricao do modulo FiveM", "Modulo personalizado criado pelo desenvolvedor.")?.trim()
+      || "Modulo personalizado criado pelo desenvolvedor.";
+    const permissions = window.prompt("Permissoes do modulo FiveM", "Admin FiveM")?.trim() || "Admin FiveM";
+
+    setMessage(null);
+    try {
+      const created = await createDevFivemModule({
+        description,
+        permissions,
+        title: name.trim()
+      });
+      setModules((current) => [created, ...current]);
+      setMessage("Modulo FiveM criado.");
+    } catch {
+      setMessage("Nao foi possivel criar o modulo FiveM.");
+    }
   }
 
-  function handleRemoveCustom(moduleId: string) {
-    const next = customModules.filter((module) => module.id !== moduleId);
-    const nextActive = activeCustomIds.filter((item) => item !== moduleId);
-    setCustomModules(next);
-    setActiveCustomIds(nextActive);
-    storeCustomFiveMModules(next);
-    storeActiveCustomFiveMModules(nextActive);
+  async function handleRemoveCustom(moduleId: string) {
+    if (!window.confirm("Remover este modulo FiveM?")) return;
+
+    setSavingModuleId(moduleId);
+    setMessage(null);
+    try {
+      const nextBotModules = selectedBot && enabled.has(moduleId)
+        ? nextFiveMModulesAfterDisable(normalizeFiveMModules(selectedBot.enabledModules), moduleId)
+        : null;
+      await deleteDevFivemModule(moduleId);
+      if (selectedBot && nextBotModules) {
+        const updated = await updateDevBotModules(selectedBot.id, nextBotModules);
+        setBotList((current) => current.map((bot) => bot.id === updated.id ? updated : bot));
+        onBotUpdated(updated);
+      }
+      setModules((current) => current.filter((module) => module.id !== moduleId));
+      setMessage("Modulo FiveM removido.");
+    } catch {
+      setMessage("Nao foi possivel remover o modulo FiveM.");
+    } finally {
+      setSavingModuleId(null);
+    }
   }
 
-  function handleEditCustom(moduleId: string) {
-    const current = customModules.find((module) => module.id === moduleId);
+  async function handleEditCustom(moduleId: string) {
+    const current = modules.find((module) => module.id === moduleId);
     if (!current) return;
 
     const name = window.prompt("Nome do modulo FiveM", current.title);
     if (!name?.trim()) return;
+    const description = window.prompt("Descricao do modulo FiveM", current.description)?.trim() || current.description;
+    const permissions = window.prompt("Permissoes do modulo FiveM", current.permissions)?.trim() || current.permissions;
 
-    const next = customModules.map((module) => module.id === moduleId ? {
-      ...module,
-      title: name.trim().slice(0, 60)
-    } : module);
-    setCustomModules(next);
-    storeCustomFiveMModules(next);
+    setSavingModuleId(moduleId);
+    setMessage(null);
+    try {
+      const updated = await updateDevFivemModule(moduleId, {
+        description,
+        permissions,
+        title: name.trim()
+      });
+      setModules((currentModules) => currentModules.map((module) => module.id === moduleId ? updated : module));
+      setMessage("Modulo FiveM atualizado.");
+    } catch {
+      setMessage("Nao foi possivel editar o modulo FiveM.");
+    } finally {
+      setSavingModuleId(null);
+    }
   }
 
   return (
@@ -381,7 +428,7 @@ function DevFiveMManager({
             onChange={(event) => onSelectBot(event.target.value || null)}
             value={selectedBot?.id ?? ""}
           >
-            {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
+            {botList.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
           </select>
           <Button onClick={handleCreateModule}>
             <Plus className="h-4 w-4" />
@@ -389,6 +436,12 @@ function DevFiveMManager({
           </Button>
         </div>
       </section>
+
+      {message ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+          {message}
+        </div>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <FiveMStat icon={Boxes} label="Total de modulos" value={String(stats.total)} />
@@ -405,9 +458,14 @@ function DevFiveMManager({
           <CardDescription>Sistemas RP independentes das configuracoes do bot Discord.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 p-5 pt-0 sm:p-6 sm:pt-0 lg:grid-cols-2">
-          {modules.map((module) => {
-            const active = enabled.has(module.id) || activeCustomSet.has(module.id);
-            const custom = module.id.startsWith("fivem-custom-");
+          {loadingModules ? (
+            <div className="flex min-h-28 items-center justify-center rounded-lg border border-zinc-900 bg-black/35 text-sm text-zinc-500 lg:col-span-2">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Carregando modulos FiveM...
+            </div>
+          ) : viewModules.map((module) => {
+            const active = enabled.has(module.id);
+            const custom = !module.builtIn;
 
             return (
               <div className="flex min-h-[112px] gap-4 rounded-lg border border-zinc-900 bg-black/35 p-4" key={module.id}>
@@ -421,12 +479,12 @@ function DevFiveMManager({
                       <p className="mt-1 text-xs leading-5 text-zinc-500">{module.description}</p>
                       <p className="mt-2 truncate text-xs text-zinc-400">Permissoes: {module.permissions}</p>
                     </div>
-                    <Switch checked={active} disabled={(!selectedBot && !custom) || savingModuleId === module.id} onCheckedChange={(checked) => void handleToggle(module.id, checked)} />
+                    <Switch checked={active} disabled={!selectedBot || savingModuleId === module.id} onCheckedChange={(checked) => void handleToggle(module.id, checked)} />
                   </div>
                   {custom ? (
                     <div className="mt-3 flex gap-2">
-                      <Button onClick={() => handleEditCustom(module.id)} size="sm" variant="outline"><Pencil className="h-4 w-4" />Editar</Button>
-                      <Button onClick={() => handleRemoveCustom(module.id)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Remover</Button>
+                      <Button disabled={savingModuleId === module.id} onClick={() => void handleEditCustom(module.id)} size="sm" variant="outline"><Pencil className="h-4 w-4" />Editar</Button>
+                      <Button disabled={savingModuleId === module.id} onClick={() => void handleRemoveCustom(module.id)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Remover</Button>
                     </div>
                   ) : null}
                 </div>
@@ -455,41 +513,35 @@ function normalizeFiveMModules(moduleIds: string[]) {
   return moduleIds.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId);
 }
 
-function nextFiveMModulesAfterDisable(moduleIds: string[], disabledModuleId: string, hasActiveCustomModules: boolean) {
+function nextFiveMModulesAfterDisable(moduleIds: string[], disabledModuleId: string) {
   const withoutModule = moduleIds.filter((moduleId) => moduleId !== disabledModuleId);
   const hasOtherFiveMModule = withoutModule.some((moduleId) => moduleId.startsWith("fivem-"));
 
-  if (hasOtherFiveMModule || hasActiveCustomModules) {
+  if (hasOtherFiveMModule) {
     return [...new Set([...withoutModule, "fivem"])];
   }
 
   return withoutModule.filter((moduleId) => moduleId !== "fivem");
 }
 
-function readCustomFiveMModules(): FiveMModule[] {
-  try {
-    const stored = JSON.parse(window.localStorage.getItem("dev.fivem.customModules") ?? "[]");
-    return Array.isArray(stored) ? stored.map((item) => ({ ...item, icon: Boxes })) : [];
-  } catch {
-    return [];
-  }
+function toFiveMModuleView(module: FivemModuleDefinition): FiveMModuleView {
+  return {
+    ...module,
+    icon: fiveMModuleIcon(module.id)
+  };
 }
 
-function storeCustomFiveMModules(modules: FiveMModule[]) {
-  window.localStorage.setItem("dev.fivem.customModules", JSON.stringify(modules.map(({ icon: _icon, ...module }) => module)));
-}
+function fiveMModuleIcon(moduleId: string): LucideIcon {
+  const icons: Record<string, LucideIcon> = {
+    "fivem-ammo": Shield,
+    "fivem-absences": CalendarClock,
+    "fivem-corporations": BriefcaseBusiness,
+    "fivem-factions": Building2,
+    "fivem-finance": Activity,
+    "fivem-orders": PackagePlus
+  };
 
-function readActiveCustomFiveMModules(): string[] {
-  try {
-    const stored = JSON.parse(window.localStorage.getItem("dev.fivem.activeCustomModules") ?? "[]");
-    return Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function storeActiveCustomFiveMModules(moduleIds: string[]) {
-  window.localStorage.setItem("dev.fivem.activeCustomModules", JSON.stringify(moduleIds));
+  return icons[moduleId] ?? Boxes;
 }
 
 function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId: string | null }) {

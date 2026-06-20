@@ -28,6 +28,7 @@ import { saveSelfBotProtectionSettings } from "./selfBotProtectionService";
 import { getSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
 import { createLog } from "./logService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
+import { isCustomFivemModuleId } from "./fivemModuleService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -1968,7 +1969,7 @@ function sanitizeModules(modules: string[]) {
   return [...new Set(
     modules
       .map((module) => LEGACY_MODULE_ALIASES[module] ?? module)
-      .filter((module): module is (typeof DEV_MODULES)[number]["id"] => DEV_MODULE_IDS.has(module as (typeof DEV_MODULES)[number]["id"]))
+      .filter((module) => DEV_MODULE_IDS.has(module as (typeof DEV_MODULES)[number]["id"]) || isCustomFivemModuleId(module))
   )];
 }
 
