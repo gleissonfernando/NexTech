@@ -230,7 +230,8 @@ devRouter.post("/bots/create", async (req, res, next) => {
       mainGuildId: input.mainGuildId,
       ownerName: auth.user.globalName || auth.user.username,
       ownerId: auth.user.discordId,
-      createdBy: auth.user.discordId
+      createdBy: auth.user.discordId,
+      verifyOwnerUserId: auth.user.discordId
     });
     await startDevBotProcess(createdBot.id);
     const bot = await getDevBot(createdBot.id) ?? createdBot;
@@ -322,7 +323,8 @@ devRouter.patch("/bots/:botId", async (req, res, next) => {
 
     const updatedBot = await updateDevBot(req.params.botId, {
       ...input,
-      avatarUrl: input.avatarUrl === "" ? null : input.avatarUrl
+      avatarUrl: input.avatarUrl === "" ? null : input.avatarUrl,
+      verifyOwnerUserId: input.token ? auth.user.discordId : null
     });
 
     if (!updatedBot) {

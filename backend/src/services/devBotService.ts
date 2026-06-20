@@ -160,6 +160,24 @@ type DiscordBotUser = {
   avatar: string | null;
 };
 
+type DiscordApplicationOwner = {
+  id: string;
+};
+
+type DiscordApplicationTeamMember = {
+  user?: DiscordApplicationOwner;
+  membership_state?: number;
+};
+
+type DiscordApplication = {
+  id: string;
+  owner?: DiscordApplicationOwner;
+  team?: {
+    members?: DiscordApplicationTeamMember[];
+    owner_user_id?: string;
+  } | null;
+};
+
 type DiscordGuildDetails = {
   id: string;
   name: string;
@@ -308,6 +326,7 @@ type CreateDevBotInput = {
   mainGuildId: string;
   enabledModules?: string[];
   createdBy: string;
+  verifyOwnerUserId?: string | null;
 };
 
 type UpdateDevBotInput = {
@@ -320,6 +339,7 @@ type UpdateDevBotInput = {
   ownerId?: string;
   mainGuildId?: string;
   enabledModules?: string[];
+  verifyOwnerUserId?: string | null;
 };
 
 type RegisterPrimaryDevBotInput = {
@@ -685,6 +705,11 @@ export async function createDevBot(input: CreateDevBotInput) {
   const now = new Date();
   const detectedGuild = await fetchDiscordBotGuild(input.token, input.mainGuildId);
   const clientId = detectedGuild.botId;
+
+  if (input.verifyOwnerUserId) {
+    await assertDiscordBotOwnedByUser(input.token, input.verifyOwnerUserId, clientId);
+  }
+
   const existingBot = await devBots.findOne(
     {
       clientId
@@ -939,6 +964,10 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
       throw createDevBotError(connection.message, 400);
     }
 
+    if (input.verifyOwnerUserId && connection.clientId) {
+      await assertDiscordBotOwnedByUser(input.token, input.verifyOwnerUserId, connection.clientId);
+    }
+
     $set.tokenEncrypted = encryptSecret(input.token);
     $set.tokenLast4 = tokenLast4(input.token);
     $set.status = connection.status === "online" ? "offline" : connection.status;
@@ -1152,6 +1181,45 @@ function buildDashboardUrl(slug: string) {
 
 export async function testDiscordBotToken(token: string, expectedClientId?: string) {
   return testDiscordBotTokenForClient(token, expectedClientId);
+}
+
+async function assertDiscordBotOwnedByUser(token: string, userId: string, expectedClientId: string) {
+  try {
+    const { data } = await axios.get<DiscordApplication>(`${DISCORD_API}/oauth2/applications/@me`, {
+      headers: {
+        Authorization: `Bot ${token.trim()}`
+      },
+      timeout: 5_000
+    });
+    const teamMemberIds = data.team?.members
+      ?.filter((member) => member.membership_state === undefined || member.membership_state === 2)
+      .map((member) => member.user?.id)
+      .filter((memberId): memberId is string => Boolean(memberId)) ?? [];
+    const allowedOwnerIds = new Set([
+      data.owner?.id,
+      data.team?.owner_user_id,
+      ...teamMemberIds
+    ].filter((ownerId): ownerId is string => Boolean(ownerId)));
+
+    if (data.id !== expectedClientId) {
+      throw createDevBotError("O token informado nao pertence ao Client ID detectado.", 400);
+    }
+
+    if (!allowedOwnerIds.has(userId)) {
+      throw createDevBotError("Este bot nao pertence a sua conta Discord ou ao seu time de aplicativos.", 403);
+    }
+  } catch (error) {
+    if (isDevBotError(error)) {
+      throw error;
+    }
+
+    const status = axios.isAxiosError(error) ? error.response?.status : null;
+    const message = status === 401
+      ? "Token invalido. Verifique os dados do bot."
+      : "Nao foi possivel confirmar se este bot pertence a sua conta Discord.";
+
+    throw createDevBotError(message, status === 401 ? 400 : 403);
+  }
 }
 
 export async function detectDiscordBotGuild(token: string, guildId: string): Promise<DetectedDiscordGuild> {
