@@ -1,0 +1,22 @@
+name: Deploy to Shard Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy and restart application
+        uses: shard-cloud/action@main
+        with:
+          token: ${{ secrets.SHARD_CLOUD_API_KEY }}
+          commands: |
+            commit 5b061ec4-2c46-4506-b567-56c463f7a9d9
+            restart 5b061ec4-2c46-4506-b567-56c463f7a9d9

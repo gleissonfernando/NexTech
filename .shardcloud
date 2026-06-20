@@ -4,4 +4,5 @@ LANGUAGE=node
 MEMORY=1024
 VERSION=recommended
 SUBDOMAIN=ricardinho98
+MAIN=index.js
 CUSTOM_COMMAND=npm start
