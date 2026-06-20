@@ -577,7 +577,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         && isUserVisibleLog(log)
         && isSiteLogEnabled(log, settings)
       ) {
-        setLogs((current) => [log, ...current].slice(0, 50));
+        setLogs((current) => prependUniqueLog(current, log));
       }
     });
     socket.on("live:started", (event: LiveEvent) => {
@@ -2363,7 +2363,48 @@ function friendlyLog(log: LogEntry) {
 }
 
 function userVisibleLogs(logs: LogEntry[]) {
-  return logs.filter(isUserVisibleLog);
+  return uniqueLogs(logs.filter(isUserVisibleLog));
+}
+
+function prependUniqueLog(current: LogEntry[], log: LogEntry) {
+  return uniqueLogs([log, ...current]).slice(0, 50);
+}
+
+function uniqueLogs(logs: LogEntry[]) {
+  const seenIds = new Set<string>();
+  const seenRecentSignatures = new Set<string>();
+  const result: LogEntry[] = [];
+
+  for (const log of logs) {
+    if (seenIds.has(log.id)) {
+      continue;
+    }
+
+    const signature = recentLogSignature(log);
+    if (seenRecentSignatures.has(signature)) {
+      continue;
+    }
+
+    seenIds.add(log.id);
+    seenRecentSignatures.add(signature);
+    result.push(log);
+  }
+
+  return result;
+}
+
+function recentLogSignature(log: LogEntry) {
+  const createdAt = new Date(log.createdAt).getTime();
+  const bucket = Number.isFinite(createdAt) ? Math.floor(createdAt / 10_000) : 0;
+
+  return [
+    log.botId ?? "",
+    log.guildId,
+    log.userId ?? "",
+    log.type,
+    log.message,
+    bucket
+  ].join("|");
 }
 
 function isUserVisibleLog(log: LogEntry) {
