@@ -24,7 +24,7 @@ export function App() {
   } = useAuth();
   const path = window.location.pathname;
   const rouletteToken = rouletteTokenFromPath(path);
-  const routeError = path === "/auth/error" ? readAuthError() : null;
+  const routeError = readAuthError();
   const dashboardPath = isDashboardRoutePath(path);
   const devPanelPath = path === "/dev" || path.startsWith("/dev/");
   const protectedPanelPath = dashboardPath || devPanelPath;
@@ -44,12 +44,12 @@ export function App() {
       return;
     }
 
-    if (loading || !protectedPanelPath || error || auth) {
+    if (loading || !protectedPanelPath || error || routeError || auth) {
       return;
     }
 
     loginDiscord();
-  }, [auth, protectedPanelPath, error, loading, loginDiscord, rouletteToken]);
+  }, [auth, protectedPanelPath, error, loading, loginDiscord, routeError, rouletteToken]);
 
   if (rouletteToken) {
     return <GiveawayRoulettePage token={rouletteToken} />;
@@ -85,6 +85,11 @@ export function App() {
 
 function readAuthError() {
   const reason = new URLSearchParams(window.location.search).get("reason");
+  const authError = new URLSearchParams(window.location.search).get("authError");
+
+  if (authError === "denied") {
+    return "Voce nao esta liberado para acessar esta dashboard.";
+  }
 
   if (reason === "permission") {
     return "Sua conta foi autenticada, mas nao possui permissao suficiente para acesso administrativo.";

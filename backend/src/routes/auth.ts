@@ -44,9 +44,9 @@ function canonicalAuthUrl(path: string, query = "") {
   return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}/auth${path}${query}` : `/auth${path}${query}`;
 }
 
-function dashboardRedirectUrl(botSlug?: string | null) {
+function dashboardRedirectUrl(botSlug?: string | null, query = "") {
   const path = botSlug ? `${dashboardPath}/${encodeURIComponent(botSlug)}` : dashboardPath;
-  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}` : path;
+  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}${query}` : `${path}${query}`;
 }
 
 function errorRedirectUrl(reason: string) {
@@ -255,7 +255,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       req.session.discordRefreshToken = undefined;
       req.session.oauthState = undefined;
       await saveSession(req).catch(() => undefined);
-      return res.redirect(errorRedirectUrl("denied"));
+      return res.redirect(dashboardRedirectUrl(verifiedState.botSlug, "?authError=denied"));
     }
 
     const user = await withAuthTimeout("dashboard_user_save", saveDiscordUser(discordUser, tokens));
