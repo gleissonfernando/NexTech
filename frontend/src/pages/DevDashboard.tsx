@@ -21,7 +21,7 @@ import {
   Bell
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { DevPanel } from "../components/dev/DevPanel";
+import { DevPanel, type DevDashboardSection } from "../components/dev/DevPanel";
 import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -62,6 +62,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedGuildId, setSelectedGuildId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<DevView>(initialView);
+  const [activeDashboardSection, setActiveDashboardSection] = useState<DevDashboardSection>("connected");
 
   useEffect(() => {
     let mounted = true;
@@ -153,7 +154,12 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.14),transparent_34%),linear-gradient(180deg,#050506,#08080b_48%,#050505)] text-white lg:pl-72">
-      <DevSidebar activeView={activeView} onChangeView={handleChangeView} />
+      <DevSidebar
+        activeDashboardSection={activeDashboardSection}
+        activeView={activeView}
+        onChangeDashboardSection={setActiveDashboardSection}
+        onChangeView={handleChangeView}
+      />
       <header className="sticky top-0 z-20 border-b border-purple-500/15 bg-[#050505]/88 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl lg:px-8">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
@@ -204,10 +210,12 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
         {activeView === "bots" ? (
           <DevPanel
+            activeDashboardSection={activeDashboardSection}
             guilds={profile.guilds}
             onBotCreated={handleBotCreated}
             onBotDeleted={handleBotDeleted}
             onBotUpdated={handleBotUpdated}
+            onDashboardSectionChange={setActiveDashboardSection}
             onOpenView={(view, bot) => {
               if (view === "overview") window.location.replace(dashboardUrl(bot?.slug));
             }}
@@ -241,7 +249,17 @@ function devPathForView(view: DevView) {
   return "/dev";
 }
 
-function DevSidebar({ activeView, onChangeView }: { activeView: DevView; onChangeView: (view: DevView) => void }) {
+function DevSidebar({
+  activeDashboardSection,
+  activeView,
+  onChangeDashboardSection,
+  onChangeView
+}: {
+  activeDashboardSection: DevDashboardSection;
+  activeView: DevView;
+  onChangeDashboardSection: (section: DevDashboardSection) => void;
+  onChangeView: (view: DevView) => void;
+}) {
   const items: Array<{ icon: LucideIcon; id: DevView; label: string }> = [
     { icon: LayoutDashboard, id: "bots", label: "Dashboard" },
     { icon: Building2, id: "fivem", label: "FiveM" },
@@ -262,20 +280,58 @@ function DevSidebar({ activeView, onChangeView }: { activeView: DevView; onChang
       </div>
       <nav className="space-y-1">
         {items.map((item) => (
-          <button
-            className={[
-              "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
-              activeView === item.id
-                ? "bg-purple-500/20 text-white ring-1 ring-purple-400/35 shadow-[0_0_24px_rgba(124,58,237,0.16)]"
-                : "text-zinc-300 hover:bg-purple-500/10 hover:text-white hover:shadow-[0_0_22px_rgba(124,58,237,0.12)]"
-            ].join(" ")}
-            key={item.id}
-            onClick={() => onChangeView(item.id)}
-            type="button"
-          >
-            <item.icon className="h-4 w-4 text-purple-200 transition group-hover:text-white" />
-            {item.label}
-          </button>
+          <div key={item.id}>
+            <button
+              className={[
+                "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
+                activeView === item.id
+                  ? "bg-purple-500/20 text-white ring-1 ring-purple-400/35 shadow-[0_0_24px_rgba(124,58,237,0.16)]"
+                  : "text-zinc-300 hover:bg-purple-500/10 hover:text-white hover:shadow-[0_0_22px_rgba(124,58,237,0.12)]"
+              ].join(" ")}
+              onClick={() => onChangeView(item.id)}
+              type="button"
+            >
+              <item.icon className="h-4 w-4 text-purple-200 transition group-hover:text-white" />
+              {item.label}
+            </button>
+
+            {item.id === "bots" && activeView === "bots" ? (
+              <div className="mt-2 space-y-1 pl-5">
+                <button
+                  className={[
+                    "group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition duration-300",
+                    activeDashboardSection === "connected"
+                      ? "bg-purple-500/15 text-white ring-1 ring-purple-400/25"
+                      : "text-zinc-400 hover:bg-purple-500/10 hover:text-white"
+                  ].join(" ")}
+                  onClick={() => {
+                    onChangeView("bots");
+                    onChangeDashboardSection("connected");
+                  }}
+                  type="button"
+                >
+                  <Boxes className="h-3.5 w-3.5 text-purple-200 transition group-hover:text-white" />
+                  Bots conectados
+                </button>
+                <button
+                  className={[
+                    "group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition duration-300",
+                    activeDashboardSection === "bot-menu"
+                      ? "bg-purple-500/15 text-white ring-1 ring-purple-400/25"
+                      : "text-zinc-400 hover:bg-purple-500/10 hover:text-white"
+                  ].join(" ")}
+                  onClick={() => {
+                    onChangeView("bots");
+                    onChangeDashboardSection("bot-menu");
+                  }}
+                  type="button"
+                >
+                  <Settings className="h-3.5 w-3.5 text-purple-200 transition group-hover:text-white" />
+                  Menu do Bot
+                </button>
+              </div>
+            ) : null}
+          </div>
         ))}
       </nav>
     </aside>

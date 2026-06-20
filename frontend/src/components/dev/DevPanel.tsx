@@ -223,10 +223,12 @@ const botMenuItems: BotMenuItem[] = [
 ];
 
 type DevPanelProps = {
+  activeDashboardSection?: DevDashboardSection;
   guilds?: DashboardMeGuild[];
   onBotCreated?: (bot: DashboardBot) => void;
   onBotDeleted?: (botId: string) => void;
   onBotUpdated?: (bot: DashboardBot) => void;
+  onDashboardSectionChange?: (section: DevDashboardSection) => void;
   selectedBotId?: string | null;
   selectedGuildId?: string | null;
   onSelectBot?: (botId: string | null) => void;
@@ -234,13 +236,15 @@ type DevPanelProps = {
   user?: AuthUser;
 };
 
-type DevDashboardSection = "connected" | "bot-menu";
+export type DevDashboardSection = "connected" | "bot-menu";
 
 export function DevPanel({
+  activeDashboardSection = "connected",
   guilds = [],
   onBotCreated,
   onBotDeleted,
   onBotUpdated,
+  onDashboardSectionChange,
   onOpenView,
   onSelectBot,
   selectedBotId: controlledSelectedBotId,
@@ -251,7 +255,6 @@ export function DevPanel({
   const [modules, setModules] = useState<DevModuleDefinition[]>(fallbackModules);
   const [internalSelectedBotId, setInternalSelectedBotId] = useState<string | null>(null);
   const [activeBotMenuId, setActiveBotMenuId] = useState<BotMenuId>("overview");
-  const [activeDashboardSection, setActiveDashboardSection] = useState<DevDashboardSection>("connected");
   const [form, setForm] = useState<CreateDevBotPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -523,7 +526,7 @@ export function DevPanel({
   }
 
   function openModuleSettings() {
-    setActiveDashboardSection("bot-menu");
+    onDashboardSectionChange?.("bot-menu");
     document.getElementById("dev-bot-module-settings")?.scrollIntoView({
       behavior: "smooth",
       block: "start"
@@ -650,42 +653,8 @@ export function DevPanel({
         )}
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
-        <aside className="h-fit rounded-lg border border-purple-500/15 bg-black/40 p-2">
-          <button
-            className={`flex h-12 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300 ${
-              activeDashboardSection === "connected"
-                ? "bg-purple-500/20 text-white ring-1 ring-purple-400/35 shadow-[0_0_24px_rgba(124,58,237,0.16)]"
-                : "text-zinc-300 hover:bg-purple-500/10 hover:text-white"
-            }`}
-            onClick={() => setActiveDashboardSection("connected")}
-            type="button"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <Bot className="h-4 w-4 shrink-0" />
-              <span className="truncate">Bots conectados</span>
-            </span>
-            <Badge variant="muted">{bots.length}</Badge>
-          </button>
-          <button
-            className={`mt-1 flex h-12 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300 ${
-              activeDashboardSection === "bot-menu"
-                ? "bg-purple-500/20 text-white ring-1 ring-purple-400/35 shadow-[0_0_24px_rgba(124,58,237,0.16)]"
-                : "text-zinc-300 hover:bg-purple-500/10 hover:text-white"
-            }`}
-            onClick={() => setActiveDashboardSection("bot-menu")}
-            type="button"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              <span className="truncate">Menu do Bot</span>
-            </span>
-            <Badge variant="muted">{selectedBot ? `${selectedBot.enabledModules.length}/${modules.length}` : "0"}</Badge>
-          </button>
-        </aside>
-
-        <div className="min-w-0">
-          {activeDashboardSection === "connected" ? (
+      <div className="min-w-0">
+        {activeDashboardSection === "connected" ? (
             <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]">
               <CardHeader className="p-5 sm:p-6">
                 <CardTitle className="text-white">Bots conectados</CardTitle>
@@ -765,8 +734,7 @@ export function DevPanel({
               </CardContent>
             </Card>
           )}
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
