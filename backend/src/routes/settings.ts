@@ -5,7 +5,7 @@ import { isBotRequest, requireAuth, requireAuthOrBot, requireBot } from "../midd
 import { emitRealtime } from "../realtime/events";
 import { isDashboardDevUserId } from "../config/devOwner";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
-import { canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
+import { authorizeBotRuntimeModule, canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
 import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import { getGuildSettings, LOG_CATEGORIES, MAX_AUTOMATIC_ROLES, updateGuildSettings } from "../services/settingsService";
@@ -136,6 +136,18 @@ settingsRouter.post("/bot/:guildId/self-bot-role", requireBot, async (req, res, 
       });
     }
 
+    const authorization = await authorizeBotRuntimeModule({
+      botId,
+      guildId,
+      moduleId: "safe-bot"
+    });
+
+    if (!authorization.allowed) {
+      return res.status(403).json({
+        message: authorization.reason
+      });
+    }
+
     const botToken = await getDevBotToken(botId);
 
     if (!(await areGuildAssignableRoles(guildId, [input.roleId], botToken))) {
@@ -183,6 +195,18 @@ settingsRouter.post("/bot/:guildId/safe-bot-setup", requireBot, async (req, res,
     if (!guildId) {
       return res.status(400).json({
         message: "guildId obrigatorio."
+      });
+    }
+
+    const authorization = await authorizeBotRuntimeModule({
+      botId,
+      guildId,
+      moduleId: "safe-bot"
+    });
+
+    if (!authorization.allowed) {
+      return res.status(403).json({
+        message: authorization.reason
       });
     }
 
