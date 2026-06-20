@@ -44,8 +44,9 @@ function canonicalAuthUrl(path: string, query = "") {
   return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}/auth${path}${query}` : `/auth${path}${query}`;
 }
 
-function dashboardRedirectUrl() {
-  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${dashboardPath}` : dashboardPath;
+function dashboardRedirectUrl(botSlug?: string | null) {
+  const path = botSlug ? `${dashboardPath}/${encodeURIComponent(botSlug)}` : dashboardPath;
+  return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}` : path;
 }
 
 function errorRedirectUrl(reason: string) {
@@ -174,7 +175,10 @@ async function ensureBotGuildsLoaded() {
 
 authRouter.get("/discord", async (req, res) => {
   if (isApiAuthMount(req)) {
-    return res.redirect(canonicalAuthUrl("/discord"));
+    const queryIndex = req.originalUrl.indexOf("?");
+    const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : "";
+
+    return res.redirect(canonicalAuthUrl("/discord", query));
   }
 
   if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_OAUTH_REDIRECT_URI) {
@@ -274,7 +278,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     issueAuthCookies(res, req.session.user, false);
     await saveSession(req);
     console.info(`[auth] oauth: sessao temporaria criada para ${discordUser.id}.`);
-    return res.redirect(dashboardRedirectUrl());
+    return res.redirect(dashboardRedirectUrl(verifiedState.botSlug));
   } catch (error) {
     console.error("[auth] oauth: falha no callback:", error instanceof Error ? error.message : error);
     clearAuthCookies(res);
