@@ -8,12 +8,10 @@ import {
   getMissionToolsDashboard,
   getMissionToolsSettings,
   getMissionToolsUserPanel,
-  getMissionToolsUserToken,
   listActiveMissionToolsSettings,
   markMissionToolsTokenAuthFailure,
   requestMissionToolsPanelPublish,
   saveMissionToolsSettings,
-  saveMissionToolsToken,
   saveMissionToolsUserPanel,
   updateMissionToolsPanelMessageState
 } from "../services/missionToolsService";
@@ -116,6 +114,8 @@ const tokenAuthFailureSchema = z.object({
   source: z.string().max(80).nullable().optional(),
   statusCode: z.coerce.number().int().min(100).max(4999).nullable().optional()
 });
+const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
+  "Por seguranca, o Mission Tools nao aceita token de conta Discord. Use apenas recursos oficiais do bot/OAuth.";
 
 export const missionToolsRouter = Router();
 
@@ -195,11 +195,13 @@ missionToolsRouter.post("/bot/:guildId/users/:userId/token", requireBot, async (
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    const input = tokenSchema.parse(req.body);
+    tokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
+    void guildId;
+    void userId;
 
-    return res.json(await saveMissionToolsToken(guildId, botId, userId, input.token));
+    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
   } catch (error) {
     return next(error);
   }
@@ -238,15 +240,10 @@ missionToolsRouter.get("/bot/:guildId/users/:userId/token", requireBot, async (r
     const userId = snowflakeSchema.parse(req.params.userId);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
-    const token = await getMissionToolsUserToken(guildId, botId, userId);
+    void guildId;
+    void userId;
 
-    if (!token) {
-      return res.status(404).json({
-        message: "Token nao configurado."
-      });
-    }
-
-    return res.json(token);
+    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
   } catch (error) {
     return next(error);
   }
@@ -256,7 +253,7 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    const input = dashboardTokenSchema.parse(req.body);
+    dashboardTokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
 
@@ -266,10 +263,7 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
 
     await assertCanReadMissionTools(user, guildId, botId);
 
-    return res.json(await saveMissionToolsToken(guildId, botId, userId, input.token, {
-      username: input.username ?? null,
-      validateOwner: true
-    }));
+    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
   } catch (error) {
     return next(error);
   }
@@ -278,16 +272,13 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
 missionToolsRouter.post("/:guildId/me/token", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
-    const input = tokenSchema.parse(req.body);
+    tokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
 
     await assertCanReadMissionTools(user, guildId, botId);
 
-    return res.json(await saveMissionToolsToken(guildId, botId, user.discordId, input.token, {
-      username: user.globalName ?? user.username,
-      validateOwner: true
-    }));
+    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
   } catch (error) {
     return next(error);
   }

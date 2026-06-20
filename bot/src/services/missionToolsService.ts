@@ -64,6 +64,8 @@ const MAIN_VOICE_VALUE = "voice";
 const PANEL_ACCENT = 0x4b5563;
 const PANEL_REQUEST_CHECK_INTERVAL_MS = 15_000;
 const DM_REPLY_CLEANUP_DELAY_MS = 2_500;
+const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
+  "Por seguranca, o Mission Tools nao aceita token de conta Discord. Use apenas recursos oficiais do bot/OAuth; tokens pessoais nao devem ser enviados ao painel.";
 
 let serviceStarted = false;
 let panelRequestCheckRunning = false;
@@ -75,6 +77,7 @@ const cleanupControllers = new Map<string, AbortController>();
 const voiceSessions = new Map<string, { session: DiscordVoiceSession; token: string; tokenUpdatedAt: string }>();
 const richPresenceSessions = new Map<string, { session: DiscordRichPresenceSession; token: string; tokenUpdatedAt: string }>();
 const usernameCheckerSessions = new Map<string, DiscordUsernameChecker>();
+const missionRunVersions = new Map<string, number>();
 
 type MissionReplyInteraction = ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
 
@@ -260,7 +263,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
   }
 
   if (action === "token") {
-    await openTokenModal(interaction, guildId, scope);
+    await replySafely(interaction, USER_TOKEN_FEATURES_DISABLED_MESSAGE);
     return;
   }
 
@@ -303,7 +306,7 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   }
 
   if (modal === "token") {
-    await handleTokenModal(interaction, context, guildId, parts[4]);
+    await replySafely(interaction, USER_TOKEN_FEATURES_DISABLED_MESSAGE);
     return;
   }
 
@@ -343,54 +346,23 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
 async function handleMissionButton(interaction: ButtonInteraction, context: BotContext, guildId: string, action: string) {
   if (action === "start") {
     await deferMissionReply(interaction);
-    const token = await requireUserToken(interaction, context, guildId);
-    if (!token) return;
-
-    const queued = missionQueue.enqueue({
-      userId: sessionKey(guildId, interaction.user.id),
-      onCancelled: async (reason) => {
-        await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
-          missionDetail: reason,
-          missionStatus: "deactivated"
-        });
-      },
-      onFailed: async (reason) => {
-        await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
-          missionDetail: reason,
-          missionStatus: "error"
-        });
-      },
-      onQueued: async (position) => {
-        await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
-          currentMission: `Fila #${position}`,
-          missionDetail: "Aguardando execucao.",
-          missionStatus: "waiting",
-          username: displayUserName(interaction)
-        });
-      },
-      onRejected: async (reason) => {
-        await editMissionReply(interaction, reason);
-      },
-      run: async (signal) => {
-        try {
-          await runMissionFlow(token, async (update) => {
-            await updateMissionStatus(context, guildId, interaction.user.id, update);
-          }, signal);
-        } catch (error) {
-          await recordTokenAuthFailure(context, guildId, interaction.user.id, error, "mission", "mission");
-          throw error;
-        }
-      }
+    invalidateMissionRunVersion(guildId, interaction.user.id);
+    await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
+      currentMission: "Quests por token pessoal bloqueadas",
+      missionDetail: USER_TOKEN_FEATURES_DISABLED_MESSAGE,
+      missionStatus: "error",
+      progress: 0,
+      totalMissions: 0,
+      username: displayUserName(interaction)
     });
-    if (queued) {
-      await editMissionReply(interaction, "Mission System iniciado. Acompanhe pelo painel privado.");
-    }
+    await editMissionReply(interaction, USER_TOKEN_FEATURES_DISABLED_MESSAGE);
     return;
   }
 
   if (action === "deactivate") {
     await deferMissionReply(interaction);
     const cancelled = missionQueue.cancelUser(sessionKey(guildId, interaction.user.id), "Mission System desativado pelo usuario.");
+    invalidateMissionRunVersion(guildId, interaction.user.id);
     await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
       missionDetail: cancelled ? "Operacao cancelada." : "Nenhuma operacao em andamento.",
       missionStatus: "deactivated",
@@ -759,51 +731,6 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
   }
 }
 
-async function openTokenModal(interaction: ButtonInteraction, guildId: string, scope: string) {
-  const modal = new ModalBuilder()
-    .setCustomId(`${PREFIX}:modal:token:${guildId}:${scope}`)
-    .setTitle("Token do Mission Tools")
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("mission_tools_token")
-          .setLabel("Token autorizado")
-          .setMaxLength(4000)
-          .setMinLength(10)
-          .setPlaceholder("Cole o token sem Bot ou Bearer")
-          .setRequired(true)
-          .setStyle(TextInputStyle.Paragraph)
-      )
-    );
-
-  await interaction.showModal(modal);
-}
-
-async function handleTokenModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string, scope?: string) {
-  await deferMissionReply(interaction);
-  const token = interaction.fields.getTextInputValue("mission_tools_token").trim();
-  const validationError = validateTokenInput(token);
-
-  if (validationError) {
-    await editMissionReply(interaction, validationError);
-    return;
-  }
-
-  try {
-    const saved = await context.api.saveMissionToolsToken(guildId, interaction.user.id, token);
-    const panelType = panelTypeFromScope(scope);
-
-    await editOrCreateDmPanel(context, guildId, interaction.user.id, panelType);
-    await editMissionReply(interaction,
-      saved.tokenLast4
-        ? `Token salvo e validado. Final: ****${saved.tokenLast4}.`
-        : "Token salvo e validado."
-    );
-  } catch (error) {
-    await editMissionReply(interaction, readRequestErrorMessage(error) ?? "Nao foi possivel salvar o token. Verifique o valor e tente novamente.");
-  }
-}
-
 async function handleClearTargetModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
   await deferMissionReply(interaction);
   const targetUserId = interaction.fields.getTextInputValue("clear_target_user_id").trim();
@@ -933,8 +860,10 @@ async function updateUserAndPanel(context: BotContext, guildId: string, userId: 
 }
 
 async function requireUserToken(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, guildId: string) {
-  const record = await requireUserTokenRecord(interaction, context, guildId);
-  return record?.token ?? null;
+  void context;
+  void guildId;
+  await editReplySafely(interaction, USER_TOKEN_FEATURES_DISABLED_MESSAGE);
+  return null;
 }
 
 async function requireUserTokenRecord(
@@ -942,18 +871,10 @@ async function requireUserTokenRecord(
   context: BotContext,
   guildId: string
 ): Promise<MissionToolsTokenResponse | null> {
-  try {
-    const record = await context.api.getMissionToolsToken(guildId, interaction.user.id);
-    if (record.tokenStatus !== "connected") {
-      await editReplySafely(interaction, tokenStatusMessage(record.tokenStatus, record.invalidReason));
-      return null;
-    }
-
-    return record;
-  } catch (error) {
-    await editReplySafely(interaction, readRequestErrorMessage(error) ?? "Token invalido ou ausente. Use Configurar Token no painel.");
-    return null;
-  }
+  void context;
+  void guildId;
+  await editReplySafely(interaction, USER_TOKEN_FEATURES_DISABLED_MESSAGE);
+  return null;
 }
 
 async function recordTokenAuthFailure(
@@ -982,18 +903,6 @@ async function recordTokenAuthFailure(
   }
 
   return true;
-}
-
-function tokenStatusMessage(status: string, reason?: string | null) {
-  if (status === "expired") {
-    return reason ?? "Token expirado ou revogado. Use Configurar Token no painel.";
-  }
-
-  if (status === "invalid") {
-    return reason ?? "Token invalido. Use Configurar Token no painel.";
-  }
-
-  return "Token nao configurado. Use Configurar Token no painel do Mission Tools.";
 }
 
 async function fetchVoiceOptionsSafely(
@@ -1042,6 +951,10 @@ async function publishRequestedMissionToolsPanel(client: Client, context: BotCon
 
   panelPublishPromises.set(key, next);
   return next;
+}
+
+export async function publishConfiguredMissionToolsPanel(client: Client, context: BotContext, guildId: string) {
+  return publishRequestedMissionToolsPanel(client, context, guildId);
 }
 
 async function publishMissionToolsPanel(client: Client, context: BotContext, guildId: string) {
@@ -1156,7 +1069,7 @@ function buildClearPanelPayload(record: MissionToolsUserPanel) {
   );
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     button(`${PREFIX}:clear:start:${record.guildId}`, "Start", ButtonStyle.Secondary),
-    button(`${PREFIX}:clear:token:${record.guildId}`, "Configurar Token", ButtonStyle.Secondary),
+    button(`${PREFIX}:clear:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
     button(`${PREFIX}:clear:deactivate:${record.guildId}`, "Deactivate", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
@@ -1181,7 +1094,7 @@ function buildClearPanelPayload(record: MissionToolsUserPanel) {
 function buildMissionPanelPayload(record: MissionToolsUserPanel) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     button(`${PREFIX}:mission:start:${record.guildId}`, "Start", ButtonStyle.Secondary),
-    button(`${PREFIX}:mission:token:${record.guildId}`, "Configurar Token", ButtonStyle.Secondary),
+    button(`${PREFIX}:mission:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
     button(`${PREFIX}:mission:deactivate:${record.guildId}`, "Deactivate", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
@@ -1191,7 +1104,7 @@ function buildMissionPanelPayload(record: MissionToolsUserPanel) {
     .addTextDisplayComponents(text(
       `**System:** Mission System\n`
       + `**Status:** ${statusLabel(record.missionStatus)}\n`
-      + `**Configured Token:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}\n`
+      + `**Token:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}\n`
       + `**Current Mission:** ${record.currentMission ?? "No mission in progress"}\n`
       + `**Detail:** ${record.missionDetail ?? "No recent event"}\n`
       + `**Progress:** ${Math.round(record.progress)}%\n`
@@ -1205,7 +1118,7 @@ function buildMissionPanelPayload(record: MissionToolsUserPanel) {
 
 function buildVoicePanelPayload(record: MissionToolsUserPanel, options: PanelRenderOptions = {}) {
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(`${PREFIX}:voice:token:${record.guildId}`, "Configurar Token", ButtonStyle.Secondary),
+    button(`${PREFIX}:voice:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
     button(`${PREFIX}:voice:load:${record.guildId}`, "Buscar canais", ButtonStyle.Secondary),
     button(`${PREFIX}:voice:manual:${record.guildId}`, "IDs manuais", ButtonStyle.Secondary),
     button(`${PREFIX}:voice:start:${record.guildId}`, "Conectar", ButtonStyle.Secondary),
@@ -1257,7 +1170,7 @@ function buildRichPresencePanelPayload(record: MissionToolsUserPanel) {
     button(`${PREFIX}:rich:config:${record.guildId}`, "Editar textos", ButtonStyle.Primary),
     button(`${PREFIX}:rich:button:${record.guildId}`, "Botao", ButtonStyle.Secondary),
     button(`${PREFIX}:rich:advanced:${record.guildId}`, "Avancado", ButtonStyle.Secondary),
-    button(`${PREFIX}:rich:token:${record.guildId}`, "Configurar Token", ButtonStyle.Secondary)
+    button(`${PREFIX}:rich:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
     .setAccentColor(PANEL_ACCENT)
@@ -1622,35 +1535,9 @@ function durationLabel(value?: string | null) {
 }
 
 function tokenLabel(tokenConfigured: boolean, status?: string | null) {
-  if (status === "connected") return "Connected";
-  if (status === "invalid") return "Invalid Token";
-  if (status === "expired") return "Expired Token";
-  if (status === "disconnected") return "Disconnected";
-  return tokenConfigured ? "Configurado" : "Nao configurado";
-}
-
-function validateTokenInput(token: string) {
-  if (!token) {
-    return "Informe um token antes de salvar.";
-  }
-
-  if (token.length < 10 || token.length > 4000) {
-    return "Token fora do tamanho permitido.";
-  }
-
-  if (/[\s\x00-\x1f\x7f]/.test(token)) {
-    return "Token invalido: remova espacos ou quebras de linha.";
-  }
-
-  if (/^(Bot|Bearer)\s+/i.test(token)) {
-    return "Cole apenas o token autorizado, sem prefixo Bot ou Bearer.";
-  }
-
-  if (!/^[A-Za-z0-9._-]+$/.test(token)) {
-    return "Token invalido: caracteres nao permitidos.";
-  }
-
-  return null;
+  void tokenConfigured;
+  void status;
+  return "Bloqueado por seguranca";
 }
 
 function codeValue(value?: string) {
@@ -1762,6 +1649,11 @@ async function userCanUsePanel(interaction: StringSelectMenuInteraction, setting
 
 function sessionKey(guildId: string, userId: string) {
   return `${env.DASHBOARD_BOT_ID || "bot"}:${guildId}:${userId}`;
+}
+
+function invalidateMissionRunVersion(guildId: string, userId: string) {
+  const key = sessionKey(guildId, userId);
+  missionRunVersions.set(key, (missionRunVersions.get(key) ?? 0) + 1);
 }
 
 function stopUserRuntimeSessions(guildId: string, userId: string) {

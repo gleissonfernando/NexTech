@@ -65,6 +65,7 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
 
   if (interaction.isButton() && customId === "emoji_clone_start") {
     await interaction.reply({
+      content: "O formulario vai pedir o servidor de origem, seu ID do Discord e o servidor destino. Nunca envie token de usuario Discord.",
       components: [
         new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
           new StringSelectMenuBuilder()
@@ -92,8 +93,24 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("source")
-            .setLabel("ID do servidor ou emoji/link")
-            .setPlaceholder("Cole o ID do servidor ou o emoji personalizado.")
+            .setLabel("Servidor origem (ID) ou emoji/link")
+            .setPlaceholder("Coloque o ID do servidor para copiar os emojis")
+            .setRequired(true)
+            .setStyle(TextInputStyle.Short)
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId("actorDiscordId")
+            .setLabel("Seu ID do Discord")
+            .setPlaceholder("Cole o ID da sua conta Discord, nunca o token")
+            .setRequired(true)
+            .setStyle(TextInputStyle.Short)
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId("destinationGuildId")
+            .setLabel("Servidor destino (ID)")
+            .setPlaceholder("Coloque o ID do servidor que recebera os emojis")
             .setRequired(true)
             .setStyle(TextInputStyle.Short)
         ),
@@ -122,11 +139,63 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
 
     const mode = normalizeMode(customId.split(":")[1]);
     const source = interaction.fields.getTextInputValue("source").trim();
+    const actorDiscordId = interaction.fields.getTextInputValue("actorDiscordId").trim();
+    if (!/^\d{5,32}$/.test(actorDiscordId)) {
+      await interaction.reply({
+        content: "Informe um ID de Discord valido. Nao envie token de usuario.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    if (actorDiscordId !== interaction.user.id) {
+      await interaction.reply({
+        content: "O ID do Discord informado precisa ser o mesmo usuario que iniciou a clonagem.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    const destinationGuildId = interaction.fields.getTextInputValue("destinationGuildId").trim();
+    if (!/^\d{5,32}$/.test(destinationGuildId)) {
+      await interaction.reply({
+        content: "Informe um ID de servidor destino valido.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    if (destinationGuildId !== interaction.guild.id) {
+      await interaction.reply({
+        content: "Por seguranca, o servidor destino precisa ser o mesmo servidor onde este painel foi usado.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    if (looksLikeDiscordUserToken(source)) {
+      await interaction.reply({
+        content: "Nao envie token de usuario Discord. Por seguranca, use apenas o ID do servidor de origem ou o emoji/link.",
+        ephemeral: true
+      });
+      return true;
+    }
+
     const prefix = sanitizeName(interaction.fields.getTextInputValue("prefix") || settings.emojiCloneDefaultPrefix || "");
+    const sourceGuildId = /^\d{5,32}$/.test(source) ? source : null;
+
+    if (sourceGuildId && !context.client.guilds.cache.has(sourceGuildId)) {
+      await interaction.reply({
+        content: "O bot precisa estar no servidor Discord de origem para clonar os emojis por ID.",
+        ephemeral: true
+      });
+      return true;
+    }
+
     const candidates = await resolveCandidates(context, source, mode, settings);
 
     if (!candidates.length) {
-      await interaction.reply({ content: "Nenhum emoji acessivel foi encontrado para essa entrada.", ephemeral: true });
+      await interaction.reply({ content: "Nenhum emoji acessivel foi encontrado. Use o ID de um servidor onde o bot esta presente ou cole um emoji/link valido.", ephemeral: true });
       return true;
     }
 
@@ -193,7 +262,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
       accent_color: 0x0f1015,
       components: [
         { type: 10, content: "# Sistema de Clonagem de Emojis\nUse este painel para clonar emojis para este servidor de forma rapida e organizada." },
-        { type: 10, content: "Escolha abaixo como deseja clonar os emojis:\n- Clonar por ID do servidor\n- Clonar por link/codigo de emoji\n- Clonar todos os emojis disponiveis\n- Ver relatorio da ultima clonagem\n- Respeitar logs e permissoes do board" },
+        { type: 10, content: "Escolha abaixo como deseja clonar os emojis:\n- Informar o servidor Discord de origem\n- Informar seu ID do Discord no formulario\n- Informar o servidor destino deste painel\n- Clonar por link/codigo de emoji\n- Clonar todos os emojis disponiveis\n- Respeitar logs e permissoes do board\n\nSeguranca: nunca informe token de usuario Discord." },
         { type: 14, divider: true, spacing: 1 },
         {
           type: 1,
@@ -427,6 +496,11 @@ async function replyNotice(interaction: Interaction, message: string) {
 
 function normalizeMode(value: string | undefined): CloneMode {
   return value === "static" || value === "animated" || value === "single" ? value : "all";
+}
+
+function looksLikeDiscordUserToken(value: string) {
+  const normalized = value.trim();
+  return /^mfa\.[\w-]{20,}$/i.test(normalized) || /^[\w-]{20,}\.[\w-]{6,}\.[\w-]{20,}$/i.test(normalized);
 }
 
 function sanitizeName(value: string) {

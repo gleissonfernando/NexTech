@@ -682,7 +682,7 @@ export async function markMissionToolsTokenAuthFailure(
   );
   const user = await saveMissionToolsUserPanel(guildId, botId, userId, {
     currentMission: tokenStatus === "expired" ? "Token expirado" : "Token invalido",
-    missionDetail: "Use Configurar Token no painel Mission Tools para continuar.",
+    missionDetail: "Token de usuario Discord bloqueado por seguranca.",
     missionStatus: "error",
     richPresenceStatus: "inactive",
     voiceStatus: "disconnected"
@@ -1071,11 +1071,11 @@ function tokenStatusFromAuthFailure(statusCode: number | null, reason: string | 
 
 function tokenStatusReason(status: MongoMissionToolsTokenStatus) {
   if (status === "expired") {
-    return "Token expirado ou revogado. Use Configurar Token no painel Mission Tools.";
+    return "Token expirado ou revogado. Tokens de usuario Discord estao bloqueados por seguranca.";
   }
 
   if (status === "invalid") {
-    return "Token rejeitado pelo Discord. Use Configurar Token no painel Mission Tools.";
+    return "Token rejeitado pelo Discord. Tokens de usuario Discord estao bloqueados por seguranca.";
   }
 
   return "Token desconectado.";
@@ -1120,7 +1120,7 @@ async function validateDiscordUserToken(token: string) {
   if (response.status !== 200 || !response.data?.id) {
     const tokenStatus = tokenStatusFromAuthFailure(response.status, null);
     const message = tokenStatus === "expired"
-      ? "Token expirado ou revogado. Gere/conecte um novo token."
+      ? "Token expirado ou revogado. Tokens de usuario Discord estao bloqueados por seguranca."
       : "Token do usuario invalido. Verifique e tente novamente.";
 
     throw Object.assign(createMissionError(message, 400), {

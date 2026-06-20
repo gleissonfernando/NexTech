@@ -3,7 +3,7 @@ import {
   Activity,
   CheckCircle2,
   Hash,
-  KeyRound,
+  LockKeyhole,
   Loader2,
   MessageSquareText,
   MonitorPlay,
@@ -16,11 +16,9 @@ import {
   Volume2
 } from "lucide-react";
 import {
-  deleteMissionToolsMyToken,
   getMissionTools,
   getMissionToolsOptions,
   publishMissionToolsPanel,
-  saveMissionToolsMyToken,
   saveMissionToolsSettings,
 } from "../../lib/api";
 import type {
@@ -55,7 +53,7 @@ const featureDefinitions: Array<{
   {
     id: "mission",
     label: "Mission System",
-    description: "Automacao de missoes/quests e progresso por usuario."
+    description: "Painel privado com status, fila e progresso. Quests por token pessoal ficam bloqueadas."
   },
   {
     id: "clear",
@@ -115,9 +113,6 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [savingToken, setSavingToken] = useState(false);
-  const [disconnectingToken, setDisconnectingToken] = useState(false);
-  const [tokenValue, setTokenValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
@@ -128,11 +123,6 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
   );
   const tokenStatus = currentUserPanel?.tokenStatus ?? "disconnected";
   const tokenStatusInfo = tokenStatusDefinition(tokenStatus);
-  const tokenActionLabel = tokenStatus === "connected"
-    ? "Substituir token"
-    : tokenStatus === "disconnected"
-      ? "Conectar token"
-      : "Reconectar token";
 
   useEffect(() => {
     let mounted = true;
@@ -280,58 +270,6 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
     }
   }
 
-  async function handleSaveUserToken() {
-    if (!botId || !guild) return;
-
-    const token = tokenValue.trim();
-
-    const tokenFormatError = validateTokenInput(token);
-    if (tokenFormatError) {
-      setMessage(tokenFormatError);
-      return;
-    }
-
-    setSavingToken(true);
-    setMessage(null);
-
-    try {
-      const saved = await saveMissionToolsMyToken(guild.id, botId, { token });
-      const missionTools = await getMissionTools(guild.id, botId);
-
-      setSettings(missionTools.settings);
-      setStats(missionTools.stats);
-      setUsers(missionTools.users);
-      setTokenValue("");
-      setMessage(`Token conectado para ${saved.user.username ?? user.globalName ?? user.username}.`);
-    } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o seu token.");
-    } finally {
-      setSavingToken(false);
-    }
-  }
-
-  async function handleDisconnectUserToken() {
-    if (!botId || !guild) return;
-
-    setDisconnectingToken(true);
-    setMessage(null);
-
-    try {
-      await deleteMissionToolsMyToken(guild.id, botId);
-      const missionTools = await getMissionTools(guild.id, botId);
-
-      setSettings(missionTools.settings);
-      setStats(missionTools.stats);
-      setUsers(missionTools.users);
-      setTokenValue("");
-      setMessage("Token desconectado. Voce pode conectar outro quando quiser.");
-    } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel desconectar o seu token.");
-    } finally {
-      setDisconnectingToken(false);
-    }
-  }
-
   if (!canUse) {
     return (
       <Card>
@@ -441,7 +379,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Metric icon={Users} label="Usuarios com painel" value={String(stats.configuredUsers)} />
-            <Metric icon={KeyRound} label="Tokens configurados" value={String(stats.usersWithToken)} />
+            <Metric icon={LockKeyhole} label="Tokens bloqueados" value="Seguro" />
             <Metric icon={Activity} label="Missoes rodando" value={String(stats.runningMissions)} />
             <Metric icon={Volume2} label="Voz ativa" value={String(stats.activeVoiceSessions)} />
             <Metric icon={Sparkles} label="Rich ativo" value={String(stats.activeRichPresence)} />
@@ -451,10 +389,10 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
           <Card className="hover:translate-y-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-zinc-300" />
-                Gerenciamento do token
+                <LockKeyhole className="h-5 w-5 text-zinc-300" />
+                Tokens de usuario bloqueados
               </CardTitle>
-              <CardDescription>Conecte, reconecte ou substitua o token usado pelos modulos Mission, Clean, Voice e Rich Presence.</CardDescription>
+              <CardDescription>O Mission Tools nao coleta token de conta Discord. Use apenas o bot e fluxos oficiais de OAuth/permissoes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
@@ -467,7 +405,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
                   <Badge variant={tokenStatusInfo.variant}>{tokenStatusInfo.label}</Badge>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
-                  <span>Token: {currentUserPanel?.tokenLast4 ? `****${currentUserPanel.tokenLast4}` : "Nao configurado"}</span>
+                  <span>Token: bloqueado por seguranca</span>
                   <span>Ultima validacao: {formatOptionalDate(currentUserPanel?.tokenLastValidatedAt)}</span>
                   <span>Atualizado: {formatOptionalDate(currentUserPanel?.tokenUpdatedAt)}</span>
                   <span>Status: {tokenStatusInfo.label}</span>
@@ -478,33 +416,8 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
                   {currentUserPanel?.tokenInvalidReason ?? "A autenticacao do token falhou. Reconecte para continuar usando os modulos."}
                 </div>
               ) : null}
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-200">Token autorizado</span>
-                <input
-                  autoComplete="off"
-                  className="social-input h-12"
-                  disabled={savingToken || disconnectingToken}
-                  onChange={(event) => setTokenValue(event.target.value)}
-                  placeholder="Cole o seu token"
-                  type="password"
-                  value={tokenValue}
-                />
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button disabled={savingToken || disconnectingToken || !tokenValue.trim()} onClick={() => void handleSaveUserToken()}>
-                  {savingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                  {tokenActionLabel}
-                </Button>
-                {currentUserPanel?.tokenConfigured ? (
-                  <Button disabled={savingToken || disconnectingToken} onClick={() => void handleDisconnectUserToken()} variant="outline">
-                    {disconnectingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    Desconectar
-                  </Button>
-                ) : null}
-                <span className="text-xs text-zinc-500">O valor nao aparece depois de salvo.</span>
-              </div>
-              <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm text-zinc-400">
-                O backend valida se o token pertence ao seu Discord ID, bloqueia duplicados e guarda somente a versao criptografada.
+              <div className="rounded-lg border border-amber-900/70 bg-amber-950/30 p-3 text-sm text-amber-100">
+                Por seguranca, tokens pessoais do Discord nao podem ser salvos, enviados por DM ou usados para automacao de conta. Recursos que dependiam desse token ficam indisponiveis ate serem migrados para bot/OAuth oficial.
               </div>
             </CardContent>
           </Card>
@@ -739,30 +652,6 @@ function tokenStatusDefinition(status: MissionToolsTokenStatus): {
   };
 
   return definitions[status];
-}
-
-function validateTokenInput(token: string) {
-  if (!token) {
-    return "Informe um token antes de salvar.";
-  }
-
-  if (token.length < 10 || token.length > 4096) {
-    return "Token fora do tamanho permitido.";
-  }
-
-  if (/[\s\x00-\x1f\x7f]/.test(token)) {
-    return "Token invalido: remova espacos ou quebras de linha.";
-  }
-
-  if (/^(Bot|Bearer)\s+/i.test(token)) {
-    return "Cole apenas o token autorizado, sem prefixo Bot ou Bearer.";
-  }
-
-  if (!/^[A-Za-z0-9._-]+$/.test(token)) {
-    return "Token invalido: caracteres nao permitidos.";
-  }
-
-  return null;
 }
 
 function formatOptionalDate(value?: string | null) {

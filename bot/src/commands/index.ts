@@ -3,6 +3,7 @@ import { banCommand } from "./ban";
 import { clearCommand } from "./clear";
 import { emojiClonerCommand } from "./emojiCloner";
 import { gravarCommand } from "./gravar";
+import { missionPanelCommand } from "./missionPanel";
 import { pingCommand } from "./ping";
 import { serverClonerCommand } from "./serverCloner";
 import { ticketCommand } from "./ticket";
@@ -17,6 +18,7 @@ export function createCommandCollection() {
     clearCommand,
     emojiClonerCommand,
     gravarCommand,
+    missionPanelCommand,
     ticketCommand,
     serverClonerCommand
   ].forEach((command) => {
