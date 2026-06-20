@@ -182,7 +182,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
       </header>
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
-        <DevUserCard user={auth.user} canViewDev={profile.canViewDev} />
+        {activeView !== "bots" ? <DevUserCard user={auth.user} canViewDev={profile.canViewDev} /> : null}
 
         <div className="flex gap-2 overflow-x-auto lg:hidden">
           {[
