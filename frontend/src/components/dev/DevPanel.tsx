@@ -6,16 +6,21 @@ import {
   Circle,
   Copy,
   ExternalLink,
+  Gamepad2,
   Hash,
   LayoutDashboard,
+  Link2,
   Loader2,
+  MessageSquare,
   Power,
   ScrollText,
   Server,
   Settings,
   ShieldCheck,
+  Ticket,
   Trash2,
   Unplug,
+  UserCheck,
   Users
 } from "lucide-react";
 import {
@@ -79,6 +84,142 @@ const emptyForm: CreateDevBotPayload = {
   mainGuildId: ""
 };
 
+type BotMenuId =
+  | "overview"
+  | "settings"
+  | "moderation"
+  | "tickets"
+  | "verification"
+  | "logs"
+  | "economy"
+  | "discord"
+  | "fivem"
+  | "fivem-factions"
+  | "fivem-ammo"
+  | "fivem-orders"
+  | "fivem-finance"
+  | "fivem-production"
+  | "integrations";
+
+type BotMenuItem = {
+  id: BotMenuId;
+  label: string;
+  description: string;
+  icon: typeof Bot;
+  moduleIds: string[];
+  children?: BotMenuItem[];
+};
+
+const botMenuItems: BotMenuItem[] = [
+  {
+    id: "overview",
+    label: "Visao Geral",
+    description: "Resumo do bot selecionado",
+    icon: LayoutDashboard,
+    moduleIds: []
+  },
+  {
+    id: "settings",
+    label: "Configuracoes",
+    description: "Ajustes gerais do bot",
+    icon: Settings,
+    moduleIds: ["avisos", "mission-tools", "voice-recorder"]
+  },
+  {
+    id: "moderation",
+    label: "Moderacao",
+    description: "Ban, kick, warn e protecoes",
+    icon: ShieldCheck,
+    moduleIds: ["moderation", "safe-bot", "account-age-security"]
+  },
+  {
+    id: "tickets",
+    label: "Tickets",
+    description: "Atendimento e suporte",
+    icon: Ticket,
+    moduleIds: ["tickets"]
+  },
+  {
+    id: "verification",
+    label: "Verificacao",
+    description: "Entrada segura no servidor",
+    icon: UserCheck,
+    moduleIds: ["verification"]
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    description: "Eventos e auditoria",
+    icon: ScrollText,
+    moduleIds: ["logs"]
+  },
+  {
+    id: "economy",
+    label: "Economia",
+    description: "Sistemas economicos",
+    icon: Hash,
+    moduleIds: []
+  },
+  {
+    id: "discord",
+    label: "Discord",
+    description: "Cargos, boas-vindas e mensagens",
+    icon: MessageSquare,
+    moduleIds: ["roles", "welcome", "leave", "avisos"]
+  },
+  {
+    id: "fivem",
+    label: "FiveM",
+    description: "Modulos de RP e gestao",
+    icon: Gamepad2,
+    moduleIds: ["fivem"],
+    children: [
+      {
+        id: "fivem-factions",
+        label: "Faccoes",
+        description: "Faccoes e ausencias",
+        icon: Users,
+        moduleIds: ["fivem-factions", "fivem-absences", "fivem-fac"]
+      },
+      {
+        id: "fivem-ammo",
+        label: "Municoes",
+        description: "Controle de municoes",
+        icon: Hash,
+        moduleIds: ["fivem-ammo"]
+      },
+      {
+        id: "fivem-orders",
+        label: "Encomendas",
+        description: "Pedidos e entregas",
+        icon: Ticket,
+        moduleIds: ["fivem-orders"]
+      },
+      {
+        id: "fivem-finance",
+        label: "Financeiro",
+        description: "Caixa e financeiro",
+        icon: ScrollText,
+        moduleIds: ["fivem-finance"]
+      },
+      {
+        id: "fivem-production",
+        label: "Producao",
+        description: "Producao e corporacoes",
+        icon: Settings,
+        moduleIds: ["fivem-corporations"]
+      }
+    ]
+  },
+  {
+    id: "integrations",
+    label: "Integracoes",
+    description: "Lives, clips e redes",
+    icon: Link2,
+    moduleIds: ["live", "kick-integration", "clips", "kick-clips", "network", "x-monitor", "giveaway"]
+  }
+];
+
 type DevPanelProps = {
   guilds?: DashboardMeGuild[];
   onBotCreated?: (bot: DashboardBot) => void;
@@ -105,6 +246,7 @@ export function DevPanel({
   const [bots, setBots] = useState<DevBot[]>([]);
   const [modules, setModules] = useState<DevModuleDefinition[]>(fallbackModules);
   const [internalSelectedBotId, setInternalSelectedBotId] = useState<string | null>(null);
+  const [activeBotMenuId, setActiveBotMenuId] = useState<BotMenuId>("overview");
   const [form, setForm] = useState<CreateDevBotPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -185,6 +327,7 @@ export function DevPanel({
 
   function handleSelectBotId(botId: string | null) {
     setInternalSelectedBotId(botId);
+    setActiveBotMenuId("overview");
     onSelectBot?.(botId);
   }
 
@@ -513,31 +656,13 @@ export function DevPanel({
       </Card>
 
       {selectedBot ? (
-        <Card className="border-zinc-800/80 bg-zinc-950/75" id="dev-bot-module-settings">
-          <CardHeader className="p-5 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>Configuracoes de bot</CardTitle>
-                <CardDescription>Modulos visiveis na dashboard de {selectedBot.name}.</CardDescription>
-              </div>
-              <Badge variant="muted">{selectedBot.enabledModules.length}/{modules.length} ativos</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0">
-            <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-              <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
-              <div>
-                <p className="text-sm font-medium text-zinc-100">Acesso protegido</p>
-                <p className="text-xs text-zinc-500">Login Discord e usuario autorizado para este bot.</p>
-              </div>
-            </div>
-            <ModuleSwitchGrid
-              enabledModules={selectedBot.enabledModules}
-              modules={modules}
-              onToggle={(moduleId, checked) => void handleToggleModule(selectedBot, moduleId, checked)}
-            />
-          </CardContent>
-        </Card>
+        <BotModuleWorkspace
+          activeMenuId={activeBotMenuId}
+          bot={selectedBot}
+          modules={modules}
+          onSelectMenu={setActiveBotMenuId}
+          onToggle={(moduleId, checked) => void handleToggleModule(selectedBot, moduleId, checked)}
+        />
       ) : null}
     </div>
   );
@@ -766,6 +891,193 @@ function DevInput({
   );
 }
 
+function BotModuleWorkspace({
+  activeMenuId,
+  bot,
+  modules,
+  onSelectMenu,
+  onToggle
+}: {
+  activeMenuId: BotMenuId;
+  bot: DevBot;
+  modules: DevModuleDefinition[];
+  onSelectMenu: (menuId: BotMenuId) => void;
+  onToggle: (moduleId: string, checked: boolean) => void;
+}) {
+  const allMenuItems = flattenBotMenuItems(botMenuItems);
+  const activeMenu = allMenuItems.find((item) => item.id === activeMenuId) ?? botMenuItems[0];
+  const activeModules = activeMenu ? modulesForMenu(activeMenu, modules) : [];
+  const activeCount = activeModules.filter((module) => bot.enabledModules.includes(module.id)).length;
+
+  return (
+    <Card className="border-zinc-800/80 bg-zinc-950/75" id="dev-bot-module-settings">
+      <CardHeader className="p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Menu do Bot</CardTitle>
+            <CardDescription>Organize os sistemas de {bot.name} por area.</CardDescription>
+          </div>
+          <Badge variant="muted">{bot.enabledModules.length}/{modules.length} ativos</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
+        <div className="grid gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
+          <aside className="rounded-lg border border-zinc-900 bg-black/35 p-2">
+            <div className="mb-2 flex items-center gap-3 border-b border-zinc-900 px-2 pb-3">
+              <Avatar className="h-9 w-9 rounded-full border border-zinc-800" fallback={bot.name} src={bot.avatarUrl} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{bot.name}</p>
+                <p className="truncate text-xs text-zinc-500">{bot.mainGuildName || bot.mainGuildId}</p>
+              </div>
+            </div>
+            <nav className="space-y-1">
+              {botMenuItems.map((item) => (
+                <BotMenuButton
+                  activeMenuId={activeMenuId}
+                  item={item}
+                  key={item.id}
+                  modules={modules}
+                  onSelectMenu={onSelectMenu}
+                  selectedModules={bot.enabledModules}
+                />
+              ))}
+            </nav>
+          </aside>
+
+          <section className="min-w-0 rounded-lg border border-zinc-900 bg-black/25 p-4 sm:p-5">
+            {activeMenu ? (
+              <div className="mb-4 flex flex-col gap-3 border-b border-zinc-900 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-300">
+                    <activeMenu.icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold text-white">{activeMenu.label}</h3>
+                    <p className="text-sm text-zinc-500">{activeMenu.description}</p>
+                  </div>
+                </div>
+                <Badge variant="muted">{activeCount}/{activeModules.length} ativos</Badge>
+              </div>
+            ) : null}
+
+            {activeMenuId === "overview" ? (
+              <BotOverview bot={bot} modules={modules} />
+            ) : activeModules.length ? (
+              <ModuleSwitchSection
+                enabledModules={bot.enabledModules}
+                modules={activeModules}
+                onToggle={onToggle}
+                title={activeMenu?.label ?? "Sistemas"}
+              />
+            ) : (
+              <EmptyBotMenuCategory label={activeMenu?.label ?? "Categoria"} />
+            )}
+          </section>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BotMenuButton({
+  activeMenuId,
+  item,
+  modules,
+  onSelectMenu,
+  selectedModules
+}: {
+  activeMenuId: BotMenuId;
+  item: BotMenuItem;
+  modules: DevModuleDefinition[];
+  onSelectMenu: (menuId: BotMenuId) => void;
+  selectedModules: string[];
+}) {
+  const active = activeMenuId === item.id || Boolean(item.children?.some((child) => child.id === activeMenuId));
+  const count = countEnabledMenuModules(item, modules, selectedModules);
+  const total = modulesForMenu(item, modules, true).length;
+
+  return (
+    <div>
+      <button
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+          active ? "bg-[#5865f2]/15 text-white" : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-100"
+        }`}
+        onClick={() => onSelectMenu(item.id)}
+        type="button"
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {total ? <span className="text-xs text-zinc-500">{count}/{total}</span> : null}
+      </button>
+      {item.children && active ? (
+        <div className="ml-5 mt-1 space-y-1 border-l border-zinc-900 pl-2">
+          {item.children.map((child) => {
+            const childActive = activeMenuId === child.id;
+            const childModules = modulesForMenu(child, modules);
+            const childCount = childModules.filter((module) => selectedModules.includes(module.id)).length;
+
+            return (
+              <button
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition ${
+                  childActive ? "bg-zinc-800 text-white" : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200"
+                }`}
+                key={child.id}
+                onClick={() => onSelectMenu(child.id)}
+                type="button"
+              >
+                <child.icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{child.label}</span>
+                {childModules.length ? <span>{childCount}/{childModules.length}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefinition[] }) {
+  const activeModules = modules.filter((module) => bot.enabledModules.includes(module.id));
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <OverviewMetric label="Status" value={statusLabel(bot.status)} />
+      <OverviewMetric label="Modulos ativos" value={`${activeModules.length}/${modules.length}`} />
+      <OverviewMetric label="Servidor" value={bot.mainGuildName || bot.mainGuildId} />
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-4 sm:col-span-3">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
+          <div>
+            <p className="text-sm font-medium text-zinc-100">Acesso protegido</p>
+            <p className="text-xs text-zinc-500">Login Discord e usuario autorizado para este bot.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverviewMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-zinc-600">{label}</p>
+      <p className="mt-2 truncate text-sm font-semibold text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function EmptyBotMenuCategory({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-44 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-black/25 p-6 text-center">
+      <div>
+        <p className="text-sm font-semibold text-zinc-200">{label} ainda nao tem modulos cadastrados</p>
+        <p className="mt-1 text-sm text-zinc-500">Quando um sistema dessa area existir, ele aparece aqui.</p>
+      </div>
+    </div>
+  );
+}
+
 function ModuleSwitchGrid({
   enabledModules,
   modules,
@@ -829,6 +1141,23 @@ function ModuleSwitchSection({
       </div>
     </section>
   );
+}
+
+function flattenBotMenuItems(items: BotMenuItem[]): BotMenuItem[] {
+  return items.flatMap((item) => [item, ...(item.children ? flattenBotMenuItems(item.children) : [])]);
+}
+
+function modulesForMenu(item: BotMenuItem, modules: DevModuleDefinition[], includeChildren = false) {
+  const moduleIds = new Set([
+    ...item.moduleIds,
+    ...(includeChildren ? item.children?.flatMap((child) => child.moduleIds) ?? [] : [])
+  ]);
+
+  return modules.filter((module) => moduleIds.has(module.id));
+}
+
+function countEnabledMenuModules(item: BotMenuItem, modules: DevModuleDefinition[], selectedModules: string[]) {
+  return modulesForMenu(item, modules, true).filter((module) => selectedModules.includes(module.id)).length;
 }
 
 function isFiveMModule(moduleId: string) {
