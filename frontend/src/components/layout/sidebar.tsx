@@ -70,7 +70,7 @@ const navItems: NavItem[] = [
   { id: "logs", label: "Logs", icon: ScrollText, moduleId: "logs" },
   { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"] },
   { id: "notifications", label: "Notificacoes", icon: Bell },
-  { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["welcome", "leave", "roles", "tickets", "avisos", "network"] }
+  { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["welcome", "leave", "roles", "tickets", "avisos", "network", "emoji-cloner", "server-cloner"] }
 ];
 
 type SidebarProps = {

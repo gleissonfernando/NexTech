@@ -3,7 +3,9 @@ import { isBotModuleEnabled } from "../config/env";
 import { handleFivemFacInteraction } from "../services/fivemFacService";
 import { handleGiveawayInteraction } from "../services/giveawayService";
 import { blockInteractionIfMaintenance } from "../services/maintenanceService";
+import { handleEmojiCloneInteraction } from "../services/emojiCloneService";
 import { handleMissionToolsInteraction } from "../services/missionToolsService";
+import { handleServerCloneInteraction } from "../services/serverCloneService";
 import type { BotContext } from "../types";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
@@ -20,6 +22,14 @@ export async function handleInteractionCreate(interaction: Interaction, context:
   }
 
   if (await handleMissionToolsInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleEmojiCloneInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleServerCloneInteraction(interaction, context)) {
     return;
   }
 

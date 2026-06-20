@@ -28,9 +28,9 @@ export async function saveDiscordUser(user: DiscordUser, tokens: DiscordTokenRes
           avatar: user.avatar,
           avatarUrl,
           email,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          accessStatus: "pending",
+          accessToken: null,
+          refreshToken: null,
+          accessStatus: "allowed",
           lastLoginAt,
           updatedAt: now
         },
@@ -114,14 +114,32 @@ export async function updateStoredDiscordTokens(discordId: string, tokens: Disco
       },
       {
         $set: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
+          accessToken: null,
+          refreshToken: null,
           updatedAt: new Date()
         }
       }
     );
   } catch (error) {
     console.warn("[mongo] nao foi possivel atualizar token OAuth do usuario:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function clearStoredDiscordTokens(discordId: string) {
+  try {
+    const { users } = await getMongoCollections();
+    await users.updateOne(
+      { discordId },
+      {
+        $set: {
+          accessToken: null,
+          refreshToken: null,
+          updatedAt: new Date()
+        }
+      }
+    );
+  } catch (error) {
+    console.warn("[mongo] nao foi possivel limpar tokens OAuth do usuario:", error instanceof Error ? error.message : error);
   }
 }
 

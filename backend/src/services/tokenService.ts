@@ -212,10 +212,9 @@ function normalizeAvatarUrl(user: AuthSessionUser) {
   return getDiscordAvatarUrl(user.discordId, user.avatar);
 }
 
-function setAuthCookie(res: Response, name: string, value: string, maxAgeSeconds: number) {
+function setAuthCookie(res: Response, name: string, value: string, _maxAgeSeconds: number) {
   res.cookie(name, value, {
-    ...cookieOptions(),
-    maxAge: maxAgeSeconds * 1000
+    ...cookieOptions()
   });
 }
 

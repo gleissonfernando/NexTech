@@ -1383,6 +1383,33 @@ export class ApiClient {
     );
     return data;
   }
+
+  async recordEmojiCloneJob(input: {
+    guildId: string;
+    userId: string;
+    sourceGuildId?: string | null;
+    status: "pending" | "running" | "completed" | "cancelled";
+    total: number;
+    success: number;
+    failed: number;
+    prefix?: string | null;
+    createdAt?: string | null;
+    finishedAt?: string | null;
+    items: Array<{
+      originalEmojiId: string;
+      originalName: string;
+      newEmojiId?: string | null;
+      newName?: string | null;
+      animated: boolean;
+      status: "pending" | "success" | "failed";
+      errorReason?: string | null;
+    }>;
+  }) {
+    const { data } = await this.http.post("/emoji-cloner/bot/jobs", input, {
+      timeout: 12_000
+    });
+    return data;
+  }
 }
 
 function readAuthorizationResponse(value: unknown): BotCommandAuthorization | null {

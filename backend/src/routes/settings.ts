@@ -60,6 +60,13 @@ const settingsSchema = z.object({
   safeBotChannelId: z.string().nullable().optional(),
   safeBotRoleId: z.string().nullable().optional(),
   safeBotLogChannelId: z.string().nullable().optional(),
+  emojiCloneEnabled: z.boolean().optional(),
+  emojiCloneAllowedRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(50).optional(),
+  emojiCloneLogChannelId: z.string().nullable().optional(),
+  emojiCloneDefaultPrefix: z.string().max(24).nullable().optional(),
+  emojiCloneAllowAnimated: z.boolean().optional(),
+  emojiCloneMaxPerRun: z.coerce.number().int().min(1).max(100).optional(),
+  emojiCloneAllowedBotIds: z.array(z.string().regex(/^\d{5,32}$/)).max(25).optional(),
   verificationEnabled: z.boolean().optional(),
   verificationRoleId: z.string().nullable().optional(),
   verificationRoleIds: z.array(z.string()).optional(),
@@ -90,6 +97,7 @@ const ownerDevOnlySettingKeys = new Set<keyof SettingsInput>([
   "safeBotChannelId",
   "safeBotRoleId",
   "safeBotLogChannelId",
+  "emojiCloneAllowedBotIds",
   "verificationEnabled",
   "verificationRoleId",
   "verificationRoleIds",
@@ -644,6 +652,13 @@ async function canPatchSettings(
     safeBotChannelId: ["safe-bot"],
     safeBotRoleId: ["safe-bot"],
     safeBotLogChannelId: ["safe-bot"],
+    emojiCloneEnabled: ["emoji-cloner"],
+    emojiCloneAllowedRoleIds: ["emoji-cloner"],
+    emojiCloneLogChannelId: ["emoji-cloner"],
+    emojiCloneDefaultPrefix: ["emoji-cloner"],
+    emojiCloneAllowAnimated: ["emoji-cloner"],
+    emojiCloneMaxPerRun: ["emoji-cloner"],
+    emojiCloneAllowedBotIds: ["emoji-cloner"],
     verificationEnabled: ["verification"],
     verificationRoleId: ["verification"],
     verificationRoleIds: ["verification"],
@@ -709,7 +724,8 @@ async function validateGuildResources(
     input.logChannelId,
     input.accountAgeLogChannelId,
     input.safeBotChannelId,
-    input.safeBotLogChannelId
+    input.safeBotLogChannelId,
+    input.emojiCloneLogChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
 
   const textChannelChecks = await Promise.all(
@@ -761,7 +777,8 @@ async function validateGuildResources(
     input.twitchRoleId,
     input.boosterRoleId,
     input.safeBotRoleId,
-    input.verificationRoleId
+    input.verificationRoleId,
+    ...(input.emojiCloneAllowedRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId));
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
@@ -804,6 +821,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("verification") || key === "dashboardRolePermissions" || key === "dashboardUserPermissions")) return "permissions";
   if ([...keys].some((key) => key.startsWith("accountAge"))) return "account_age_security";
   if ([...keys].some((key) => key.startsWith("safeBot"))) return "self_bot";
+  if ([...keys].some((key) => key.startsWith("emojiClone"))) return "emoji_cloner";
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
@@ -843,6 +861,10 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
 
   if (Object.keys(input).some((key) => key.startsWith("safeBot"))) {
     return "Self Bot atualizado.";
+  }
+
+  if (Object.keys(input).some((key) => key.startsWith("emojiClone"))) {
+    return "Clonagem de emojis atualizada.";
   }
 
   if (input.ticketEnabled !== undefined) {

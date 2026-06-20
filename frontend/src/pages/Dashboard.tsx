@@ -18,6 +18,7 @@ import {
   Loader2,
   LockKeyhole,
   Mic2,
+  SmilePlus,
   Plug,
   Radio,
   ScrollText,
@@ -214,6 +215,20 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "voice-recorder"
   },
   {
+    id: "emoji-cloner",
+    title: "Clonagem de Emojis",
+    description: "Clona emojis de servidores acessiveis pelo bot com permissoes por cargo e bot autorizado.",
+    icon: SmilePlus,
+    view: "settings"
+  },
+  {
+    id: "server-cloner",
+    title: "Clonagem de Servidor",
+    description: "Clona somente a estrutura autorizada entre servidores onde o bot e o administrador estao presentes.",
+    icon: Server,
+    view: "settings"
+  },
+  {
     id: "safe-bot",
     title: "SelfBot Protection",
     description: "Centraliza protecao anti-spam, punicoes e logs do SelfBot.",
@@ -307,7 +322,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   moderation: "moderation"
 };
 
-const settingsModuleIds = new Set(["welcome", "leave", "roles", "tickets", "avisos", "network"]);
+const settingsModuleIds = new Set(["welcome", "leave", "roles", "tickets", "avisos", "network", "emoji-cloner", "server-cloner"]);
 
 export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardProps) {
   const [dashboardProfile, setDashboardProfile] = useState<DashboardMeResponse | null>(null);
@@ -826,6 +841,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "settings" ? (
           <SettingsView
             botId={activeBotId}
+            bots={panelBots}
             canManage={canManageDashboard}
             canManageOwnerDevModule={canManageOwnerDevModule}
             canManageModule={(moduleId) => canManageModule(selectedBot, moduleId, canManageDashboard)}
@@ -970,7 +986,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
   }
 
   if (bot.accessLevel === "premium") {
-    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "account-age-security", "safe-bot", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"].includes(moduleId);
+    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "account-age-security", "safe-bot", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"].includes(moduleId);
   }
 
   return false;
@@ -1326,6 +1342,7 @@ function ModerationView({
 
 function SettingsView({
   botId,
+  bots,
   canManage,
   canManageOwnerDevModule,
   canManageModule,
@@ -1340,6 +1357,7 @@ function SettingsView({
   viewerName
 }: {
   botId?: string | null;
+  bots: DashboardBot[];
   canManage: boolean;
   canManageOwnerDevModule: (moduleId: string) => boolean;
   canManageModule: (moduleId: string) => boolean;
@@ -1408,6 +1426,44 @@ function SettingsView({
         guild={guild}
         key="network"
       />
+    );
+  }
+
+  if (enabledModules.includes("emoji-cloner")) {
+    blocks.push(
+      <EmojiCloneSettingsPanel
+        botId={botId}
+        bots={bots}
+        canManage={canManageModule("emoji-cloner")}
+        guild={guild}
+        key="emoji-cloner"
+        loading={loading}
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+      />
+    );
+  }
+
+  if (enabledModules.includes("server-cloner")) {
+    blocks.push(
+      <Card key="server-cloner">
+        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
+              <Server className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold text-white">Clonagem de Servidor</h3>
+              <p className="mt-1 text-sm text-zinc-500">
+                Use /clonar-servidor no Discord. O relatorio sera enviado no canal geral de logs configurado neste servidor.
+              </p>
+            </div>
+          </div>
+          <Badge variant={canManageModule("server-cloner") ? "success" : "muted"}>
+            {canManageModule("server-cloner") ? "Liberado" : "Bloqueado"}
+          </Badge>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -1491,6 +1547,216 @@ function EntryLeaveManager({
         viewerName={viewerName}
       />
     </section>
+  );
+}
+
+function EmojiCloneSettingsPanel({
+  botId,
+  bots,
+  canManage,
+  guild,
+  loading,
+  onSettingsChange,
+  settings
+}: {
+  botId?: string | null;
+  bots: DashboardBot[];
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  loading: boolean;
+  onSettingsChange: (settings: GuildSettings) => void;
+  settings: GuildSettings | null;
+}) {
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!guild) {
+      setChannels([]);
+      setRoles([]);
+      return;
+    }
+
+    let mounted = true;
+    getGuildLiveOptions(guild.id, botId)
+      .then((options) => {
+        if (!mounted) return;
+        setChannels(options.channels);
+        setRoles(options.roles.map((role) => ({ id: role.id, name: role.name })));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setChannels([]);
+        setRoles([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, guild?.id]);
+
+  async function savePatch(patch: Partial<GuildSettings>) {
+    if (!guild || !settings || !canManage) return;
+
+    const previous = settings;
+    const optimistic = { ...settings, ...patch };
+
+    setError(null);
+    setSaving(true);
+    onSettingsChange(optimistic);
+
+    try {
+      const saved = await patchGuildSettings(guild.id, patch, botId);
+      onSettingsChange(saved);
+    } catch {
+      onSettingsChange(previous);
+      setError("Nao foi possivel salvar a clonagem de emojis. Confira as permissoes do bot.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleValue(values: string[], id: string) {
+    return values.includes(id) ? values.filter((value) => value !== id) : [...values, id];
+  }
+
+  if (!guild) {
+    return <EmptyState icon={SmilePlus} title="Selecione um servidor para configurar a clonagem de emojis" />;
+  }
+
+  const disabled = !settings || !canManage || loading || saving;
+  const selectedBotIds = settings?.emojiCloneAllowedBotIds ?? [];
+  const allowedBots = bots.filter((bot) => !guild || bot.guildIds.includes(guild.id));
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>Clonagem de Emojis</CardTitle>
+            <CardDescription>Controle quem usa, onde registrar logs e quais bots podem executar o clone.</CardDescription>
+          </div>
+          <Switch
+            checked={Boolean(settings?.emojiCloneEnabled)}
+            disabled={disabled}
+            onCheckedChange={(checked) => void savePatch({ emojiCloneEnabled: checked })}
+          />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {error ? <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Canal de logs</span>
+            <select
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none"
+              disabled={disabled}
+              onChange={(event) => void savePatch({ emojiCloneLogChannelId: event.target.value || null })}
+              value={settings?.emojiCloneLogChannelId ?? ""}
+            >
+              <option value="">Sem canal</option>
+              {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+            </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Prefixo padrao</span>
+            <input
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-600"
+              disabled={disabled}
+              maxLength={24}
+              onBlur={(event) => void savePatch({ emojiCloneDefaultPrefix: event.target.value || null })}
+              placeholder="vortex_"
+              defaultValue={settings?.emojiCloneDefaultPrefix ?? ""}
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Limite por execucao</span>
+            <input
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none"
+              disabled={disabled}
+              max={100}
+              min={1}
+              onBlur={(event) => void savePatch({ emojiCloneMaxPerRun: Number(event.target.value) || 25 })}
+              type="number"
+              defaultValue={settings?.emojiCloneMaxPerRun ?? 25}
+            />
+          </label>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Permitir emojis animados</p>
+              <p className="text-xs text-zinc-500">Bloqueia GIFs quando desligado.</p>
+            </div>
+            <Switch
+              checked={settings?.emojiCloneAllowAnimated ?? true}
+              disabled={disabled}
+              onCheckedChange={(checked) => void savePatch({ emojiCloneAllowAnimated: checked })}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Bots autorizados</p>
+            <p className="mt-1 text-xs text-zinc-500">Se nenhum bot for marcado, qualquer bot com o modulo liberado pode executar.</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {allowedBots.map((bot) => {
+              const checked = selectedBotIds.includes(bot.clientId) || selectedBotIds.includes(bot.id);
+
+              return (
+                <button
+                  className={[
+                    "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition",
+                    checked ? "border-purple-500/40 bg-purple-500/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  ].join(" ")}
+                  disabled={disabled}
+                  key={bot.id}
+                  onClick={() => void savePatch({ emojiCloneAllowedBotIds: toggleValue(selectedBotIds, bot.clientId) })}
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-white">{bot.name}</span>
+                    <span className="block truncate text-xs text-zinc-500">{bot.clientId}</span>
+                  </span>
+                  <Badge variant={checked ? "success" : "muted"}>{checked ? "Liberado" : "Bloqueado"}</Badge>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-white">Cargos permitidos</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {roles.slice(0, 40).map((role) => {
+              const checked = settings?.emojiCloneAllowedRoleIds.includes(role.id) ?? false;
+
+              return (
+                <button
+                  className={[
+                    "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition",
+                    checked ? "border-emerald-500/40 bg-emerald-500/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  ].join(" ")}
+                  disabled={disabled}
+                  key={role.id}
+                  onClick={() => void savePatch({ emojiCloneAllowedRoleIds: toggleValue(settings?.emojiCloneAllowedRoleIds ?? [], role.id) })}
+                  type="button"
+                >
+                  <span className="truncate text-sm text-zinc-200">@{role.name}</span>
+                  <Badge variant={checked ? "success" : "muted"}>{checked ? "Permitido" : "Sem acesso"}</Badge>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

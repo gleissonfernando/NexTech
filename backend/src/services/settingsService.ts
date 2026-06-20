@@ -48,6 +48,13 @@ export type GuildSettingsDto = {
   safeBotChannelId: string | null;
   safeBotRoleId: string | null;
   safeBotLogChannelId: string | null;
+  emojiCloneEnabled: boolean;
+  emojiCloneAllowedRoleIds: string[];
+  emojiCloneLogChannelId: string | null;
+  emojiCloneDefaultPrefix: string | null;
+  emojiCloneAllowAnimated: boolean;
+  emojiCloneMaxPerRun: number;
+  emojiCloneAllowedBotIds: string[];
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
@@ -124,6 +131,8 @@ export const MAX_AUTOMATIC_ROLES = 2;
 const DEFAULT_ACCOUNT_AGE_MIN_DAYS = 10;
 const MAX_ACCOUNT_AGE_MIN_DAYS = 3_650;
 const DEFAULT_LOG_CATEGORIES = [...LOG_CATEGORIES];
+const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 25;
+const MAX_EMOJI_CLONE_MAX_PER_RUN = 100;
 
 export function defaultSettings(guildId: string, botId: string | null = null): GuildSettingsDto {
   return {
@@ -169,6 +178,13 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     safeBotChannelId: null,
     safeBotRoleId: null,
     safeBotLogChannelId: null,
+    emojiCloneEnabled: false,
+    emojiCloneAllowedRoleIds: [],
+    emojiCloneLogChannelId: null,
+    emojiCloneDefaultPrefix: null,
+    emojiCloneAllowAnimated: true,
+    emojiCloneMaxPerRun: DEFAULT_EMOJI_CLONE_MAX_PER_RUN,
+    emojiCloneAllowedBotIds: [],
     verificationEnabled: false,
     verificationRoleId: null,
     verificationRoleIds: [],
@@ -260,6 +276,12 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
   const accountAgeAllowedUserIds = "accountAgeAllowedUserIds" in input
     ? normalizeSnowflakes(input.accountAgeAllowedUserIds ?? [])
     : current.accountAgeAllowedUserIds;
+  const emojiCloneAllowedRoleIds = "emojiCloneAllowedRoleIds" in input
+    ? normalizeSnowflakes(input.emojiCloneAllowedRoleIds ?? [])
+    : current.emojiCloneAllowedRoleIds;
+  const emojiCloneAllowedBotIds = "emojiCloneAllowedBotIds" in input
+    ? normalizeSnowflakes(input.emojiCloneAllowedBotIds ?? [])
+    : current.emojiCloneAllowedBotIds;
   const discordLogCategories = "discordLogCategories" in input
     ? normalizeLogCategories(input.discordLogCategories)
     : current.discordLogCategories;
@@ -290,6 +312,20 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     safeBotLogChannelId: normalizeSnowflake(
       "safeBotLogChannelId" in input ? input.safeBotLogChannelId : current.safeBotLogChannelId
     ),
+    emojiCloneAllowedRoleIds,
+    emojiCloneLogChannelId: normalizeSnowflake(
+      "emojiCloneLogChannelId" in input ? input.emojiCloneLogChannelId : current.emojiCloneLogChannelId
+    ),
+    emojiCloneDefaultPrefix: normalizePrefix(
+      "emojiCloneDefaultPrefix" in input ? input.emojiCloneDefaultPrefix : current.emojiCloneDefaultPrefix
+    ),
+    emojiCloneMaxPerRun: clampInteger(
+      "emojiCloneMaxPerRun" in input ? input.emojiCloneMaxPerRun : current.emojiCloneMaxPerRun,
+      1,
+      MAX_EMOJI_CLONE_MAX_PER_RUN,
+      DEFAULT_EMOJI_CLONE_MAX_PER_RUN
+    ),
+    emojiCloneAllowedBotIds,
     autoRoleIds,
     welcomeTitle: normalizePanelText(
       "welcomeTitle" in input ? input.welcomeTitle : current.welcomeTitle,
@@ -403,6 +439,13 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           safeBotChannelId: next.safeBotChannelId,
           safeBotRoleId: next.safeBotRoleId,
           safeBotLogChannelId: next.safeBotLogChannelId,
+          emojiCloneEnabled: next.emojiCloneEnabled,
+          emojiCloneAllowedRoleIds: next.emojiCloneAllowedRoleIds,
+          emojiCloneLogChannelId: next.emojiCloneLogChannelId,
+          emojiCloneDefaultPrefix: next.emojiCloneDefaultPrefix,
+          emojiCloneAllowAnimated: next.emojiCloneAllowAnimated,
+          emojiCloneMaxPerRun: next.emojiCloneMaxPerRun,
+          emojiCloneAllowedBotIds: next.emojiCloneAllowedBotIds,
           verificationEnabled: next.verificationEnabled,
           verificationRoleId: next.verificationRoleId,
           verificationRoleIds: next.verificationRoleIds,
@@ -500,6 +543,18 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     safeBotChannelId: normalizeSnowflake(settings.safeBotChannelId),
     safeBotRoleId: normalizeSnowflake(settings.safeBotRoleId),
     safeBotLogChannelId: normalizeSnowflake(settings.safeBotLogChannelId),
+    emojiCloneEnabled: settings.emojiCloneEnabled ?? defaults.emojiCloneEnabled,
+    emojiCloneAllowedRoleIds: normalizeSnowflakes(settings.emojiCloneAllowedRoleIds ?? []),
+    emojiCloneLogChannelId: normalizeSnowflake(settings.emojiCloneLogChannelId),
+    emojiCloneDefaultPrefix: normalizePrefix(settings.emojiCloneDefaultPrefix),
+    emojiCloneAllowAnimated: settings.emojiCloneAllowAnimated ?? defaults.emojiCloneAllowAnimated,
+    emojiCloneMaxPerRun: clampInteger(
+      settings.emojiCloneMaxPerRun,
+      1,
+      MAX_EMOJI_CLONE_MAX_PER_RUN,
+      DEFAULT_EMOJI_CLONE_MAX_PER_RUN
+    ),
+    emojiCloneAllowedBotIds: normalizeSnowflakes(settings.emojiCloneAllowedBotIds ?? []),
     verificationEnabled: settings.verificationEnabled,
     verificationRoleId: verificationRoleIds[0] ?? null,
     verificationRoleIds,
@@ -620,6 +675,11 @@ function normalizeLogCategories(values: LogCategory[] | null | undefined) {
 function normalizeSnowflake(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized && /^\d{5,32}$/.test(normalized) ? normalized : null;
+}
+
+function normalizePrefix(value: string | null | undefined) {
+  const normalized = value?.trim().replace(/[^a-zA-Z0-9_]/g, "_").replace(/_+/g, "_").slice(0, 24);
+  return normalized || null;
 }
 
 function clampInteger(value: number | null | undefined, min: number, max: number, fallback: number) {

@@ -66,6 +66,13 @@ export type GuildSettings = {
   safeBotChannelId: string | null;
   safeBotRoleId: string | null;
   safeBotLogChannelId: string | null;
+  emojiCloneEnabled: boolean;
+  emojiCloneAllowedRoleIds: string[];
+  emojiCloneLogChannelId: string | null;
+  emojiCloneDefaultPrefix: string | null;
+  emojiCloneAllowAnimated: boolean;
+  emojiCloneMaxPerRun: number;
+  emojiCloneAllowedBotIds: string[];
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];

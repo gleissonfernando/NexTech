@@ -3,7 +3,14 @@ import { checkSiteAccess, getSession, logout as logoutRequest, verifyAccess } fr
 import { appUrl, dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Você não está liberado para acessar esta dashboard.";
+const AUTH_TIMEOUT_MS = 18_000;
+export type AuthStatus =
+  | "Conectando ao Discord..."
+  | "Validando usuário..."
+  | "Verificando liberação na dashboard..."
+  | "Acesso liberado."
+  | "Acesso negado.";
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);
@@ -12,6 +19,7 @@ export function useAuth() {
   const [checkingAccess, setCheckingAccess] = useState(false);
   const [accessValidation, setAccessValidation] = useState<AccessValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<AuthStatus>("Validando usuário...");
   const refreshId = useRef(0);
   const verifyInFlight = useRef(false);
 
@@ -20,26 +28,30 @@ export function useAuth() {
     refreshId.current = requestId;
     setLoading(true);
     setError(null);
+    setStatus("Validando usuário...");
 
     try {
-      const session = await getSession();
+      const session = await withTimeout(getSession(), AUTH_TIMEOUT_MS);
       if (refreshId.current !== requestId) {
         return;
       }
       setAuth(session);
       setAccessValidation(session.validation ?? null);
+      setStatus(session.access.verified ? "Acesso liberado." : "Verificando liberação na dashboard...");
 
       if (!session.access.verified) {
         setCheckingAccess(true);
-        void checkSiteAccess(dashboardSlugFromPath(window.location.pathname))
+        void withTimeout(checkSiteAccess(dashboardSlugFromPath(window.location.pathname)), AUTH_TIMEOUT_MS)
           .then((validation) => {
             if (refreshId.current === requestId) {
               setAccessValidation(validation);
+              setStatus(validation.allowed ? "Verificando liberação na dashboard..." : "Acesso negado.");
             }
           })
           .catch(() => {
             if (refreshId.current === requestId) {
               setAccessValidation(null);
+              setStatus("Acesso negado.");
             }
           })
           .finally(() => {
@@ -57,8 +69,12 @@ export function useAuth() {
       setAuth(null);
       setAccessValidation(null);
       setCheckingAccess(false);
+      setStatus("Acesso negado.");
+      const responseStatus = readResponseStatus(requestError);
       if (isTimeoutError(requestError)) {
-        setError("A sessao demorou para responder. Tente entrar novamente.");
+        setError("A sessão demorou para responder. Tente entrar novamente.");
+      } else if (responseStatus && responseStatus !== 401) {
+        setError(readRequestMessage(requestError) ?? "Não foi possível validar sua sessão.");
       }
     } finally {
       if (refreshId.current === requestId) {
@@ -68,7 +84,10 @@ export function useAuth() {
   }, []);
 
   const loginDiscord = useCallback(() => {
-    window.location.href = appUrl("/auth/discord");
+    setStatus("Conectando ao Discord...");
+    const botSlug = dashboardSlugFromPath(window.location.pathname);
+    const query = botSlug ? `?botSlug=${encodeURIComponent(botSlug)}` : "";
+    window.location.href = appUrl(`/auth/discord${query}`);
   }, []);
 
   const logout = useCallback(async () => {
@@ -86,11 +105,13 @@ export function useAuth() {
     verifyInFlight.current = true;
     setVerifying(true);
     setError(null);
+    setStatus("Verificando liberação na dashboard...");
 
     try {
-      const session = await verifyAccess(dashboardSlugFromPath(window.location.pathname));
+      const session = await withTimeout(verifyAccess(dashboardSlugFromPath(window.location.pathname)), AUTH_TIMEOUT_MS);
       setAuth(session);
       setAccessValidation(session.validation ?? null);
+      setStatus("Acesso liberado.");
       if (!isDashboardRoutePath(window.location.pathname)) {
         window.location.replace(dashboardUrl());
       }
@@ -98,9 +119,10 @@ export function useAuth() {
       const validation = readRequestValidation(requestError);
       setAccessValidation(validation);
       const rejectionMessage = validation?.rejectionReasons?.[0] ?? null;
+      setStatus("Acesso negado.");
       setError(
         isTimeoutError(requestError)
-          ? "A verificacao demorou para responder. Tente novamente."
+          ? "A verificação demorou para responder. Tente novamente."
           : rejectionMessage ?? readRequestMessage(requestError) ?? ACCESS_DENIED_MESSAGE
       );
     } finally {
@@ -122,9 +144,23 @@ export function useAuth() {
     loginDiscord,
     logout,
     refresh,
+    status,
     verify,
     verifying
   };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(Object.assign(new Error("Timeout da autenticação."), { code: "ECONNABORTED" }));
+    }, timeoutMs);
+
+    void promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout));
+  });
 }
 
 function isTimeoutError(error: unknown) {
@@ -138,6 +174,15 @@ function readRequestMessage(error: unknown) {
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+function readResponseStatus(error: unknown) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return null;
+  }
+
+  const response = (error as { response?: { status?: unknown } }).response;
+  return typeof response?.status === "number" ? response.status : null;
 }
 
 function readRequestValidation(error: unknown) {

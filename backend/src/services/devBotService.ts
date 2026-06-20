@@ -49,6 +49,8 @@ export const DEV_MODULES = [
   { id: "moderation", label: "Sistema de Moderacao" },
   { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
+  { id: "emoji-cloner", label: "Clonagem de Emojis" },
+  { id: "server-cloner", label: "Clonagem de Servidor" },
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "fivem", label: "FiveM" },

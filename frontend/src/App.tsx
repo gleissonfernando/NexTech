@@ -17,6 +17,8 @@ export function App() {
     loading,
     loginDiscord,
     logout,
+    refresh,
+    status,
     verify,
     verifying
   } = useAuth();
@@ -57,10 +59,6 @@ export function App() {
     return <LoadingScreen />;
   }
 
-  if (protectedPanelPath && !auth && !error) {
-    return <LoadingScreen />;
-  }
-
   if (!auth || !auth.access.verified) {
     return (
       <Login
@@ -70,7 +68,9 @@ export function App() {
         error={routeError ?? error}
         onLoginDiscord={loginDiscord}
         onLogout={logout}
+        onRetry={refresh}
         onVerify={verify}
+        status={routeError ? "Acesso negado." : status}
         verifying={verifying}
       />
     );
@@ -92,6 +92,10 @@ function readAuthError() {
 
   if (reason === "callback") {
     return "A resposta do Discord expirou ou nao corresponde a sua sessao. Tente autenticar novamente.";
+  }
+
+  if (reason === "denied") {
+    return "Você não está liberado para acessar esta dashboard.";
   }
 
   return "Nao foi possivel concluir a autenticacao Discord. Tente novamente.";

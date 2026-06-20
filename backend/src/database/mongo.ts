@@ -76,6 +76,13 @@ export type MongoGuildSettings = {
   safeBotChannelId?: string | null;
   safeBotRoleId?: string | null;
   safeBotLogChannelId?: string | null;
+  emojiCloneEnabled?: boolean;
+  emojiCloneAllowedRoleIds?: string[];
+  emojiCloneLogChannelId?: string | null;
+  emojiCloneDefaultPrefix?: string | null;
+  emojiCloneAllowAnimated?: boolean;
+  emojiCloneMaxPerRun?: number;
+  emojiCloneAllowedBotIds?: string[];
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds?: string[];
@@ -637,6 +644,33 @@ export type MongoVoiceRecording = {
   updatedAt: Date;
 };
 
+export type MongoEmojiCloneJob = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  userId: string;
+  sourceGuildId: string | null;
+  status: "pending" | "running" | "completed" | "cancelled";
+  total: number;
+  success: number;
+  failed: number;
+  prefix: string | null;
+  createdAt: Date;
+  finishedAt: Date | null;
+};
+
+export type MongoEmojiCloneItem = {
+  _id: string;
+  jobId: string;
+  originalEmojiId: string;
+  originalName: string;
+  newEmojiId: string | null;
+  newName: string | null;
+  animated: boolean;
+  status: "pending" | "success" | "failed";
+  errorReason: string | null;
+};
+
 export type MongoMissionToolsFeatureId =
   | "mission"
   | "clear"
@@ -1026,6 +1060,8 @@ export async function getMongoCollections() {
     imageAntiSpamIncidents: db.collection<MongoImageAntiSpamIncident>("image_anti_spam_incidents"),
     voiceRecorderSettings: db.collection<MongoVoiceRecorderSettings>("voice_recorder_settings"),
     voiceRecordings: db.collection<MongoVoiceRecording>("voice_recordings"),
+    emojiCloneJobs: db.collection<MongoEmojiCloneJob>("emoji_clone_jobs"),
+    emojiCloneItems: db.collection<MongoEmojiCloneItem>("emoji_clone_items"),
     missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
     missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
     missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
@@ -1099,6 +1135,7 @@ async function createMongoIndexes(db: Db) {
     ensureFivemFacIndexes(db),
     ensureImageAntiSpamIndexes(db),
     ensureVoiceRecorderIndexes(db),
+    ensureEmojiCloneIndexes(db),
     ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
     db.collection<MongoSocialNotification>("social_notifications").createIndex(
@@ -1488,6 +1525,15 @@ async function ensureVoiceRecorderIndexes(db: Db) {
         unique: true
       }
     )
+  ]);
+}
+
+async function ensureEmojiCloneIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoEmojiCloneJob>("emoji_clone_jobs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoEmojiCloneJob>("emoji_clone_jobs").createIndex({ botId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoEmojiCloneItem>("emoji_clone_items").createIndex({ jobId: 1 }),
+    db.collection<MongoEmojiCloneItem>("emoji_clone_items").createIndex({ jobId: 1, status: 1 })
   ]);
 }
 

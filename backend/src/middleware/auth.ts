@@ -6,7 +6,8 @@ import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsServ
 import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
 
 const VERIFIED_ACCESS_RECHECK_MS = 30 * 1000;
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Você não está liberado para acessar esta dashboard.";
+const AUTH_MIDDLEWARE_TIMEOUT_MS = 12_000;
 
 export function isBotRequest(req: Request) {
   const token = req.header("x-bot-token");
@@ -14,43 +15,51 @@ export function isBotRequest(req: Request) {
 }
 
 export async function requireAuthenticated(req: Request, res: Response, next: NextFunction) {
-  await ensureBotGuildsLoaded();
-  const auth = resolveAuthFromRequest(req, res);
+  try {
+    await withAuthMiddlewareTimeout("bot_guilds_refresh", ensureBotGuildsLoaded());
+    const auth = resolveAuthFromRequest(req, res);
 
-  if (!auth) {
-    return res.status(401).json({ message: "Sessao nao autenticada." });
-  }
+    if (!auth) {
+      return res.status(401).json({ message: "Sessao nao autenticada." });
+    }
 
-  req.session.user = auth.user;
-  if (auth.verified) {
-    req.session.verified = true;
+    req.session.user = auth.user;
+    if (auth.verified) {
+      req.session.verified = true;
+    }
+    res.locals.dashboardAuth = auth;
+    return next();
+  } catch (error) {
+    return next(error);
   }
-  res.locals.dashboardAuth = auth;
-  return next();
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  await ensureBotGuildsLoaded();
-  const auth = resolveAuthFromRequest(req, res);
+  try {
+    await withAuthMiddlewareTimeout("bot_guilds_refresh", ensureBotGuildsLoaded());
+    const auth = resolveAuthFromRequest(req, res);
 
-  if (!auth) {
-    return res.status(401).json({ message: "Sessao nao autenticada." });
+    if (!auth) {
+      return res.status(401).json({ message: "Sessao nao autenticada." });
+    }
+
+    if (!auth.verified) {
+      return res.status(403).json({ message: "Verificacao obrigatoria para acessar o painel." });
+    }
+
+    const freshAuth = await ensureVerifiedRoleAccess(req, res, auth);
+
+    if (!freshAuth) {
+      return res.status(403).json({ message: ACCESS_DENIED_MESSAGE });
+    }
+
+    req.session.user = freshAuth.user;
+    req.session.verified = freshAuth.verified;
+    res.locals.dashboardAuth = freshAuth;
+    return next();
+  } catch (error) {
+    return next(error);
   }
-
-  if (!auth.verified) {
-    return res.status(403).json({ message: "Verificacao obrigatoria para acessar o painel." });
-  }
-
-  const freshAuth = await ensureVerifiedRoleAccess(req, res, auth);
-
-  if (!freshAuth) {
-    return res.status(403).json({ message: ACCESS_DENIED_MESSAGE });
-  }
-
-  req.session.user = freshAuth.user;
-  req.session.verified = freshAuth.verified;
-  res.locals.dashboardAuth = freshAuth;
-  return next();
 }
 
 export function requireBot(req: Request, res: Response, next: NextFunction) {
@@ -92,14 +101,14 @@ async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: Dashb
     return auth;
   }
 
-  const validation = await evaluateDashboardAccess(auth.user, {
+  const validation = await withAuthMiddlewareTimeout("dashboard_access_recheck", evaluateDashboardAccess(auth.user, {
     discordAccessToken: req.session.discordAccessToken ?? null,
     discordRefreshToken: req.session.discordRefreshToken ?? null,
     onDiscordTokensRefreshed: (tokens) => {
       req.session.discordAccessToken = tokens.accessToken;
       req.session.discordRefreshToken = tokens.refreshToken ?? req.session.discordRefreshToken;
     }
-  });
+  }));
 
   if (!validation.allowed) {
     const deniedUser = createDeniedAccessUser(auth.user);
@@ -117,4 +126,18 @@ async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: Dashb
   req.session.accessValidatedAt = Date.now();
 
   return freshAuth;
+}
+
+function withAuthMiddlewareTimeout<T>(stage: string, promise: Promise<T>, timeoutMs = AUTH_MIDDLEWARE_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.warn(`[auth] middleware excedeu timeout na etapa ${stage}.`);
+      reject(Object.assign(new Error(`Timeout na autenticacao: ${stage}.`), { statusCode: 504 }));
+    }, timeoutMs);
+
+    void promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => clearTimeout(timeout));
+  });
 }

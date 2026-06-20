@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
-import { Bot, CheckCircle2, LogIn } from "lucide-react";
+import { Bot, CheckCircle2, LogIn, RotateCcw } from "lucide-react";
 import { Avatar } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import type { AccessValidationResult, AuthResponse } from "../types";
+import type { AuthStatus } from "../hooks/useAuth";
 
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
+const ACCESS_DENIED_MESSAGE = "Você não está liberado para acessar esta dashboard.";
 
 type LoginProps = {
   accessValidation: AccessValidationResult | null;
@@ -13,7 +14,9 @@ type LoginProps = {
   error: string | null;
   onLoginDiscord: () => void;
   onLogout: () => void;
+  onRetry: () => void;
   onVerify: () => void;
+  status: AuthStatus;
   verifying: boolean;
 };
 
@@ -24,7 +27,9 @@ export function Login({
   error,
   onLoginDiscord,
   onLogout,
+  onRetry,
   onVerify,
+  status,
   verifying
 }: LoginProps) {
   return (
@@ -44,6 +49,10 @@ export function Login({
           </div>
           <h1 className="text-2xl font-semibold text-white">Painel de OrviteK Bots</h1>
           <p className="mt-2 text-sm text-zinc-500">{auth ? "Confirme seu acesso ao painel." : "Verifique sua conta Discord para acessar o painel."}</p>
+        </div>
+
+        <div className="mb-5 rounded-lg border border-white/10 bg-[#0b0b0b] p-3 text-sm text-zinc-300">
+          {status}
         </div>
 
         {auth ? (
@@ -93,13 +102,28 @@ export function Login({
             </div>
           </div>
         ) : (
-          <Button className="h-12 w-full" onClick={onLoginDiscord}>
-            <LogIn className="h-4 w-4" />
-            Verificar com Discord
-          </Button>
+          <div className="space-y-3">
+            <Button className="h-12 w-full" onClick={onLoginDiscord}>
+              <LogIn className="h-4 w-4" />
+              Verificar com Discord
+            </Button>
+            {error ? (
+              <Button className="h-11 w-full border-white/10 text-zinc-100" onClick={onRetry} variant="outline">
+                <RotateCcw className="h-4 w-4" />
+                Tentar novamente
+              </Button>
+            ) : null}
+          </div>
         )}
 
-        {error ? <p className="mt-4 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200">{error}</p> : null}
+        {error ? (
+          <div className="mt-4 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200">
+            <p>{error}</p>
+            <Button className="h-10 w-full border-white/10 text-zinc-100" onClick={onLoginDiscord} variant="outline">
+              Voltar ao login
+            </Button>
+          </div>
+        ) : null}
       </motion.section>
     </main>
   );
