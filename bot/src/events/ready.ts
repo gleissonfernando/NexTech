@@ -30,10 +30,7 @@ import type { BotContext } from "../types";
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
   context.api.setDiscordClientId(client.user.id);
-  const runtimeAccess = await context.api.getRuntimeModules().catch((error) => {
-    console.warn("[bot] nao foi possivel carregar modulos liberados:", error instanceof Error ? error.message : error);
-    return null;
-  });
+  const runtimeAccess = await loadRuntimeAccess(context);
   const fallbackModules = configuredBotModules();
   const shouldApplyRuntimeModules = Boolean(runtimeAccess || env.DASHBOARD_BOT_ID || env.BOT_ENABLED_MODULES.trim());
   const runtimeBotId = runtimeAccess?.botId ?? (env.DASHBOARD_BOT_ID || null);
@@ -128,6 +125,12 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   }, 30_000);
 
   interval.unref();
+
+  const moduleReconcileInterval = setInterval(() => {
+    void reconcileRuntimeModules(client, context);
+  }, 45_000);
+
+  moduleReconcileInterval.unref();
 }
 
 function commandRegistrationGuildIds(client: Client<true>) {
@@ -145,4 +148,37 @@ function csv(value: string) {
 
 function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+async function loadRuntimeAccess(context: BotContext) {
+  return context.api.getRuntimeModules().catch((error) => {
+    console.warn("[bot] nao foi possivel carregar modulos liberados:", error instanceof Error ? error.message : error);
+    return null;
+  });
+}
+
+async function reconcileRuntimeModules(client: Client<true>, context: BotContext) {
+  const runtimeAccess = await loadRuntimeAccess(context);
+
+  if (!runtimeAccess) {
+    return;
+  }
+
+  const wasSelfBotEnabled = isSelfBotModuleEnabled();
+  const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
+  const runtimeModules = runtimeAccess.active ? runtimeAccess.enabledModules : [];
+
+  setRuntimeEnabledModules(runtimeModules, runtimeAccess.botId);
+  clearRuntimeModuleAuthorization();
+
+  if (isSelfBotModuleEnabled()) {
+    startSelfBotProtectionService(context);
+    await ensureSelfBotRoles(client, context);
+  } else if (wasSelfBotEnabled) {
+    await disableUnreleasedSafeBotChannels(client, context);
+  }
+
+  if (!wasMissionToolsEnabled && isBotModuleEnabled("mission-tools")) {
+    startMissionToolsService(client, context);
+  }
 }
