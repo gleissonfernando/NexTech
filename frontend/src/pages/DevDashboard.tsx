@@ -50,7 +50,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "fivem" | "logs" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "fivem" | "logs" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -62,7 +62,6 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedGuildId, setSelectedGuildId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<DevView>(initialView);
-  const [activeDashboardSection, setActiveDashboardSection] = useState<DevDashboardSection>("connected");
 
   useEffect(() => {
     let mounted = true;
@@ -155,9 +154,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.14),transparent_34%),linear-gradient(180deg,#050506,#08080b_48%,#050505)] text-white lg:pl-72">
       <DevSidebar
-        activeDashboardSection={activeDashboardSection}
         activeView={activeView}
-        onChangeDashboardSection={setActiveDashboardSection}
         onChangeView={handleChangeView}
       />
       <header className="sticky top-0 z-20 border-b border-purple-500/15 bg-[#050505]/88 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl lg:px-8">
@@ -188,11 +185,13 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
       </header>
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
-        {activeView !== "bots" ? <DevUserCard user={auth.user} canViewDev={profile.canViewDev} /> : null}
+        {!isBotManagerView(activeView) ? <DevUserCard user={auth.user} canViewDev={profile.canViewDev} /> : null}
 
         <div className="flex gap-2 overflow-x-auto lg:hidden">
           {[
             { id: "bots" as const, label: "Dashboard" },
+            { id: "connected" as const, label: "Bots conectados" },
+            { id: "bot-menu" as const, label: "Menu do Bot" },
             { id: "fivem" as const, label: "FiveM" },
             { id: "logs" as const, label: "Logs" },
             { id: "maintenance" as const, label: "Manutenção" }
@@ -208,14 +207,14 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
           ))}
         </div>
 
-        {activeView === "bots" ? (
+        {isBotManagerView(activeView) ? (
           <DevPanel
-            activeDashboardSection={activeDashboardSection}
+            activeDashboardSection={dashboardSectionForView(activeView)}
             guilds={profile.guilds}
             onBotCreated={handleBotCreated}
             onBotDeleted={handleBotDeleted}
             onBotUpdated={handleBotUpdated}
-            onDashboardSectionChange={setActiveDashboardSection}
+            onDashboardSectionChange={(section) => handleChangeView(section)}
             onOpenView={(view, bot) => {
               if (view === "overview") window.location.replace(dashboardUrl(bot?.slug));
             }}
@@ -243,25 +242,37 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 }
 
 function devPathForView(view: DevView) {
+  if (view === "connected") return "/dev/bots-conectados";
+  if (view === "bot-menu") return "/dev/menu-do-bot";
   if (view === "fivem") return "/dev/fivem";
   if (view === "logs") return "/dev/logs";
   if (view === "maintenance") return "/dev/maintenance";
   return "/dev";
 }
 
+function isBotManagerView(view: DevView) {
+  return view === "bots" || view === "connected" || view === "bot-menu";
+}
+
+function dashboardSectionForView(view: DevView): DevDashboardSection | null {
+  if (view === "connected" || view === "bot-menu") {
+    return view;
+  }
+
+  return null;
+}
+
 function DevSidebar({
-  activeDashboardSection,
   activeView,
-  onChangeDashboardSection,
   onChangeView
 }: {
-  activeDashboardSection: DevDashboardSection;
   activeView: DevView;
-  onChangeDashboardSection: (section: DevDashboardSection) => void;
   onChangeView: (view: DevView) => void;
 }) {
   const items: Array<{ icon: LucideIcon; id: DevView; label: string }> = [
     { icon: LayoutDashboard, id: "bots", label: "Dashboard" },
+    { icon: Boxes, id: "connected", label: "Bots conectados" },
+    { icon: Settings, id: "bot-menu", label: "Menu do Bot" },
     { icon: Building2, id: "fivem", label: "FiveM" },
     { icon: ScrollText, id: "logs", label: "Logs" },
     { icon: Wrench, id: "maintenance", label: "Manutenção" }
@@ -295,42 +306,6 @@ function DevSidebar({
               {item.label}
             </button>
 
-            {item.id === "bots" && activeView === "bots" ? (
-              <div className="mt-2 space-y-1 pl-5">
-                <button
-                  className={[
-                    "group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition duration-300",
-                    activeDashboardSection === "connected"
-                      ? "bg-purple-500/15 text-white ring-1 ring-purple-400/25"
-                      : "text-zinc-400 hover:bg-purple-500/10 hover:text-white"
-                  ].join(" ")}
-                  onClick={() => {
-                    onChangeView("bots");
-                    onChangeDashboardSection("connected");
-                  }}
-                  type="button"
-                >
-                  <Boxes className="h-3.5 w-3.5 text-purple-200 transition group-hover:text-white" />
-                  Bots conectados
-                </button>
-                <button
-                  className={[
-                    "group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition duration-300",
-                    activeDashboardSection === "bot-menu"
-                      ? "bg-purple-500/15 text-white ring-1 ring-purple-400/25"
-                      : "text-zinc-400 hover:bg-purple-500/10 hover:text-white"
-                  ].join(" ")}
-                  onClick={() => {
-                    onChangeView("bots");
-                    onChangeDashboardSection("bot-menu");
-                  }}
-                  type="button"
-                >
-                  <Settings className="h-3.5 w-3.5 text-purple-200 transition group-hover:text-white" />
-                  Menu do Bot
-                </button>
-              </div>
-            ) : null}
           </div>
         ))}
       </nav>

@@ -223,7 +223,7 @@ const botMenuItems: BotMenuItem[] = [
 ];
 
 type DevPanelProps = {
-  activeDashboardSection?: DevDashboardSection;
+  activeDashboardSection?: DevDashboardSection | null;
   guilds?: DashboardMeGuild[];
   onBotCreated?: (bot: DashboardBot) => void;
   onBotDeleted?: (botId: string) => void;
@@ -239,7 +239,7 @@ type DevPanelProps = {
 export type DevDashboardSection = "connected" | "bot-menu";
 
 export function DevPanel({
-  activeDashboardSection = "connected",
+  activeDashboardSection = null,
   guilds = [],
   onBotCreated,
   onBotDeleted,
@@ -653,8 +653,9 @@ export function DevPanel({
         )}
       </section>
 
-      <div className="min-w-0">
-        {activeDashboardSection === "connected" ? (
+      {activeDashboardSection ? (
+        <div className="min-w-0">
+          {activeDashboardSection === "connected" ? (
             <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]">
               <CardHeader className="p-5 sm:p-6">
                 <CardTitle className="text-white">Bots conectados</CardTitle>
@@ -734,7 +735,8 @@ export function DevPanel({
               </CardContent>
             </Card>
           )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
