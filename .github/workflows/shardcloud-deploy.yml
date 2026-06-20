@@ -42,11 +42,29 @@ jobs:
 
       - name: Verify Shard Cloud health
         run: |
-          for endpoint in /health /_shardcloud/health /api/health; do
+          check_json() {
+            endpoint="$1"
+            url="https://ricardinho98.shardweb.app$endpoint"
+            echo "Checking $url"
+            for attempt in 1 2 3 4 5 6; do
+              if curl --fail --silent --show-error --max-time 30 "$url" > /tmp/health.json && grep -q '"status":"ok"' /tmp/health.json; then
+                cat /tmp/health.json
+                echo
+                return 0
+              fi
+              echo "Waiting for healthy API response ($attempt/6)..."
+              sleep 10
+            done
+            cat /tmp/health.json || true
+            return 1
+          }
+
+          for endpoint in / /api/health /api/_shardcloud/health; do
             url="https://ricardinho98.shardweb.app$endpoint"
             echo "Checking $url"
             curl --fail --silent --show-error --max-time 30 "$url" > /tmp/health.json
-            cat /tmp/health.json
-            grep -q '"status":"ok"' /tmp/health.json
+            if [ "$endpoint" != "/" ]; then
+              check_json "$endpoint"
+            fi
             echo
           done

@@ -67,9 +67,9 @@ git push origin main
 O GitHub Actions executa `npm run deploy:check`, `npm run build`, `shard-cloud/action@main`, `commit 5b061ec4-2c46-4506-b567-56c463f7a9d9`, `restart 5b061ec4-2c46-4506-b567-56c463f7a9d9` e valida:
 
 ```text
-https://ricardinho98.shardweb.app/health
-https://ricardinho98.shardweb.app/_shardcloud/health
+https://ricardinho98.shardweb.app/
 https://ricardinho98.shardweb.app/api/health
+https://ricardinho98.shardweb.app/api/_shardcloud/health
 ```
 
 Nao suba direto sem rodar `npm run deploy:check`. Segredos ficam na ShardCloud/GitHub, nunca no Git.
