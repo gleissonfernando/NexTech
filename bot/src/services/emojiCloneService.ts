@@ -93,10 +93,10 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("source")
-            .setLabel("Servidor origem (ID) ou emoji/link")
-            .setPlaceholder("Coloque o ID do servidor para copiar os emojis")
+            .setLabel("Servidor origem ID ou emojis/links")
+            .setPlaceholder("Cole o ID do servidor, ou cole varios emojis/links em linhas separadas")
             .setRequired(true)
-            .setStyle(TextInputStyle.Short)
+            .setStyle(TextInputStyle.Paragraph)
         ),
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
@@ -186,7 +186,7 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
 
     if (sourceGuildId && !context.client.guilds.cache.has(sourceGuildId)) {
       await interaction.reply({
-        content: "O bot precisa estar no servidor Discord de origem para clonar os emojis por ID.",
+        content: "Para clonar todos por ID do servidor, o bot precisa estar no servidor de origem. Se ele estiver apenas no destino, cole os codigos ou links dos emojis.",
         ephemeral: true
       });
       return true;
@@ -195,7 +195,7 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
     const candidates = await resolveCandidates(context, source, mode, settings);
 
     if (!candidates.length) {
-      await interaction.reply({ content: "Nenhum emoji acessivel foi encontrado. Use o ID de um servidor onde o bot esta presente ou cole um emoji/link valido.", ephemeral: true });
+      await interaction.reply({ content: "Nenhum emoji acessivel foi encontrado. Use o ID de um servidor onde o bot esta presente, ou cole codigos/links de emojis validos.", ephemeral: true });
       return true;
     }
 
@@ -267,7 +267,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
         { type: 10, content: "> Olá, membro! Acesse o painel de clonagem de emojis abaixo e divirta-se clonando." },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: "## ❕ | Funcionalidades Importantes:" },
-        { type: 10, content: "• 🔗 | ID do servidor de origem e ID do servidor de destino sao necessarios para a clonagem de emojis.\n• 🤖 | O bot precisa estar presente em ambos os servidores para concluir o processo.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n• ⚠️ | Nunca envie noToken de usuario Discord. O formulario aceita apenas IDs e links/codigos de emoji." },
+        { type: 10, content: "• 🔗 | Para clonar por ID do servidor, informe origem e destino; nesse modo o bot precisa estar nos dois servidores.\n• 🤖 | Se o bot estiver apenas no destino, cole codigos ou links dos emojis que deseja clonar.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n• ⚠️ | Nunca envie noToken de usuario Discord. O formulario aceita apenas IDs e links/codigos de emoji." },
         { type: 14, divider: true, spacing: 1 },
         {
           type: 1,
@@ -358,9 +358,9 @@ async function runCloneJob(job: CloneJob, interaction: Interaction, context: Bot
 }
 
 async function resolveCandidates(context: BotContext, source: string, mode: CloneMode, settings: GuildSettings) {
-  const single = parseSingleEmoji(source);
+  const parsed = parseEmojiSources(source);
   const sourceGuildId = /^\d{5,32}$/.test(source) ? source : null;
-  const candidates = single ? [single] : sourceGuildId ? await guildEmojiCandidates(context, sourceGuildId) : [];
+  const candidates = parsed.length ? parsed : sourceGuildId ? await guildEmojiCandidates(context, sourceGuildId) : [];
 
   return candidates.filter((emoji) => {
     if (!settings.emojiCloneAllowAnimated && emoji.animated) return false;
@@ -383,32 +383,38 @@ async function guildEmojiCandidates(context: BotContext, guildId: string): Promi
   }));
 }
 
-function parseSingleEmoji(value: string): CloneCandidate | null {
-  const custom = value.match(/^<(?<animated>a?):(?<name>[a-zA-Z0-9_]{2,32}):(?<id>\d{5,32})>$/);
-  if (custom?.groups) {
-    const animated = custom.groups.animated === "a";
-    const id = custom.groups.id!;
-    return {
+function parseEmojiSources(value: string): CloneCandidate[] {
+  const candidates = new Map<string, CloneCandidate>();
+  const customPattern = /<(?<animated>a?):(?<name>[a-zA-Z0-9_]{2,32}):(?<id>\d{5,32})>/g;
+  const urlPattern = /https:\/\/cdn\.discordapp\.com\/emojis\/(?<id>\d{5,32})\.(?<ext>png|gif|webp|jpg|jpeg|avif)(?:\?[^\s<>\]]*)?/gi;
+
+  for (const match of value.matchAll(customPattern)) {
+    if (!match.groups) continue;
+    const animated = match.groups.animated === "a";
+    const id = match.groups.id!;
+
+    candidates.set(id, {
       animated,
       id,
-      name: custom.groups.name!,
+      name: match.groups.name!,
       url: `https://cdn.discordapp.com/emojis/${id}.${animated ? "gif" : "png"}?size=128&quality=lossless`
-    };
+    });
   }
 
-  const url = value.match(/https:\/\/cdn\.discordapp\.com\/emojis\/(?<id>\d{5,32})\.(?<ext>png|gif|webp|jpg|jpeg|avif)/i);
-  if (url?.groups) {
-    const id = url.groups.id!;
-    const ext = url.groups.ext!;
-    return {
-      animated: ext.toLowerCase() === "gif",
+  for (const match of value.matchAll(urlPattern)) {
+    if (!match.groups) continue;
+    const id = match.groups.id!;
+    const ext = match.groups.ext!.toLowerCase();
+
+    candidates.set(id, {
+      animated: ext === "gif",
       id,
       name: `emoji_${id}`,
-      url: value
-    };
+      url: match[0]
+    });
   }
 
-  return null;
+  return [...candidates.values()];
 }
 
 async function validateActor(guild: Guild, member: GuildMember, settings: GuildSettings, context: BotContext) {
