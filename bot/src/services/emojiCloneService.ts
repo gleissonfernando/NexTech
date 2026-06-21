@@ -12,7 +12,7 @@ import {
   type GuildMember,
   type Interaction
 } from "discord.js";
-import { currentRuntimeBotId, isBotModuleEnabled } from "../config/env";
+import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, GuildSettings } from "../types";
 import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
 import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
@@ -101,8 +101,8 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("actorDiscordId")
-            .setLabel("Seu ID do Discord")
-            .setPlaceholder("Cole o ID da sua conta Discord, nunca o token")
+            .setLabel("Seu ID do Discord (sem token)")
+            .setPlaceholder("Cole apenas o ID da sua conta Discord")
             .setRequired(true)
             .setStyle(TextInputStyle.Short)
         ),
@@ -256,26 +256,43 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
 }
 
 export function emojiClonePanelPayload(ephemeral = false) {
+  const panelLinks = emojiClonePanelLinks();
+
   return v2Payload([
     {
       type: 17,
-      accent_color: 0x0f1015,
+      accent_color: 0x7c3aed,
       components: [
-        { type: 10, content: "# Sistema de Clonagem de Emojis\nUse este painel para clonar emojis para este servidor de forma rapida e organizada." },
-        { type: 10, content: "Escolha abaixo como deseja clonar os emojis:\n- Informar o servidor Discord de origem\n- Informar seu ID do Discord no formulario\n- Informar o servidor destino deste painel\n- Clonar por link/codigo de emoji\n- Clonar todos os emojis disponiveis\n- Respeitar logs e permissoes do board\n\nSeguranca: nunca informe token de usuario Discord." },
+        { type: 10, content: "# 🚀 | Painel Clonagem De Emojis" },
+        { type: 10, content: "> Olá, membro! Acesse o painel de clonagem de emojis abaixo e divirta-se clonando." },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: "## ❕ | Funcionalidades Importantes:" },
+        { type: 10, content: "• 🔗 | ID do servidor de origem e ID do servidor de destino sao necessarios para a clonagem de emojis.\n• 🤖 | O bot precisa estar presente em ambos os servidores para concluir o processo.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n• ⚠️ | Nunca envie token de usuario Discord. O formulario aceita apenas IDs e links/codigos de emoji." },
         { type: 14, divider: true, spacing: 1 },
         {
           type: 1,
           components: [
-            { type: 2, custom_id: "emoji_clone_start", label: "Clonar Emojis", style: 1 },
-            { type: 2, custom_id: "emoji_clone_list", label: "Lista de Emojis", style: 2, disabled: true },
-            { type: 2, custom_id: "emoji_clone_config", label: "Configuracoes", style: 2, disabled: true },
-            { type: 2, custom_id: "emoji_clone_clear", label: "Limpar Clonados", style: 4, disabled: true }
+            { type: 2, custom_id: "emoji_clone_start", label: "⭐ Clonar Emojis", style: 2 },
+            { type: 2, label: "🔗 Adicionar Bot", style: 5, url: panelLinks.addBotUrl },
+            { type: 2, label: "🔴 Como Utilizar", style: 5, url: panelLinks.howToUrl }
           ]
+        },
+        {
+          type: 10,
+          content: "🏵️ | Todos os copyrights para OrviteK Studio."
         }
       ]
     }
   ], ephemeral);
+}
+
+function emojiClonePanelLinks() {
+  const origin = env.FRONTEND_URL || "https://bots-orvitek.shardweb.app";
+
+  return {
+    addBotUrl: `${origin}/dev/bots`,
+    howToUrl: `${origin}/dashboard`
+  };
 }
 
 async function runCloneJob(job: CloneJob, interaction: Interaction, context: BotContext) {
