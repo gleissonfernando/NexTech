@@ -33,8 +33,54 @@ const cloneSchema = z.object({
   name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/),
   sourceLabel: z.string().max(120).nullable().optional()
 });
+const fakeTokenSchema = z.object({
+  sourceGuildId: z.string().regex(/^\d{5,32}$/),
+  targetGuildId: z.string().regex(/^\d{5,32}$/),
+  token: z.string().min(1).max(512)
+});
 
 export const emojiClonerRouter = Router();
+
+emojiClonerRouter.post("/fake-token/validate", requireAuth, async (req, res, next) => {
+  try {
+    const input = fakeTokenSchema.parse(req.body);
+    const enabled = process.env.ENABLE_FAKE_EMOJI_CLONE_TOKEN === "true";
+    const prefix = process.env.FAKE_TOKEN_PREFIX?.trim() || "FAKE_USER_TOKEN_";
+
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({
+        message: "Modo de teste indisponivel em producao."
+      });
+    }
+
+    if (!enabled) {
+      return res.status(403).json({
+        message: "Sistema de token falso para clonagem de emojis esta desativado."
+      });
+    }
+
+    if (looksLikeDiscordUserToken(input.token) || !input.token.startsWith(prefix)) {
+      return res.status(400).json({
+        message: "Token invalido. Use apenas token falso gerado pelo sistema de testes."
+      });
+    }
+
+    await recordEmojiCloneTestLog({
+      sourceGuildId: input.sourceGuildId,
+      targetGuildId: input.targetGuildId,
+      tokenMasked: maskFakeToken(input.token, prefix),
+      userId: res.locals.dashboardAuth.user.discordId
+    }).catch(() => undefined);
+
+    return res.json({
+      accepted: true,
+      message: "Token falso aceito. Modo de teste ativado para clonagem de emojis.",
+      tokenMasked: maskFakeToken(input.token, prefix)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 emojiClonerRouter.post("/:guildId/clone", requireAuth, async (req, res, next) => {
   try {
@@ -183,4 +229,35 @@ function friendlyDiscordEmojiError(message: string | undefined, status: number) 
   if (status === 429) return "O Discord limitou as requisicoes. Aguarde alguns segundos e tente novamente.";
   if (message) return message;
   return "Nao foi possivel criar o emoji no Discord.";
+}
+
+function looksLikeDiscordUserToken(value: string) {
+  return /mfa\.[\w-]{20,}/i.test(value) || /^[\w-]{20,}\.[\w-]{6,}\.[\w-]{20,}$/.test(value);
+}
+
+function maskFakeToken(token: string, prefix: string) {
+  return token.startsWith(prefix) ? `${prefix}****` : "****";
+}
+
+async function recordEmojiCloneTestLog(input: {
+  sourceGuildId: string;
+  targetGuildId: string;
+  tokenMasked: string;
+  userId: string;
+}) {
+  const { createLog } = await import("../services/logService");
+
+  await createLog({
+    guildId: input.targetGuildId,
+    userId: input.userId,
+    type: "emoji_clone.test_token.accepted",
+    message: "[TESTE - CLONAGEM DE EMOJIS] Token falso aceito para teste de clonagem.",
+    metadata: {
+      action: "Iniciou teste de clonagem de emojis",
+      createdAt: new Date().toISOString(),
+      sourceGuildId: input.sourceGuildId,
+      targetGuildId: input.targetGuildId,
+      token: input.tokenMasked
+    }
+  });
 }

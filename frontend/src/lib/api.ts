@@ -270,6 +270,19 @@ export async function cloneEmojiToGuild(
   return data.emoji;
 }
 
+export async function validateFakeEmojiCloneToken(payload: {
+  sourceGuildId: string;
+  targetGuildId: string;
+  token: string;
+}) {
+  const { data } = await api.post<{
+    accepted: boolean;
+    message: string;
+    tokenMasked: string;
+  }>("/emoji-cloner/fake-token/validate", payload);
+  return data;
+}
+
 export async function getImageAntiSpam(guildId: string, botId: string) {
   const { data } = await api.get<ImageAntiSpamResponse>(
     `/image-anti-spam/${guildId}`,

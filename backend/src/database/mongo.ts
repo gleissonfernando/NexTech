@@ -927,6 +927,7 @@ export type MongoDevBot = {
   slug?: string | null;
   clientId: string;
   tokenEncrypted: string;
+  tokenPrefix?: string | null;
   tokenLast4?: string | null;
   secretEncrypted: string | null;
   avatarUrl: string | null;

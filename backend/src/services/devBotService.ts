@@ -730,6 +730,7 @@ export async function createDevBot(input: CreateDevBotInput) {
     slug: await generateUniqueDevBotSlug(botName),
     clientId,
     tokenEncrypted: encryptSecret(input.token),
+    tokenPrefix: tokenPrefix(input.token),
     tokenLast4: tokenLast4(input.token),
     secretEncrypted: null,
     avatarUrl: detectedGuild.botAvatarUrl,
@@ -854,6 +855,7 @@ export async function registerPrimaryDevBot(input: RegisterPrimaryDevBotInput): 
         slug: nextSlug,
         clientId: connection.clientId,
         tokenEncrypted: encryptSecret(token),
+        tokenPrefix: tokenPrefix(token),
         tokenLast4: tokenLast4(token),
         avatarUrl: connection.avatarUrl ?? current.avatarUrl,
         botCreatedAt: connection.createdAt ? new Date(connection.createdAt) : current.botCreatedAt ?? null,
@@ -967,6 +969,7 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
     }
 
     $set.tokenEncrypted = encryptSecret(input.token);
+    $set.tokenPrefix = tokenPrefix(input.token);
     $set.tokenLast4 = tokenLast4(input.token);
     $set.status = connection.status === "online" ? "offline" : connection.status;
     $set.statusMessage = connection.status === "online" ? "Token atualizado. Aguardando reinicializacao." : connection.message;
@@ -1304,7 +1307,7 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
     {
       $set: {
         status,
-        statusMessage,
+        statusMessage: maskSensitiveText(statusMessage),
         updatedAt: new Date()
       }
     }
@@ -2132,7 +2135,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     botCreatedAt: bot.botCreatedAt?.toISOString?.() ?? null,
     guildIds: [...new Set(guildIds)],
     status: bot.status,
-    statusMessage: bot.statusMessage ?? null,
+    statusMessage: bot.statusMessage ? maskSensitiveText(bot.statusMessage) : null,
     enabledModules: sanitizeModules(bot.enabledModules),
     accessLevel,
     permissions,
@@ -2378,14 +2381,22 @@ function isDevBotError(error: unknown): error is Error & { statusCode: number } 
   return error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number";
 }
 
+function tokenPrefix(token: string) {
+  return token.trim().slice(0, 8) || null;
+}
+
 function tokenLast4(token: string) {
   return token.trim().slice(-4) || null;
 }
 
-function maskedToken(bot: Pick<MongoDevBot, "tokenEncrypted" | "tokenLast4">) {
-  const last4 = bot.tokenLast4 ?? decryptTokenLast4(bot.tokenEncrypted);
+function maskedToken(bot: Pick<MongoDevBot, "tokenEncrypted" | "tokenPrefix" | "tokenLast4">) {
+  const parts = tokenMaskParts(bot);
 
-  return last4 ? `${"*".repeat(28)}${last4}` : "******** protegido";
+  if (parts.prefix && parts.tail) {
+    return `${parts.prefix}${"*".repeat(11)}${parts.tail}`;
+  }
+
+  return "******** protegido";
 }
 
 function normalizeProfileAvatarUrl(value: string | null | undefined) {
@@ -2394,11 +2405,29 @@ function normalizeProfileAvatarUrl(value: string | null | undefined) {
   return normalized || null;
 }
 
-function decryptTokenLast4(tokenEncrypted: string) {
+function tokenMaskParts(bot: Pick<MongoDevBot, "tokenEncrypted" | "tokenPrefix" | "tokenLast4">) {
+  const prefix = bot.tokenPrefix?.trim() || null;
+  const tail = bot.tokenLast4?.trim().slice(-3) || null;
+
+  if (prefix && tail) {
+    return {
+      prefix,
+      tail
+    };
+  }
+
   try {
-    return decryptSecret(tokenEncrypted).slice(-4);
+    const token = decryptSecret(bot.tokenEncrypted);
+
+    return {
+      prefix: prefix ?? tokenPrefix(token),
+      tail: tail ?? tokenLast4(token)?.slice(-3) ?? null
+    };
   } catch {
-    return null;
+    return {
+      prefix,
+      tail
+    };
   }
 }
 
@@ -2828,13 +2857,17 @@ function readDiscordErrorMessage(error: unknown) {
       "message" in responseMessage &&
       typeof responseMessage.message === "string"
     ) {
-      return `HTTP ${error.response?.status ?? "?"}: ${responseMessage.message}`;
+      return maskSensitiveText(`HTTP ${error.response?.status ?? "?"}: ${responseMessage.message}`);
     }
 
-    return error.response?.status ? `HTTP ${error.response.status}: ${error.message}` : error.message;
+    return maskSensitiveText(error.response?.status ? `HTTP ${error.response.status}: ${error.message}` : error.message);
   }
 
-  return error instanceof Error ? error.message : error;
+  return maskSensitiveText(error instanceof Error ? error.message : String(error));
+}
+
+function maskSensitiveText(value: string) {
+  return value.replace(/mfa\.[\w-]{20,}|[\w-]{20,}\.[\w-]{6,}\.[\w-]{20,}/gi, "[token-protegido]");
 }
 
 async function writeAccessValidationLog(

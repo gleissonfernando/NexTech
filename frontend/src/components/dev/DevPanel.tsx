@@ -6,11 +6,14 @@ import {
   CheckCircle2,
   Circle,
   Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   Gamepad2,
   Hash,
   LayoutDashboard,
   Link2,
+  LockKeyhole,
   Loader2,
   MessageSquare,
   Power,
@@ -260,6 +263,7 @@ export function DevPanel({
   const [form, setForm] = useState<CreateDevBotPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [poweringBotId, setPoweringBotId] = useState<string | null>(null);
   const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -437,9 +441,10 @@ export function DevPanel({
         token: "",
         mainGuildId: selectedGuildId || ""
       });
+      setTokenVisible(false);
       setMessage(`${bot.name} foi conectado e validado no Discord.`);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel conectar o bot. Confira o token e o Guild ID.");
+      setMessage(maskSensitiveText(readRequestMessage(error) ?? "Nao foi possivel conectar o bot. Confira o token e o Guild ID."));
     } finally {
       setSaving(false);
     }
@@ -581,14 +586,19 @@ export function DevPanel({
             </div>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-5 p-5 pt-5 sm:p-6 sm:pt-6">
-            <DevInput
-              autoComplete="off"
+            <ProtectedTokenInput
+              hidden={!tokenVisible}
               label="Token do Bot"
               onChange={(value) => updateForm("token", value)}
-              placeholder="••••••••••••••••••••••••"
-              type="password"
+              onToggle={() => setTokenVisible((current) => !current)}
               value={form.token}
             />
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.08] px-4 py-3 text-xs font-semibold text-emerald-100">
+              <div className="flex items-center gap-2">
+                <LockKeyhole className="h-4 w-4 shrink-0 text-emerald-300" />
+                <span>Your token is protected and will not be displayed to other users.</span>
+              </div>
+            </div>
             <DevInput
               inputMode="numeric"
               label="Servidor (Guild ID)"
@@ -966,6 +976,65 @@ function DevInput({
   );
 }
 
+function ProtectedTokenInput({
+  hidden,
+  label,
+  onChange,
+  onToggle,
+  value
+}: {
+  hidden: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+  value: string;
+}) {
+  const tokenStatus = value.trim().length >= 10 ? "valid" : value.trim().length ? "invalid" : "empty";
+  const statusLabel = tokenStatus === "valid" ? "Token com formato valido" : tokenStatus === "invalid" ? "Token muito curto" : "Aguardando token";
+  const statusClassName = tokenStatus === "valid"
+    ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
+    : tokenStatus === "invalid"
+      ? "border-red-500/35 bg-red-500/10 text-red-200"
+      : "border-zinc-700 bg-zinc-900/80 text-zinc-300";
+
+  return (
+    <label className="block space-y-2">
+      <span className="flex items-center gap-2 text-sm font-semibold text-white">
+        <LockKeyhole className="h-4 w-4 text-purple-200" />
+        {label}
+      </span>
+      <div className="group relative">
+        <input
+          autoComplete="new-password"
+          className="social-input h-12 border-purple-500/20 bg-black/55 pr-14 font-mono font-semibold text-white placeholder:text-zinc-500 focus:border-purple-400/70"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="••••••••••••••••••••••••"
+          spellCheck={false}
+          type={hidden ? "password" : "text"}
+          value={value}
+        />
+        <Button
+          aria-label={hidden ? "Mostrar token" : "Ocultar token"}
+          className="absolute right-1.5 top-1/2 h-9 w-9 -translate-y-1/2 rounded-md border-zinc-800 bg-zinc-950/80 text-zinc-300 transition hover:scale-105 hover:bg-zinc-900 hover:text-white"
+          onClick={onToggle}
+          size="icon"
+          title={hidden ? "Mostrar token" : "Ocultar token"}
+          type="button"
+          variant="outline"
+        >
+          <span className="transition duration-200 ease-out group-focus-within:scale-105">
+            {hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </span>
+        </Button>
+      </div>
+      <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition duration-200 ${statusClassName}`}>
+        {tokenStatus === "valid" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+        {statusLabel}
+      </div>
+    </label>
+  );
+}
+
 function BotGlobalSelect({
   bots,
   onSelectBot,
@@ -1246,6 +1315,7 @@ function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefiniti
       <OverviewMetric label="Status" value={statusLabel(bot.status)} />
       <OverviewMetric label="Modulos ativos" value={`${activeModules.length}/${modules.length}`} />
       <OverviewMetric label="Servidor" value={bot.mainGuildName || bot.mainGuildId} />
+      <OverviewMetric label="Token protegido" value={bot.tokenMasked || "Protegido"} />
       <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] p-4 sm:col-span-3">
         <div className="flex items-center gap-3">
           <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
@@ -1257,6 +1327,10 @@ function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefiniti
       </div>
     </div>
   );
+}
+
+function maskSensitiveText(value: string) {
+  return value.replace(/mfa\.[\w-]{20,}|[\w-]{20,}\.[\w-]{6,}\.[\w-]{20,}/gi, "[token-protegido]");
 }
 
 function ModuleManager({
