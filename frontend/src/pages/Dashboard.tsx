@@ -1599,6 +1599,7 @@ function EmojiCloneSettingsPanel({
   const [cloneProgress, setCloneProgress] = useState(0);
   const [cloneStatus, setCloneStatus] = useState<"idle" | "running" | "success" | "error">("idle");
   const [cloneMessage, setCloneMessage] = useState<string | null>(null);
+  const [credentialTestMode, setCredentialTestMode] = useState<"real" | "validating" | "valid" | "invalid">("real");
   const [historyFilter, setHistoryFilter] = useState("");
   const [history, setHistory] = useState<Array<{
     createdAt: string;
@@ -1692,13 +1693,20 @@ function EmojiCloneSettingsPanel({
     const query = historyFilter.trim().toLowerCase();
     return !query || item.name.toLowerCase().includes(query) || item.guildName.toLowerCase().includes(query);
   });
-  const credentialStatus = selectedBot
+  const liveCredentialStatus = selectedBot
     ? selectedBot.status === "online"
       ? { label: "Valido", tone: "success" as const }
       : selectedBot.status === "invalid_token"
         ? { label: "Invalido", tone: "danger" as const }
         : { label: "Validando", tone: "warning" as const }
     : { label: "Nao configurado", tone: "muted" as const };
+  const credentialStatus = credentialTestMode === "real"
+    ? liveCredentialStatus
+    : credentialTestMode === "valid"
+      ? { label: "Falso valido", tone: "success" as const }
+      : credentialTestMode === "invalid"
+        ? { label: "Falso invalido", tone: "danger" as const }
+        : { label: "Falso validando", tone: "warning" as const };
 
   async function handleCloneEmoji() {
     if (!canManage || !settings?.emojiCloneEnabled || !destinationGuildId) return;
@@ -1717,6 +1725,28 @@ function EmojiCloneSettingsPanel({
     setCloneMessage("Validando imagem e permissoes do bot...");
 
     try {
+      if (credentialTestMode !== "real") {
+        await new Promise((resolve) => window.setTimeout(resolve, 650));
+        setCloneProgress(70);
+
+        if (credentialTestMode === "invalid") {
+          throw new Error("Credencial falsa invalida para teste.");
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        setCloneProgress(100);
+        setCloneStatus("success");
+        setCloneMessage(`Teste concluido: emoji ${name} seria clonado com sucesso.`);
+        setHistory((current) => [{
+          createdAt: new Date().toISOString(),
+          emojiUrl: previewUrl,
+          guildName: selectedDestination?.name ?? destinationGuildId,
+          name,
+          status: "success" as const
+        }, ...current].slice(0, 20));
+        return;
+      }
+
       const emoji = await cloneEmojiToGuild(destinationGuildId, { image, name, sourceLabel }, botId);
       setCloneProgress(100);
       setCloneStatus("success");
@@ -1788,6 +1818,25 @@ function EmojiCloneSettingsPanel({
               <StatusPill icon={Server} label="Servidores encontrados" value={String(destinationGuilds.length)} />
               <StatusPill icon={ShieldCheck} label="Modulo" value={settings?.emojiCloneEnabled ? "Ativo" : "Pausado"} />
               <StatusPill icon={RefreshCw} label="Atualizacao" value="Automatica" />
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Modo de teste</p>
+                  <p className="text-xs text-zinc-500">Simula credenciais falsas sem receber ou salvar nenhum token.</p>
+                </div>
+                <select
+                  className="h-9 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none"
+                  disabled={disabled || cloneStatus === "running"}
+                  onChange={(event) => setCredentialTestMode(event.target.value as typeof credentialTestMode)}
+                  value={credentialTestMode}
+                >
+                  <option value="real">Usar bot real</option>
+                  <option value="validating">Falso validando</option>
+                  <option value="valid">Falso valido</option>
+                  <option value="invalid">Falso invalido</option>
+                </select>
+              </div>
             </div>
           </div>
 
