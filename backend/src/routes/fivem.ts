@@ -595,7 +595,7 @@ async function assertPanelChannelReady(guildId: string, botId: string, channelId
 }
 
 function normalizeFacSettingsInput(input: z.infer<typeof facSettingsSchema>) {
-  const normalized = {
+  const normalized: any = {
     ...input
   };
 
@@ -612,11 +612,20 @@ function normalizeFacSettingsInput(input: z.infer<typeof facSettingsSchema>) {
   }
 
   if (normalized.panelVisual?.buttons) {
-    normalized.panelVisual.buttons = normalized.panelVisual.buttons.map(button => ({
-      ...button,
-      emoji: button.emoji ?? null,
-      url: button.url ?? null
-    }));
+    normalized.panelVisual = {
+      ...normalized.panelVisual,
+      buttons: normalized.panelVisual.buttons.map((button: any) => ({
+        id: button.id,
+        type: button.type,
+        action: button.action,
+        enabled: button.enabled,
+        label: button.label,
+        style: button.style,
+        order: button.order,
+        emoji: button.emoji ?? null,
+        url: button.url ?? null
+      }))
+    };
   }
 
   return normalized;
