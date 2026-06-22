@@ -32,7 +32,6 @@ export function registerEvents(client: Client, context: BotContext) {
 
   if (env.BOT_MEMBER_EVENTS_ENABLED && (managedRuntimeBot || ["welcome", "leave", "roles", "logs", "fivem-fac", "account-age-security", "safe-bot"].some(isBotModuleEnabled))) {
     client.on(Events.GuildMemberAdd, (member) => {
-      if (isMaintenanceModeActive()) return;
       void resolveMember(member).then((resolved) => {
         if (resolved) {
           void handleGuildMemberAdd(resolved, context);

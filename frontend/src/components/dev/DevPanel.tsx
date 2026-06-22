@@ -31,6 +31,7 @@ import {
 import {
   createDevBot,
   deleteDevBot,
+  getGuildLiveOptions,
   getDevBots,
   getDevModules,
   restartDevBot,
@@ -46,7 +47,9 @@ import type {
   DashboardMeGuild,
   DevBot,
   DevBotStatus,
-  DevModuleDefinition
+  DevModuleDefinition,
+  GuildChannelOption,
+  GuildVoiceChannelOption
 } from "../../types";
 import { Avatar } from "../ui/avatar";
 import { Badge } from "../ui/badge";
@@ -784,11 +787,57 @@ function ConnectedBotPanel({
   powering: boolean;
 }) {
   const [copiedDashboardUrl, setCopiedDashboardUrl] = useState(false);
+  const [channels, setChannels] = useState<{
+    error: string | null;
+    loading: boolean;
+    text: GuildChannelOption[];
+    voice: GuildVoiceChannelOption[];
+  }>({
+    error: null,
+    loading: true,
+    text: [],
+    voice: []
+  });
   const botDashboardUrl = bot.dashboardUrl || dashboardUrl(bot.slug);
 
   useEffect(() => {
     setCopiedDashboardUrl(false);
   }, [bot.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    setChannels({
+      error: null,
+      loading: true,
+      text: [],
+      voice: []
+    });
+
+    getGuildLiveOptions(bot.mainGuildId, bot.id)
+      .then((options) => {
+        if (!active) return;
+        setChannels({
+          error: null,
+          loading: false,
+          text: options.channels ?? [],
+          voice: options.voiceChannels ?? []
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setChannels({
+          error: "Nao foi possivel carregar os canais deste bot.",
+          loading: false,
+          text: [],
+          voice: []
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bot.id, bot.mainGuildId]);
 
   async function handleCopyDashboardUrl() {
     await copyToClipboard(botDashboardUrl);
@@ -827,7 +876,15 @@ function ConnectedBotPanel({
           <BotDetail icon={CalendarDays} label="Criado em" value={bot.botCreatedAt ? formatDate(bot.botCreatedAt) : "Nao informado"} />
           <BotDetail icon={Server} label="Servidor" value={guildName} />
           <BotDetail icon={Users} label="Membros" value={bot.mainGuildMemberCount.toLocaleString("pt-BR")} />
+          <BotDetail icon={Hash} label="Canais" value={`${bot.mainGuildChannelCount.toLocaleString("pt-BR")} no Discord`} />
         </div>
+
+        <BotChannelPreview
+          error={channels.error}
+          loading={channels.loading}
+          textChannels={channels.text}
+          voiceChannels={channels.voice}
+        />
 
         {bot.statusMessage ? (
           <div className={`rounded-lg border px-3 py-2 text-sm ${
@@ -885,6 +942,109 @@ function ConnectedBotPanel({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function BotChannelPreview({
+  error,
+  loading,
+  textChannels,
+  voiceChannels
+}: {
+  error: string | null;
+  loading: boolean;
+  textChannels: GuildChannelOption[];
+  voiceChannels: GuildVoiceChannelOption[];
+}) {
+  const visibleTextChannels = textChannels.slice(0, 12);
+  const visibleVoiceChannels = voiceChannels.slice(0, 8);
+  const hiddenTextCount = Math.max(0, textChannels.length - visibleTextChannels.length);
+  const hiddenVoiceCount = Math.max(0, voiceChannels.length - visibleVoiceChannels.length);
+
+  return (
+    <div className="rounded-lg border border-purple-500/15 bg-black/30 p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-white">Canais do Discord</p>
+          <p className="text-xs font-medium text-zinc-300">Carregado usando o token do bot selecionado.</p>
+        </div>
+        <Badge variant="muted">
+          {loading ? "Carregando" : `${textChannels.length + voiceChannels.length} canais`}
+        </Badge>
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-20 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950/70 text-sm font-medium text-zinc-300">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Buscando canais...
+        </div>
+      ) : error ? (
+        <div className="rounded-lg border border-red-500/25 bg-red-500/[0.07] px-3 py-2 text-sm font-medium text-red-200">
+          {error}
+        </div>
+      ) : textChannels.length || voiceChannels.length ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ChannelGroup
+            channels={visibleTextChannels.map((channel) => ({
+              id: channel.id,
+              label: `#${channel.name}`
+            }))}
+            hiddenCount={hiddenTextCount}
+            title="Texto"
+          />
+          <ChannelGroup
+            channels={visibleVoiceChannels.map((channel) => ({
+              id: channel.id,
+              label: channel.name
+            }))}
+            hiddenCount={hiddenVoiceCount}
+            title="Voz"
+          />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-6 text-center text-sm font-medium text-zinc-300">
+          Nenhum canal encontrado para esse bot.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChannelGroup({
+  channels,
+  hiddenCount,
+  title
+}: {
+  channels: Array<{ id: string; label: string }>;
+  hiddenCount: number;
+  title: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-2 text-xs font-bold uppercase text-zinc-300">{title}</p>
+      {channels.length ? (
+        <div className="flex flex-wrap gap-2">
+          {channels.map((channel) => (
+            <span
+              className="max-w-full truncate rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs font-semibold text-zinc-100"
+              key={channel.id}
+              title={channel.label}
+            >
+              {channel.label}
+            </span>
+          ))}
+          {hiddenCount ? (
+            <span className="rounded-md border border-purple-500/20 bg-purple-500/[0.08] px-2.5 py-1 text-xs font-semibold text-purple-100">
+              +{hiddenCount}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-400">
+          Nenhum canal.
+        </p>
+      )}
+    </div>
   );
 }
 

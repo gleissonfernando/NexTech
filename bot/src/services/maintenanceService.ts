@@ -1,16 +1,35 @@
-import type { Interaction, Message } from "discord.js";
+import {
+  ActivityType,
+  ContainerBuilder,
+  MessageFlags,
+  TextDisplayBuilder,
+  type Interaction,
+  type Message
+} from "discord.js";
 import type { MaintenanceState } from "./apiClient";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import type { BotContext, GuildSettings } from "../types";
 
-export const MAINTENANCE_INTERACTION_MESSAGE = "⚠️ Os bots estão em manutenção no momento. Aguarde a nossa equipe finalizar a manutenção para utilizar novamente.";
+type MessageChannelWithMessages = Message["channel"] & {
+  messages: Message["channel"]["messages"];
+  send: (payload: Parameters<Extract<Message["channel"], { send: unknown }>["send"]>[0]) => Promise<Message>;
+};
+
+export const MAINTENANCE_INTERACTION_MESSAGE = "Os bots estao em manutencao no momento. Aguarde a equipe finalizar para utilizar novamente.";
 
 const MAINTENANCE_ALERT_MESSAGE = [
-  "⚠️ MANUTENÇÃO INICIADA",
-  "O sistema entrou em modo de manutenção global.",
-  "Todos os serviços estão temporariamente indisponíveis.",
-  "Aguarde a liberação oficial da equipe de desenvolvimento."
+  "MANUTENCAO INICIADA",
+  "O sistema entrou em modo de manutencao global.",
+  "Todos os servicos estao temporariamente indisponiveis.",
+  "Aguarde a liberacao oficial da equipe de desenvolvimento."
 ].join("\n");
+const MAINTENANCE_PANEL_TITLE = "MANUTENCAO INICIADA";
+const MAINTENANCE_PANEL_DESCRIPTION = [
+  "O sistema entrou em modo de manutencao global.",
+  "Todos os servicos do bot estao temporariamente indisponiveis.",
+  "Aguarde a equipe finalizar a manutencao para utilizar novamente."
+].join("\n");
+const MAINTENANCE_PRESENCE_NAME = "Sistema em manutencao";
 
 let maintenanceState: MaintenanceState = {
   active: false,
@@ -22,12 +41,14 @@ let maintenanceState: MaintenanceState = {
   updatedByName: null
 };
 let started = false;
+let appliedInitialMaintenanceState = false;
 
 export function isMaintenanceModeActive() {
   return maintenanceState.active;
 }
 
 export async function refreshMaintenanceState(context: BotContext) {
+  const previousActive = maintenanceState.active;
   const state = await context.api.getMaintenanceState().catch((error) => {
     console.warn("[maintenance] nao foi possivel carregar estado:", error instanceof Error ? error.message : error);
     return null;
@@ -35,6 +56,7 @@ export async function refreshMaintenanceState(context: BotContext) {
 
   if (state) {
     maintenanceState = state;
+    await applyMaintenanceState(context, previousActive, MAINTENANCE_ALERT_MESSAGE);
   }
 }
 
@@ -47,11 +69,9 @@ export function startMaintenanceService(context: BotContext) {
   void refreshMaintenanceState(context);
 
   context.socket.onMaintenanceUpdated((payload) => {
+    const previousActive = maintenanceState.active;
     maintenanceState = payload.state;
-
-    if (payload.state.active && (payload.action === "maintenance:started" || payload.action === "maintenance:manual_alert")) {
-      void sendMaintenanceAlertToConfiguredChannels(context, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE);
-    }
+    void applyMaintenanceState(context, previousActive, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE, payload.action);
   });
 
   const interval = setInterval(() => {
@@ -103,7 +123,54 @@ export async function blockMessageIfMaintenance(message: Message) {
   return true;
 }
 
-async function sendMaintenanceAlertToConfiguredChannels(context: BotContext, message: string) {
+async function applyMaintenanceState(
+  context: BotContext,
+  previousActive: boolean,
+  message: string,
+  action = maintenanceState.active ? "maintenance:started" : "maintenance:ended"
+) {
+  const shouldCleanInactivePanels = !maintenanceState.active && (previousActive || !appliedInitialMaintenanceState);
+
+  updateMaintenancePresence(context, maintenanceState.active);
+
+  if (maintenanceState.active && (!previousActive || action === "maintenance:manual_alert")) {
+    await ensureMaintenancePanels(context, message);
+    appliedInitialMaintenanceState = true;
+    return;
+  }
+
+  if (shouldCleanInactivePanels) {
+    await removeMaintenancePanels(context);
+  }
+
+  appliedInitialMaintenanceState = true;
+}
+
+function updateMaintenancePresence(context: BotContext, active: boolean) {
+  if (!context.client.user) {
+    return;
+  }
+
+  if (active) {
+    context.client.user.setPresence({
+      activities: [
+        {
+          name: MAINTENANCE_PRESENCE_NAME,
+          type: ActivityType.Watching
+        }
+      ],
+      status: "dnd"
+    });
+    return;
+  }
+
+  context.client.user.setPresence({
+    activities: [],
+    status: "online"
+  });
+}
+
+async function ensureMaintenancePanels(context: BotContext, message: string) {
   const sentChannels = new Set<string>();
 
   for (const guild of context.client.guilds.cache.values()) {
@@ -123,17 +190,106 @@ async function sendMaintenanceAlertToConfiguredChannels(context: BotContext, mes
       sentChannels.add(key);
       const channel = await guild.channels.fetch(channelId).catch(() => null);
 
-      if (channel?.isTextBased() && channel.isSendable()) {
-        await channel.send({
-          allowedMentions: {
-            parse: []
-          },
-          content: message
-        }).catch((error) => {
-          console.warn("[maintenance] falha ao enviar alerta:", error instanceof Error ? error.message : error);
+      if (channel?.isTextBased() && channel.isSendable() && "messages" in channel) {
+        await ensureMaintenancePanel(channel as MessageChannelWithMessages, message).catch((error) => {
+          console.warn("[maintenance] falha ao publicar painel:", error instanceof Error ? error.message : error);
         });
       }
     }
+  }
+}
+
+async function removeMaintenancePanels(context: BotContext) {
+  const checkedChannels = new Set<string>();
+
+  for (const guild of context.client.guilds.cache.values()) {
+    const settings = await getCachedGuildSettings(context, guild.id, context.client.user?.id).catch(() => null);
+
+    if (!settings) {
+      continue;
+    }
+
+    for (const channelId of maintenanceChannelIds(settings)) {
+      const key = `${guild.id}:${channelId}`;
+
+      if (checkedChannels.has(key)) {
+        continue;
+      }
+
+      checkedChannels.add(key);
+      const channel = await guild.channels.fetch(channelId).catch(() => null);
+
+      if (channel?.isTextBased() && "messages" in channel) {
+        await deleteMaintenancePanelsFromChannel(channel as MessageChannelWithMessages).catch((error) => {
+          console.warn("[maintenance] falha ao apagar painel:", error instanceof Error ? error.message : error);
+        });
+      }
+    }
+  }
+}
+
+async function ensureMaintenancePanel(channel: MessageChannelWithMessages, message: string) {
+  const messages = await channel.messages.fetch({ limit: 100 });
+  const panels = messages.filter((item) => isMaintenancePanelMessage(item));
+  const currentPanel = panels.find((item) => isCurrentMaintenancePanelMessage(item));
+
+  if (!currentPanel) {
+    await channel.send({
+      allowedMentions: {
+        parse: []
+      },
+      components: [maintenancePanelComponent(message)],
+      flags: MessageFlags.IsComponentsV2
+    });
+  }
+
+  await Promise.allSettled(
+    panels
+      .filter((item) => item.id !== currentPanel?.id)
+      .map((item) => item.delete())
+  );
+}
+
+async function deleteMaintenancePanelsFromChannel(channel: MessageChannelWithMessages) {
+  const messages = await channel.messages.fetch({ limit: 100 });
+  await Promise.allSettled(
+    messages
+      .filter((item) => isMaintenancePanelMessage(item))
+      .map((item) => item.delete())
+  );
+}
+
+function maintenancePanelComponent(message: string) {
+  return new ContainerBuilder()
+    .setAccentColor(0xf59e0b)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`## ${MAINTENANCE_PANEL_TITLE}`),
+      new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
+      new TextDisplayBuilder().setContent(message)
+    );
+}
+
+function isMaintenancePanelMessage(message: Message) {
+  if (message.author.id !== message.client.user?.id) {
+    return false;
+  }
+
+  const serialized = serializedMessageComponents(message);
+  return serialized.includes(MAINTENANCE_PANEL_TITLE)
+    || serialized.includes("MANUTENCAO INICIADA")
+    || message.content.includes("MANUTENCAO INICIADA");
+}
+
+function isCurrentMaintenancePanelMessage(message: Message) {
+  return message.flags.has(MessageFlags.IsComponentsV2)
+    && serializedMessageComponents(message).includes(MAINTENANCE_PANEL_DESCRIPTION);
+}
+
+function serializedMessageComponents(message: Message) {
+  try {
+    return JSON.stringify(message.components.map((component) => component.toJSON()));
+  } catch {
+    return "";
   }
 }
 
