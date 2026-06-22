@@ -9,7 +9,8 @@ import {
   type Guild,
   type GuildMember,
   type Message,
-  type Role
+  type Role,
+  type TextChannel
 } from "discord.js";
 import { env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, GuildSettings } from "../types";
@@ -28,6 +29,7 @@ const SETUP_CACHE_MS = 30_000;
 const SELF_BOT_COLOR = 0x7f1d1d;
 const FILTER_WARNING_COLOR = 0xf59e0b;
 const processingQueues = new Map<string, Promise<boolean>>();
+const filterWarningQueues = new Map<string, Promise<void>>();
 const messageHistory = new Map<string, SafeBotHistoryEntry[]>();
 const setupCache = new Map<string, SafeBotRuntime>();
 const URL_PATTERN = /(?:https?:\/\/|www\.|discord\.gg\/|discord(?:app)?\.com\/invite\/|(?:[a-z0-9-]+\.)+[a-z]{2,63}(?:\/[^\s<>()\]]*)?)/i;
@@ -1020,9 +1022,10 @@ async function findOrCreateLogChannel(guild: Guild) {
   });
 }
 
-async function findTextChannel(guild: Guild, name: string) {
+async function findTextChannel(guild: Guild, name: string): Promise<TextChannel | null> {
   const channels = await guild.channels.fetch().catch(() => null);
-  return channels?.find((channel) => channel?.type === ChannelType.GuildText && channel.name === name) ?? null;
+  const channel = channels?.find((item) => item?.type === ChannelType.GuildText && item.name === name) ?? null;
+  return channel?.type === ChannelType.GuildText ? channel : null;
 }
 
 async function disableFilterChannel(channel: Awaited<ReturnType<typeof findTextChannel>>, guildId: string) {
@@ -1123,6 +1126,22 @@ async function ensureFilterWarning(channel: Awaited<ReturnType<typeof findTextCh
     return;
   }
 
+  const key = `${channel.guild.id}:${channel.id}`;
+  const previous = filterWarningQueues.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => reconcileFilterWarning(channel))
+    .finally(() => {
+      if (filterWarningQueues.get(key) === next) {
+        filterWarningQueues.delete(key);
+      }
+    });
+
+  filterWarningQueues.set(key, next);
+  await next;
+}
+
+async function reconcileFilterWarning(channel: NonNullable<Awaited<ReturnType<typeof findTextChannel>>>) {
   const messages = await channel.messages.fetch({ limit: 100 });
   const warnings = messages.filter((message) => isFilterWarningMessage(message));
   const currentWarning = warnings.find((message) => isCurrentFilterWarning(message));
@@ -1159,7 +1178,10 @@ function isFilterWarningMessage(message: Message) {
   }
 
   const components = serializedMessageComponents(message);
-  return message.content.includes("Qualquer mensagem enviada nesta sala")
+  return components.includes(FILTER_WARNING_TITLE)
+    || components.includes("Não envie mensagens aqui")
+    || components.includes("Nao envie mensagens aqui")
+    || message.content.includes("Qualquer mensagem enviada nesta sala")
     || components.includes("Qualquer mensagem enviada nesta sala");
 }
 
