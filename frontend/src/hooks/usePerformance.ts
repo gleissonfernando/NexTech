@@ -140,8 +140,10 @@ export function useInView(ref: React.RefObject<HTMLElement>, options = {}): bool
   useEffect(() => {
     if (!ref.current) return;
 
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsInView(entry.isIntersecting);
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]) {
+        setIsInView(entries[0].isIntersecting);
+      }
     }, { threshold: 0.1, ...options });
 
     observer.observe(ref.current);

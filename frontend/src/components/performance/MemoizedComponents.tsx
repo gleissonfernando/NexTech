@@ -1,6 +1,4 @@
 import { memo } from "react";
-import type { BotStatus, DashboardBot, DashboardGuild, GuildSettings, LiveEvent, LogEntry, OverviewDetails } from "../types";
-import type { DevModuleDefinition } from "../types";
 
 /**
  * Componente memoizado para Header da Dashboard
@@ -11,9 +9,9 @@ export const UserDashboardHeader = memo(function UserDashboardHeader({
   selectedGuild,
   status
 }: {
-  bot: DashboardBot | null;
-  selectedGuild: DashboardGuild | null;
-  status: BotStatus;
+  bot: { id?: string; name?: string } | null;
+  selectedGuild: { id?: string; name?: string } | null;
+  status: { online?: boolean };
 }) {
   return (
     <div className="flex items-center justify-between gap-4">

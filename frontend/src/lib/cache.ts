@@ -2,7 +2,7 @@
  * Cache simples em memória com expiração
  * Reduz requisições repetidas à API
  */
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 interface CacheEntry<T> {
   data: T;
