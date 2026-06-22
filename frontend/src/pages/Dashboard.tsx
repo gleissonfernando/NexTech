@@ -2274,7 +2274,7 @@ function EmojiCloneSettingsPanel({
                     className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-600"
                     disabled={disabled || cloneStatus === "running"}
                     onChange={(event) => setFakeToken(event.target.value)}
-                    placeholder="FAKE_USER_TOKEN_..."
+                    placeholder="adicionar token do usuario.."
                     type="password"
                     value={fakeToken}
                   />
