@@ -265,7 +265,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
         { type: 10, content: "> Olá, membro! Acesse o painel de clonagem de emojis abaixo e divirta-se clonando." },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: "## ❕ | Funcionalidades Importantes:" },
-        { type: 10, content: "• 🔗 | Para clonar por ID do servidor, informe origem e destino; nesse modo o bot precisa estar nos dois servidores.\n• 🤖 | Se o bot estiver apenas no destino, cole codigos ou links dos emojis que deseja clonar.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n• ⚠️ | Nunca envie noToken de usuario Discord. O formulario aceita apenas IDs e links/codigos de emoji." },
+        { type: 10, content: "• 🔗 | Para clonar por ID do servidor, informe origem e destino; nesse modo o bot precisa estar nos dois servidores.\n• 🤖 | Se o bot estiver apenas no destino, cole codigos ou links dos emojis que deseja clonar.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n•." },
         { type: 14, divider: true, spacing: 1 },
         {
           type: 1,
@@ -277,7 +277,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
         },
         {
           type: 10,
-          content: "🏵️ | Todos os copyrights para OrviteK Studio."
+          content: "🏵️ | Todos os copyrights para OrviteK bots."
         }
       ]
     }
@@ -285,7 +285,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
 }
 
 function emojiClonePanelLinks() {
-  const origin = env.FRONTEND_URL || "https://bots-orvitek.shardweb.app";
+  const origin = env.FRONTEND_URL || "https://discord.com/oauth2/authorize?client_id=1492325134550302952&permissions=8&integration_type=0&scope=bot";
 
   return {
     addBotUrl: `${origin}/dev/bots`,
