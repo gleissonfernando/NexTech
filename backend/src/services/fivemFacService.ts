@@ -1,7 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { ensureGuild, getMongoCollections, type MongoFivemFacAbsence, type MongoFivemFacAbsenceStatus, type MongoFivemFacMessages, type MongoFivemFacSettings } from "../database/mongo";
+import {
+  ensureGuild,
+  getMongoCollections,
+  type MongoFivemFacAbsence,
+  type MongoFivemFacAbsenceStatus,
+  type MongoFivemFacMessages,
+  type MongoFivemFacSettings,
+  type MongoPanelButtonAction,
+  type MongoPanelButtonConfig,
+  type MongoPanelButtonStyle,
+  type MongoPanelButtonsPosition,
+  type MongoPanelImagePosition,
+  type MongoPanelVisualConfig
+} from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
 
@@ -18,6 +31,7 @@ export type FivemFacSettingsDto = {
   memberRoleIds: string[];
   logChannelId: string | null;
   messages: MongoFivemFacMessages;
+  panelVisual: MongoPanelVisualConfig;
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -64,6 +78,7 @@ export type SaveFivemFacSettingsInput = {
   memberRoleIds?: string[];
   logChannelId?: string | null;
   messages?: Partial<MongoFivemFacMessages>;
+  panelVisual?: Partial<MongoPanelVisualConfig>;
 };
 
 export type CreateFivemFacAbsenceInput = {
@@ -103,6 +118,42 @@ const DEFAULT_MESSAGES: MongoFivemFacMessages = {
   started: "Sua ausência foi iniciada e o cargo configurado foi aplicado.",
   finished: "Sua ausência foi finalizada e o cargo configurado foi removido."
 };
+const DEFAULT_PANEL_VISUAL: MongoPanelVisualConfig = {
+  panelColor: "#2b2d31",
+  imageUrl: null,
+  imagePosition: "none",
+  buttonsPosition: "inside_panel",
+  buttons: [
+    {
+      id: "request",
+      label: "Solicitar Ausencia",
+      emoji: null,
+      style: "primary",
+      type: "action",
+      action: "request_absence",
+      url: null,
+      order: 1,
+      enabled: true
+    },
+    {
+      id: "mine",
+      label: "Minhas Ausencias",
+      emoji: null,
+      style: "secondary",
+      type: "action",
+      action: "my_absences",
+      url: null,
+      order: 2,
+      enabled: true
+    }
+  ],
+  componentsOrder: ["image", "text", "buttons"],
+  enabledSections: {
+    buttons: true,
+    description: true,
+    image: false
+  }
+};
 
 export function defaultFivemFacSettings(botId: string, guildId: string): FivemFacSettingsDto {
   const now = new Date().toISOString();
@@ -120,6 +171,7 @@ export function defaultFivemFacSettings(botId: string, guildId: string): FivemFa
     memberRoleIds: [],
     logChannelId: null,
     messages: DEFAULT_MESSAGES,
+    panelVisual: DEFAULT_PANEL_VISUAL,
     lastPanelRequestedAt: null,
     createdAt: now,
     updatedAt: now
@@ -178,6 +230,10 @@ export async function saveFivemFacSettings(guildId: string, botId: string, input
     messages: normalizeMessages({
       ...current.messages,
       ...(input.messages ?? {})
+    }),
+    panelVisual: normalizePanelVisual({
+      ...current.panelVisual,
+      ...(input.panelVisual ?? {})
     })
   };
 
@@ -632,6 +688,43 @@ export async function saveFivemFacAbsencePhotoFile(
   return `/uploads/fivem-fac/${fileName}`;
 }
 
+export async function saveFivemFacPanelImageFile(
+  guildId: string,
+  botId: string,
+  buffer: Buffer,
+  mimeType: string,
+  actorId: string
+) {
+  const extension = FAC_PHOTO_MIME_EXTENSIONS[mimeType];
+
+  if (!extension) {
+    throw createFacError("Formato invalido. Envie PNG, JPG, JPEG, WEBP ou GIF.", 400);
+  }
+
+  if (!buffer.length) {
+    throw createFacError("Arquivo de imagem obrigatorio.", 400);
+  }
+
+  await fs.mkdir(FAC_ABSENCE_UPLOAD_DIR, { recursive: true });
+
+  const safeGuildId = guildId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const fileName = `${safeGuildId}-panel-${Date.now()}-${randomUUID()}.${extension}`;
+  const imageUrl = `/uploads/fivem-fac/${fileName}`;
+
+  await fs.writeFile(path.join(FAC_ABSENCE_UPLOAD_DIR, fileName), buffer);
+
+  return saveFivemFacSettings(guildId, botId, {
+    panelVisual: {
+      imageUrl,
+      imagePosition: "top",
+      enabledSections: {
+        ...DEFAULT_PANEL_VISUAL.enabledSections,
+        image: true
+      }
+    }
+  }, actorId);
+}
+
 export async function updateFivemFacAbsencePhoto(
   absenceId: string,
   botId: string,
@@ -885,6 +978,94 @@ function normalizeMessages(messages: Partial<MongoFivemFacMessages>): MongoFivem
   };
 }
 
+function normalizePanelVisual(input: Partial<MongoPanelVisualConfig>): MongoPanelVisualConfig {
+  const defaults = DEFAULT_PANEL_VISUAL;
+  return {
+    panelColor: normalizePanelColor(input.panelColor, defaults.panelColor),
+    imageUrl: normalizeImageUrl(input.imageUrl),
+    imagePosition: normalizeEnum(input.imagePosition, ["right_small", "top", "bottom", "none"], defaults.imagePosition),
+    buttonsPosition: normalizeEnum(input.buttonsPosition, ["inside_panel", "outside_panel", "below", "rows", "none"], defaults.buttonsPosition),
+    buttons: normalizePanelButtons(input.buttons),
+    componentsOrder: normalizeComponentsOrder(input.componentsOrder),
+    enabledSections: {
+      image: input.enabledSections?.image === true,
+      buttons: input.enabledSections?.buttons !== false,
+      description: input.enabledSections?.description !== false
+    }
+  };
+}
+
+function normalizePanelButtons(buttons: unknown): MongoPanelButtonConfig[] {
+  const source = Array.isArray(buttons) ? buttons : DEFAULT_PANEL_VISUAL.buttons;
+  return source
+    .map((button, index) => normalizePanelButton(button, index))
+    .filter((button): button is MongoPanelButtonConfig => Boolean(button))
+    .sort((left, right) => left.order - right.order)
+    .slice(0, 10);
+}
+
+function normalizePanelButton(button: unknown, index: number): MongoPanelButtonConfig | null {
+  if (!button || typeof button !== "object") {
+    return null;
+  }
+
+  const item = button as Partial<MongoPanelButtonConfig>;
+  const type = item.type === "url" ? "url" : "action";
+  const action = type === "url"
+    ? "url"
+    : normalizeEnum<MongoPanelButtonAction>(item.action, ["request_absence", "my_absences"], "request_absence");
+  const url = type === "url" ? normalizeUrl(item.url) : null;
+
+  if (type === "url" && !url) {
+    return null;
+  }
+
+  return {
+    id: normalizeShortText(item.id, 40) ?? `button_${index + 1}`,
+    label: normalizeShortText(item.label, 80) ?? `Botao ${index + 1}`,
+    emoji: normalizeShortText(item.emoji, 40),
+    style: normalizeEnum<MongoPanelButtonStyle>(item.style, ["primary", "secondary", "success", "danger", "link"], type === "url" ? "link" : "primary"),
+    type,
+    action,
+    url,
+    order: Number.isFinite(item.order) ? Math.max(0, Math.trunc(Number(item.order))) : index + 1,
+    enabled: item.enabled !== false
+  };
+}
+
+function normalizeComponentsOrder(value: unknown): Array<"image" | "text" | "buttons"> {
+  const allowed = new Set(["image", "text", "buttons"]);
+  const items = Array.isArray(value) ? value.filter((item): item is "image" | "text" | "buttons" => allowed.has(String(item))) : [];
+  const merged = [...items, ...DEFAULT_PANEL_VISUAL.componentsOrder];
+  return [...new Set(merged)].slice(0, 3);
+}
+
+function normalizePanelColor(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim() : fallback;
+}
+
+function normalizeImageUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized && (/^https?:\/\//i.test(normalized) || normalized.startsWith("/uploads/")) ? normalized : null;
+}
+
+function normalizeUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && allowed.includes(value as T) ? value as T : fallback;
+}
+
 function normalizeMessage(value: unknown, fallback: string, maxLength: number) {
   if (typeof value !== "string") {
     return fallback;
@@ -1027,6 +1208,7 @@ function toSettingsDto(settings: MongoFivemFacSettings): FivemFacSettingsDto {
     memberRoleIds: normalizeSnowflakes(settings.memberRoleIds ?? []),
     logChannelId: settings.logChannelId ?? null,
     messages: normalizeMessages(settings.messages ?? DEFAULT_MESSAGES),
+    panelVisual: normalizePanelVisual(settings.panelVisual ?? DEFAULT_PANEL_VISUAL),
     lastPanelRequestedAt: settings.lastPanelRequestedAt?.toISOString?.() ?? null,
     createdAt: settings.createdAt.toISOString(),
     updatedAt: settings.updatedAt.toISOString()

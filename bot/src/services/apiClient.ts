@@ -584,6 +584,32 @@ export type FivemFacMessages = {
   finished: string;
 };
 
+export type FivemFacPanelButton = {
+  id: string;
+  label: string;
+  emoji: string | null;
+  style: "primary" | "secondary" | "success" | "danger" | "link";
+  type: "action" | "url";
+  action: "request_absence" | "my_absences" | "url";
+  url: string | null;
+  order: number;
+  enabled: boolean;
+};
+
+export type FivemFacPanelVisual = {
+  panelColor: string;
+  imageUrl: string | null;
+  imagePosition: "right_small" | "top" | "bottom" | "none";
+  buttonsPosition: "inside_panel" | "outside_panel" | "below" | "rows" | "none";
+  buttons: FivemFacPanelButton[];
+  componentsOrder: Array<"image" | "text" | "buttons">;
+  enabledSections: {
+    image: boolean;
+    buttons: boolean;
+    description: boolean;
+  };
+};
+
 export type FivemFacSettings = {
   id: string;
   botId: string;
@@ -597,6 +623,7 @@ export type FivemFacSettings = {
   memberRoleIds: string[];
   logChannelId: string | null;
   messages: FivemFacMessages;
+  panelVisual: FivemFacPanelVisual;
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;

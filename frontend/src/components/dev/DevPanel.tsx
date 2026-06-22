@@ -553,6 +553,34 @@ export function DevPanel({
     );
   }
 
+  if (activeDashboardSection === "bot-menu") {
+    return (
+      <div className="space-y-7">
+        <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
+        {message ? (
+          <div className="rounded-lg border border-purple-400/25 bg-purple-500/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(124,58,237,0.12)]">
+            {message}
+          </div>
+        ) : null}
+        {selectedBot ? (
+          <BotModuleWorkspace
+            activeMenuId={activeBotMenuId}
+            bot={selectedBot}
+            modules={modules}
+            onSelectMenu={setActiveBotMenuId}
+            onToggle={(moduleId, checked) => void handleToggleModule(selectedBot, moduleId, checked)}
+          />
+        ) : (
+          <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]">
+            <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
+              Selecione um bot para abrir o Menu do Bot.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-7">
       <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />

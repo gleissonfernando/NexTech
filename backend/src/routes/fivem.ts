@@ -18,6 +18,7 @@ import {
   rejectFivemFacAbsence,
   requestFivemFacPanelPublish,
   saveFivemFacAbsencePhotoFile,
+  saveFivemFacPanelImageFile,
   saveFivemFacSettings,
   updateFivemFacAbsenceChannel,
   updateFivemFacAbsencePhoto,
@@ -47,6 +48,29 @@ const facSettingsSchema = z.object({
     rejected: z.string().max(500).optional(),
     started: z.string().max(500).optional(),
     finished: z.string().max(500).optional()
+  }).partial().optional(),
+  panelVisual: z.object({
+    panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    imageUrl: z.string().max(2048).nullable().optional(),
+    imagePosition: z.enum(["right_small", "top", "bottom", "none"]).optional(),
+    buttonsPosition: z.enum(["inside_panel", "outside_panel", "below", "rows", "none"]).optional(),
+    buttons: z.array(z.object({
+      id: z.string().max(40),
+      label: z.string().min(1).max(80),
+      emoji: z.string().max(40).nullable().optional(),
+      style: z.enum(["primary", "secondary", "success", "danger", "link"]),
+      type: z.enum(["action", "url"]),
+      action: z.enum(["request_absence", "my_absences", "url"]),
+      url: z.string().max(2048).nullable().optional(),
+      order: z.coerce.number().int().min(0).max(100),
+      enabled: z.boolean()
+    })).max(10).optional(),
+    componentsOrder: z.array(z.enum(["image", "text", "buttons"])).max(3).optional(),
+    enabledSections: z.object({
+      image: z.boolean().optional(),
+      buttons: z.boolean().optional(),
+      description: z.boolean().optional()
+    }).partial().optional()
   }).partial().optional()
 });
 const createAbsenceSchema = z.object({
@@ -160,6 +184,31 @@ fivemRouter.post("/:guildId/fac/panel", requireAuth, async (req, res, next) => {
 
     return res.json({
       settings: await requestFivemFacPanelPublish(guildId, botId, user.discordId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.put("/:guildId/fac/panel-image", requireAuth, facPhotoUpload, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    await assertCanManageFac(user, guildId, botId);
+    const mimeType = req.header("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+
+    if (!allowedFacPhotoMimeTypes.has(mimeType)) {
+      throw createRouteError("Formato invalido. Envie PNG, JPG, JPEG, WEBP ou GIF.", 400);
+    }
+
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      throw createRouteError("Arquivo de imagem obrigatorio.", 400);
+    }
+
+    return res.json({
+      settings: await saveFivemFacPanelImageFile(guildId, botId, req.body, mimeType, user.discordId)
     });
   } catch (error) {
     return next(error);

@@ -453,6 +453,37 @@ export type MongoFivemFacMessages = {
   finished: string;
 };
 
+export type MongoPanelImagePosition = "right_small" | "top" | "bottom" | "none";
+export type MongoPanelButtonsPosition = "inside_panel" | "outside_panel" | "below" | "rows" | "none";
+export type MongoPanelButtonStyle = "primary" | "secondary" | "success" | "danger" | "link";
+export type MongoPanelButtonAction = "request_absence" | "my_absences" | "url";
+
+export type MongoPanelButtonConfig = {
+  id: string;
+  label: string;
+  emoji: string | null;
+  style: MongoPanelButtonStyle;
+  type: "action" | "url";
+  action: MongoPanelButtonAction;
+  url: string | null;
+  order: number;
+  enabled: boolean;
+};
+
+export type MongoPanelVisualConfig = {
+  panelColor: string;
+  imageUrl: string | null;
+  imagePosition: MongoPanelImagePosition;
+  buttonsPosition: MongoPanelButtonsPosition;
+  buttons: MongoPanelButtonConfig[];
+  componentsOrder: Array<"image" | "text" | "buttons">;
+  enabledSections: {
+    image: boolean;
+    buttons: boolean;
+    description: boolean;
+  };
+};
+
 export type MongoFivemFacSettings = {
   _id: string;
   botId: string;
@@ -466,6 +497,7 @@ export type MongoFivemFacSettings = {
   memberRoleIds?: string[];
   logChannelId: string | null;
   messages: MongoFivemFacMessages;
+  panelVisual?: MongoPanelVisualConfig | null;
   lastPanelRequestedAt?: Date | null;
   createdBy?: string | null;
   updatedBy?: string | null;
