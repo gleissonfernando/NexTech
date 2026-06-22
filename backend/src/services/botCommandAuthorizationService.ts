@@ -1,3 +1,4 @@
+import { isDashboardDevUserId } from '../config/devOwner';
 import { getMongoCollections, type MongoBotGuildModuleConfig } from "../database/mongo";
 import { createLog } from "./logService";
 
@@ -88,6 +89,23 @@ export async function authorizeBotCommand(input: BotCommandAuthorizationInput) {
 
     if (!guildConfig) {
       return writeAuthorizationLog(normalizedInput, denied(normalizedInput, config.moduleId, "guild_not_registered", "Servidor nao esta vinculado a este bot na dashboard.", checkedAt));
+    }
+
+    if (
+      normalizedInput.commandName === "clear" &&
+      isDashboardDevUserId(normalizedInput.userId)
+    ) {
+      return writeAuthorizationLog(normalizedInput, {
+        allowed: true,
+        botId: normalizedInput.botId,
+        checkedAt,
+        commandName: normalizedInput.commandName,
+        guildId: normalizedInput.guildId,
+        moduleId: config.moduleId,
+        policy: "fail_closed",
+        reason: "Comando /clear autorizado para usuario dev do dashboard.",
+        reasonCode: "dev_user_override"
+      });
     }
 
     if (!bot.enabledModules.includes(config.moduleId)) {
