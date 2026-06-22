@@ -31,6 +31,8 @@ import { startVoiceRecorderService } from "../services/voiceRecorderService";
 import { startXMonitor } from "../services/xMonitor";
 import type { BotContext } from "../types";
 
+let lastRuntimeModuleSignature = "";
+
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
   context.api.setDiscordClientId(client.user.id);
@@ -45,6 +47,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
 
   if (shouldApplyRuntimeModules) {
     setRuntimeEnabledModules(runtimeModules, runtimeBotId);
+    lastRuntimeModuleSignature = runtimeModuleSignature(runtimeAccess?.active ?? true, runtimeBotId, runtimeModules);
   }
   context.socket.onDevModuleUpdated((payload) => {
     if (!runtimeBotId || payload.botId !== runtimeBotId) {
@@ -54,6 +57,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     const wasSelfBotEnabled = isSelfBotModuleEnabled();
     const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
     setRuntimeEnabledModules(payload.enabledModules);
+    lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
     clearRuntimeModuleAuthorization();
 
     if (!wasSelfBotEnabled && isSelfBotModuleEnabled()) {
@@ -197,8 +201,14 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   const wasSelfBotEnabled = isSelfBotModuleEnabled();
   const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
   const runtimeModules = runtimeAccess.active ? runtimeAccess.enabledModules : [];
+  const nextSignature = runtimeModuleSignature(runtimeAccess.active, runtimeAccess.botId, runtimeModules);
+
+  if (nextSignature === lastRuntimeModuleSignature) {
+    return;
+  }
 
   setRuntimeEnabledModules(runtimeModules, runtimeAccess.botId);
+  lastRuntimeModuleSignature = nextSignature;
   clearRuntimeModuleAuthorization();
 
   if (isSelfBotModuleEnabled()) {
@@ -212,4 +222,12 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   if (!wasMissionToolsEnabled && isBotModuleEnabled("mission-tools")) {
     startMissionToolsService(client, context);
   }
+}
+
+function runtimeModuleSignature(active: boolean, botId: string | null | undefined, moduleIds: string[]) {
+  return [
+    active ? "active" : "inactive",
+    botId ?? "",
+    [...new Set(moduleIds.map((moduleId) => moduleId.trim()).filter(Boolean))].sort().join(",")
+  ].join("|");
 }

@@ -34,6 +34,9 @@ const GATEWAY_MESSAGE_CONTENT = 1 << 18;
 const GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19;
 const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-fac", "account-age-security", "safe-bot", "moderation"];
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam"];
+const DEV_BOT_START_CONCURRENCY = 2;
+const DEV_BOT_START_STAGGER_MS = 3_000;
+const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
 
@@ -43,7 +46,14 @@ export async function startRegisteredDevBots() {
     return [];
   });
 
-  await Promise.allSettled(bots.map((bot) => startRuntime(bot)));
+  for (let index = 0; index < bots.length; index += DEV_BOT_START_CONCURRENCY) {
+    const batch = bots.slice(index, index + DEV_BOT_START_CONCURRENCY);
+    await Promise.allSettled(batch.map((bot) => startRuntime(bot)));
+
+    if (index + DEV_BOT_START_CONCURRENCY < bots.length) {
+      await delay(DEV_BOT_START_STAGGER_MS);
+    }
+  }
 }
 
 export async function startDevBotProcess(botId: string) {
@@ -205,11 +215,20 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     const timer = setTimeout(() => {
       restartTimers.delete(bot.id);
       void startDevBotProcess(bot.id);
-    }, 10_000);
+    }, restartDelayMs(bot.id));
 
     timer.unref();
     restartTimers.set(bot.id, timer);
   });
+}
+
+function restartDelayMs(botId: string) {
+  const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
+  return DEV_BOT_RESTART_DELAY_MS + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function canUseGuildMemberIntent(bot: DevBotRuntimeConfig) {
