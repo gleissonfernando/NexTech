@@ -11,6 +11,11 @@ export async function applyAutomaticRoles(context: BotContext, member: GuildMemb
     return;
   }
 
+  if (member.pending) {
+    console.log(`[roles] aguardando ${member.user.tag} concluir a verificacao de entrada em ${member.guild.name}.`);
+    return;
+  }
+
   const settings = await loadSettings(context, member);
 
   if (!settings?.autoRoleEnabled) {
