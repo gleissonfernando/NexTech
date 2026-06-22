@@ -32,7 +32,7 @@ npm start
 
 O `npm start` sobe backend, frontend compilado e processos de bot em modo de producao. A hospedagem deve fornecer as variaveis de ambiente listadas em `.env.example`.
 
-Em producao, o bot principal roda em modo leve quando `BOT_ENABLED_MODULES` nao estiver definido. Para habilitar modulos especificos, configure uma lista como `BOT_ENABLED_MODULES=giveaway,logs,welcome,leave`. Para voltar ao comportamento antigo de ligar todos os modulos, use `BOT_DEFAULT_ALL_MODULES=true`. Bots cadastrados no painel DEV iniciam automaticamente apos deploy/restart por padrao; use `START_REGISTERED_DEV_BOTS=false` apenas se quiser impedir esse religa automatico.
+Em producao, o bot principal roda em modo leve quando `BOT_ENABLED_MODULES` nao estiver definido. Para habilitar modulos especificos, configure uma lista como `BOT_ENABLED_MODULES=giveaway,logs,welcome,leave`. Para voltar ao comportamento antigo de ligar todos os modulos, use `BOT_DEFAULT_ALL_MODULES=true`. Bots cadastrados no painel DEV nao iniciam automaticamente apos deploy/restart por padrao em producao, para evitar rajadas de requisicoes na hospedagem; use `START_REGISTERED_DEV_BOTS=true` apenas quando quiser religar todos automaticamente.
 
 ## Fluxo Seguro De Deploy
 

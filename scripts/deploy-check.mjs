@@ -6,7 +6,7 @@ import path from "node:path";
 const mode = process.argv[2] ?? "full";
 const root = process.cwd();
 const require = createRequire(import.meta.url);
-const appId = "5b061ec4-2c46-4506-b567-56c463f7a9d9";
+const appId = "3748bc53-e5aa-4619-827e-1323e3abb267";
 const requiredShardcloud = {
   APPID: appId,
   LANGUAGE: "node",
