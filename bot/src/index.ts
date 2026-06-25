@@ -121,6 +121,27 @@ if (!env.DISCORD_BOT_TOKEN) {
 
 let loginStarted = false;
 let shuttingDown = false;
+let reconnectTimer: NodeJS.Timeout | null = null;
+let reconnectAttempts = 0;
+
+function scheduleReconnect(reason: string) {
+  if (shuttingDown || reconnectTimer) {
+    return;
+  }
+
+  loginStarted = false;
+  const delay = Math.min(60_000, 2_000 * 2 ** Math.min(reconnectAttempts, 5));
+  reconnectAttempts += 1;
+  console.warn(`[bot] reconexao agendada em ${delay}ms: ${reason}`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    void startBot().catch((error) => {
+      console.error("[bot] reconexao falhou:", error instanceof Error ? error.stack ?? error.message : error);
+      scheduleReconnect("falha ao reconectar");
+    });
+  }, delay);
+  reconnectTimer.unref();
+}
 
 async function startBot() {
   if (loginStarted) {
@@ -130,6 +151,7 @@ async function startBot() {
 
   loginStarted = true;
   await client.login(env.DISCORD_BOT_TOKEN);
+  reconnectAttempts = 0;
 }
 
 function shutdown(signal: "SIGINT" | "SIGTERM") {
@@ -139,6 +161,10 @@ function shutdown(signal: "SIGINT" | "SIGTERM") {
 
   shuttingDown = true;
   console.log(`[bot] encerrando por ${signal}.`);
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   context.socket.disconnect(client);
   client.destroy();
   process.exit(0);
@@ -158,9 +184,10 @@ process.on("unhandledRejection", (reason) => {
 
 process.on("uncaughtException", (error) => {
   console.error("[bot] excecao nao capturada:", error);
+  scheduleReconnect("excecao nao capturada");
 });
 
 startBot().catch((error) => {
   console.error("[bot] falha ao conectar:", error);
-  process.exit(1);
+  scheduleReconnect("falha inicial de login");
 });

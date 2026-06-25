@@ -243,6 +243,34 @@ export type SelfBotPunishmentAction =
   | "kick"
   | "ban";
 
+export type PunishmentDuration = {
+  dias: number;
+  horas: number;
+  minutos: number;
+  segundos: number;
+};
+
+export type SelfBotPunishmentStep = {
+  id: string;
+  acao: SelfBotPunishmentAction;
+  ativado: boolean;
+  limite: number;
+  proximaAcao: SelfBotPunishmentAction | null;
+  apagarMensagem: boolean;
+  enviarAviso: boolean;
+  registrarLog: boolean;
+  tempoTimeout: PunishmentDuration;
+  cargoAdicionarId: string | null;
+  cargoRemoverId: string | null;
+  banApagarMensagensSegundos: number;
+};
+
+export type ResolvedSelfBotPunishment = {
+  actionCount: number;
+  step: SelfBotPunishmentStep;
+  totalOccurrences: number;
+};
+
 export type SelfBotProtectionSettings = {
   id: string;
   botId: string;
@@ -258,6 +286,7 @@ export type SelfBotProtectionSettings = {
   logWebhookUrl: string | null;
   embedColor: string;
   punishmentSequence: SelfBotPunishmentAction[];
+  punishmentSteps: SelfBotPunishmentStep[];
   addRoleId: string | null;
   removeRoleId: string | null;
   timeoutSeconds: number;
@@ -1138,6 +1167,18 @@ export class ApiClient {
       input
     );
     return data.incident;
+  }
+
+  async resolveSelfBotPunishment(input: {
+    guildId: string;
+    moduleId: SelfBotProtectionModuleId;
+    userId: string;
+  }) {
+    const { data } = await this.http.post<{ punishment: ResolvedSelfBotPunishment }>(
+      "/self-bot-protection/bot/punishments/next",
+      input
+    );
+    return data.punishment;
   }
 
   async getActiveTwitchNotifications() {

@@ -37,7 +37,8 @@ import type {
   SelfBotProtectionModuleId,
   SelfBotProtectionSettings,
   SelfBotProtectionStats,
-  SelfBotPunishmentAction
+  SelfBotPunishmentAction,
+  SelfBotPunishmentStep
 } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -101,6 +102,40 @@ const punishmentActions: Array<{ id: SelfBotPunishmentAction; label: string }> =
   { id: "ban", label: "Ban" }
 ];
 
+function defaultPunishmentSteps(): SelfBotPunishmentStep[] {
+  return [
+    createPunishmentStep("delete_message", 2, "warn", { apagarMensagem: true }),
+    createPunishmentStep("warn", 1, "timeout", { enviarAviso: true }),
+    createPunishmentStep("timeout", 2, "add_role", { tempoTimeout: { dias: 0, horas: 0, minutos: 5, segundos: 0 } }),
+    createPunishmentStep("add_role", 1, "kick"),
+    createPunishmentStep("kick", 1, "ban"),
+    createPunishmentStep("ban", 1, null)
+  ];
+}
+
+function createPunishmentStep(
+  acao: SelfBotPunishmentAction,
+  limite: number,
+  proximaAcao: SelfBotPunishmentAction | null,
+  overrides: Partial<SelfBotPunishmentStep> = {}
+): SelfBotPunishmentStep {
+  return {
+    id: acao,
+    acao,
+    ativado: true,
+    limite,
+    proximaAcao,
+    apagarMensagem: acao === "delete_message",
+    enviarAviso: acao === "warn",
+    registrarLog: true,
+    tempoTimeout: { dias: 0, horas: 0, minutos: 5, segundos: 0 },
+    cargoAdicionarId: null,
+    cargoRemoverId: null,
+    banApagarMensagensSegundos: 3600,
+    ...overrides
+  };
+}
+
 const emptySettings: SelfBotProtectionSettings = {
   id: "",
   botId: "",
@@ -129,6 +164,7 @@ const emptySettings: SelfBotProtectionSettings = {
   logWebhookUrl: null,
   embedColor: "#7c3aed",
   punishmentSequence: ["delete_message", "add_role", "log"],
+  punishmentSteps: defaultPunishmentSteps(),
   addRoleId: null,
   removeRoleId: null,
   timeoutSeconds: 300,
@@ -354,6 +390,28 @@ export function SelfBotProtectionPanel({
     });
   }
 
+  function updatePunishmentStep(index: number, patch: Partial<SelfBotPunishmentStep>) {
+    setSettings((current) => ({
+      ...current,
+      punishmentSteps: current.punishmentSteps.map((step, stepIndex) => stepIndex === index ? { ...step, ...patch } : step)
+    }));
+  }
+
+  function updatePunishmentDuration(index: number, key: keyof SelfBotPunishmentStep["tempoTimeout"], value: number) {
+    setSettings((current) => ({
+      ...current,
+      punishmentSteps: current.punishmentSteps.map((step, stepIndex) => stepIndex === index
+        ? {
+            ...step,
+            tempoTimeout: {
+              ...step.tempoTimeout,
+              [key]: value
+            }
+          }
+        : step)
+    }));
+  }
+
   async function handleSave() {
     if (!botId || !guild) return;
 
@@ -386,6 +444,7 @@ export function SelfBotProtectionPanel({
         newAccountMaxAgeHours: settings.newAccountMaxAgeHours,
         protectedChannelIds: settings.protectedChannelIds,
         punishmentSequence: settings.punishmentSequence,
+        punishmentSteps: settings.punishmentSteps,
         raidJoinLimit: settings.raidJoinLimit,
         raidWindowSeconds: settings.raidWindowSeconds,
         removeRoleId: settings.removeRoleId,
@@ -600,31 +659,17 @@ export function SelfBotProtectionPanel({
           </Section>
 
           <Section icon={UserRoundX} title="Punicoes e castigo">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
-              <div className="grid gap-2 sm:grid-cols-2">
-                {punishmentActions.map((action) => (
-                  <ToggleRow
-                    checked={settings.punishmentSequence.includes(action.id)}
-                    disabled={disabled}
-                    key={action.id}
-                    label={action.label}
-                    onChange={() => togglePunishment(action.id)}
-                  />
-                ))}
-              </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="mb-3 text-sm font-medium text-zinc-200">Sequencia</p>
-                <div className="space-y-2">
-                  {settings.punishmentSequence.map((action, index) => (
-                    <div className="flex items-center gap-2 rounded-lg border border-zinc-900 bg-black px-3 py-2" key={action}>
-                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{actionLabel(action)}</span>
-                      <IconButton disabled={disabled || index === 0} icon={ArrowUp} onClick={() => movePunishment(action, -1)} />
-                      <IconButton disabled={disabled || index === settings.punishmentSequence.length - 1} icon={ArrowDown} onClick={() => movePunishment(action, 1)} />
-                      <IconButton disabled={disabled} icon={Trash2} onClick={() => togglePunishment(action)} tone="danger" />
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="grid gap-3">
+              {settings.punishmentSteps.map((step, index) => (
+                <PunishmentStepEditor
+                  disabled={disabled}
+                  key={step.id}
+                  onChange={(patch) => updatePunishmentStep(index, patch)}
+                  onDurationChange={(key, value) => updatePunishmentDuration(index, key, value)}
+                  roles={selectableRoles}
+                  step={step}
+                />
+              ))}
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -833,6 +878,102 @@ function ToggleRow({
       <span className="min-w-0 truncate text-sm font-medium text-zinc-200">{label}</span>
       <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </div>
+  );
+}
+
+function PunishmentStepEditor({
+  disabled,
+  onChange,
+  onDurationChange,
+  roles,
+  step
+}: {
+  disabled: boolean;
+  onChange: (patch: Partial<SelfBotPunishmentStep>) => void;
+  onDurationChange: (key: keyof SelfBotPunishmentStep["tempoTimeout"], value: number) => void;
+  roles: GuildRoleOption[];
+  step: SelfBotPunishmentStep;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+      <div className="grid gap-3 lg:grid-cols-[180px_120px_160px_1fr]">
+        <label className="flex items-center justify-between gap-3 rounded-md border border-zinc-900 bg-black px-3 py-2">
+          <span className="text-sm font-medium text-zinc-100">{actionLabel(step.acao)}</span>
+          <Switch checked={step.ativado} disabled={disabled} onCheckedChange={(checked) => onChange({ ativado: checked })} />
+        </label>
+        <NumberField disabled={disabled} label="Limite" max={100} min={1} onChange={(value) => onChange({ limite: value })} value={step.limite} />
+        <label className="grid gap-2 text-sm">
+          <span className="font-medium text-zinc-200">Proxima acao</span>
+          <select
+            className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-500/60"
+            disabled={disabled}
+            onChange={(event) => onChange({ proximaAcao: event.target.value ? event.target.value as SelfBotPunishmentAction : null })}
+            value={step.proximaAcao ?? ""}
+          >
+            <option value="">Encerrar fluxo</option>
+            {punishmentActions.map((action) => (
+              <option key={action.id} value={action.id}>{action.label}</option>
+            ))}
+          </select>
+        </label>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ToggleRow checked={step.apagarMensagem} disabled={disabled} label="Apagar mensagem" onChange={(checked) => onChange({ apagarMensagem: checked })} />
+          <ToggleRow checked={step.enviarAviso} disabled={disabled} label="Enviar aviso" onChange={(checked) => onChange({ enviarAviso: checked })} />
+          <ToggleRow checked={step.registrarLog} disabled={disabled} label="Registrar logs" onChange={(checked) => onChange({ registrarLog: checked })} />
+        </div>
+      </div>
+
+      {step.acao === "timeout" ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <NumberField disabled={disabled} label="Dias" max={28} min={0} onChange={(value) => onDurationChange("dias", value)} value={step.tempoTimeout.dias} />
+          <NumberField disabled={disabled} label="Horas" max={23} min={0} onChange={(value) => onDurationChange("horas", value)} value={step.tempoTimeout.horas} />
+          <NumberField disabled={disabled} label="Minutos" max={59} min={0} onChange={(value) => onDurationChange("minutos", value)} value={step.tempoTimeout.minutos} />
+          <NumberField disabled={disabled} label="Segundos" max={59} min={0} onChange={(value) => onDurationChange("segundos", value)} value={step.tempoTimeout.segundos} />
+        </div>
+      ) : null}
+
+      {step.acao === "add_role" || step.acao === "remove_role" ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {step.acao === "add_role" ? (
+            <RoleSelect disabled={disabled} label="Cargo aplicado" onChange={(value) => onChange({ cargoAdicionarId: value || null })} roles={roles} value={step.cargoAdicionarId ?? ""} />
+          ) : null}
+          {step.acao === "remove_role" ? (
+            <RoleSelect disabled={disabled} label="Cargo removido" onChange={(value) => onChange({ cargoRemoverId: value || null })} roles={roles} value={step.cargoRemoverId ?? ""} />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RoleSelect({
+  disabled,
+  label,
+  onChange,
+  roles,
+  value
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  roles: GuildRoleOption[];
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm">
+      <span className="font-medium text-zinc-200">{label}</span>
+      <select
+        className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-500/60"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">Usar padrao</option>
+        {roles.map((role) => (
+          <option key={role.id} value={role.id}>@{role.name}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 

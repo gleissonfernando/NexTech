@@ -25,6 +25,17 @@ export function registerEvents(client: Client, context: BotContext) {
   client.on(Events.Warn, (message) => {
     console.warn("[discord] aviso:", message);
   });
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    console.warn(`[discord] shard ${shardId} desconectado: code=${event.code} reason=${event.reason || "sem motivo"}`);
+    context.socket.emitStatus(client, false);
+  });
+  client.on(Events.ShardReconnecting, (shardId) => {
+    console.warn(`[discord] shard ${shardId} reconectando ao gateway.`);
+  });
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    console.log(`[discord] shard ${shardId} reconectado; eventos reproduzidos=${replayedEvents}.`);
+    context.socket.emitStatus(client, true);
+  });
   client.once(Events.ClientReady, (readyClient) => runEvent("ready", () => handleReady(readyClient, context)));
   client.on(Events.InteractionCreate, (interaction) => runEvent("interactionCreate", () => handleInteractionCreate(interaction, context)));
   client.on(Events.UserUpdate, (_oldUser, newUser) => {

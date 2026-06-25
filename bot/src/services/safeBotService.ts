@@ -22,6 +22,7 @@ import type { BotContext, GuildSettings } from "../types";
 import type {
   SelfBotProtectionModuleId,
   SelfBotProtectionSettings,
+  SelfBotPunishmentStep,
   SelfBotPunishmentAction
 } from "./apiClient";
 import { isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
@@ -77,6 +78,7 @@ type PunishmentOutcome = {
 type SequencePunishmentOutcome = {
   actions: SelfBotPunishmentAction[];
   error: string | null;
+  step: SelfBotPunishmentStep | null;
   succeeded: boolean;
 };
 
@@ -370,7 +372,7 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
   }
 
   if (message.channelId === runtime.filterChannelId) {
-    const punishment = await applyFilterChannelPunishment(member, message, runtime);
+    const punishment = await applyFilterChannelPunishment(context, member, message, runtime);
     await Promise.allSettled([
       sendFilterLog(message, runtime, punishment),
       recordSafeBotIncident(context, message, runtime, {
@@ -397,10 +399,16 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
       return false;
     }
 
+    if (isMediaWhitelistChannel(message, runtime, detected.moduleId)) {
+      return false;
+    }
+
     const punishment = await applyConfiguredPunishment(
+      context,
       member,
       message,
       runtime,
+      detected.moduleId,
       `SafeBot: ${detected.label} enviado por usuario marcado como Self Bot.`
     );
     await Promise.allSettled([
@@ -417,14 +425,23 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
     return true;
   }
 
-  const flood = rememberAndDetectFlood(message);
+  const detectedForWhitelist = detectMessageContent(message);
+  if (detectedForWhitelist && isMediaWhitelistChannel(message, runtime, detectedForWhitelist.moduleId)) {
+    return false;
+  }
+
+  const flood = rememberAndDetectFlood(message, runtime);
 
   if (flood) {
     if (!(await isRuntimeModuleAuthorized(context, guild.id, flood.moduleId))) {
       return false;
     }
 
-    const punishment = await applyConfiguredPunishment(member, message, runtime, `SafeBot: ${flood.reason}`, flood.messages);
+    if (isMediaWhitelistChannel(message, runtime, flood.moduleId)) {
+      return false;
+    }
+
+    const punishment = await applyConfiguredPunishment(context, member, message, runtime, flood.moduleId, `SafeBot: ${flood.reason}`, flood.messages);
     await Promise.allSettled([
       sendFloodLog(message, runtime, flood.reason, punishment),
       recordSafeBotIncident(context, message, runtime, {
@@ -443,28 +460,40 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
 }
 
 async function applyFilterChannelPunishment(
+  context: BotContext,
   member: GuildMember,
   message: Message,
   runtime: SafeBotRuntime
 ): Promise<SequencePunishmentOutcome> {
   return applyConfiguredPunishment(
+    context,
     member,
     message,
     runtime,
+    "anti-auto-spam",
     "SafeBot: mensagem enviada no canal de filtro."
   );
 }
 
 async function applyConfiguredPunishment(
+  context: BotContext,
   member: GuildMember,
   message: Message,
   runtime: SafeBotRuntime,
+  moduleId: SelfBotProtectionModuleId,
   reason: string,
   messagesToDelete: Message[] = [message]
 ): Promise<SequencePunishmentOutcome> {
-  const sequence = runtime.protectionSettings?.punishmentSequence?.length
-    ? runtime.protectionSettings.punishmentSequence
-    : ["delete_message", "add_role", "log"] as SelfBotPunishmentAction[];
+  const resolved = await context.api.resolveSelfBotPunishment({
+    guildId: message.guildId ?? runtime.settings.guildId,
+    moduleId,
+    userId: member.id
+  }).catch((error) => {
+    console.warn("[safe-bot] nao foi possivel resolver escalonamento persistido:", errorMessage(error));
+    return null;
+  });
+  const step = resolved?.step ?? firstLocalPunishmentStep(runtime.protectionSettings);
+  const sequence = step ? stepActions(step) : ["delete_message", "add_role", "log"] as SelfBotPunishmentAction[];
   const actions: SelfBotPunishmentAction[] = [];
   const errors: string[] = [];
 
@@ -479,13 +508,13 @@ async function applyConfiguredPunishment(
       } else if (action === "log") {
         actions.push(action);
       } else if (action === "add_role") {
-        const assigned = await applySelfBotRole(member, punishmentAddRoleId(runtime));
+        const assigned = await applySelfBotRole(member, punishmentAddRoleId(runtime, step));
         if (!assigned.succeeded) {
           throw new Error(assigned.error ?? "Nao foi possivel aplicar o cargo de castigo.");
         }
         actions.push(action);
       } else if (action === "remove_role") {
-        const roleId = runtime.protectionSettings?.removeRoleId;
+        const roleId = step?.cargoRemoverId ?? runtime.protectionSettings?.removeRoleId;
         if (!roleId) {
           throw new Error("Nenhum cargo configurado para remover.");
         }
@@ -495,7 +524,7 @@ async function applyConfiguredPunishment(
         if (!member.moderatable) {
           throw new Error("O bot nao pode aplicar mute neste membro por falta de permissao ou hierarquia.");
         }
-        await member.timeout((runtime.protectionSettings?.timeoutSeconds ?? 300) * 1_000, reason);
+        await member.timeout(timeoutDurationMs(step, runtime), reason);
         actions.push(action);
       } else if (action === "kick") {
         if (!member.kickable) {
@@ -509,7 +538,7 @@ async function applyConfiguredPunishment(
           throw new Error("O bot nao pode banir este membro por falta de permissao ou hierarquia.");
         }
         await member.ban({
-          deleteMessageSeconds: 60 * 60,
+          deleteMessageSeconds: step?.banApagarMensagensSegundos ?? 60 * 60,
           reason
         });
         actions.push(action);
@@ -523,6 +552,7 @@ async function applyConfiguredPunishment(
   return {
     actions,
     error: errors.length ? errors.join(" | ") : null,
+    step,
     succeeded: errors.length === 0
   };
 }
@@ -630,8 +660,96 @@ async function reconcileGuildPunishmentRoles(guild: Guild, context: BotContext) 
   );
 }
 
-function punishmentAddRoleId(runtime: SafeBotRuntime) {
-  return runtime.protectionSettings?.addRoleId ?? runtime.roleId;
+function punishmentAddRoleId(runtime: SafeBotRuntime, step?: SelfBotPunishmentStep | null) {
+  return step?.cargoAdicionarId ?? runtime.protectionSettings?.addRoleId ?? runtime.roleId;
+}
+
+function firstLocalPunishmentStep(settings: SelfBotProtectionSettings | null): SelfBotPunishmentStep | null {
+  const configured = settings?.punishmentSteps?.find((step) => step.ativado);
+
+  if (configured) {
+    return configured;
+  }
+
+  const action = settings?.punishmentSequence?.[0] ?? "delete_message";
+  return {
+    id: action,
+    acao: action,
+    ativado: true,
+    limite: 1,
+    proximaAcao: settings?.punishmentSequence?.[1] ?? null,
+    apagarMensagem: action === "delete_message",
+    enviarAviso: action === "warn",
+    registrarLog: true,
+    tempoTimeout: secondsToDuration(settings?.timeoutSeconds ?? 300),
+    cargoAdicionarId: settings?.addRoleId ?? null,
+    cargoRemoverId: settings?.removeRoleId ?? null,
+    banApagarMensagensSegundos: 3_600
+  };
+}
+
+function stepActions(step: SelfBotPunishmentStep) {
+  const actions: SelfBotPunishmentAction[] = [];
+
+  if (step.apagarMensagem && step.acao !== "delete_message") {
+    actions.push("delete_message");
+  }
+
+  if (step.enviarAviso && step.acao !== "warn") {
+    actions.push("warn");
+  }
+
+  actions.push(step.acao);
+
+  if (step.registrarLog && step.acao !== "log") {
+    actions.push("log");
+  }
+
+  return [...new Set(actions)];
+}
+
+function timeoutDurationMs(step: SelfBotPunishmentStep | null, runtime: SafeBotRuntime) {
+  if (!step) {
+    return (runtime.protectionSettings?.timeoutSeconds ?? 300) * 1_000;
+  }
+
+  const duration = step.tempoTimeout;
+  const seconds =
+    duration.dias * 86_400
+    + duration.horas * 3_600
+    + duration.minutos * 60
+    + duration.segundos;
+  return Math.max(1_000, seconds * 1_000);
+}
+
+function secondsToDuration(totalSeconds: number) {
+  let remaining = Math.max(1, Math.trunc(totalSeconds));
+  const dias = Math.floor(remaining / 86_400);
+  remaining -= dias * 86_400;
+  const horas = Math.floor(remaining / 3_600);
+  remaining -= horas * 3_600;
+  const minutos = Math.floor(remaining / 60);
+  const segundos = remaining - minutos * 60;
+  return { dias, horas, minutos, segundos };
+}
+
+function isMediaWhitelistChannel(
+  message: Message,
+  runtime: SafeBotRuntime,
+  moduleId: SelfBotProtectionModuleId
+) {
+  if (!["anti-imagens", "anti-gif", "anti-anexos"].includes(moduleId)) {
+    return false;
+  }
+
+  const mediaChannelIds = runtime.protectionSettings?.mediaChannelIds ?? [];
+
+  if (mediaChannelIds.includes(message.channelId)) {
+    return true;
+  }
+
+  const parentId = message.channel.isThread() ? message.channel.parentId : null;
+  return Boolean(parentId && mediaChannelIds.includes(parentId));
 }
 
 async function punishMarkedUser(
@@ -693,10 +811,14 @@ function resolveConfiguredPunishment(settings: SelfBotProtectionSettings | null)
   return "none";
 }
 
-function rememberSafeBotMessage(message: Message) {
+function rememberSafeBotMessage(message: Message, runtime?: SafeBotRuntime) {
   const key = runtimeScopeKey(message.guildId, message.author.id);
+  const historyWindowMs = Math.max(
+    runtime?.protectionSettings?.floodWindowSeconds ?? 15,
+    runtime?.protectionSettings?.imageWindowSeconds ?? 15
+  ) * 1_000;
   const entries = (messageHistory.get(key) ?? [])
-    .filter((entry) => Date.now() - entry.at <= 15_000);
+    .filter((entry) => Date.now() - entry.at <= historyWindowMs);
   const detected = detectMessageContent(message);
 
   entries.push({
@@ -709,36 +831,43 @@ function rememberSafeBotMessage(message: Message) {
   return entries;
 }
 
-function rememberAndDetectFlood(message: Message) {
-  const entries = rememberSafeBotMessage(message);
+function rememberAndDetectFlood(message: Message, runtime: SafeBotRuntime) {
+  const entries = rememberSafeBotMessage(message, runtime);
   const now = Date.now();
-  const fastMessages = entries.filter((entry) => now - entry.at <= 10_000);
-  const imageMessages = entries.filter((entry) => entry.hasImage && now - entry.at <= 15_000);
-  const linkMessages = entries.filter((entry) => entry.hasLink && now - entry.at <= 15_000);
+  const settings = runtime.protectionSettings;
+  const floodLimit = settings?.floodLimit ?? 5;
+  const floodWindowMs = (settings?.floodWindowSeconds ?? 10) * 1_000;
+  const imageLimit = settings?.imageLimit ?? 3;
+  const imageWindowMs = (settings?.imageWindowSeconds ?? 15) * 1_000;
+  const linkLimit = settings?.multiChannelLimit ?? 3;
+  const linkWindowMs = (settings?.multiChannelWindowSeconds ?? 15) * 1_000;
+  const fastMessages = entries.filter((entry) => now - entry.at <= floodWindowMs);
+  const imageMessages = entries.filter((entry) => entry.hasImage && now - entry.at <= imageWindowMs);
+  const linkMessages = entries.filter((entry) => entry.hasLink && now - entry.at <= linkWindowMs);
 
-  if (fastMessages.length >= 5) {
+  if (fastMessages.length >= floodLimit) {
     return {
       messages: fastMessages.map((entry) => entry.message),
       moduleId: "anti-flood" as SelfBotProtectionModuleId,
-      reason: "5 mensagens em 10 segundos.",
+      reason: `${floodLimit} mensagens em ${Math.round(floodWindowMs / 1_000)} segundos.`,
       type: "Flood de mensagens"
     };
   }
 
-  if (imageMessages.length >= 3) {
+  if (imageMessages.length >= imageLimit) {
     return {
       messages: imageMessages.map((entry) => entry.message),
       moduleId: "anti-imagens" as SelfBotProtectionModuleId,
-      reason: "3 imagens em 15 segundos.",
+      reason: `${imageLimit} imagens em ${Math.round(imageWindowMs / 1_000)} segundos.`,
       type: "Flood de imagens"
     };
   }
 
-  if (linkMessages.length >= 3) {
+  if (linkMessages.length >= linkLimit) {
     return {
       messages: linkMessages.map((entry) => entry.message),
       moduleId: "anti-links" as SelfBotProtectionModuleId,
-      reason: "3 links em 15 segundos.",
+      reason: `${linkLimit} links em ${Math.round(linkWindowMs / 1_000)} segundos.`,
       type: "Flood de links"
     };
   }

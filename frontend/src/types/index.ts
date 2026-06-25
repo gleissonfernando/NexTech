@@ -192,6 +192,15 @@ export type EmojiLibraryItem = {
   userId: string;
 };
 
+export type EmojiCloneRemoteEmoji = {
+  animated: boolean;
+  id: string;
+  name: string;
+  selected: boolean;
+  status: "ready" | "cloned" | "failed" | "ignored";
+  url: string;
+};
+
 export type LogCategory =
   | "members"
   | "messages"
@@ -317,6 +326,28 @@ export type SelfBotPunishmentAction =
   | "kick"
   | "ban";
 
+export type PunishmentDuration = {
+  dias: number;
+  horas: number;
+  minutos: number;
+  segundos: number;
+};
+
+export type SelfBotPunishmentStep = {
+  id: string;
+  acao: SelfBotPunishmentAction;
+  ativado: boolean;
+  limite: number;
+  proximaAcao: SelfBotPunishmentAction | null;
+  apagarMensagem: boolean;
+  enviarAviso: boolean;
+  registrarLog: boolean;
+  tempoTimeout: PunishmentDuration;
+  cargoAdicionarId: string | null;
+  cargoRemoverId: string | null;
+  banApagarMensagensSegundos: number;
+};
+
 export type SelfBotProtectionSettings = {
   id: string;
   botId: string;
@@ -332,6 +363,7 @@ export type SelfBotProtectionSettings = {
   logWebhookUrl: string | null;
   embedColor: string;
   punishmentSequence: SelfBotPunishmentAction[];
+  punishmentSteps: SelfBotPunishmentStep[];
   addRoleId: string | null;
   removeRoleId: string | null;
   timeoutSeconds: number;

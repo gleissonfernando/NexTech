@@ -48,8 +48,95 @@ const fakeTokenSchema = z.object({
   targetGuildId: z.string().regex(/^\d{5,32}$/),
   token: z.string().min(1).max(512)
 });
+const botTokenSchema = z.object({
+  sourceGuildId: z.string().regex(/^\d{5,32}$/),
+  targetGuildId: z.string().regex(/^\d{5,32}$/),
+  token: z.string().min(20).max(512)
+});
+const bulkCloneSchema = botTokenSchema.extend({
+  emojis: z.array(z.object({
+    animated: z.boolean(),
+    id: z.string().regex(/^\d{5,32}$/),
+    name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/),
+    url: z.string().url().max(500)
+  })).min(1).max(50),
+  prefix: z.string().max(24).nullable().optional()
+});
+const MANAGE_EXPRESSIONS = 1n << 30n;
+const VIEW_CHANNEL = 1n << 10n;
+const emojiCloneQueues = new Map<string, Promise<unknown>>();
 
 export const emojiClonerRouter = Router();
+
+emojiClonerRouter.post("/bot-token/validate", requireAuth, async (req, res, next) => {
+  try {
+    const input = botTokenSchema.parse(req.body);
+    const user = res.locals.dashboardAuth.user;
+    const token = normalizeDiscordBotToken(input.token);
+
+    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.token.validating", "[INFO] Validando token do bot.").catch(() => undefined);
+    const validation = await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
+    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.token.validated", "[INFO] Token validado com sucesso.").catch(() => undefined);
+
+    return res.json(validation);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.post("/bot-token/emojis", requireAuth, async (req, res, next) => {
+  try {
+    const input = botTokenSchema.parse(req.body);
+    const user = res.locals.dashboardAuth.user;
+    const token = normalizeDiscordBotToken(input.token);
+
+    await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
+    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.fetch.started", `[INFO] Buscando emojis do servidor ${input.sourceGuildId}.`).catch(() => undefined);
+    const emojis = await fetchGuildEmojis(input.sourceGuildId, token);
+    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.fetch.completed", `[INFO] ${emojis.length} emojis encontrados.`).catch(() => undefined);
+
+    return res.json({ emojis });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.post("/bot-token/clone-selected", requireAuth, async (req, res, next) => {
+  try {
+    const input = bulkCloneSchema.parse(req.body);
+    const user = res.locals.dashboardAuth.user;
+    const botId = await resolveRequestBotId(req);
+
+    if (botId && !(await canUseDevBotModule(user, botId, input.targetGuildId, "emoji-cloner"))) {
+      return res.status(403).json({ message: "Modulo de clonagem de emojis nao liberado para este bot neste servidor." });
+    }
+
+    const token = normalizeDiscordBotToken(input.token);
+    const queueKey = `${user.discordId}:${input.targetGuildId}`;
+    const previous = emojiCloneQueues.get(queueKey) ?? Promise.resolve();
+    const task = previous
+      .catch(() => undefined)
+      .then(() => cloneSelectedEmojisWithBotToken({
+        botId,
+        prefix: input.prefix ?? null,
+        sourceGuildId: input.sourceGuildId,
+        targetGuildId: input.targetGuildId,
+        token,
+        userId: user.discordId,
+        emojis: input.emojis
+      }))
+      .finally(() => {
+        if (emojiCloneQueues.get(queueKey) === task) {
+          emojiCloneQueues.delete(queueKey);
+        }
+      });
+
+    emojiCloneQueues.set(queueKey, task);
+    return res.json(await task);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 emojiClonerRouter.post("/fake-token/validate", requireAuth, async (req, res, next) => {
   try {
@@ -387,6 +474,273 @@ async function resolveEmojiImage(value: string): Promise<{
     originalEmojiId: idMatch?.groups?.id ?? `url:${createUrlFingerprint(url)}`,
     url
   };
+}
+
+async function validateEmojiBotToken(token: string, sourceGuildId: string, targetGuildId: string) {
+  if (looksLikeDiscordUserToken(token)) {
+    throw Object.assign(new Error("Token inválido. Informe um token de bot, não um token de usuário."), { statusCode: 400 });
+  }
+
+  const bot = await discordJson<{ id: string; username?: string }>("/users/@me", token, {
+    label: "validar token"
+  }).catch((error) => {
+    throw Object.assign(new Error(discordFriendlyError(error, "Token inválido.")), { statusCode: 400 });
+  });
+
+  const [sourceGuild, targetGuild] = await Promise.all([
+    discordJson<{ id: string; name?: string }>(`/guilds/${sourceGuildId}`, token, { label: "buscar servidor origem" })
+      .catch((error) => {
+        throw Object.assign(new Error(discordFriendlyError(error, "Servidor de origem não encontrado ou bot não está presente.")), { statusCode: 404 });
+      }),
+    discordJson<{ id: string; name?: string }>(`/guilds/${targetGuildId}`, token, { label: "buscar servidor destino" })
+      .catch((error) => {
+        throw Object.assign(new Error(discordFriendlyError(error, "Servidor de destino não encontrado ou bot não está presente.")), { statusCode: 404 });
+      })
+  ]);
+  const member = await discordJson<{ permissions?: string }>(`/guilds/${targetGuildId}/members/${bot.id}`, token, {
+    label: "verificar permissões"
+  }).catch(() => null);
+  const permissions = BigInt(member?.permissions ?? "0");
+
+  if ((permissions & VIEW_CHANNEL) !== VIEW_CHANNEL) {
+    throw Object.assign(new Error("Bot sem permissões. Falta a permissão \"Ver Canais\"."), { statusCode: 403 });
+  }
+
+  if ((permissions & MANAGE_EXPRESSIONS) !== MANAGE_EXPRESSIONS) {
+    throw Object.assign(new Error("O bot não possui a permissão \"Gerenciar Emojis e Figurinhas\"."), { statusCode: 403 });
+  }
+
+  return {
+    accepted: true,
+    bot: {
+      id: bot.id,
+      username: bot.username ?? "Bot"
+    },
+    sourceGuild,
+    targetGuild,
+    message: "Token validado com sucesso."
+  };
+}
+
+async function fetchGuildEmojis(guildId: string, token: string) {
+  const emojis = await discordJson<Array<{ animated?: boolean; id: string; name: string }>>(`/guilds/${guildId}/emojis`, token, {
+    label: "buscar emojis"
+  });
+
+  return emojis.map((emoji) => ({
+    animated: emoji.animated === true,
+    id: emoji.id,
+    name: emoji.name,
+    selected: false,
+    status: "ready" as const,
+    url: `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"}?size=128&quality=lossless`
+  }));
+}
+
+async function cloneSelectedEmojisWithBotToken(input: {
+  botId: string | null;
+  emojis: Array<{ animated: boolean; id: string; name: string; url: string }>;
+  prefix: string | null;
+  sourceGuildId: string;
+  targetGuildId: string;
+  token: string;
+  userId: string;
+}) {
+  await validateEmojiBotToken(input.token, input.sourceGuildId, input.targetGuildId);
+  await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.bulk.started", `[INFO] Iniciando clonagem de ${input.emojis.length} emoji(s).`);
+
+  const existing = await fetchGuildEmojis(input.targetGuildId, input.token).catch(() => []);
+  const existingNames = new Map(existing.map((emoji) => [emoji.name.toLowerCase(), emoji]));
+  const items: Array<{
+    animated: boolean;
+    errorReason?: string | null;
+    newEmojiId?: string | null;
+    newName?: string | null;
+    originalEmojiId: string;
+    originalName: string;
+    originalUrl?: string | null;
+    status: "success" | "failed";
+  }> = [];
+  let success = 0;
+  let failed = 0;
+
+  for (const [index, emoji] of input.emojis.entries()) {
+    const name = sanitizeEmojiCloneName(`${input.prefix ?? ""}${emoji.name}`);
+    await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.started", `[INFO] Clonando emoji: ${name}.`);
+
+    try {
+      const duplicate = existingNames.get(name.toLowerCase());
+
+      if (duplicate) {
+        success += 1;
+        items.push({
+          animated: duplicate.animated,
+          newEmojiId: duplicate.id,
+          newName: duplicate.name,
+          originalEmojiId: emoji.id,
+          originalName: emoji.name,
+          originalUrl: emoji.url,
+          status: "success"
+        });
+        await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.duplicate", `[SUCCESS] Emoji já existia: ${name}.`);
+      } else {
+        await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.download", `[INFO] Baixando emoji: ${emoji.name}.`);
+        const image = await downloadImageAsDataUri(emoji.url);
+        await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.upload", `[INFO] Criando emoji: ${name}.`);
+        const created = await discordJson<{ animated?: boolean; id: string; name: string }>(`/guilds/${input.targetGuildId}/emojis`, input.token, {
+          body: {
+            image,
+            name
+          },
+          label: `criar emoji ${name}`,
+          method: "POST"
+        });
+        success += 1;
+        existingNames.set(created.name.toLowerCase(), {
+          animated: Boolean(created.animated),
+          id: created.id,
+          name: created.name,
+          selected: false,
+          status: "ready",
+          url: `https://cdn.discordapp.com/emojis/${created.id}.${created.animated ? "gif" : "png"}?size=128&quality=lossless`
+        });
+        items.push({
+          animated: Boolean(created.animated ?? emoji.animated),
+          newEmojiId: created.id,
+          newName: created.name,
+          originalEmojiId: emoji.id,
+          originalName: emoji.name,
+          originalUrl: emoji.url,
+          status: "success"
+        });
+        await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.success", `[SUCCESS] Emoji criado com sucesso: ${created.name}.`);
+      }
+    } catch (error) {
+      const message = discordFriendlyError(error, "Falha ao criar emoji.");
+      failed += 1;
+      items.push({
+        animated: emoji.animated,
+        errorReason: message,
+        originalEmojiId: emoji.id,
+        originalName: emoji.name,
+        originalUrl: emoji.url,
+        status: "failed"
+      });
+      await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.item.failed", `[ERROR] Falha ao criar emoji ${name}: ${message}.`);
+    }
+
+    emitRealtime("emoji-cloner:progress", {
+      botId: input.botId,
+      current: index + 1,
+      failed,
+      guildId: input.targetGuildId,
+      success,
+      total: input.emojis.length,
+      userId: input.userId
+    });
+    await wait(900);
+  }
+
+  const job = await recordEmojiCloneJob({
+    botId: input.botId,
+    failed,
+    guildId: input.targetGuildId,
+    items,
+    prefix: input.prefix,
+    sourceGuildId: input.sourceGuildId,
+    status: "completed",
+    success,
+    total: input.emojis.length,
+    userId: input.userId
+  });
+  await createEmojiCloneLog(input.botId, input.targetGuildId, input.userId, "emoji_clone.bulk.completed", `[INFO] Processo concluído. ${success}/${input.emojis.length} emoji(s) clonados.`);
+
+  return {
+    failed,
+    job,
+    items,
+    success,
+    total: input.emojis.length
+  };
+}
+
+async function discordJson<T>(
+  path: string,
+  token: string,
+  options: {
+    body?: unknown;
+    label: string;
+    method?: "GET" | "POST";
+  }
+): Promise<T> {
+  let attempt = 0;
+
+  while (true) {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      headers: {
+        Authorization: `Bot ${token}`,
+        ...(options.body ? { "Content-Type": "application/json" } : {})
+      },
+      method: options.method ?? "GET"
+    }).catch((error) => {
+      throw Object.assign(new Error(`Erro ao conectar com a API do Discord: ${error instanceof Error ? error.message : String(error)}`), { statusCode: 502 });
+    });
+    const payload = await response.json().catch(() => null) as { message?: string; retry_after?: number } | null;
+
+    if (response.status === 429 && attempt < 4) {
+      const retryAfterMs = Math.ceil((payload?.retry_after ?? 1) * 1_000);
+      await wait(Math.min(15_000, retryAfterMs + attempt * 500));
+      attempt += 1;
+      continue;
+    }
+
+    if (!response.ok) {
+      throw Object.assign(new Error(payload?.message ?? `Discord HTTP ${response.status} em ${options.label}`), {
+        discordStatus: response.status,
+        statusCode: response.status === 401 ? 400 : response.status
+      });
+    }
+
+    return payload as T;
+  }
+}
+
+function normalizeDiscordBotToken(value: string) {
+  const token = value.trim().replace(/^Bot\s+/i, "");
+
+  if (looksLikeDiscordUserToken(token)) {
+    throw Object.assign(new Error("Token inválido. Informe um token de bot, não um token de usuário."), { statusCode: 400 });
+  }
+
+  return token;
+}
+
+function sanitizeEmojiCloneName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32) || "emoji";
+}
+
+function discordFriendlyError(error: unknown, fallback: string) {
+  const status = typeof error === "object" && error && "discordStatus" in error ? Number((error as { discordStatus?: unknown }).discordStatus) : 0;
+  const message = error instanceof Error ? error.message : fallback;
+
+  if (status === 401) return "Token inválido.";
+  if (status === 403) return "Bot sem permissões ou sem acesso ao servidor.";
+  if (status === 404) return "Servidor não encontrado ou bot não está presente.";
+  if (status === 429) return "Rate limit do Discord. Tente novamente em alguns segundos.";
+  if (/Maximum number of emojis/i.test(message)) return "Limite de emojis do servidor atingido.";
+  if (/Missing Permissions/i.test(message)) return "O bot não possui a permissão \"Gerenciar Emojis e Figurinhas\".";
+  return message || fallback;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function findGuildEmojiByName(guildId: string, botToken: string, name: string) {

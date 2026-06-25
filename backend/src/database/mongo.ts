@@ -916,6 +916,28 @@ export type MongoSelfBotPunishmentAction =
   | "kick"
   | "ban";
 
+export type MongoPunishmentDuration = {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+};
+
+export type MongoSelfBotPunishmentStep = {
+  id: string;
+  action: MongoSelfBotPunishmentAction;
+  enabled: boolean;
+  limit: number;
+  nextAction: MongoSelfBotPunishmentAction | null;
+  deleteMessage?: boolean;
+  sendWarning?: boolean;
+  registerLog?: boolean;
+  timeoutDuration?: MongoPunishmentDuration;
+  addRoleId?: string | null;
+  removeRoleId?: string | null;
+  banDeleteMessageSeconds?: number;
+};
+
 export type MongoSelfBotProtectionSettings = {
   _id: string;
   botId: string;
@@ -931,6 +953,7 @@ export type MongoSelfBotProtectionSettings = {
   logWebhookUrl: string | null;
   embedColor: string;
   punishmentSequence: MongoSelfBotPunishmentAction[];
+  punishmentSteps?: MongoSelfBotPunishmentStep[];
   addRoleId: string | null;
   removeRoleId: string | null;
   timeoutSeconds: number;
@@ -953,6 +976,21 @@ export type MongoSelfBotProtectionSettings = {
   blockedTerms: string[];
   createdBy: string | null;
   updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSelfBotPunishmentState = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  moduleId: MongoSelfBotProtectionModuleId;
+  currentAction: MongoSelfBotPunishmentAction;
+  actionCount: number;
+  totalOccurrences: number;
+  lastPunishmentActions: MongoSelfBotPunishmentAction[];
+  lastInfractionAt: Date;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -1152,6 +1190,7 @@ export async function getMongoCollections() {
     missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
     missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
     selfBotProtectionSettings: db.collection<MongoSelfBotProtectionSettings>("self_bot_protection_settings"),
+    selfBotPunishmentStates: db.collection<MongoSelfBotPunishmentState>("self_bot_punishment_states"),
     selfBotProtectionIncidents: db.collection<MongoSelfBotProtectionIncident>("self_bot_protection_incidents"),
     selfBotRoleAssignments: db.collection<MongoSelfBotRoleAssignment>("self_bot_role_assignments"),
     devBots: db.collection<MongoDevBot>("Bot"),
@@ -1712,6 +1751,20 @@ async function ensureSelfBotProtectionIndexes(db: Db) {
       guildId: 1,
       userId: 1,
       createdAt: -1
+    }),
+    db.collection<MongoSelfBotPunishmentState>("self_bot_punishment_states").createIndex(
+      {
+        botId: 1,
+        guildId: 1,
+        userId: 1,
+        moduleId: 1
+      },
+      { unique: true }
+    ),
+    db.collection<MongoSelfBotPunishmentState>("self_bot_punishment_states").createIndex({
+      botId: 1,
+      guildId: 1,
+      updatedAt: -1
     }),
     db.collection<MongoSelfBotRoleAssignment>("self_bot_role_assignments").createIndex(
       {

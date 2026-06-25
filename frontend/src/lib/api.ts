@@ -36,6 +36,7 @@ import type {
   GuildRoleOption,
   GuildSettings,
   EmojiLibraryItem,
+  EmojiCloneRemoteEmoji,
   ImageAntiSpamResponse,
   ImageAntiSpamSettings,
   LiveEvent,
@@ -316,6 +317,51 @@ export async function validateFakeEmojiCloneToken(payload: {
     message: string;
     tokenMasked: string;
   }>("/emoji-cloner/fake-token/validate", payload);
+  return data;
+}
+
+export async function validateEmojiCloneBotToken(payload: {
+  sourceGuildId: string;
+  targetGuildId: string;
+  token: string;
+}) {
+  const { data } = await api.post<{
+    accepted: boolean;
+    bot: { id: string; username: string };
+    message: string;
+    sourceGuild: { id: string; name?: string };
+    targetGuild: { id: string; name?: string };
+  }>("/emoji-cloner/bot-token/validate", payload);
+  return data;
+}
+
+export async function fetchEmojiCloneBotTokenEmojis(payload: {
+  sourceGuildId: string;
+  targetGuildId: string;
+  token: string;
+}) {
+  const { data } = await api.post<{ emojis: EmojiCloneRemoteEmoji[] }>("/emoji-cloner/bot-token/emojis", payload);
+  return data.emojis;
+}
+
+export async function cloneSelectedEmojiCloneBotToken(
+  botId: string | null | undefined,
+  payload: {
+    emojis: EmojiCloneRemoteEmoji[];
+    prefix?: string | null;
+    sourceGuildId: string;
+    targetGuildId: string;
+    token: string;
+  }
+) {
+  const { data } = await api.post<{
+    failed: number;
+    items: Array<{ errorReason?: string | null; newEmojiId?: string | null; newName?: string | null; originalEmojiId: string; status: "success" | "failed" }>;
+    success: number;
+    total: number;
+  }>("/emoji-cloner/bot-token/clone-selected", payload, {
+    params: botParams(botId)
+  });
   return data;
 }
 

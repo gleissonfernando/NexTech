@@ -385,7 +385,7 @@ export function ImageAntiSpamPanel({
               emptyText="Nenhum canal disponivel."
               icon={Hash}
               items={channels.map((channel) => ({ id: channel.id, label: `#${channel.name}` }))}
-              label="Canais ignorados"
+              label="Canais Permitidos para Foto"
               onToggle={(id) => toggleId("ignoredChannelIds", id)}
               selectedIds={settings.ignoredChannelIds}
             />

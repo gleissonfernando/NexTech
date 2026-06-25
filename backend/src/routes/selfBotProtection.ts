@@ -22,6 +22,7 @@ import {
   getSelfBotProtectionDashboard,
   getSelfBotProtectionSettings,
   recordSelfBotProtectionIncident,
+  resolveSelfBotPunishment,
   saveSelfBotProtectionSettings
 } from "../services/selfBotProtectionService";
 import type {
@@ -38,6 +39,26 @@ const optionalSnowflakeSchema = z.union([snowflakeSchema, z.literal(""), z.null(
 const moduleIdSchema = z.enum(SELF_BOT_PROTECTION_MODULES.map((module) => module.id) as [SelfBotProtectionModuleId, ...SelfBotProtectionModuleId[]]);
 const punishmentActionSchema = z.enum(SELF_BOT_PUNISHMENT_ACTIONS as [SelfBotPunishmentAction, ...SelfBotPunishmentAction[]]);
 const hexColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
+const punishmentDurationSchema = z.object({
+  dias: z.coerce.number().int().min(0).max(28).optional(),
+  horas: z.coerce.number().int().min(0).max(23).optional(),
+  minutos: z.coerce.number().int().min(0).max(59).optional(),
+  segundos: z.coerce.number().int().min(0).max(59).optional()
+});
+const punishmentStepSchema = z.object({
+  id: z.string().min(1).max(80).optional(),
+  acao: punishmentActionSchema,
+  ativado: z.boolean().optional(),
+  limite: z.coerce.number().int().min(1).max(100).optional(),
+  proximaAcao: punishmentActionSchema.nullable().optional(),
+  apagarMensagem: z.boolean().optional(),
+  enviarAviso: z.boolean().optional(),
+  registrarLog: z.boolean().optional(),
+  tempoTimeout: punishmentDurationSchema.optional(),
+  cargoAdicionarId: optionalSnowflakeSchema,
+  cargoRemoverId: optionalSnowflakeSchema,
+  banApagarMensagensSegundos: z.coerce.number().int().min(0).max(604_800).optional()
+});
 const settingsSchema = z.object({
   enabled: z.boolean().optional(),
   moduleToggles: z.record(moduleIdSchema, z.boolean()).optional(),
@@ -50,6 +71,7 @@ const settingsSchema = z.object({
   logWebhookUrl: z.string().max(500).nullable().optional(),
   embedColor: hexColorSchema.optional(),
   punishmentSequence: z.array(punishmentActionSchema).max(8).optional(),
+  punishmentSteps: z.array(punishmentStepSchema).max(12).optional(),
   addRoleId: optionalSnowflakeSchema,
   removeRoleId: optionalSnowflakeSchema,
   timeoutSeconds: z.coerce.number().int().min(5).max(2_419_200).optional(),
@@ -70,6 +92,11 @@ const settingsSchema = z.object({
   newAccountMaxAgeHours: z.coerce.number().int().min(1).max(87_600).optional(),
   suspiciousDomains: z.array(z.string().min(1).max(120)).max(250).optional(),
   blockedTerms: z.array(z.string().min(1).max(120)).max(250).optional()
+});
+const punishmentResolveSchema = z.object({
+  guildId: guildIdSchema,
+  moduleId: moduleIdSchema,
+  userId: snowflakeSchema
 });
 const incidentSchema = z.object({
   guildId: guildIdSchema,
@@ -153,6 +180,24 @@ selfBotProtectionRouter.post("/bot/incidents", requireBot, async (req, res, next
 
     return res.status(201).json({
       incident
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+selfBotProtectionRouter.post("/bot/punishments/next", requireBot, async (req, res, next) => {
+  try {
+    const input = punishmentResolveSchema.parse(req.body);
+    const botId = await readRequiredBotId(req);
+
+    await assertBotModuleLicense(botId, input.guildId, input.moduleId);
+
+    return res.status(201).json({
+      punishment: await resolveSelfBotPunishment({
+        ...input,
+        botId
+      })
     });
   } catch (error) {
     return next(error);
@@ -328,6 +373,14 @@ async function validateResources(
   }
 
   const roleIds = [input.addRoleId, input.removeRoleId].filter((roleId): roleId is string => Boolean(roleId));
+  for (const step of input.punishmentSteps ?? []) {
+    if (step.cargoAdicionarId) {
+      roleIds.push(step.cargoAdicionarId);
+    }
+    if (step.cargoRemoverId) {
+      roleIds.push(step.cargoRemoverId);
+    }
+  }
 
   if (roleIds.length && !(await areGuildAssignableRoles(guildId, [...new Set(roleIds)], botToken))) {
     throw createRouteError("Um dos cargos de punicao precisa ficar abaixo do cargo do bot.", 400);
