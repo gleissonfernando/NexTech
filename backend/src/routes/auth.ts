@@ -342,7 +342,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       })
     );
 
-    if (verifiedState.type === "dev" && !isDashboardDevUserId(discordUser.id) && !validation.canManageDashboard) {
+    if (verifiedState.type === "dev" && !isDashboardDevUserId(discordUser.id)) {
       console.warn(`[auth] oauth dev negado: discordId=${discordUser.id}.`);
       clearAuthCookies(res);
       req.session.user = undefined;

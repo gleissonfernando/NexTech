@@ -1,11 +1,5 @@
-import { env } from "./env";
-
-const dashboardDevUserIds = new Set(
-  env.DASHBOARD_DEV_USER_IDS.split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-);
+const DASHBOARD_DEV_USER_ID = "1426287249020158018";
 
 export function isDashboardDevUserId(discordId: string | null | undefined) {
-  return Boolean(discordId && dashboardDevUserIds.has(discordId));
+  return discordId === DASHBOARD_DEV_USER_ID;
 }
