@@ -59,7 +59,7 @@ function isMaintenanceBypass(req: Request) {
     return true;
   }
 
-  if (requestCameFromDevPanel(req) && (path === "/api/dashboard/me" || path.startsWith("/api/logs"))) {
+  if (requestCameFromDevPanel(req) && isDevPanelApiBypassPath(path)) {
     return true;
   }
 
@@ -72,6 +72,10 @@ function isMaintenanceBypass(req: Request) {
 }
 
 function requestCameFromDevPanel(req: Request) {
+  if (req.get("x-dev-dashboard") === "true") {
+    return true;
+  }
+
   const referer = req.get("referer") ?? req.get("referrer") ?? "";
 
   if (!referer) {
@@ -84,6 +88,10 @@ function requestCameFromDevPanel(req: Request) {
   } catch {
     return referer.includes("/dev");
   }
+}
+
+function isDevPanelApiBypassPath(path: string) {
+  return path === "/api/dashboard/me" || path.startsWith("/api/logs");
 }
 
 function maintenanceHtml() {

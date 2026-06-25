@@ -97,6 +97,10 @@ api.interceptors.request.use((config) => {
     config.headers.set("x-dashboard-verification", token);
   }
 
+  if (window.location.pathname === "/dev" || window.location.pathname.startsWith("/dev/")) {
+    config.headers.set("x-dev-dashboard", "true");
+  }
+
   return config;
 });
 
