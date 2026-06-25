@@ -477,10 +477,6 @@ async function resolveEmojiImage(value: string): Promise<{
 }
 
 async function validateEmojiBotToken(token: string, sourceGuildId: string, targetGuildId: string) {
-  if (looksLikeDiscordUserToken(token)) {
-    throw Object.assign(new Error("Token inválido. Informe um token de bot, não um token de usuário."), { statusCode: 400 });
-  }
-
   const bot = await discordJson<{ id: string; username?: string }>("/users/@me", token, {
     label: "validar token"
   }).catch((error) => {
@@ -686,7 +682,9 @@ async function discordJson<T>(
     }).catch((error) => {
       throw Object.assign(new Error(`Erro ao conectar com a API do Discord: ${error instanceof Error ? error.message : String(error)}`), { statusCode: 502 });
     });
-    const payload = await response.json().catch(() => null) as { message?: string; retry_after?: number } | null;
+    const raw = await response.text();
+    console.log(`[emoji-cloner][discord] ${options.label} status=${response.status} path=${path} body=${truncateDiscordLog(raw)}`);
+    const payload = safeJson(raw) as { message?: string; retry_after?: number } | null;
 
     if (response.status === 429 && attempt < 4) {
       const retryAfterMs = Math.ceil((payload?.retry_after ?? 1) * 1_000);
@@ -707,13 +705,7 @@ async function discordJson<T>(
 }
 
 function normalizeDiscordBotToken(value: string) {
-  const token = value.trim().replace(/^Bot\s+/i, "");
-
-  if (looksLikeDiscordUserToken(token)) {
-    throw Object.assign(new Error("Token inválido. Informe um token de bot, não um token de usuário."), { statusCode: 400 });
-  }
-
-  return token;
+  return value.trim().replace(/^Bot\s+/i, "");
 }
 
 function sanitizeEmojiCloneName(value: string) {
@@ -737,6 +729,18 @@ function discordFriendlyError(error: unknown, fallback: string) {
   if (/Maximum number of emojis/i.test(message)) return "Limite de emojis do servidor atingido.";
   if (/Missing Permissions/i.test(message)) return "O bot não possui a permissão \"Gerenciar Emojis e Figurinhas\".";
   return message || fallback;
+}
+
+function safeJson(value: string) {
+  try {
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function truncateDiscordLog(value: string) {
+  return value.replace(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/g, "[masked-token]").slice(0, 800);
 }
 
 function wait(ms: number) {
