@@ -22,8 +22,10 @@ import {
 } from "../services/devBotService";
 import {
   restartDevBotProcess,
+  startAllDevBotProcesses,
   startDevBotProcess,
-  stopDevBotProcess
+  stopDevBotProcess,
+  stopSelectedDevBotProcesses
 } from "../services/devBotRuntimeService";
 import {
   createFivemModule,
@@ -357,6 +359,65 @@ devRouter.post("/bots/register-primary", async (req, res, next) => {
   }
 });
 
+devRouter.post("/bots/start-all", async (_req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const bots = await listManageableDevBots(auth);
+
+    await startAllDevBotProcesses(bots.map((bot) => bot.id));
+    const updatedBots = await listAccessibleDevBots(auth.user);
+
+    await writeDevBotAudit(
+      auth,
+      auth.user.selectedGuildId ?? "global",
+      null,
+      "start_all",
+      `${bots.length} bot${bots.length === 1 ? "" : "s"} ligado${bots.length === 1 ? "" : "s"} pelo controle geral DEV.`,
+      {
+        botIds: bots.map((bot) => bot.id)
+      }
+    );
+
+    return res.json({
+      bots: updatedBots,
+      affected: bots.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/stop-all", async (_req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const bots = await listManageableDevBots(auth);
+
+    await stopSelectedDevBotProcesses(bots.map((bot) => bot.id), {
+      message: "Bots desligados pelo controle geral DEV.",
+      notifyBot: true
+    });
+    const updatedBots = await listAccessibleDevBots(auth.user);
+
+    await writeDevBotAudit(
+      auth,
+      auth.user.selectedGuildId ?? "global",
+      null,
+      "stop_all",
+      `${bots.length} bot${bots.length === 1 ? "" : "s"} desligado${bots.length === 1 ? "" : "s"} pelo controle geral DEV.`,
+      {
+        botIds: bots.map((bot) => bot.id)
+      }
+    );
+
+    return res.json({
+      bots: updatedBots,
+      affected: bots.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 devRouter.get("/bots/:botId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
@@ -670,6 +731,15 @@ devRouter.patch("/bots/:botId/guilds/:guildId/config", async (req, res, next) =>
     return next(error);
   }
 });
+
+async function listManageableDevBots(auth: DashboardAuth) {
+  const bots = await listAccessibleDevBots(auth.user);
+  const manageable = await Promise.all(bots.map(async (bot) => (
+    (await canManageDevBot(auth.user, bot.id)) ? bot : null
+  )));
+
+  return manageable.filter((bot): bot is NonNullable<(typeof manageable)[number]> => Boolean(bot));
+}
 
 async function writeDevBotAudit(
   auth: DashboardAuth,

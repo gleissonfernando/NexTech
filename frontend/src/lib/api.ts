@@ -1306,6 +1306,20 @@ export async function getDevBots() {
   return data.bots;
 }
 
+export async function startAllDevBots() {
+  const { data } = await api.post<{ affected: number; bots: DevBot[] }>("/dev/bots/start-all", undefined, {
+    timeout: 45000
+  });
+  return data;
+}
+
+export async function stopAllDevBots() {
+  const { data } = await api.post<{ affected: number; bots: DevBot[] }>("/dev/bots/stop-all", undefined, {
+    timeout: 45000
+  });
+  return data;
+}
+
 export async function getMaintenanceState() {
   const { data } = await api.get<{ maintenance: MaintenanceState }>("/dev/maintenance");
   return data.maintenance;

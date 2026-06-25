@@ -35,6 +35,8 @@ import {
     getDevModules,
     getGuildLiveOptions,
     restartDevBot,
+    startAllDevBots,
+    stopAllDevBots,
     stopDevBot,
     updateDevBotModules
 } from "../../lib/api";
@@ -276,6 +278,7 @@ export function DevPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tokenVisible, setTokenVisible] = useState(false);
+  const [bulkPowerAction, setBulkPowerAction] = useState<"start" | "stop" | null>(null);
   const [poweringBotId, setPoweringBotId] = useState<string | null>(null);
   const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -483,6 +486,11 @@ export function DevPanel({
   async function handlePower(bot: DevBot) {
     const shouldStop = bot.status === "online";
 
+    if (shouldStop) {
+      setMessage("Use o controle geral isolado para desligar os bots conectados.");
+      return;
+    }
+
     setPoweringBotId(bot.id);
     setMessage(null);
 
@@ -511,6 +519,56 @@ export function DevPanel({
       setMessage(readRequestMessage(error) ?? (shouldStop ? "Nao foi possivel desligar esse bot." : "Nao foi possivel ligar esse bot."));
     } finally {
       setPoweringBotId(null);
+    }
+  }
+
+  async function handleStartAllBots() {
+    setBulkPowerAction("start");
+    setMessage(null);
+
+    try {
+      const result = await startAllDevBots();
+      setBots(result.bots);
+      const selectedUpdate = result.bots.find((bot) => bot.id === selectedBotId) ?? result.bots[0];
+
+      if (selectedUpdate) {
+        onBotUpdated?.(selectedUpdate);
+      }
+      setMessage(`${result.affected} bot${result.affected === 1 ? "" : "s"} enviado${result.affected === 1 ? "" : "s"} para ligar.`);
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel ligar todos os bots.");
+    } finally {
+      setBulkPowerAction(null);
+    }
+  }
+
+  async function handleStopAllBots() {
+    setBulkPowerAction("stop");
+    setMessage(null);
+    setBots((current) => current.map((bot) => ({
+      ...bot,
+      status: "offline",
+      statusMessage: "Desligando pelo controle geral DEV."
+    })));
+
+    try {
+      const result = await stopAllDevBots();
+      setBots(result.bots);
+      const selectedUpdate = result.bots.find((bot) => bot.id === selectedBotId) ?? result.bots[0];
+
+      if (selectedUpdate) {
+        onBotUpdated?.(selectedUpdate);
+      }
+      setMessage(`${result.affected} bot${result.affected === 1 ? "" : "s"} desligado${result.affected === 1 ? "" : "s"} pelo controle geral DEV.`);
+    } catch (error) {
+      const latestBots = await getDevBots().catch(() => null);
+
+      if (latestBots) {
+        setBots(latestBots);
+      }
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel desligar todos os bots.");
+    } finally {
+      setBulkPowerAction(null);
     }
   }
 
@@ -714,8 +772,17 @@ export function DevPanel({
                 <CardDescription className="font-medium text-zinc-300">{bots.length} bot{bots.length === 1 ? "" : "s"} nesta hospedagem.</CardDescription>
               </CardHeader>
               <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
+                <BulkBotPowerPanel
+                  action={bulkPowerAction}
+                  disabled={!bots.length}
+                  offlineCount={stats.offline}
+                  onlineCount={stats.online}
+                  onStartAll={() => void handleStartAllBots()}
+                  onStopAll={() => void handleStopAllBots()}
+                  total={stats.total}
+                />
                 {bots.length ? (
-                  <div className="grid gap-3">
+                  <div className="mt-4 grid gap-3">
                     {bots.map((bot) => (
                       <div
                         className={`flex flex-col gap-3 rounded-lg border p-3.5 transition duration-200 sm:flex-row sm:items-center sm:justify-between ${
@@ -744,10 +811,10 @@ export function DevPanel({
                         </button>
                         <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
                           <Button
-                            disabled={poweringBotId === bot.id}
+                            disabled={poweringBotId === bot.id || bot.status === "online"}
                             onClick={() => void handlePower(bot)}
                             size="icon"
-                            title={bot.status === "online" ? "Desligar bot" : "Ligar bot"}
+                            title={bot.status === "online" ? "Use Desligar todos no controle geral" : "Ligar bot"}
                             variant="outline"
                           >
                             {poweringBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
@@ -789,6 +856,59 @@ export function DevPanel({
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function BulkBotPowerPanel({
+  action,
+  disabled,
+  offlineCount,
+  onlineCount,
+  onStartAll,
+  onStopAll,
+  total
+}: {
+  action: "start" | "stop" | null;
+  disabled: boolean;
+  offlineCount: number;
+  onlineCount: number;
+  onStartAll: () => void;
+  onStopAll: () => void;
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">Controle geral dos bots</p>
+          <p className="mt-1 text-xs font-medium text-zinc-300">
+            {onlineCount} online, {offlineCount} offline, {total} no total.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={disabled || action !== null}
+            onClick={onStartAll}
+            size="sm"
+            title="Ligar todos os bots gerenciaveis"
+            variant="outline"
+          >
+            {action === "start" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+            Ligar todos
+          </Button>
+          <Button
+            disabled={disabled || action !== null}
+            onClick={onStopAll}
+            size="sm"
+            title="Desligar todos os bots conectados"
+            variant="destructive"
+          >
+            {action === "stop" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
+            Desligar todos
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -970,7 +1090,13 @@ function ConnectedBotPanel({
             <ScrollText className="h-4 w-4" />
             Logs
           </Button>
-          <Button disabled={powering} onClick={onPower} size="icon" title={bot.status === "online" ? "Desligar bot" : "Ligar bot"} variant="outline">
+          <Button
+            disabled={powering || bot.status === "online"}
+            onClick={onPower}
+            size="icon"
+            title={bot.status === "online" ? "Use Desligar todos no controle geral" : "Ligar bot"}
+            variant="outline"
+          >
             {powering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
           </Button>
           <Button disabled={deleting} onClick={onDelete} size="icon" title="Desconectar bot" variant="destructive">

@@ -46,14 +46,21 @@ export async function startRegisteredDevBots() {
     return [];
   });
 
-  for (let index = 0; index < bots.length; index += DEV_BOT_START_CONCURRENCY) {
-    const batch = bots.slice(index, index + DEV_BOT_START_CONCURRENCY);
-    await Promise.allSettled(batch.map((bot) => startRuntime(bot)));
+  await startDevBotRuntimeBatch(bots);
+}
 
-    if (index + DEV_BOT_START_CONCURRENCY < bots.length) {
-      await delay(DEV_BOT_START_STAGGER_MS);
-    }
-  }
+export async function startAllDevBotProcesses(botIds: string[]) {
+  const bots = (await Promise.all(botIds.map((botId) => getDevBotRuntimeConfig(botId))))
+    .filter((bot): bot is DevBotRuntimeConfig => Boolean(bot));
+
+  await startDevBotRuntimeBatch(bots);
+}
+
+export async function stopSelectedDevBotProcesses(botIds: string[], options: StopDevBotOptions = {}) {
+  await Promise.allSettled(botIds.map((botId) => stopDevBotProcess(botId, {
+    message: options.message ?? "Bot desligado pelo controle geral DEV.",
+    notifyBot: options.notifyBot ?? true
+  })));
 }
 
 export async function startDevBotProcess(botId: string) {
@@ -225,6 +232,17 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
 function restartDelayMs(botId: string) {
   const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
   return DEV_BOT_RESTART_DELAY_MS + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+}
+
+async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[]) {
+  for (let index = 0; index < bots.length; index += DEV_BOT_START_CONCURRENCY) {
+    const batch = bots.slice(index, index + DEV_BOT_START_CONCURRENCY);
+    await Promise.allSettled(batch.map((bot) => startRuntime(bot)));
+
+    if (index + DEV_BOT_START_CONCURRENCY < bots.length) {
+      await delay(DEV_BOT_START_STAGGER_MS);
+    }
+  }
 }
 
 function delay(milliseconds: number) {
