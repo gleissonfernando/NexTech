@@ -70,7 +70,7 @@ emojiClonerRouter.post("/bot-token/validate", requireAuth, async (req, res, next
   try {
     const input = botTokenSchema.parse(req.body);
     const user = res.locals.dashboardAuth.user;
-    const token = normalizeDiscordBotToken(input.token);
+    const token = normalizeDiscordBotToken(input.token, user.discordId, input.targetGuildId);
 
     await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.token.validating", "[INFO] Validando token do bot.").catch(() => undefined);
     const validation = await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
@@ -86,7 +86,7 @@ emojiClonerRouter.post("/bot-token/emojis", requireAuth, async (req, res, next) 
   try {
     const input = botTokenSchema.parse(req.body);
     const user = res.locals.dashboardAuth.user;
-    const token = normalizeDiscordBotToken(input.token);
+    const token = normalizeDiscordBotToken(input.token, user.discordId, input.targetGuildId);
 
     await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
     await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.fetch.started", `[INFO] Buscando emojis do servidor ${input.sourceGuildId}.`).catch(() => undefined);
@@ -109,7 +109,7 @@ emojiClonerRouter.post("/bot-token/clone-selected", requireAuth, async (req, res
       return res.status(403).json({ message: "Modulo de clonagem de emojis nao liberado para este bot neste servidor." });
     }
 
-    const token = normalizeDiscordBotToken(input.token);
+    const token = normalizeDiscordBotToken(input.token, user.discordId, input.targetGuildId);
     const queueKey = `${user.discordId}:${input.targetGuildId}`;
     const previous = emojiCloneQueues.get(queueKey) ?? Promise.resolve();
     const task = previous
@@ -692,13 +692,24 @@ async function discordJson<T>(
   }
 }
 
-function normalizeDiscordBotToken(value: string) {
-  return value
+function normalizeDiscordBotToken(value: string, userId: string, guildId: string) {
+  const token = value
     .trim()
     .replace(/^authorization:\s*/i, "")
     .replace(/^bot\s+/i, "")
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/\s+/g, "");
+  const unsupportedReason = unsupportedCredentialReason(token);
+
+  if (unsupportedReason) {
+    void createEmojiCloneLog(null, guildId, userId, "emoji_clone.auth.unsupported", `[ERROR] Credencial não suportada: ${unsupportedReason}.`);
+    throw Object.assign(new Error(unsupportedReason), {
+      statusCode: 400
+    });
+  }
+
+  console.log(`[emoji-cloner][auth] credential received type=bot-candidate length=${token.length} fingerprint=${tokenFingerprint(token)}`);
+  return token;
 }
 
 function sanitizeEmojiCloneName(value: string) {
@@ -715,13 +726,27 @@ function discordFriendlyError(error: unknown, fallback: string) {
   const status = typeof error === "object" && error && "discordStatus" in error ? Number((error as { discordStatus?: unknown }).discordStatus) : 0;
   const message = error instanceof Error ? error.message : fallback;
 
-  if (status === 401) return "Token inválido.";
-  if (status === 403) return "Bot sem permissões ou sem acesso ao servidor.";
-  if (status === 404) return "Servidor não encontrado ou bot não está presente.";
-  if (status === 429) return "Rate limit do Discord. Tente novamente em alguns segundos.";
+  if (status === 401) return `Token de bot inválido. Discord HTTP ${status}.`;
+  if (status === 403) return `Falha de autenticação ou permissão. Discord HTTP ${status}.`;
+  if (status === 404) return `O bot não possui acesso ao servidor informado. Discord HTTP ${status}.`;
+  if (status === 429) return `Rate limit do Discord. Discord HTTP ${status}. Tente novamente em alguns segundos.`;
   if (/Maximum number of emojis/i.test(message)) return "Limite de emojis do servidor atingido.";
   if (/Missing Permissions/i.test(message)) return "O bot não possui a permissão \"Gerenciar Emojis e Figurinhas\".";
   return message || fallback;
+}
+
+function unsupportedCredentialReason(token: string) {
+  if (!token) return "Credencial vazia.";
+  if (/^bearer\s+/i.test(token)) return "Credencial não suportada por este sistema. Informe um token de bot, não Bearer/OAuth.";
+  if (/^mfa\.[\w-]{20,}$/i.test(token)) return "Credencial não suportada por este sistema. Token de usuário não é aceito.";
+  if (/discord(?:app)?\.com\/api\/webhooks\//i.test(token)) return "Credencial não suportada por este sistema. Webhook não é token de bot.";
+  if (/^[a-f0-9]{32}$/i.test(token)) return "Credencial não suportada por este sistema. Client secret não é token de bot.";
+  if (/^[0-9]{15,32}$/.test(token)) return "Credencial não suportada por este sistema. ID de aplicação não é token de bot.";
+  return null;
+}
+
+function tokenFingerprint(token: string) {
+  return Buffer.from(token.slice(0, 8)).toString("base64url").slice(0, 10);
 }
 
 function safeJson(value: string) {

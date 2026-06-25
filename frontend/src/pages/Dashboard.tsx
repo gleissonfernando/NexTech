@@ -2054,6 +2054,12 @@ function EmojiCloneSettingsPanel({
     setCloneLogs((current) => [message, ...current].slice(0, 80));
   }
 
+  function resetTokenValidation() {
+    setFakeTokenAccepted(false);
+    setFakeTokenMasked(null);
+    setFakeEmojis([]);
+  }
+
   async function handleCloneEmoji() {
     if (!canManage || !settings?.emojiCloneEnabled || !destinationGuildId) return;
 
@@ -2233,7 +2239,7 @@ function EmojiCloneSettingsPanel({
     } catch (requestError) {
       setFakeTokenAccepted(false);
       setCredentialTestMode("invalid");
-      const message = readErrorMessage(requestError, "Token invalido.");
+      const message = readDetailedRequestMessage(requestError, "Token invalido.");
       setFakeTokenMessage(message);
       setCloneStatus("error");
       setCloneProgress(100);
@@ -2265,7 +2271,7 @@ function EmojiCloneSettingsPanel({
       setCloneMessage(`${emojis.length} emoji(s) encontrados. Selecione e inicie a clonagem.`);
       pushCloneLog(`[INFO] ${emojis.length} emojis encontrados`);
     } catch (requestError) {
-      const message = readErrorMessage(requestError, "Erro ao conectar com a API do Discord.");
+      const message = readDetailedRequestMessage(requestError, "Erro ao conectar com a API do Discord.");
       setFakeTokenMessage(message);
       setCloneStatus("error");
       setCloneProgress(100);
@@ -2330,7 +2336,7 @@ function EmojiCloneSettingsPanel({
       ].slice(0, 20));
       await refreshEmojiLibrary();
     } catch (requestError) {
-      const message = readErrorMessage(requestError, "Nao foi possivel clonar emojis selecionados.");
+      const message = readDetailedRequestMessage(requestError, "Nao foi possivel clonar emojis selecionados.");
       setCloneProgress(100);
       setCloneStatus("error");
       setCloneMessage(message);
@@ -2429,7 +2435,10 @@ function EmojiCloneSettingsPanel({
                   <input
                     className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-600"
                     disabled={disabled || cloneStatus === "running"}
-                    onChange={(event) => setFakeToken(event.target.value)}
+                    onChange={(event) => {
+                      setFakeToken(event.target.value);
+                      resetTokenValidation();
+                    }}
                     placeholder="Cole o token do bot"
                     type="password"
                     value={fakeToken}
@@ -2440,7 +2449,10 @@ function EmojiCloneSettingsPanel({
                   <input
                     className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-600"
                     disabled={disabled || cloneStatus === "running"}
-                    onChange={(event) => setFakeSourceGuildId(event.target.value)}
+                    onChange={(event) => {
+                      setFakeSourceGuildId(event.target.value);
+                      resetTokenValidation();
+                    }}
                     placeholder="ID do servidor origem"
                     value={fakeSourceGuildId}
                   />
@@ -3281,6 +3293,16 @@ function readErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
     return response?.data?.message ?? fallback;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
+function readDetailedRequestMessage(error: unknown, fallback: string) {
+  if (typeof error === "object" && error && "response" in error) {
+    const response = (error as { response?: { data?: { message?: string }; status?: number } }).response;
+    const message = response?.data?.message ?? fallback;
+    return response?.status ? `${message} HTTP ${response.status}.` : message;
   }
 
   return error instanceof Error ? error.message : fallback;
