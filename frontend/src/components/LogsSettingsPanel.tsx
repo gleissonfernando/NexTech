@@ -49,10 +49,10 @@ const LOG_CATEGORIES: Array<{
 }> = [
   { id: "members", label: "Entrada e saida de membros", icon: UsersRound },
   { id: "messages", label: "Mensagens editadas e apagadas", icon: MessageSquareText },
-  { id: "roles", label: "Alteracoes de cargos", icon: UserRound },
-  { id: "moderation", label: "Moderacao e seguranca", icon: Shield },
+  { id: "roles", label: "Alterações de cargos", icon: UserRound },
+  { id: "moderation", label: "Moderação e segurança", icon: Shield },
   { id: "dashboard", label: "Acoes feitas na dashboard", icon: LayoutDashboard },
-  { id: "automation", label: "Automacoes e modulos", icon: Gauge }
+  { id: "automation", label: "Automações e módulos", icon: Gauge }
 ];
 
 const DEFAULT_DRAFT: Draft = {
@@ -101,7 +101,7 @@ export function LogsSettingsPanel({
       .then((options) => setChannels(options.channels))
       .catch((requestError) => {
         setChannels([]);
-        setError(readErrorMessage(requestError, "Nao foi possivel carregar os canais deste servidor."));
+        setError(readErrorMessage(requestError, "Não foi possível carregar os canais deste servidor."));
       })
       .finally(() => setLoadingChannels(false));
   }, [botId, guild]);
@@ -153,9 +153,9 @@ export function LogsSettingsPanel({
     try {
       const saved = await patchGuildSettings(guild.id, draft, botId);
       onSettingsChange(saved);
-      setStatus("Configuracao de logs salva.");
+      setStatus("Configuração de logs salva.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar a configuracao de logs."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar a configuração de logs."));
     } finally {
       setSaving(false);
     }

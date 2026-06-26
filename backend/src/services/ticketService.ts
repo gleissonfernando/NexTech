@@ -61,7 +61,7 @@ export async function createTicket(input: CreateTicketInput) {
       createdAt: doc.createdAt.toISOString()
     };
   } catch (error) {
-    console.warn("[mongo] ticket mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] ticket mantido em memória:", error instanceof Error ? error.message : error);
     return ticket;
   }
 }

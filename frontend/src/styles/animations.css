@@ -44,7 +44,7 @@
   animation: fadeInUp 0.3s ease-out;
 }
 
-/* Respmeita preferência do usuário */
+/* Respeita preferência do usuário */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in,
@@ -53,7 +53,7 @@
   }
 }
 
-/* Animações para transitions suaves */
+/* Animações para transições suaves */
 .transition-smooth {
   transition: all 0.2s ease-out;
 }

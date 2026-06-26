@@ -81,7 +81,7 @@ export async function setMaintenanceMode(input: {
     updatedByName: actorName
   };
   const action: MaintenanceAction = input.active ? "enabled" : "disabled";
-  const message = input.active ? "Modo de manutencao global ativado." : "Modo de manutencao global desativado.";
+  const message = input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.";
 
   await persistState(next);
   await appendMaintenanceLog({
@@ -108,7 +108,7 @@ export async function sendMaintenanceManualAlert(input: {
     active: state.active,
     actorId: input.actorId ?? null,
     actorName: input.actorName ?? null,
-    message: "Alerta manual de manutencao enviado."
+    message: "Alerta manual de manutenção enviado."
   });
 
   const dto = await getMaintenanceState();
@@ -152,7 +152,7 @@ async function readPersistedState(): Promise<Omit<MaintenanceStateDto, "affected
 
     return toStateDto(doc);
   } catch (error) {
-    console.warn("[maintenance] usando estado em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[maintenance] usando estado em memória:", error instanceof Error ? error.message : error);
     return memoryState;
   }
 }
@@ -177,7 +177,7 @@ async function persistState(state: MaintenanceStateDto) {
       { upsert: true }
     );
   } catch (error) {
-    console.warn("[maintenance] estado mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[maintenance] estado mantido em memória:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -207,7 +207,7 @@ async function appendMaintenanceLog(input: Omit<MaintenanceLogDto, "id" | "creat
 
     await maintenanceLogs.insertOne(doc);
   } catch (error) {
-    console.warn("[maintenance] log mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[maintenance] log mantido em memória:", error instanceof Error ? error.message : error);
   }
 }
 

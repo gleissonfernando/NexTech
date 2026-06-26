@@ -228,8 +228,8 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "moderation",
-    title: "Moderacao",
-    description: "Centraliza ajustes basicos de seguranca e moderacao do servidor.",
+    title: "Moderação",
+    description: "Centraliza ajustes básicos de segurança e moderação do servidor.",
     icon: Shield,
     view: "moderation"
   },
@@ -257,7 +257,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "emoji-cloner",
     title: "Clonagem de Emojis",
-    description: "Sincroniza emojis para a aplicacao do bot e clona emojis de servidores acessiveis.",
+    description: "Sincroniza emojis para a aplicação do bot e clona emojis de servidores acessíveis.",
     icon: SmilePlus,
     view: "server-cloner"
   },
@@ -292,7 +292,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "anti-ban",
     title: "Sistema Anti Ban",
-    description: "Protege cargos e usuarios contra ban, kick, timeout e remocao de cargos.",
+    description: "Protege cargos e usuários contra ban, kick, timeout e remoção de cargos.",
     icon: ShieldCheck,
     view: "anti-ban"
   },
@@ -306,14 +306,14 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "global-blacklist",
     title: "Blacklist Global",
-    description: "Bloqueia usuarios cadastrados por ID, usuario e motivo.",
+    description: "Bloqueia usuários cadastrados por ID, usuário e motivo.",
     icon: LockKeyhole,
     view: "global-blacklist"
   },
   {
     id: "advanced-permissions",
-    title: "Gerenciamento de Permissoes",
-    description: "Define permissoes avancadas por cargo para acoes sensiveis.",
+    title: "Gerenciamento de Permissões",
+    description: "Define permissões avançadas por cargo para ações sensíveis.",
     icon: SlidersHorizontal,
     view: "advanced-permissions"
   },
@@ -334,7 +334,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "vanity-url-protection",
     title: "Protecao da URL Personalizada",
-    description: "Monitora alteracoes da URL personalizada e prepara restauracao automatica.",
+    description: "Monitora alterações da URL personalizada e prepara restauração automática.",
     icon: Globe2,
     view: "vanity-url-protection"
   },
@@ -355,7 +355,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "temporary-voice",
     title: "Chamadas Temporarias",
-    description: "Cria salas temporarias com dono, limite, bloqueio e exclusao automatica.",
+    description: "Cria salas temporárias com dono, limite, bloqueio e exclusão automática.",
     icon: Users,
     view: "temporary-voice"
   },
@@ -390,7 +390,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "verification",
     title: "Usuarios",
-    description: "Define quais usuarios podem entrar e configurar este painel.",
+    description: "Define quais usuários podem entrar e configurar este painel.",
     icon: Users,
     view: "permissions"
   },
@@ -438,7 +438,7 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "avisos",
-    title: "Configuracoes",
+    title: "Configurações",
     description: "Mantem mensagens e ajustes simples do servidor.",
     icon: Settings,
     view: "settings"
@@ -563,7 +563,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ?? null;
 
       if (!targetBot) {
-        setDashboardRouteError("Nenhuma dashboard liberada para este usuario.");
+        setDashboardRouteError("Nenhuma dashboard liberada para este usuário.");
         return;
       }
 
@@ -592,7 +592,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           return;
         }
 
-        setDashboardRouteError(readResponseMessage(error) ?? "Acesso negado. Voce nao tem permissao para acessar esta dashboard.");
+        setDashboardRouteError(readResponseMessage(error) ?? "Acesso negado. Você não tem permissão para acessar esta dashboard.");
       })
       .finally(() => {
         if (mounted) {
@@ -1112,81 +1112,81 @@ const advancedSecurityModuleDetails: Record<string, {
 }> = {
   "anti-ban": {
     title: "Sistema Anti Ban",
-    description: "Modulo isolado para proteger cargos e membros contra acoes administrativas indevidas.",
+    description: "Módulo isolado para proteger cargos e membros contra ações administrativas indevidas.",
     icon: ShieldCheck,
-    items: ["Cargos protegidos", "Usuarios protegidos", "Punicao do executor", "Historico de tentativas"]
+    items: ["Cargos protegidos", "Usuários protegidos", "Punição do executor", "Histórico de tentativas"]
   },
   "suspicious-servers": {
     title: "Servidores Suspeitos",
-    description: "Modulo isolado para revisar membros que entram com vinculo a listas suspeitas.",
+    description: "Módulo isolado para revisar membros que entram com vínculo a listas suspeitas.",
     icon: Search,
-    items: ["Lista personalizada", "Acao automatica", "Canal de revisao", "Historico de deteccoes"]
+    items: ["Lista personalizada", "Ação automática", "Canal de revisão", "Histórico de detecções"]
   },
   "global-blacklist": {
     title: "Blacklist Global",
-    description: "Modulo isolado para bloquear IDs cadastrados antes de liberarem entrada no servidor.",
+    description: "Módulo isolado para bloquear IDs cadastrados antes de liberarem entrada no servidor.",
     icon: LockKeyhole,
-    items: ["Usuarios bloqueados", "Motivos", "Importacao", "Exportacao"]
+    items: ["Usuários bloqueados", "Motivos", "Importação", "Exportação"]
   },
   "advanced-permissions": {
-    title: "Gerenciamento de Permissoes",
-    description: "Modulo isolado para permissao granular por cargo em acoes sensiveis.",
+    title: "Gerenciamento de Permissões",
+    description: "Módulo isolado para permissão granular por cargo em ações sensíveis.",
     icon: SlidersHorizontal,
     items: ["Ban", "Kick", "Timeout", "Cargos e canais"]
   },
   "invite-cleanup": {
-    title: "Limpeza Automatica de Convites",
-    description: "Modulo isolado para apagar convites em rotina configuravel.",
+    title: "Limpeza Automática de Convites",
+    description: "Módulo isolado para apagar convites em rotina configurável.",
     icon: Trash2,
     items: ["Intervalo", "Convites permanentes", "Whitelist", "Log de criadores"]
   },
   "server-backup": {
     title: "Backup Completo",
-    description: "Modulo isolado para backup manual, automatico e restauracao seletiva.",
+    description: "Módulo isolado para backup manual, automático e restauração seletiva.",
     icon: Server,
-    items: ["Canais e cargos", "Emojis e stickers", "Webhooks", "Restauracao seletiva"]
+    items: ["Canais e cargos", "Emojis e stickers", "Webhooks", "Restauração seletiva"]
   },
   "vanity-url-protection": {
-    title: "Protecao da URL Personalizada",
-    description: "Modulo isolado para monitorar e restaurar vanity URL do servidor.",
+    title: "Proteção da URL Personalizada",
+    description: "Módulo isolado para monitorar e restaurar vanity URL do servidor.",
     icon: Globe2,
-    items: ["URL esperada", "Tempo de verificacao", "Punicao", "Logs"]
+    items: ["URL esperada", "Tempo de verificação", "Punição", "Logs"]
   },
   "hide-empty-voice": {
     title: "Esconder Chamadas Vazias",
-    description: "Modulo isolado para ocultar canais de voz vazios e mostrar quando houver membro.",
+    description: "Módulo isolado para ocultar canais de voz vazios e mostrar quando houver membro.",
     icon: Mic2,
-    items: ["Delay", "Categorias", "Permissoes", "Excecoes"]
+    items: ["Delay", "Categorias", "Permissões", "Exceções"]
   },
   "auto-unmute": {
     title: "Auto Desmutar",
-    description: "Modulo isolado para remover mute manual ao entrar no canal configurado.",
+    description: "Módulo isolado para remover mute manual ao entrar no canal configurado.",
     icon: Mic2,
-    items: ["Canal gatilho", "Logs", "Excecoes", "Eventos recentes"]
+    items: ["Canal gatilho", "Logs", "Exceções", "Eventos recentes"]
   },
   "temporary-voice": {
-    title: "Chamadas Temporarias",
-    description: "Modulo isolado para criar salas de voz temporarias com controle pelo dono.",
+    title: "Chamadas Temporárias",
+    description: "Módulo isolado para criar salas de voz temporárias com controle pelo dono.",
     icon: Users,
     items: ["Canal criador", "Limite", "Senha", "Transferencia de dono"]
   },
   "tag-verification": {
-    title: "Verificacao de Tag",
-    description: "Modulo isolado para entregar cargo conforme tag personalizada.",
+    title: "Verificação de Tag",
+    description: "Módulo isolado para entregar cargo conforme tag personalizada.",
     icon: Hash,
-    items: ["Tag exigida", "Cargo entregue", "Tempo de atualizacao", "Remocao automatica"]
+    items: ["Tag exigida", "Cargo entregue", "Tempo de atualização", "Remoção automática"]
   },
   "bio-url-verification": {
-    title: "Verificacao de URL na Bio",
-    description: "Modulo isolado para entregar cargo conforme dominios permitidos na bio.",
+    title: "Verificação de URL na Bio",
+    description: "Módulo isolado para entregar cargo conforme domínios permitidos na bio.",
     icon: AtSign,
-    items: ["Dominios permitidos", "Expressoes", "Cargo entregue", "Atualizacao automatica"]
+    items: ["Domínios permitidos", "Expressões", "Cargo entregue", "Atualização automática"]
   },
   "first-lady": {
     title: "Sistema Primeira Dama",
-    description: "Modulo isolado para limites, relacoes e historico de damas por cargo.",
+    description: "Módulo isolado para limites, relações e histórico de damas por cargo.",
     icon: Users,
-    items: ["Cargos autorizados", "Limites", "Relacionamentos", "Historico"]
+    items: ["Cargos autorizados", "Limites", "Relacionamentos", "Histórico"]
   }
 };
 
@@ -1195,7 +1195,7 @@ function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boole
   const Icon = details?.icon ?? Shield;
 
   if (!details) {
-    return <EmptyState icon={Shield} title="Modulo nao encontrado" />;
+    return <EmptyState icon={Shield} title="Módulo não encontrado" />;
   }
 
   return (
@@ -1218,7 +1218,7 @@ function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boole
         <CardContent className="space-y-4">
           <SimpleToggleCard
             checked={false}
-            description="Ative este modulo depois que as rotas e automacoes de runtime forem vinculadas."
+            description="Ative este módulo depois que as rotas e automações de runtime forem vinculadas."
             disabled
             icon={Icon}
             onChange={() => undefined}
@@ -1228,12 +1228,12 @@ function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boole
             {details.items.map((item) => (
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4" key={item}>
                 <p className="text-sm font-semibold text-white">{item}</p>
-                <p className="mt-1 text-xs font-medium text-zinc-500">Configuracao dedicada deste modulo.</p>
+                <p className="mt-1 text-xs font-medium text-zinc-500">Configuração dedicada deste módulo.</p>
               </div>
             ))}
           </div>
           <div className="rounded-lg border border-purple-500/20 bg-purple-500/[0.08] p-4 text-sm font-medium text-zinc-200">
-            Este menu so aparece quando o modulo <span className="font-mono text-purple-200">{moduleId}</span> esta liberado para o bot na dashboard DEV.
+            Este menu só aparece quando o módulo <span className="font-mono text-purple-200">{moduleId}</span> está liberado para o bot na dashboard DEV.
           </div>
         </CardContent>
       </Card>
@@ -1260,7 +1260,7 @@ function FivemView({
     return (
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
-          Nenhum modulo FiveM foi liberado para este usuario.
+          Nenhum módulo FiveM foi liberado para este usuário.
         </CardContent>
       </Card>
     );
@@ -1485,7 +1485,7 @@ function OverviewView({
         <MetricCard icon={Server} label="Servidor" value={guild?.name ?? "Nenhum"} />
         <MetricCard icon={Users} label="Membros" value={formatNumber(guild?.memberCount ?? bot?.mainGuildMemberCount ?? 0)} />
         <MetricCard icon={Hash} label="Canais" value={formatNumber(guild?.channelCount ?? bot?.mainGuildChannelCount ?? 0)} />
-        <MetricCard icon={CheckCircle2} label="Modulos ativos" value={`${activeModules}/${availableModules.length}`} />
+        <MetricCard icon={CheckCircle2} label="Módulos ativos" value={`${activeModules}/${availableModules.length}`} />
         <MetricCard icon={CalendarClock} label="Atualizado" value={formatDate(status.updatedAt)} />
       </section>
 
@@ -1499,8 +1499,8 @@ function OverviewView({
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Modulos disponiveis</h2>
-          <p className="text-sm text-zinc-500">Apenas os modulos liberados para este bot neste servidor aparecem aqui.</p>
+          <h2 className="text-lg font-semibold text-white">Módulos disponíveis</h2>
+          <p className="text-sm text-zinc-500">Apenas os módulos liberados para este bot neste servidor aparecem aqui.</p>
         </div>
 
         {moduleSummaries.length ? (
@@ -1517,14 +1517,14 @@ function OverviewView({
             ))}
           </div>
         ) : (
-          <EmptyState icon={Settings} title="Nenhum modulo liberado para este bot" />
+          <EmptyState icon={Settings} title="Nenhum módulo liberado para este bot" />
         )}
       </section>
 
       <Card>
         <CardHeader>
           <CardTitle>Logs recentes</CardTitle>
-          <CardDescription>Eventos importantes traduzidos para o usuario.</CardDescription>
+          <CardDescription>Eventos importantes traduzidos para o usuário.</CardDescription>
         </CardHeader>
         <CardContent>
           <FriendlyLogList compact logs={logs.slice(0, 5)} />
@@ -1552,7 +1552,7 @@ function IsolationStatusPanel({
   const items = [
     {
       label: "Bot ID",
-      value: bot?.id ?? "Nao selecionado",
+      value: bot?.id ?? "Não selecionado",
       active: Boolean(bot)
     },
     {
@@ -1561,12 +1561,12 @@ function IsolationStatusPanel({
       active: Boolean(bot && status.online)
     },
     {
-      label: "Modulos liberados",
+      label: "Módulos liberados",
       value: String(availableModuleCount),
       active: availableModuleCount > 0
     },
     {
-      label: "Modulos bloqueados",
+      label: "Módulos bloqueados",
       value: String(Math.max(0, totalModuleCount - availableModuleCount)),
       active: totalModuleCount - availableModuleCount === 0
     },
@@ -1601,7 +1601,7 @@ function IsolationStatusPanel({
     <Card>
       <CardHeader>
         <CardTitle>Isolamento por Bot ID</CardTitle>
-        <CardDescription>Estado runtime do bot selecionado, sem herdar configuracao de outro bot.</CardDescription>
+        <CardDescription>Estado runtime do bot selecionado, sem herdar configuração de outro bot.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1736,11 +1736,11 @@ function ModerationView({
     <div className="space-y-4">
       <SimpleToggleCard
         checked={Boolean(settings?.moderationEnabled)}
-        description="Ative ou pause os recursos basicos de moderacao deste servidor."
+        description="Ative ou pause os recursos básicos de moderação deste servidor."
         disabled={!settings || !canManage || savingKey === "moderationEnabled"}
         icon={Shield}
         onChange={(checked) => onToggle("moderationEnabled", checked)}
-        title="Moderacao"
+        title="Moderação"
       />
       <Card>
         <CardHeader>
@@ -1811,7 +1811,7 @@ function RulesView({
         }
       })
       .catch(() => {
-        if (mounted) setMessage("Nao foi possivel carregar canais e cargos.");
+        if (mounted) setMessage("Não foi possível carregar canais e cargos.");
       });
 
     return () => {
@@ -1839,7 +1839,7 @@ function RulesView({
       setMessage("Sistema de regras salvo.");
       return nextSettings;
     } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel salvar as regras.");
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar as regras.");
       return null;
     } finally {
       setSaving(false);
@@ -1861,7 +1861,7 @@ function RulesView({
       onSettingsChange(nextSettings);
       setMessage("Painel de regras publicado no Discord.");
     } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel publicar o painel de regras.");
+      setMessage(readResponseMessage(error) ?? "Não foi possível publicar o painel de regras.");
     } finally {
       setPublishing(false);
     }
@@ -2080,7 +2080,7 @@ function SettingsView({
   }
 
   if (!blocks.length) {
-    return <EmptyState icon={Settings} title="Nenhuma configuracao simples liberada para este bot" />;
+    return <EmptyState icon={Settings} title="Nenhuma configuração simples liberada para este bot" />;
   }
 
   return <div className="space-y-5">{blocks}</div>;
@@ -2125,7 +2125,7 @@ function CloningView({
   }, [activeSection, sections, sectionsKey]);
 
   if (!sections.length) {
-    return <EmptyState icon={SmilePlus} title="Nenhum modulo de clonagem liberado para este bot" />;
+    return <EmptyState icon={SmilePlus} title="Nenhum módulo de clonagem liberado para este bot" />;
   }
 
   return (
@@ -2133,7 +2133,7 @@ function CloningView({
       <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div>
           <h2 className="text-lg font-semibold text-white">Clonagem</h2>
-          <p className="mt-1 text-sm text-zinc-500">Emojis, biblioteca, sincronizacao da aplicacao e estrutura de servidor em um so lugar.</p>
+          <p className="mt-1 text-sm text-zinc-500">Emojis, biblioteca, sincronização da aplicação e estrutura de servidor em um só lugar.</p>
         </div>
         <div className="inline-flex w-full rounded-lg border border-zinc-800 bg-zinc-950 p-1 sm:w-auto">
           {sections.includes("emoji-cloner") ? (
@@ -2245,7 +2245,7 @@ function ApplicationEmojisView({
         if (mounted) setPage(data);
       })
       .catch((error) => {
-        if (mounted) setMessage(readErrorMessage(error, "Nao foi possivel carregar emojis da aplicacao."));
+        if (mounted) setMessage(readErrorMessage(error, "Não foi possível carregar emojis da aplicação."));
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -2323,7 +2323,7 @@ function ApplicationEmojisView({
       const data = await getApplicationEmojis(botId, { animated: type, q: query, sort });
       setPage(data);
     } catch (error) {
-      setMessage(readErrorMessage(error, "Nao foi possivel atualizar a lista."));
+      setMessage(readErrorMessage(error, "Não foi possível atualizar a lista."));
     } finally {
       setLoading(false);
     }
@@ -2334,14 +2334,14 @@ function ApplicationEmojisView({
 
     setSyncing(true);
     setProgress({ current: 0, failed: 0, sent: 0, skipped: 0, total: 0, updated: 0 });
-    setMessage("Iniciando sincronizacao...");
+    setMessage("Iniciando sincronização...");
 
     try {
       const data = await syncApplicationEmojis(botId, sourceGuildId);
       setPage(data);
       setMessage(`Concluido: ${data.job?.sent ?? 0} enviados, ${data.job?.updated ?? 0} atualizados, ${data.job?.skipped ?? 0} ignorados.`);
     } catch (error) {
-      setMessage(readErrorMessage(error, "Nao foi possivel sincronizar emojis."));
+      setMessage(readErrorMessage(error, "Não foi possível sincronizar emojis."));
     } finally {
       setSyncing(false);
     }
@@ -2357,7 +2357,7 @@ function ApplicationEmojisView({
       setPage(await refreshApplicationEmojis(botId));
       setMessage("Lista atualizada.");
     } catch (error) {
-      setMessage(readErrorMessage(error, "Nao foi possivel atualizar emojis da aplicacao."));
+      setMessage(readErrorMessage(error, "Não foi possível atualizar emojis da aplicação."));
     } finally {
       setLoading(false);
     }
@@ -2365,19 +2365,19 @@ function ApplicationEmojisView({
 
   async function handleRemoveAll() {
     if (!botId || !canManage) return;
-    const confirmed = window.confirm("Remover todos os emojis da aplicacao deste bot?");
+    const confirmed = window.confirm("Remover todos os emojis da aplicação deste bot?");
 
     if (!confirmed) return;
 
     setLoading(true);
-    setMessage("Removendo emojis da aplicacao...");
+    setMessage("Removendo emojis da aplicação...");
 
     try {
       const data = await removeAllApplicationEmojis(botId);
       setPage(data);
       setMessage(`${data.removed} emoji(s) removidos.`);
     } catch (error) {
-      setMessage(readErrorMessage(error, "Nao foi possivel remover emojis."));
+      setMessage(readErrorMessage(error, "Não foi possível remover emojis."));
     } finally {
       setLoading(false);
     }
@@ -2391,15 +2391,15 @@ function ApplicationEmojisView({
 
     try {
       setSettings(await updateApplicationEmojiSettings(botId, sourceGuildId, { autoSync: checked }));
-      setMessage(checked ? "Sincronizacao automatica ativada para este servidor." : "Sincronizacao automatica desativada.");
+      setMessage(checked ? "Sincronização automática ativada para este servidor." : "Sincronização automática desativada.");
     } catch (error) {
       setSettings(previous);
-      setMessage(readErrorMessage(error, "Nao foi possivel salvar sincronizacao automatica."));
+      setMessage(readErrorMessage(error, "Não foi possível salvar sincronização automática."));
     }
   }
 
   if (!botId) {
-    return <EmptyState icon={SmilePlus} title="Selecione um bot para gerenciar emojis da aplicacao" />;
+    return <EmptyState icon={SmilePlus} title="Selecione um bot para gerenciar emojis da aplicação" />;
   }
 
   return (
@@ -2416,7 +2416,7 @@ function ApplicationEmojisView({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <CardTitle>Emojis da Aplicacao</CardTitle>
-              <CardDescription>Sincroniza emojis do servidor para a aba Emojis da aplicacao no Developer Portal.</CardDescription>
+              <CardDescription>Sincroniza emojis do servidor para a aba Emojis da aplicação no Developer Portal.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button disabled={!canManage || syncing || !sourceGuildId} onClick={() => void handleSync()} size="sm" type="button">
@@ -2459,7 +2459,7 @@ function ApplicationEmojisView({
             <div className="flex items-end gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-zinc-500">Sincronizacao Automatica</p>
-                <p className="truncate text-sm font-medium text-white">{selectedGuild?.name ?? "Servidor nao selecionado"}</p>
+                <p className="truncate text-sm font-medium text-white">{selectedGuild?.name ?? "Servidor não selecionado"}</p>
               </div>
               <Switch
                 checked={Boolean(settings?.autoSync)}
@@ -2524,7 +2524,7 @@ function ApplicationEmojisView({
                 <ApplicationEmojiRow item={item} key={item.id} />
               )) : (
                 <p className="px-3 py-8 text-center text-sm text-zinc-500">
-                  {loading ? "Carregando emojis..." : "Nenhum emoji salvo na aplicacao ainda."}
+                  {loading ? "Carregando emojis..." : "Nenhum emoji salvo na aplicação ainda."}
                 </p>
               )}
             </div>
@@ -2753,7 +2753,7 @@ function ServerClonerView({
       })
       .catch((error) => {
         if (mounted) {
-          setMessage(readErrorMessage(error, "Nao foi possivel carregar o plano de clonagem."));
+          setMessage(readErrorMessage(error, "Não foi possível carregar o plano de clonagem."));
         }
       })
       .finally(() => {
@@ -2797,7 +2797,7 @@ function ServerClonerView({
 
   async function savePlan() {
     if (!botId || !canManage) {
-      setMessage("Voce nao tem permissao para configurar esta clonagem.");
+      setMessage("Você não tem permissão para configurar esta clonagem.");
       return;
     }
 
@@ -2844,7 +2844,7 @@ function ServerClonerView({
       setCurrentModules(saved.modules ?? modules);
       setMessage("Plano salvo. Abra /clonar-servidor no destino para executar com esses dados.");
     } catch (error) {
-      setMessage(readErrorMessage(error, "Nao foi possivel salvar o plano de clonagem."));
+      setMessage(readErrorMessage(error, "Não foi possível salvar o plano de clonagem."));
     } finally {
       setSaving(false);
     }
@@ -2951,7 +2951,7 @@ function ServerClonerView({
               <ServerCloneTextarea label="Renomear cargos clonados" onChange={(value) => updateForm("roleRenames", value)} placeholder="Membro => Cliente" value={form.roleRenames} />
             </div>
 
-            <ServerCloneTextarea label="Notas internas" onChange={(value) => updateForm("notes", value)} placeholder="Observacoes do plano" value={form.notes} />
+            <ServerCloneTextarea label="Notas internas" onChange={(value) => updateForm("notes", value)} placeholder="Observações do plano" value={form.notes} />
           </div>
 
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
@@ -3058,7 +3058,7 @@ function buildServerCloneGuildOptions(bot: DashboardBot | null, guilds: Dashboar
 }
 
 function serverCloneGuildLabel(options: Array<{ id: string; name: string }>, guildId: string) {
-  return options.find((item) => item.id === guildId)?.name ?? guildId ?? "Nao definido";
+  return options.find((item) => item.id === guildId)?.name ?? guildId ?? "Não definido";
 }
 
 function splitTextareaLines(value: string) {
@@ -3276,7 +3276,7 @@ function EmojiCloneSettingsPanel({
       onSettingsChange(saved);
     } catch {
       onSettingsChange(previous);
-      setError("Nao foi possivel salvar a clonagem de emojis. Confira as permissoes do bot.");
+      setError("Não foi possível salvar a clonagem de emojis. Confira as permissões do bot.");
     } finally {
       setSaving(false);
     }
@@ -3301,7 +3301,7 @@ function EmojiCloneSettingsPanel({
       : sourceInput.trim()
         ? "URL"
         : "Aguardando";
-  const sourceSize = selectedFile ? formatBytes(selectedFile.size) : previewUrl ? "Remoto" : "Nao carregado";
+  const sourceSize = selectedFile ? formatBytes(selectedFile.size) : previewUrl ? "Remoto" : "Não carregado";
   const filteredHistory = history.filter((item) => {
     const query = historyFilter.trim().toLowerCase();
     return !query || item.name.toLowerCase().includes(query) || item.guildName.toLowerCase().includes(query);
@@ -3312,7 +3312,7 @@ function EmojiCloneSettingsPanel({
       : selectedBot.status === "invalid_token"
         ? { label: "Invalido", tone: "danger" as const }
         : { label: "Validando", tone: "warning" as const }
-    : { label: "Nao configurado", tone: "muted" as const };
+    : { label: "Não configurado", tone: "muted" as const };
   const credentialStatus = credentialTestMode === "real"
     ? liveCredentialStatus
     : credentialTestMode === "valid"
@@ -3363,7 +3363,7 @@ function EmojiCloneSettingsPanel({
     } catch (requestError) {
       setCloneProgress(100);
       setCloneStatus("error");
-      setCloneMessage(readErrorMessage(requestError, "Nao foi possivel clonar o emoji."));
+      setCloneMessage(readErrorMessage(requestError, "Não foi possível clonar o emoji."));
       setHistory((current) => [{
         createdAt: new Date().toISOString(),
         emojiUrl: previewUrl,
@@ -3462,7 +3462,7 @@ function EmojiCloneSettingsPanel({
     } catch (requestError) {
       setCloneProgress(100);
       setCloneStatus("error");
-      setCloneMessage(readErrorMessage(requestError, "Nao foi possivel reenviar o emoji."));
+      setCloneMessage(readErrorMessage(requestError, "Não foi possível reenviar o emoji."));
     } finally {
       setResendingId(null);
     }
@@ -3607,7 +3607,7 @@ function EmojiCloneSettingsPanel({
       ].slice(0, 20));
       await refreshEmojiLibrary();
     } catch (requestError) {
-      const message = readDetailedRequestMessage(requestError, "Nao foi possivel clonar emojis selecionados.");
+      const message = readDetailedRequestMessage(requestError, "Não foi possível clonar emojis selecionados.");
       setCloneProgress(100);
       setCloneStatus("error");
       setCloneMessage(message);
@@ -3664,7 +3664,7 @@ function EmojiCloneSettingsPanel({
                 </span>
                 <div>
                   <p className="text-sm font-semibold text-white">Credencial segura do bot</p>
-                  <p className="text-xs text-zinc-500">Usa somente o bot conectado ao painel. Credenciais de usuario nao sao aceitas.</p>
+                  <p className="text-xs text-zinc-500">Usa somente o bot conectado ao painel. Credenciais de usuário não são aceitas.</p>
                 </div>
               </div>
               <Badge variant={credentialStatus.tone === "success" ? "success" : credentialStatus.tone === "danger" ? "danger" : "muted"}>
@@ -3768,7 +3768,7 @@ function EmojiCloneSettingsPanel({
                       <img alt="" className="h-9 w-9 shrink-0 rounded-md object-contain" src={emoji.url} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-white">{emoji.name}</span>
-                        <span className="mt-1 block text-xs text-zinc-500">{emoji.status === "cloned" ? "Clonado" : emoji.status === "failed" ? "Falhou" : emoji.status === "ignored" ? "Ignorado" : emoji.selected ? "Selecionado" : "Nao selecionado"}</span>
+                        <span className="mt-1 block text-xs text-zinc-500">{emoji.status === "cloned" ? "Clonado" : emoji.status === "failed" ? "Falhou" : emoji.status === "ignored" ? "Ignorado" : emoji.selected ? "Selecionado" : "Não selecionado"}</span>
                       </span>
                     </button>
                   ))}
@@ -3781,7 +3781,7 @@ function EmojiCloneSettingsPanel({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-white">Progresso</p>
-                <p className="text-xs text-zinc-500">Validacao, criacao e retorno do Discord.</p>
+                <p className="text-xs text-zinc-500">Validação, criação e retorno do Discord.</p>
               </div>
               {cloneStatus === "running" ? <Loader2 className="h-5 w-5 animate-spin text-purple-300" /> : cloneStatus === "success" ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : cloneStatus === "error" ? <XCircle className="h-5 w-5 text-red-300" /> : <Clock3 className="h-5 w-5 text-zinc-500" />}
             </div>
@@ -3841,7 +3841,7 @@ function EmojiCloneSettingsPanel({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-semibold text-white">Biblioteca de Emojis</p>
-              <p className="text-xs text-zinc-500">Emojis importados pelo seu usuario neste bot do Portal do Desenvolvedor.</p>
+              <p className="text-xs text-zinc-500">Emojis importados pelo seu usuário neste bot do Portal do Desenvolvedor.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <label className="relative block">
@@ -3917,7 +3917,7 @@ function EmojiCloneSettingsPanel({
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-white">Historico</p>
+              <p className="text-sm font-semibold text-white">Histórico</p>
               <p className="text-xs text-zinc-500">Ultimas clonagens feitas por este painel nesta sessao.</p>
             </div>
             <div className="flex gap-2">
@@ -4003,7 +4003,7 @@ function EmojiCloneSettingsPanel({
         <div className="space-y-3">
           <div>
             <p className="text-sm font-semibold text-white">Bots autorizados</p>
-            <p className="mt-1 text-xs text-zinc-500">Se nenhum bot for marcado, qualquer bot com o modulo liberado pode executar.</p>
+            <p className="mt-1 text-xs text-zinc-500">Se nenhum bot for marcado, qualquer bot com o módulo liberado pode executar.</p>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             {allowedBots.map((bot) => {
@@ -4090,7 +4090,7 @@ function LogsView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Historico do site</CardTitle>
+          <CardTitle>Histórico do site</CardTitle>
           <CardDescription>Eventos das categorias selecionadas para a dashboard.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -4123,12 +4123,12 @@ const notificationChannelFields: Array<{
   {
     key: "welcomeDisplayChannelId",
     label: "Canal de Avisos",
-    description: "Canal usado como referencia para avisos exibidos nos paineis."
+    description: "Canal usado como referência para avisos exibidos nos painéis."
   },
   {
     key: "safeBotLogChannelId",
-    label: "Canal de Moderacao",
-    description: "Alertas de filtros, punicoes e acoes de seguranca."
+    label: "Canal de Moderação",
+    description: "Alertas de filtros, punições e ações de segurança."
   },
   {
     key: "ticketCategoryId",
@@ -4231,14 +4231,14 @@ function NotificationsView({
       window.setTimeout(() => setSavedField((current) => current === key ? null : current), 1800);
     } catch {
       onSettingsChange(previous);
-      setError("Nao foi possivel salvar este canal. Verifique as permissoes do bot e tente novamente.");
+      setError("Não foi possível salvar este canal. Verifique as permissões do bot e tente novamente.");
     } finally {
       setSavingField(null);
     }
   }
 
   if (!guild) {
-    return <EmptyState icon={Bell} title="Selecione um servidor para configurar notificacoes" />;
+    return <EmptyState icon={Bell} title="Selecione um servidor para configurar notificações" />;
   }
 
   return (
@@ -4616,7 +4616,7 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
     return {
       active: Boolean(details.selfBotProtectionSettings?.enabled),
       configured: Boolean(details.selfBotProtectionSettings?.logChannelId),
-      configuredText: activeModules ? `${activeModules} modulo(s)` : "Falta modulo"
+      configuredText: activeModules ? `${activeModules} módulo(s)` : "Falta módulo"
     };
   }
 
@@ -4635,7 +4635,7 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
     return {
       active: Boolean(settings?.verificationEnabled),
       configured: userCount > 0,
-      configuredText: userCount ? `${userCount} usuario(s)` : "Falta usuario"
+      configuredText: userCount ? `${userCount} usuário(s)` : "Falta usuário"
     };
   }
 
@@ -4706,7 +4706,7 @@ function friendlyLog(log: LogEntry) {
     "x_monitor.post_detected": { badge: "X Monitor", title: "Post do X detectado" },
     "x_monitor.post_sent": { badge: "X Monitor", title: "Post do X enviado ao Discord" },
     "x_monitor.webhook_post": { badge: "X Monitor", title: "Post recebido pelo webhook do X" },
-    "x_monitor.discord_error": { badge: "X Monitor", title: "Nao foi possivel enviar post do X" },
+    "x_monitor.discord_error": { badge: "X Monitor", title: "Não foi possível enviar post do X" },
     "x_monitor.api_error": { badge: "X Monitor", title: "X Monitor precisa de atencao" },
     "live:started": { badge: "Lives", title: "Live iniciada" },
     "live:ended": { badge: "Lives", title: "Live encerrada" },
@@ -4730,11 +4730,11 @@ function friendlyLog(log: LogEntry) {
     "image_anti_spam.settings_updated": { badge: "Anti-Spam", title: "Anti-Spam de Imagens atualizado" },
     "image_anti_spam.incident": { badge: "Anti-Spam", title: "Spam de midias bloqueado" },
     "image_anti_spam.member_kicked": { badge: "Anti-Spam", title: "Membro expulso por spam de imagens" },
-    "moderation.link_anti_spam": { badge: "Moderacao", title: "Link bloqueado por anti-flood" },
+    "moderation.link_anti_spam": { badge: "Moderação", title: "Link bloqueado por anti-flood" },
     "security.account_age.blocked": { badge: "Seguranca", title: "Entrada bloqueada por idade da conta" },
     "security.self_bot.role_synced": { badge: "Self Bot", title: "Cargo Self Bot sincronizado" },
     "security.self_bot.role_assigned": { badge: "Self Bot", title: "Cargo Self Bot aplicado" },
-    "security.self_bot.assignment_failed": { badge: "Self Bot", title: "Self Bot nao conseguiu aplicar cargo" },
+    "security.self_bot.assignment_failed": { badge: "Self Bot", title: "Self Bot não conseguiu aplicar cargo" },
     "fivem.fac.settings_updated": { badge: "FiveM", title: "FAC atualizado" },
     "fivem.fac.request_created": { badge: "FiveM", title: "Solicitacao de ausencia criada" },
     "fivem.fac.request_approved": { badge: "FiveM", title: "Solicitacao de ausencia aprovada" },

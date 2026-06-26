@@ -153,7 +153,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o Mission Tools.");
+          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Mission Tools.");
         }
       })
       .finally(() => {
@@ -227,7 +227,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
       setSettings(saved);
       setMessage("Mission Tools salvo.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o Mission Tools.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Mission Tools.");
     } finally {
       setSaving(false);
     }
@@ -244,7 +244,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
       setSettings(saved);
       setMessage("Publicacao do Control Center solicitada ao bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel publicar o painel.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível publicar o painel.");
     } finally {
       setPublishing(false);
     }
@@ -264,7 +264,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
       setSettings((current) => pruneSettingsForOptions(current, options));
       setMessage("Canais e cargos sincronizados. Revise e salve para gravar.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel sincronizar com o Discord.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar com o Discord.");
     } finally {
       setSyncing(false);
     }
@@ -371,7 +371,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Publicar Control Center
               </Button>
-              {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel nao publicado</Badge>}
+              {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel não publicado</Badge>}
             </div>
           </CardContent>
         </Card>
@@ -390,9 +390,9 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LockKeyhole className="h-5 w-5 text-zinc-300" />
-                Tokens de usuario bloqueados
+                Tokens de usuário bloqueados
               </CardTitle>
-              <CardDescription>O Mission Tools nao coleta token de conta Discord. Use apenas o bot e fluxos oficiais de OAuth/permissoes.</CardDescription>
+              <CardDescription>O Mission Tools não coleta token de conta Discord. Use apenas o bot e fluxos oficiais de OAuth/permissões.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
@@ -405,7 +405,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
                   <Badge variant={tokenStatusInfo.variant}>{tokenStatusInfo.label}</Badge>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
-                  <span>Token: bloqueado por seguranca</span>
+                  <span>Token: bloqueado por segurança</span>
                   <span>Ultima validacao: {formatOptionalDate(currentUserPanel?.tokenLastValidatedAt)}</span>
                   <span>Atualizado: {formatOptionalDate(currentUserPanel?.tokenUpdatedAt)}</span>
                   <span>Status: {tokenStatusInfo.label}</span>
@@ -413,11 +413,11 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
               </div>
               {tokenStatus === "invalid" || tokenStatus === "expired" ? (
                 <div className="rounded-lg border border-amber-900/70 bg-amber-950/30 p-3 text-sm text-amber-100">
-                  {currentUserPanel?.tokenInvalidReason ?? "A autenticacao do token falhou. Reconecte para continuar usando os modulos."}
+                  {currentUserPanel?.tokenInvalidReason ?? "A autenticação do token falhou. Reconecte para continuar usando os módulos."}
                 </div>
               ) : null}
               <div className="rounded-lg border border-amber-900/70 bg-amber-950/30 p-3 text-sm text-amber-100">
-                Por seguranca, tokens pessoais do Discord nao podem ser salvos, enviados por DM ou usados para automacao de conta. Recursos que dependiam desse token ficam indisponiveis ate serem migrados para bot/OAuth oficial.
+                Por segurança, tokens pessoais do Discord não podem ser salvos, enviados por DM ou usados para automação de conta. Recursos que dependiam desse token ficam indisponíveis até serem migrados para bot/OAuth oficial.
               </div>
             </CardContent>
           </Card>
@@ -430,7 +430,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
             <Users className="h-5 w-5 text-zinc-300" />
             Usuarios recentes
           </CardTitle>
-          <CardDescription>{users.length} usuario(s) que abriram painel privado.</CardDescription>
+          <CardDescription>{users.length} usuário(s) que abriram painel privado.</CardDescription>
         </CardHeader>
         <CardContent>
           {users.length ? (
@@ -441,7 +441,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
             </div>
           ) : (
             <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-sm text-zinc-500">
-              Nenhum usuario abriu o painel ainda.
+              Nenhum usuário abriu o painel ainda.
             </div>
           )}
         </CardContent>
@@ -463,7 +463,7 @@ function FeatureGrid({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-zinc-200">Modulos dentro do Control Center</p>
+      <p className="text-sm font-medium text-zinc-200">Módulos dentro do Control Center</p>
       <div className="grid gap-2 md:grid-cols-2">
         {featureDefinitions.map((feature) => (
           <label className="flex min-h-20 gap-3 rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm" key={feature.id}>
@@ -548,7 +548,7 @@ function SelectField({
         onChange={(event) => onChange(event.target.value || null)}
         value={value ?? ""}
       >
-        <option value="">Nao selecionado</option>
+        <option value="">Não selecionado</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}

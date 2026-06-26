@@ -173,7 +173,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
       setRoles(options.roles);
       setSelectedVoiceChannelId((current) => current || options.voiceChannels?.[0]?.id || "");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o Voice Recorder.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Voice Recorder.");
     } finally {
       setLoading(false);
     }
@@ -227,7 +227,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
       }));
       setMessage("Configuracao do Voice Recorder salva.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o Voice Recorder.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Voice Recorder.");
     } finally {
       setSaving(false);
     }
@@ -242,9 +242,9 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
     try {
       const recording = await startVoiceRecorder(guild.id, botId, selectedVoiceChannelId);
       setData((current) => mergeRecording(current, recording));
-      setMessage("Inicio de gravacao solicitado ao bot.");
+      setMessage("Início de gravação solicitado ao bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel iniciar a gravacao.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível iniciar a gravação.");
     } finally {
       setActing(false);
     }
@@ -261,7 +261,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
       setData((current) => mergeRecording(current, recording));
       setMessage("Encerramento solicitado ao bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel encerrar a gravacao.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível encerrar a gravação.");
     } finally {
       setActing(false);
     }
@@ -276,9 +276,9 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
     try {
       const recording = await deleteVoiceRecording(guild.id, botId, recordingId);
       setData((current) => mergeRecording(current, recording));
-      setMessage("Arquivo da gravacao excluido.");
+      setMessage("Arquivo da gravação excluído.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel excluir a gravacao.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível excluir a gravação.");
     } finally {
       setActing(false);
     }
@@ -355,7 +355,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
               />
               <NumberField
                 disabled={!canManage}
-                label="Tempo maximo de gravacao (min)"
+                label="Tempo máximo de gravação (min)"
                 max={24 * 60}
                 min={1}
                 onChange={(value) => updateSetting("maxDurationMinutes", value)}
@@ -412,7 +412,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
             <StatusRow label="Sistema" value={settings.enabled ? "Ativo" : "Inativo"} variant={settings.enabled ? "success" : "muted"} />
             <StatusRow label="Gravacao" value={activeRecording ? statusLabel(activeRecording.status) : "Nenhuma"} variant={activeRecording ? "warning" : "muted"} />
             <StatusRow label="Cargos permitidos" value={`${settings.allowedRoleIds.length} cargo(s)`} variant={settings.allowedRoleIds.length ? "success" : "danger"} />
-            <StatusRow label="Canal de logs" value={settings.logChannelId ? channelLabel(channels, settings.logChannelId) : "Nao configurado"} variant={settings.logChannelId ? "success" : "warning"} />
+            <StatusRow label="Canal de logs" value={settings.logChannelId ? channelLabel(channels, settings.logChannelId) : "Não configurado"} variant={settings.logChannelId ? "success" : "warning"} />
 
             {activeRecording ? (
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
@@ -433,7 +433,7 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
         <CardHeader>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <CardTitle>Historico das gravacoes</CardTitle>
+              <CardTitle>Histórico das gravações</CardTitle>
               <CardDescription>{data.recordings.length} registro(s) carregado(s).</CardDescription>
             </div>
             <Button disabled={loading} onClick={() => void load()} variant="outline">
@@ -495,7 +495,7 @@ function RecordingList({
   if (!recordings.length) {
     return (
       <div className="flex min-h-36 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 text-sm text-zinc-500">
-        Nenhuma gravacao encontrada.
+        Nenhuma gravação encontrada.
       </div>
     );
   }
@@ -630,7 +630,7 @@ function SelectField({
         onChange={(event) => onChange(event.target.value || null)}
         value={value ?? ""}
       >
-        <option value="">Nao selecionado</option>
+        <option value="">Não selecionado</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}

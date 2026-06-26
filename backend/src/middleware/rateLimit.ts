@@ -191,7 +191,7 @@ async function consumeRateLimit(key: string, policy: RateLimitPolicy) {
         resetAt: now + Math.max(ttl, 0)
       };
     } catch (error) {
-      console.warn("[rate-limit] Redis indisponivel, usando memoria:", error instanceof Error ? error.message : error);
+      console.warn("[rate-limit] Redis indisponível, usando memória:", error instanceof Error ? error.message : error);
     }
   }
 

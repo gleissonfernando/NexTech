@@ -85,7 +85,7 @@ export function EditTwitchChannelModal({ error, notification, onClose, onSubmit,
         <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-3 text-sm text-zinc-500">
             <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
-            Ativar notificacao
+            Ativar notificação
           </label>
           <label className="flex items-center gap-3 text-sm text-zinc-500">
             <span>Cor da embed</span>

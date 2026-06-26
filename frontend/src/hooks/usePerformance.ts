@@ -132,7 +132,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T)
 }
 
 /**
- * Hook para trackear se componente está no viewport
+ * Hook para rastrear se o componente está no viewport
  */
 export function useInView(ref: React.RefObject<HTMLElement>, options = {}): boolean {
   const [isInView, setIsInView] = useState(false);

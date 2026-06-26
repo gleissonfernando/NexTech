@@ -187,7 +187,7 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
       const notification = await updateTwitchNotification(guild.id, editing.id, payload, botId);
       setNotifications((current) => current.map((item) => (item.id === notification.id ? notification : item)));
       setEditing(null);
-      setStatus("Configuracao salva.");
+      setStatus("Configuração salva.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -274,7 +274,7 @@ export function LiveNotificationsPanel({ botId, canManage, guild }: LiveNotifica
       {loading ? <LiveSkeleton /> : null}
       {!canManage ? (
         <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm leading-6 text-zinc-500">
-          Sua conta tem visualizacao basica. O gerenciamento de alertas de live fica disponivel apenas para administradores ou usuarios autorizados.
+          Sua conta tem visualização básica. O gerenciamento de alertas de live fica disponível apenas para administradores ou usuários autorizados.
         </div>
       ) : null}
       {status ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">{status}</div> : null}
@@ -364,8 +364,8 @@ function LiveSkeleton() {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }

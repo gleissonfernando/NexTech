@@ -5,9 +5,9 @@ import { requireModerationLogDestination } from "../services/moderationLogGuard"
 export const banCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("ban")
-    .setDescription("Bane um usuario do servidor.")
+    .setDescription("Bane um usuário do servidor.")
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-    .addUserOption((option) => option.setName("usuario").setDescription("Usuario que sera banido.").setRequired(true))
+    .addUserOption((option) => option.setName("usuario").setDescription("Usuário que será banido.").setRequired(true))
     .addStringOption((option) => option.setName("motivo").setDescription("Motivo do banimento.").setRequired(false)),
   moduleId: "moderation",
   async execute(interaction, context) {

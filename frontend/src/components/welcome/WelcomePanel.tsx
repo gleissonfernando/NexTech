@@ -64,7 +64,7 @@ const DEFAULT_LEAVE_RULES = [
   "Os canais oficiais continuam disponiveis para a comunidade.",
   "Respeite as regras se decidir retornar ao servidor.",
   "A equipe segue por aqui para organizar eventos e avisos.",
-  "Valeu pela passagem e ate a proxima."
+  "Valeu pela passagem e até a próxima."
 ].join("\n");
 const DEFAULT_LEAVE_CHANNEL_LABEL = "Canal da comunidade:";
 const DEFAULT_LEAVE_FOOTER_TEXT = "OrviteK - Comunidade de lives";
@@ -73,7 +73,7 @@ const panelConfig = {
   welcome: {
     channelKey: "welcomeChannelId",
     colorKey: "welcomeColor",
-    description: "Mensagem automatica quando alguem entra.",
+    description: "Mensagem automática quando alguém entra.",
     displayChannelKey: "welcomeDisplayChannelId",
     enabledKey: "welcomeEnabled",
     footerTextKey: "welcomeFooterText",
@@ -91,7 +91,7 @@ const panelConfig = {
     defaultRulesTitle: DEFAULT_WELCOME_RULES_TITLE,
     defaultTitle: DEFAULT_WELCOME_TITLE,
     missingGuildText: "Selecione um servidor para configurar entrada.",
-    missingSettingsText: "Nao foi possivel carregar as configuracoes de entrada.",
+    missingSettingsText: "Não foi possível carregar as configurações de entrada.",
     savedImageText: "Banner de entrada atualizado.",
     savedMessageText: "Mensagem de entrada salva.",
     testButtonText: "Testar entrada",
@@ -102,7 +102,7 @@ const panelConfig = {
   leave: {
     channelKey: "leaveChannelId",
     colorKey: "leaveColor",
-    description: "Mensagem automatica quando alguem sai.",
+    description: "Mensagem automática quando alguém sai.",
     displayChannelKey: "leaveDisplayChannelId",
     enabledKey: "leaveEnabled",
     footerTextKey: "leaveFooterText",
@@ -120,7 +120,7 @@ const panelConfig = {
     defaultRulesTitle: DEFAULT_LEAVE_RULES_TITLE,
     defaultTitle: DEFAULT_LEAVE_TITLE,
     missingGuildText: "Selecione um servidor para configurar saida.",
-    missingSettingsText: "Nao foi possivel carregar as configuracoes de saida.",
+    missingSettingsText: "Não foi possível carregar as configurações de saída.",
     savedImageText: "Banner de saida atualizado.",
     savedMessageText: "Mensagem de saida salva.",
     testButtonText: "Testar saida",
@@ -228,7 +228,7 @@ export function WelcomePanel({
     setColorInput(settings?.[config.colorKey]?.trim() || "#ef4444");
   }, [config.channelLabelKey, config.colorKey, config.embedTitleKey, config.footerTextKey, config.messageKey, config.rulesKey, config.rulesTitleKey, settings]);
 
-  async function savePatch(payload: Partial<GuildSettings>, key: string, successText = "Alteracao salva.") {
+  async function savePatch(payload: Partial<GuildSettings>, key: string, successText = "Alteração salva.") {
     if (!guild || !settings || !canManage) {
       return false;
     }
@@ -311,7 +311,7 @@ export function WelcomePanel({
 
     if (file.size > 10 * 1024 * 1024) {
       setStatus(null);
-      setError("A imagem precisa ter ate 10 MB.");
+      setError("A imagem precisa ter até 10 MB.");
       return;
     }
 
@@ -508,7 +508,7 @@ export function WelcomePanel({
           <label className="block space-y-2">
             <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
               <MessageSquareText className="h-4 w-4 text-zinc-400" />
-              Descricao
+              Descrição
             </span>
             <textarea
               className="min-h-36 w-full resize-y rounded-lg border border-zinc-800 bg-black px-3 py-3 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-600 disabled:opacity-50"
@@ -741,8 +741,8 @@ function resolveAssetUrl(value: string) {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }

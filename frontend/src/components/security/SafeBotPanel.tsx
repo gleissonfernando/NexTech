@@ -76,7 +76,7 @@ export function SafeBotPanel({
       .catch((requestError) => {
         setChannels([]);
         setRoles([]);
-        setError(readErrorMessage(requestError, "Nao foi possivel carregar canais e cargos deste servidor."));
+        setError(readErrorMessage(requestError, "Não foi possível carregar canais e cargos deste servidor."));
       })
       .finally(() => setLoadingOptions(false));
   }, [botId, guild]);
@@ -101,7 +101,7 @@ export function SafeBotPanel({
 
     if (draft.safeBotEnabled && !settings.safeBotRoleId) {
       setStatus(null);
-      setError("O cargo Self Bot ainda nao foi criado automaticamente pelo bot.");
+      setError("O cargo Self Bot ainda não foi criado automaticamente pelo bot.");
       return;
     }
 
@@ -125,7 +125,7 @@ export function SafeBotPanel({
       onSettingsChange(saved);
       setStatus("Self Bot salvo.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar o Self Bot."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar o Self Bot."));
     } finally {
       setSaving(false);
     }
@@ -196,7 +196,7 @@ export function SafeBotPanel({
               Cargo Self Bot
             </span>
             <div className="flex h-11 items-center rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100">
-              {settings?.safeBotRoleId ? `@${syncedRole?.name ?? "Self Bot"} (${settings.safeBotRoleId})` : "Aguardando criacao automatica"}
+              {settings?.safeBotRoleId ? `@${syncedRole?.name ?? "Self Bot"} (${settings.safeBotRoleId})` : "Aguardando criação automática"}
             </div>
           </div>
 
@@ -223,8 +223,8 @@ export function SafeBotPanel({
           <div className="flex items-start gap-3">
             <Hash className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
             <p className="text-sm leading-6 text-zinc-500">
-              A log salva o usuario, ID, canal, cargo, link da mensagem e o conteudo enviado.
-              O cargo so e aplicado se a pessoa ainda nao tiver o cargo Self Bot.
+              O log salva o usuário, ID, canal, cargo, link da mensagem e o conteúdo enviado.
+              O cargo só é aplicado se a pessoa ainda não tiver o cargo Self Bot.
             </p>
           </div>
         </div>

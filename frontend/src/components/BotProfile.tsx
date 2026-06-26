@@ -42,10 +42,10 @@ export function BotProfile({ bot, loading = false, selectedGuild }: BotProfilePr
               <h3 className="truncate text-lg font-semibold text-white">{botName}</h3>
               <Badge variant={connected ? "success" : "danger"}>
                 {connected ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-                {connected ? "Bot conectado" : "Bot nao conectado"}
+                {connected ? "Bot conectado" : "Bot não conectado"}
               </Badge>
             </div>
-            <p className="mt-1 truncate text-sm text-zinc-500">{bot?.id ? `ID ${bot.id}` : "Verifique o token ou instalacao no servidor."}</p>
+            <p className="mt-1 truncate text-sm text-zinc-500">{bot?.id ? `ID ${bot.id}` : "Verifique o token ou instalação no servidor."}</p>
           </div>
         </div>
 

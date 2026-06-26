@@ -73,13 +73,13 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "giveaway", label: "Sistema de Sorteio" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
-  { id: "verification", label: "Sistema de Verificacao" },
+  { id: "verification", label: "Sistema de Verificação" },
   { id: "welcome", label: "Sistema de Boas-vindas" },
   { id: "leave", label: "Sistema de Saida" },
   { id: "logs", label: "Sistema de Logs" },
   { id: "roles", label: "Sistema de Cargos" },
   { id: "tickets", label: "Sistema de Tickets" },
-  { id: "moderation", label: "Sistema de Moderacao" },
+  { id: "moderation", label: "Sistema de Moderação" },
   { id: "rules", label: "Sistema de Regras" },
   { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
@@ -91,25 +91,25 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "anti-ban", label: "Sistema Anti Ban" },
   { id: "suspicious-servers", label: "Servidores Suspeitos" },
   { id: "global-blacklist", label: "Blacklist Global" },
-  { id: "advanced-permissions", label: "Gerenciamento de Permissoes" },
+  { id: "advanced-permissions", label: "Gerenciamento de Permissões" },
   { id: "invite-cleanup", label: "Limpeza Automatica de Convites" },
   { id: "server-backup", label: "Backup Completo" },
   { id: "vanity-url-protection", label: "Protecao da URL Personalizada" },
   { id: "hide-empty-voice", label: "Esconder Chamadas Vazias" },
   { id: "auto-unmute", label: "Auto Desmutar" },
   { id: "temporary-voice", label: "Chamadas Temporarias" },
-  { id: "tag-verification", label: "Verificacao de Tag" },
-  { id: "bio-url-verification", label: "Verificacao de URL na Bio" },
+  { id: "tag-verification", label: "Verificação de Tag" },
+  { id: "bio-url-verification", label: "Verificação de URL na Bio" },
   { id: "first-lady", label: "Sistema Primeira Dama" },
   { id: "fivem", label: "FiveM" },
   { id: "fivem-factions", label: "FiveM - Sistema de Faccao" },
-  { id: "fivem-corporations", label: "FiveM - Sistema de Corporacoes" },
+  { id: "fivem-corporations", label: "FiveM - Sistema de Corporações" },
   { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
   { id: "fivem-orders", label: "FiveM - Sistema de Encomendas" },
   { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
-  { id: "avisos", label: "Mensagens e Personalizacao" }
+  { id: "avisos", label: "Mensagens e Personalização" }
 ];
 
 const emptyForm: CreateDevBotPayload = {
@@ -169,14 +169,14 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "settings",
-    label: "Configuracoes",
+    label: "Configurações",
     description: "Ajustes gerais do bot",
     icon: Settings,
     moduleIds: ["avisos", "mission-tools", "voice-recorder", "server-generator"]
   },
   {
     id: "moderation",
-    label: "Moderacao",
+    label: "Moderação",
     description: "Ban, kick, warn e protecoes",
     icon: ShieldCheck,
     moduleIds: ["moderation", "rules", "safe-bot", "account-age-security"]
@@ -190,7 +190,7 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "verification",
-    label: "Verificacao",
+    label: "Verificação",
     description: "Entrada segura no servidor",
     icon: UserCheck,
     moduleIds: ["verification"]
@@ -212,7 +212,7 @@ const botMenuItems: BotMenuItem[] = [
   {
     id: "anti-ban",
     label: "Anti Ban",
-    description: "Protecao contra ban, kick, timeout e remocao de cargos",
+    description: "Proteção contra ban, kick, timeout e remoção de cargos",
     icon: ShieldCheck,
     moduleIds: ["anti-ban"]
   },
@@ -226,35 +226,35 @@ const botMenuItems: BotMenuItem[] = [
   {
     id: "global-blacklist",
     label: "Blacklist Global",
-    description: "Bloqueio de usuarios por ID e motivo",
+    description: "Bloqueio de usuários por ID e motivo",
     icon: LockKeyhole,
     moduleIds: ["global-blacklist"]
   },
   {
     id: "advanced-permissions",
-    label: "Permissoes Avancadas",
-    description: "Permissoes especificas por cargo",
+    label: "Permissões Avançadas",
+    description: "Permissões específicas por cargo",
     icon: UserCheck,
     moduleIds: ["advanced-permissions"]
   },
   {
     id: "invite-cleanup",
     label: "Limpeza de Convites",
-    description: "Rotina automatica de remocao de convites",
+    description: "Rotina automática de remoção de convites",
     icon: Trash2,
     moduleIds: ["invite-cleanup"]
   },
   {
     id: "server-backup",
     label: "Backup",
-    description: "Backup e restauracao seletiva do servidor",
+    description: "Backup e restauração seletiva do servidor",
     icon: Server,
     moduleIds: ["server-backup"]
   },
   {
     id: "vanity-url-protection",
     label: "URL Personalizada",
-    description: "Protecao e restauracao da URL personalizada",
+    description: "Proteção e restauração da URL personalizada",
     icon: Link2,
     moduleIds: ["vanity-url-protection"]
   },
@@ -275,13 +275,13 @@ const botMenuItems: BotMenuItem[] = [
   {
     id: "temporary-voice",
     label: "Chamadas Temporarias",
-    description: "Criacao e controle de salas temporarias",
+    description: "Criação e controle de salas temporárias",
     icon: Users,
     moduleIds: ["temporary-voice"]
   },
   {
     id: "tag-verification",
-    label: "Verificacao de Tag",
+    label: "Verificação de Tag",
     description: "Cargo automatico por tag personalizada",
     icon: Hash,
     moduleIds: ["tag-verification"]
@@ -324,7 +324,7 @@ const botMenuItems: BotMenuItem[] = [
   {
     id: "fivem",
     label: "FiveM",
-    description: "Modulos de RP e gestao",
+    description: "Módulos de RP e gestão",
     icon: Gamepad2,
     moduleIds: ["fivem"],
     children: [
@@ -359,7 +359,7 @@ const botMenuItems: BotMenuItem[] = [
       {
         id: "fivem-production",
         label: "Producao",
-        description: "Producao e corporacoes",
+        description: "Produção e corporações",
         icon: Settings,
         moduleIds: ["fivem-corporations"]
       }
@@ -367,7 +367,7 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "integrations",
-    label: "Integracoes",
+    label: "Integrações",
     description: "Lives, clips e redes",
     icon: Link2,
     moduleIds: ["live", "kick-integration", "clips", "kick-clips", "network", "x-monitor", "giveaway"]
@@ -447,7 +447,7 @@ export function DevPanel({
         {
           icon: LayoutDashboard,
           iconClassName: "border-[#5865f2]/25 bg-[#5865f2]/10 text-[#c7d2fe]",
-          label: "Modulos ativos",
+          label: "Módulos ativos",
           value: `${selectedBot.enabledModules.length}/${modules.length}`
         },
         {
@@ -495,7 +495,7 @@ export function DevPanel({
         setInternalSelectedBotId((current) => current ?? controlledSelectedBotId ?? botData[0]?.id ?? null);
       })
       .catch(() => {
-        if (mounted) setMessage("Nao foi possivel carregar a area de bots.");
+        if (mounted) setMessage("Não foi possível carregar a área de bots.");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -596,7 +596,7 @@ export function DevPanel({
       setTokenVisible(false);
       setMessage(`${bot.name} foi conectado e validado no Discord.`);
     } catch (error) {
-      setMessage(maskSensitiveText(readRequestMessage(error) ?? "Nao foi possivel conectar o bot. Confira o token e o Guild ID."));
+      setMessage(maskSensitiveText(readRequestMessage(error) ?? "Não foi possível conectar o bot. Confira o token e o Guild ID."));
     } finally {
       setSaving(false);
     }
@@ -613,10 +613,10 @@ export function DevPanel({
       const updated = await updateDevBotModules(bot.id, nextModules);
       setBots((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       onBotUpdated?.(updated);
-      setMessage("Modulos atualizados.");
+      setMessage("Módulos atualizados.");
     } catch {
       setBots((current) => current.map((item) => (item.id === bot.id ? bot : item)));
-      setMessage("Nao foi possivel atualizar os modulos.");
+      setMessage("Não foi possível atualizar os módulos.");
     }
   }
 
@@ -653,7 +653,7 @@ export function DevPanel({
         setBots((current) => current.map((item) => (item.id === bot.id ? bot : item)));
       }
 
-      setMessage(readRequestMessage(error) ?? (shouldStop ? "Nao foi possivel desligar esse bot." : "Nao foi possivel ligar esse bot."));
+      setMessage(readRequestMessage(error) ?? (shouldStop ? "Não foi possível desligar esse bot." : "Não foi possível ligar esse bot."));
     } finally {
       setPoweringBotId(null);
     }
@@ -673,7 +673,7 @@ export function DevPanel({
       }
       setMessage(`${result.affected} bot${result.affected === 1 ? "" : "s"} enviado${result.affected === 1 ? "" : "s"} para ligar.`);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel ligar todos os bots.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível ligar todos os bots.");
     } finally {
       setBulkPowerAction(null);
     }
@@ -703,7 +703,7 @@ export function DevPanel({
       if (latestBots) {
         setBots(latestBots);
       }
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel desligar todos os bots.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível desligar todos os bots.");
     } finally {
       setBulkPowerAction(null);
     }
@@ -727,7 +727,7 @@ export function DevPanel({
       }
       setMessage("Bot desconectado.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel desconectar o bot.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível desconectar o bot.");
     } finally {
       setDeletingBotId(null);
     }
@@ -897,7 +897,7 @@ export function DevPanel({
             <div className="grid gap-2 text-xs font-semibold text-zinc-300 sm:grid-cols-2">
               <AutomaticField label="Nome e avatar" />
               <AutomaticField label="Application ID" />
-              <AutomaticField label="Data de criacao" />
+              <AutomaticField label="Data de criação" />
               <AutomaticField label="Dados do servidor" />
             </div>
           </CardContent>
@@ -1150,7 +1150,7 @@ function ConnectedBotPanel({
       .catch(() => {
         if (!active) return;
         setChannels({
-          error: "Nao foi possivel carregar os canais deste bot.",
+          error: "Não foi possível carregar os canais deste bot.",
           loading: false,
           text: [],
           voice: []
@@ -1196,7 +1196,7 @@ function ConnectedBotPanel({
 
         <div className="grid gap-px overflow-hidden rounded-lg border border-purple-500/15 bg-purple-500/15 sm:grid-cols-2">
           <BotDetail icon={Hash} label="Client / Application ID" value={bot.clientId} />
-          <BotDetail icon={CalendarDays} label="Criado em" value={bot.botCreatedAt ? formatDate(bot.botCreatedAt) : "Nao informado"} />
+          <BotDetail icon={CalendarDays} label="Criado em" value={bot.botCreatedAt ? formatDate(bot.botCreatedAt) : "Não informado"} />
           <BotDetail icon={Server} label="Servidor" value={guildName} />
           <BotDetail icon={Users} label="Membros" value={bot.mainGuildMemberCount.toLocaleString("pt-BR")} />
           <BotDetail icon={Hash} label="Canais" value={`${bot.mainGuildChannelCount.toLocaleString("pt-BR")} no Discord`} />
@@ -1250,7 +1250,7 @@ function ConnectedBotPanel({
           </Button>
           <Button onClick={onOpenSettings} size="sm" variant="outline">
             <Settings className="h-4 w-4" />
-            Configuracoes
+            Configurações
           </Button>
           <Button onClick={onOpenLogs} size="sm" variant="outline">
             <ScrollText className="h-4 w-4" />
@@ -1724,7 +1724,7 @@ function BotModuleWorkspace({
             </div>
             <CardTitle className="mt-3 text-2xl font-bold text-white">Bot Menu</CardTitle>
             <CardDescription className="mt-2 font-medium text-zinc-300">
-              Gerencie todos os modulos de {bot.name} em categorias, cards e acoes rapidas.
+              Gerencie todos os módulos de {bot.name} em categorias, cards e ações rápidas.
             </CardDescription>
           </div>
           <div className="space-y-3">
@@ -1733,7 +1733,7 @@ function BotModuleWorkspace({
               <input
                 className="h-12 w-full rounded-lg border border-purple-500/20 bg-black/45 pl-10 pr-3 text-sm font-medium text-white outline-none transition placeholder:text-zinc-600 focus:border-purple-400 focus:shadow-[0_0_24px_rgba(124,58,237,0.18)]"
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Pesquisar modulo..."
+                placeholder="Pesquisar módulo..."
                 value={query}
               />
             </label>
@@ -1749,9 +1749,9 @@ function BotModuleWorkspace({
           {`@keyframes bot-card-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }`}
         </style>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <BotMenuStatCard icon={CheckCircle2} label="Modulos ativos" tone="success" value={`${activeModules.length}/${modules.length}`} />
+          <BotMenuStatCard icon={CheckCircle2} label="Módulos ativos" tone="success" value={`${activeModules.length}/${modules.length}`} />
           <BotMenuStatCard icon={ShieldCheck} label="Protecoes ativas" tone="purple" value={String(activeSecurityCount)} />
-          <BotMenuStatCard icon={SlidersHorizontal} label="Precisam configuracao" tone="warning" value={String(inactiveCount)} />
+          <BotMenuStatCard icon={SlidersHorizontal} label="Precisam configuração" tone="warning" value={String(inactiveCount)} />
           <BotMenuStatCard icon={Power} label="Bot online" tone={bot.status === "online" ? "success" : "muted"} value={bot.status === "online" ? "100%" : "0%"} />
         </section>
 
@@ -1800,14 +1800,14 @@ function BotModuleWorkspace({
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    {normalizedQuery ? "Resultado da busca" : activeMenuId === "favorites" ? "Favoritos" : activeMenuId === "overview" ? "Todos os modulos" : activeCategory?.label ?? "Modulos"}
+                    {normalizedQuery ? "Resultado da busca" : activeMenuId === "favorites" ? "Favoritos" : activeMenuId === "overview" ? "Todos os módulos" : activeCategory?.label ?? "Módulos"}
                   </h3>
                   <p className="mt-1 text-sm font-medium text-zinc-400">
                     {normalizedQuery
                       ? `Filtrando por "${query.trim()}".`
                       : activeMenuId === "favorites"
-                        ? "Modulos marcados com estrela ficam sempre a um clique."
-                        : activeCategory?.description ?? "Controle rapido dos modulos deste bot."}
+                        ? "Módulos marcados com estrela ficam sempre a um clique."
+                        : activeCategory?.description ?? "Controle rápido dos módulos deste bot."}
                   </p>
                 </div>
                 <Badge variant="muted">{filteredModules.filter((module) => enabledSet.has(module.id)).length}/{filteredModules.length} ativos</Badge>
@@ -1970,7 +1970,7 @@ function ModuleDashboardCard({
             {moduleStatus.label}
           </p>
         </div>
-        <Switch checked={enabled} className="shrink-0" onCheckedChange={(checked) => onToggle(module.id, checked)} title={enabled ? "Desativar modulo" : "Ativar modulo"} />
+        <Switch checked={enabled} className="shrink-0" onCheckedChange={(checked) => onToggle(module.id, checked)} title={enabled ? "Desativar módulo" : "Ativar módulo"} />
       </div>
 
       <div className="mt-4 flex items-center gap-2">
@@ -2109,7 +2109,7 @@ function ServerCloneDevWorkspace({
       })
       .catch((error) => {
         if (!cancelled) {
-          setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o plano deste servidor.");
+          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o plano deste servidor.");
         }
       })
       .finally(() => {
@@ -2204,7 +2204,7 @@ function ServerCloneDevWorkspace({
       setCurrentModules(saved.modules ?? modules);
       setMessage("Plano salvo. Use /clonar-servidor no destino para o bot executar com esses dados.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o plano de clonagem.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o plano de clonagem.");
     } finally {
       setSaving(false);
     }
@@ -2320,7 +2320,7 @@ function ServerCloneDevWorkspace({
             <CloneTextarea label="Renomear cargos clonados" onChange={(value) => updateForm("roleRenames", value)} placeholder="Membro => Cliente" value={form.roleRenames} />
           </div>
 
-          <CloneTextarea label="Notas internas" onChange={(value) => updateForm("notes", value)} placeholder="Observacoes para o DEV sobre esse plano" value={form.notes} />
+          <CloneTextarea label="Notas internas" onChange={(value) => updateForm("notes", value)} placeholder="Observações para o DEV sobre esse plano" value={form.notes} />
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
@@ -2423,7 +2423,7 @@ function buildBotGuildOptions(bot: DevBot, guilds: DashboardMeGuild[]) {
 
 function guildLabel(options: Array<{ id: string; name: string }>, guildId: string) {
   const guild = options.find((item) => item.id === guildId);
-  return guild ? guild.name : guildId || "Nao definido";
+  return guild ? guild.name : guildId || "Não definido";
 }
 
 function splitLines(value: string) {
@@ -2535,7 +2535,7 @@ function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefiniti
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       <OverviewMetric label="Status" value={statusLabel(bot.status)} />
-      <OverviewMetric label="Modulos ativos" value={`${activeModules.length}/${modules.length}`} />
+      <OverviewMetric label="Módulos ativos" value={`${activeModules.length}/${modules.length}`} />
       <OverviewMetric label="Servidor" value={bot.mainGuildName || bot.mainGuildId} />
       <OverviewMetric label="Token protegido" value={bot.tokenMasked || "Protegido"} />
       <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] p-4 sm:col-span-3">
@@ -2543,7 +2543,7 @@ function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefiniti
           <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
           <div>
             <p className="text-sm font-bold text-white">Acesso protegido</p>
-            <p className="text-xs font-medium text-zinc-300">Login Discord e usuario autorizado para este bot.</p>
+            <p className="text-xs font-medium text-zinc-300">Login Discord e usuário autorizado para este bot.</p>
           </div>
         </div>
       </div>
@@ -2569,9 +2569,9 @@ function ModuleManager({
   return (
     <div className="space-y-5">
       <div className="rounded-lg border border-purple-500/25 bg-purple-500/[0.08] p-4">
-        <p className="text-sm font-bold text-white">Gerenciador de modulos por bot</p>
+        <p className="text-sm font-bold text-white">Gerenciador de módulos por bot</p>
         <p className="mt-1 text-xs font-medium text-zinc-300">
-          Ativar aqui libera o modulo somente para o bot selecionado e faz a area aparecer no menu lateral dele.
+          Ativar aqui libera o módulo somente para o bot selecionado e faz a área aparecer no menu lateral dele.
         </p>
       </div>
       {groups.map((group) => (
@@ -2600,8 +2600,8 @@ function EmptyBotMenuCategory({ label }: { label: string }) {
   return (
     <div className="flex min-h-44 items-center justify-center rounded-lg border border-dashed border-zinc-700 bg-black/30 p-6 text-center">
       <div>
-        <p className="text-sm font-bold text-white">{label} ainda nao tem modulos cadastrados</p>
-        <p className="mt-1 text-sm font-medium text-zinc-300">Quando um sistema dessa area existir, ele aparece aqui.</p>
+        <p className="text-sm font-bold text-white">{label} ainda não tem módulos cadastrados</p>
+        <p className="mt-1 text-sm font-medium text-zinc-300">Quando um sistema dessa área existir, ele aparece aqui.</p>
       </div>
     </div>
   );
@@ -2612,14 +2612,14 @@ function BotSelectMenuManager({ bot }: { bot: DevBot }) {
     <div className="space-y-4">
       <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]">
         <CardHeader className="p-5 sm:p-6">
-          <CardTitle className="text-white">Menus de Selecao</CardTitle>
+          <CardTitle className="text-white">Menus de Seleção</CardTitle>
           <CardDescription className="font-medium text-zinc-300">Gerenciamento de select menus do Discord para o bot {bot.name}.</CardDescription>
         </CardHeader>
         <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
           <div className="min-h-44 rounded-lg border border-dashed border-zinc-700 bg-black/30 p-8 text-center">
             <ChevronDown className="mx-auto mb-3 h-8 w-8 text-zinc-600" />
             <p className="text-sm font-bold text-white">Nenhum select menu configurado</p>
-            <p className="mt-2 text-sm font-medium text-zinc-300">Os menus de selecao do seu bot aparecerao aqui quando forem criados.</p>
+            <p className="mt-2 text-sm font-medium text-zinc-300">Os menus de seleção do seu bot aparecerão aqui quando forem criados.</p>
           </div>
         </CardContent>
       </Card>
@@ -2698,7 +2698,7 @@ function moduleDashboardCategories(modules: DevModuleDefinition[]) {
     .map((item) => ({
       ...item,
       label: item.id === "settings" ? "Sistema" : item.label,
-      description: item.id === "settings" ? "Configuracoes gerais, comandos e ferramentas administrativas" : item.description
+      description: item.id === "settings" ? "Configurações gerais, comandos e ferramentas administrativas" : item.description
     }))
     .filter((item) => modulesForMenu(item, modules, true).length > 0);
 }
@@ -2723,25 +2723,25 @@ function iconForModule(moduleId: string) {
 
 function moduleDescription(moduleId: string) {
   const descriptions: Record<string, string> = {
-    "account-age-security": "Bloqueia contas novas conforme a idade minima configurada.",
-    "advanced-permissions": "Controla permissoes sensiveis por cargo e registra tentativas.",
-    "anti-ban": "Protege membros e cargos contra ban, kick, timeout e remocao indevida.",
+    "account-age-security": "Bloqueia contas novas conforme a idade mínima configurada.",
+    "advanced-permissions": "Controla permissões sensíveis por cargo e registra tentativas.",
+    "anti-ban": "Protege membros e cargos contra ban, kick, timeout e remoção indevida.",
     "auto-unmute": "Remove mute manual automaticamente em canais configurados.",
     "bio-url-verification": "Entrega cargos conforme URLs permitidas na bio do membro.",
-    "emoji-cloner": "Clona emojis, gerencia biblioteca e sincroniza emojis da aplicacao.",
-    "global-blacklist": "Impede entrada de usuarios cadastrados em lista global.",
-    "hide-empty-voice": "Oculta chamadas vazias e reexibe quando alguem entra.",
-    "invite-cleanup": "Remove convites em intervalos configuraveis com whitelist.",
-    "safe-bot": "Protecao contra spam, links, raids, bots e abuso automatizado.",
-    "server-backup": "Prepara backup, exportacao e restauracao seletiva do servidor.",
-    "server-cloner": "Clona estrutura autorizada de servidores com relatorio.",
+    "emoji-cloner": "Clona emojis, gerencia biblioteca e sincroniza emojis da aplicação.",
+    "global-blacklist": "Impede entrada de usuários cadastrados em lista global.",
+    "hide-empty-voice": "Oculta chamadas vazias e reexibe quando alguém entra.",
+    "invite-cleanup": "Remove convites em intervalos configuráveis com whitelist.",
+    "safe-bot": "Proteção contra spam, links, raids, bots e abuso automatizado.",
+    "server-backup": "Prepara backup, exportação e restauração seletiva do servidor.",
+    "server-cloner": "Clona estrutura autorizada de servidores com relatório.",
     "suspicious-servers": "Detecta membros ligados a servidores suspeitos ou blacklist.",
-    "tag-verification": "Entrega cargos quando o usuario usa a tag definida.",
-    "temporary-voice": "Cria salas temporarias com dono, limite e limpeza automatica.",
+    "tag-verification": "Entrega cargos quando o usuário usa a tag definida.",
+    "temporary-voice": "Cria salas temporárias com dono, limite e limpeza automática.",
     "vanity-url-protection": "Monitora e restaura a URL personalizada do servidor."
   };
 
-  return descriptions[moduleId] ?? "Modulo isolado do bot com liberacao individual pela dashboard DEV.";
+  return descriptions[moduleId] ?? "Módulo isolado do bot com liberação individual pela dashboard DEV.";
 }
 
 function moduleCardStatus(enabled: boolean, botStatus: DevBotStatus) {
@@ -2838,7 +2838,7 @@ function moduleManagerGroups(modules: DevModuleDefinition[]) {
 
       if (settingsModules.length) {
         groups.push({
-          title: "Configuracoes",
+          title: "Configurações",
           modules: settingsModules
         });
       }
@@ -2882,7 +2882,7 @@ function moduleManagerGroups(modules: DevModuleDefinition[]) {
 
   if (remainingModules.length) {
     groups.push({
-      title: "Outros modulos",
+      title: "Outros módulos",
       modules: remainingModules
     });
   }

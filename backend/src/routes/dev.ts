@@ -127,7 +127,7 @@ devRouter.patch("/maintenance", async (req, res, next) => {
       auth.user.selectedGuildId ?? "global",
       null,
       input.active ? "maintenance_enabled" : "maintenance_disabled",
-      input.active ? "Modo de manutencao global ativado." : "Modo de manutencao global desativado.",
+      input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.",
       {
         maintenance: true
       }
@@ -154,7 +154,7 @@ devRouter.post("/maintenance/alert", async (_req, res, next) => {
       auth.user.selectedGuildId ?? "global",
       null,
       "maintenance_manual_alert",
-      "Alerta manual de manutencao enviado.",
+      "Alerta manual de manutenção enviado.",
       {
         maintenance: true
       }

@@ -85,7 +85,7 @@ const navItems: NavItem[] = [
   { id: "kick-clips", label: "Clipes Kick", icon: Film, moduleId: "kick-clips" },
   { id: "giveaway", label: "Sorteio", icon: Gift, moduleId: "giveaway" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
-  { id: "moderation", label: "Moderacao", icon: Shield, moduleId: "moderation" },
+  { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
   { id: "rules", label: "Regras", icon: ScrollText, moduleId: "rules" },
   { id: "mission-tools", label: "Mission Tools", icon: ListChecks, moduleId: "mission-tools" },
   { id: "voice-recorder", label: "Voice Recorder", icon: Mic2, moduleId: "voice-recorder" },
@@ -94,24 +94,24 @@ const navItems: NavItem[] = [
   { id: "anti-ban", label: "Anti Ban", icon: ShieldCheck, moduleId: "anti-ban" },
   { id: "suspicious-servers", label: "Servidores Suspeitos", icon: Search, moduleId: "suspicious-servers" },
   { id: "global-blacklist", label: "Blacklist Global", icon: LockKeyhole, moduleId: "global-blacklist" },
-  { id: "advanced-permissions", label: "Permissoes Avancadas", icon: SlidersHorizontal, moduleId: "advanced-permissions" },
+  { id: "advanced-permissions", label: "Permissões Avançadas", icon: SlidersHorizontal, moduleId: "advanced-permissions" },
   { id: "invite-cleanup", label: "Limpeza de Convites", icon: UserMinus, moduleId: "invite-cleanup" },
   { id: "server-backup", label: "Backup", icon: Server, moduleId: "server-backup" },
   { id: "vanity-url-protection", label: "URL Personalizada", icon: ChevronRight, moduleId: "vanity-url-protection" },
   { id: "hide-empty-voice", label: "Chamadas Vazias", icon: Mic2, moduleId: "hide-empty-voice" },
   { id: "auto-unmute", label: "Auto Desmutar", icon: Mic2, moduleId: "auto-unmute" },
   { id: "temporary-voice", label: "Chamadas Temporarias", icon: Users, moduleId: "temporary-voice" },
-  { id: "tag-verification", label: "Verificacao de Tag", icon: Hash, moduleId: "tag-verification" },
+  { id: "tag-verification", label: "Verificação de Tag", icon: Hash, moduleId: "tag-verification" },
   { id: "bio-url-verification", label: "URL na Bio", icon: AtSign, moduleId: "bio-url-verification" },
   { id: "first-lady", label: "Primeira Dama", icon: UserPlus, moduleId: "first-lady" },
   { id: "permissions", label: "Usuarios", icon: Users, moduleId: "verification" },
   { id: "logs", label: "Logs", icon: ScrollText, moduleId: "logs" },
   { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"] },
-  { id: "notifications", label: "Notificacoes", icon: Bell },
+  { id: "notifications", label: "Notificações", icon: Bell },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
   { id: "server-cloner", label: "Clonagem", icon: SmilePlus, moduleIds: ["emoji-cloner", "server-cloner"] },
-  { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["tickets", "avisos", "network", "server-generator"] }
+  { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["tickets", "avisos", "network", "server-generator"] }
 ];
 
 type SidebarProps = {
@@ -384,7 +384,7 @@ function BotManagementSidebar({
 
       <div className="mt-5 flex items-center gap-2 border-t border-zinc-900 pt-4 text-xs font-semibold uppercase text-zinc-600">
         <SlidersHorizontal className="h-3.5 w-3.5" />
-        Configuracoes do bot
+        Configurações do bot
       </div>
 
       <nav className="discord-scrollbar mt-3 flex-1 space-y-1 overflow-y-auto pb-4">

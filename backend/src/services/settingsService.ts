@@ -242,7 +242,7 @@ export async function getGuildSettings(guildId: string, botId?: string | null) {
       return toDto(settings);
     }
   } catch (error) {
-    console.warn("[mongo] usando settings em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] usando settings em memória:", error instanceof Error ? error.message : error);
   }
 
   return memorySettings.get(settingsKey(guildId, normalizedBotId)) ?? defaultSettings(guildId, normalizedBotId);

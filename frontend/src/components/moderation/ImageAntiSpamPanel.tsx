@@ -116,7 +116,7 @@ export function ImageAntiSpamPanel({
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o Anti-Spam de Imagens.");
+          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Anti-Spam de Imagens.");
         }
       })
       .finally(() => {
@@ -217,7 +217,7 @@ export function ImageAntiSpamPanel({
       setSettings(saved);
       setMessage("Configuracao do Anti-Spam de Imagens salva.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o Anti-Spam de Imagens.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Anti-Spam de Imagens.");
     } finally {
       setSaving(false);
     }
@@ -304,7 +304,7 @@ export function ImageAntiSpamPanel({
             />
             <NumberField
               disabled={!canManage}
-              label="Tempo de verificacao (segundos)"
+              label="Tempo de verificação (segundos)"
               max={3_600}
               min={1}
               onChange={(value) => updateSetting("windowSeconds", value)}
@@ -329,7 +329,7 @@ export function ImageAntiSpamPanel({
           </div>
 
           <label className="grid gap-2 text-sm">
-            <span className="font-medium text-zinc-200">Canal de logs e punicoes</span>
+            <span className="font-medium text-zinc-200">Canal de logs e punições</span>
             <select
               className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-500/60"
               disabled={!canManage}
@@ -359,7 +359,7 @@ export function ImageAntiSpamPanel({
             <ToggleField
               checked={settings.autoKickEnabled}
               disabled={!canManage || !settings.warningsEnabled}
-              label="Ativar expulsao automatica"
+              label="Ativar expulsão automática"
               onChange={(checked) => updateSetting("autoKickEnabled", checked)}
             />
             <ToggleField
@@ -394,10 +394,10 @@ export function ImageAntiSpamPanel({
           <div className="flex flex-wrap items-center gap-3 border-t border-zinc-900 pt-4">
             <Button disabled={!canManage || saving} onClick={() => void handleSave()}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar configuracao
+              Salvar configuração
             </Button>
             <p className="text-xs text-zinc-500">
-              A configuracao e aplicada ao bot selecionado em tempo real.
+              A configuração é aplicada ao bot selecionado em tempo real.
             </p>
           </div>
         </CardContent>
@@ -408,9 +408,9 @@ export function ImageAntiSpamPanel({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserRoundX className="h-5 w-5 text-zinc-300" />
-              Advertencias por usuario
+              Advertências por usuário
             </CardTitle>
-            <CardDescription>{users.length} usuario(s) com historico recente.</CardDescription>
+            <CardDescription>{users.length} usuário(s) com histórico recente.</CardDescription>
           </CardHeader>
           <CardContent>
             <UserHistory users={users} />
@@ -421,7 +421,7 @@ export function ImageAntiSpamPanel({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock3 className="h-5 w-5 text-zinc-300" />
-              Historico de punicoes
+              Histórico de punições
             </CardTitle>
             <CardDescription>{incidents.length} incidente(s) recente(s).</CardDescription>
           </CardHeader>

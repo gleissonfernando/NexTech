@@ -129,13 +129,13 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
             void syncGiveawayList(giveawaysResult.value);
           }
         } else {
-          loadErrors.push(readRequestMessage(giveawaysResult.reason) ?? "Nao foi possivel carregar os sorteios.");
+          loadErrors.push(readRequestMessage(giveawaysResult.reason) ?? "Não foi possível carregar os sorteios.");
         }
 
         if (optionsResult.status === "fulfilled") {
           setOptions(optionsResult.value);
         } else {
-          loadErrors.push(readRequestMessage(optionsResult.reason) ?? "Nao foi possivel carregar os canais do Discord.");
+          loadErrors.push(readRequestMessage(optionsResult.reason) ?? "Não foi possível carregar os canais do Discord.");
         }
 
         setMessage(loadErrors[0] ?? null);
@@ -197,7 +197,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
     const platform = detectPlatform(normalizedInput);
 
     if (platform === "youtube") {
-      setLivePreviewError("YouTube ainda nao esta disponivel para sorteios. Use uma URL da Twitch ou Kick.");
+      setLivePreviewError("YouTube ainda não está disponível para sorteios. Use uma URL da Twitch ou Kick.");
       return;
     }
 
@@ -220,7 +220,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       }
     } catch (error) {
       setLivePreview(null);
-      setLivePreviewError(readRequestMessage(error) ?? "Nao foi possivel verificar esse canal.");
+      setLivePreviewError(readRequestMessage(error) ?? "Não foi possível verificar esse canal.");
     } finally {
       setLivePreviewLoading(false);
     }
@@ -236,7 +236,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       setOptions(await getGuildLiveOptions(guild.id, botId, true));
       setMessage("Canais do Discord sincronizados.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel sincronizar canais.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar canais.");
     } finally {
       setActionId(null);
     }
@@ -259,7 +259,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
         const updated = await syncGiveawayParticipants(guild.id, giveaway.id, botId);
         setGiveaways((current) => upsertGiveaway(current, updated));
       } catch (error) {
-        const syncError = readRequestMessage(error) ?? "Nao foi possivel sincronizar participantes.";
+        const syncError = readRequestMessage(error) ?? "Não foi possível sincronizar participantes.";
         setGiveaways((current) => current.map((item) => (
           item.id === giveaway.id
             ? {
@@ -297,10 +297,10 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       setGiveaways((current) => upsertGiveaway(current, saved));
       setEditingId(saved.id);
       setMessage(saved.lastSyncError
-        ? `${editingId ? "Sorteio atualizado" : "Sorteio criado"}, mas os participantes nao foram sincronizados: ${saved.lastSyncError}`
+        ? `${editingId ? "Sorteio atualizado" : "Sorteio criado"}, mas os participantes não foram sincronizados: ${saved.lastSyncError}`
         : `${editingId ? "Sorteio atualizado" : "Sorteio criado"} com ${saved.participants.length} participante(s) sincronizado(s).`);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o sorteio.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o sorteio.");
     } finally {
       setSaving(false);
     }
@@ -326,7 +326,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
       setGiveaways((current) => upsertGiveaway(current, updated));
       setMessage(action === "panel" ? "Painel enviado para o Discord." : action === "start" ? "Sorteio iniciado." : action === "sync" ? "Participantes atualizados." : "Sorteio encerrado.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel executar essa acao.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível executar essa ação.");
     } finally {
       setActionId(null);
     }
@@ -545,7 +545,7 @@ export function GiveawayPanel({ botId, canManage, guild }: GiveawayPanelProps) {
           <div className="flex flex-wrap gap-2 lg:col-span-2">
             <Button disabled={!canSubmit} onClick={() => void handleSubmit()}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {editingId ? "Salvar alteracoes" : "Criar sorteio"}
+              {editingId ? "Salvar alterações" : "Criar sorteio"}
             </Button>
             {editingGiveaway?.rouletteUrl ? (
               <Button onClick={() => window.open(editingGiveaway.rouletteUrl, "_blank", "noopener,noreferrer")} variant="outline">
@@ -732,8 +732,8 @@ function LivePreviewCard({
 
         <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3 md:min-w-[420px]">
           <PreviewFact label="Status" value={preview.isLive ? "Online" : "Offline"} />
-          <PreviewFact label="Viewers" value={preview.viewerCount === null ? "Nao informado" : formatNumber(preview.viewerCount)} />
-          <PreviewFact label="Seguidores" value={preview.followers === null ? "Nao informado" : formatNumber(preview.followers)} />
+          <PreviewFact label="Viewers" value={preview.viewerCount === null ? "Não informado" : formatNumber(preview.viewerCount)} />
+          <PreviewFact label="Seguidores" value={preview.followers === null ? "Não informado" : formatNumber(preview.followers)} />
         </div>
         <CheckCircle2 className="hidden h-5 w-5 shrink-0 text-emerald-400 md:block" />
       </div>
@@ -772,7 +772,7 @@ function ParticipantModeCard({
         <div className="flex items-center gap-3">
           <Users className="h-4 w-4 text-emerald-300" />
           <div>
-            <p className="text-sm font-medium text-white">Modo de participacao</p>
+            <p className="text-sm font-medium text-white">Modo de participação</p>
             <p className="mt-1 text-xs text-zinc-500">{platform ? `${platformLabel(platform)} detectado` : "Aguardando canal verificado"}</p>
           </div>
         </div>
@@ -878,7 +878,7 @@ function validateFormForSubmit(form: GiveawayForm, liveValidated: boolean, liveP
   }
 
   if (livePreviewLoading) {
-    return "Aguarde a verificacao do canal antes de criar o sorteio.";
+    return "Aguarde a verificação do canal antes de criar o sorteio.";
   }
 
   if (!liveValidated) {
@@ -932,7 +932,7 @@ function formatNumber(value: number) {
 
 function formatDateTime(value?: string | null) {
   if (!value) {
-    return "Nao registrado";
+    return "Não registrado";
   }
 
   return new Intl.DateTimeFormat("pt-BR", {

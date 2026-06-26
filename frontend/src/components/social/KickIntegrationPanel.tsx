@@ -205,7 +205,7 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
       const notification = await updateKickNotification(guild.id, editing.id, payload, botId);
       setNotifications((current) => current.map((item) => (item.id === notification.id ? notification : item)));
       setEditing(null);
-      setStatus("Configuracao Kick salva.");
+      setStatus("Configuração Kick salva.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -292,7 +292,7 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
       {loading ? <KickSkeleton /> : null}
       {!canManage ? (
         <div className="rounded-lg border border-zinc-900 bg-zinc-950/75 p-5 text-sm leading-6 text-zinc-500">
-          Voce nao possui acesso ao modulo Kick Integration.
+          Você não possui acesso ao módulo Kick Integration.
         </div>
       ) : null}
       {status ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">{status}</div> : null}
@@ -369,7 +369,7 @@ export function KickIntegrationPanel({ botId, canManage, guild }: KickIntegratio
 function KickStatusGrid({ status }: { status: KickIntegrationStatus | null }) {
   const items = [
     {
-      label: "Status da integracao",
+      label: "Status da integração",
       value: status?.apiStatus === "ok" ? "Conectada" : status?.apiStatus === "error" ? "Erro" : "Pendente"
     },
     {
@@ -755,7 +755,7 @@ function AddKickChannelModal({
         <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-3 text-sm text-zinc-400">
             <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
-            Ativar notificacao
+            Ativar notificação
           </label>
           <label className="flex items-center gap-3 text-sm text-zinc-400">
             <span>Cor da embed</span>
@@ -864,7 +864,7 @@ function EditKickChannelModal({
         <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-3 text-sm text-zinc-500">
             <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
-            Ativar notificacao
+            Ativar notificação
           </label>
           <label className="flex items-center gap-3 text-sm text-zinc-500">
             <span>Cor da embed</span>
@@ -1015,8 +1015,8 @@ function formatDateTime(value: string) {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }

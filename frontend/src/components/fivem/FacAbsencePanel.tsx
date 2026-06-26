@@ -116,7 +116,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o FAC.");
+          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o FAC.");
         }
       })
       .finally(() => {
@@ -188,9 +188,9 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
         viewerRoleIds: settings.viewerRoleIds
       });
       setSettings(saved);
-      setMessage("Configuracao do FAC salva.");
+      setMessage("Configuração do FAC salva.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o FAC.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o FAC.");
     } finally {
       setSaving(false);
     }
@@ -205,9 +205,9 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
     try {
       const saved = await publishFivemFacPanel(guild.id, botId);
       setSettings(saved);
-      setMessage("Publicacao do painel solicitada ao bot.");
+      setMessage("Publicação do painel solicitada ao bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel publicar o painel FAC.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível publicar o painel FAC.");
     } finally {
       setPublishing(false);
     }
@@ -225,9 +225,9 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
       setChannels(options.channels);
       setRoles(options.roles);
       setSettings((current) => pruneSettingsForOptions(current, options));
-      setMessage("Cargos e canais sincronizados com o Discord. Revise e salve para gravar a configuracao.");
+      setMessage("Cargos e canais sincronizados com o Discord. Revise e salve para gravar a configuração.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel sincronizar cargos e canais do Discord.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar cargos e canais do Discord.");
     } finally {
       setSyncing(false);
     }
@@ -270,7 +270,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
                   <Building2 className="h-5 w-5 text-zinc-300" />
                   FiveM FAC
                 </CardTitle>
-                <CardDescription>Ausencias para faccoes e organizacoes.</CardDescription>
+                <CardDescription>Ausências para facções e organizações.</CardDescription>
               </div>
               <Switch
                 checked={settings.enabled}
@@ -333,7 +333,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
 
             <div className="grid gap-3">
               <TextField disabled={!canManage} label="Titulo do painel" onChange={(value) => updateMessage("panelTitle", value)} value={settings.messages.panelTitle} />
-              <TextareaField disabled={!canManage} label="Descricao do painel" onChange={(value) => updateMessage("panelDescription", value)} value={settings.messages.panelDescription} />
+              <TextareaField disabled={!canManage} label="Descrição do painel" onChange={(value) => updateMessage("panelDescription", value)} value={settings.messages.panelDescription} />
               <div className="grid gap-3 md:grid-cols-2">
                 <TextField disabled={!canManage} label="Mensagem aprovada" onChange={(value) => updateMessage("approved", value)} value={settings.messages.approved} />
                 <TextField disabled={!canManage} label="Mensagem reprovada" onChange={(value) => updateMessage("rejected", value)} value={settings.messages.rejected} />
@@ -355,7 +355,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar painel
               </Button>
-              {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel nao publicado</Badge>}
+              {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel não publicado</Badge>}
             </div>
           </CardContent>
         </Card>
@@ -421,7 +421,7 @@ function SelectField({
         onChange={(event) => onChange(event.target.value || null)}
         value={value ?? ""}
       >
-        <option value="">Nao selecionado</option>
+        <option value="">Não selecionado</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
@@ -555,7 +555,7 @@ function AbsenceRow({
       setSelectedFile(null);
       setPhotoMessage("Foto salva e enviada para atualizar a embed no Discord.");
     } catch (error) {
-      setPhotoMessage(readRequestMessage(error) ?? "Nao foi possivel salvar a foto.");
+      setPhotoMessage(readRequestMessage(error) ?? "Não foi possível salvar a foto.");
     } finally {
       setPhotoSaving(false);
     }
@@ -573,7 +573,7 @@ function AbsenceRow({
       setSelectedFile(null);
       setPhotoMessage("Foto removida da embed no Discord.");
     } catch (error) {
-      setPhotoMessage(readRequestMessage(error) ?? "Nao foi possivel remover a foto.");
+      setPhotoMessage(readRequestMessage(error) ?? "Não foi possível remover a foto.");
     } finally {
       setPhotoSaving(false);
     }

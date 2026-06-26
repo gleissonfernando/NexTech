@@ -74,7 +74,7 @@ export async function createLog(input: CreateLogInput) {
     dispatchDiscordLog(persistedLog);
     return persistedLog;
   } catch (error) {
-    console.warn("[mongo] log mantido em memoria:", error instanceof Error ? error.message : error);
+    console.warn("[mongo] log mantido em memória:", error instanceof Error ? error.message : error);
     dispatchDiscordLog(log);
     return log;
   }

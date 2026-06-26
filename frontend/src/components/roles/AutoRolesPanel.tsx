@@ -47,7 +47,7 @@ export function AutoRolesPanel({
       })
       .catch((requestError) => {
         setRoles([]);
-        setError(readErrorMessage(requestError, "Nao foi possivel carregar os cargos deste servidor."));
+        setError(readErrorMessage(requestError, "Não foi possível carregar os cargos deste servidor."));
       })
       .finally(() => setLoadingRoles(false));
   }, [botId, canManage, guild]);
@@ -66,7 +66,7 @@ export function AutoRolesPanel({
       onSettingsChange(nextSettings);
       setStatus(successText);
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar os cargos automaticos."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar os cargos automáticos."));
     } finally {
       setSaving(false);
     }
@@ -83,7 +83,7 @@ export function AutoRolesPanel({
       {
         autoRoleEnabled: checked
       },
-      checked ? "Entrega automatica de cargos ativada." : "Entrega automatica de cargos desativada."
+      checked ? "Entrega automática de cargos ativada." : "Entrega automática de cargos desativada."
     );
   }
 
@@ -94,7 +94,7 @@ export function AutoRolesPanel({
 
     if (settings?.autoRoleEnabled && !nextRoleIds.length) {
       setStatus(null);
-      setError("Desative a entrega automatica antes de remover o ultimo cargo.");
+      setError("Desative a entrega automática antes de remover o último cargo.");
       return;
     }
 
@@ -102,7 +102,7 @@ export function AutoRolesPanel({
       {
         autoRoleIds: nextRoleIds
       },
-      nextRoleIds.length ? "Cargos automaticos salvos para esta dashboard." : "Cargos automaticos removidos. Ative quando desejar."
+      nextRoleIds.length ? "Cargos automáticos salvos para esta dashboard." : "Cargos automáticos removidos. Ative quando desejar."
     );
   }
 
@@ -119,7 +119,7 @@ export function AutoRolesPanel({
             <div>
               <CardTitle>Cargos automaticos</CardTitle>
               <CardDescription>
-                Escolha ate 2 cargos que cada novo membro recebera ao entrar neste servidor.
+                Escolha até 2 cargos que cada novo membro receberá ao entrar neste servidor.
               </CardDescription>
             </div>
           </div>
@@ -180,14 +180,14 @@ export function AutoRolesPanel({
         </div>
 
         <p className="text-xs leading-5 text-zinc-500">
-          Esta configuracao pertence somente ao bot e ao servidor selecionados nesta dashboard.
-          O bot precisa da permissao Gerenciar Cargos e deve ficar acima dos cargos escolhidos.
+          Esta configuração pertence somente ao bot e ao servidor selecionados nesta dashboard.
+          O bot precisa da permissão Gerenciar Cargos e deve ficar acima dos cargos escolhidos.
         </p>
 
         {saving ? (
           <p className="flex items-center gap-2 text-xs text-zinc-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Salvando configuracao...
+            Salvando configuração...
           </p>
         ) : null}
         {status ? <p className="text-xs text-emerald-400">{status}</p> : null}

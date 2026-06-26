@@ -159,7 +159,7 @@ export function AddTwitchChannelModal({ botId, error, guildId, onClose, onSubmit
         <div className="flex flex-col gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-3 text-sm text-zinc-400">
             <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
-            Ativar notificacao
+            Ativar notificação
           </label>
           <label className="flex items-center gap-3 text-sm text-zinc-400">
             <span>Cor da embed</span>
@@ -228,8 +228,8 @@ export function Field({ children, label }: { children: React.ReactNode; label: s
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel consultar a Twitch.";
+    return response?.data?.message ?? "Não foi possível consultar a Twitch.";
   }
 
-  return "Nao foi possivel consultar a Twitch.";
+  return "Não foi possível consultar a Twitch.";
 }

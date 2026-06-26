@@ -102,7 +102,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
       })
       .catch((requestError) => {
         if (!active) return;
-        setError(readErrorMessage(requestError, "Nao foi possivel carregar imagens dos paineis."));
+        setError(readErrorMessage(requestError, "Não foi possível carregar imagens dos painéis."));
         setSettingsByPanel({});
       })
       .finally(() => {
@@ -170,7 +170,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
       setDraft(saved);
       setStatus("Imagem do painel salva.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar a imagem do painel."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar a imagem do painel."));
     } finally {
       setSaving(false);
     }
@@ -200,7 +200,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
       setDraft(saved);
       setStatus("Imagem enviada e salva no painel.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel enviar a imagem."));
+      setError(readErrorMessage(requestError, "Não foi possível enviar a imagem."));
     } finally {
       setUploading(false);
     }
@@ -227,7 +227,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
               <Image className="h-5 w-5 text-zinc-300" />
             </div>
             <div>
-              <CardTitle>{fixedPanel ? `Imagem do painel: ${selectedPanel.label}` : "Imagens dos paineis"}</CardTitle>
+              <CardTitle>{fixedPanel ? `Imagem do painel: ${selectedPanel.label}` : "Imagens dos painéis"}</CardTitle>
               <CardDescription>{fixedPanel ? "Configure a imagem deste painel." : `${savedCount} painel(is) com imagem configurada.`}</CardDescription>
             </div>
           </div>

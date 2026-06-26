@@ -41,7 +41,7 @@
 // SOLUÇÃO:
 //   - React.memo() com comparação customizada
 //   - Só renderiza quando dados realmente mudaram
-//   - Reduz re-renders desnecessárias
+//   - Reduz re-renders desnecessários
 //
 // GANHO: Componentes filhos não renderizam junto com mudanças do pai
 //

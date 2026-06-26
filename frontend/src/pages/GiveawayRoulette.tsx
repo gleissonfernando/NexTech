@@ -85,7 +85,7 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
         if (nextDiagnostics) setDiagnostics(nextDiagnostics);
         setLastWinner(next.winners.at(-1) ?? null);
       } catch (error) {
-        if (mounted) setMessage(readRequestMessage(error) ?? "Roleta nao encontrada.");
+        if (mounted) setMessage(readRequestMessage(error) ?? "Roleta não encontrada.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -152,7 +152,7 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
         addHistory(result.giveaway, result.winner);
       }, SPIN_DURATION_MS);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel girar a roleta.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível girar a roleta.");
       setSpinning(false);
       audioRef.current?.stop();
     }
@@ -162,7 +162,7 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
     try {
       setDiagnostics(await setRouletteDebug(token, debug));
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel alterar o modo debug.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível alterar o modo debug.");
     }
   }
 
@@ -174,7 +174,7 @@ export function GiveawayRoulettePage({ token }: GiveawayRoulettePageProps) {
       setDiagnostics(result.diagnostics);
       setTestReport(result.report);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel testar a integracao.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível testar a integração.");
     } finally {
       setTestingIntegration(false);
     }
@@ -442,7 +442,7 @@ function DiagnosticsPanel({
         <h2 className="text-base font-semibold text-white">Diagnostico em tempo real</h2>
         <Button disabled={testing} onClick={onTest} size="sm" variant="outline">
           {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-          Testar Integracao
+          Testar integração
         </Button>
       </div>
 
@@ -515,7 +515,7 @@ function PlatformDiagnostic({
         <span className={platformPillClass(platform)}>{connected ? "Conectado" : "Desconectado"}</span>
       </div>
       <div className="mt-3 grid gap-2 text-xs text-zinc-500">
-        <p>Canal: <span className="text-zinc-300">{state?.channel ?? "Nao configurado"}</span></p>
+        <p>Canal: <span className="text-zinc-300">{state?.channel ?? "Não configurado"}</span></p>
         <p>Usuarios recebidos: <span className="text-zinc-300">{state?.usersReceived ?? 0}</span></p>
         <p>Token: <span className="text-zinc-300">{state?.tokenStatus ?? "unknown"}</span></p>
         <p className="truncate">Ultima msg: <span className="text-zinc-300">{state?.lastMessage ?? "Nenhuma"}</span></p>
@@ -529,7 +529,7 @@ function HistoryPanel({ giveaway, history }: { giveaway: Giveaway; history: Spin
   return (
     <section className="rounded-lg border border-white/10 bg-zinc-950/86 p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-white">Historico</h2>
+        <h2 className="text-base font-semibold text-white">Histórico</h2>
         <div className="flex gap-2">
           <Button onClick={() => downloadHistory(giveaway, history, "json")} size="icon" title="Exportar JSON" variant="outline">
             <FileJson className="h-4 w-4" />
@@ -710,7 +710,7 @@ function truncateText(value: string, max: number) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return "Nao registrado";
+  if (!value) return "Não registrado";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 

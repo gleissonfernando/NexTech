@@ -27,7 +27,7 @@ export const missionPanelCommand: BotCommand = {
           : "Control Center publicado/atualizado."
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel publicar o Control Center.";
+      const message = error instanceof Error ? error.message : "Não foi possível publicar o Control Center.";
       await interaction.editReply({
         content: `${message} Ative o Mission Tools e configure o canal do painel na dashboard.`
       });

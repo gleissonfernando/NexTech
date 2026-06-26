@@ -63,11 +63,11 @@ export const clearCommand: BotCommand = {
     }
 
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
-      await logClearDiagnostic(context, interaction, "moderation.clear.permission_denied", "Usuario sem permissao Gerenciar Mensagens tentou usar /clear.", {
+      await logClearDiagnostic(context, interaction, "moderation.clear.permission_denied", "Usuário sem permissão Gerenciar Mensagens tentou usar /clear.", {
         reasonCode: "user_missing_manage_messages"
       });
       await interaction.editReply({
-        content: "Voce precisa da permissao Gerenciar Mensagens para usar este comando."
+        content: "Você precisa da permissão Gerenciar Mensagens para usar este comando."
       });
       return;
     }
@@ -76,11 +76,11 @@ export const clearCommand: BotCommand = {
     const amount = interaction.options.getInteger("quantidade", true);
 
     if (!isBulkDeletableChannel(channel)) {
-      await logClearDiagnostic(context, interaction, "moderation.clear.channel_denied", "Canal nao suporta limpeza em massa para /clear.", {
+      await logClearDiagnostic(context, interaction, "moderation.clear.channel_denied", "Canal não suporta limpeza em massa para /clear.", {
         reasonCode: "channel_not_bulk_deletable"
       });
       await interaction.editReply({
-        content: "Este canal nao permite apagar mensagens em massa."
+        content: "Este canal não permite apagar mensagens em massa."
       });
       return;
     }
@@ -88,11 +88,11 @@ export const clearCommand: BotCommand = {
     const botMember = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
 
     if (!botMember?.permissionsIn(channel.id).has(PermissionFlagsBits.ManageMessages)) {
-      await logClearDiagnostic(context, interaction, "moderation.clear.permission_denied", "Bot sem permissao Gerenciar Mensagens no canal.", {
+      await logClearDiagnostic(context, interaction, "moderation.clear.permission_denied", "Bot sem permissão Gerenciar Mensagens no canal.", {
         reasonCode: "bot_missing_manage_messages"
       });
       await interaction.editReply({
-        content: "Eu preciso da permissao Gerenciar Mensagens neste canal para usar o /clear."
+        content: "Eu preciso da permissão Gerenciar Mensagens neste canal para usar o /clear."
       });
       return;
     }
@@ -111,7 +111,7 @@ export const clearCommand: BotCommand = {
         reasonCode: "delete_failed"
       });
       await interaction.editReply({
-        content: "Nao consegui buscar ou apagar mensagens neste canal. Confira se tenho Gerenciar Mensagens, Ver Canal e Ler Historico de Mensagens."
+        content: "Não consegui buscar ou apagar mensagens neste canal. Confira se tenho Gerenciar Mensagens, Ver Canal e Ler Histórico de Mensagens."
       });
       return;
     }
@@ -170,7 +170,7 @@ async function authorizeClearCommand(interaction: ChatInputCommandInteraction, c
       guildId: interaction.guild!.id,
       moduleId: "moderation",
       policy: "fail_closed" as const,
-      reason: "nao consegui comunicar com a dashboard para validar a licenca.",
+      reason: "não consegui comunicar com a dashboard para validar a licença.",
       reasonCode: "dashboard_unavailable"
     };
   }
@@ -198,7 +198,7 @@ async function logClearDiagnostic(
   };
 
   await context.api.postLog(payload).catch((error) => {
-    console.warn("[clear] nao foi possivel registrar log na API:", error instanceof Error ? error.message : error);
+    console.warn("[clear] não foi possível registrar log na API:", error instanceof Error ? error.message : error);
   });
 
 }
@@ -254,7 +254,7 @@ async function deleteOneByOne(messages: ClearableMessage[]) {
       await message.delete();
       deleted += 1;
     } catch (error) {
-      console.warn(`[clear] nao foi possivel apagar mensagem ${message.id}:`, error instanceof Error ? error.message : error);
+      console.warn(`[clear] não foi possível apagar mensagem ${message.id}:`, error instanceof Error ? error.message : error);
       failed += 1;
     }
   }
@@ -268,15 +268,15 @@ async function deleteOneByOne(messages: ClearableMessage[]) {
 function clearResultMessage(result: Awaited<ReturnType<typeof deleteChannelMessages>>) {
   if (result.deleted > 0) {
     return result.failed > 0
-      ? `${result.deleted} mensagens apagadas. ${result.failed} mensagem(ns) nao puderam ser apagadas.`
+      ? `${result.deleted} mensagens apagadas. ${result.failed} mensagem(ns) não puderam ser apagadas.`
       : `${result.deleted} mensagens apagadas.`;
   }
 
   if (result.scanned === 0) {
-    return "Nao encontrei mensagens recentes para apagar neste canal.";
+    return "Não encontrei mensagens recentes para apagar neste canal.";
   }
 
-  return "Nao consegui apagar as mensagens encontradas. Confira se tenho permissao Gerenciar Mensagens e acesso ao historico do canal.";
+  return "Não consegui apagar as mensagens encontradas. Confira se tenho permissão Gerenciar Mensagens e acesso ao histórico do canal.";
 }
 
 function isBulkDeletableChannel(channel: unknown): channel is BulkDeletableChannel {

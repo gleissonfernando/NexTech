@@ -20,21 +20,21 @@ type MessageChannelWithMessages = Message["channel"] & {
   send: (payload: Parameters<Extract<Message["channel"], { send: unknown }>["send"]>[0]) => Promise<Message>;
 };
 
-export const MAINTENANCE_INTERACTION_MESSAGE = "Os bots estao em manutencao no momento. Aguarde a equipe finalizar para utilizar novamente.";
+export const MAINTENANCE_INTERACTION_MESSAGE = "Os bots estão em manutenção no momento. Aguarde a equipe finalizar para utilizar novamente.";
 
 const MAINTENANCE_ALERT_MESSAGE = [
   "MANUTENCAO INICIADA",
-  "O sistema entrou em modo de manutencao global.",
-  "Todos os servicos estao temporariamente indisponiveis.",
-  "Aguarde a liberacao oficial da equipe de desenvolvimento."
+  "O sistema entrou em modo de manutenção global.",
+  "Todos os serviços estão temporariamente indisponíveis.",
+  "Aguarde a liberação oficial da equipe de desenvolvimento."
 ].join("\n");
 const MAINTENANCE_PANEL_TITLE = "MANUTENCAO INICIADA";
 const MAINTENANCE_PANEL_DESCRIPTION = [
-  "O sistema entrou em modo de manutencao global.",
-  "Todos os servicos do bot estao temporariamente indisponiveis.",
-  "Aguarde a equipe finalizar a manutencao para utilizar novamente."
+  "O sistema entrou em modo de manutenção global.",
+  "Todos os serviços do bot estão temporariamente indisponíveis.",
+  "Aguarde a equipe finalizar a manutenção para utilizar novamente."
 ].join("\n");
-const MAINTENANCE_PRESENCE_NAME = "Sistema em manutencao";
+const MAINTENANCE_PRESENCE_NAME = "Sistema em manutenção";
 const MAINTENANCE_GIF_FILE_NAME = "nft-coding.gif";
 const MAINTENANCE_GIF_PATH = resolveAssetPath(`maintenance/${MAINTENANCE_GIF_FILE_NAME}`);
 
@@ -57,7 +57,7 @@ export function isMaintenanceModeActive() {
 export async function refreshMaintenanceState(context: BotContext) {
   const previousActive = maintenanceState.active;
   const state = await context.api.getMaintenanceState().catch((error) => {
-    console.warn("[maintenance] nao foi possivel carregar estado:", error instanceof Error ? error.message : error);
+    console.warn("[maintenance] não foi possível carregar estado:", error instanceof Error ? error.message : error);
     return null;
   });
 
@@ -279,7 +279,7 @@ function maintenancePanelComponent(message: string) {
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder()
           .setURL(`attachment://${MAINTENANCE_GIF_FILE_NAME}`)
-          .setDescription("Bot em manutencao")
+          .setDescription("Bot em manutenção")
       )
     );
   }

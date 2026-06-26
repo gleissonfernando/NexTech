@@ -86,7 +86,7 @@ const modules: ModuleDefinition[] = [
   { id: "anti-phishing", label: "Anti Phishing" },
   { id: "anti-nitro-scam", label: "Anti Nitro Scam" },
   { id: "anti-mass-ping", label: "Anti Mass Ping" },
-  { id: "anti-divulgacao", label: "Anti Divulgacao" },
+  { id: "anti-divulgacao", label: "Anti Divulgação" },
   { id: "anti-auto-spam", label: "Anti Auto Spam" },
   { id: "anti-comandos-em-massa", label: "Anti Comandos em Massa" }
 ];
@@ -263,7 +263,7 @@ export function SelfBotProtectionPanel({
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o SelfBot Protection.");
+          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o SelfBot Protection.");
         }
       })
       .finally(() => {
@@ -457,7 +457,7 @@ export function SelfBotProtectionPanel({
       setSettings(saved);
       setMessage("SelfBot Protection salvo.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o SelfBot Protection.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o SelfBot Protection.");
     } finally {
       setSaving(false);
     }
@@ -503,7 +503,7 @@ export function SelfBotProtectionPanel({
               </div>
               <div>
                 <CardTitle>SelfBot Protection</CardTitle>
-                <CardDescription>{selectedModules} modulo(s) ativo(s)</CardDescription>
+                <CardDescription>{selectedModules} módulo(s) ativo(s)</CardDescription>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -582,7 +582,7 @@ export function SelfBotProtectionPanel({
 
           <StatsGrid stats={stats} />
 
-          <Section icon={ListChecks} title="Modulos">
+          <Section icon={ListChecks} title="Módulos">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {modules.map((module) => (
                 <ToggleRow
@@ -737,7 +737,7 @@ export function SelfBotProtectionPanel({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ScrollText className="h-5 w-5 text-zinc-300" />
-              Historico recente
+              Histórico recente
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -903,7 +903,7 @@ function PunishmentStepEditor({
         </label>
         <NumberField disabled={disabled} label="Limite" max={100} min={1} onChange={(value) => onChange({ limite: value })} value={step.limite} />
         <label className="grid gap-2 text-sm">
-          <span className="font-medium text-zinc-200">Proxima acao</span>
+          <span className="font-medium text-zinc-200">Próxima ação</span>
           <select
             className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-purple-500/60"
             disabled={disabled}
@@ -1107,7 +1107,7 @@ function IconButton({
 
 function DailyBars({ stats }: { stats: SelfBotProtectionStats }) {
   if (!stats.daily.length) {
-    return <p className="py-8 text-center text-sm text-zinc-600">Nenhuma infracao registrada.</p>;
+    return <p className="py-8 text-center text-sm text-zinc-600">Nenhuma infração registrada.</p>;
   }
 
   const max = Math.max(...stats.daily.map((item) => item.value), 1);

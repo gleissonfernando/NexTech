@@ -136,7 +136,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
               <ShieldAlert className="h-5 w-5 text-red-300" />
               Acesso restrito
             </CardTitle>
-            <CardDescription>Esta area e exclusiva do desenvolvedor.</CardDescription>
+            <CardDescription>Esta área é exclusiva do desenvolvedor.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="w-full" onClick={() => window.location.replace("/dashboard")}>
@@ -171,8 +171,8 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-100" variant="muted">Bots</Badge>
                 <Badge className="text-zinc-100" variant="muted">FiveM</Badge>
-                <Badge className="text-zinc-100" variant="muted">Modulos globais</Badge>
-                <Badge className="text-zinc-100" variant="muted">Logs tecnicos</Badge>
+                <Badge className="text-zinc-100" variant="muted">Módulos globais</Badge>
+                <Badge className="text-zinc-100" variant="muted">Logs técnicos</Badge>
               </div>
             </div>
           </div>
@@ -535,7 +535,7 @@ function MaintenancePanel() {
           {active ? (
             <div className="mb-4 grid gap-4 rounded-lg border border-amber-400/25 bg-amber-500/[0.08] p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
               <img
-                alt="Bot em manutencao"
+                alt="Bot em manutenção"
                 className="aspect-square w-full max-w-36 rounded-lg border border-amber-300/20 object-cover shadow-[0_0_28px_rgba(245,158,11,0.14)]"
                 src={MAINTENANCE_GIF_URL}
               />
@@ -543,7 +543,7 @@ function MaintenancePanel() {
                 <Badge className="border-amber-400/30 bg-amber-500/15 text-amber-100" variant="muted">
                   Atividade atual
                 </Badge>
-                <p className="mt-2 text-base font-bold text-white">Sistema em manutencao</p>
+                <p className="mt-2 text-base font-bold text-white">Sistema em manutenção</p>
                 <p className="mt-1 text-sm font-medium leading-6 text-zinc-300">
                   Os bots ficam com o aviso ativo enquanto o modo global estiver ligado.
                 </p>
@@ -646,7 +646,7 @@ function DevFiveMManager({
         onSelectBot(selectedBotId ?? nextBots[0]?.id ?? null);
       })
       .catch(() => {
-        if (mounted) setMessage("Nao foi possivel carregar os modulos FiveM.");
+        if (mounted) setMessage("Não foi possível carregar os módulos FiveM.");
       })
       .finally(() => {
         if (mounted) setLoadingModules(false);
@@ -676,12 +676,12 @@ function DevFiveMManager({
   }
 
   async function handleCreateModule() {
-    const name = window.prompt("Nome do novo modulo FiveM");
+    const name = window.prompt("Nome do novo módulo FiveM");
     if (!name?.trim()) return;
 
-    const description = window.prompt("Descricao do modulo FiveM", "Modulo personalizado criado pelo desenvolvedor.")?.trim()
-      || "Modulo personalizado criado pelo desenvolvedor.";
-    const permissions = window.prompt("Permissoes do modulo FiveM", "Admin FiveM")?.trim() || "Admin FiveM";
+    const description = window.prompt("Descrição do módulo FiveM", "Módulo personalizado criado pelo desenvolvedor.")?.trim()
+      || "Módulo personalizado criado pelo desenvolvedor.";
+    const permissions = window.prompt("Permissões do módulo FiveM", "Admin FiveM")?.trim() || "Admin FiveM";
 
     setMessage(null);
     try {
@@ -691,14 +691,14 @@ function DevFiveMManager({
         title: name.trim()
       });
       setModules((current) => [created, ...current]);
-      setMessage("Modulo FiveM criado.");
+      setMessage("Módulo FiveM criado.");
     } catch {
-      setMessage("Nao foi possivel criar o modulo FiveM.");
+      setMessage("Não foi possível criar o módulo FiveM.");
     }
   }
 
   async function handleRemoveCustom(moduleId: string) {
-    if (!window.confirm("Remover este modulo FiveM?")) return;
+    if (!window.confirm("Remover este módulo FiveM?")) return;
 
     setSavingModuleId(moduleId);
     setMessage(null);
@@ -713,9 +713,9 @@ function DevFiveMManager({
         onBotUpdated(updated);
       }
       setModules((current) => current.filter((module) => module.id !== moduleId));
-      setMessage("Modulo FiveM removido.");
+      setMessage("Módulo FiveM removido.");
     } catch {
-      setMessage("Nao foi possivel remover o modulo FiveM.");
+      setMessage("Não foi possível remover o módulo FiveM.");
     } finally {
       setSavingModuleId(null);
     }
@@ -725,10 +725,10 @@ function DevFiveMManager({
     const current = modules.find((module) => module.id === moduleId);
     if (!current) return;
 
-    const name = window.prompt("Nome do modulo FiveM", current.title);
+    const name = window.prompt("Nome do módulo FiveM", current.title);
     if (!name?.trim()) return;
-    const description = window.prompt("Descricao do modulo FiveM", current.description)?.trim() || current.description;
-    const permissions = window.prompt("Permissoes do modulo FiveM", current.permissions)?.trim() || current.permissions;
+    const description = window.prompt("Descrição do módulo FiveM", current.description)?.trim() || current.description;
+    const permissions = window.prompt("Permissões do módulo FiveM", current.permissions)?.trim() || current.permissions;
 
     setSavingModuleId(moduleId);
     setMessage(null);
@@ -739,9 +739,9 @@ function DevFiveMManager({
         title: name.trim()
       });
       setModules((currentModules) => currentModules.map((module) => module.id === moduleId ? updated : module));
-      setMessage("Modulo FiveM atualizado.");
+      setMessage("Módulo FiveM atualizado.");
     } catch {
-      setMessage("Nao foi possivel editar o modulo FiveM.");
+      setMessage("Não foi possível editar o módulo FiveM.");
     } finally {
       setSavingModuleId(null);
     }
@@ -752,7 +752,7 @@ function DevFiveMManager({
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-white">FiveM Manager</h2>
-          <p className="mt-1 text-sm text-zinc-500">Gerencie todos os modulos, sistemas e recursos do FiveM.</p>
+          <p className="mt-1 text-sm text-zinc-500">Gerencie todos os módulos, sistemas e recursos do FiveM.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <select
@@ -764,7 +764,7 @@ function DevFiveMManager({
           </select>
           <Button onClick={handleCreateModule}>
             <Plus className="h-4 w-4" />
-            Novo Modulo
+            Novo módulo
           </Button>
         </div>
       </section>
@@ -776,8 +776,8 @@ function DevFiveMManager({
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <FiveMStat icon={Boxes} label="Total de modulos" value={String(stats.total)} />
-        <FiveMStat icon={Activity} label="Modulos ativos" value={String(stats.active)} />
+        <FiveMStat icon={Boxes} label="Total de módulos" value={String(stats.total)} />
+        <FiveMStat icon={Activity} label="Módulos ativos" value={String(stats.active)} />
         <FiveMStat icon={ShieldAlert} label="Desativados" value={String(stats.disabled)} />
         <FiveMStat icon={Users} label="Usuarios com acesso" value={String(stats.users)} />
         <FiveMStat icon={Building2} label="Faccoes cadastradas" value={String(stats.factions)} />
@@ -786,14 +786,14 @@ function DevFiveMManager({
 
       <Card className="border-zinc-800/80 bg-zinc-950/75">
         <CardHeader className="p-5 sm:p-6">
-          <CardTitle>Modulos FiveM</CardTitle>
-          <CardDescription>Sistemas RP independentes das configuracoes do bot Discord.</CardDescription>
+          <CardTitle>Módulos FiveM</CardTitle>
+          <CardDescription>Sistemas RP independentes das configurações do bot Discord.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 p-5 pt-0 sm:p-6 sm:pt-0 lg:grid-cols-2">
           {loadingModules ? (
             <div className="flex min-h-28 items-center justify-center rounded-lg border border-zinc-900 bg-black/35 text-sm text-zinc-500 lg:col-span-2">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Carregando modulos FiveM...
+              Carregando módulos FiveM...
             </div>
           ) : viewModules.map((module) => {
             const active = enabled.has(module.id);
@@ -809,7 +809,7 @@ function DevFiveMManager({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-white">{module.title}</p>
                       <p className="mt-1 text-xs leading-5 text-zinc-500">{module.description}</p>
-                      <p className="mt-2 truncate text-xs text-zinc-400">Permissoes: {module.permissions}</p>
+                      <p className="mt-2 truncate text-xs text-zinc-400">Permissões: {module.permissions}</p>
                     </div>
                     <Switch checked={active} disabled={!selectedBot || savingModuleId === module.id} onCheckedChange={(checked) => void handleToggle(module.id, checked)} />
                   </div>
@@ -910,7 +910,7 @@ function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId:
       <CardHeader className="p-5 sm:p-6">
         <CardTitle className="flex items-center gap-2">
           <ScrollText className="h-5 w-5" />
-          Logs tecnicos
+          Logs técnicos
         </CardTitle>
         <CardDescription>Eventos brutos por botId e guildId para diagnostico do desenvolvedor.</CardDescription>
       </CardHeader>
@@ -936,7 +936,7 @@ function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId:
           </div>
         ) : (
           <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
-            Nenhum log tecnico encontrado.
+            Nenhum log técnico encontrado.
           </div>
         )}
       </CardContent>

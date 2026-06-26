@@ -270,7 +270,7 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
       setForm(formFromConfig(nextConfig, platform));
       setPreview(previewFromConfig(nextConfig));
       setEditingConfigId(nextConfig.id);
-      setStatus(`Configuracao de clipes ${label} salva.`);
+      setStatus(`Configuração de clipes ${label} salva.`);
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -392,7 +392,7 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
   if (!canManage) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-zinc-500">Sua conta nao tem permissao para configurar clipes neste servidor.</CardContent>
+        <CardContent className="p-6 text-sm text-zinc-500">Sua conta não tem permissão para configurar clipes neste servidor.</CardContent>
       </Card>
     );
   }
@@ -429,7 +429,7 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
           </Button>
           <Button disabled={saving || loading} onClick={handleSave}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar configuracao
+            Salvar configuração
           </Button>
         </div>
       </div>
@@ -508,12 +508,12 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
           <Card>
             <CardHeader>
               <CardTitle>Canal de logs</CardTitle>
-              <CardDescription>Destino no Discord e permissao para configurar.</CardDescription>
+              <CardDescription>Destino no Discord e permissão para configurar.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <Field label="Canal Discord">
                 <select className="social-input" onChange={(event) => updateForm("discordChannelId", event.target.value)} value={form.discordChannelId}>
-                  <option value="">Nao enviar no Discord</option>
+                  <option value="">Não enviar no Discord</option>
                   {options.channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>#{channel.name}</option>
                   ))}
@@ -551,7 +551,7 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
 
           <Card>
             <CardHeader>
-              <CardTitle>Personalizacao</CardTitle>
+              <CardTitle>Personalização</CardTitle>
               <CardDescription>Mensagem, cor e mencao do alerta.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
@@ -710,7 +710,7 @@ function StatusCard({
             <Badge variant={enabled ? "success" : "muted"}>{enabled ? "Ativo" : "Desativado"}</Badge>
             <span className="text-xs text-zinc-600">{totalSent} registrados</span>
           </div>
-          <p className="mt-2 text-xs text-zinc-600">Ultima verificacao: {lastCheckAt ? formatDate(lastCheckAt) : "Nunca"}</p>
+          <p className="mt-2 text-xs text-zinc-600">Última verificação: {lastCheckAt ? formatDate(lastCheckAt) : "Nunca"}</p>
         </div>
         {loading ? <Loader2 className="h-5 w-5 animate-spin text-zinc-500" /> : <Switch checked={enabled} onCheckedChange={onToggle} />}
       </CardContent>
@@ -746,7 +746,7 @@ function ClipsConfigList({
       <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_auto] gap-3 border-b border-zinc-900 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-500">
         <span>Canal</span>
         <span>Status</span>
-        <span>Ultima verificacao</span>
+        <span>Última verificação</span>
         <span className="text-right">Acoes</span>
       </div>
       <div className="divide-y divide-zinc-900">
@@ -1055,8 +1055,8 @@ function formatNumber(value: number) {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }

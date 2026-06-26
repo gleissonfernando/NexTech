@@ -13,7 +13,7 @@ export const gravarCommand: BotCommand = {
     .addSubcommand((subcommand) =>
       subcommand
         .setName("iniciar")
-        .setDescription("Inicia a gravacao do canal de voz em que voce esta.")
+        .setDescription("Inicia a gravação do canal de voz em que você está.")
     )
     .addSubcommand((subcommand) =>
       subcommand

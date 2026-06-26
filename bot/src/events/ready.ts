@@ -186,7 +186,7 @@ function unique(values: string[]) {
 
 async function loadRuntimeAccess(context: BotContext) {
   return context.api.getRuntimeModules().catch((error) => {
-    console.warn("[bot] nao foi possivel carregar modulos liberados:", error instanceof Error ? error.message : error);
+    console.warn("[bot] não foi possível carregar módulos liberados:", error instanceof Error ? error.message : error);
     return null;
   });
 }

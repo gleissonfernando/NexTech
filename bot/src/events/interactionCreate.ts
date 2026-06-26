@@ -51,7 +51,7 @@ export async function handleInteractionCreate(interaction: Interaction, context:
 
   if (!command) {
     await interaction.reply({
-      content: "Comando nao encontrado.",
+      content: "Comando não encontrado.",
       ephemeral: true
     });
     return;
@@ -59,7 +59,7 @@ export async function handleInteractionCreate(interaction: Interaction, context:
 
   if (command.moduleId && !isBotModuleEnabled(command.moduleId)) {
     const runtimeAccess = await context.api.getRuntimeModules().catch((error) => {
-      console.warn("[bot] nao foi possivel recarregar modulos antes de negar comando:", error instanceof Error ? error.message : error);
+      console.warn("[bot] não foi possível recarregar módulos antes de negar comando:", error instanceof Error ? error.message : error);
       return null;
     });
 
@@ -70,7 +70,7 @@ export async function handleInteractionCreate(interaction: Interaction, context:
 
   if (command.moduleId && !isBotModuleEnabled(command.moduleId)) {
     await interaction.reply({
-      content: `O modulo ${command.moduleId} ainda nao aparece liberado para este bot na dashboard DEV. Se acabou de ativar, reinicie o bot pelo painel DEV.`,
+      content: `O módulo ${command.moduleId} ainda não aparece liberado para este bot na dashboard DEV. Se acabou de ativar, reinicie o bot pelo painel DEV.`,
       ephemeral: true
     });
     return;
@@ -82,7 +82,7 @@ export async function handleInteractionCreate(interaction: Interaction, context:
     console.error("[command]", error);
 
     const payload = {
-      content: "Nao foi possivel executar esse comando.",
+      content: "Não foi possível executar esse comando.",
       ephemeral: true
     };
 

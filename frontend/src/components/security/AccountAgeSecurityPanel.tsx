@@ -68,7 +68,7 @@ export function AccountAgeSecurityPanel({
       .then((options) => setChannels(options.channels))
       .catch((requestError) => {
         setChannels([]);
-        setError(readErrorMessage(requestError, "Nao foi possivel carregar os canais deste servidor."));
+        setError(readErrorMessage(requestError, "Não foi possível carregar os canais deste servidor."));
       })
       .finally(() => setLoadingChannels(false));
   }, [botId, guild]);
@@ -105,7 +105,7 @@ export function AccountAgeSecurityPanel({
 
     if (draft.accountAgeSecurityEnabled && !draft.accountAgeLogChannelId && !settings.logChannelId) {
       setStatus(null);
-      setError("Selecione um canal de logs antes de ativar a seguranca.");
+      setError("Selecione um canal de logs antes de ativar a segurança.");
       return;
     }
 
@@ -124,7 +124,7 @@ export function AccountAgeSecurityPanel({
       onSettingsChange(saved);
       setStatus("Seguranca por idade da conta salva.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar a seguranca por idade da conta."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar a segurança por idade da conta."));
     } finally {
       setSaving(false);
     }
@@ -134,7 +134,7 @@ export function AccountAgeSecurityPanel({
     return (
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
-          Escolha um servidor para configurar a seguranca por idade da conta.
+          Escolha um servidor para configurar a segurança por idade da conta.
         </CardContent>
       </Card>
     );
@@ -212,7 +212,7 @@ export function AccountAgeSecurityPanel({
                 <UserCheck className="h-4 w-4 text-zinc-400" />
                 Usuarios em excecao
               </span>
-              <span className="text-xs text-zinc-500">{draft.accountAgeAllowedUserIds.length} usuario(s)</span>
+              <span className="text-xs text-zinc-500">{draft.accountAgeAllowedUserIds.length} usuário(s)</span>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -227,7 +227,7 @@ export function AccountAgeSecurityPanel({
                     addException();
                   }
                 }}
-                placeholder="ID Discord do usuario"
+                placeholder="ID Discord do usuário"
                 value={exceptionInput}
               />
               <Button disabled={disabled || !exceptionInput.trim()} onClick={addException} type="button" variant="outline">
@@ -260,7 +260,7 @@ export function AccountAgeSecurityPanel({
           <div className="flex flex-wrap items-center gap-3 border-t border-zinc-900 pt-4">
             <Button disabled={disabled} onClick={() => void save()}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar seguranca
+              Salvar segurança
             </Button>
             {loadingChannels ? (
               <span className="flex items-center gap-2 text-xs text-zinc-500">

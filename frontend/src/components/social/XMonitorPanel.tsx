@@ -237,7 +237,7 @@ export function XMonitorPanel({ botId, canManage, guild }: XMonitorPanelProps) {
     return (
       <Card>
         <CardContent className="p-5 text-sm leading-6 text-zinc-500">
-          Sua conta tem visualizacao basica. O X Monitor fica disponivel apenas para administradores ou equipe autorizada.
+          Sua conta tem visualização básica. O X Monitor fica disponível apenas para administradores ou equipe autorizada.
         </CardContent>
       </Card>
     );
@@ -253,7 +253,7 @@ export function XMonitorPanel({ botId, canManage, guild }: XMonitorPanelProps) {
           <div className="min-w-0">
             <h3 className="text-xl font-semibold text-white">X Monitor</h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
-              Monitore contas do X e envie novas publicacoes automaticamente para canais do Discord.
+              Monitore contas do X e envie novas publicações automaticamente para canais do Discord.
             </p>
           </div>
         </div>
@@ -277,7 +277,7 @@ export function XMonitorPanel({ botId, canManage, guild }: XMonitorPanelProps) {
       <Card>
         <CardHeader className="border-b border-zinc-900">
           <CardTitle>Contas cadastradas</CardTitle>
-          <CardDescription>Username, canal de destino, status da sincronizacao e total enviado.</CardDescription>
+          <CardDescription>Username, canal de destino, status da sincronização e total enviado.</CardDescription>
         </CardHeader>
         <CardContent className="pt-5">
           {accounts.length ? (
@@ -378,7 +378,7 @@ function XAccountRow({
         </div>
 
         <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3 lg:min-w-[460px]">
-          <Fact label="Ultima sincronizacao" value={formatNullableDate(account.lastSyncAt)} />
+          <Fact label="Última sincronização" value={formatNullableDate(account.lastSyncAt)} />
           <Fact label="Ultima postagem" value={account.lastPostId ? account.lastPostId : "Nenhuma"} />
           <Fact label="Total enviado" value={account.totalPostsSent.toLocaleString("pt-BR")} />
         </div>
@@ -549,7 +549,7 @@ function XAccountModal({
         <label className="flex items-center justify-between gap-4 rounded-lg border border-zinc-900 bg-zinc-950/70 p-4 text-sm text-zinc-400">
           <span>
             <span className="block font-medium text-white">Monitoramento</span>
-            <span className="text-xs text-zinc-500">Ativo busca novas publicacoes periodicamente.</span>
+            <span className="text-xs text-zinc-500">Ativo busca novas publicações periodicamente.</span>
           </span>
           <input checked={active} onChange={(event) => setActive(event.target.checked)} type="checkbox" />
         </label>
@@ -694,8 +694,8 @@ function normalizeUsername(value: string) {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }

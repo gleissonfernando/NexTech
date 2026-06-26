@@ -117,7 +117,7 @@ export function SiteAccessPanel({
       setStatus(successText);
       return true;
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel salvar a liberacao de acesso."));
+      setError(readErrorMessage(requestError, "Não foi possível salvar a liberação de acesso."));
       return false;
     } finally {
       setSaving(false);
@@ -127,7 +127,7 @@ export function SiteAccessPanel({
   function handleEnabledChange(checked: boolean) {
     if (checked && !selectedUserIds.length) {
       setStatus(null);
-      setError("Adicione pelo menos um usuario do Discord antes de ativar o acesso.");
+      setError("Adicione pelo menos um usuário do Discord antes de ativar o acesso.");
       return;
     }
 
@@ -209,10 +209,10 @@ export function SiteAccessPanel({
       if (!members.length) {
         setStatus("Nenhum membro encontrado neste servidor.");
       } else if (!availableMembers.length) {
-        setStatus("Os membros encontrados ja estao liberados.");
+        setStatus("Os membros encontrados já estão liberados.");
       }
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel buscar membros no Discord."));
+      setError(readErrorMessage(requestError, "Não foi possível buscar membros no Discord."));
     } finally {
       setLoadingMembers(false);
     }
@@ -231,7 +231,7 @@ export function SiteAccessPanel({
       {
         dashboardUserPermissions: nextPermissions
       },
-      "Pessoa removida da liberacao do painel."
+      "Pessoa removida da liberação do painel."
     );
   }
 
@@ -258,7 +258,7 @@ export function SiteAccessPanel({
       setValidation(result);
       setStatus(result.allowed ? `Teste aprovado como ${levelLabel(result.accessLevel)}.` : "Teste negado para sua conta atual.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Nao foi possivel testar as permissoes agora."));
+      setError(readErrorMessage(requestError, "Não foi possível testar as permissões agora."));
     } finally {
       setTesting(false);
     }
@@ -278,7 +278,7 @@ export function SiteAccessPanel({
             </div>
             <div>
               <CardTitle>Acesso ao painel</CardTitle>
-              <CardDescription>Libere pessoas pelo usuario do Discord, sem configurar cargos.</CardDescription>
+              <CardDescription>Libere pessoas pelo usuário do Discord, sem configurar cargos.</CardDescription>
             </div>
           </div>
           <Switch
@@ -315,7 +315,7 @@ export function SiteAccessPanel({
                   }
                 }
               }}
-              placeholder="Nome, @usuario ou ID Discord"
+              placeholder="Nome, @usuário ou ID Discord"
               value={userQuery}
             />
             <Button disabled={disabled || loadingMembers || userQuery.trim().length < 2} onClick={() => void handleMemberSearch()} type="button" variant="outline">
@@ -500,7 +500,7 @@ export function SiteAccessPanel({
         {saving ? (
           <p className="flex items-center gap-2 text-xs text-zinc-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Salvando configuracao...
+            Salvando configuração...
           </p>
         ) : null}
         {status ? <p className="text-xs text-emerald-400">{status}</p> : null}

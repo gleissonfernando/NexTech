@@ -361,7 +361,7 @@ export function MemberSocialNetworkPanel({ botId, canManage, guild }: MemberSoci
     try {
       const nextPanel = await removeSocialPanel(guild.id, botId);
       setPanel(nextPanel);
-      setStatus("Pedido de remocao do painel enviado ao bot.");
+      setStatus("Pedido de remoção do painel enviado ao bot.");
     } catch (requestError) {
       setError(readErrorMessage(requestError));
     } finally {
@@ -389,7 +389,7 @@ export function MemberSocialNetworkPanel({ botId, canManage, guild }: MemberSoci
     return (
       <Card>
         <CardContent className="p-5 text-sm leading-6 text-zinc-500">
-          Sua conta tem visualizacao basica. A Rede Social dos Membros fica disponivel apenas para administradores ou equipe autorizada.
+          Sua conta tem visualização básica. A Rede Social dos Membros fica disponível apenas para administradores ou equipe autorizada.
         </CardContent>
       </Card>
     );
@@ -433,7 +433,7 @@ export function MemberSocialNetworkPanel({ botId, canManage, guild }: MemberSoci
               </CardDescription>
             </div>
             <Badge variant={panel?.published ? "success" : "muted"}>
-              {panel?.published ? "Publicado" : "Nao publicado"}
+              {panel?.published ? "Publicado" : "Não publicado"}
             </Badge>
           </div>
         </CardHeader>
@@ -806,8 +806,8 @@ function activeLinks(member: SocialMember) {
 function readErrorMessage(error: unknown) {
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response;
-    return response?.data?.message ?? "Nao foi possivel concluir a acao.";
+    return response?.data?.message ?? "Não foi possível concluir a ação.";
   }
 
-  return "Nao foi possivel concluir a acao.";
+  return "Não foi possível concluir a ação.";
 }
