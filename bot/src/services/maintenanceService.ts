@@ -1,11 +1,16 @@
 import {
   ActivityType,
+  AttachmentBuilder,
   ContainerBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   MessageFlags,
   TextDisplayBuilder,
   type Interaction,
   type Message
 } from "discord.js";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { MaintenanceState } from "./apiClient";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import type { BotContext, GuildSettings } from "../types";
@@ -30,6 +35,8 @@ const MAINTENANCE_PANEL_DESCRIPTION = [
   "Aguarde a equipe finalizar a manutencao para utilizar novamente."
 ].join("\n");
 const MAINTENANCE_PRESENCE_NAME = "Sistema em manutencao";
+const MAINTENANCE_GIF_FILE_NAME = "nft-coding.gif";
+const MAINTENANCE_GIF_PATH = resolveAssetPath(`maintenance/${MAINTENANCE_GIF_FILE_NAME}`);
 
 let maintenanceState: MaintenanceState = {
   active: false,
@@ -234,13 +241,7 @@ async function ensureMaintenancePanel(channel: MessageChannelWithMessages, messa
   const currentPanel = panels.find((item) => isCurrentMaintenancePanelMessage(item));
 
   if (!currentPanel) {
-    await channel.send({
-      allowedMentions: {
-        parse: []
-      },
-      components: [maintenancePanelComponent(message)],
-      flags: MessageFlags.IsComponentsV2
-    });
+    await channel.send(maintenancePanelPayload(message));
   }
 
   await Promise.allSettled(
@@ -259,14 +260,47 @@ async function deleteMaintenancePanelsFromChannel(channel: MessageChannelWithMes
   );
 }
 
+function maintenancePanelPayload(message: string) {
+  return {
+    allowedMentions: {
+      parse: [] as never[]
+    },
+    components: [maintenancePanelComponent(message)],
+    files: maintenancePanelFiles(),
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
 function maintenancePanelComponent(message: string) {
-  return new ContainerBuilder()
-    .setAccentColor(0xf59e0b)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`## ${MAINTENANCE_PANEL_TITLE}`),
-      new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
-      new TextDisplayBuilder().setContent(message)
+  const container = new ContainerBuilder().setAccentColor(0xf59e0b);
+
+  if (existsSync(MAINTENANCE_GIF_PATH)) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder()
+          .setURL(`attachment://${MAINTENANCE_GIF_FILE_NAME}`)
+          .setDescription("Bot em manutencao")
+      )
     );
+  }
+
+  return container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`## ${MAINTENANCE_PANEL_TITLE}`),
+    new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
+    new TextDisplayBuilder().setContent(message)
+  );
+}
+
+function maintenancePanelFiles() {
+  if (!existsSync(MAINTENANCE_GIF_PATH)) {
+    return [];
+  }
+
+  return [
+    new AttachmentBuilder(MAINTENANCE_GIF_PATH, {
+      name: MAINTENANCE_GIF_FILE_NAME
+    })
+  ];
 }
 
 function isMaintenancePanelMessage(message: Message) {
@@ -281,8 +315,10 @@ function isMaintenancePanelMessage(message: Message) {
 }
 
 function isCurrentMaintenancePanelMessage(message: Message) {
+  const serialized = serializedMessageComponents(message);
   return message.flags.has(MessageFlags.IsComponentsV2)
-    && serializedMessageComponents(message).includes(MAINTENANCE_PANEL_DESCRIPTION);
+    && serialized.includes(MAINTENANCE_PANEL_DESCRIPTION)
+    && (!existsSync(MAINTENANCE_GIF_PATH) || serialized.includes(MAINTENANCE_GIF_FILE_NAME));
 }
 
 function serializedMessageComponents(message: Message) {
@@ -304,4 +340,13 @@ function maintenanceChannelIds(settings: GuildSettings) {
     settings.safeBotChannelId,
     settings.safeBotLogChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
+}
+
+function resolveAssetPath(fileName: string) {
+  const candidates = [
+    path.resolve(process.cwd(), "bot", "assets", fileName),
+    path.resolve(process.cwd(), "assets", fileName)
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? fileName;
 }

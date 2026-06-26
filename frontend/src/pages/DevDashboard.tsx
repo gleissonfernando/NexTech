@@ -57,6 +57,8 @@ type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
 };
 
+const MAINTENANCE_GIF_URL = "/maintenance/nft-coding.gif";
+
 export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashboardProps) {
   const [profile, setProfile] = useState<DashboardMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -530,6 +532,25 @@ function MaintenancePanel() {
           <CardDescription className="font-medium text-zinc-300">Bots afetados pelo modo de manutenção global.</CardDescription>
         </CardHeader>
         <CardContent>
+          {active ? (
+            <div className="mb-4 grid gap-4 rounded-lg border border-amber-400/25 bg-amber-500/[0.08] p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
+              <img
+                alt="Bot em manutencao"
+                className="aspect-square w-full max-w-36 rounded-lg border border-amber-300/20 object-cover shadow-[0_0_28px_rgba(245,158,11,0.14)]"
+                src={MAINTENANCE_GIF_URL}
+              />
+              <div className="min-w-0">
+                <Badge className="border-amber-400/30 bg-amber-500/15 text-amber-100" variant="muted">
+                  Atividade atual
+                </Badge>
+                <p className="mt-2 text-base font-bold text-white">Sistema em manutencao</p>
+                <p className="mt-1 text-sm font-medium leading-6 text-zinc-300">
+                  Os bots ficam com o aviso ativo enquanto o modo global estiver ligado.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           {bots.length ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {bots.map((bot) => (
