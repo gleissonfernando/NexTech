@@ -217,6 +217,42 @@ const styleEmoji: Record<string, string[]> = {
   premium: ["✧", "◆", "◇", "✦"]
 };
 
+const voiceCategoryNames: Record<string, string[]> = {
+  clean: ["○ Calls", "◇ Voz", "□ Salas"],
+  corporate: ["▪ Reuniões", "◆ Conferência", "◇ Voice Hub"],
+  cyberpunk: ["✦ Neon Calls", "▣ Cyber Voz", "◆ Night Comms"],
+  dark: ["◆ Dark Calls", "● Voz Noturna", "◈ Lounge"],
+  elegant: ["✧ Salões de Voz", "◇ Lounge", "✦ Conversas"],
+  gamer: ["⚔ Calls Gamer", "✦ Squads", "◆ Lobby de Voz"],
+  minimal: ["• Calls", "○ Voz", "◇ Lounge"],
+  modern: ["✦ Voice Hub", "◆ Calls", "◇ Lounge"],
+  neon: ["✦ Neon Voice", "◆ Calls", "◈ Lounge"],
+  premium: ["✧ Premium Calls", "◆ Salas VIP", "◇ Lounge"]
+};
+
+const voiceSuites: Record<ServerType, string[]> = {
+  community: ["☕ Lounge", "🎙️ Bate-papo", "🎧 Música", "🌙 Madrugada", "💤 AFK"],
+  fivem: ["📻 Rádio Cidade", "🚓 Patrulha", "🔧 Mecânica", "🏁 Corrida", "💤 AFK"],
+  "gta-rp": ["📻 Rádio RP", "🚓 Polícia", "🏥 Hospital", "🎭 Cena RP", "💤 AFK"],
+  streamer: ["🔴 Ao vivo", "🎙️ Papo da live", "🎬 Bastidores", "⭐ Subs", "💤 AFK"],
+  gamer: ["🎮 Squad 1", "⚔️ Squad 2", "🏆 Ranked", "🎧 Chill", "💤 AFK"],
+  business: ["💼 Reunião", "📞 Atendimento", "🧠 Brainstorm", "🔒 Diretoria", "💤 Ausente"],
+  store: ["🛒 Atendimento", "💸 Vendas", "📦 Pedidos", "⭐ VIP", "💤 AFK"],
+  "bot-support": ["🛠️ Suporte", "🐞 Bugs", "💡 Ideias", "🔒 Staff", "💤 AFK"],
+  anime: ["🍜 Lounge", "🎴 Watch Party", "🎨 Fanarts", "🌙 Madrugada", "💤 AFK"],
+  music: ["🎧 Lounge", "🎤 Karaokê", "🎹 Studio", "🎵 Playlist", "💤 AFK"],
+  programming: ["💻 Dev Call", "🧪 Pair Programming", "🧠 Debug", "📚 Mentoria", "💤 AFK"],
+  study: ["📚 Sala 1", "📝 Revisão", "🎧 Foco", "👥 Grupo", "💤 AFK"],
+  marketplace: ["🤝 Negociação", "🛒 Vendas", "🔎 Avaliação", "🔒 Mediação", "💤 AFK"],
+  crypto: ["📈 Trading", "🧠 Research", "💬 Holders", "🔒 Alpha", "💤 AFK"],
+  roleplay: ["🎭 Cena 1", "📖 Lore", "🌙 Off RP", "🔒 Staff RP", "💤 AFK"],
+  technology: ["🤖 Tech Talk", "🧪 Lab", "💻 Projetos", "📰 News", "💤 AFK"],
+  influencer: ["📸 Conteúdo", "🎬 Bastidores", "⭐ Comunidade", "🤝 Parcerias", "💤 AFK"],
+  clan: ["⚔️ Esquadrão", "🎯 Treino", "🛡️ Estratégia", "🏆 Guerra", "💤 AFK"],
+  esports: ["🏆 Time A", "🎯 Scrim", "📋 Coach", "🎙️ Caster", "💤 AFK"],
+  custom: ["🎙️ Lounge", "🎧 Chill", "👥 Call 1", "🔒 Privada", "💤 AFK"]
+};
+
 const roleColors = [0x5865f2, 0x2ecc71, 0xe91e63, 0xf1c40f, 0x9b59b6, 0x1abc9c, 0xe67e22, 0x3498db];
 
 export async function showServerGeneratorModal(interaction: ChatInputCommandInteraction) {
@@ -344,17 +380,11 @@ function generatePlan(input: GeneratorInput, guildId: string, userId: string): S
   const emojis = styleEmoji[input.style] ?? styleEmoji.modern ?? ["•"];
   const categorySeeds = random.shuffle(profile.categorySeeds).slice(0, categoryCount);
   const channelSeeds = random.shuffle(profile.channelSeeds);
-  const categories = categorySeeds.map((seed, index) => {
+  const categories: GeneratedCategory[] = categorySeeds.map((seed, index) => {
     const channelCount = 2 + random.int(index < 2 ? 3 : 2);
     const channels = random.shuffle(channelSeeds)
       .slice(0, channelCount)
-      .map((channelSeed, channelIndex) => ({
-        name: formatChannelName(random.pick(emojis), channelSeed, index + channelIndex),
-        topic: topicFor(input, channelSeed),
-        type: (channelSeed.includes("voz") || channelSeed.includes("radio") || channelSeed.includes("sala")
-          ? ChannelType.GuildVoice
-          : ChannelType.GuildText) as ChannelType.GuildText | ChannelType.GuildVoice
-      }));
+      .map((channelSeed, channelIndex) => buildTextChannel(input, random.pick(emojis), channelSeed, index + channelIndex));
 
     return {
       channels,
@@ -362,6 +392,7 @@ function generatePlan(input: GeneratorInput, guildId: string, userId: string): S
       privateStaff: /staff|logs|gestao|equipe|privado/i.test(seed)
     };
   });
+  categories.splice(Math.min(categories.length, 2 + random.int(2)), 0, buildVoiceCategory(input, random));
 
   const roles = random.shuffle(profile.roleSeeds).slice(0, 6).map((name, index) => ({
     color: roleColors[(index + random.int(roleColors.length)) % roleColors.length]!,
@@ -375,6 +406,29 @@ function generatePlan(input: GeneratorInput, guildId: string, userId: string): S
     panels: panelDefinitions(input, profile.systems, random),
     roles,
     summary: `${input.serverName} recebeu estrutura ${input.style} para ${profile.systems.join(", ")}.`
+  };
+}
+
+function buildTextChannel(input: GeneratorInput, prefix: string, channelSeed: string, salt: number) {
+  return {
+    name: formatTextChannelName(prefix, channelSeed, salt),
+    topic: topicFor(input, channelSeed),
+    type: ChannelType.GuildText as const
+  };
+}
+
+function buildVoiceCategory(input: GeneratorInput, random: RandomSource): GeneratedCategory {
+  const categoryNames = voiceCategoryNames[input.style] ?? voiceCategoryNames.modern ?? ["✦ Voice Hub"];
+  const suite = random.shuffle(voiceSuites[input.type] ?? voiceSuites.custom).slice(0, 4 + random.int(2));
+  const channels = suite.map((name, index) => ({
+    name: formatVoiceChannelName(name, index, input.style),
+    topic: `Sala de voz para ${input.serverName}`,
+    type: ChannelType.GuildVoice as const
+  }));
+
+  return {
+    channels,
+    name: random.pick(categoryNames)
   };
 }
 
@@ -536,7 +590,7 @@ function formatCategoryName(prefix: string, name: string, style: string) {
     : `${prefix} ${titleCase(normalized)}`;
 }
 
-function formatChannelName(prefix: string, name: string, salt: number) {
+function formatTextChannelName(prefix: string, name: string, salt: number) {
   const variants = [
     `${prefix}-${name}`,
     `${name}-${prefix}`,
@@ -544,6 +598,18 @@ function formatChannelName(prefix: string, name: string, salt: number) {
   ];
 
   return variants[salt % variants.length]!.toLowerCase().replace(/\s+/g, "-");
+}
+
+function formatVoiceChannelName(name: string, index: number, style: string) {
+  const separators = ["・", "┃", "•"];
+  const separator = ["minimal", "clean"].includes(style) ? "•" : separators[index % separators.length]!;
+  const cleaned = name.replace(/\s+/g, " ").trim();
+
+  if (/afk|ausente/i.test(cleaned)) {
+    return `💤 ${separator} AFK`;
+  }
+
+  return cleaned.includes(separator) ? cleaned : cleaned.replace(/\s+/, ` ${separator} `);
 }
 
 function topicFor(input: GeneratorInput, channel: string) {
