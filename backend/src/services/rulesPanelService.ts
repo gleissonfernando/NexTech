@@ -62,15 +62,35 @@ export async function publishRulesPanelToDiscord(settings: GuildSettingsDto, bot
 }
 
 function buildRulesPanelPayload(settings: GuildSettingsDto) {
-  const lines = formatRuleLines(settings.rulesMessage);
-  const roleLine = settings.rulesRoleId ? `\n\nAo aceitar, voce recebe o cargo <@&${settings.rulesRoleId}>.` : "";
+  const rules = formatRuleLines(settings.rulesMessage);
+  const columns = splitRulesIntoFields(rules);
+  const roleLine = settings.rulesRoleId
+    ? `Ao aceitar, voce recebe automaticamente o cargo <@&${settings.rulesRoleId}>.`
+    : "Ao aceitar, voce confirma que leu e concorda com as regras do servidor.";
 
   return {
     embeds: [
       {
-        title: settings.rulesTitle || "Regras do servidor",
-        description: `${lines.map((line, index) => `**${index + 1}.** ${line}`).join("\n")}${roleLine}`,
-        color: parseColor(settings.rulesColor)
+        title: `📜 ${settings.rulesTitle || "Regras do servidor"}`,
+        description: [
+          "Leia com atenção antes de liberar seu acesso.",
+          "A equipe pode aplicar advertência, timeout, kick ou banimento conforme a gravidade."
+        ].join("\n"),
+        color: parseColor(settings.rulesColor),
+        fields: [
+          ...columns.map((lines, index) => ({
+            name: index === 0 ? "Conduta" : "Segurança e convivência",
+            value: lines.join("\n")
+          })),
+          {
+            name: "Aceite",
+            value: roleLine
+          }
+        ],
+        footer: {
+          text: "Obrigado por ajudar a manter a comunidade organizada."
+        },
+        timestamp: new Date().toISOString()
       }
     ],
     components: [
@@ -92,11 +112,29 @@ function buildRulesPanelPayload(settings: GuildSettingsDto) {
 function formatRuleLines(value: string | null) {
   const lines = (value ?? "")
     .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(?:\d+[.)-]\s*)/, "").trim())
+    .map(cleanRuleLine)
     .filter(Boolean)
-    .slice(0, 12);
+    .slice(0, 10)
+    .map((line, index) => `**${index + 1}.** ${line}`);
 
-  return lines.length ? lines : ["Respeite as regras do servidor."];
+  return lines.length ? lines : ["**1.** Respeite as regras do servidor."];
+}
+
+function cleanRuleLine(line: string) {
+  return line
+    .replace(/^\s*(?:\d+[.)-]\s*)/, "")
+    .replace(/\(?\s*puni[cç][aã]o\s*:\s*banimento\s+permanente\s*[!|]*\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .replace(/[.!?。]*$/, ".");
+}
+
+function splitRulesIntoFields(lines: string[]) {
+  const midpoint = Math.ceil(lines.length / 2);
+  return [
+    lines.slice(0, midpoint),
+    lines.slice(midpoint)
+  ].filter((group) => group.length);
 }
 
 function parseColor(value: string | null) {

@@ -151,12 +151,14 @@ const MAX_ACCOUNT_AGE_MIN_DAYS = 3_650;
 const DEFAULT_LOG_CATEGORIES = [...LOG_CATEGORIES];
 const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 25;
 const MAX_EMOJI_CLONE_MAX_PER_RUN = 100;
-const DEFAULT_RULES_TITLE = "Regras do servidor";
+const DEFAULT_RULES_TITLE = "Regras da comunidade";
 const DEFAULT_RULES_MESSAGE = [
-  "Respeite todos os membros.",
-  "Evite spam, flood e divulgacao sem autorizacao.",
-  "Use os canais corretos para cada assunto.",
-  "Siga as orientacoes da equipe."
+  "Respeite todos os membros. Ofensas, preconceito, assedio ou discriminacao nao serao tolerados.",
+  "Nao publique conteudo adulto, violento, chocante ou ilegal.",
+  "Evite spam, flood, mensagens repetitivas, emojis em excesso e links desnecessarios.",
+  "Nao divulgue golpes, arquivos suspeitos ou sites maliciosos.",
+  "Proteja informacoes pessoais. Nao compartilhe telefone, endereco, fotos privadas ou dados sensiveis.",
+  "Use os canais corretos e siga as orientacoes da equipe."
 ].join("\n");
 const DEFAULT_RULES_BUTTON_LABEL = "Li e aceito";
 
