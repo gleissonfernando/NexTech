@@ -75,6 +75,7 @@ import {
   getClipsConfig,
   getDashboardBySlug,
   getDashboardMe,
+  getBotGuildConfig,
   getFivemModules,
   getGuildLiveOptions,
   getGuildSettings,
@@ -94,6 +95,7 @@ import {
   syncApplicationEmojis,
   updateSelectedDashboardGuild,
   updateApplicationEmojiSettings,
+  updateBotGuildConfig,
   validateEmojiCloneBotToken
 } from "../lib/api";
 import type {
@@ -2134,7 +2136,13 @@ function CloningView({
       ) : null}
 
       {activeSection === "server-cloner" ? (
-        <ServerClonerView canManage={canManageServer} />
+        <ServerClonerView
+          botId={botId}
+          bots={bots}
+          canManage={canManageServer}
+          guild={guild}
+          guilds={guilds}
+        />
       ) : null}
     </div>
   );
@@ -2569,10 +2577,191 @@ function EntryLeaveManager({
   );
 }
 
-function ServerClonerView({ canManage }: { canManage: boolean }) {
+type ServerClonePlanForm = {
+  cloneParts: string[];
+  destinationGuildId: string;
+  extraCategories: string;
+  extraRoles: string;
+  extraTextChannels: string;
+  extraVoiceChannels: string;
+  notes: string;
+  renameServer: string;
+  sourceGuildId: string;
+};
+
+const serverClonePartOptions = [
+  { id: "roles", label: "Cargos" },
+  { id: "categories", label: "Categorias" },
+  { id: "text", label: "Canais de texto" },
+  { id: "voice", label: "Canais de voz" }
+];
+
+function ServerClonerView({
+  botId,
+  bots,
+  canManage,
+  guild,
+  guilds
+}: {
+  botId?: string | null;
+  bots: DashboardBot[];
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  guilds: DashboardGuild[];
+}) {
+  const selectedBot = botId ? bots.find((bot) => bot.id === botId) ?? null : null;
+  const guildOptions = useMemo(() => buildServerCloneGuildOptions(selectedBot, guilds, guild), [selectedBot, guilds, guild]);
+  const defaultSourceId = guild?.id ?? selectedBot?.mainGuildId ?? guildOptions[0]?.id ?? "";
+  const defaultDestinationId = guildOptions.find((item) => item.id !== defaultSourceId)?.id ?? defaultSourceId;
+  const [form, setForm] = useState<ServerClonePlanForm>(() => ({
+    cloneParts: serverClonePartOptions.map((part) => part.id),
+    destinationGuildId: defaultDestinationId,
+    extraCategories: "",
+    extraRoles: "",
+    extraTextChannels: "",
+    extraVoiceChannels: "",
+    notes: "",
+    renameServer: "",
+    sourceGuildId: defaultSourceId
+  }));
+  const [currentModules, setCurrentModules] = useState<Record<string, Record<string, unknown>>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sourceGuildId = guild?.id ?? selectedBot?.mainGuildId ?? guildOptions[0]?.id ?? "";
+    const destinationGuildId = guildOptions.find((item) => item.id !== sourceGuildId)?.id ?? sourceGuildId;
+
+    setForm({
+      cloneParts: serverClonePartOptions.map((part) => part.id),
+      destinationGuildId,
+      extraCategories: "",
+      extraRoles: "",
+      extraTextChannels: "",
+      extraVoiceChannels: "",
+      notes: "",
+      renameServer: "",
+      sourceGuildId
+    });
+    setCurrentModules({});
+    setMessage(null);
+  }, [botId, guild?.id, selectedBot?.mainGuildId, guildOptions]);
+
+  useEffect(() => {
+    if (!botId || !form.destinationGuildId) return;
+
+    let mounted = true;
+    setLoading(true);
+
+    getBotGuildConfig(botId, form.destinationGuildId)
+      .then((config) => {
+        if (!mounted) return;
+
+        setCurrentModules(config.modules ?? {});
+        const plan = normalizeServerClonePlan(config.modules?.["server-cloner"]);
+
+        if (plan) {
+          setForm((current) => ({
+            ...current,
+            cloneParts: plan.cloneParts.length ? plan.cloneParts : current.cloneParts,
+            destinationGuildId: plan.destinationGuildId || current.destinationGuildId,
+            extraCategories: plan.extraCategories.join("\n"),
+            extraRoles: plan.extraRoles.join("\n"),
+            extraTextChannels: plan.extraTextChannels.join("\n"),
+            extraVoiceChannels: plan.extraVoiceChannels.join("\n"),
+            notes: plan.notes,
+            renameServer: plan.renameServer,
+            sourceGuildId: plan.sourceGuildId || current.sourceGuildId
+          }));
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setMessage(readErrorMessage(error, "Nao foi possivel carregar o plano de clonagem."));
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, form.destinationGuildId]);
+
+  function updateForm<K extends keyof ServerClonePlanForm>(key: K, value: ServerClonePlanForm[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function togglePart(partId: string) {
+    setForm((current) => {
+      const next = current.cloneParts.includes(partId)
+        ? current.cloneParts.filter((item) => item !== partId)
+        : [...current.cloneParts, partId];
+
+      return {
+        ...current,
+        cloneParts: next.length ? next : current.cloneParts
+      };
+    });
+  }
+
+  async function savePlan() {
+    if (!botId || !canManage) {
+      setMessage("Voce nao tem permissao para configurar esta clonagem.");
+      return;
+    }
+
+    if (!form.sourceGuildId || !form.destinationGuildId) {
+      setMessage("Selecione origem e destino da clonagem.");
+      return;
+    }
+
+    if (form.sourceGuildId === form.destinationGuildId) {
+      setMessage("O destino precisa ser diferente da origem.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const destination = guildOptions.find((item) => item.id === form.destinationGuildId);
+      const modules = {
+        ...currentModules,
+        "server-cloner": {
+          cloneParts: form.cloneParts,
+          configuredFrom: "dashboard-cloning-menu",
+          destinationGuildId: form.destinationGuildId,
+          extraCategories: splitTextareaLines(form.extraCategories),
+          extraRoles: splitTextareaLines(form.extraRoles),
+          extraTextChannels: splitTextareaLines(form.extraTextChannels),
+          extraVoiceChannels: splitTextareaLines(form.extraVoiceChannels),
+          notes: form.notes.trim(),
+          renameServer: form.renameServer.trim(),
+          sourceGuildId: form.sourceGuildId,
+          updatedAt: new Date().toISOString()
+        }
+      };
+
+      const saved = await updateBotGuildConfig(botId, form.destinationGuildId, {
+        guildName: destination?.name ?? `Servidor ${form.destinationGuildId}`,
+        modules
+      });
+
+      setCurrentModules(saved.modules ?? modules);
+      setMessage("Plano salvo. Abra /clonar-servidor no destino para executar com esses dados.");
+    } catch (error) {
+      setMessage(readErrorMessage(error, "Nao foi possivel salvar o plano de clonagem."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-zinc-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-200">
@@ -2581,7 +2770,7 @@ function ServerClonerView({ canManage }: { canManage: boolean }) {
             <div className="min-w-0">
               <CardTitle>Clonagem de Servidor</CardTitle>
               <CardDescription className="mt-1">
-                Use /clonar-servidor no Discord. O relatorio sera enviado no canal geral de logs configurado neste servidor.
+                Configure origem, destino e adicionais. O bot executa pelo comando /clonar-servidor com esse plano salvo.
               </CardDescription>
             </div>
           </div>
@@ -2590,8 +2779,204 @@ function ServerClonerView({ canManage }: { canManage: boolean }) {
           </Badge>
         </div>
       </CardHeader>
+      <CardContent className="space-y-5 p-4 sm:p-6">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <ServerCloneSelect
+                label="Servidor de origem"
+                onChange={(value) => updateForm("sourceGuildId", value)}
+                options={guildOptions}
+                value={form.sourceGuildId}
+              />
+              <ServerCloneSelect
+                label="Servidor de destino"
+                onChange={(value) => updateForm("destinationGuildId", value)}
+                options={guildOptions}
+                value={form.destinationGuildId}
+              />
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Itens que serao clonados</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {serverClonePartOptions.map((part) => {
+                  const active = form.cloneParts.includes(part.id);
+
+                  return (
+                    <button
+                      className={[
+                        "rounded-lg border px-3 py-2 text-xs font-semibold transition",
+                        active ? "border-purple-400/40 bg-purple-500/15 text-purple-100" : "border-zinc-800 bg-black/30 text-zinc-400 hover:text-white"
+                      ].join(" ")}
+                      key={part.id}
+                      onClick={() => togglePart(part.id)}
+                      type="button"
+                    >
+                      {part.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Renomear destino depois da clonagem</span>
+              <input
+                className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm font-medium text-white outline-none transition placeholder:text-zinc-600 focus:border-purple-400"
+                disabled={!canManage}
+                onChange={(event) => updateForm("renameServer", event.target.value)}
+                placeholder="Opcional"
+                value={form.renameServer}
+              />
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <ServerCloneTextarea label="Adicionar categorias" onChange={(value) => updateForm("extraCategories", value)} value={form.extraCategories} />
+              <ServerCloneTextarea label="Adicionar canais de texto" onChange={(value) => updateForm("extraTextChannels", value)} value={form.extraTextChannels} />
+              <ServerCloneTextarea label="Adicionar canais de voz" onChange={(value) => updateForm("extraVoiceChannels", value)} value={form.extraVoiceChannels} />
+              <ServerCloneTextarea label="Adicionar cargos" onChange={(value) => updateForm("extraRoles", value)} value={form.extraRoles} />
+            </div>
+
+            <ServerCloneTextarea label="Notas internas" onChange={(value) => updateForm("notes", value)} value={form.notes} />
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+            <p className="text-sm font-semibold text-white">Plano direcionado</p>
+            <div className="mt-4 space-y-2 text-xs font-medium text-zinc-400">
+              <p className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2">Origem: {serverCloneGuildLabel(guildOptions, form.sourceGuildId)}</p>
+              <p className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2">Destino: {serverCloneGuildLabel(guildOptions, form.destinationGuildId)}</p>
+              <p className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2">Extras: {countServerCloneExtras(form)} item(ns)</p>
+            </div>
+            {loading ? (
+              <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-zinc-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Carregando plano salvo...
+              </p>
+            ) : null}
+            {message ? (
+              <div className="mt-4 rounded-lg border border-purple-500/25 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-100">
+                {message}
+              </div>
+            ) : null}
+            <Button
+              className="mt-4 w-full gap-2 bg-purple-600 text-white hover:bg-purple-500"
+              disabled={!canManage || saving || loading}
+              onClick={() => void savePlan()}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar plano
+            </Button>
+          </div>
+        </div>
+      </CardContent>
     </Card>
   );
+}
+
+function ServerCloneSelect({
+  label,
+  onChange,
+  options,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<{ id: string; name: string }>;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <select
+        className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm font-semibold text-white outline-none transition focus:border-purple-400"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option className="bg-zinc-950 text-white" key={option.id} value={option.id}>
+            {option.name} - {option.id}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ServerCloneTextarea({
+  label,
+  onChange,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <textarea
+        className="mt-2 min-h-[92px] w-full resize-y rounded-lg border border-zinc-800 bg-black/35 px-3 py-3 text-sm font-medium text-white outline-none transition placeholder:text-zinc-600 focus:border-purple-400"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Um por linha"
+        value={value}
+      />
+    </label>
+  );
+}
+
+function buildServerCloneGuildOptions(bot: DashboardBot | null, guilds: DashboardGuild[], currentGuild: DashboardGuild | null) {
+  const guildMap = new Map(guilds.map((item) => [item.id, item.name]));
+  const isStringId = (value: string | null | undefined): value is string => Boolean(value);
+  const ids = bot
+    ? [...new Set([bot.mainGuildId, ...bot.guildIds, currentGuild?.id].filter(isStringId))]
+    : [...new Set([currentGuild?.id, ...guilds.map((item) => item.id)].filter(isStringId))];
+
+  return ids.map((id) => ({
+    id,
+    name: guildMap.get(id) ?? (currentGuild && id === currentGuild.id ? currentGuild.name : null) ?? (bot && id === bot.mainGuildId ? bot.mainGuildName : null) ?? `Servidor ${id}`
+  }));
+}
+
+function serverCloneGuildLabel(options: Array<{ id: string; name: string }>, guildId: string) {
+  return options.find((item) => item.id === guildId)?.name ?? guildId ?? "Nao definido";
+}
+
+function splitTextareaLines(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+function countServerCloneExtras(form: ServerClonePlanForm) {
+  return splitTextareaLines(form.extraCategories).length
+    + splitTextareaLines(form.extraRoles).length
+    + splitTextareaLines(form.extraTextChannels).length
+    + splitTextareaLines(form.extraVoiceChannels).length
+    + (form.renameServer.trim() ? 1 : 0);
+}
+
+function normalizeServerClonePlan(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+
+  const plan = value as Record<string, unknown>;
+  const readArray = (key: string) => Array.isArray(plan[key])
+    ? (plan[key] as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+
+  return {
+    cloneParts: readArray("cloneParts"),
+    destinationGuildId: typeof plan.destinationGuildId === "string" ? plan.destinationGuildId : "",
+    extraCategories: readArray("extraCategories"),
+    extraRoles: readArray("extraRoles"),
+    extraTextChannels: readArray("extraTextChannels"),
+    extraVoiceChannels: readArray("extraVoiceChannels"),
+    notes: typeof plan.notes === "string" ? plan.notes : "",
+    renameServer: typeof plan.renameServer === "string" ? plan.renameServer : "",
+    sourceGuildId: typeof plan.sourceGuildId === "string" ? plan.sourceGuildId : ""
+  };
 }
 
 function EmojiCloneSettingsPanel({
