@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, GuildSettings } from "../types";
 import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
-import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
+import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "./runtimeModuleGuard";
 
 const MODULE_ID = "emoji-cloner";
 const V2_FLAG = 32768;
@@ -56,8 +56,10 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
     return false;
   }
 
-  if (!(await isRuntimeModuleAuthorized(context, interaction.guild.id, MODULE_ID))) {
-    await replyNotice(interaction, "O modulo de clonagem de emojis nao foi liberado para este bot neste servidor.");
+  const authorization = await getRuntimeModuleAuthorization(context, interaction.guild.id, MODULE_ID);
+
+  if (!authorization.allowed) {
+    await replyNotice(interaction, runtimeModuleDenialMessage(authorization, "A clonagem de emojis"));
     return true;
   }
 

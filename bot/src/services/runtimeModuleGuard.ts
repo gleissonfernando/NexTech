@@ -15,6 +15,24 @@ export async function isRuntimeModuleAuthorized(context: BotContext, guildId: st
   return (await getRuntimeModuleAuthorization(context, guildId, moduleId)).allowed;
 }
 
+export function runtimeModuleDenialMessage(authorization: BotRuntimeModuleAuthorization, label = "Este sistema") {
+  switch (authorization.reasonCode) {
+    case "module_disabled":
+      return `${label} esta liberado para este bot, mas esta desativado nas configuracoes deste servidor. Ative o sistema no painel e tente novamente.`;
+    case "module_not_released":
+      return `${label} nao foi liberado para este bot na dashboard DEV.`;
+    case "dashboard_unavailable":
+      return `Nao foi possivel validar ${label.toLowerCase()} na dashboard agora. Tente novamente em instantes.`;
+    case "guild_not_registered":
+    case "guild_inactive":
+      return `${label} nao esta ativo para este servidor: ${authorization.reason}`;
+    default:
+      return authorization.reason?.trim()
+        ? `${label} nao esta disponivel neste servidor: ${authorization.reason}`
+        : `${label} nao esta disponivel neste servidor.`;
+  }
+}
+
 export async function getRuntimeModuleAuthorization(context: BotContext, guildId: string, moduleId: string): Promise<BotRuntimeModuleAuthorization> {
   const botId = currentRuntimeBotId();
 
