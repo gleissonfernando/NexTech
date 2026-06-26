@@ -201,6 +201,51 @@ export type EmojiCloneRemoteEmoji = {
   url: string;
 };
 
+export type ApplicationEmojiItem = {
+  animated: boolean;
+  applicationEmojiId: string;
+  applicationName: string;
+  botId: string;
+  hash: string | null;
+  id: string;
+  originalEmojiId: string;
+  originalName: string;
+  size: number;
+  sourceGuildId: string | null;
+  syncedAt: string;
+  type: "Animado" | "Estatico";
+  updatedAt: string;
+  url: string;
+};
+
+export type ApplicationEmojiPage = {
+  autoSyncGuildIds: string[];
+  items: ApplicationEmojiItem[];
+  limit: number;
+  remaining: number;
+  total: number;
+};
+
+export type ApplicationEmojiSettings = {
+  autoSync: boolean;
+  botId: string;
+  guildId: string;
+  updatedAt: string;
+};
+
+export type ApplicationEmojiSyncResult = ApplicationEmojiPage & {
+  job?: {
+    failed: number;
+    id: string;
+    removed: number;
+    sent: number;
+    skipped: number;
+    status: "running" | "completed" | "failed";
+    total: number;
+    updated: number;
+  };
+};
+
 export type LogCategory =
   | "members"
   | "messages"

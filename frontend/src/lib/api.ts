@@ -2,6 +2,9 @@ import axios from "axios";
 import type { InternalAxiosRequestConfig } from "axios";
 import type {
   AccessValidationResult,
+  ApplicationEmojiPage,
+  ApplicationEmojiSettings,
+  ApplicationEmojiSyncResult,
   AuthResponse,
   ClipPlatform,
   ClipsConfigPage,
@@ -286,6 +289,65 @@ export async function getEmojiLibrary(botId: string, filters: { animated?: "all"
     }
   });
   return data.items;
+}
+
+export async function getApplicationEmojis(botId: string, filters: { animated?: "all" | "true" | "false"; q?: string; sort?: "date" | "name" | "size" } = {}) {
+  const { data } = await api.get<ApplicationEmojiPage>("/emoji-cloner/application", {
+    params: {
+      ...botParams(botId),
+      animated: filters.animated ?? "all",
+      q: filters.q || undefined,
+      sort: filters.sort ?? "date"
+    }
+  });
+  return data;
+}
+
+export async function syncApplicationEmojis(botId: string, guildId: string) {
+  const { data } = await api.post<ApplicationEmojiSyncResult>("/emoji-cloner/application/sync", { guildId }, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function refreshApplicationEmojis(botId: string) {
+  const { data } = await api.post<ApplicationEmojiPage>("/emoji-cloner/application/refresh", undefined, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function removeAllApplicationEmojis(botId: string) {
+  const { data } = await api.delete<ApplicationEmojiPage & { removed: number }>("/emoji-cloner/application", {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function getApplicationEmojiSettings(botId: string, guildId: string) {
+  const { data } = await api.get<{ settings: ApplicationEmojiSettings }>(`/emoji-cloner/application/settings/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data.settings;
+}
+
+export async function updateApplicationEmojiSettings(botId: string, guildId: string, payload: { autoSync: boolean }) {
+  const { data } = await api.patch<{ settings: ApplicationEmojiSettings }>(`/emoji-cloner/application/settings/${guildId}`, payload, {
+    params: botParams(botId)
+  });
+  return data.settings;
+}
+
+export function applicationEmojiDownloadUrl(botId: string, guildId?: string | null) {
+  const params = new URLSearchParams({
+    botId
+  });
+
+  if (guildId) {
+    params.set("guildId", guildId);
+  }
+
+  return `${API_URL}/emoji-cloner/application/download?${params.toString()}`;
 }
 
 export function emojiLibraryDownloadUrl(botId: string, guildId?: string | null) {

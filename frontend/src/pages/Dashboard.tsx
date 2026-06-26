@@ -64,10 +64,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Switch } from "../components/ui/switch";
 import { createDashboardSocket } from "../lib/socket";
 import {
+  applicationEmojiDownloadUrl,
   cloneEmojiToGuild,
   cloneSelectedEmojiCloneBotToken,
   emojiLibraryDownloadUrl,
   fetchEmojiCloneBotTokenEmojis,
+  getApplicationEmojiSettings,
+  getApplicationEmojis,
   getClipsConfig,
   getDashboardBySlug,
   getDashboardMe,
@@ -84,11 +87,18 @@ import {
   getXMonitor,
   patchGuildSettings,
   publishRulesPanel,
+  refreshApplicationEmojis,
+  removeAllApplicationEmojis,
   resendEmojiFromLibrary,
+  syncApplicationEmojis,
   updateSelectedDashboardGuild,
+  updateApplicationEmojiSettings,
   validateEmojiCloneBotToken
 } from "../lib/api";
 import type {
+  ApplicationEmojiItem,
+  ApplicationEmojiPage,
+  ApplicationEmojiSettings,
   AuthResponse,
   BotStatus,
   ClipSent,
@@ -243,9 +253,9 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "emoji-cloner",
     title: "Clonagem de Emojis",
-    description: "Clona emojis de servidores acessiveis pelo bot com permissoes por cargo e bot autorizado.",
+    description: "Sincroniza emojis para a aplicacao do bot e clona emojis de servidores acessiveis.",
     icon: SmilePlus,
-    view: "settings"
+    view: "application-emojis"
   },
   {
     id: "server-cloner",
@@ -353,7 +363,8 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "self-bot-protection": "safe-bot",
   security: "account-age-security",
   moderation: "moderation",
-  rules: "rules"
+  rules: "rules",
+  "application-emojis": "emoji-cloner"
 };
 
 const settingsModuleIds = new Set(["tickets", "avisos", "network", "emoji-cloner", "server-generator"]);
@@ -897,6 +908,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             loading={settingsLoading}
             onSettingsChange={setSettings}
             settings={settings}
+          />
+        ) : null}
+        {activeView === "application-emojis" ? (
+          <ApplicationEmojisView
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "emoji-cloner", canManageDashboard)}
+            guild={selectedGuild}
+            guilds={scopedDashboardGuilds}
           />
         ) : null}
         {activeView === "server-cloner" ? (
@@ -1737,6 +1756,359 @@ function SettingsView({
   }
 
   return <div className="space-y-5">{blocks}</div>;
+}
+
+function ApplicationEmojisView({
+  botId,
+  canManage,
+  guild,
+  guilds
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  guilds: DashboardGuild[];
+}) {
+  const [page, setPage] = useState<ApplicationEmojiPage | null>(null);
+  const [settings, setSettings] = useState<ApplicationEmojiSettings | null>(null);
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState<"all" | "true" | "false">("all");
+  const [sort, setSort] = useState<"date" | "name" | "size">("date");
+  const [sourceGuildId, setSourceGuildId] = useState(guild?.id ?? "");
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState({
+    current: 0,
+    failed: 0,
+    sent: 0,
+    skipped: 0,
+    total: 0,
+    updated: 0
+  });
+
+  useEffect(() => {
+    setSourceGuildId((current) => current || guild?.id || "");
+  }, [guild?.id]);
+
+  useEffect(() => {
+    if (!botId) {
+      setPage(null);
+      return;
+    }
+
+    let mounted = true;
+    setLoading(true);
+    getApplicationEmojis(botId, { animated: type, q: query, sort })
+      .then((data) => {
+        if (mounted) setPage(data);
+      })
+      .catch((error) => {
+        if (mounted) setMessage(readErrorMessage(error, "Nao foi possivel carregar emojis da aplicacao."));
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, query, sort, type]);
+
+  useEffect(() => {
+    if (!botId || !sourceGuildId) {
+      setSettings(null);
+      return;
+    }
+
+    let mounted = true;
+    getApplicationEmojiSettings(botId, sourceGuildId)
+      .then((data) => {
+        if (mounted) setSettings(data);
+      })
+      .catch(() => {
+        if (mounted) setSettings(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, sourceGuildId]);
+
+  useEffect(() => {
+    if (!botId) return;
+
+    const socket = createDashboardSocket();
+    socket.on("application-emojis:progress", (payload: {
+      botId: string;
+      current: number;
+      failed: number;
+      guildId: string;
+      message: string;
+      sent: number;
+      skipped: number;
+      total: number;
+      updated: number;
+    }) => {
+      if (payload.botId !== botId) return;
+      if (sourceGuildId && payload.guildId !== sourceGuildId) return;
+      setProgress({
+        current: payload.current,
+        failed: payload.failed,
+        sent: payload.sent,
+        skipped: payload.skipped,
+        total: payload.total,
+        updated: payload.updated
+      });
+      setMessage(payload.message);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [botId, sourceGuildId]);
+
+  const items = page?.items ?? [];
+  const percent = progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : syncing ? 8 : 0;
+  const selectedGuild = guilds.find((item) => item.id === sourceGuildId) ?? guild ?? null;
+
+  async function refreshList() {
+    if (!botId) return;
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const data = await getApplicationEmojis(botId, { animated: type, q: query, sort });
+      setPage(data);
+    } catch (error) {
+      setMessage(readErrorMessage(error, "Nao foi possivel atualizar a lista."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSync() {
+    if (!botId || !sourceGuildId || !canManage) return;
+
+    setSyncing(true);
+    setProgress({ current: 0, failed: 0, sent: 0, skipped: 0, total: 0, updated: 0 });
+    setMessage("Iniciando sincronizacao...");
+
+    try {
+      const data = await syncApplicationEmojis(botId, sourceGuildId);
+      setPage(data);
+      setMessage(`Concluido: ${data.job?.sent ?? 0} enviados, ${data.job?.updated ?? 0} atualizados, ${data.job?.skipped ?? 0} ignorados.`);
+    } catch (error) {
+      setMessage(readErrorMessage(error, "Nao foi possivel sincronizar emojis."));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleRefreshRemote() {
+    if (!botId) return;
+
+    setLoading(true);
+    setMessage("Atualizando lista pelo Developer Portal...");
+
+    try {
+      setPage(await refreshApplicationEmojis(botId));
+      setMessage("Lista atualizada.");
+    } catch (error) {
+      setMessage(readErrorMessage(error, "Nao foi possivel atualizar emojis da aplicacao."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemoveAll() {
+    if (!botId || !canManage) return;
+    const confirmed = window.confirm("Remover todos os emojis da aplicacao deste bot?");
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    setMessage("Removendo emojis da aplicacao...");
+
+    try {
+      const data = await removeAllApplicationEmojis(botId);
+      setPage(data);
+      setMessage(`${data.removed} emoji(s) removidos.`);
+    } catch (error) {
+      setMessage(readErrorMessage(error, "Nao foi possivel remover emojis."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleToggleAutoSync(checked: boolean) {
+    if (!botId || !sourceGuildId || !canManage) return;
+
+    const previous = settings;
+    setSettings((current) => current ? { ...current, autoSync: checked } : current);
+
+    try {
+      setSettings(await updateApplicationEmojiSettings(botId, sourceGuildId, { autoSync: checked }));
+      setMessage(checked ? "Sincronizacao automatica ativada para este servidor." : "Sincronizacao automatica desativada.");
+    } catch (error) {
+      setSettings(previous);
+      setMessage(readErrorMessage(error, "Nao foi possivel salvar sincronizacao automatica."));
+    }
+  }
+
+  if (!botId) {
+    return <EmptyState icon={SmilePlus} title="Selecione um bot para gerenciar emojis da aplicacao" />;
+  }
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={SmilePlus} label="Armazenados" value={formatNumber(page?.total ?? 0)} />
+        <MetricCard icon={Boxes} label="Restantes" value={formatNumber(page?.remaining ?? 2000)} />
+        <MetricCard icon={Upload} label="Limite" value={`${page?.limit ?? 2000}`} />
+        <MetricCard icon={RefreshCw} label="Auto-sync" value={settings?.autoSync ? "Ativo" : "Desligado"} />
+      </section>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle>Emojis da Aplicacao</CardTitle>
+              <CardDescription>Sincroniza emojis do servidor para a aba Emojis da aplicacao no Developer Portal.</CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={!canManage || syncing || !sourceGuildId} onClick={() => void handleSync()} size="sm" type="button">
+                {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                Sincronizar Emojis
+              </Button>
+              <Button disabled={loading || syncing} onClick={() => void handleRefreshRemote()} size="sm" type="button" variant="outline">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Atualizar Emojis
+              </Button>
+              <Button disabled={loading || syncing} onClick={() => void refreshList()} size="sm" type="button" variant="outline">
+                Atualizar Lista
+              </Button>
+              <Button asChild disabled={!items.length} size="sm" variant="outline">
+                <a href={applicationEmojiDownloadUrl(botId, sourceGuildId || null)} rel="noreferrer">
+                  Exportar ZIP
+                </a>
+              </Button>
+              <Button disabled={!canManage || loading || syncing || !items.length} onClick={() => void handleRemoveAll()} size="sm" type="button" variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover Todos
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr_auto]">
+            <label className="space-y-2">
+              <span className="text-xs font-medium text-zinc-400">Servidor origem</span>
+              <select
+                className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none"
+                disabled={syncing}
+                onChange={(event) => setSourceGuildId(event.target.value)}
+                value={sourceGuildId}
+              >
+                <option value="">Selecione um servidor</option>
+                {guilds.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+            <div className="flex items-end gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-zinc-500">Sincronizacao Automatica</p>
+                <p className="truncate text-sm font-medium text-white">{selectedGuild?.name ?? "Servidor nao selecionado"}</p>
+              </div>
+              <Switch
+                checked={Boolean(settings?.autoSync)}
+                disabled={!canManage || !sourceGuildId}
+                onCheckedChange={(checked) => void handleToggleAutoSync(checked)}
+              />
+            </div>
+            <Badge className="self-end" variant={canManage ? "success" : "muted"}>
+              {canManage ? "Liberado" : "Somente leitura"}
+            </Badge>
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-white">Progresso</p>
+              <p className="text-xs text-zinc-500">{progress.current} / {progress.total || 0} Emojis</p>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-zinc-900">
+              <div className="h-full rounded-full bg-purple-500 transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-4">
+              <span>Enviados: {progress.sent}</span>
+              <span>Atualizados: {progress.updated}</span>
+              <span>Ignorados: {progress.skipped}</span>
+              <span>Erros: {progress.failed}</span>
+            </div>
+            {message ? <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">{message}</p> : null}
+          </div>
+
+          <div className="flex flex-col gap-2 lg:flex-row">
+            <label className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input
+                className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-sm text-white outline-none placeholder:text-zinc-600"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar por nome"
+                value={query}
+              />
+            </label>
+            <select className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none" onChange={(event) => setType(event.target.value as typeof type)} value={type}>
+              <option value="all">Todos</option>
+              <option value="false">Estaticos</option>
+              <option value="true">Animados</option>
+            </select>
+            <select className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none" onChange={(event) => setSort(event.target.value as typeof sort)} value={sort}>
+              <option value="date">Data</option>
+              <option value="name">Nome</option>
+              <option value="size">Tamanho</option>
+            </select>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-zinc-800">
+            <div className="grid grid-cols-[56px_1fr_150px_160px_120px] gap-3 border-b border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-semibold uppercase text-zinc-500">
+              <span>Emoji</span>
+              <span>Nome</span>
+              <span>Tipo</span>
+              <span>Sincronizado</span>
+              <span>Tamanho</span>
+            </div>
+            <div className="max-h-[520px] overflow-auto">
+              {items.length ? items.map((item) => (
+                <ApplicationEmojiRow item={item} key={item.id} />
+              )) : (
+                <p className="px-3 py-8 text-center text-sm text-zinc-500">
+                  {loading ? "Carregando emojis..." : "Nenhum emoji salvo na aplicacao ainda."}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ApplicationEmojiRow({ item }: { item: ApplicationEmojiItem }) {
+  return (
+    <div className="grid grid-cols-[56px_1fr_150px_160px_120px] items-center gap-3 border-b border-zinc-900 px-3 py-2 last:border-b-0">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950">
+        <img alt="" className="max-h-full max-w-full object-contain" src={item.url} />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-white">{item.applicationName}</p>
+        <p className="truncate text-xs text-zinc-500">ID {item.applicationEmojiId}</p>
+      </div>
+      <Badge variant={item.animated ? "warning" : "muted"}>{item.type}</Badge>
+      <span className="truncate text-xs text-zinc-400">{new Date(item.syncedAt).toLocaleString("pt-BR")}</span>
+      <span className="text-xs text-zinc-400">{item.size ? formatBytes(item.size) : "Remoto"}</span>
+    </div>
+  );
 }
 
 function EntryLeaveManager({

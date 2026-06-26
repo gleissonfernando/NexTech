@@ -741,6 +741,52 @@ export type MongoEmojiLibraryItem = {
   userId: string;
 };
 
+export type MongoApplicationEmojiItem = {
+  _id: string;
+  animated: boolean;
+  applicationEmojiId: string;
+  applicationId: string;
+  applicationName: string;
+  botId: string;
+  hash: string | null;
+  originalEmojiId: string;
+  originalName: string;
+  size: number;
+  sourceGuildId: string | null;
+  syncedAt: Date;
+  updatedAt: Date;
+  url: string;
+  userId: string | null;
+};
+
+export type MongoApplicationEmojiJob = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  status: "running" | "completed" | "failed";
+  total: number;
+  sent: number;
+  skipped: number;
+  updated: number;
+  removed: number;
+  failed: number;
+  error: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+};
+
+export type MongoApplicationEmojiSettings = {
+  _id: string;
+  autoSync: boolean;
+  botId: string;
+  guildId: string;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type MongoMissionToolsFeatureId =
   | "mission"
   | "clear"
@@ -1186,6 +1232,9 @@ export async function getMongoCollections() {
     emojiCloneJobs: db.collection<MongoEmojiCloneJob>("emoji_clone_jobs"),
     emojiCloneItems: db.collection<MongoEmojiCloneItem>("emoji_clone_items"),
     emojiLibrary: db.collection<MongoEmojiLibraryItem>("emoji_library"),
+    applicationEmojiItems: db.collection<MongoApplicationEmojiItem>("application_emojis"),
+    applicationEmojiJobs: db.collection<MongoApplicationEmojiJob>("application_emoji_jobs"),
+    applicationEmojiSettings: db.collection<MongoApplicationEmojiSettings>("application_emoji_settings"),
     missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
     missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
     missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
@@ -1704,6 +1753,22 @@ async function ensureEmojiCloneIndexes(db: Db) {
     db.collection<MongoEmojiLibraryItem>("emoji_library").createIndex({ botId: 1, userId: 1, name: 1 }),
     db.collection<MongoEmojiLibraryItem>("emoji_library").createIndex(
       { botId: 1, userId: 1, originalEmojiId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, syncedAt: -1 }),
+    db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, sourceGuildId: 1, syncedAt: -1 }),
+    db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, applicationName: 1 }),
+    db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex(
+      { botId: 1, applicationEmojiId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex(
+      { botId: 1, sourceGuildId: 1, originalEmojiId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoApplicationEmojiJob>("application_emoji_jobs").createIndex({ botId: 1, guildId: 1, startedAt: -1 }),
+    db.collection<MongoApplicationEmojiSettings>("application_emoji_settings").createIndex(
+      { botId: 1, guildId: 1 },
       { unique: true }
     )
   ]);

@@ -11,6 +11,7 @@ import { handleReady } from "../events/ready";
 import { env, isBotModuleEnabled } from "../config/env";
 import { isLinkAntiSpamEnabled } from "../services/linkAntiSpamService";
 import { isMaintenanceModeActive } from "../services/maintenanceService";
+import { handleApplicationEmojiGuildCreate, handleApplicationEmojiGuildDelete, handleApplicationEmojiGuildUpdate } from "../services/applicationEmojiSyncService";
 import { clearSafeBotSetupCache, ensureSafeBotSetup, isSelfBotModuleEnabled } from "../services/safeBotService";
 import { handleSelfBotProtectionGuildMutation } from "../services/selfBotProtectionService";
 import { handleVoiceRecorderVoiceStateUpdate } from "../services/voiceRecorderService";
@@ -131,6 +132,21 @@ export function registerEvents(client: Client, context: BotContext) {
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (isMaintenanceModeActive()) return;
       runEvent("voiceStateUpdate", () => handleVoiceRecorderVoiceStateUpdate(oldState, newState, context));
+    });
+  }
+
+  if (managedRuntimeBot || isBotModuleEnabled("emoji-cloner")) {
+    client.on(Events.GuildEmojiCreate, (emoji) => {
+      if (isMaintenanceModeActive()) return;
+      runEvent("guildEmojiCreate.applicationSync", () => handleApplicationEmojiGuildCreate(emoji, context));
+    });
+    client.on(Events.GuildEmojiUpdate, (oldEmoji, newEmoji) => {
+      if (isMaintenanceModeActive()) return;
+      runEvent("guildEmojiUpdate.applicationSync", () => handleApplicationEmojiGuildUpdate(oldEmoji, newEmoji, context));
+    });
+    client.on(Events.GuildEmojiDelete, (emoji) => {
+      if (isMaintenanceModeActive()) return;
+      runEvent("guildEmojiDelete.applicationSync", () => handleApplicationEmojiGuildDelete(emoji, context));
     });
   }
 }

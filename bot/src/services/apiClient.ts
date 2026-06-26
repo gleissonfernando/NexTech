@@ -909,6 +909,19 @@ export class ApiClient {
     return data.authorization;
   }
 
+  async notifyApplicationEmojiGuildEvent(input: {
+    action: "created" | "deleted" | "updated";
+    animated: boolean;
+    emojiId: string;
+    guildId: string;
+    name: string;
+  }) {
+    const { data } = await this.http.post("/emoji-cloner/application/bot/guild-event", input, {
+      timeout: 15_000
+    });
+    return data;
+  }
+
   async createTicket(input: { guildId: string; channelId?: string | null; openerId: string; subject: string }) {
     const { data } = await this.http.post("/tickets", input);
     return data;

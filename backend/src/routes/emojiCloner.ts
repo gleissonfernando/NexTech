@@ -4,6 +4,16 @@ import { emitRealtime } from "../realtime/events";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
+import {
+  createApplicationEmojiZip,
+  getApplicationEmojiPage,
+  getApplicationEmojiSettings,
+  handleApplicationEmojiGuildEvent,
+  refreshApplicationEmojis,
+  removeAllApplicationEmojis,
+  saveApplicationEmojiSettings,
+  syncGuildEmojisToApplication
+} from "../services/applicationEmojiService";
 import { createEmojiLibraryZip, listEmojiLibrary, recordEmojiCloneJob } from "../services/emojiCloneService";
 
 const itemSchema = z.object({
@@ -39,6 +49,24 @@ const libraryQuerySchema = z.object({
   animated: z.enum(["all", "true", "false"]).optional().default("all"),
   q: z.string().max(80).optional()
 });
+const applicationEmojiQuerySchema = z.object({
+  animated: z.enum(["all", "true", "false"]).optional().default("all"),
+  q: z.string().max(80).optional(),
+  sort: z.enum(["date", "name", "size"]).optional().default("date")
+});
+const applicationSyncSchema = z.object({
+  guildId: z.string().regex(/^\d{5,32}$/)
+});
+const applicationSettingsSchema = z.object({
+  autoSync: z.boolean()
+});
+const applicationBotEventSchema = z.object({
+  action: z.enum(["created", "updated", "deleted"]),
+  animated: z.boolean().optional().default(false),
+  emojiId: z.string().regex(/^\d{5,32}$/),
+  guildId: z.string().regex(/^\d{5,32}$/),
+  name: z.string().min(1).max(64)
+});
 const resendSchema = z.object({
   guildId: z.string().regex(/^\d{5,32}$/),
   name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/).optional()
@@ -65,6 +93,28 @@ const bulkCloneSchema = botTokenSchema.extend({
 const emojiCloneQueues = new Map<string, Promise<unknown>>();
 
 export const emojiClonerRouter = Router();
+
+emojiClonerRouter.post("/application/bot/guild-event", requireBot, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const input = applicationBotEventSchema.parse(req.body);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot nao identificado." });
+    }
+
+    return res.json(await handleApplicationEmojiGuildEvent({
+      action: input.action,
+      animated: input.animated,
+      botId,
+      emojiId: input.emojiId,
+      guildId: input.guildId,
+      name: input.name
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 emojiClonerRouter.post("/bot-token/validate", requireAuth, async (req, res, next) => {
   try {
@@ -200,6 +250,145 @@ emojiClonerRouter.post("/:guildId/clone", requireAuth, async (req, res, next) =>
       sourceLabel: input.sourceLabel ?? null,
       userId: user.discordId
     }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.get("/application", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const input = applicationEmojiQuerySchema.parse(req.query);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Selecione um bot do Portal do Desenvolvedor." });
+    }
+
+    const animated = input.animated === "all" ? null : input.animated === "true";
+    return res.json(await getApplicationEmojiPage({
+      animated,
+      botId,
+      query: input.q,
+      sort: input.sort
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.post("/application/sync", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user;
+    const input = applicationSyncSchema.parse(req.body);
+
+    if (!botId || !(await canUseDevBotModule(user, botId, input.guildId, "emoji-cloner"))) {
+      return res.status(403).json({ message: "Modulo de emojis nao liberado para este bot neste servidor." });
+    }
+
+    return res.json(await syncGuildEmojisToApplication({
+      botId,
+      guildId: input.guildId,
+      userId: user.discordId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.post("/application/refresh", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user;
+
+    if (!botId) {
+      return res.status(400).json({ message: "Selecione um bot do Portal do Desenvolvedor." });
+    }
+
+    return res.json(await refreshApplicationEmojis({
+      botId,
+      userId: user.discordId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.delete("/application", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user;
+
+    if (!botId) {
+      return res.status(400).json({ message: "Selecione um bot do Portal do Desenvolvedor." });
+    }
+
+    return res.json(await removeAllApplicationEmojis({
+      botId,
+      userId: user.discordId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.get("/application/download", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = typeof req.query.guildId === "string" ? req.query.guildId : null;
+
+    if (!botId) {
+      return res.status(400).json({ message: "Selecione um bot do Portal do Desenvolvedor." });
+    }
+
+    const zip = await createApplicationEmojiZip({
+      botId,
+      guildId
+    });
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=\"application-emojis.zip\"");
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(zip.buffer);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.get("/application/settings/:guildId", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = z.string().regex(/^\d{5,32}$/).parse(req.params.guildId);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Selecione um bot do Portal do Desenvolvedor." });
+    }
+
+    return res.json({ settings: await getApplicationEmojiSettings(botId, guildId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.patch("/application/settings/:guildId", requireAuth, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const user = res.locals.dashboardAuth.user;
+    const guildId = z.string().regex(/^\d{5,32}$/).parse(req.params.guildId);
+    const input = applicationSettingsSchema.parse(req.body);
+
+    if (!botId || !(await canUseDevBotModule(user, botId, guildId, "emoji-cloner"))) {
+      return res.status(403).json({ message: "Modulo de emojis nao liberado para este bot neste servidor." });
+    }
+
+    return res.json({
+      settings: await saveApplicationEmojiSettings({
+        autoSync: input.autoSync,
+        botId,
+        guildId,
+        userId: user.discordId
+      })
+    });
   } catch (error) {
     return next(error);
   }

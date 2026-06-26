@@ -18,6 +18,7 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  SmilePlus,
   SlidersHorizontal,
   Search,
   UserMinus,
@@ -50,6 +51,7 @@ export type ViewId =
   | "notifications"
   | "entry-leave"
   | "auto-roles"
+  | "application-emojis"
   | "server-cloner"
   | "settings";
 
@@ -80,6 +82,7 @@ const navItems: NavItem[] = [
   { id: "notifications", label: "Notificacoes", icon: Bell },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
+  { id: "application-emojis", label: "Emojis App", icon: SmilePlus, moduleId: "emoji-cloner" },
   { id: "server-cloner", label: "Clonagem", icon: Bot, moduleId: "server-cloner" },
   { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["tickets", "avisos", "network", "emoji-cloner", "server-generator"] }
 ];
