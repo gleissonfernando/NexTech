@@ -15,12 +15,15 @@ import {
     Loader2,
     LockKeyhole,
     MessageSquare,
+    MoreVertical,
     Power,
     ScrollText,
     Search,
     Server,
     Settings,
     ShieldCheck,
+    SlidersHorizontal,
+    Star,
     Ticket,
     Trash2,
     Unplug,
@@ -113,6 +116,7 @@ const emptyForm: CreateDevBotPayload = {
 
 type BotMenuId =
   | "overview"
+  | "favorites"
   | "settings"
   | "moderation"
   | "tickets"
@@ -511,7 +515,11 @@ export function DevPanel({
       return;
     }
 
-    const visibleMenuIds = new Set(flattenBotMenuItems(visibleBotMenuItems(botMenuItems, modules, selectedBot.enabledModules)).map((item) => item.id));
+    const visibleMenuIds = new Set<BotMenuId>([
+      "favorites",
+      "overview",
+      ...flattenBotMenuItems(moduleDashboardCategories(modules)).map((item) => item.id)
+    ]);
 
     if (!visibleMenuIds.has(activeBotMenuId)) {
       setActiveBotMenuId("overview");
@@ -1611,90 +1619,336 @@ function BotModuleWorkspace({
   onSelectMenu: (menuId: BotMenuId) => void;
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
-  const visibleMenuItems = visibleBotMenuItems(botMenuItems, modules, bot.enabledModules);
-  const allMenuItems = flattenBotMenuItems(visibleMenuItems);
-  const activeMenu = allMenuItems.find((item) => item.id === activeMenuId) ?? visibleMenuItems[0] ?? botMenuItems[0];
-  const activeModules = activeMenu && activeMenuId !== "settings"
-    ? modulesForMenu(activeMenu, modules).filter((module) => bot.enabledModules.includes(module.id))
-    : [];
-  const headerCount = activeMenuId === "settings" ? bot.enabledModules.length : activeModules.length;
-  const headerTotal = activeMenuId === "settings" ? modules.length : activeModules.length;
+  const [query, setQuery] = useState("");
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readFavoriteModules(bot.id));
+  const categories = moduleDashboardCategories(modules);
+  const activeCategory = categories.find((item) => item.id === activeMenuId) ?? categories[0];
+  const enabledSet = new Set(bot.enabledModules);
+  const favoriteSet = new Set(favoriteIds);
+  const normalizedQuery = query.trim().toLowerCase();
+  const favoriteModules = modules.filter((module) => favoriteSet.has(module.id));
+  const selectedModules = activeMenuId === "overview"
+    ? modules
+    : activeMenuId === "favorites"
+      ? favoriteModules
+      : activeCategory
+        ? modulesForMenu(activeCategory, modules, true)
+        : modules;
+  const filteredModules = (normalizedQuery ? modules : selectedModules).filter((module) => {
+    if (!normalizedQuery) return true;
+
+    return module.label.toLowerCase().includes(normalizedQuery) || module.id.toLowerCase().includes(normalizedQuery);
+  });
+  const activeModules = modules.filter((module) => enabledSet.has(module.id));
+  const inactiveCount = Math.max(0, modules.length - activeModules.length);
+  const securityModules = modulesForMenu({
+    id: "moderation",
+    label: "Seguranca",
+    description: "",
+    icon: ShieldCheck,
+    moduleIds: [
+      "moderation",
+      "safe-bot",
+      "account-age-security",
+      "anti-ban",
+      "suspicious-servers",
+      "global-blacklist",
+      "advanced-permissions",
+      "invite-cleanup",
+      "vanity-url-protection",
+      "tag-verification",
+      "bio-url-verification"
+    ]
+  }, modules, true);
+  const activeSecurityCount = securityModules.filter((module) => enabledSet.has(module.id)).length;
+
+  useEffect(() => {
+    setFavoriteIds(readFavoriteModules(bot.id));
+  }, [bot.id]);
+
+  function toggleFavorite(moduleId: string) {
+    setFavoriteIds((current) => {
+      const next = current.includes(moduleId)
+        ? current.filter((item) => item !== moduleId)
+        : [...current, moduleId];
+
+      writeFavoriteModules(bot.id, next);
+      return next;
+    });
+  }
 
   return (
-    <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]" id="dev-bot-module-settings">
-      <CardHeader className="p-5 sm:p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="text-white">Menu do Bot</CardTitle>
-            <CardDescription className="font-medium text-zinc-300">Organize os sistemas de {bot.name} por area.</CardDescription>
+    <Card className="overflow-hidden border-purple-500/20 bg-[linear-gradient(135deg,rgba(18,18,22,0.94),rgba(7,7,10,0.98))] shadow-[0_0_54px_rgba(124,58,237,0.12)] hover:translate-y-0" id="dev-bot-module-settings">
+      <CardHeader className="border-b border-purple-500/15 p-5 sm:p-6">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] xl:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-100" variant="muted">Bot Menu</Badge>
+              <Badge variant={bot.status === "online" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : "muted"}>
+                {statusLabel(bot.status)}
+              </Badge>
+            </div>
+            <CardTitle className="mt-3 text-2xl font-bold text-white">Bot Menu</CardTitle>
+            <CardDescription className="mt-2 font-medium text-zinc-300">
+              Gerencie todos os modulos de {bot.name} em categorias, cards e acoes rapidas.
+            </CardDescription>
           </div>
-          <Badge variant="muted">{bot.enabledModules.length}/{modules.length} ativos</Badge>
+          <div className="space-y-3">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input
+                className="h-12 w-full rounded-lg border border-purple-500/20 bg-black/45 pl-10 pr-3 text-sm font-medium text-white outline-none transition placeholder:text-zinc-600 focus:border-purple-400 focus:shadow-[0_0_24px_rgba(124,58,237,0.18)]"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Pesquisar modulo..."
+                value={query}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2 text-xs font-medium text-zinc-400">
+              <span className="truncate rounded-lg border border-zinc-800 bg-black/35 px-3 py-2">Servidor: {bot.mainGuildName || bot.mainGuildId}</span>
+              <span className="truncate rounded-lg border border-zinc-800 bg-black/35 px-3 py-2">Bot: {bot.status === "online" ? "Online" : statusLabel(bot.status)}</span>
+            </div>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
-        <div className="grid gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
-          <aside className="rounded-lg border border-purple-500/15 bg-black/40 p-2">
-            <div className="mb-2 flex items-center gap-3 border-b border-purple-500/15 px-2 pb-3">
-              <Avatar className="h-9 w-9 rounded-full border border-zinc-800" fallback={bot.name} src={bot.avatarUrl} />
+      <CardContent className="space-y-5 p-5 sm:p-6">
+        <style>
+          {`@keyframes bot-card-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }`}
+        </style>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <BotMenuStatCard icon={CheckCircle2} label="Modulos ativos" tone="success" value={`${activeModules.length}/${modules.length}`} />
+          <BotMenuStatCard icon={ShieldCheck} label="Protecoes ativas" tone="purple" value={String(activeSecurityCount)} />
+          <BotMenuStatCard icon={SlidersHorizontal} label="Precisam configuracao" tone="warning" value={String(inactiveCount)} />
+          <BotMenuStatCard icon={Power} label="Bot online" tone={bot.status === "online" ? "success" : "muted"} value={bot.status === "online" ? "100%" : "0%"} />
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="min-w-0 rounded-lg border border-purple-500/15 bg-black/35 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur">
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <Avatar className="h-10 w-10 rounded-lg border border-purple-500/25" fallback={bot.name} src={bot.avatarUrl} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-white">{bot.name}</p>
-                <p className="truncate text-xs font-medium text-zinc-300">{bot.mainGuildName || bot.mainGuildId}</p>
+                <p className="truncate text-xs font-medium text-zinc-500">Dashboard DEV</p>
               </div>
             </div>
             <nav className="space-y-1">
-              {visibleMenuItems.map((item) => (
-                <BotMenuButton
-                  activeMenuId={activeMenuId}
-                  item={item}
+              <BotMenuCategoryButton
+                active={activeMenuId === "overview"}
+                count={activeModules.length}
+                icon={LayoutDashboard}
+                label="Todos"
+                onClick={() => onSelectMenu("overview")}
+                total={modules.length}
+              />
+              <BotMenuCategoryButton
+                active={activeMenuId === "favorites"}
+                count={favoriteModules.filter((module) => enabledSet.has(module.id)).length}
+                icon={Star}
+                label="Favoritos"
+                onClick={() => onSelectMenu("favorites")}
+                total={favoriteModules.length}
+              />
+              {categories.map((item) => (
+                <BotMenuCategoryButton
+                  active={activeMenuId === item.id}
+                  count={countEnabledMenuModules(item, modules, bot.enabledModules)}
+                  icon={item.icon}
                   key={item.id}
-                  modules={modules}
-                  onSelectMenu={onSelectMenu}
-                  selectedModules={bot.enabledModules}
+                  label={item.label}
+                  onClick={() => onSelectMenu(item.id)}
+                  total={modulesForMenu(item, modules, true).length}
                 />
               ))}
             </nav>
           </aside>
 
-          <section className="min-w-0 rounded-lg border border-purple-500/15 bg-black/25 p-4 sm:p-5">
-            {activeMenu ? (
-              <div className="mb-4 flex flex-col gap-3 border-b border-purple-500/15 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-300">
-                    <activeMenu.icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="truncate text-base font-semibold text-white">{activeMenu.label}</h3>
-                    <p className="text-sm font-medium text-zinc-300">{activeMenu.description}</p>
-                  </div>
+          <section className="min-w-0 space-y-4">
+            <div className="rounded-lg border border-purple-500/15 bg-black/25 p-4 backdrop-blur">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {normalizedQuery ? "Resultado da busca" : activeMenuId === "favorites" ? "Favoritos" : activeMenuId === "overview" ? "Todos os modulos" : activeCategory?.label ?? "Modulos"}
+                  </h3>
+                  <p className="mt-1 text-sm font-medium text-zinc-400">
+                    {normalizedQuery
+                      ? `Filtrando por "${query.trim()}".`
+                      : activeMenuId === "favorites"
+                        ? "Modulos marcados com estrela ficam sempre a um clique."
+                        : activeCategory?.description ?? "Controle rapido dos modulos deste bot."}
+                  </p>
                 </div>
-                <Badge variant="muted">{headerCount}/{headerTotal} ativos</Badge>
+                <Badge variant="muted">{filteredModules.filter((module) => enabledSet.has(module.id)).length}/{filteredModules.length} ativos</Badge>
               </div>
-            ) : null}
+            </div>
 
-            {activeMenuId === "overview" ? (
-              <BotOverview bot={bot} modules={modules} />
-            ) : activeMenuId === "settings" ? (
-              <ModuleManager
-                enabledModules={bot.enabledModules}
-                modules={modules}
-                onToggle={onToggle}
-              />
-            ) : activeMenuId === "select-menu" ? (
-              <BotSelectMenuManager bot={bot} />
-            ) : activeModules.length ? (
-              <ModuleSwitchSection
-                enabledModules={bot.enabledModules}
-                modules={activeModules}
-                onToggle={onToggle}
-                title={activeMenu?.label ?? "Sistemas"}
-              />
+            {filteredModules.length ? (
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                {filteredModules.map((module, index) => (
+                  <ModuleDashboardCard
+                    enabled={enabledSet.has(module.id)}
+                    favorite={favoriteSet.has(module.id)}
+                    index={index}
+                    key={module.id}
+                    module={module}
+                    onToggle={onToggle}
+                    onToggleFavorite={toggleFavorite}
+                    status={bot.status}
+                  />
+                ))}
+              </div>
             ) : (
-              <EmptyBotMenuCategory label={activeMenu?.label ?? "Categoria"} />
+              <EmptyBotMenuCategory label={normalizedQuery ? "Busca" : activeMenuId === "favorites" ? "Favoritos" : activeCategory?.label ?? "Categoria"} />
             )}
           </section>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function BotMenuStatCard({
+  icon: Icon,
+  label,
+  tone,
+  value
+}: {
+  icon: typeof Bot;
+  label: string;
+  tone: "success" | "purple" | "warning" | "muted";
+  value: string;
+}) {
+  const toneClass = {
+    muted: "border-zinc-700 bg-zinc-900 text-zinc-300",
+    purple: "border-purple-500/30 bg-purple-500/10 text-purple-200",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    warning: "border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
+  }[tone];
+
+  return (
+    <div className="group rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_16px_38px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-0.5 hover:border-purple-500/35 hover:bg-zinc-950 hover:shadow-[0_0_28px_rgba(124,58,237,0.10)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${toneClass}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <span className="h-2 w-2 rounded-full bg-purple-400 opacity-50 transition group-hover:opacity-100" />
+      </div>
+      <p className="mt-4 text-2xl font-bold text-white">{value}</p>
+      <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+    </div>
+  );
+}
+
+function BotMenuCategoryButton({
+  active,
+  count,
+  icon: Icon,
+  label,
+  onClick,
+  total
+}: {
+  active: boolean;
+  count: number;
+  icon: typeof Bot;
+  label: string;
+  onClick: () => void;
+  total: number;
+}) {
+  return (
+    <button
+      className={[
+        "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
+        active
+          ? "bg-purple-500/18 text-white ring-1 ring-purple-400/30 shadow-[0_0_22px_rgba(124,58,237,0.13)]"
+          : "text-zinc-400 hover:bg-zinc-900/80 hover:text-white"
+      ].join(" ")}
+      onClick={onClick}
+      title={`${label}: ${count}/${total} ativos`}
+      type="button"
+    >
+      <span className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition", active ? "border-purple-400/30 bg-purple-500/15 text-purple-100" : "border-zinc-800 bg-black/30 text-zinc-500 group-hover:text-purple-200"].join(" ")}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="rounded-full border border-zinc-800 bg-black/35 px-2 py-0.5 text-xs text-zinc-300">{total ? count : 0}</span>
+    </button>
+  );
+}
+
+function ModuleDashboardCard({
+  enabled,
+  favorite,
+  index,
+  module,
+  onToggle,
+  onToggleFavorite,
+  status
+}: {
+  enabled: boolean;
+  favorite: boolean;
+  index: number;
+  module: DevModuleDefinition;
+  onToggle: (moduleId: string, checked: boolean) => void;
+  onToggleFavorite: (moduleId: string) => void;
+  status: DevBotStatus;
+}) {
+  const Icon = iconForModule(module.id);
+  const moduleStatus = moduleCardStatus(enabled, status);
+
+  return (
+    <div
+      className="group relative min-h-[184px] overflow-hidden rounded-lg border border-zinc-800/95 bg-zinc-950/75 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur transition duration-300 hover:-translate-y-1 hover:scale-[1.015] hover:border-purple-500/45 hover:bg-zinc-950 hover:shadow-[0_0_34px_rgba(124,58,237,0.14)]"
+      style={{ animation: `bot-card-in 280ms ease-out ${Math.min(index, 10) * 22}ms both` }}
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent opacity-0 transition group-hover:opacity-100" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-purple-500/25 bg-purple-500/10 text-purple-100 shadow-[0_0_24px_rgba(124,58,237,0.10)]">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-bold text-white" title={module.label}>{module.label}</h3>
+            <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-zinc-500">{moduleDescription(module.id)}</p>
+          </div>
+        </div>
+        <button
+          className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition", favorite ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-200" : "border-zinc-800 bg-black/20 text-zinc-500 hover:border-yellow-400/35 hover:text-yellow-200"].join(" ")}
+          onClick={() => onToggleFavorite(module.id)}
+          title={favorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+          type="button"
+        >
+          <Star className={favorite ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+        </button>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-3 border-t border-zinc-900 pt-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-600">Status</p>
+          <p className={`mt-1 flex items-center gap-2 text-sm font-semibold ${moduleStatus.className}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${moduleStatus.dotClassName}`} />
+            {moduleStatus.label}
+          </p>
+        </div>
+        <Switch checked={enabled} className="shrink-0" onCheckedChange={(checked) => onToggle(module.id, checked)} title={enabled ? "Desativar modulo" : "Ativar modulo"} />
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          className="flex h-9 min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-lg border border-purple-500/25 bg-purple-500/10 px-3 text-xs font-bold text-purple-100 transition hover:border-purple-400/45 hover:bg-purple-500/18"
+          onClick={() => onToggle(module.id, !enabled)}
+          title="Configurar rapidamente"
+          type="button"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          Configurar
+        </button>
+        <button
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-black/20 text-zinc-500 transition hover:border-purple-500/35 hover:text-white"
+          title={`Modulo: ${module.id}`}
+          type="button"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1919,6 +2173,105 @@ function ModuleSwitchSection({
       </div>
     </section>
   );
+}
+
+function moduleDashboardCategories(modules: DevModuleDefinition[]) {
+  return botMenuItems
+    .filter((item) => !["overview", "favorites", "economy", "select-menu"].includes(item.id))
+    .map((item) => ({
+      ...item,
+      label: item.id === "settings" ? "Sistema" : item.label,
+      description: item.id === "settings" ? "Configuracoes gerais, comandos e ferramentas administrativas" : item.description
+    }))
+    .filter((item) => modulesForMenu(item, modules, true).length > 0);
+}
+
+function iconForModule(moduleId: string) {
+  if (moduleId.includes("anti") || moduleId.includes("security") || moduleId.includes("blacklist") || moduleId.includes("permission")) {
+    return ShieldCheck;
+  }
+
+  if (moduleId.includes("fivem")) return Gamepad2;
+  if (moduleId.includes("clip")) return Copy;
+  if (moduleId.includes("emoji")) return Copy;
+  if (moduleId.includes("server")) return Server;
+  if (moduleId.includes("voice")) return Users;
+  if (moduleId.includes("log")) return ScrollText;
+  if (moduleId.includes("ticket")) return Ticket;
+  if (moduleId.includes("welcome") || moduleId.includes("leave") || moduleId.includes("roles")) return Users;
+  if (moduleId.includes("live") || moduleId.includes("kick") || moduleId.includes("x-monitor")) return Link2;
+
+  return Bot;
+}
+
+function moduleDescription(moduleId: string) {
+  const descriptions: Record<string, string> = {
+    "account-age-security": "Bloqueia contas novas conforme a idade minima configurada.",
+    "advanced-permissions": "Controla permissoes sensiveis por cargo e registra tentativas.",
+    "anti-ban": "Protege membros e cargos contra ban, kick, timeout e remocao indevida.",
+    "auto-unmute": "Remove mute manual automaticamente em canais configurados.",
+    "bio-url-verification": "Entrega cargos conforme URLs permitidas na bio do membro.",
+    "emoji-cloner": "Clona emojis, gerencia biblioteca e sincroniza emojis da aplicacao.",
+    "global-blacklist": "Impede entrada de usuarios cadastrados em lista global.",
+    "hide-empty-voice": "Oculta chamadas vazias e reexibe quando alguem entra.",
+    "invite-cleanup": "Remove convites em intervalos configuraveis com whitelist.",
+    "safe-bot": "Protecao contra spam, links, raids, bots e abuso automatizado.",
+    "server-backup": "Prepara backup, exportacao e restauracao seletiva do servidor.",
+    "server-cloner": "Clona estrutura autorizada de servidores com relatorio.",
+    "suspicious-servers": "Detecta membros ligados a servidores suspeitos ou blacklist.",
+    "tag-verification": "Entrega cargos quando o usuario usa a tag definida.",
+    "temporary-voice": "Cria salas temporarias com dono, limite e limpeza automatica.",
+    "vanity-url-protection": "Monitora e restaura a URL personalizada do servidor."
+  };
+
+  return descriptions[moduleId] ?? "Modulo isolado do bot com liberacao individual pela dashboard DEV.";
+}
+
+function moduleCardStatus(enabled: boolean, botStatus: DevBotStatus) {
+  if ((botStatus === "error" || botStatus === "invalid_token") && enabled) {
+    return {
+      className: "text-red-300",
+      dotClassName: "bg-red-400 shadow-[0_0_14px_rgba(248,113,113,0.55)]",
+      label: "Erro"
+    };
+  }
+
+  if (enabled) {
+    return {
+      className: "text-emerald-300",
+      dotClassName: "bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.55)]",
+      label: "Ativo"
+    };
+  }
+
+  return {
+    className: "text-zinc-400",
+    dotClassName: "bg-zinc-500",
+    label: "Desativado"
+  };
+}
+
+function favoriteStorageKey(botId: string) {
+  return `dev.bot-menu.favorites.${botId}`;
+}
+
+function readFavoriteModules(botId: string) {
+  try {
+    const raw = window.localStorage.getItem(favoriteStorageKey(botId));
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeFavoriteModules(botId: string, moduleIds: string[]) {
+  try {
+    window.localStorage.setItem(favoriteStorageKey(botId), JSON.stringify([...new Set(moduleIds)]));
+  } catch {
+    // Favoritos sao apenas uma preferencia visual local.
+  }
 }
 
 function flattenBotMenuItems(items: BotMenuItem[]): BotMenuItem[] {
