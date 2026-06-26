@@ -7,6 +7,7 @@ import { handleEmojiCloneInteraction } from "../services/emojiCloneService";
 import { handleMissionToolsInteraction } from "../services/missionToolsService";
 import { handleRulesInteraction } from "../services/rulesService";
 import { handleServerCloneInteraction } from "../services/serverCloneService";
+import { handleServerGeneratorInteraction } from "../services/serverGeneratorService";
 import type { BotContext } from "../types";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
@@ -31,6 +32,10 @@ export async function handleInteractionCreate(interaction: Interaction, context:
   }
 
   if (await handleServerCloneInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleServerGeneratorInteraction(interaction, context)) {
     return;
   }
 

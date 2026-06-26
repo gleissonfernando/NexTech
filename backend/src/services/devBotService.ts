@@ -52,6 +52,7 @@ export const DEV_MODULES = [
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "emoji-cloner", label: "Clonagem de Emojis" },
   { id: "server-cloner", label: "Clonagem de Servidor" },
+  { id: "server-generator", label: "Gerador Inteligente de Servidores" },
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "fivem", label: "FiveM" },
@@ -703,11 +704,12 @@ export async function canReadDevBotModule(
 export async function createDevBot(input: CreateDevBotInput) {
   const { botGuildConfigs, devBots, guilds } = await getMongoCollections();
   const now = new Date();
-  const detectedGuild = await fetchDiscordBotGuild(input.token, input.mainGuildId);
+  const token = normalizeDiscordBotToken(input.token);
+  const detectedGuild = await fetchDiscordBotGuild(token, input.mainGuildId);
   const clientId = detectedGuild.botId;
 
   if (input.verifyOwnerUserId) {
-    await assertDiscordBotOwnedByUser(input.token, input.verifyOwnerUserId, clientId);
+    await assertDiscordBotOwnedByUser(token, input.verifyOwnerUserId, clientId);
   }
 
   const existingBot = await devBots.findOne(
@@ -731,9 +733,9 @@ export async function createDevBot(input: CreateDevBotInput) {
     name: botName,
     slug: await generateUniqueDevBotSlug(botName),
     clientId,
-    tokenEncrypted: encryptSecret(input.token),
-    tokenPrefix: tokenPrefix(input.token),
-    tokenLast4: tokenLast4(input.token),
+    tokenEncrypted: encryptSecret(token),
+    tokenPrefix: tokenPrefix(token),
+    tokenLast4: tokenLast4(token),
     secretEncrypted: null,
     avatarUrl: detectedGuild.botAvatarUrl,
     botCreatedAt: detectedGuild.botCreatedAt ? new Date(detectedGuild.botCreatedAt) : null,
@@ -804,7 +806,7 @@ export async function createDevBot(input: CreateDevBotInput) {
 }
 
 export async function registerPrimaryDevBot(input: RegisterPrimaryDevBotInput): Promise<RegisterPrimaryDevBotResult> {
-  const token = env.DISCORD_BOT_TOKEN.trim();
+  const token = normalizeDiscordBotToken(env.DISCORD_BOT_TOKEN);
 
   if (!token) {
     throw createDevBotError("DISCORD_BOT_TOKEN nao configurado no servidor.", 400);
@@ -960,19 +962,20 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
   if (input.enabledModules !== undefined) $set.enabledModules = sanitizeModules(input.enabledModules);
 
   if (input.token) {
-    const connection = await testDiscordBotToken(input.token, input.clientId ?? current.clientId);
+    const token = normalizeDiscordBotToken(input.token);
+    const connection = await testDiscordBotToken(token, input.clientId ?? current.clientId);
 
     if (connection.status !== "online") {
       throw createDevBotError(connection.message, 400);
     }
 
     if (input.verifyOwnerUserId && connection.clientId) {
-      await assertDiscordBotOwnedByUser(input.token, input.verifyOwnerUserId, connection.clientId);
+      await assertDiscordBotOwnedByUser(token, input.verifyOwnerUserId, connection.clientId);
     }
 
-    $set.tokenEncrypted = encryptSecret(input.token);
-    $set.tokenPrefix = tokenPrefix(input.token);
-    $set.tokenLast4 = tokenLast4(input.token);
+    $set.tokenEncrypted = encryptSecret(token);
+    $set.tokenPrefix = tokenPrefix(token);
+    $set.tokenLast4 = tokenLast4(token);
     $set.status = connection.status === "online" ? "offline" : connection.status;
     $set.statusMessage = connection.status === "online" ? "Token atualizado. Aguardando reinicializacao." : connection.message;
     $set.avatarUrl = input.avatarUrl || connection.avatarUrl || current.avatarUrl;
@@ -1077,7 +1080,9 @@ export async function validateDevBotConnection(botId: string) {
 }
 
 async function testDiscordBotTokenForClient(token: string, expectedClientId?: string) {
-  if (!token.trim()) {
+  const normalizedToken = normalizeDiscordBotToken(token);
+
+  if (!normalizedToken) {
     return {
       status: "invalid_token" as const,
       message: "Token invalido.",
@@ -1092,7 +1097,7 @@ async function testDiscordBotTokenForClient(token: string, expectedClientId?: st
   try {
     const { data } = await axios.get<DiscordBotUser>(`${DISCORD_API}/users/@me`, {
       headers: {
-        Authorization: `Bot ${token.trim()}`
+        Authorization: `Bot ${normalizedToken}`
       },
       timeout: 3500
     });
@@ -1187,10 +1192,12 @@ export async function testDiscordBotToken(token: string, expectedClientId?: stri
 }
 
 async function assertDiscordBotOwnedByUser(token: string, userId: string, expectedClientId: string) {
+  const normalizedToken = normalizeDiscordBotToken(token);
+
   try {
     const { data } = await axios.get<DiscordApplication>(`${DISCORD_API}/oauth2/applications/@me`, {
       headers: {
-        Authorization: `Bot ${token.trim()}`
+        Authorization: `Bot ${normalizedToken}`
       },
       timeout: 5_000
     });
@@ -2165,21 +2172,23 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
 }
 
 async function fetchDiscordBotGuild(token: string, guildId: string): Promise<DetectedDiscordGuildRecord> {
-  if (!token.trim()) {
+  const normalizedToken = normalizeDiscordBotToken(token);
+
+  if (!normalizedToken) {
     throw createDevBotError("Informe o token do bot para detectar o servidor.", 400);
   }
 
   try {
     const { data: botUser } = await axios.get<DiscordBotUser>(`${DISCORD_API}/users/@me`, {
       headers: {
-        Authorization: `Bot ${token.trim()}`
+        Authorization: `Bot ${normalizedToken}`
       },
       timeout: 3500
     });
     const [{ data: guild }, { data: channels }, { data: roles }, { data: botMember }] = await Promise.all([
       axios.get<DiscordGuildDetails>(`${DISCORD_API}/guilds/${guildId}`, {
         headers: {
-          Authorization: `Bot ${token.trim()}`
+          Authorization: `Bot ${normalizedToken}`
         },
         params: {
           with_counts: true
@@ -2188,19 +2197,19 @@ async function fetchDiscordBotGuild(token: string, guildId: string): Promise<Det
       }),
       axios.get<DiscordGuildChannel[]>(`${DISCORD_API}/guilds/${guildId}/channels`, {
         headers: {
-          Authorization: `Bot ${token.trim()}`
+          Authorization: `Bot ${normalizedToken}`
         },
         timeout: 5000
       }),
       axios.get<DiscordRole[]>(`${DISCORD_API}/guilds/${guildId}/roles`, {
         headers: {
-          Authorization: `Bot ${token.trim()}`
+          Authorization: `Bot ${normalizedToken}`
         },
         timeout: 5000
       }),
       axios.get<DiscordGuildMember>(`${DISCORD_API}/guilds/${guildId}/members/${botUser.id}`, {
         headers: {
-          Authorization: `Bot ${token.trim()}`
+          Authorization: `Bot ${normalizedToken}`
         },
         timeout: 5000
       })
@@ -2399,6 +2408,14 @@ function createDevBotError(message: string, statusCode: number) {
 
 function isDevBotError(error: unknown): error is Error & { statusCode: number } {
   return error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number";
+}
+
+function normalizeDiscordBotToken(value: string) {
+  return value
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^Bot\s+/i, "")
+    .trim();
 }
 
 function tokenPrefix(token: string) {

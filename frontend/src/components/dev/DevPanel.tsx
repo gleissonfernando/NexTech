@@ -79,6 +79,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "emoji-cloner", label: "Clonagem de Emojis" },
   { id: "server-cloner", label: "Clonagem de Servidor" },
+  { id: "server-generator", label: "Gerador Inteligente de Servidores" },
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "fivem", label: "FiveM" },
@@ -137,7 +138,7 @@ const botMenuItems: BotMenuItem[] = [
     label: "Configuracoes",
     description: "Ajustes gerais do bot",
     icon: Settings,
-    moduleIds: ["avisos", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner"]
+    moduleIds: ["avisos", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "server-generator"]
   },
   {
     id: "moderation",

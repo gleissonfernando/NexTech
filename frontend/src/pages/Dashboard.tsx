@@ -255,6 +255,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "server-cloner"
   },
   {
+    id: "server-generator",
+    title: "Gerador de Servidores",
+    description: "Libera o comando /criar-server para criar estruturas inteligentes direto pelo bot.",
+    icon: Server,
+    view: "settings"
+  },
+  {
     id: "safe-bot",
     title: "SelfBot Protection",
     description: "Centraliza protecao anti-spam, punicoes e logs do SelfBot.",
@@ -349,7 +356,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   rules: "rules"
 };
 
-const settingsModuleIds = new Set(["tickets", "avisos", "network", "emoji-cloner"]);
+const settingsModuleIds = new Set(["tickets", "avisos", "network", "emoji-cloner", "server-generator"]);
 
 export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardProps) {
   const [dashboardProfile, setDashboardProfile] = useState<DashboardMeResponse | null>(null);
@@ -1052,7 +1059,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
   }
 
   if (bot.accessLevel === "premium") {
-    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "rules", "account-age-security", "safe-bot", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"].includes(moduleId);
+    return ["live", "kick-integration", "clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "server-generator", "rules", "account-age-security", "safe-bot", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"].includes(moduleId);
   }
 
   return false;

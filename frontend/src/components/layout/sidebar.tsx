@@ -81,7 +81,7 @@ const navItems: NavItem[] = [
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
   { id: "server-cloner", label: "Clonagem", icon: Bot, moduleId: "server-cloner" },
-  { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["tickets", "avisos", "network", "emoji-cloner"] }
+  { id: "settings", label: "Configuracoes", icon: Settings, moduleIds: ["tickets", "avisos", "network", "emoji-cloner", "server-generator"] }
 ];
 
 type SidebarProps = {

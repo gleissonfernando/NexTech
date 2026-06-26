@@ -6,6 +6,7 @@ import { gravarCommand } from "./gravar";
 import { missionPanelCommand } from "./missionPanel";
 import { pingCommand } from "./ping";
 import { serverClonerCommand } from "./serverCloner";
+import { serverGeneratorCommand } from "./serverGenerator";
 import { ticketCommand } from "./ticket";
 import type { BotCommand } from "../types";
 
@@ -20,7 +21,8 @@ export function createCommandCollection() {
     gravarCommand,
     missionPanelCommand,
     ticketCommand,
-    serverClonerCommand
+    serverClonerCommand,
+    serverGeneratorCommand
   ].forEach((command) => {
     if (commands.has(command.data.name)) {
       throw new Error(`Comando duplicado registrado: /${command.data.name}`);
