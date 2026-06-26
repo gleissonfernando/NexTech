@@ -1,10 +1,11 @@
-import { Router } from "express";
+import { Router, raw } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import {
   getPanelImageSettings,
   listPanelImageSettings,
+  savePanelImageUpload,
   savePanelImageSettings
 } from "../services/panelImageSettingsService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
@@ -21,6 +22,10 @@ const settingsSchema = z.object({
   imageSize: z.enum(["small", "medium", "large", "full_banner", "custom"]).optional(),
   imageUrl: z.string().max(2048).optional(),
   layoutMode: z.enum(["embed", "components_v2"]).optional()
+});
+const panelImageUpload = raw({
+  limit: "10mb",
+  type: ["image/gif", "image/jpeg", "image/png", "image/webp"]
 });
 
 export const panelImagesRouter = Router();
@@ -68,6 +73,35 @@ panelImagesRouter.put("/:guildId/:panelId", requireAuth, async (req, res, next) 
 
     return res.json({
       settings: await savePanelImageSettings(guildId, botId, panelId, input, user.discordId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const panelId = panelIdSchema.parse(req.params.panelId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user;
+    const mimeType = req.header("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+
+    await assertCanManage(user, guildId, botId);
+
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      throw createRouteError("Envie uma imagem para o painel.", 400);
+    }
+
+    return res.json({
+      settings: await savePanelImageUpload({
+        actorId: user.discordId,
+        botId,
+        buffer: req.body,
+        guildId,
+        mimeType,
+        panelId
+      })
     });
   } catch (error) {
     return next(error);

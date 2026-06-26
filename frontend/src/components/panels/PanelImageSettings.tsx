@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Image, Loader2, Save, Trash2 } from "lucide-react";
-import { listPanelImageSettings, savePanelImageSettings } from "../../lib/api";
+import { Image, Loader2, Save, Trash2, Upload } from "lucide-react";
+import { listPanelImageSettings, savePanelImageSettings, uploadPanelImage } from "../../lib/api";
 import type {
   PanelImageLayoutMode,
   PanelImagePosition,
@@ -69,11 +69,12 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
   const [draft, setDraft] = useState<PanelImageSettingsDto>(() => defaultSettings("", "", selectedPanelId));
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fixedPanel = panelId ? { id: panelId, label: panelLabel ?? panelLabelForId(panelId) } : null;
   const selectedPanel = fixedPanel ?? PANELS.find((panel) => panel.id === selectedPanelId) ?? PANELS[0]!;
-  const disabled = !canManage || !guildId || !botId || loading || saving;
+  const disabled = !canManage || !guildId || !botId || loading || saving || uploading;
   const effectiveLayoutMode = advancedPositions.has(draft.imagePosition) ? "components_v2" : draft.layoutMode;
   const previewStyle = previewImageStyle(draft.imageSize, draft.customWidth, draft.customHeight);
 
@@ -175,6 +176,36 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
     }
   }
 
+  async function handleUpload(file: File | null) {
+    if (!file || !guildId || !botId || disabled) {
+      return;
+    }
+
+    if (!["image/gif", "image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setStatus(null);
+      setError("Envie uma imagem GIF, PNG, JPG ou WEBP.");
+      return;
+    }
+
+    setUploading(true);
+    setStatus(null);
+    setError(null);
+
+    try {
+      const saved = await uploadPanelImage(guildId, selectedPanelId, file, botId);
+      setSettingsByPanel((current) => ({
+        ...current,
+        [saved.panelId]: saved
+      }));
+      setDraft(saved);
+      setStatus("Imagem enviada e salva no painel.");
+    } catch (requestError) {
+      setError(readErrorMessage(requestError, "Nao foi possivel enviar a imagem."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function removeImage() {
     void save({
       customHeight: null,
@@ -256,16 +287,33 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
                 </select>
               </label> : null}
 
-              <label className="grid gap-2 text-sm xl:col-span-2">
-                <span className="font-medium text-zinc-200">URL da imagem</span>
-                <input
-                  className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-purple-500/60"
-                  disabled={disabled}
-                  onChange={(event) => updateDraft("imageUrl", event.target.value)}
-                  placeholder="https://..."
-                  value={draft.imageUrl}
-                />
-              </label>
+              <div className="grid gap-2 text-sm xl:col-span-2">
+                <span className="font-medium text-zinc-200">Imagem</span>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <label className="flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-medium text-zinc-200 transition hover:border-zinc-600">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {uploading ? "Enviando..." : "Enviar arquivo"}
+                    <input
+                      accept="image/gif,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      disabled={disabled}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        event.target.value = "";
+                        void handleUpload(file);
+                      }}
+                      type="file"
+                    />
+                  </label>
+                  <input
+                    className="min-h-11 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-purple-500/60"
+                    disabled={disabled}
+                    readOnly
+                    placeholder="URL gerada pelo upload"
+                    value={draft.imageUrl}
+                  />
+                </div>
+              </div>
 
               <SelectField
                 disabled={disabled}

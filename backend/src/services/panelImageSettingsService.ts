@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   ensureGuild,
   getMongoCollections,
@@ -42,6 +44,13 @@ const IMAGE_POSITIONS = new Set<PanelImagePosition>([
 ]);
 const IMAGE_SIZES = new Set<PanelImageSize>(["small", "medium", "large", "full_banner", "custom"]);
 const LAYOUT_MODES = new Set<PanelImageLayoutMode>(["embed", "components_v2"]);
+const PANEL_IMAGE_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/panel-images");
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
+};
 const DEFAULT_SETTINGS = {
   customHeight: null,
   customWidth: null,
@@ -127,6 +136,42 @@ export async function savePanelImageSettings(
   return getPanelImageSettings(guildId, botId, panelId);
 }
 
+export async function savePanelImageUpload(input: {
+  actorId: string | null;
+  botId: string;
+  buffer: Buffer;
+  guildId: string;
+  mimeType: string;
+  panelId: string;
+}) {
+  const extension = MIME_EXTENSIONS[input.mimeType];
+
+  if (!extension) {
+    throw new Error("Formato invalido. Envie GIF, PNG, JPG ou WEBP.");
+  }
+
+  await fs.mkdir(PANEL_IMAGE_UPLOAD_DIR, { recursive: true });
+
+  const safeGuildId = input.guildId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const safeBotId = input.botId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const safePanelId = input.panelId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const fileName = `${safeGuildId}-${safeBotId}-${safePanelId}-${Date.now()}-${randomUUID()}.${extension}`;
+  const filePath = path.join(PANEL_IMAGE_UPLOAD_DIR, fileName);
+
+  await fs.writeFile(filePath, input.buffer);
+
+  const imageUrl = `/uploads/panel-images/${fileName}`;
+  const current = await getPanelImageSettings(input.guildId, input.botId, input.panelId);
+
+  return savePanelImageSettings(input.guildId, input.botId, input.panelId, {
+    imageEnabled: true,
+    imagePosition: current.imagePosition === "none" ? "banner" : current.imagePosition,
+    imageSize: current.imageSize,
+    imageUrl,
+    layoutMode: current.layoutMode
+  }, input.actorId);
+}
+
 function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsDto {
   const imagePosition = IMAGE_POSITIONS.has(settings.imagePosition) ? settings.imagePosition : DEFAULT_SETTINGS.imagePosition;
   const imageSize = IMAGE_SIZES.has(settings.imageSize) ? settings.imageSize : DEFAULT_SETTINGS.imageSize;
@@ -162,6 +207,10 @@ function normalizeImageUrl(value: string | null | undefined) {
 
   if (!normalized) {
     return "";
+  }
+
+  if (normalized.startsWith("/uploads/")) {
+    return normalized.slice(0, 2048);
   }
 
   try {

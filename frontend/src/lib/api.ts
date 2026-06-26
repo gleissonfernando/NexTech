@@ -301,6 +301,21 @@ export async function savePanelImageSettings(
   return data.settings;
 }
 
+export async function uploadPanelImage(guildId: string, panelId: string, file: File, botId?: string | null) {
+  const { data } = await api.put<{ settings: PanelImageSettings }>(
+    `/panel-images/${guildId}/${encodeURIComponent(panelId)}/upload`,
+    file,
+    {
+      headers: {
+        "Content-Type": file.type || "application/octet-stream"
+      },
+      params: botParams(botId),
+      timeout: 30000
+    }
+  );
+  return data.settings;
+}
+
 export async function cloneEmojiToGuild(
   guildId: string,
   payload: { image: string; name: string; sourceLabel?: string | null },
