@@ -1572,6 +1572,50 @@ export async function getBotGuildConfig(botId: string, guildId: string) {
   return config ? toBotGuildConfigDto(config) : defaultBotGuildConfig(botId, guildId);
 }
 
+export async function getBotGuildModuleConfig(botId: string, guildId: string, moduleId: string) {
+  const config = await getBotGuildConfig(botId, guildId);
+  const releaseModuleId = resolveRuntimeReleaseModuleId(moduleId) ?? moduleId;
+  const modules = config.modules as Record<string, Record<string, unknown>>;
+  const moduleConfig = modules[moduleId] ?? modules[releaseModuleId] ?? {};
+
+  return {
+    botId,
+    config: moduleConfig,
+    guildId,
+    moduleId,
+    updatedAt: config.updatedAt
+  };
+}
+
+export async function updateBotGuildModuleConfig(input: {
+  botId: string;
+  guildId: string;
+  guildName: string;
+  moduleId: string;
+  config: Record<string, unknown>;
+}) {
+  const current = await getBotGuildConfig(input.botId, input.guildId);
+  const currentModules = current.modules as Record<string, Record<string, unknown>>;
+  const nextModules = {
+    ...currentModules,
+    [input.moduleId]: sanitizeBotGuildModuleConfig(input.config)
+  };
+  const saved = await updateBotGuildConfig({
+    botId: input.botId,
+    guildId: input.guildId,
+    guildName: input.guildName,
+    modules: nextModules
+  });
+
+  return {
+    botId: input.botId,
+    config: (saved.modules as Record<string, Record<string, unknown>>)[input.moduleId] ?? {},
+    guildId: input.guildId,
+    moduleId: input.moduleId,
+    updatedAt: saved.updatedAt
+  };
+}
+
 export async function updateBotGuildConfig(input: {
   botId: string;
   guildId: string;
@@ -1617,6 +1661,12 @@ export async function updateBotGuildConfig(input: {
   });
 
   return dto;
+}
+
+function sanitizeBotGuildModuleConfig(config: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(config).filter(([key]) => /^[a-zA-Z0-9_-]{1,80}$/.test(key))
+  );
 }
 
 export async function getBotApiPermissions(botId: string) {

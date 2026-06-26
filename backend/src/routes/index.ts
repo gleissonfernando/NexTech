@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { advancedModulesRouter } from "./advancedModules";
 import { authRouter } from "./auth";
 import { botDevApiRouter } from "./botDevApi";
 import { clipsRouter } from "./clips";
@@ -29,6 +30,7 @@ export const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/_shardcloud/health", healthRouter);
+apiRouter.use("/advanced-modules", advancedModulesRouter);
 apiRouter.use("/image-anti-spam", imageAntiSpamRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/bot", botDevApiRouter);

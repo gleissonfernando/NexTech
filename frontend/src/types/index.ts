@@ -1535,6 +1535,14 @@ export type BotGuildConfig = {
   updatedAt: string;
 };
 
+export type AdvancedModuleConfig = {
+  botId: string;
+  config: Record<string, unknown>;
+  guildId: string;
+  moduleId: string;
+  updatedAt: string;
+};
+
 export type DevBotStatus = "online" | "offline" | "invalid_token" | "error";
 
 export type DashboardBot = {

@@ -2,6 +2,7 @@ import axios from "axios";
 import type { InternalAxiosRequestConfig } from "axios";
 import type {
   AccessValidationResult,
+  AdvancedModuleConfig,
   ApplicationEmojiPage,
   ApplicationEmojiSettings,
   ApplicationEmojiSyncResult,
@@ -1436,6 +1437,26 @@ export async function getBotGuildConfig(botId: string, guildId: string) {
 export async function updateBotGuildConfig(botId: string, guildId: string, payload: Pick<BotGuildConfig, "guildName" | "modules">) {
   const { data } = await api.patch<{ config: BotGuildConfig }>(`/dev/bots/${botId}/guilds/${guildId}/config`, payload);
   return data.config;
+}
+
+export async function getAdvancedModuleConfig(botId: string, guildId: string, moduleId: string) {
+  const { data } = await api.get<{ module: AdvancedModuleConfig }>(
+    `/advanced-modules/${encodeURIComponent(botId)}/${encodeURIComponent(guildId)}/${encodeURIComponent(moduleId)}`
+  );
+  return data.module;
+}
+
+export async function saveAdvancedModuleConfig(
+  botId: string,
+  guildId: string,
+  moduleId: string,
+  payload: { config: Record<string, unknown>; guildName?: string }
+) {
+  const { data } = await api.patch<{ module: AdvancedModuleConfig }>(
+    `/advanced-modules/${encodeURIComponent(botId)}/${encodeURIComponent(guildId)}/${encodeURIComponent(moduleId)}`,
+    payload
+  );
+  return data.module;
 }
 
 export async function startAllDevBots() {

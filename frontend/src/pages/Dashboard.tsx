@@ -71,6 +71,7 @@ import {
   cloneSelectedEmojiCloneBotToken,
   emojiLibraryDownloadUrl,
   fetchEmojiCloneBotTokenEmojis,
+  getAdvancedModuleConfig,
   getApplicationEmojiSettings,
   getApplicationEmojis,
   getClipsConfig,
@@ -93,6 +94,7 @@ import {
   refreshApplicationEmojis,
   removeAllApplicationEmojis,
   resendEmojiFromLibrary,
+  saveAdvancedModuleConfig,
   syncApplicationEmojis,
   updateSelectedDashboardGuild,
   updateApplicationEmojiSettings,
@@ -984,7 +986,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
         {advancedSecurityModuleViews.includes(activeView) ? (
           <AdvancedSecurityModulePanel
+            botId={activeBotId}
             canManage={canManageModule(selectedBot, viewModuleIds[activeView] ?? "", canManageDashboard)}
+            guild={selectedGuild}
             moduleId={viewModuleIds[activeView] ?? ""}
           />
         ) : null}
@@ -1190,16 +1194,139 @@ const advancedSecurityModuleDetails: Record<string, {
   }
 };
 
-function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boolean; moduleId: string }) {
+function AdvancedSecurityModulePanel({
+  botId,
+  canManage,
+  guild,
+  moduleId
+}: {
+  botId: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  moduleId: string;
+}) {
   const details = advancedSecurityModuleDetails[moduleId];
   const Icon = details?.icon ?? Shield;
+  const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [roles, setRoles] = useState<Array<{ id: string; name: string; managed?: boolean }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      if (!botId || !guild || !details) {
+        setConfig({});
+        setRoles([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setMessage(null);
+
+      const [moduleResult, optionsResult] = await Promise.all([
+        getAdvancedModuleConfig(botId, guild.id, moduleId),
+        getGuildLiveOptions(guild.id, botId).catch(() => ({ roles: [] }))
+      ]);
+
+      if (!mounted) return;
+
+      setConfig(defaultAdvancedModuleConfig(moduleId, moduleResult.config));
+      setRoles(optionsResult.roles ?? []);
+    }
+
+    load()
+      .catch((error) => {
+        if (mounted) {
+          setConfig(defaultAdvancedModuleConfig(moduleId, {}));
+          setMessage(readResponseMessage(error) ?? "Não foi possível carregar este módulo.");
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, details, guild, moduleId]);
+
+  async function saveConfig(nextConfig = config) {
+    if (!botId || !guild) return;
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const saved = await saveAdvancedModuleConfig(botId, guild.id, moduleId, {
+        config: nextConfig,
+        guildName: guild.name
+      });
+      setConfig(defaultAdvancedModuleConfig(moduleId, saved.config));
+      setMessage("Módulo salvo.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar este módulo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function patchConfig(patch: Record<string, unknown>) {
+    setConfig((current) => ({
+      ...current,
+      ...patch
+    }));
+  }
+
+  function updateEnabled(enabled: boolean) {
+    const nextConfig = {
+      ...config,
+      enabled
+    };
+
+    setConfig(nextConfig);
+    void saveConfig(nextConfig);
+  }
 
   if (!details) {
     return <EmptyState icon={Shield} title="Módulo não encontrado" />;
   }
 
+  if (!botId || !guild) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
+          Escolha um bot e um servidor para configurar este módulo.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm font-medium text-zinc-300">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Carregando módulo...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const enabled = config.enabled === true;
+  const disabled = !canManage || saving;
+
   return (
     <div className="space-y-4">
+      {message ? (
+        <div className="rounded-lg border border-purple-400/25 bg-purple-500/10 px-4 py-3 text-sm font-semibold text-white">
+          {message}
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1212,19 +1339,36 @@ function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boole
                 <CardDescription>{details.description}</CardDescription>
               </div>
             </div>
-            <Badge variant={canManage ? "success" : "muted"}>{canManage ? "Liberado" : "Somente leitura"}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={canManage ? "success" : "muted"}>{canManage ? "Liberado" : "Somente leitura"}</Badge>
+              <Badge variant={enabled ? "success" : "muted"}>{enabled ? "Ativo" : "Inativo"}</Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <SimpleToggleCard
-            checked={false}
-            description="Ative este módulo depois que as rotas e automações de runtime forem vinculadas."
-            disabled
+            checked={enabled}
+            description="Ativa ou pausa este modulo para este bot neste servidor."
+            disabled={disabled}
             icon={Icon}
-            onChange={() => undefined}
+            onChange={updateEnabled}
             title="Status do sistema"
           />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <AdvancedModuleFields
+            config={config}
+            disabled={disabled}
+            moduleId={moduleId}
+            onChange={patchConfig}
+            roles={roles.filter((role) => !role.managed)}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={disabled} onClick={() => void saveConfig()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar
+            </Button>
+            <Badge variant="muted">Escopo: {guild.name}</Badge>
+          </div>
+          <div className="hidden">
             {details.items.map((item) => (
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4" key={item}>
                 <p className="text-sm font-semibold text-white">{item}</p>
@@ -1239,6 +1383,112 @@ function AdvancedSecurityModulePanel({ canManage, moduleId }: { canManage: boole
       </Card>
     </div>
   );
+}
+
+function AdvancedModuleFields({
+  config,
+  disabled,
+  moduleId,
+  onChange,
+  roles
+}: {
+  config: Record<string, unknown>;
+  disabled: boolean;
+  moduleId: string;
+  onChange: (patch: Record<string, unknown>) => void;
+  roles: Array<{ id: string; name: string }>;
+}) {
+  const roleOptions = roles.map((role) => ({ label: role.name, value: role.id }));
+
+  if (moduleId === "tag-verification") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <AdvancedTextField disabled={disabled} label="Tag exigida" onChange={(value) => onChange({ requiredTag: value })} placeholder="Ex: VILAO" value={stringConfig(config.requiredTag)} />
+        <AdvancedSelectField disabled={disabled} label="Cargo entregue" onChange={(value) => onChange({ roleId: value || null })} options={roleOptions} placeholder="Selecione um cargo" value={stringConfig(config.roleId)} />
+        <AdvancedNumberField disabled={disabled} label="Tempo de atualização (minutos)" min={1} onChange={(value) => onChange({ intervalMinutes: value })} value={numberConfig(config.intervalMinutes, 10)} />
+        <AdvancedToggleField checked={config.removeOnMismatch !== false} disabled={disabled} label="Remoção automática" onChange={(checked) => onChange({ removeOnMismatch: checked })} />
+      </div>
+    );
+  }
+
+  if (moduleId === "bio-url-verification") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <AdvancedTextField disabled={disabled} label="Domínios permitidos" onChange={(value) => onChange({ allowedDomains: value })} placeholder="site.com, link.bio" value={stringConfig(config.allowedDomains)} />
+        <AdvancedSelectField disabled={disabled} label="Cargo entregue" onChange={(value) => onChange({ roleId: value || null })} options={roleOptions} placeholder="Selecione um cargo" value={stringConfig(config.roleId)} />
+        <AdvancedNumberField disabled={disabled} label="Tempo de atualização (minutos)" min={1} onChange={(value) => onChange({ intervalMinutes: value })} value={numberConfig(config.intervalMinutes, 15)} />
+        <AdvancedToggleField checked={config.removeOnMismatch !== false} disabled={disabled} label="Remoção automática" onChange={(checked) => onChange({ removeOnMismatch: checked })} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <AdvancedTextField disabled={disabled} label="Configuração principal" onChange={(value) => onChange({ primaryConfig: value })} placeholder="Informe o valor principal do módulo" value={stringConfig(config.primaryConfig)} />
+      <AdvancedSelectField disabled={disabled} label="Cargo relacionado" onChange={(value) => onChange({ roleId: value || null })} options={roleOptions} placeholder="Opcional" value={stringConfig(config.roleId)} />
+      <AdvancedNumberField disabled={disabled} label="Intervalo / limite" min={0} onChange={(value) => onChange({ intervalMinutes: value })} value={numberConfig(config.intervalMinutes, 10)} />
+      <AdvancedToggleField checked={config.autoAction === true} disabled={disabled} label="Ação automática" onChange={(checked) => onChange({ autoAction: checked })} />
+    </div>
+  );
+}
+
+function AdvancedTextField({ disabled, label, onChange, placeholder, value }: { disabled: boolean; label: string; onChange: (value: string) => void; placeholder: string; value: string }) {
+  return (
+    <label className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
+      <span className="font-semibold text-white">{label}</span>
+      <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-purple-500/60" disabled={disabled} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
+    </label>
+  );
+}
+
+function AdvancedNumberField({ disabled, label, min, onChange, value }: { disabled: boolean; label: string; min: number; onChange: (value: number) => void; value: number }) {
+  return (
+    <label className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
+      <span className="font-semibold text-white">{label}</span>
+      <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-purple-500/60" disabled={disabled} min={min} onChange={(event) => onChange(Number(event.target.value) || min)} type="number" value={value} />
+    </label>
+  );
+}
+
+function AdvancedSelectField({ disabled, label, onChange, options, placeholder, value }: { disabled: boolean; label: string; onChange: (value: string) => void; options: Array<{ label: string; value: string }>; placeholder: string; value: string }) {
+  return (
+    <label className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
+      <span className="font-semibold text-white">{label}</span>
+      <select className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-purple-500/60" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">{placeholder}</option>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function AdvancedToggleField({ checked, disabled, label, onChange }: { checked: boolean; disabled: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
+      <span className="font-semibold text-white">{label}</span>
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, unknown>) {
+  if (moduleId === "tag-verification") {
+    return { enabled: false, intervalMinutes: 10, removeOnMismatch: true, requiredTag: "", roleId: null, ...config };
+  }
+
+  if (moduleId === "bio-url-verification") {
+    return { allowedDomains: "", enabled: false, intervalMinutes: 15, removeOnMismatch: true, roleId: null, ...config };
+  }
+
+  return { autoAction: false, enabled: false, intervalMinutes: 10, primaryConfig: "", roleId: null, ...config };
+}
+
+function stringConfig(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function numberConfig(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function FivemView({
