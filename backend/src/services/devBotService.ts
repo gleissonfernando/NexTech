@@ -277,6 +277,7 @@ export type DashboardBotDto = Pick<
 export type DevBotRuntimeConfig = {
   id: string;
   clientId: string;
+  name: string;
   token: string;
   mainGuildId: string;
   guildIds: string[];
@@ -2252,6 +2253,7 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
   return {
     id: bot._id,
     clientId: bot.clientId,
+    name: bot.name,
     token: decryptSecret(bot.tokenEncrypted),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),

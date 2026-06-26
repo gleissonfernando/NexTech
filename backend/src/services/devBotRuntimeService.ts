@@ -5,6 +5,7 @@ import type { Readable } from "node:stream";
 import axios from "axios";
 import { env } from "../config/env";
 import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import { sendDevBotUnexpectedExitLog } from "./devBotDiscordLogService";
 import {
   getDevBotRuntimeConfig,
   listDevBotRuntimeConfigs,
@@ -217,7 +218,16 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
 
     const detail = signal ? `sinal ${signal}` : `codigo ${code ?? 0}`;
     const exitMessage = runtime.lastError ?? `Processo encerrado com ${detail}.`;
-    void updateDevBotRuntimeStatus(bot.id, code === 0 ? "offline" : "error", exitMessage);
+    const status = code === 0 ? "offline" : "error";
+    void updateDevBotRuntimeStatus(bot.id, status, exitMessage);
+    void sendDevBotUnexpectedExitLog({
+      botId: bot.id,
+      botName: bot.name,
+      clientId: bot.clientId,
+      detail,
+      message: exitMessage,
+      status
+    });
 
     const timer = setTimeout(() => {
       restartTimers.delete(bot.id);
