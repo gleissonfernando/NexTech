@@ -3290,105 +3290,40 @@ function EmojiCloneSettingsPanel({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-            <div className="flex items-center gap-2">
-              <ImageIcon className="h-5 w-5 text-purple-200" />
-              <p className="text-sm font-semibold text-white">Origem</p>
+        <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Destino</p>
+              <p className="text-xs text-zinc-500">{destinationGuilds.length} servidores disponiveis para receber emojis.</p>
             </div>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-950 px-3 py-4 text-sm text-zinc-300 transition hover:border-purple-500/60">
-              <Upload className="h-4 w-4" />
-              {selectedFile ? selectedFile.name : "Enviar imagem do emoji"}
-              <input
-                accept="image/png,image/gif,image/webp,image/jpeg"
-                className="hidden"
-                disabled={disabled}
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                type="file"
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-300">URL ou emoji personalizado</span>
-              <textarea
-                className="min-h-24 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-600"
-                disabled={disabled}
-                onChange={(event) => setSourceInput(event.target.value)}
-                placeholder="Cole https://cdn.discordapp.com/emojis/... ou <:nome:id>"
-                value={sourceInput}
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-300">Nome final</span>
-              <input
-                className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-600"
-                disabled={disabled}
-                maxLength={32}
-                onChange={(event) => setEmojiName(event.target.value)}
-                placeholder="nome_do_emoji"
-                value={emojiName}
-              />
-            </label>
+            <Badge variant="muted">{selectedDestination ? "Slots validos no Discord" : "Selecione"}</Badge>
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-sm font-semibold text-white">Informacoes</p>
-              <div className="mt-4 flex aspect-square items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950">
-                {previewUrl ? <img alt="" className="max-h-full max-w-full object-contain" src={previewUrl} /> : <ImageIcon className="h-10 w-10 text-zinc-700" />}
-              </div>
-              <div className="mt-4 space-y-2 text-sm">
-                <InfoRow label="Nome atual" value={parsedEmoji?.name ?? selectedFile?.name ?? "Nao definido"} />
-                <InfoRow label="Tipo" value={sourceType} />
-                <InfoRow label="Tamanho" value={sourceSize} />
-                <InfoRow label="Status" value={previewUrl ? "Imagem pronta" : "Aguardando imagem"} />
-                <InfoRow label="Lista colada" value={pastedEmojiAssets.length ? `${pastedEmojiAssets.length} emoji(s)` : "Nenhuma"} />
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">Destino</p>
-                  <p className="text-xs text-zinc-500">{destinationGuilds.length} servidores disponiveis</p>
-                </div>
-                <Badge variant="muted">{selectedDestination ? "Slots validos no Discord" : "Selecione"}</Badge>
-              </div>
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <input
-                  className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-sm text-white outline-none placeholder:text-zinc-600"
-                  disabled={disabled}
-                  onChange={(event) => setServerSearch(event.target.value)}
-                  placeholder="Pesquisar servidor"
-                  value={serverSearch}
-                />
-              </label>
-              <div className="max-h-52 space-y-2 overflow-auto pr-1">
-                {destinationGuilds.map((item) => (
-                  <button
-                    className={["flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition", destinationGuildId === item.id ? "border-purple-500/50 bg-purple-500/10" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"].join(" ")}
-                    disabled={disabled}
-                    key={item.id}
-                    onClick={() => setDestinationGuildId(item.id)}
-                    type="button"
-                  >
-                    <Avatar className="h-9 w-9 rounded-lg" fallback={item.name} src={item.iconUrl} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-white">{item.name}</span>
-                      <span className="block truncate text-xs text-zinc-500">{item.id}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <Button disabled={disabled || cloneStatus === "running" || !previewUrl || !destinationGuildId} onClick={() => void handleCloneEmoji()}>
-                {cloneStatus === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
-                Iniciar clonagem
-              </Button>
-              <Button disabled={disabled || cloneStatus === "running" || pastedEmojiAssets.length < 1 || !destinationGuildId} onClick={() => void handleClonePastedEmojis()} variant="outline">
-                {cloneStatus === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListChecks className="mr-2 h-4 w-4" />}
-                Clonar lista colada
-              </Button>
-            </div>
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <input
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-sm text-white outline-none placeholder:text-zinc-600"
+              disabled={disabled}
+              onChange={(event) => setServerSearch(event.target.value)}
+              placeholder="Pesquisar servidor"
+              value={serverSearch}
+            />
+          </label>
+          <div className="grid max-h-72 gap-2 overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+            {destinationGuilds.map((item) => (
+              <button
+                className={["flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition", destinationGuildId === item.id ? "border-purple-500/50 bg-purple-500/10" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"].join(" ")}
+                disabled={disabled}
+                key={item.id}
+                onClick={() => setDestinationGuildId(item.id)}
+                type="button"
+              >
+                <Avatar className="h-9 w-9 rounded-lg" fallback={item.name} src={item.iconUrl} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-white">{item.name}</span>
+                  <span className="block truncate text-xs text-zinc-500">{item.id}</span>
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
