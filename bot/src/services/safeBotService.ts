@@ -387,6 +387,10 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
     return true;
   }
 
+  if (isIgnoredChannel(message, runtime) || !isProtectedChannel(message, runtime)) {
+    return false;
+  }
+
   if (member.roles.cache.has(runtime.roleId)) {
     const detected = detectMarkedUserPayload(message);
 
@@ -399,7 +403,7 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
       return false;
     }
 
-    if (isMediaWhitelistChannel(message, runtime, detected.moduleId)) {
+    if (isContentAllowedChannel(message, runtime, detected.moduleId)) {
       return false;
     }
 
@@ -426,7 +430,7 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
   }
 
   const detectedForWhitelist = detectMessageContent(message);
-  if (detectedForWhitelist && isMediaWhitelistChannel(message, runtime, detectedForWhitelist.moduleId)) {
+  if (detectedForWhitelist && isContentAllowedChannel(message, runtime, detectedForWhitelist.moduleId)) {
     return false;
   }
 
@@ -437,7 +441,7 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
       return false;
     }
 
-    if (isMediaWhitelistChannel(message, runtime, flood.moduleId)) {
+    if (isContentAllowedChannel(message, runtime, flood.moduleId)) {
       return false;
     }
 
@@ -733,23 +737,61 @@ function secondsToDuration(totalSeconds: number) {
   return { dias, horas, minutos, segundos };
 }
 
-function isMediaWhitelistChannel(
+function isContentAllowedChannel(
   message: Message,
   runtime: SafeBotRuntime,
   moduleId: SelfBotProtectionModuleId
 ) {
-  if (!["anti-imagens", "anti-gif", "anti-anexos"].includes(moduleId)) {
+  const allowedChannelIds = contentAllowedChannelIds(runtime, moduleId);
+
+  if (!allowedChannelIds.length) {
     return false;
   }
 
-  const mediaChannelIds = runtime.protectionSettings?.mediaChannelIds ?? [];
-
-  if (mediaChannelIds.includes(message.channelId)) {
+  if (allowedChannelIds.includes(message.channelId)) {
     return true;
   }
 
   const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  return Boolean(parentId && mediaChannelIds.includes(parentId));
+  return Boolean(parentId && allowedChannelIds.includes(parentId));
+}
+
+function contentAllowedChannelIds(runtime: SafeBotRuntime, moduleId: SelfBotProtectionModuleId) {
+  if (["anti-imagens", "anti-gif", "anti-anexos"].includes(moduleId)) {
+    return runtime.protectionSettings?.mediaChannelIds ?? [];
+  }
+
+  if (["anti-links", "anti-convites", "anti-divulgacao", "anti-scam", "anti-phishing", "anti-token-grabber", "anti-nitro-scam"].includes(moduleId)) {
+    return runtime.protectionSettings?.linkChannelIds ?? [];
+  }
+
+  return [];
+}
+
+function isIgnoredChannel(message: Message, runtime: SafeBotRuntime) {
+  const ignoredChannelIds = runtime.protectionSettings?.ignoredChannelIds ?? [];
+
+  if (ignoredChannelIds.includes(message.channelId)) {
+    return true;
+  }
+
+  const parentId = message.channel.isThread() ? message.channel.parentId : null;
+  return Boolean(parentId && ignoredChannelIds.includes(parentId));
+}
+
+function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
+  const protectedChannelIds = runtime.protectionSettings?.protectedChannelIds ?? [];
+
+  if (!protectedChannelIds.length) {
+    return false;
+  }
+
+  if (protectedChannelIds.includes(message.channelId)) {
+    return true;
+  }
+
+  const parentId = message.channel.isThread() ? message.channel.parentId : null;
+  return Boolean(parentId && protectedChannelIds.includes(parentId));
 }
 
 async function punishMarkedUser(

@@ -758,7 +758,7 @@ function isChannelProtected(message: Message, settings: SelfBotProtectionSetting
     return false;
   }
 
-  return settings.protectedChannelIds.length === 0 || isAllowedChannel(message, settings.protectedChannelIds);
+  return isAllowedChannel(message, settings.protectedChannelIds);
 }
 
 function isAllowedChannel(message: Message, channelIds: string[]) {
