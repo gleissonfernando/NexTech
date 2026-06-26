@@ -1864,14 +1864,13 @@ async function isRuntimeModuleEnabled(input: {
     return false;
   }
 
-  if (input.releaseModuleId === "safe-bot" && input.moduleId === "safe-bot") {
-    return true;
-  }
-
   if (input.releaseModuleId === "safe-bot" || SELF_BOT_RUNTIME_MODULES.has(input.moduleId)) {
-    const settings = await getSelfBotProtectionSettings(input.guildId, input.botId);
+    const [guildSettings, settings] = await Promise.all([
+      getGuildSettings(input.guildId, input.botId),
+      getSelfBotProtectionSettings(input.guildId, input.botId)
+    ]);
 
-    if (!settings.enabled) {
+    if (!guildSettings.safeBotEnabled || !settings.enabled) {
       return false;
     }
 
@@ -1889,11 +1888,55 @@ async function isRuntimeModuleEnabled(input: {
     return settings.siteLogsEnabled || (settings.discordLogsEnabled && Boolean(settings.logChannelId));
   }
 
+  const guildSettingsModuleEnabled = await isGuildSettingsModuleEnabled(input);
+
+  if (guildSettingsModuleEnabled !== null) {
+    return guildSettingsModuleEnabled;
+  }
+
   if (input.moduleConfig?.enabled === true) {
     return true;
   }
 
   return true;
+}
+
+async function isGuildSettingsModuleEnabled(input: {
+  botId: string;
+  guildId: string;
+  moduleId: string;
+  releaseModuleId: string;
+}) {
+  const settingsKeyByModule: Record<string, keyof Pick<
+    Awaited<ReturnType<typeof getGuildSettings>>,
+    | "accountAgeSecurityEnabled"
+    | "autoRoleEnabled"
+    | "emojiCloneEnabled"
+    | "leaveEnabled"
+    | "moderationEnabled"
+    | "rulesEnabled"
+    | "ticketEnabled"
+    | "verificationEnabled"
+    | "welcomeEnabled"
+  >> = {
+    "account-age-security": "accountAgeSecurityEnabled",
+    "emoji-cloner": "emojiCloneEnabled",
+    leave: "leaveEnabled",
+    moderation: "moderationEnabled",
+    roles: "autoRoleEnabled",
+    rules: "rulesEnabled",
+    tickets: "ticketEnabled",
+    verification: "verificationEnabled",
+    welcome: "welcomeEnabled"
+  };
+  const settingsKey = settingsKeyByModule[input.releaseModuleId] ?? settingsKeyByModule[input.moduleId];
+
+  if (!settingsKey) {
+    return null;
+  }
+
+  const settings = await getGuildSettings(input.guildId, input.botId);
+  return settings[settingsKey] === true;
 }
 
 function selfBotToggleForRuntimeModule(moduleId: string): SelfBotProtectionModuleId | null {
