@@ -1,5 +1,5 @@
 import type { Interaction } from "discord.js";
-import { isBotModuleEnabled } from "../config/env";
+import { isBotModuleEnabled, setRuntimeEnabledModules } from "../config/env";
 import { handleFivemFacInteraction } from "../services/fivemFacService";
 import { handleGiveawayInteraction } from "../services/giveawayService";
 import { blockInteractionIfMaintenance } from "../services/maintenanceService";
@@ -58,8 +58,19 @@ export async function handleInteractionCreate(interaction: Interaction, context:
   }
 
   if (command.moduleId && !isBotModuleEnabled(command.moduleId)) {
+    const runtimeAccess = await context.api.getRuntimeModules().catch((error) => {
+      console.warn("[bot] nao foi possivel recarregar modulos antes de negar comando:", error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    if (runtimeAccess) {
+      setRuntimeEnabledModules(runtimeAccess.active ? runtimeAccess.enabledModules : [], runtimeAccess.botId);
+    }
+  }
+
+  if (command.moduleId && !isBotModuleEnabled(command.moduleId)) {
     await interaction.reply({
-      content: `O modulo deste comando nao foi liberado para este bot na dashboard DEV.`,
+      content: `O modulo ${command.moduleId} ainda nao aparece liberado para este bot na dashboard DEV. Se acabou de ativar, reinicie o bot pelo painel DEV.`,
       ephemeral: true
     });
     return;

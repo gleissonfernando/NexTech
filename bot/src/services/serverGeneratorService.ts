@@ -18,7 +18,7 @@ import {
 import { createHash } from "node:crypto";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
-import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
+import { getRuntimeModuleAuthorization } from "./runtimeModuleGuard";
 
 const MODULE_ID = "server-generator";
 const CUSTOM_ID_PREFIX = "server_generator_modal";
@@ -265,9 +265,10 @@ export async function handleServerGeneratorInteraction(interaction: Interaction,
   if (!interaction.isModalSubmit() || !interaction.customId.startsWith(CUSTOM_ID_PREFIX)) return false;
   if (!interaction.inGuild() || !interaction.guild) return false;
 
-  if (!(await isRuntimeModuleAuthorized(context, interaction.guild.id, MODULE_ID))) {
+  const authorization = await getRuntimeModuleAuthorization(context, interaction.guild.id, MODULE_ID);
+  if (!authorization.allowed) {
     await interaction.reply({
-      content: "O modulo Gerador de Servidores nao foi liberado para este bot neste servidor.",
+      content: `O modulo Gerador de Servidores nao foi autorizado neste servidor: ${authorization.reason}`,
       ephemeral: true
     });
     return true;
