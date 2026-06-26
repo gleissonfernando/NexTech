@@ -1164,6 +1164,28 @@ export type MongoDashboardAuditLog = {
   createdAt: Date;
 };
 
+export type MongoGlobalPanelImagePosition = "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
+export type MongoGlobalPanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
+export type MongoGlobalPanelImageLayoutMode = "embed" | "components_v2";
+
+export type MongoPanelImageSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  panelId: string;
+  imageEnabled: boolean;
+  imageUrl: string;
+  imagePosition: MongoGlobalPanelImagePosition;
+  imageSize: MongoGlobalPanelImageSize;
+  customWidth: number | null;
+  customHeight: number | null;
+  layoutMode: MongoGlobalPanelImageLayoutMode;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const globalForMongo = globalThis as unknown as {
   mongoClient?: MongoClient;
   mongoIndexes?: Promise<void>;
@@ -1247,7 +1269,8 @@ export async function getMongoCollections() {
     devPermissions: db.collection<MongoDevPermission>("DevPermission"),
     maintenanceState: db.collection<MongoMaintenanceState>("MaintenanceState"),
     maintenanceLogs: db.collection<MongoMaintenanceLog>("MaintenanceLog"),
-    dashboardAuditLogs: db.collection<MongoDashboardAuditLog>("DashboardAuditLog")
+    dashboardAuditLogs: db.collection<MongoDashboardAuditLog>("DashboardAuditLog"),
+    panelImageSettings: db.collection<MongoPanelImageSettings>("panel_image_settings")
   };
 }
 
@@ -1300,6 +1323,10 @@ async function createMongoIndexes(db: Db) {
     ensureGuildSettingsIndexes(db),
     db.collection<MongoTicket>("Ticket").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
+    db.collection<MongoPanelImageSettings>("panel_image_settings").createIndex(
+      { botId: 1, guildId: 1, panelId: 1 },
+      { unique: true }
+    ),
     ensureSocialNotificationIndexes(db),
     ensureKickApiIndexes(db),
     ensureSocialNetworkIndexes(db),

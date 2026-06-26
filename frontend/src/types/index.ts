@@ -475,6 +475,29 @@ export type SelfBotProtectionResponse = {
   stats: SelfBotProtectionStats;
 };
 
+export type PanelImagePosition = "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
+export type PanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
+export type PanelImageLayoutMode = "embed" | "components_v2";
+
+export type PanelImageSettings = {
+  botId: string;
+  customHeight: number | null;
+  customWidth: number | null;
+  guildId: string;
+  imageEnabled: boolean;
+  imagePosition: PanelImagePosition;
+  imageSize: PanelImageSize;
+  imageUrl: string;
+  layoutMode: PanelImageLayoutMode;
+  panelId: string;
+  updatedAt: string | null;
+};
+
+export type SavePanelImageSettingsPayload = Partial<Pick<
+  PanelImageSettings,
+  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode"
+>>;
+
 export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<
   SelfBotProtectionSettings,
   "id" | "botId" | "guildId" | "createdAt" | "updatedAt"

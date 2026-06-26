@@ -3,6 +3,7 @@ import { Crown, ExternalLink, Loader2, Plus, Search, ShieldCheck, Sparkles, Tras
 import { checkSiteAccess, getGuildMemberOptions, patchGuildSettings } from "../../lib/api";
 import { dashboardUrl } from "../../lib/urls";
 import type { AccessValidationResult, DashboardAccessLevel, DashboardGuild, GuildMemberOption, GuildSettings } from "../../types";
+import { PanelImageSettings } from "../panels/PanelImageSettings";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -268,6 +269,7 @@ export function SiteAccessPanel({
   const queryIsDiscordId = isDiscordUserId(userQuery.trim());
 
   return (
+    <div className="space-y-5">
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
@@ -506,6 +508,8 @@ export function SiteAccessPanel({
         {error ? <p className="text-xs text-red-400">{error}</p> : null}
       </CardContent>
     </Card>
+    <PanelImageSettings botId={botId} canManage={canManage} guildId={guild?.id ?? null} />
+    </div>
   );
 }
 

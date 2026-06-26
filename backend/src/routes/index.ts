@@ -14,6 +14,7 @@ import { kickNotificationsRouter, kickWebhookRouter } from "./kickNotifications"
 import { livesRouter } from "./lives";
 import { logsRouter } from "./logs";
 import { missionToolsRouter } from "./missionTools";
+import { panelImagesRouter } from "./panelImages";
 import { selfBotProtectionRouter } from "./selfBotProtection";
 import { settingsRouter } from "./settings";
 import { botLivesRouter, socialNotificationsRouter } from "./socialNotifications";
@@ -44,6 +45,7 @@ apiRouter.use("/users", usersRouter);
 apiRouter.use("/guilds", guildsRouter);
 apiRouter.use("/lives", livesRouter);
 apiRouter.use("/mission-tools", missionToolsRouter);
+apiRouter.use("/panel-images", panelImagesRouter);
 apiRouter.use("/tickets", ticketsRouter);
 apiRouter.use("/voice-recorder", voiceRecorderRouter);
 apiRouter.use("/logs", logsRouter);

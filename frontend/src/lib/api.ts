@@ -49,6 +49,7 @@ import type {
   MissionToolsSettings,
   MissionToolsUserPanel,
   MaintenanceState,
+  PanelImageSettings,
   PublicKickClips,
   SaveClipsConfigPayload,
   SaveFivemFacSettingsPayload,
@@ -56,6 +57,7 @@ import type {
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
   SaveMissionToolsSettingsPayload,
+  SavePanelImageSettingsPayload,
   SaveSelfBotProtectionSettingsPayload,
   SaveSocialPanelPayload,
   SaveVoiceRecorderSettingsPayload,
@@ -263,6 +265,39 @@ export async function patchGuildSettings(guildId: string, payload: Partial<Guild
   const { data } = await api.patch<{ settings: GuildSettings }>(`/settings/${guildId}`, payload, {
     params: botParams(botId)
   });
+  return data.settings;
+}
+
+export async function listPanelImageSettings(guildId: string, botId?: string | null) {
+  const { data } = await api.get<{ settings: PanelImageSettings[] }>(`/panel-images/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data.settings;
+}
+
+export async function getPanelImageSettings(guildId: string, panelId: string, botId?: string | null) {
+  const { data } = await api.get<{ settings: PanelImageSettings }>(
+    `/panel-images/${guildId}/${encodeURIComponent(panelId)}`,
+    {
+      params: botParams(botId)
+    }
+  );
+  return data.settings;
+}
+
+export async function savePanelImageSettings(
+  guildId: string,
+  panelId: string,
+  payload: SavePanelImageSettingsPayload,
+  botId?: string | null
+) {
+  const { data } = await api.put<{ settings: PanelImageSettings }>(
+    `/panel-images/${guildId}/${encodeURIComponent(panelId)}`,
+    payload,
+    {
+      params: botParams(botId)
+    }
+  );
   return data.settings;
 }
 
