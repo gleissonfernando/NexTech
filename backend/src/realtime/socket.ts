@@ -1,5 +1,5 @@
 import type { Server as HttpServer } from "node:http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import { env } from "../config/env";
 import { createLiveEvent } from "../services/liveService";
 import { createLog } from "../services/logService";
@@ -8,12 +8,21 @@ import { getBotStatus, updateBotStatus } from "../services/statsService";
 import {
   authorizeBotRuntimeModule,
   findDevBotIdByClientId,
+  listAccessibleDashboardBots,
   runtimeModuleIdForLogType,
   syncDevBotGuilds,
   syncDevBotProfile,
   updateDevBotRuntimeStatus
 } from "../services/devBotService";
-import { botRealtimeRoom, devBotRealtimeRoom, setRealtimeServer } from "./events";
+import { getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
+import { isValidDashboardVerificationToken, resolveAuthFromCookieHeader } from "../services/tokenService";
+import {
+  botRealtimeRoom,
+  dashboardLogRealtimeRoom,
+  devBotRealtimeRoom,
+  emitRealtime,
+  setRealtimeServer
+} from "./events";
 
 const BOT_SOCKET_OFFLINE_GRACE_MS = 45_000;
 const RECENT_BOT_OFFLINE_SIGNAL_MS = 60_000;
@@ -50,6 +59,10 @@ export function createSocketServer(httpServer: HttpServer) {
     if (botId) {
       clearPendingBotDisconnect(botId);
       await socket.join(devBotRealtimeRoom(botId));
+    }
+
+    if (!isBot) {
+      await joinDashboardLogRooms(socket);
     }
     socket.emit("bot:status", getBotStatus());
 
@@ -129,7 +142,7 @@ export function createSocketServer(httpServer: HttpServer) {
         ...payload,
         botId
       });
-      io.emit("logs:new", log);
+      emitRealtime("logs:new", log);
     });
 
     socket.on("live:started", async (payload: { botId?: string | null; guildId: string; streamer: string; title?: string; url?: string }) => {
@@ -154,7 +167,7 @@ export function createSocketServer(httpServer: HttpServer) {
         }
       });
 
-      io.emit("logs:new", log);
+      emitRealtime("logs:new", log);
       io.emit("live:started", event);
     });
 
@@ -180,7 +193,7 @@ export function createSocketServer(httpServer: HttpServer) {
         }
       });
 
-      io.emit("logs:new", log);
+      emitRealtime("logs:new", log);
       io.emit("live:ended", event);
     });
 
@@ -202,6 +215,26 @@ export function createSocketServer(httpServer: HttpServer) {
   });
 
   return io;
+}
+
+async function joinDashboardLogRooms(socket: Socket) {
+  const auth = resolveAuthFromCookieHeader(socket.handshake.headers.cookie);
+
+  if (
+    !auth?.verified
+    || !isValidDashboardVerificationToken(socket.handshake.auth?.verificationToken, auth.user.discordId)
+  ) {
+    return;
+  }
+
+  const defaultGuildRooms = [...getAccessibleGuildIds(auth.user)]
+    .map((guildId) => dashboardLogRealtimeRoom(guildId));
+  const bots = await listAccessibleDashboardBots(auth.user).catch(() => []);
+  const botGuildRooms = bots.flatMap((bot) => bot.enabledModules.includes("logs")
+    ? bot.guildIds.map((guildId) => dashboardLogRealtimeRoom(guildId, bot.id))
+    : []);
+
+  await socket.join([...new Set([...defaultGuildRooms, ...botGuildRooms])]);
 }
 
 function scheduleBotDisconnectOffline(io: Server, botId: string) {

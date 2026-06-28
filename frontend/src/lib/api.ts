@@ -198,7 +198,7 @@ export async function logout() {
   }
 }
 
-function readTabVerification() {
+export function readTabVerification() {
   try {
     return window.sessionStorage.getItem(VERIFICATION_STORAGE_KEY);
   } catch {

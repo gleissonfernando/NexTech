@@ -28,9 +28,9 @@ logsRouter.use(requireAuthOrBot);
 logsRouter.get("/", async (req, res) => {
   const guildId = typeof req.query.guildId === "string" ? req.query.guildId : undefined;
   const botId = await resolveRequestBotId(req);
-  const logs = await listLogs(guildId, botId);
 
   if (isBotRequest(req)) {
+    const logs = await listLogs(guildId, botId);
     return res.json({
       logs
     });
@@ -44,6 +44,7 @@ logsRouter.get("/", async (req, res) => {
     });
   }
 
+  const logs = await listLogs(guildId, botId);
   const allowedGuildIds = getAccessibleGuildIds(user);
 
   return res.json({

@@ -92,6 +92,33 @@ export function resolveAuthFromRequest(req: Request, res: Response) {
   return refreshAuthFromRequest(req, res);
 }
 
+export function resolveAuthFromCookieHeader(cookieHeader: string | undefined) {
+  const accessToken = readCookieHeader(cookieHeader, ACCESS_COOKIE);
+
+  if (!accessToken) {
+    return null;
+  }
+
+  try {
+    return buildAuthFromToken(accessToken);
+  } catch {
+    return null;
+  }
+}
+
+export function isValidDashboardVerificationToken(token: unknown, discordId: string) {
+  if (typeof token !== "string" || !token.trim()) {
+    return false;
+  }
+
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET) as DashboardVerificationPayload;
+    return payload.type === "verification" && payload.discordId === discordId;
+  } catch {
+    return false;
+  }
+}
+
 export function refreshAuthFromRequest(req: Request, res: Response) {
   const refreshToken = readCookie(req, REFRESH_COOKIE);
 
@@ -236,18 +263,7 @@ function signVerificationToken(user: AuthSessionUser) {
 }
 
 function hasVerificationHeader(req: Request, user: AuthSessionUser) {
-  const token = req.header("x-dashboard-verification")?.trim();
-
-  if (!token) {
-    return false;
-  }
-
-  try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as DashboardVerificationPayload;
-    return payload.type === "verification" && payload.discordId === user.discordId;
-  } catch {
-    return false;
-  }
+  return isValidDashboardVerificationToken(req.header("x-dashboard-verification"), user.discordId);
 }
 
 function cookieOptions() {
@@ -261,4 +277,26 @@ function cookieOptions() {
 
 function readCookie(req: Request, name: string) {
   return typeof req.cookies?.[name] === "string" ? (req.cookies[name] as string) : null;
+}
+
+function readCookieHeader(cookieHeader: string | undefined, name: string) {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+
+    if (separator < 0 || part.slice(0, separator).trim() !== name) {
+      continue;
+    }
+
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
