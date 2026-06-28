@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Archive,
   Bell,
   AtSign,
   Bot,
@@ -67,6 +68,7 @@ export type ViewId =
   | "entry-leave"
   | "auto-roles"
   | "application-emojis"
+  | "media-library"
   | "server-cloner"
   | "settings";
 
@@ -110,6 +112,7 @@ const navItems: NavItem[] = [
   { id: "notifications", label: "Notificações", icon: Bell },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
+  { id: "media-library", label: "Emojis & Sons", icon: Archive, moduleId: "emoji-cloner" },
   { id: "server-cloner", label: "Clonagem", icon: SmilePlus, moduleIds: ["emoji-cloner", "server-cloner"] },
   { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["tickets", "avisos", "network", "server-generator"] }
 ];

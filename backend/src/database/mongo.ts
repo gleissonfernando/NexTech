@@ -741,6 +741,81 @@ export type MongoEmojiLibraryItem = {
   userId: string;
 };
 
+export type MongoMediaLibraryItem = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  type: "emoji" | "sound";
+  name: string;
+  originalName: string;
+  fileUrl: string;
+  localPath: string;
+  discordEmojiId: string | null;
+  animated: boolean | null;
+  category: string | null;
+  format: string;
+  mimeType: string;
+  size: number;
+  source: "clone" | "zip_import" | "manual_upload";
+  status: "active" | "error" | "deleted";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoMediaImportJob = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  uploadedBy: string;
+  zipFileName: string;
+  tempDirectory: string;
+  status: "pending" | "extracting" | "waiting_confirmation" | "importing" | "completed" | "failed" | "cancelled";
+  duplicateMode: "ignore" | "rename" | "replace";
+  totalFiles: number;
+  totalEmojis: number;
+  totalSounds: number;
+  successCount: number;
+  errorCount: number;
+  duplicateCount: number;
+  logs: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt: Date | null;
+};
+
+export type MongoMediaImportJobItem = {
+  _id: string;
+  jobId: string;
+  type: "emoji" | "sound";
+  name: string;
+  originalName: string;
+  filePath: string;
+  format: string;
+  mimeType: string;
+  size: number;
+  animated: boolean | null;
+  status: "pending" | "success" | "error" | "duplicate" | "ignored";
+  errorMessage: string | null;
+  discordEmojiId: string | null;
+};
+
+export type MongoMediaSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  allowAuthorizedUsers: boolean;
+  devOnly: boolean;
+  duplicateMode: "ignore" | "rename" | "replace";
+  soundsLocalOnly: boolean;
+  maxZipSizeMb: number;
+  maxFilesPerZip: number;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
 export type MongoApplicationEmojiItem = {
   _id: string;
   animated: boolean;
@@ -1265,6 +1340,10 @@ export async function getMongoCollections() {
     emojiCloneJobs: db.collection<MongoEmojiCloneJob>("emoji_clone_jobs"),
     emojiCloneItems: db.collection<MongoEmojiCloneItem>("emoji_clone_items"),
     emojiLibrary: db.collection<MongoEmojiLibraryItem>("emoji_library"),
+    mediaLibrary: db.collection<MongoMediaLibraryItem>("media_library"),
+    mediaImportJobs: db.collection<MongoMediaImportJob>("media_import_jobs"),
+    mediaImportJobItems: db.collection<MongoMediaImportJobItem>("media_import_job_items"),
+    mediaSettings: db.collection<MongoMediaSettings>("media_settings"),
     applicationEmojiItems: db.collection<MongoApplicationEmojiItem>("application_emojis"),
     applicationEmojiJobs: db.collection<MongoApplicationEmojiJob>("application_emoji_jobs"),
     applicationEmojiSettings: db.collection<MongoApplicationEmojiSettings>("application_emoji_settings"),
@@ -1795,6 +1874,11 @@ async function ensureEmojiCloneIndexes(db: Db) {
       { botId: 1, userId: 1, originalEmojiId: 1 },
       { unique: true }
     ),
+    db.collection<MongoMediaLibraryItem>("media_library").createIndex({ botId: 1, guildId: 1, type: 1, createdAt: -1 }),
+    db.collection<MongoMediaLibraryItem>("media_library").createIndex({ botId: 1, guildId: 1, name: 1 }),
+    db.collection<MongoMediaImportJob>("media_import_jobs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoMediaImportJobItem>("media_import_job_items").createIndex({ jobId: 1, status: 1 }),
+    db.collection<MongoMediaSettings>("media_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, syncedAt: -1 }),
     db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, sourceGuildId: 1, syncedAt: -1 }),
     db.collection<MongoApplicationEmojiItem>("application_emojis").createIndex({ botId: 1, applicationName: 1 }),

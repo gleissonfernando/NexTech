@@ -48,6 +48,7 @@ import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
 import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
+import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { PanelImageSettings } from "../components/panels/PanelImageSettings";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
@@ -476,7 +477,8 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "first-lady": "first-lady",
   moderation: "moderation",
   rules: "rules",
-  "application-emojis": "emoji-cloner"
+  "application-emojis": "emoji-cloner",
+  "media-library": "emoji-cloner"
 };
 
 const settingsModuleIds = new Set(["tickets", "avisos", "network", "server-generator"]);
@@ -1060,6 +1062,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             loading={settingsLoading}
             onSettingsChange={setSettings}
             settings={settings}
+          />
+        ) : null}
+        {activeView === "media-library" ? (
+          <MediaLibraryPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "emoji-cloner", canManageDashboard)}
+            guild={selectedGuild}
           />
         ) : null}
         {activeView === "fivem" ? (
