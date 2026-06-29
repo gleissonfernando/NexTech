@@ -12,6 +12,7 @@ import { isLinkAntiSpamEnabled } from "./services/linkAntiSpamService";
 import { isSelfBotModuleEnabled } from "./services/safeBotService";
 import type { BotContext } from "./types";
 import { BotSocketClient } from "./websocket/socketClient";
+import { destroyLavalink, initializeLavalink } from "./music/lavalinkManager";
 
 const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
@@ -115,6 +116,7 @@ const context: BotContext = {
 };
 
 registerEvents(client, context);
+initializeLavalink(client);
 
 if (!env.DISCORD_BOT_TOKEN) {
   console.error("[bot] DISCORD_BOT_TOKEN nao configurado.");
@@ -168,6 +170,7 @@ function shutdown(signal: "SIGINT" | "SIGTERM") {
     reconnectTimer = null;
   }
   context.socket.disconnect(client);
+  destroyLavalink();
   client.destroy();
   process.exit(0);
 }

@@ -1,8 +1,4 @@
-import type {
-  AudioPlayer,
-  AudioResource,
-  VoiceConnection
-} from "@discordjs/voice";
+import type { Player } from "shoukaku";
 import type { Guild, GuildMember, GuildTextBasedChannel, Message } from "discord.js";
 
 export type MusicLoopMode = "off" | "track" | "queue";
@@ -19,6 +15,7 @@ export type MusicTrack = {
   addedAt: Date;
   source: "link" | "search" | "artist" | "playlist" | "spotify" | "soundcloud" | "direct";
   provider: "youtube" | "soundcloud" | "direct";
+  encoded: string;
 };
 
 export type MusicConfig = {
@@ -48,8 +45,7 @@ export type MusicSession = {
   config: MusicConfig;
   voiceChannelId: string;
   textChannel: GuildTextBasedChannel;
-  player: AudioPlayer;
-  connection: VoiceConnection;
+  player: Player;
   current: MusicTrack | null;
   queue: MusicTrack[];
   history: MusicTrack[];
@@ -57,7 +53,6 @@ export type MusicSession = {
   shuffled: boolean;
   volume: number;
   logChannelId: string | null;
-  resource: AudioResource<MusicTrack> | null;
   panelMessage: Message | null;
   idleTimer: NodeJS.Timeout | null;
   aloneTimer: NodeJS.Timeout | null;
@@ -66,6 +61,7 @@ export type MusicSession = {
   idleDisconnectMs: number;
   stopping: boolean;
   recovering: boolean;
+  suppressedEndTrack: string | null;
 };
 
 export type MusicActor = {

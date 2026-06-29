@@ -34,7 +34,6 @@ import {
 import { resolveArtist, resolveMusicQuery } from "./searchManager";
 import type { MusicConfig, MusicSession } from "./types";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "../services/runtimeModuleGuard";
-import { hasYouTubeCookies } from "./youtubeAuth";
 
 const PREFIX = ".";
 const COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
@@ -196,11 +195,11 @@ export async function handleMusicSlashCommand(
     else if (action === "nowplaying") await interaction.editReply(session.current
       ? `🎶 Tocando agora: **${session.current.title}** — ${session.current.author}\n⏱️ ${formatDuration(session.current.durationMs)} | 🔊 ${session.volume}%`
       : "📭 Nada está tocando no momento.");
-    else if (action === "pause") await interaction.editReply(pauseMusic(session) ? "⏸️ Música pausada." : "⚠️ A música já está pausada ou não há música tocando.");
-    else if (action === "resume") await interaction.editReply(resumeMusic(session) ? "▶️ Música retomada." : "⚠️ Não existe música pausada no momento.");
+    else if (action === "pause") await interaction.editReply(await pauseMusic(session) ? "⏸️ Música pausada." : "⚠️ A música já está pausada ou não há música tocando.");
+    else if (action === "resume") await interaction.editReply(await resumeMusic(session) ? "▶️ Música retomada." : "⚠️ Não existe música pausada no momento.");
     else if (action === "skip") {
       const title = session.current?.title ?? "Música";
-      const success = skipMusic(session);
+      const success = await skipMusic(session);
       if (success) await logAction(context, access, "music.track_skipped", `${title} pulada por ${access.userTag}.`);
       await interaction.editReply(success ? "⏭️ Música pulada." : "📭 Não há música para pular.");
     } else if (action === "stop") {
@@ -276,6 +275,11 @@ async function prepareMessageAccess(message: Message<true>, context: BotContext,
     await message.reply(permissionError);
     return null;
   }
+  const textPermissionError = botTextPermissionError(message.channel);
+  if (textPermissionError) {
+    await message.reply(textPermissionError).catch(() => undefined);
+    return null;
+  }
   return { member, voiceChannel, textChannel: message.channel, config: denial.config, userId: message.author.id, userTag: message.author.tag };
 }
 
@@ -299,6 +303,11 @@ async function prepareInteractionAccess(interaction: ButtonInteraction | ModalSu
     return null;
   }
   if (!interaction.channel.isSendable() || interaction.channel.isDMBased()) return null;
+  const textPermissionError = botTextPermissionError(interaction.channel);
+  if (textPermissionError) {
+    await replyInteractionDenial(interaction, textPermissionError);
+    return null;
+  }
   return { member, voiceChannel, textChannel: interaction.channel, config: denial.config, userId: interaction.user.id, userTag: interaction.user.tag };
 }
 
@@ -369,11 +378,11 @@ async function handleMusicButton(interaction: ButtonInteraction, context: BotCon
   }
 
   let message: string;
-  if (id === "music_pause") message = pauseMusic(session) ? `⏸️ Música pausada por ${interaction.user}.` : "⚠️ A música já está pausada ou não há música tocando.";
-  else if (id === "music_resume") message = resumeMusic(session) ? `▶️ Música retomada por ${interaction.user}.` : "⚠️ Não existe música pausada no momento.";
+  if (id === "music_pause") message = await pauseMusic(session) ? `⏸️ Música pausada por ${interaction.user}.` : "⚠️ A música já está pausada ou não há música tocando.";
+  else if (id === "music_resume") message = await resumeMusic(session) ? `▶️ Música retomada por ${interaction.user}.` : "⚠️ Não existe música pausada no momento.";
   else if (id === "music_skip") {
     const skipped = session.current;
-    const success = skipMusic(session);
+    const success = await skipMusic(session);
     if (success) await logAction(context, access, "music.track_skipped", `${skipped?.title ?? "Música"} pulada por ${access.userTag}.`);
     message = success ? `⏭️ Música pulada por ${interaction.user}.` : "📭 A fila está vazia.";
   }
@@ -396,11 +405,11 @@ async function runControlCommand(context: BotContext, access: Access, command: s
   if (!session) throw new Error("Não existe reprodução ativa neste servidor.");
   if (session.voiceChannelId !== access.voiceChannel.id) throw new Error("Entre no mesmo canal de voz do bot para controlar a reprodução.");
 
-  if (command === "pause") await access.textChannel.send(pauseMusic(session) ? `⏸️ Música pausada por <@${access.userId}>.` : "⚠️ A música já está pausada.");
-  else if (command === "resume") await access.textChannel.send(resumeMusic(session) ? `▶️ Música retomada por <@${access.userId}>.` : "⚠️ Não existe música pausada no momento.");
+  if (command === "pause") await access.textChannel.send(await pauseMusic(session) ? `⏸️ Música pausada por <@${access.userId}>.` : "⚠️ A música já está pausada.");
+  else if (command === "resume") await access.textChannel.send(await resumeMusic(session) ? `▶️ Música retomada por <@${access.userId}>.` : "⚠️ Não existe música pausada no momento.");
   else if (command === "skip") {
     const skipped = session.current;
-    const success = skipMusic(session);
+    const success = await skipMusic(session);
     if (success) await logAction(context, access, "music.track_skipped", `${skipped?.title ?? "Música"} pulada por ${access.userTag}.`);
     await access.textChannel.send(success ? `⏭️ Música pulada por <@${access.userId}>.` : "📭 A fila está vazia.");
   }
@@ -451,6 +460,18 @@ function botVoicePermissionError(channel: VoiceBasedChannel) {
     : "❌ Não tenho permissão para entrar ou falar nesse canal de voz.";
 }
 
+function botTextPermissionError(channel: GuildTextBasedChannel) {
+  const bot = channel.guild.members.me;
+  if (!bot) return "❌ Não consegui validar minhas permissões no canal de texto.";
+  const permissions = channel.permissionsFor(bot);
+  return permissions?.has(PermissionFlagsBits.ViewChannel, true)
+    && permissions.has(PermissionFlagsBits.SendMessages, true)
+    && permissions.has(PermissionFlagsBits.EmbedLinks, true)
+    && permissions.has(PermissionFlagsBits.ReadMessageHistory, true)
+    ? null
+    : "❌ Preciso das permissões Ver canal, Enviar mensagens, Incorporar links e Ler histórico neste canal.";
+}
+
 function addedTracksMessage(tracks: Awaited<ReturnType<typeof resolveMusicQuery>>) {
   const first = tracks[0]!;
   return tracks.length === 1
@@ -471,7 +492,7 @@ async function logRequest(context: BotContext, access: Access, tracks: Array<{ t
     userId: access.userId,
     type: "music.tracks_added",
     message: `${tracks.length} música(s) adicionada(s) por ${access.userTag}.`,
-    metadata: { tracks: tracks.slice(0, 50) }
+    metadata: { tracks: tracks.slice(0, 50).map(({ title, url, source }) => ({ title, url, source })) }
   }).catch(() => undefined);
 }
 
@@ -491,9 +512,7 @@ function loopLabel(mode: string) {
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/sign in to confirm|not a bot|confirm you.?re not a bot/i.test(message)) {
-    return hasYouTubeCookies()
-      ? "A sessão configurada do YouTube expirou ou foi bloqueada. Atualize YOUTUBE_COOKIES_B64 na hospedagem."
-      : "O YouTube exige autenticação neste IP. Configure o segredo YOUTUBE_COOKIES_B64 na hospedagem.";
+    return "O YouTube bloqueou os clientes atuais do Lavalink. Consulte o erro do youtube-source no terminal e revise clients/OAuth do nó.";
   }
   if (/fetch failed|abort|timed?\s*out|timeout/i.test(message)) {
     return "A fonte de música não respondeu a tempo. Tente novamente em instantes.";
