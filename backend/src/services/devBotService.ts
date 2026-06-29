@@ -52,6 +52,7 @@ export const DEV_MODULES = [
   { id: "rules", label: "Sistema de Regras" },
   { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
+  { id: "music", label: "Sistema de Musica" },
   { id: "emoji-cloner", label: "Clonagem de Emojis" },
   { id: "server-cloner", label: "Clonagem de Servidor" },
   { id: "server-generator", label: "Gerador Inteligente de Servidores" },

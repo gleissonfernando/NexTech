@@ -217,7 +217,6 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
         allowedRoleIds: next.allowedRoleIds,
         enabled: next.enabled,
         logChannelId: next.logChannelId,
-        maxDurationMinutes: next.maxDurationMinutes,
         retentionDays: next.retentionDays
       });
 
@@ -355,14 +354,6 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
               />
               <NumberField
                 disabled={!canManage}
-                label="Tempo máximo de gravação (min)"
-                max={24 * 60}
-                min={1}
-                onChange={(value) => updateSetting("maxDurationMinutes", value)}
-                value={settings.maxDurationMinutes}
-              />
-              <NumberField
-                disabled={!canManage}
                 label="Retencao de arquivos (dias)"
                 max={3650}
                 min={1}
@@ -370,6 +361,10 @@ export function VoiceRecorderPanel({ botId, canManage, guild }: VoiceRecorderPan
                 value={settings.retentionDays}
               />
             </div>
+
+            <p className="text-sm text-zinc-400">
+              A gravação não possui limite de tempo e termina automaticamente quando a última pessoa sai da call.
+            </p>
 
             <RoleChecklist
               allowedRoleSet={allowedRoleSet}

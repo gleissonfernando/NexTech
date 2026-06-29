@@ -5,6 +5,7 @@ import { blockMessageIfMaintenance } from "../services/maintenanceService";
 import { handleSafeBotMessage, isSelfBotModuleEnabled } from "../services/safeBotService";
 import { handleSelfBotProtectionMessage } from "../services/selfBotProtectionService";
 import type { BotContext } from "../types";
+import { handleMusicMessage } from "../music/musicService";
 
 export async function handleMessageCreate(message: Message, context: BotContext) {
   if (await blockMessageIfMaintenance(message)) {
@@ -20,6 +21,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
 
   if (selfBotBlocked) {
+    return;
+  }
+
+  if (await handleMusicMessage(message, context)) {
     return;
   }
 

@@ -9,9 +9,14 @@ import { handleRulesInteraction } from "../services/rulesService";
 import { handleServerCloneInteraction } from "../services/serverCloneService";
 import { handleServerGeneratorInteraction } from "../services/serverGeneratorService";
 import type { BotContext } from "../types";
+import { handleMusicInteraction } from "../music/musicService";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
   if (await blockInteractionIfMaintenance(interaction)) {
+    return;
+  }
+
+  if (await handleMusicInteraction(interaction, context)) {
     return;
   }
 

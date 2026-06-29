@@ -25,7 +25,8 @@ const moduleIdSchema = z.enum([
   "temporary-voice",
   "tag-verification",
   "bio-url-verification",
-  "first-lady"
+  "first-lady",
+  "music"
 ]);
 const primitiveConfigValue = z.union([
   z.boolean(),
@@ -51,6 +52,23 @@ const autoUnmuteConfigSchema = z.object({
   requiredRoleId: snowflakeSchema.nullable().default(null),
   delaySeconds: z.coerce.number().int().min(0).max(60).default(0),
   antiSpamSeconds: z.coerce.number().int().min(1).max(300).default(10)
+});
+const musicConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  commandChannelId: snowflakeSchema.nullable().default(null),
+  permissionMode: z.enum(["everyone", "roles", "administrators"]).default("everyone"),
+  allowedRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  blockedUserIds: z.array(snowflakeSchema).max(250).default([]),
+  defaultVolume: z.coerce.number().int().min(10).max(100).default(50),
+  queueLimit: z.coerce.number().int().min(1).max(500).default(100),
+  playlistLimit: z.coerce.number().int().min(1).max(100).default(50),
+  artistLimit: z.coerce.number().int().min(1).max(50).default(25),
+  cooldownSeconds: z.coerce.number().int().min(0).max(60).default(5),
+  maxTrackMinutes: z.coerce.number().int().min(1).max(180).default(15),
+  allowPlaylists: z.boolean().default(true),
+  allowLinks: z.boolean().default(true),
+  allowArtistSearch: z.boolean().default(true),
+  logChannelId: snowflakeSchema.nullable().default(null)
 });
 
 export const advancedModulesRouter = Router();
@@ -131,6 +149,10 @@ function normalizeModuleConfig(moduleId: z.infer<typeof moduleIdSchema>, config:
       requiredRoleId: config.requiredRoleId || null,
       voiceChannelId: config.voiceChannelId || null
     });
+  }
+
+  if (moduleId === "music") {
+    return musicConfigSchema.parse(config);
   }
 
   return config;

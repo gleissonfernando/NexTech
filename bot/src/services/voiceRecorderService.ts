@@ -46,7 +46,6 @@ type VoiceRecorderSession = {
   connection: VoiceConnection;
   filePath: string;
   guild: Guild;
-  maxTimer: NodeJS.Timeout;
   mixer: PcmMp3Mixer;
   participants: Map<string, ParticipantState>;
   recordingId: string;
@@ -296,6 +295,20 @@ export async function handleVoiceRecorderVoiceStateUpdate(oldState: VoiceState, 
       userId,
       username: participant.username
     }).catch(() => undefined);
+
+    if (!session.stopping && !hasHumanParticipants(session.channel)) {
+      const systemUser = context.client.user;
+
+      try {
+        await stopSession(context, session, {
+          actorId: systemUser?.id ?? "0",
+          actorTag: `${systemUser?.tag ?? "Bot"} - ultima pessoa saiu da call`,
+          trustedDashboard: true
+        });
+      } catch (error) {
+        console.warn("[voice-recorder] falha ao encerrar depois que a call ficou vazia:", readPlainError(error));
+      }
+    }
   }
 }
 
@@ -407,19 +420,6 @@ async function startCapture(input: {
     connection,
     filePath,
     guild: input.channel.guild,
-    maxTimer: setTimeout(() => {
-      const current = activeSessions.get(input.channel.guild.id);
-
-      if (current?.recordingId === input.recordingId) {
-        void stopSession(input.context, current, {
-          actorId: input.context.client.user?.id ?? "0",
-          actorTag: input.context.client.user?.tag ?? "Bot",
-          trustedDashboard: true
-        }).catch((error) => {
-          console.warn("[voice-recorder] falha ao encerrar por tempo maximo:", readPlainError(error));
-        });
-      }
-    }, input.settings.maxDurationMinutes * 60_000),
     mixer,
     participants: new Map(),
     recordingId: input.recordingId,
@@ -429,7 +429,6 @@ async function startCapture(input: {
     subscriptions: new Set()
   };
 
-  session.maxTimer.unref();
   activeSessions.set(input.channel.guild.id, session);
 
   for (const member of input.channel.members.values()) {
@@ -470,8 +469,6 @@ async function stopSession(context: BotContext, session: VoiceRecorderSession, i
     session.stopping = false;
     throw error;
   }
-
-  clearTimeout(session.maxTimer);
 
   for (const participant of session.participants.values()) {
     if (!participant.leftAt) {
@@ -527,7 +524,6 @@ async function abortLocalSession(guildId: string) {
     return;
   }
 
-  clearTimeout(session.maxTimer);
   activeSessions.delete(guildId);
   destroyVoiceConnection(session.connection);
   await session.mixer.finish().catch(() => undefined);
@@ -566,6 +562,10 @@ function destroyVoiceConnection(connection: VoiceConnection) {
   } catch (error) {
     console.warn("[voice-recorder] nao foi possivel destruir a conexao de voz:", readPlainError(error));
   }
+}
+
+function hasHumanParticipants(channel: VoiceBasedChannel) {
+  return channel.members.some((member) => !member.user.bot);
 }
 
 async function subscribeUserAudio(session: VoiceRecorderSession, userId: string, context: BotContext) {

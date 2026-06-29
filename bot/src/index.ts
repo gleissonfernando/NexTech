@@ -16,6 +16,7 @@ import { BotSocketClient } from "./websocket/socketClient";
 const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
+const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
 const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "account-age-security"].some(isBotModuleEnabled)
   || isSelfBotModuleEnabled()
   || managedRuntimeBot;
@@ -25,6 +26,7 @@ const needsMessageLogs = managedRuntimeBot || isBotModuleEnabled("logs") || env.
 const needsMessageEvents = needsLegacyMessageModeration
   || selfBotModuleEnabled
   || managedRuntimeBot
+  || needsMusic
   || needsMessageLogs;
 
 if (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) {
@@ -48,7 +50,7 @@ if (env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) {
   intents.push(GatewayIntentBits.GuildPresences);
 }
 
-if (needsVoiceRecorder) {
+if (needsVoiceRecorder || needsMusic) {
   intents.push(GatewayIntentBits.GuildVoiceStates);
 }
 
@@ -80,7 +82,7 @@ const client = new Client({
     StageInstanceManager: 0,
     ThreadMemberManager: 0,
     UserManager: env.BOT_CACHE_USERS_MAX,
-    VoiceStateManager: needsVoiceRecorder ? 500 : 0
+    VoiceStateManager: needsVoiceRecorder || needsMusic ? 500 : 0
   }),
   partials,
   sweepers: {

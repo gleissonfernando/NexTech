@@ -16,6 +16,7 @@ import { clearSafeBotSetupCache, ensureSafeBotSetup, isSelfBotModuleEnabled } fr
 import { handleSelfBotProtectionGuildMutation } from "../services/selfBotProtectionService";
 import { handleAutoUnmuteVoiceStateUpdate } from "../services/autoUnmuteService";
 import { handleVoiceRecorderVoiceStateUpdate } from "../services/voiceRecorderService";
+import { handleMusicVoiceStateUpdate } from "../music/musicService";
 import type { BotContext } from "../types";
 
 export function registerEvents(client: Client, context: BotContext) {
@@ -87,7 +88,7 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (managedRuntimeBot || isBotModuleEnabled("image-anti-spam") || isLinkAntiSpamEnabled() || isSelfBotModuleEnabled()) {
+  if (managedRuntimeBot || isBotModuleEnabled("music") || isBotModuleEnabled("image-anti-spam") || isLinkAntiSpamEnabled() || isSelfBotModuleEnabled()) {
     client.on(Events.MessageCreate, (message) => runEvent("messageCreate", () => handleMessageCreate(message, context)));
   }
 
@@ -129,11 +130,14 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (isBotModuleEnabled("voice-recorder") || isBotModuleEnabled("auto-unmute")) {
+  if (managedRuntimeBot || isBotModuleEnabled("music") || isBotModuleEnabled("voice-recorder") || isBotModuleEnabled("auto-unmute")) {
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (isMaintenanceModeActive()) return;
       if (isBotModuleEnabled("voice-recorder")) {
         runEvent("voiceStateUpdate.voiceRecorder", () => handleVoiceRecorderVoiceStateUpdate(oldState, newState, context));
+      }
+      if (isBotModuleEnabled("music")) {
+        handleMusicVoiceStateUpdate(oldState, newState, context);
       }
       if (isBotModuleEnabled("auto-unmute")) {
         runEvent("voiceStateUpdate.autoUnmute", () => handleAutoUnmuteVoiceStateUpdate(oldState, newState, context));

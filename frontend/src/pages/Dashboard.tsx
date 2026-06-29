@@ -20,6 +20,7 @@ import {
   Loader2,
   LockKeyhole,
   Mic2,
+  Music2,
   PlayCircle,
   SmilePlus,
   Plug,
@@ -460,6 +461,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   logs: "logs",
   fivem: "fivem",
   "voice-recorder": "voice-recorder",
+  music: "music",
   "self-bot-protection": "safe-bot",
   security: "account-age-security",
   "anti-ban": "anti-ban",
@@ -1116,7 +1118,8 @@ const advancedSecurityModuleViews: ViewId[] = [
   "temporary-voice",
   "tag-verification",
   "bio-url-verification",
-  "first-lady"
+  "first-lady",
+  "music"
 ];
 
 const advancedSecurityModuleDetails: Record<string, {
@@ -1202,6 +1205,12 @@ const advancedSecurityModuleDetails: Record<string, {
     description: "Módulo isolado para limites, relações e histórico de damas por cargo.",
     icon: Users,
     items: ["Cargos autorizados", "Limites", "Relacionamentos", "Histórico"]
+  },
+  music: {
+    title: "Sistema de Música",
+    description: "Player por prefixo com busca, repertório de artistas, filas e controles interativos.",
+    icon: Music2,
+    items: ["Comandos por prefixo", "Fila por servidor", "Permissões e limites", "Player em Componentes V2"]
   }
 };
 
@@ -1449,6 +1458,27 @@ function AdvancedModuleFields({
     );
   }
 
+  if (moduleId === "music") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <AdvancedTextField disabled={disabled} label="Canal de comandos (ID, opcional)" onChange={(value) => onChange({ commandChannelId: value || null })} placeholder="ID do canal de texto" value={stringConfig(config.commandChannelId)} />
+        <AdvancedTextField disabled={disabled} label="Canal de logs (ID, opcional)" onChange={(value) => onChange({ logChannelId: value || null })} placeholder="ID do canal de texto" value={stringConfig(config.logChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Quem pode usar" onChange={(value) => onChange({ permissionMode: value })} options={[{ label: "Todos", value: "everyone" }, { label: "Cargos específicos", value: "roles" }, { label: "Administradores", value: "administrators" }]} placeholder="Selecione" value={stringConfig(config.permissionMode) || "everyone"} />
+        <AdvancedTextField disabled={disabled} label="IDs dos cargos permitidos" onChange={(value) => onChange({ allowedRoleIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.allowedRoleIds)} />
+        <AdvancedTextField disabled={disabled} label="IDs dos usuários bloqueados" onChange={(value) => onChange({ blockedUserIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.blockedUserIds)} />
+        <AdvancedNumberField disabled={disabled} label="Volume padrão (%)" max={100} min={10} onChange={(value) => onChange({ defaultVolume: value })} value={numberConfig(config.defaultVolume, 50)} />
+        <AdvancedNumberField disabled={disabled} label="Limite da fila" max={500} min={1} onChange={(value) => onChange({ queueLimit: value })} value={numberConfig(config.queueLimit, 100)} />
+        <AdvancedNumberField disabled={disabled} label="Limite por playlist" max={100} min={1} onChange={(value) => onChange({ playlistLimit: value })} value={numberConfig(config.playlistLimit, 50)} />
+        <AdvancedNumberField disabled={disabled} label="Limite por artista" max={50} min={1} onChange={(value) => onChange({ artistLimit: value })} value={numberConfig(config.artistLimit, 25)} />
+        <AdvancedNumberField disabled={disabled} label="Cooldown (segundos)" max={60} min={0} onChange={(value) => onChange({ cooldownSeconds: value })} value={numberConfig(config.cooldownSeconds, 5)} />
+        <AdvancedNumberField disabled={disabled} label="Duração máxima (minutos)" max={180} min={1} onChange={(value) => onChange({ maxTrackMinutes: value })} value={numberConfig(config.maxTrackMinutes, 15)} />
+        <AdvancedToggleField checked={config.allowPlaylists !== false} disabled={disabled} label="Permitir playlists" onChange={(checked) => onChange({ allowPlaylists: checked })} />
+        <AdvancedToggleField checked={config.allowLinks !== false} disabled={disabled} label="Permitir links" onChange={(checked) => onChange({ allowLinks: checked })} />
+        <AdvancedToggleField checked={config.allowArtistSearch !== false} disabled={disabled} label="Permitir busca de artistas" onChange={(checked) => onChange({ allowArtistSearch: checked })} />
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <AdvancedTextField disabled={disabled} label="Configuração principal" onChange={(value) => onChange({ primaryConfig: value })} placeholder="Informe o valor principal do módulo" value={stringConfig(config.primaryConfig)} />
@@ -1517,6 +1547,10 @@ function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, un
     return { antiSpamSeconds: 10, delaySeconds: 0, enabled: false, requiredRoleId: null, voiceChannelId: null, ...config };
   }
 
+  if (moduleId === "music") {
+    return { enabled: false, commandChannelId: null, permissionMode: "everyone", allowedRoleIds: [], blockedUserIds: [], defaultVolume: 50, queueLimit: 100, playlistLimit: 50, artistLimit: 25, cooldownSeconds: 5, maxTrackMinutes: 15, allowPlaylists: true, allowLinks: true, allowArtistSearch: true, logChannelId: null, ...config };
+  }
+
   return { autoAction: false, enabled: false, intervalMinutes: 10, primaryConfig: "", roleId: null, ...config };
 }
 
@@ -1526,6 +1560,14 @@ function stringConfig(value: unknown) {
 
 function numberConfig(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function arrayConfig(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").join(", ") : "";
+}
+
+function splitIds(value: string) {
+  return [...new Set(value.split(/[\s,;]+/).map((item) => item.trim()).filter(Boolean))];
 }
 
 function FivemView({

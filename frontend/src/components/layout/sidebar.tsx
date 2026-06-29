@@ -14,6 +14,7 @@ import {
   ListChecks,
   LockKeyhole,
   Mic2,
+  Music2,
   Radio,
   ScrollText,
   Settings,
@@ -46,6 +47,7 @@ export type ViewId =
   | "rules"
   | "mission-tools"
   | "voice-recorder"
+  | "music"
   | "self-bot-protection"
   | "security"
   | "anti-ban"
@@ -91,6 +93,7 @@ const navItems: NavItem[] = [
   { id: "rules", label: "Regras", icon: ScrollText, moduleId: "rules" },
   { id: "mission-tools", label: "Mission Tools", icon: ListChecks, moduleId: "mission-tools" },
   { id: "voice-recorder", label: "Voice Recorder", icon: Mic2, moduleId: "voice-recorder" },
+  { id: "music", label: "Música", icon: Music2, moduleId: "music" },
   { id: "self-bot-protection", label: "SelfBot Protection", icon: ShieldCheck, moduleId: "safe-bot" },
   { id: "security", label: "Seguranca", icon: ShieldAlert, moduleId: "account-age-security" },
   { id: "anti-ban", label: "Anti Ban", icon: ShieldCheck, moduleId: "anti-ban" },
