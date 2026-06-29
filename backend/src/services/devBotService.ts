@@ -40,6 +40,7 @@ export const DEV_MODULES = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
+  { id: "orvitech-sales", label: "OrviTech - Sistema de Vendas" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificacao" },

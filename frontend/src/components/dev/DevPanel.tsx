@@ -5,6 +5,7 @@ import {
     ChevronDown,
     Circle,
     Copy,
+    CreditCard,
     ExternalLink,
     Eye,
     EyeOff,
@@ -17,6 +18,7 @@ import {
     MessageSquare,
     MoreVertical,
     Power,
+    Plus,
     ScrollText,
     Search,
     Server,
@@ -34,17 +36,26 @@ import {
 import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import {
     createDevBot,
+    createOrvitechSale,
+    createOrvitechSalesPlan,
     deleteDevBot,
+    deleteOrvitechPaymentProvider,
+    deleteOrvitechSalesPlan,
     getBotGuildConfig,
     getDevBots,
     getDevModules,
     getGuildLiveOptions,
+    getOrvitechSalesDashboard,
     restartDevBot,
+    saveOrvitechPaymentProvider,
+    saveOrvitechSalesSettings,
     startAllDevBots,
     stopAllDevBots,
     stopDevBot,
     updateBotGuildConfig,
-    updateDevBotModules
+    updateDevBotModules,
+    updateOrvitechSaleStatus,
+    updateOrvitechSalesPlan
 } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
 import { dashboardUrl } from "../../lib/urls";
@@ -57,7 +68,15 @@ import type {
     DevBotStatus,
     DevModuleDefinition,
     GuildChannelOption,
-    GuildVoiceChannelOption
+    GuildVoiceChannelOption,
+    OrvitechSaleStatus,
+    OrvitechSalesDashboard,
+    OrvitechSalesPaymentProvider,
+    OrvitechSalesPlan,
+    SaveOrvitechPaymentProviderPayload,
+    SaveOrvitechSalePayload,
+    SaveOrvitechSalesPlanPayload,
+    SaveOrvitechSalesSettingsPayload
 } from "../../types";
 import { Avatar } from "../ui/avatar";
 import { Badge } from "../ui/badge";
@@ -71,6 +90,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
+  { id: "orvitech-sales", label: "OrviTech - Sistema de Vendas" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },
@@ -141,6 +161,7 @@ type BotMenuId =
   | "bio-url-verification"
   | "first-lady"
   | "economy"
+  | "sales"
   | "discord"
   | "select-menu"
   | "fivem"
@@ -309,6 +330,13 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: []
   },
   {
+    id: "sales",
+    label: "Vendas OrviTech",
+    description: "Planos, pagamentos e liberacoes do bot OrviTech",
+    icon: CreditCard,
+    moduleIds: ["orvitech-sales"]
+  },
+  {
     id: "discord",
     label: "Discord",
     description: "Cargos, boas-vindas e mensagens",
@@ -389,7 +417,7 @@ type DevPanelProps = {
   user?: AuthUser;
 };
 
-export type DevDashboardSection = "connected" | "bot-menu" | "cloning";
+export type DevDashboardSection = "connected" | "bot-menu" | "cloning" | "sales";
 
 export function DevPanel({
   activeDashboardSection = null,
@@ -814,6 +842,33 @@ export function DevPanel({
     );
   }
 
+  if (activeDashboardSection === "sales") {
+    return (
+      <div className="space-y-7">
+        <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
+        {message ? (
+          <div className="rounded-lg border border-purple-400/25 bg-purple-500/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(124,58,237,0.12)]">
+            {message}
+          </div>
+        ) : null}
+        {selectedBot ? (
+          <OrvitechSalesWorkspace
+            bot={selectedBot}
+            enabled={selectedBot.enabledModules.includes("orvitech-sales")}
+            guilds={guilds}
+            onEnable={() => void handleToggleModule(selectedBot, "orvitech-sales", true)}
+          />
+        ) : (
+          <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(124,58,237,0.08)]">
+            <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
+              Selecione um bot para abrir as vendas OrviTech.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-7">
       <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
@@ -1005,6 +1060,13 @@ export function DevPanel({
                 )}
               </CardContent>
             </Card>
+          ) : activeDashboardSection === "sales" && selectedBot ? (
+            <OrvitechSalesWorkspace
+              bot={selectedBot}
+              enabled={selectedBot.enabledModules.includes("orvitech-sales")}
+              guilds={guilds}
+              onEnable={() => void handleToggleModule(selectedBot, "orvitech-sales", true)}
+            />
           ) : selectedBot ? (
             <BotModuleWorkspace
               activeMenuId={activeBotMenuId}
@@ -2002,6 +2064,552 @@ const clonePartOptions = [
   { id: "text", label: "Canais de texto" },
   { id: "voice", label: "Canais de voz" }
 ];
+
+const defaultSalesSettingsForm: SaveOrvitechSalesSettingsPayload = {
+  currency: "BRL",
+  customerRoleId: null,
+  enabled: false,
+  logChannelId: null,
+  ownerUserId: "1492325134550302952",
+  panelColor: "#7c3aed",
+  panelDescription: "Planos, liberacoes e pagamentos do bot OrviTech.",
+  panelImageUrl: null,
+  panelTitle: "OrviTech Bot",
+  publicUrl: "/orvitech/1492325134550302952",
+  saleChannelId: null,
+  supportRoleIds: [],
+  termsUrl: null,
+  thumbnailUrl: null
+};
+
+const defaultProviderForm: SaveOrvitechPaymentProviderPayload = {
+  enabled: true,
+  instructions: "",
+  label: "Pagamento manual",
+  provider: "manual",
+  publicKey: "",
+  secret: "",
+  webhookUrl: ""
+};
+
+const defaultPlanForm: SaveOrvitechSalesPlanPayload = {
+  checkoutMessage: "",
+  description: "",
+  durationDays: 30,
+  enabled: true,
+  imageUrl: "",
+  moduleIds: ["orvitech-sales"],
+  name: "Plano mensal OrviTech",
+  priceCents: 0
+};
+
+const defaultSaleForm: SaveOrvitechSalePayload = {
+  amountCents: null,
+  buyerId: "",
+  buyerName: "",
+  externalReference: "",
+  notes: "",
+  paymentProviderId: null,
+  planId: null,
+  status: "pending"
+};
+
+function OrvitechSalesWorkspace({
+  bot,
+  enabled,
+  guilds,
+  onEnable
+}: {
+  bot: DevBot;
+  enabled: boolean;
+  guilds: DashboardMeGuild[];
+  onEnable: () => void;
+}) {
+  const guildOptions = useMemo(() => buildBotGuildOptions(bot, guilds), [bot, guilds]);
+  const [guildId, setGuildId] = useState(bot.mainGuildId || guildOptions[0]?.id || "");
+  const [dashboard, setDashboard] = useState<OrvitechSalesDashboard | null>(null);
+  const [settingsForm, setSettingsForm] = useState<SaveOrvitechSalesSettingsPayload>(defaultSalesSettingsForm);
+  const [providerForm, setProviderForm] = useState<SaveOrvitechPaymentProviderPayload>(defaultProviderForm);
+  const [planForm, setPlanForm] = useState<SaveOrvitechSalesPlanPayload>(defaultPlanForm);
+  const [saleForm, setSaleForm] = useState<SaveOrvitechSalePayload>(defaultSaleForm);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGuildId(bot.mainGuildId || guildOptions[0]?.id || "");
+  }, [bot.id, bot.mainGuildId, guildOptions]);
+
+  useEffect(() => {
+    if (!guildId) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setMessage(null);
+
+    getOrvitechSalesDashboard(bot.id, guildId)
+      .then((data) => {
+        if (cancelled) return;
+        setDashboard(data);
+        setSettingsForm(settingsToForm(data.settings));
+        setSaleForm((current) => ({
+          ...current,
+          paymentProviderId: current.paymentProviderId ?? data.settings.paymentProviders[0]?.id ?? null,
+          planId: current.planId ?? data.plans[0]?.id ?? null
+        }));
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar o sistema de vendas.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bot.id, guildId]);
+
+  async function refreshDashboard() {
+    if (!guildId) return;
+    const data = await getOrvitechSalesDashboard(bot.id, guildId);
+    setDashboard(data);
+    setSettingsForm(settingsToForm(data.settings));
+  }
+
+  async function handleSaveSettings() {
+    if (!guildId) return;
+    setSaving("settings");
+    setMessage(null);
+    try {
+      const settings = await saveOrvitechSalesSettings(bot.id, guildId, sanitizeSalesSettingsForm(settingsForm));
+      setDashboard((current) => current ? { ...current, settings } : current);
+      setSettingsForm(settingsToForm(settings));
+      setMessage("Configuracao de vendas salva.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar a configuracao.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveProvider() {
+    if (!guildId || !providerForm.label.trim()) return;
+    setSaving("provider");
+    setMessage(null);
+    try {
+      const settings = await saveOrvitechPaymentProvider(bot.id, guildId, providerForm);
+      setDashboard((current) => current ? { ...current, settings } : current);
+      setProviderForm(defaultProviderForm);
+      setMessage("Forma de pagamento salva.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o pagamento.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDeleteProvider(provider: OrvitechSalesPaymentProvider) {
+    if (!guildId || !window.confirm(`Remover ${provider.label}?`)) return;
+    setSaving(provider.id);
+    try {
+      const settings = await deleteOrvitechPaymentProvider(bot.id, guildId, provider.id);
+      setDashboard((current) => current ? { ...current, settings } : current);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSavePlan() {
+    if (!guildId || !planForm.name.trim()) return;
+    setSaving("plan");
+    setMessage(null);
+    try {
+      if (editingPlanId) {
+        await updateOrvitechSalesPlan(bot.id, guildId, editingPlanId, planForm);
+      } else {
+        await createOrvitechSalesPlan(bot.id, guildId, planForm);
+      }
+      setPlanForm(defaultPlanForm);
+      setEditingPlanId(null);
+      await refreshDashboard();
+      setMessage("Plano salvo.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o plano.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDeletePlan(plan: OrvitechSalesPlan) {
+    if (!guildId || !window.confirm(`Remover o plano ${plan.name}?`)) return;
+    setSaving(plan.id);
+    try {
+      await deleteOrvitechSalesPlan(bot.id, guildId, plan.id);
+      await refreshDashboard();
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleCreateSale() {
+    if (!guildId || !/^\d{5,32}$/.test(saleForm.buyerId)) {
+      setMessage("Informe o ID Discord do comprador.");
+      return;
+    }
+
+    setSaving("sale");
+    setMessage(null);
+    try {
+      await createOrvitechSale(bot.id, guildId, saleForm);
+      setSaleForm({
+        ...defaultSaleForm,
+        paymentProviderId: dashboard?.settings.paymentProviders[0]?.id ?? null,
+        planId: dashboard?.plans[0]?.id ?? null
+      });
+      await refreshDashboard();
+      setMessage("Venda registrada.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel registrar a venda.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaleStatus(saleId: string, status: OrvitechSaleStatus) {
+    if (!guildId) return;
+    setSaving(saleId);
+    try {
+      await updateOrvitechSaleStatus(bot.id, guildId, saleId, status);
+      await refreshDashboard();
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function editPlan(plan: OrvitechSalesPlan) {
+    setEditingPlanId(plan.id);
+    setPlanForm({
+      checkoutMessage: plan.checkoutMessage ?? "",
+      description: plan.description ?? "",
+      durationDays: plan.durationDays,
+      enabled: plan.enabled,
+      imageUrl: plan.imageUrl ?? "",
+      moduleIds: plan.moduleIds.length ? plan.moduleIds : ["orvitech-sales"],
+      name: plan.name,
+      priceCents: plan.priceCents
+    });
+  }
+
+  const stats = dashboard?.stats;
+
+  return (
+    <div className="space-y-6">
+      <Card className="border-purple-500/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(8,8,12,0.96))] shadow-[0_0_44px_rgba(124,58,237,0.10)] hover:translate-y-0">
+        <CardHeader className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2 text-white">
+                <CreditCard className="h-5 w-5 text-purple-200" />
+                Vendas OrviTech
+              </CardTitle>
+              <CardDescription className="mt-2 font-medium text-zinc-300">
+                Bot principal: 1492325134550302952. Planos, pagamentos, imagens e vendas por servidor.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none"
+                onChange={(event) => setGuildId(event.target.value)}
+                value={guildId}
+              >
+                {guildOptions.map((guild) => <option key={guild.id} value={guild.id}>{guild.name}</option>)}
+              </select>
+              {!enabled ? (
+                <Button onClick={onEnable} variant="outline">
+                  <Power className="h-4 w-4" />
+                  Liberar modulo
+                </Button>
+              ) : (
+                <Badge className="border-emerald-400/30 bg-emerald-500/15 text-emerald-100" variant="muted">Modulo liberado</Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-5 pt-0 sm:grid-cols-2 lg:grid-cols-6 sm:p-6 sm:pt-0">
+          <SalesMetric label="Receita paga" value={formatMoney(stats?.revenueCents ?? 0, dashboard?.settings.currency ?? "BRL")} />
+          <SalesMetric label="Vendas" value={String(stats?.totalSales ?? 0)} />
+          <SalesMetric label="Pagas" value={String(stats?.paidSales ?? 0)} />
+          <SalesMetric label="Pendentes" value={String(stats?.pendingSales ?? 0)} />
+          <SalesMetric label="Planos ativos" value={String(stats?.activePlans ?? 0)} />
+          <SalesMetric label="Este mes" value={String(stats?.salesThisMonth ?? 0)} />
+        </CardContent>
+      </Card>
+
+      {message ? (
+        <div className="rounded-lg border border-purple-400/25 bg-purple-500/10 px-4 py-3 text-sm font-semibold text-white">
+          {message}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <Card className="border-zinc-800 bg-zinc-950/80 hover:translate-y-0">
+          <CardContent className="flex min-h-48 items-center justify-center p-6">
+            <Loader2 className="h-7 w-7 animate-spin text-zinc-400" />
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+            <CardHeader>
+              <CardTitle className="text-white">Configuracao publica</CardTitle>
+              <CardDescription>Textos, canais, URL e imagens dos paineis de venda.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DevInput label="Titulo do painel" onChange={(value) => setSettingsForm((current) => ({ ...current, panelTitle: value }))} value={settingsForm.panelTitle ?? ""} />
+                <DevInput label="URL publica" onChange={(value) => setSettingsForm((current) => ({ ...current, publicUrl: value }))} value={settingsForm.publicUrl ?? ""} />
+                <DevInput label="ID dono/bot principal" onChange={(value) => setSettingsForm((current) => ({ ...current, ownerUserId: value.replace(/\D/g, "") }))} value={settingsForm.ownerUserId ?? ""} />
+                <DevInput label="Cor do painel" onChange={(value) => setSettingsForm((current) => ({ ...current, panelColor: value }))} value={settingsForm.panelColor ?? ""} />
+                <DevInput label="Canal de vendas" onChange={(value) => setSettingsForm((current) => ({ ...current, saleChannelId: value.replace(/\D/g, "") || null }))} value={settingsForm.saleChannelId ?? ""} />
+                <DevInput label="Canal de logs" onChange={(value) => setSettingsForm((current) => ({ ...current, logChannelId: value.replace(/\D/g, "") || null }))} value={settingsForm.logChannelId ?? ""} />
+                <DevInput label="Cargo cliente" onChange={(value) => setSettingsForm((current) => ({ ...current, customerRoleId: value.replace(/\D/g, "") || null }))} value={settingsForm.customerRoleId ?? ""} />
+                <DevInput label="Imagem do painel" onChange={(value) => setSettingsForm((current) => ({ ...current, panelImageUrl: value }))} value={settingsForm.panelImageUrl ?? ""} />
+                <DevInput label="Thumbnail" onChange={(value) => setSettingsForm((current) => ({ ...current, thumbnailUrl: value }))} value={settingsForm.thumbnailUrl ?? ""} />
+                <DevInput label="Termos de venda" onChange={(value) => setSettingsForm((current) => ({ ...current, termsUrl: value }))} value={settingsForm.termsUrl ?? ""} />
+              </div>
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase text-zinc-400">Descricao</span>
+                <textarea
+                  className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-medium text-white outline-none transition focus:border-purple-400/60"
+                  onChange={(event) => setSettingsForm((current) => ({ ...current, panelDescription: event.target.value }))}
+                  value={settingsForm.panelDescription ?? ""}
+                />
+              </label>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3">
+                <label className="flex items-center gap-3 text-sm font-semibold text-white">
+                  <Switch checked={Boolean(settingsForm.enabled)} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, enabled: checked }))} />
+                  Sistema de vendas ativo
+                </label>
+                <select
+                  className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none"
+                  onChange={(event) => setSettingsForm((current) => ({ ...current, currency: event.target.value as "BRL" | "USD" | "EUR" }))}
+                  value={settingsForm.currency ?? "BRL"}
+                >
+                  <option value="BRL">BRL</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+                <Button disabled={saving === "settings"} onClick={() => void handleSaveSettings()}>
+                  {saving === "settings" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+                  Salvar configuracao
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+              <CardHeader>
+                <CardTitle className="text-white">Pagamentos modulares</CardTitle>
+                <CardDescription>Cada usuario pode cadastrar seu proprio metodo de pagamento.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DevInput label="Nome" onChange={(value) => setProviderForm((current) => ({ ...current, label: value }))} value={providerForm.label} />
+                  <select
+                    className="h-11 rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none"
+                    onChange={(event) => setProviderForm((current) => ({ ...current, provider: event.target.value as SaveOrvitechPaymentProviderPayload["provider"] }))}
+                    value={providerForm.provider}
+                  >
+                    <option value="manual">Manual</option>
+                    <option value="pix">Pix</option>
+                    <option value="mercadopago">Mercado Pago</option>
+                    <option value="stripe">Stripe</option>
+                    <option value="paypal">PayPal</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <DevInput label="Chave publica" onChange={(value) => setProviderForm((current) => ({ ...current, publicKey: value }))} value={providerForm.publicKey ?? ""} />
+                  <DevInput label="Segredo/API token" onChange={(value) => setProviderForm((current) => ({ ...current, secret: value }))} value={providerForm.secret ?? ""} />
+                  <DevInput label="Webhook" onChange={(value) => setProviderForm((current) => ({ ...current, webhookUrl: value }))} value={providerForm.webhookUrl ?? ""} />
+                  <DevInput label="Instrucoes" onChange={(value) => setProviderForm((current) => ({ ...current, instructions: value }))} value={providerForm.instructions ?? ""} />
+                </div>
+                <Button disabled={saving === "provider"} onClick={() => void handleSaveProvider()}>
+                  {saving === "provider" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                  Salvar pagamento
+                </Button>
+                <div className="grid gap-2">
+                  {dashboard?.settings.paymentProviders.map((provider) => (
+                    <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/35 p-3" key={provider.id}>
+                      <CreditCard className="h-4 w-4 text-purple-200" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-white">{provider.label}</p>
+                        <p className="truncate text-xs font-medium text-zinc-400">{provider.provider} {provider.secretConfigured ? "· segredo configurado" : ""}</p>
+                      </div>
+                      <Badge variant={provider.enabled ? "success" : "muted"}>{provider.enabled ? "Ativo" : "Off"}</Badge>
+                      <Button disabled={saving === provider.id} onClick={() => void handleDeleteProvider(provider)} size="icon" variant="destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+            <CardHeader>
+              <CardTitle className="text-white">Planos de venda</CardTitle>
+              <CardDescription>Produtos vendidos pelo bot principal OrviTech.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DevInput label="Nome do plano" onChange={(value) => setPlanForm((current) => ({ ...current, name: value }))} value={planForm.name} />
+                <DevInput inputMode="numeric" label="Preco em centavos" onChange={(value) => setPlanForm((current) => ({ ...current, priceCents: Number(value.replace(/\D/g, "")) }))} value={String(planForm.priceCents)} />
+                <DevInput inputMode="numeric" label="Duracao em dias" onChange={(value) => setPlanForm((current) => ({ ...current, durationDays: Number(value.replace(/\D/g, "")) || null }))} value={String(planForm.durationDays ?? "")} />
+                <DevInput label="Imagem do plano" onChange={(value) => setPlanForm((current) => ({ ...current, imageUrl: value }))} value={planForm.imageUrl ?? ""} />
+                <DevInput label="Descricao" onChange={(value) => setPlanForm((current) => ({ ...current, description: value }))} value={planForm.description ?? ""} />
+                <DevInput label="Mensagem checkout" onChange={(value) => setPlanForm((current) => ({ ...current, checkoutMessage: value }))} value={planForm.checkoutMessage ?? ""} />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-3 text-sm font-semibold text-white">
+                  <Switch checked={planForm.enabled} onCheckedChange={(checked) => setPlanForm((current) => ({ ...current, enabled: checked }))} />
+                  Plano ativo
+                </label>
+                <div className="flex gap-2">
+                  {editingPlanId ? <Button onClick={() => { setEditingPlanId(null); setPlanForm(defaultPlanForm); }} variant="outline">Cancelar</Button> : null}
+                  <Button disabled={saving === "plan"} onClick={() => void handleSavePlan()}>
+                    {saving === "plan" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {editingPlanId ? "Atualizar plano" : "Criar plano"}
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-3">
+                {dashboard?.plans.map((plan) => (
+                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-3" key={plan.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-white">{plan.name}</p>
+                        <p className="text-xs font-medium text-zinc-400">{formatMoney(plan.priceCents, dashboard.settings.currency)} · {plan.durationDays ? `${plan.durationDays} dias` : "sem expirar"}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button onClick={() => editPlan(plan)} size="sm" variant="outline"><Settings className="h-4 w-4" />Editar</Button>
+                        <Button disabled={saving === plan.id} onClick={() => void handleDeletePlan(plan)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Remover</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+            <CardHeader>
+              <CardTitle className="text-white">Vendas e liberacoes</CardTitle>
+              <CardDescription>Registro manual ou confirmacao de pagamentos recebidos.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <select className="h-11 rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none" onChange={(event) => setSaleForm((current) => ({ ...current, planId: event.target.value || null }))} value={saleForm.planId ?? ""}>
+                  <option value="">Venda avulsa</option>
+                  {dashboard?.plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+                </select>
+                <select className="h-11 rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none" onChange={(event) => setSaleForm((current) => ({ ...current, paymentProviderId: event.target.value || null }))} value={saleForm.paymentProviderId ?? ""}>
+                  <option value="">Sem pagamento</option>
+                  {dashboard?.settings.paymentProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+                </select>
+                <DevInput inputMode="numeric" label="ID comprador" onChange={(value) => setSaleForm((current) => ({ ...current, buyerId: value.replace(/\D/g, "") }))} value={saleForm.buyerId} />
+                <DevInput label="Nome comprador" onChange={(value) => setSaleForm((current) => ({ ...current, buyerName: value }))} value={saleForm.buyerName ?? ""} />
+                <DevInput inputMode="numeric" label="Valor em centavos" onChange={(value) => setSaleForm((current) => ({ ...current, amountCents: Number(value.replace(/\D/g, "")) || null }))} value={String(saleForm.amountCents ?? "")} />
+                <DevInput label="Referencia externa" onChange={(value) => setSaleForm((current) => ({ ...current, externalReference: value }))} value={saleForm.externalReference ?? ""} />
+              </div>
+              <Button disabled={saving === "sale"} onClick={() => void handleCreateSale()}>
+                {saving === "sale" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Registrar venda
+              </Button>
+              <div className="grid gap-3">
+                {dashboard?.sales.map((sale) => (
+                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-3" key={sale.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-white">{sale.planName} · {sale.buyerName || sale.buyerId}</p>
+                        <p className="text-xs font-medium text-zinc-400">{formatMoney(sale.amountCents, sale.currency)} · {formatDate(sale.createdAt)}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={sale.status === "paid" ? "success" : sale.status === "cancelled" || sale.status === "refunded" ? "danger" : "muted"}>{saleStatusLabel(sale.status)}</Badge>
+                        {sale.status !== "paid" ? <Button disabled={saving === sale.id} onClick={() => void handleSaleStatus(sale.id, "paid")} size="sm" variant="outline">Marcar paga</Button> : null}
+                        {sale.status === "pending" ? <Button disabled={saving === sale.id} onClick={() => void handleSaleStatus(sale.id, "cancelled")} size="sm" variant="destructive">Cancelar</Button> : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SalesMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-purple-500/15 bg-black/35 p-4">
+      <p className="truncate text-xs font-bold uppercase text-zinc-400">{label}</p>
+      <p className="mt-2 truncate text-base font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function settingsToForm(settings: OrvitechSalesDashboard["settings"]): SaveOrvitechSalesSettingsPayload {
+  return {
+    currency: settings.currency,
+    customerRoleId: settings.customerRoleId,
+    enabled: settings.enabled,
+    logChannelId: settings.logChannelId,
+    ownerUserId: settings.ownerUserId,
+    panelColor: settings.panelColor,
+    panelDescription: settings.panelDescription,
+    panelImageUrl: settings.panelImageUrl,
+    panelTitle: settings.panelTitle,
+    publicUrl: settings.publicUrl,
+    saleChannelId: settings.saleChannelId,
+    supportRoleIds: settings.supportRoleIds,
+    termsUrl: settings.termsUrl,
+    thumbnailUrl: settings.thumbnailUrl
+  };
+}
+
+function sanitizeSalesSettingsForm(form: SaveOrvitechSalesSettingsPayload): SaveOrvitechSalesSettingsPayload {
+  return {
+    ...form,
+    customerRoleId: form.customerRoleId || null,
+    logChannelId: form.logChannelId || null,
+    panelImageUrl: form.panelImageUrl || null,
+    saleChannelId: form.saleChannelId || null,
+    termsUrl: form.termsUrl || null,
+    thumbnailUrl: form.thumbnailUrl || null
+  };
+}
+
+function formatMoney(cents: number, currency: "BRL" | "USD" | "EUR") {
+  return new Intl.NumberFormat("pt-BR", {
+    currency,
+    style: "currency"
+  }).format(cents / 100);
+}
+
+function saleStatusLabel(status: OrvitechSaleStatus) {
+  const labels: Record<OrvitechSaleStatus, string> = {
+    cancelled: "Cancelada",
+    paid: "Paga",
+    pending: "Pendente",
+    refunded: "Reembolsada"
+  };
+
+  return labels[status];
+}
 
 type ServerClonePlanForm = {
   categoryRenames: string;

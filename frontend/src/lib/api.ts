@@ -50,6 +50,11 @@ import type {
   MissionToolsSettings,
   MissionToolsUserPanel,
   MaintenanceState,
+  OrvitechSale,
+  OrvitechSaleStatus,
+  OrvitechSalesDashboard,
+  OrvitechSalesPlan,
+  OrvitechSalesSettings,
   PanelImageSettings,
   PublicKickClips,
   SaveClipsConfigPayload,
@@ -58,6 +63,10 @@ import type {
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
   SaveMissionToolsSettingsPayload,
+  SaveOrvitechPaymentProviderPayload,
+  SaveOrvitechSalePayload,
+  SaveOrvitechSalesPlanPayload,
+  SaveOrvitechSalesSettingsPayload,
   SavePanelImageSettingsPayload,
   SaveSelfBotProtectionSettingsPayload,
   SaveSocialPanelPayload,
@@ -1469,6 +1478,73 @@ export async function getBotGuildConfig(botId: string, guildId: string) {
 export async function updateBotGuildConfig(botId: string, guildId: string, payload: Pick<BotGuildConfig, "guildName" | "modules">) {
   const { data } = await api.patch<{ config: BotGuildConfig }>(`/dev/bots/${botId}/guilds/${guildId}/config`, payload);
   return data.config;
+}
+
+export async function getOrvitechSalesDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<OrvitechSalesDashboard>(`/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales`);
+  return data;
+}
+
+export async function saveOrvitechSalesSettings(botId: string, guildId: string, payload: SaveOrvitechSalesSettingsPayload) {
+  const { data } = await api.patch<{ settings: OrvitechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/settings`,
+    payload
+  );
+  return data.settings;
+}
+
+export async function saveOrvitechPaymentProvider(botId: string, guildId: string, payload: SaveOrvitechPaymentProviderPayload) {
+  const { data } = await api.post<{ settings: OrvitechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/providers`,
+    payload
+  );
+  return data.settings;
+}
+
+export async function deleteOrvitechPaymentProvider(botId: string, guildId: string, providerId: string) {
+  const { data } = await api.delete<{ settings: OrvitechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/providers/${encodeURIComponent(providerId)}`
+  );
+  return data.settings;
+}
+
+export async function createOrvitechSalesPlan(botId: string, guildId: string, payload: SaveOrvitechSalesPlanPayload) {
+  const { data } = await api.post<{ plan: OrvitechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans`,
+    payload
+  );
+  return data.plan;
+}
+
+export async function updateOrvitechSalesPlan(botId: string, guildId: string, planId: string, payload: SaveOrvitechSalesPlanPayload) {
+  const { data } = await api.patch<{ plan: OrvitechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans/${encodeURIComponent(planId)}`,
+    payload
+  );
+  return data.plan;
+}
+
+export async function deleteOrvitechSalesPlan(botId: string, guildId: string, planId: string) {
+  const { data } = await api.delete<{ plan: OrvitechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans/${encodeURIComponent(planId)}`
+  );
+  return data.plan;
+}
+
+export async function createOrvitechSale(botId: string, guildId: string, payload: SaveOrvitechSalePayload) {
+  const { data } = await api.post<{ sale: OrvitechSale }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/sales`,
+    payload
+  );
+  return data.sale;
+}
+
+export async function updateOrvitechSaleStatus(botId: string, guildId: string, saleId: string, status: OrvitechSaleStatus) {
+  const { data } = await api.patch<{ sale: OrvitechSale }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/sales/${encodeURIComponent(saleId)}/status`,
+    { status }
+  );
+  return data.sale;
 }
 
 export async function getAdvancedModuleConfig(botId: string, guildId: string, moduleId: string) {

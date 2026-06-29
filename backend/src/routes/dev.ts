@@ -44,6 +44,20 @@ import {
   sendMaintenanceManualAlert,
   setMaintenanceMode
 } from "../services/maintenanceService";
+import {
+  deleteOrvitechPaymentProvider,
+  deleteOrvitechSalesPlan,
+  getOrvitechSalesDashboard,
+  ORVITECH_SALES_MODULE_ID,
+  saveOrvitechPaymentProvider,
+  saveOrvitechSale,
+  saveOrvitechSalesPlan,
+  saveOrvitechSalesSettings,
+  toPlanDto,
+  toSaleDto,
+  toSettingsDto,
+  updateOrvitechSaleStatus
+} from "../services/orvitechSalesService";
 import type { DashboardAuth } from "../services/tokenService";
 
 const moduleIds = DEV_MODULES.map((module) => module.id) as [string, ...string[]];
@@ -95,6 +109,60 @@ const fivemModulePatchSchema = fivemModuleSchema.partial();
 const guildConfigSchema = z.object({
   guildName: z.string().min(1).max(100).default("Servidor"),
   modules: z.record(z.record(z.unknown())).default({})
+});
+
+const orvitechSalesSettingsSchema = z.object({
+  currency: z.enum(["BRL", "USD", "EUR"]).optional(),
+  customerRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  enabled: z.boolean().optional(),
+  logChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  ownerUserId: z.string().regex(/^\d{5,32}$/).optional(),
+  panelColor: z.string().min(4).max(24).optional(),
+  panelDescription: z.string().min(1).max(1200).optional(),
+  panelImageUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  panelTitle: z.string().min(2).max(120).optional(),
+  publicUrl: z.string().min(1).max(2048).optional(),
+  saleChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  supportRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).optional(),
+  termsUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  thumbnailUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
+});
+
+const orvitechPaymentProviderSchema = z.object({
+  enabled: z.boolean().default(true),
+  id: z.string().min(1).max(120).nullable().optional(),
+  instructions: z.string().max(1200).nullable().optional().or(z.literal("")),
+  label: z.string().min(2).max(80),
+  provider: z.enum(["manual", "pix", "mercadopago", "stripe", "paypal", "custom"]),
+  publicKey: z.string().max(512).nullable().optional().or(z.literal("")),
+  secret: z.string().max(2048).nullable().optional().or(z.literal("")),
+  webhookUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
+});
+
+const orvitechSalesPlanSchema = z.object({
+  checkoutMessage: z.string().max(1200).nullable().optional().or(z.literal("")),
+  description: z.string().max(1200).nullable().optional().or(z.literal("")),
+  durationDays: z.number().int().min(1).max(3650).nullable().optional(),
+  enabled: z.boolean().default(true),
+  imageUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  moduleIds: z.array(devModuleIdSchema).default([ORVITECH_SALES_MODULE_ID]),
+  name: z.string().min(2).max(100),
+  priceCents: z.number().int().min(0).max(100000000)
+});
+
+const orvitechSaleSchema = z.object({
+  amountCents: z.number().int().min(0).max(100000000).nullable().optional(),
+  buyerId: z.string().regex(/^\d{5,32}$/),
+  buyerName: z.string().max(100).nullable().optional().or(z.literal("")),
+  externalReference: z.string().max(200).nullable().optional().or(z.literal("")),
+  notes: z.string().max(1200).nullable().optional().or(z.literal("")),
+  paymentProviderId: z.string().max(120).nullable().optional(),
+  planId: z.string().max(120).nullable().optional(),
+  status: z.enum(["pending", "paid", "cancelled", "refunded"]).default("pending")
+});
+
+const orvitechSaleStatusSchema = z.object({
+  status: z.enum(["pending", "paid", "cancelled", "refunded"])
 });
 
 export const devRouter = Router();
@@ -797,6 +865,254 @@ devRouter.patch("/bots/:botId/guilds/:guildId/config", async (req, res, next) =>
 
     return res.json({
       config
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/bots/:botId/guilds/:guildId/orvitech-sales", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    return res.json(await getOrvitechSalesDashboard(req.params.botId, req.params.guildId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/settings", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechSalesSettingsSchema.parse(req.body ?? {});
+    const settings = await saveOrvitechSalesSettings(req.params.botId, req.params.guildId, {
+      ...input,
+      panelImageUrl: input.panelImageUrl === "" ? null : input.panelImageUrl,
+      termsUrl: input.termsUrl === "" ? null : input.termsUrl,
+      thumbnailUrl: input.thumbnailUrl === "" ? null : input.thumbnailUrl
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_settings", "Configuracao do sistema de vendas OrviTech atualizada.", {
+      enabled: settings.enabled
+    });
+
+    return res.json({
+      settings: toSettingsDto(settings)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/providers", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechPaymentProviderSchema.parse(req.body ?? {});
+    const settings = await saveOrvitechPaymentProvider(req.params.botId, req.params.guildId, {
+      ...input,
+      instructions: input.instructions === "" ? null : input.instructions,
+      publicKey: input.publicKey === "" ? null : input.publicKey,
+      secret: input.secret === "" ? null : input.secret,
+      webhookUrl: input.webhookUrl === "" ? null : input.webhookUrl
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_provider", `Pagamento OrviTech salvo: ${input.label}.`, {
+      provider: input.provider
+    });
+
+    return res.json({
+      settings: toSettingsDto(settings)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/providers/:providerId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const settings = await deleteOrvitechPaymentProvider(req.params.botId, req.params.guildId, req.params.providerId, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_provider_delete", "Pagamento OrviTech removido.");
+
+    return res.json({
+      settings: toSettingsDto(settings)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/plans", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechSalesPlanSchema.parse(req.body ?? {});
+    const plan = await saveOrvitechSalesPlan(req.params.botId, req.params.guildId, null, {
+      ...input,
+      checkoutMessage: input.checkoutMessage === "" ? null : input.checkoutMessage,
+      description: input.description === "" ? null : input.description,
+      imageUrl: input.imageUrl === "" ? null : input.imageUrl
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_create", `Plano OrviTech criado: ${input.name}.`);
+
+    return res.status(201).json({
+      plan: plan ? toPlanDto(plan) : null
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechSalesPlanSchema.parse(req.body ?? {});
+    const plan = await saveOrvitechSalesPlan(req.params.botId, req.params.guildId, req.params.planId, {
+      ...input,
+      checkoutMessage: input.checkoutMessage === "" ? null : input.checkoutMessage,
+      description: input.description === "" ? null : input.description,
+      imageUrl: input.imageUrl === "" ? null : input.imageUrl
+    }, auth.user.discordId);
+
+    if (!plan) {
+      return res.status(404).json({
+        message: "Plano de venda nao encontrado."
+      });
+    }
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_update", `Plano OrviTech atualizado: ${input.name}.`);
+
+    return res.json({
+      plan: toPlanDto(plan)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const deleted = await deleteOrvitechSalesPlan(req.params.botId, req.params.guildId, req.params.planId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        message: "Plano de venda nao encontrado."
+      });
+    }
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_delete", `Plano OrviTech removido: ${deleted.name}.`);
+
+    return res.json({
+      plan: toPlanDto(deleted)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/sales", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechSaleSchema.parse(req.body ?? {});
+    const sale = await saveOrvitechSale(req.params.botId, req.params.guildId, {
+      ...input,
+      buyerName: input.buyerName === "" ? null : input.buyerName,
+      externalReference: input.externalReference === "" ? null : input.externalReference,
+      notes: input.notes === "" ? null : input.notes
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_sale_create", `Venda OrviTech registrada para ${input.buyerId}.`, {
+      status: sale.status
+    });
+
+    return res.status(201).json({
+      sale: toSaleDto(sale)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/sales/:saleId/status", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem acesso a este bot."
+      });
+    }
+
+    const input = orvitechSaleStatusSchema.parse(req.body ?? {});
+    const sale = await updateOrvitechSaleStatus(req.params.botId, req.params.guildId, req.params.saleId, input.status, auth.user.discordId);
+
+    if (!sale) {
+      return res.status(404).json({
+        message: "Venda nao encontrada."
+      });
+    }
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_status", `Venda OrviTech marcada como ${input.status}.`);
+
+    return res.json({
+      sale: toSaleDto(sale)
     });
   } catch (error) {
     return next(error);

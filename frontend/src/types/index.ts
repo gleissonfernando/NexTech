@@ -1551,6 +1551,153 @@ export type DevModuleDefinition = {
   label: string;
 };
 
+export type OrvitechPaymentProviderType = "manual" | "pix" | "mercadopago" | "stripe" | "paypal" | "custom";
+export type OrvitechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
+
+export type OrvitechSalesPaymentProvider = {
+  id: string;
+  enabled: boolean;
+  label: string;
+  provider: OrvitechPaymentProviderType;
+  publicKey: string | null;
+  webhookUrl: string | null;
+  instructions: string | null;
+  secretConfigured: boolean;
+  secretMasked: string | null;
+  updatedAt: string;
+};
+
+export type OrvitechSalesSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  ownerUserId: string;
+  publicUrl: string;
+  currency: "BRL" | "USD" | "EUR";
+  saleChannelId: string | null;
+  logChannelId: string | null;
+  supportRoleIds: string[];
+  customerRoleId: string | null;
+  panelTitle: string;
+  panelDescription: string;
+  panelColor: string;
+  panelImageUrl: string | null;
+  thumbnailUrl: string | null;
+  termsUrl: string | null;
+  paymentProviders: OrvitechSalesPaymentProvider[];
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrvitechSalesPlan = {
+  id: string;
+  botId: string;
+  guildId: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  durationDays: number | null;
+  enabled: boolean;
+  moduleIds: string[];
+  imageUrl: string | null;
+  checkoutMessage: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrvitechSale = {
+  id: string;
+  botId: string;
+  guildId: string;
+  planId: string | null;
+  planName: string;
+  buyerId: string;
+  buyerName: string | null;
+  amountCents: number;
+  currency: "BRL" | "USD" | "EUR";
+  paymentProviderId: string | null;
+  paymentProviderLabel: string | null;
+  externalReference: string | null;
+  status: OrvitechSaleStatus;
+  notes: string | null;
+  paidAt: string | null;
+  expiresAt: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrvitechSalesDashboard = {
+  plans: OrvitechSalesPlan[];
+  sales: OrvitechSale[];
+  settings: OrvitechSalesSettings;
+  stats: {
+    activePlans: number;
+    paidSales: number;
+    pendingSales: number;
+    revenueCents: number;
+    salesThisMonth: number;
+    totalSales: number;
+  };
+};
+
+export type SaveOrvitechSalesSettingsPayload = Partial<Pick<
+  OrvitechSalesSettings,
+  | "currency"
+  | "customerRoleId"
+  | "enabled"
+  | "logChannelId"
+  | "ownerUserId"
+  | "panelColor"
+  | "panelDescription"
+  | "panelImageUrl"
+  | "panelTitle"
+  | "publicUrl"
+  | "saleChannelId"
+  | "supportRoleIds"
+  | "termsUrl"
+  | "thumbnailUrl"
+>>;
+
+export type SaveOrvitechPaymentProviderPayload = {
+  enabled: boolean;
+  id?: string | null;
+  instructions?: string | null;
+  label: string;
+  provider: OrvitechPaymentProviderType;
+  publicKey?: string | null;
+  secret?: string | null;
+  webhookUrl?: string | null;
+};
+
+export type SaveOrvitechSalesPlanPayload = {
+  checkoutMessage?: string | null;
+  description?: string | null;
+  durationDays?: number | null;
+  enabled: boolean;
+  imageUrl?: string | null;
+  moduleIds: string[];
+  name: string;
+  priceCents: number;
+};
+
+export type SaveOrvitechSalePayload = {
+  amountCents?: number | null;
+  buyerId: string;
+  buyerName?: string | null;
+  externalReference?: string | null;
+  notes?: string | null;
+  paymentProviderId?: string | null;
+  planId?: string | null;
+  status: OrvitechSaleStatus;
+};
+
 export type BotGuildConfig = {
   id: string;
   botId: string;

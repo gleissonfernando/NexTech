@@ -862,6 +862,86 @@ export type MongoApplicationEmojiSettings = {
   updatedAt: Date;
 };
 
+export type MongoOrvitechSalesPaymentProvider = {
+  id: string;
+  enabled: boolean;
+  label: string;
+  provider: "manual" | "pix" | "mercadopago" | "stripe" | "paypal" | "custom";
+  publicKey: string | null;
+  secretEncrypted: string | null;
+  webhookUrl: string | null;
+  instructions: string | null;
+  updatedAt: Date;
+};
+
+export type MongoOrvitechSalesSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  ownerUserId: string;
+  publicUrl: string;
+  currency: "BRL" | "USD" | "EUR";
+  saleChannelId: string | null;
+  logChannelId: string | null;
+  supportRoleIds: string[];
+  customerRoleId: string | null;
+  panelTitle: string;
+  panelDescription: string;
+  panelColor: string;
+  panelImageUrl: string | null;
+  thumbnailUrl: string | null;
+  termsUrl: string | null;
+  paymentProviders: MongoOrvitechSalesPaymentProvider[];
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoOrvitechSalesPlan = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  durationDays: number | null;
+  enabled: boolean;
+  moduleIds: string[];
+  imageUrl: string | null;
+  checkoutMessage: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoOrvitechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
+
+export type MongoOrvitechSale = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  planId: string | null;
+  planName: string;
+  buyerId: string;
+  buyerName: string | null;
+  amountCents: number;
+  currency: "BRL" | "USD" | "EUR";
+  paymentProviderId: string | null;
+  paymentProviderLabel: string | null;
+  externalReference: string | null;
+  status: MongoOrvitechSaleStatus;
+  notes: string | null;
+  paidAt: Date | null;
+  expiresAt: Date | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type MongoMissionToolsFeatureId =
   | "mission"
   | "clear"
@@ -1512,6 +1592,9 @@ export async function getMongoCollections() {
     applicationEmojiItems: db.collection<MongoApplicationEmojiItem>("application_emojis"),
     applicationEmojiJobs: db.collection<MongoApplicationEmojiJob>("application_emoji_jobs"),
     applicationEmojiSettings: db.collection<MongoApplicationEmojiSettings>("application_emoji_settings"),
+    orvitechSalesSettings: db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings"),
+    orvitechSalesPlans: db.collection<MongoOrvitechSalesPlan>("orvitech_sales_plans"),
+    orvitechSales: db.collection<MongoOrvitechSale>("orvitech_sales"),
     missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
     missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
     missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
@@ -1601,6 +1684,7 @@ async function createMongoIndexes(db: Db) {
     ensureImageAntiSpamIndexes(db),
     ensureVoiceRecorderIndexes(db),
     ensureEmojiCloneIndexes(db),
+    ensureOrvitechSalesIndexes(db),
     ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
     ensureSafeBotWarningIndexes(db),
@@ -2094,6 +2178,20 @@ async function ensureMissionToolsIndexes(db: Db) {
     users.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     tokens.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     tokens.createIndex({ botId: 1, guildId: 1, tokenHash: 1 })
+  ]);
+}
+
+async function ensureOrvitechSalesIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings").createIndex(
+      { botId: 1, guildId: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings").createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
+    db.collection<MongoOrvitechSalesPlan>("orvitech_sales_plans").createIndex({ botId: 1, guildId: 1, enabled: 1, updatedAt: -1 }),
+    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ botId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ botId: 1, buyerId: 1, createdAt: -1 })
   ]);
 }
 
