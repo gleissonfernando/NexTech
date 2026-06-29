@@ -54,6 +54,7 @@ import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { PanelImageSettings } from "../components/panels/PanelImageSettings";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
 import { AccountAgeSecurityPanel } from "../components/security/AccountAgeSecurityPanel";
+import { AntiBanPanel } from "../components/security/AntiBanPanel";
 import { SelfBotProtectionPanel } from "../components/security/SelfBotProtectionPanel";
 import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { KickIntegrationPanel } from "../components/social/KickIntegrationPanel";
@@ -249,7 +250,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "mission-tools",
     title: "Mission Tools",
-    description: "Libera o Control Center com Mission, Clean, Voice, Rich Presence e Username Checker.",
+    description: "Enable the Control Center with Mission, Clean, Voice, Rich Presence, and Username Checker.",
     icon: ListChecks,
     view: "mission-tools"
   },
@@ -990,7 +991,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             settings={settings}
           />
         ) : null}
-        {advancedSecurityModuleViews.includes(activeView) ? (
+        {activeView === "anti-ban" ? (
+          <AntiBanPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "anti-ban", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {advancedSecurityModuleViews.includes(activeView) && activeView !== "anti-ban" ? (
           <AdvancedSecurityModulePanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, viewModuleIds[activeView] ?? "", canManageDashboard)}
@@ -1230,6 +1238,7 @@ function AdvancedSecurityModulePanel({
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [voiceChannels, setVoiceChannels] = useState<GuildVoiceChannelOption[]>([]);
+  const [textChannels, setTextChannels] = useState<GuildChannelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -1259,6 +1268,7 @@ function AdvancedSecurityModulePanel({
       setConfig(defaultAdvancedModuleConfig(moduleId, moduleResult.config));
       setRoles(optionsResult.roles ?? []);
       setVoiceChannels(optionsResult.voiceChannels ?? []);
+      setTextChannels(optionsResult.channels ?? []);
     }
 
     load()
@@ -1382,6 +1392,7 @@ function AdvancedSecurityModulePanel({
             title="Status do sistema"
           />
           <AdvancedModuleFields
+            channels={textChannels}
             config={config}
             disabled={disabled}
             moduleId={moduleId}
@@ -1408,6 +1419,7 @@ function AdvancedSecurityModulePanel({
 }
 
 function AdvancedModuleFields({
+  channels,
   config,
   disabled,
   moduleId,
@@ -1415,6 +1427,7 @@ function AdvancedModuleFields({
   roles,
   voiceChannels
 }: {
+  channels: GuildChannelOption[];
   config: Record<string, unknown>;
   disabled: boolean;
   moduleId: string;
@@ -1424,6 +1437,19 @@ function AdvancedModuleFields({
 }) {
   const roleOptions = roles.map((role) => ({ label: role.name, value: role.id }));
   const voiceChannelOptions = voiceChannels.map((channel) => ({ label: channel.name, value: channel.id }));
+  const textChannelOptions = channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }));
+
+  if (moduleId === "temporary-voice") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <AdvancedSelectField disabled={disabled} label="Canal do painel" onChange={(value) => onChange({ panelChannelId: value || null })} options={textChannelOptions} placeholder="Selecione um canal" value={stringConfig(config.panelChannelId)} />
+        <AdvancedTextField disabled={disabled} label="ID da categoria de calls (opcional)" onChange={(value) => onChange({ categoryId: value || null })} placeholder="ID da categoria" value={stringConfig(config.categoryId)} />
+        <AdvancedSelectField disabled={disabled} label="Canal de logs" onChange={(value) => onChange({ logChannelId: value || null })} options={textChannelOptions} placeholder="Sem logs" value={stringConfig(config.logChannelId)} />
+        <AdvancedNumberField disabled={disabled} label="Limite padrão de usuários" max={99} min={1} onChange={(value) => onChange({ defaultUserLimit: value })} value={numberConfig(config.defaultUserLimit, 10)} />
+        <AdvancedNumberField disabled={disabled} label="Excluir vazia após (minutos)" max={1440} min={1} onChange={(value) => onChange({ emptyDeleteMinutes: value })} value={numberConfig(config.emptyDeleteMinutes, 10)} />
+      </div>
+    );
+  }
 
   if (moduleId === "tag-verification") {
     return (
@@ -1539,6 +1565,9 @@ function AdvancedToggleField({ checked, disabled, label, onChange }: { checked: 
 }
 
 function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, unknown>) {
+  if (moduleId === "temporary-voice") {
+    return { enabled: false, panelChannelId: null, panelMessageId: null, categoryId: null, defaultUserLimit: 10, emptyDeleteMinutes: 10, logChannelId: null, ...config };
+  }
   if (moduleId === "tag-verification") {
     return { enabled: false, intervalMinutes: 10, removeOnMismatch: true, requiredTag: "", roleId: null, ...config };
   }
@@ -4951,7 +4980,7 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
     return {
       active: true,
       configured: true,
-      configuredText: "Disponivel"
+      configuredText: "Available"
     };
   }
 
@@ -5096,8 +5125,9 @@ function friendlyLog(log: LogEntry) {
     "fivem.fac.request_rejected": { badge: "FiveM", title: "Solicitacao de ausencia reprovada" },
     "fivem.fac.absence_started": { badge: "FiveM", title: "Ausencia iniciada" },
     "fivem.fac.absence_finished": { badge: "FiveM", title: "Ausencia finalizada" },
-    "mission_tools.settings_updated": { badge: "Mission", title: "Mission Tools atualizado" },
-    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Publicacao do Control Center solicitada" }
+    "mission_tools.settings_updated": { badge: "Mission", title: "Mission Tools updated" },
+    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Control Center publication requested" },
+    "mission_tools.fake_token_detected": { badge: "Mission", title: "Fake token detected" }
   };
   const mapped = byType[log.type];
 
@@ -5133,7 +5163,7 @@ function friendlyLog(log: LogEntry) {
   }
 
   if (log.type.includes("mission_tools")) {
-    return { badge: "Mission", title: message || "Mission Tools atualizado", description: message };
+    return { badge: "Mission", title: message || "Mission Tools updated", description: message };
   }
 
   if (log.type.includes("image_anti_spam")) {

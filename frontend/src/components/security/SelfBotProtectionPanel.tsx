@@ -44,6 +44,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
+import { SafeBotWarningsPanel } from "./SafeBotWarningsPanel";
 
 type SelfBotProtectionPanelProps = {
   bot: DashboardBot | null;
@@ -719,6 +720,14 @@ export function SelfBotProtectionPanel({
           </div>
         </CardContent>
       </Card>
+
+      <SafeBotWarningsPanel
+        botId={botId}
+        canManage={canManage}
+        channels={channels}
+        guildId={guild.id}
+        roles={selectableRoles}
+      />
 
       <section className="grid gap-5 xl:grid-cols-2">
         <Card className="hover:translate-y-0">

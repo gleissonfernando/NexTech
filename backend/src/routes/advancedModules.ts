@@ -74,6 +74,15 @@ const musicConfigSchema = z.object({
   allowArtistSearch: z.boolean().default(true),
   logChannelId: snowflakeSchema.nullable().default(null)
 });
+const temporaryVoiceConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  panelChannelId: snowflakeSchema.nullable().default(null),
+  panelMessageId: snowflakeSchema.nullable().default(null),
+  categoryId: snowflakeSchema.nullable().default(null),
+  defaultUserLimit: z.coerce.number().int().min(1).max(99).default(10),
+  emptyDeleteMinutes: z.coerce.number().int().min(1).max(1440).default(10),
+  logChannelId: snowflakeSchema.nullable().default(null)
+});
 
 export const advancedModulesRouter = Router();
 
@@ -111,6 +120,12 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
     if (!(await canUseDevBotModule(user, botId, guildId, moduleId))) {
       return res.status(403).json({
         message: "Este modulo nao foi liberado para este bot ou voce nao tem permissao para configura-lo."
+      });
+    }
+
+    if (moduleId === "anti-ban") {
+      return res.status(409).json({
+        message: "Use a configuração dedicada do Anti Ban para validar permissões, limites e canal de logs."
       });
     }
 
@@ -157,6 +172,10 @@ function normalizeModuleConfig(moduleId: z.infer<typeof moduleIdSchema>, config:
 
   if (moduleId === "music") {
     return musicConfigSchema.parse(config);
+  }
+
+  if (moduleId === "temporary-voice") {
+    return temporaryVoiceConfigSchema.parse(config);
   }
 
   return config;

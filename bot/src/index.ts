@@ -18,7 +18,9 @@ const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
 const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
-const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "account-age-security"].some(isBotModuleEnabled)
+const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
+const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeBot;
+const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "account-age-security", "anti-ban"].some(isBotModuleEnabled)
   || isSelfBotModuleEnabled()
   || managedRuntimeBot;
 const selfBotModuleEnabled = isSelfBotModuleEnabled();
@@ -28,10 +30,15 @@ const needsMessageEvents = needsLegacyMessageModeration
   || selfBotModuleEnabled
   || managedRuntimeBot
   || needsMusic
+  || isBotModuleEnabled("temporary-voice")
   || needsMessageLogs;
 
 if (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) {
   intents.push(GatewayIntentBits.GuildMembers);
+}
+
+if (needsAntiBan) {
+  intents.push(GatewayIntentBits.GuildModeration);
 }
 
 if (needsMessageLogs) {
@@ -51,7 +58,7 @@ if (env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) {
   intents.push(GatewayIntentBits.GuildPresences);
 }
 
-if (needsVoiceRecorder || needsMusic) {
+if (needsVoiceRecorder || needsMusic || needsVoiceEvents) {
   intents.push(GatewayIntentBits.GuildVoiceStates);
 }
 
@@ -83,7 +90,7 @@ const client = new Client({
     StageInstanceManager: 0,
     ThreadMemberManager: 0,
     UserManager: env.BOT_CACHE_USERS_MAX,
-    VoiceStateManager: needsVoiceRecorder || needsMusic ? 500 : 0
+    VoiceStateManager: needsVoiceRecorder || needsMusic || needsVoiceEvents ? 500 : 0
   }),
   partials,
   sweepers: {

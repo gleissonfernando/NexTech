@@ -2018,7 +2018,7 @@ export async function authorizeBotRuntimeModule(input: {
 export function runtimeModuleIdForLogType(type: string) {
   const normalized = type.trim().toLowerCase();
 
-  if (normalized.startsWith("self_bot_protection.") || normalized.startsWith("security.self_bot")) {
+  if (normalized.startsWith("self_bot_protection.") || normalized.startsWith("security.self_bot") || normalized.startsWith("safe_bot.")) {
     return "safe-bot";
   }
 
@@ -2055,6 +2055,7 @@ export function runtimeModuleIdForLogType(type: string) {
   if (
     normalized.startsWith("message.")
     || normalized.startsWith("member.")
+    || normalized.startsWith("voice.")
   ) {
     return "logs";
   }

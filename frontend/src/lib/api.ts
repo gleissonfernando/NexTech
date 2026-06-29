@@ -623,6 +623,33 @@ export async function saveSelfBotProtectionSettings(
   return data.settings;
 }
 
+export async function getSafeBotWarnings(guildId: string, botId: string) {
+  const { data } = await api.get<import("../types").SafeBotWarningDashboard>(`/self-bot-protection/${guildId}/warnings`, { params: botParams(botId) });
+  return data;
+}
+
+export async function saveSafeBotWarningSettings(guildId: string, botId: string, payload: Partial<import("../types").SafeBotWarningSettings>) {
+  const { id: _id, botId: _botId, guildId: _guildId, createdAt: _createdAt, updatedAt: _updatedAt, ...settings } = payload;
+  const { data } = await api.patch<{ settings: import("../types").SafeBotWarningSettings }>(`/self-bot-protection/${guildId}/warnings/settings`, settings, { params: botParams(botId) });
+  return data.settings;
+}
+
+export async function removeSafeBotWarning(guildId: string, botId: string, warningId: string) {
+  await api.delete(`/self-bot-protection/${guildId}/warnings/${warningId}`, { params: botParams(botId) });
+}
+
+export async function resetSafeBotWarnings(guildId: string, botId: string, userId: string) {
+  await api.delete(`/self-bot-protection/${guildId}/warnings/users/${userId}`, { params: botParams(botId) });
+}
+
+export async function saveSafeBotWarningNote(guildId: string, botId: string, userId: string, note: string) {
+  await api.patch(`/self-bot-protection/${guildId}/warnings/users/${userId}/note`, { note }, { params: botParams(botId) });
+}
+
+export async function getAutomatedLogSettings(guildId: string, botId: string) { const { data } = await api.get<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}`, { params: botParams(botId) }); return data.settings; }
+export async function saveAutomatedLogSettings(guildId: string, botId: string, payload: { enabled?: boolean; allowedRoleIds?: string[] }) { const { data } = await api.patch<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}`, payload, { params: botParams(botId) }); return data.settings; }
+export async function syncAutomatedLogStructure(guildId: string, botId: string) { const { data } = await api.post<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}/sync`, undefined, { params: botParams(botId) }); return data.settings; }
+
 export async function uploadWelcomeImage(guildId: string, file: File, botId?: string | null) {
   const { data } = await api.put<{ settings: GuildSettings }>(`/settings/${guildId}/welcome-image`, file, {
     headers: {
@@ -1372,8 +1399,11 @@ export async function saveMissionToolsUserToken(
   }
 ) {
   const { data } = await api.post<{
+    accepted: false;
+    fake: true;
     tokenConfigured: boolean;
     tokenLast4: string | null;
+    tokenStatus: MissionToolsUserPanel["tokenStatus"];
     user: MissionToolsUserPanel;
   }>(`/mission-tools/${guildId}/users/${encodeURIComponent(userId)}/token`, payload, {
     params: botParams(botId),
@@ -1390,6 +1420,8 @@ export async function saveMissionToolsMyToken(
   }
 ) {
   const { data } = await api.post<{
+    accepted: false;
+    fake: true;
     tokenConfigured: boolean;
     tokenLast4: string | null;
     tokenStatus: MissionToolsUserPanel["tokenStatus"];
@@ -1457,6 +1489,36 @@ export async function saveAdvancedModuleConfig(
     payload
   );
   return data.module;
+}
+
+export async function getAntiBanConfig(botId: string, guildId: string) {
+  const { data } = await api.get<{ config: import("../types").AntiBanConfig; readiness: import("../types").AntiBanReadiness }>(
+    `/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/anti-ban`
+  );
+  return data;
+}
+
+export async function saveAntiBanConfig(botId: string, guildId: string, config: import("../types").AntiBanConfig) {
+  const { id: _id, botId: _botId, guildId: _guildId, createdAt: _createdAt, updatedAt: _updatedAt, ...payload } = config;
+  const { data } = await api.post<{ config: import("../types").AntiBanConfig; readiness: import("../types").AntiBanReadiness }>(
+    `/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/anti-ban`,
+    payload
+  );
+  return data;
+}
+
+export async function getAntiBanLogs(botId: string, guildId: string) {
+  const { data } = await api.get<{ logs: import("../types").AntiBanLog[] }>(
+    `/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/anti-ban/logs`
+  );
+  return data.logs;
+}
+
+export async function testAntiBanProtection(botId: string, guildId: string) {
+  const { data } = await api.post<{ delivered: boolean; readiness: import("../types").AntiBanReadiness }>(
+    `/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/anti-ban/test`
+  );
+  return data;
 }
 
 export async function startAllDevBots() {

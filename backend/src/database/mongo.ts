@@ -888,7 +888,7 @@ export type MongoMissionToolsClearMode = "bulk" | "userDm";
 export type MongoMissionToolsRichPresenceStatus = "active" | "inactive";
 
 export type MongoMissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MongoMissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected";
+export type MongoMissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
 
 export type MongoMissionToolsRichPresenceConfig = {
   applicationId?: string;
@@ -1148,6 +1148,125 @@ export type MongoSelfBotRoleAssignment = {
   updatedAt: Date;
 };
 
+export type MongoSafeBotWarningAction =
+  | "record_only"
+  | "dm"
+  | "channel_message"
+  | "add_role"
+  | "remove_role"
+  | "timeout"
+  | "kick"
+  | "ban"
+  | "notify_staff"
+  | "open_ticket"
+  | "block_channels"
+  | "custom";
+
+export type MongoSafeBotWarningLevel = {
+  id: string;
+  number: number;
+  name: string;
+  description: string;
+  defaultReason: string;
+  action: MongoSafeBotWarningAction | null;
+  durationSeconds: number | null;
+  roleId: string | null;
+  channelId: string | null;
+  targetChannelIds: string[];
+  logChannelId: string | null;
+  userMessage: string;
+  staffMessage: string;
+  customAction: string;
+  enabled: boolean;
+};
+
+export type MongoSafeBotWarningSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  authorizedRoleIds: string[];
+  defaultLogChannelId: string | null;
+  overflowMode: "repeat_last" | "record_only" | "block" | "final_action";
+  finalLevel: MongoSafeBotWarningLevel | null;
+  levels: MongoSafeBotWarningLevel[];
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSafeBotWarningUser = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  totalWarnings: number;
+  internalNote: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSafeBotWarningRecord = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  staffId: string;
+  staffName: string | null;
+  reason: string;
+  warningNumber: number;
+  level: MongoSafeBotWarningLevel | null;
+  configuredAction: MongoSafeBotWarningAction | null;
+  executedAction: string | null;
+  status: "pending" | "recorded" | "success" | "failed" | "removed";
+  error: string | null;
+  removedBy: string | null;
+  removedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoTemporaryCall = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ownerId: string;
+  channelId: string;
+  channelName: string;
+  userLimit: number;
+  isPrivate: boolean;
+  allowedUsers: string[];
+  bannedUsers: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  emptySince: Date | null;
+};
+
+export type MongoAutomatedLogSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  categoryId: string | null;
+  channels: {
+    site: string | null;
+    absence: string | null;
+    messages: string | null;
+    calls: string | null;
+    verification: string | null;
+    punishment: string | null;
+  };
+  allowedRoleIds: string[];
+  lastError: string | null;
+  lastSyncedAt: Date | null;
+  lastSyncRequestedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type MongoSecurityFeatureAccess = {
   _id: string;
   botId: string;
@@ -1204,6 +1323,44 @@ export type MongoBotGuildConfig = {
   modules: Record<string, MongoBotGuildModuleConfig>;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type MongoAntiBanAction = "log_only" | "remove_admin_roles" | "kick_executor" | "ban_executor" | "remove_dangerous_permissions" | "block_future_actions";
+export type MongoAntiBanRecovery = "alert_only" | "unban" | "restore_permissions";
+
+export type MongoAntiBanConfig = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  banLimit: number;
+  kickLimit: number;
+  timeWindow: number;
+  logChannelId: string | null;
+  whitelistUsers: string[];
+  whitelistRoles: string[];
+  whitelistRoleMode: "ignore" | "log_only";
+  protectedRoles: string[];
+  actionOnTrigger: MongoAntiBanAction;
+  autoRecovery: MongoAntiBanRecovery;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoAntiBanLog = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  executorId: string | null;
+  targetId: string | null;
+  actionType: string;
+  amount: number;
+  limit: number;
+  punishment: string;
+  success: boolean;
+  errorMessage: string | null;
+  metadata?: unknown;
+  createdAt: Date;
 };
 
 export type MongoDevPermission = {
@@ -1354,9 +1511,16 @@ export async function getMongoCollections() {
     selfBotPunishmentStates: db.collection<MongoSelfBotPunishmentState>("self_bot_punishment_states"),
     selfBotProtectionIncidents: db.collection<MongoSelfBotProtectionIncident>("self_bot_protection_incidents"),
     selfBotRoleAssignments: db.collection<MongoSelfBotRoleAssignment>("self_bot_role_assignments"),
+    safeBotWarningSettings: db.collection<MongoSafeBotWarningSettings>("safe_bot_warning_settings"),
+    safeBotWarningUsers: db.collection<MongoSafeBotWarningUser>("safe_bot_warning_users"),
+    safeBotWarningRecords: db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records"),
+    temporaryCalls: db.collection<MongoTemporaryCall>("temporary_calls"),
+    automatedLogSettings: db.collection<MongoAutomatedLogSettings>("automated_log_settings"),
     securityFeatureAccess: db.collection<MongoSecurityFeatureAccess>("security_feature_access"),
     devBots: db.collection<MongoDevBot>("Bot"),
     botGuildConfigs: db.collection<MongoBotGuildConfig>("BotGuildConfig"),
+    antiBanConfigs: db.collection<MongoAntiBanConfig>("anti_ban_configs"),
+    antiBanLogs: db.collection<MongoAntiBanLog>("anti_ban_logs"),
     devPermissions: db.collection<MongoDevPermission>("DevPermission"),
     maintenanceState: db.collection<MongoMaintenanceState>("MaintenanceState"),
     maintenanceLogs: db.collection<MongoMaintenanceLog>("MaintenanceLog"),
@@ -1431,7 +1595,11 @@ async function createMongoIndexes(db: Db) {
     ensureEmojiCloneIndexes(db),
     ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
+    ensureSafeBotWarningIndexes(db),
+    ensureTemporaryCallIndexes(db),
+    ensureAutomatedLogIndexes(db),
     ensureSecurityFeatureAccessIndexes(db),
+    ensureAntiBanIndexes(db),
     db.collection<MongoSocialNotification>("social_notifications").createIndex(
       {
         guildId: 1,
@@ -1476,6 +1644,14 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoBotGuildConfig>("BotGuildConfig").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDevPermission>("DevPermission").createIndex({ userId: 1 }, { unique: true }),
     ensureDashboardAuditLogIndexes(db)
+  ]);
+}
+
+async function ensureAntiBanIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoAntiBanConfig>("anti_ban_configs").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoAntiBanLog>("anti_ban_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoAntiBanLog>("anti_ban_logs").createIndex({ botId: 1, guildId: 1, executorId: 1, createdAt: -1 })
   ]);
 }
 
@@ -1984,4 +2160,26 @@ async function ensureSelfBotProtectionIndexes(db: Db) {
       updatedAt: -1
     })
   ]);
+}
+
+async function ensureSafeBotWarningIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoSafeBotWarningSettings>("safe_bot_warning_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoSafeBotWarningUser>("safe_bot_warning_users").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    db.collection<MongoSafeBotWarningUser>("safe_bot_warning_users").createIndex({ botId: 1, guildId: 1, totalWarnings: -1 }),
+    db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 })
+  ]);
+}
+
+async function ensureTemporaryCallIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoTemporaryCall>("temporary_calls").createIndex({ botId: 1, guildId: 1, ownerId: 1 }, { unique: true }),
+    db.collection<MongoTemporaryCall>("temporary_calls").createIndex({ botId: 1, guildId: 1, channelId: 1 }, { unique: true }),
+    db.collection<MongoTemporaryCall>("temporary_calls").createIndex({ botId: 1, emptySince: 1 })
+  ]);
+}
+
+async function ensureAutomatedLogIndexes(db: Db) {
+  await db.collection<MongoAutomatedLogSettings>("automated_log_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true });
 }

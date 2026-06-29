@@ -53,27 +53,27 @@ const featureDefinitions: Array<{
   {
     id: "mission",
     label: "Mission System",
-    description: "Painel privado com status, fila e progresso. Quests por token pessoal ficam bloqueadas."
+    description: "Private status, queue, and progress panel. User-token quests remain safely disabled."
   },
   {
     id: "clear",
     label: "Clean System",
-    description: "Limpeza de DM e contatos pelo painel privado."
+    description: "Safe cleanup controls from a private panel."
   },
   {
     id: "voice",
     label: "Voice Session",
-    description: "Sessao persistente em canal de voz."
+    description: "Persistent voice-channel session controls."
   },
   {
     id: "rich-presence",
     label: "Rich Presence",
-    description: "Atividade personalizada do perfil."
+    description: "Custom profile activity settings."
   },
   {
     id: "username-checker",
     label: "Username Checker",
-    description: "Consulta de disponibilidade de usernames."
+    description: "Username availability checks."
   }
 ];
 
@@ -153,7 +153,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Mission Tools.");
+          setMessage(readRequestMessage(error) ?? "Mission Tools could not be loaded.");
         }
       })
       .finally(() => {
@@ -225,9 +225,9 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
       });
 
       setSettings(saved);
-      setMessage("Mission Tools salvo.");
+      setMessage("Mission Tools settings saved.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Mission Tools.");
+      setMessage(readRequestMessage(error) ?? "Mission Tools settings could not be saved.");
     } finally {
       setSaving(false);
     }
@@ -242,9 +242,9 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
     try {
       const saved = await publishMissionToolsPanel(guild.id, botId);
       setSettings(saved);
-      setMessage("Publicacao do Control Center solicitada ao bot.");
+      setMessage("Control Center publication requested from the bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível publicar o painel.");
+      setMessage(readRequestMessage(error) ?? "The Control Center could not be published.");
     } finally {
       setPublishing(false);
     }
@@ -262,9 +262,9 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
       setChannels(options.channels);
       setRoles(options.roles);
       setSettings((current) => pruneSettingsForOptions(current, options));
-      setMessage("Canais e cargos sincronizados. Revise e salve para gravar.");
+      setMessage("Channels and roles synchronized. Review and save your changes.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar com o Discord.");
+      setMessage(readRequestMessage(error) ?? "Discord channels and roles could not be synchronized.");
     } finally {
       setSyncing(false);
     }
@@ -274,7 +274,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
     return (
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
-          Selecione um bot e um servidor para configurar o Mission Tools.
+          Select a bot and server to configure Mission Tools.
         </CardContent>
       </Card>
     );
@@ -307,7 +307,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
                   <MonitorPlay className="h-5 w-5 text-zinc-300" />
                   Mission Tools
                 </CardTitle>
-                <CardDescription>Libera e publica o Control Center do Mission Tools para este bot.</CardDescription>
+                <CardDescription>Enable and publish the Mission Tools Control Center for this bot.</CardDescription>
               </div>
               <Switch
                 checked={settings.enabled}
@@ -321,7 +321,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
               <SelectField
                 disabled={!canManage}
                 icon={Hash}
-                label="Canal do Control Center"
+                label="Control Center channel"
                 onChange={(value) => updateSetting("panelChannelId", value)}
                 options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))}
                 value={settings.panelChannelId}
@@ -329,7 +329,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
               <SelectField
                 disabled={!canManage}
                 icon={MessageSquareText}
-                label="Canal de logs"
+                label="Log channel"
                 onChange={(value) => updateSetting("logChannelId", value)}
                 options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))}
                 value={settings.logChannelId}
@@ -344,7 +344,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
 
             <RoleChecklist
               disabled={!canManage}
-              label="Cargos que podem gerenciar"
+              label="Roles that can manage"
               onToggle={(roleId) => toggleRole("managerRoleIds", roleId)}
               roles={regularRoles}
               selectedRoleIds={settings.managerRoleIds}
@@ -352,7 +352,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
 
             <RoleChecklist
               disabled={!canManage}
-              label="Cargos que podem usar o painel"
+              label="Roles that can use the panel"
               onToggle={(roleId) => toggleRole("allowedRoleIds", roleId)}
               roles={regularRoles}
               selectedRoleIds={settings.allowedRoleIds}
@@ -361,63 +361,63 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
             <div className="flex flex-wrap gap-2 border-t border-zinc-900 pt-4">
               <Button disabled={!canManage || syncing} onClick={() => void handleSyncOptions()} variant="outline">
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Sincronizar Discord
+                Sync Discord
               </Button>
               <Button disabled={!canManage || saving} onClick={() => void handleSave()}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Salvar
+                Save
               </Button>
               <Button disabled={!canManage || publishing || !settings.enabled || !settings.panelChannelId} onClick={() => void handlePublishPanel()} variant="outline">
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Publicar Control Center
+                Publish Control Center
               </Button>
-              {settings.panelMessageId ? <Badge variant="success">Painel publicado</Badge> : <Badge variant="muted">Painel não publicado</Badge>}
+              {settings.panelMessageId ? <Badge variant="success">Panel published</Badge> : <Badge variant="muted">Panel not published</Badge>}
             </div>
           </CardContent>
         </Card>
 
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Metric icon={Users} label="Usuarios com painel" value={String(stats.configuredUsers)} />
-            <Metric icon={LockKeyhole} label="Tokens bloqueados" value="Seguro" />
-            <Metric icon={Activity} label="Missoes rodando" value={String(stats.runningMissions)} />
-            <Metric icon={Volume2} label="Voz ativa" value={String(stats.activeVoiceSessions)} />
-            <Metric icon={Sparkles} label="Rich ativo" value={String(stats.activeRichPresence)} />
-            <Metric icon={CheckCircle2} label="Hits username" value={String(stats.usernameHits)} />
+            <Metric icon={Users} label="Panel users" value={String(stats.configuredUsers)} />
+            <Metric icon={LockKeyhole} label="Token handling" value="Fake only" />
+            <Metric icon={Activity} label="Running missions" value={String(stats.runningMissions)} />
+            <Metric icon={Volume2} label="Active voice" value={String(stats.activeVoiceSessions)} />
+            <Metric icon={Sparkles} label="Active presence" value={String(stats.activeRichPresence)} />
+            <Metric icon={CheckCircle2} label="Username hits" value={String(stats.usernameHits)} />
           </div>
 
           <Card className="hover:translate-y-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LockKeyhole className="h-5 w-5 text-zinc-300" />
-                Tokens de usuário bloqueados
+                Fake-token protection
               </CardTitle>
-              <CardDescription>O Mission Tools não coleta token de conta Discord. Use apenas o bot e fluxos oficiais de OAuth/permissões.</CardDescription>
+              <CardDescription>Mission Tools classifies token-shaped input as fake and only uses official bot or OAuth permissions.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Conta vinculada</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Linked account</p>
                     <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{user.globalName ?? user.username}</p>
                     <p className="mt-1 truncate font-mono text-xs text-zinc-500">{user.discordId}</p>
                   </div>
                   <Badge variant={tokenStatusInfo.variant}>{tokenStatusInfo.label}</Badge>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
-                  <span>Token: bloqueado por segurança</span>
-                  <span>Ultima validacao: {formatOptionalDate(currentUserPanel?.tokenLastValidatedAt)}</span>
-                  <span>Atualizado: {formatOptionalDate(currentUserPanel?.tokenUpdatedAt)}</span>
+                  <span>Token: classified as fake</span>
+                  <span>Last validation: {formatOptionalDate(currentUserPanel?.tokenLastValidatedAt)}</span>
+                  <span>Updated: {formatOptionalDate(currentUserPanel?.tokenUpdatedAt)}</span>
                   <span>Status: {tokenStatusInfo.label}</span>
                 </div>
               </div>
-              {tokenStatus === "invalid" || tokenStatus === "expired" ? (
+              {tokenStatus === "invalid" || tokenStatus === "expired" || tokenStatus === "fake" ? (
                 <div className="rounded-lg border border-amber-900/70 bg-amber-950/30 p-3 text-sm text-amber-100">
-                  {currentUserPanel?.tokenInvalidReason ?? "A autenticação do token falhou. Reconecte para continuar usando os módulos."}
+                  {currentUserPanel?.tokenInvalidReason ?? "Token authentication failed. Use official bot or OAuth permissions instead."}
                 </div>
               ) : null}
               <div className="rounded-lg border border-amber-900/70 bg-amber-950/30 p-3 text-sm text-amber-100">
-                Por segurança, tokens pessoais do Discord não podem ser salvos, enviados por DM ou usados para automação de conta. Recursos que dependiam desse token ficam indisponíveis até serem migrados para bot/OAuth oficial.
+                Discord user-account tokens are never saved, sent by DM, or used for account automation. Any token-shaped input is treated as fake, and dependent features remain unavailable until they use official bot or OAuth flows.
               </div>
             </CardContent>
           </Card>
@@ -428,9 +428,9 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-zinc-300" />
-            Usuarios recentes
+            Recent users
           </CardTitle>
-          <CardDescription>{users.length} usuário(s) que abriram painel privado.</CardDescription>
+          <CardDescription>{users.length} user(s) opened a private panel.</CardDescription>
         </CardHeader>
         <CardContent>
           {users.length ? (
@@ -441,7 +441,7 @@ export function MissionToolsPanel({ botId, canManage, guild, user }: MissionTool
             </div>
           ) : (
             <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-sm text-zinc-500">
-              Nenhum usuário abriu o painel ainda.
+              No users have opened a private panel yet.
             </div>
           )}
         </CardContent>
@@ -463,7 +463,7 @@ function FeatureGrid({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-zinc-200">Módulos dentro do Control Center</p>
+      <p className="text-sm font-medium text-zinc-200">Control Center modules</p>
       <div className="grid gap-2 md:grid-cols-2">
         {featureDefinitions.map((feature) => (
           <label className="flex min-h-20 gap-3 rounded-lg border border-zinc-900 bg-zinc-950/70 p-3 text-sm" key={feature.id}>
@@ -548,7 +548,7 @@ function SelectField({
         onChange={(event) => onChange(event.target.value || null)}
         value={value ?? ""}
       >
-        <option value="">Não selecionado</option>
+        <option value="">Not selected</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
@@ -591,7 +591,7 @@ function RoleChecklist({
             <span className="min-w-0 flex-1 truncate">{role.name}</span>
           </label>
         )) : (
-          <span className="px-2 py-3 text-sm text-zinc-500">Nenhum cargo disponivel.</span>
+          <span className="px-2 py-3 text-sm text-zinc-500">No roles available.</span>
         )}
       </div>
     </div>
@@ -613,13 +613,13 @@ function pruneSettingsForOptions(settings: MissionToolsSettings, options: GuildL
 
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
-    active: "Ativo",
-    completed: "Concluido",
-    deactivated: "Desativado",
-    error: "Erro",
-    inactive: "Inativo",
-    running: "Rodando",
-    waiting: "Aguardando"
+    active: "Active",
+    completed: "Completed",
+    deactivated: "Deactivated",
+    error: "Error",
+    inactive: "Inactive",
+    running: "Running",
+    waiting: "Waiting"
   };
 
   return labels[status] ?? status;
@@ -648,6 +648,10 @@ function tokenStatusDefinition(status: MissionToolsTokenStatus): {
     invalid: {
       label: "Invalid Token",
       variant: "danger"
+    },
+    fake: {
+      label: "Fake Token",
+      variant: "warning"
     }
   };
 
@@ -655,12 +659,12 @@ function tokenStatusDefinition(status: MissionToolsTokenStatus): {
 }
 
 function formatOptionalDate(value?: string | null) {
-  if (!value) return "Nunca";
+  if (!value) return "Never";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Indisponivel";
+  if (Number.isNaN(date.getTime())) return "Unavailable";
 
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "short",
     timeStyle: "medium"
   }).format(date);

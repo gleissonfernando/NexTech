@@ -79,6 +79,22 @@ export type BotRuntimeModuleAuthorization = {
   releaseModuleId: string | null;
 };
 
+export type AntiBanConfig = {
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  banLimit: number;
+  kickLimit: number;
+  timeWindow: number;
+  logChannelId: string | null;
+  whitelistUsers: string[];
+  whitelistRoles: string[];
+  whitelistRoleMode: "ignore" | "log_only";
+  protectedRoles: string[];
+  actionOnTrigger: "log_only" | "remove_admin_roles" | "kick_executor" | "ban_executor" | "remove_dangerous_permissions" | "block_future_actions";
+  autoRecovery: "alert_only" | "unban" | "restore_permissions";
+};
+
 export type ImageAntiSpamSettings = {
   id: string;
   botId: string;
@@ -338,6 +354,34 @@ export type SelfBotProtectionIncident = {
   metadata: Record<string, unknown>;
   createdAt: string;
 };
+
+export type SafeBotWarningAction = "record_only" | "dm" | "channel_message" | "add_role" | "remove_role" | "timeout" | "kick" | "ban" | "notify_staff" | "open_ticket" | "block_channels" | "custom";
+export type SafeBotWarningLevel = {
+  id: string; number: number; name: string; description: string; defaultReason: string;
+  action: SafeBotWarningAction | null; durationSeconds: number | null; roleId: string | null;
+  channelId: string | null; targetChannelIds: string[]; logChannelId: string | null;
+  userMessage: string; staffMessage: string; customAction: string; enabled: boolean;
+};
+export type SafeBotWarningSettings = {
+  id: string; botId: string; guildId: string; enabled: boolean; authorizedRoleIds: string[];
+  defaultLogChannelId: string | null; overflowMode: "repeat_last" | "record_only" | "block" | "final_action";
+  finalLevel: SafeBotWarningLevel | null; levels: SafeBotWarningLevel[]; createdAt: string; updatedAt: string;
+};
+export type SafeBotWarningPreview = {
+  enabled: boolean; configuredLevels: number; authorizedRoleIds: string[]; currentWarnings: number;
+  nextWarningNumber: number; level: SafeBotWarningLevel | null; blocked: boolean;
+  action: SafeBotWarningAction; note: string | null;
+};
+export type SafeBotWarningRecord = {
+  id: string; botId: string; guildId: string; userId: string; username: string | null;
+  staffId: string; staffName: string | null; reason: string; warningNumber: number;
+  level: SafeBotWarningLevel | null; configuredAction: SafeBotWarningAction | null;
+  executedAction: string | null; status: "pending" | "recorded" | "success" | "failed" | "removed";
+  error: string | null; createdAt: string; updatedAt: string;
+};
+export type TemporaryVoiceSettings = { botId: string; guildId: string; enabled: boolean; panelChannelId: string | null; panelMessageId: string | null; categoryId: string | null; defaultUserLimit: number; emptyDeleteMinutes: number; logChannelId: string | null };
+export type TemporaryCall = { id: string; botId: string; guildId: string; ownerId: string; channelId: string; channelName: string; userLimit: number; isPrivate: boolean; allowedUsers: string[]; bannedUsers: string[]; createdAt: string; updatedAt: string; emptySince: string | null };
+export type AutomatedLogSettings = { id: string; botId: string; guildId: string; enabled: boolean; categoryId: string | null; channels: { site: string | null; absence: string | null; messages: string | null; calls: string | null; verification: string | null; punishment: string | null }; allowedRoleIds: string[]; lastError: string | null; lastSyncedAt: string | null; lastSyncRequestedAt: string | null; createdAt: string; updatedAt: string };
 
 export type SocialNotification = {
   id: string;
@@ -715,7 +759,7 @@ export type MissionToolsClearMode = "bulk" | "userDm";
 export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
 export type MissionToolsRichPresenceStatus = "active" | "inactive";
 export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected";
+export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
 
 export type MissionToolsRichPresenceConfig = {
   applicationId?: string;
@@ -918,6 +962,26 @@ export class ApiClient {
       }
     );
     return data.authorization;
+  }
+
+  async getAntiBanConfig(guildId: string) {
+    const { data } = await this.http.get<{ config: AntiBanConfig }>(`/anti-ban/bot/${guildId}`, { timeout: 8_000 });
+    return data.config;
+  }
+
+  async createAntiBanLog(guildId: string, input: {
+    executorId: string | null;
+    targetId: string | null;
+    actionType: string;
+    amount: number;
+    limit: number;
+    punishment: string;
+    success: boolean;
+    errorMessage: string | null;
+    metadata?: unknown;
+  }) {
+    const { data } = await this.http.post(`/anti-ban/bot/${guildId}/logs`, input, { timeout: 8_000 });
+    return data;
   }
 
   async getBotGuildConfig(botId: string, guildId: string) {
@@ -1182,6 +1246,42 @@ export class ApiClient {
     );
     return data.assignments;
   }
+
+  async getSafeBotWarningSettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: SafeBotWarningSettings }>(`/self-bot-protection/bot/${guildId}/warnings/settings`);
+    return data.settings;
+  }
+
+  async getSafeBotWarningPreview(guildId: string, userId: string) {
+    const { data } = await this.http.get<{ preview: SafeBotWarningPreview }>(`/self-bot-protection/bot/${guildId}/warnings/users/${userId}/preview`);
+    return data.preview;
+  }
+
+  async getSafeBotWarningHistory(guildId: string, userId: string) {
+    const { data } = await this.http.get<{ totalWarnings: number; internalNote: string; warnings: SafeBotWarningRecord[] }>(`/self-bot-protection/bot/${guildId}/warnings/users/${userId}/history`);
+    return data;
+  }
+
+  async issueSafeBotWarning(guildId: string, input: { userId: string; username?: string | null; staffId: string; staffName?: string | null; reason?: string | null }) {
+    const { data } = await this.http.post<{ warning: SafeBotWarningRecord }>(`/self-bot-protection/bot/${guildId}/warnings`, input);
+    return data.warning;
+  }
+
+  async completeSafeBotWarning(guildId: string, warningId: string, input: { success: boolean; executedAction?: string | null; error?: string | null }) {
+    const { data } = await this.http.patch<{ warning: SafeBotWarningRecord }>(`/self-bot-protection/bot/${guildId}/warnings/${warningId}/outcome`, input);
+    return data.warning;
+  }
+
+  async getTemporaryVoiceSettings(guildId: string) { const { data } = await this.http.get<{ settings: TemporaryVoiceSettings }>(`/temporary-voice/bot/${guildId}/settings`); return data.settings; }
+  async updateTemporaryVoicePanelState(guildId: string, messageId: string | null) { const { data } = await this.http.post<{ settings: TemporaryVoiceSettings }>(`/temporary-voice/bot/${guildId}/panel-state`, { messageId }); return data.settings; }
+  async listTemporaryCalls(guildId: string) { const { data } = await this.http.get<{ calls: TemporaryCall[] }>(`/temporary-voice/bot/${guildId}/calls`); return data.calls; }
+  async getTemporaryCallByOwner(guildId: string, ownerId: string) { const { data } = await this.http.get<{ call: TemporaryCall | null }>(`/temporary-voice/bot/${guildId}/owners/${ownerId}`); return data.call; }
+  async getTemporaryCallByChannel(guildId: string, channelId: string) { const { data } = await this.http.get<{ call: TemporaryCall | null }>(`/temporary-voice/bot/${guildId}/channels/${channelId}`); return data.call; }
+  async createTemporaryCall(guildId: string, input: Omit<TemporaryCall, "id" | "botId" | "guildId" | "createdAt" | "updatedAt" | "emptySince">) { const { data } = await this.http.post<{ call: TemporaryCall }>(`/temporary-voice/bot/${guildId}/calls`, input); return data.call; }
+  async updateTemporaryCall(guildId: string, callId: string, input: Partial<Pick<TemporaryCall, "channelName" | "userLimit" | "isPrivate" | "allowedUsers" | "bannedUsers" | "emptySince">>) { const { data } = await this.http.patch<{ call: TemporaryCall }>(`/temporary-voice/bot/${guildId}/calls/${callId}`, input); return data.call; }
+  async deleteTemporaryCall(guildId: string, callId: string) { const { data } = await this.http.delete<{ call: TemporaryCall }>(`/temporary-voice/bot/${guildId}/calls/${callId}`); return data.call; }
+  async getAutomatedLogSettings(guildId: string) { const { data } = await this.http.get<{ settings: AutomatedLogSettings }>(`/automated-logs/bot/${guildId}`); return data.settings; }
+  async updateAutomatedLogRuntime(guildId: string, input: Partial<Pick<AutomatedLogSettings, "categoryId" | "channels" | "lastError">> & { synced?: boolean }) { const { data } = await this.http.patch<{ settings: AutomatedLogSettings }>(`/automated-logs/bot/${guildId}/runtime`, input); return data.settings; }
 
   async recordSelfBotProtectionIncident(input: {
     guildId: string;
@@ -1475,6 +1575,8 @@ export class ApiClient {
 
   async saveMissionToolsToken(guildId: string, userId: string, token: string) {
     const { data } = await this.http.post<{
+      accepted: false;
+      fake: true;
       tokenConfigured: boolean;
       tokenLast4: string | null;
       tokenStatus: MissionToolsTokenStatus;

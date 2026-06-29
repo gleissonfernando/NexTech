@@ -12,12 +12,14 @@ import {
   UserRound,
   UsersRound
 } from "lucide-react";
-import { getGuildLiveOptions, patchGuildSettings } from "../lib/api";
+import { getAutomatedLogSettings, getGuildLiveOptions, getGuildRoleOptions, patchGuildSettings, saveAutomatedLogSettings, syncAutomatedLogStructure } from "../lib/api";
 import type {
   DashboardGuild,
   GuildChannelOption,
   GuildSettings,
-  LogCategory
+  LogCategory,
+  AutomatedLogSettings,
+  GuildRoleOption
 } from "../types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -73,6 +75,8 @@ export function LogsSettingsPanel({
 }: LogsSettingsPanelProps) {
   const [draft, setDraft] = useState<Draft>(DEFAULT_DRAFT);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [automated, setAutomated] = useState<AutomatedLogSettings | null>(null);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -97,14 +101,29 @@ export function LogsSettingsPanel({
     setLoadingChannels(true);
     setError(null);
 
-    getGuildLiveOptions(guild.id, botId)
-      .then((options) => setChannels(options.channels))
+    Promise.all([getGuildLiveOptions(guild.id, botId), getGuildRoleOptions(guild.id, botId), botId ? getAutomatedLogSettings(guild.id, botId) : Promise.resolve(null)])
+      .then(([options, roleOptions, automatedSettings]) => { setChannels(options.channels); setRoles(roleOptions.filter((role) => role.id !== guild.id)); setAutomated(automatedSettings); })
       .catch((requestError) => {
         setChannels([]);
         setError(readErrorMessage(requestError, "Não foi possível carregar os canais deste servidor."));
       })
       .finally(() => setLoadingChannels(false));
   }, [botId, guild]);
+
+  useEffect(() => {
+    if (!guild || !botId || !automated?.enabled) return;
+    const timer = window.setInterval(() => {
+      void getAutomatedLogSettings(guild.id, botId).then((next) => setAutomated((current) => current ? {
+        ...current,
+        categoryId: next.categoryId,
+        channels: next.channels,
+        lastError: next.lastError,
+        lastSyncedAt: next.lastSyncedAt,
+        lastSyncRequestedAt: next.lastSyncRequestedAt
+      } : next)).catch(() => undefined);
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [automated?.enabled, botId, guild]);
 
   function updateDraft<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({
@@ -128,7 +147,7 @@ export function LogsSettingsPanel({
       return;
     }
 
-    if (draft.discordLogsEnabled && !draft.logChannelId) {
+    if (draft.discordLogsEnabled && !draft.logChannelId && !automated?.enabled) {
       setStatus(null);
       setError("Selecione o canal que recebera os logs do Discord.");
       return;
@@ -152,12 +171,33 @@ export function LogsSettingsPanel({
 
     try {
       const saved = await patchGuildSettings(guild.id, draft, botId);
+      if (botId && automated) {
+        const savedAutomated = await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds });
+        setAutomated(savedAutomated);
+      }
       onSettingsChange(saved);
       setStatus("Configuração de logs salva.");
     } catch (requestError) {
       setError(readErrorMessage(requestError, "Não foi possível salvar a configuração de logs."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function requestAutomatedSync(label: string) {
+    if (!guild || !botId || !automated || !canManage) return;
+    setError(null);
+    try {
+      if (automated.enabled) {
+        const savedGuild = await patchGuildSettings(guild.id, { discordLogsEnabled: true, discordLogCategories: draft.discordLogCategories }, botId);
+        onSettingsChange(savedGuild);
+      }
+      await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds });
+      const next = await syncAutomatedLogStructure(guild.id, botId);
+      setAutomated(next);
+      setStatus(label);
+    } catch (requestError) {
+      setError(readErrorMessage(requestError, "The automatic log structure could not be synchronized."));
     }
   }
 
@@ -182,7 +222,7 @@ export function LogsSettingsPanel({
           enabled={draft.discordLogsEnabled}
           icon={Bot}
           onCategoryToggle={(category) => toggleCategory("discord", category)}
-          onEnabledChange={(checked) => updateDraft("discordLogsEnabled", checked)}
+          onEnabledChange={(checked) => { updateDraft("discordLogsEnabled", checked); setAutomated((current) => current ? { ...current, enabled: checked } : current); }}
           title="Logs no Discord"
         >
           <label className="grid gap-2 text-sm">
@@ -214,6 +254,18 @@ export function LogsSettingsPanel({
           title="Logs no site"
         />
       </div>
+
+      {automated && botId ? (
+        <Card>
+          <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Automatic Log Structure</CardTitle><CardDescription>Creates and maintains the private [Skyfall] - Logs category without duplicates.</CardDescription></div><Switch checked={automated.enabled} disabled={disabled} onCheckedChange={(enabled) => { setAutomated((current) => current ? { ...current, enabled } : current); if (enabled) updateDraft("discordLogsEnabled", true); }} /></div></CardHeader>
+          <CardContent className="space-y-4">
+            <div><p className="mb-2 text-sm font-medium text-zinc-200">Roles allowed to view logs</p><div className="grid max-h-44 gap-2 overflow-y-auto rounded-lg border border-zinc-800 p-3 sm:grid-cols-2">{roles.map((role) => <label className="flex items-center gap-2 text-sm text-zinc-300" key={role.id}><input type="checkbox" disabled={disabled} checked={automated.allowedRoleIds.includes(role.id)} onChange={() => setAutomated((current) => current ? { ...current, allowedRoleIds: current.allowedRoleIds.includes(role.id) ? current.allowedRoleIds.filter((id) => id !== role.id) : [...current.allowedRoleIds, role.id] } : current)} />@{role.name}</label>)}</div></div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(automated.channels).map(([key, value]) => <div className="rounded-lg border border-zinc-900 bg-zinc-950 p-3 text-sm" key={key}><span className="text-zinc-500">{key}</span><p className="mt-1 text-zinc-200">{value ? `Channel ${value}` : "Not created"}</p></div>)}</div>
+            {automated.lastError ? <p className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">{automated.lastError}</p> : null}
+            <div className="flex flex-wrap gap-2"><Button disabled={disabled} variant="outline" onClick={() => void requestAutomatedSync("Log structure synchronization requested.")}>Recreate structure</Button><Button disabled={disabled} variant="outline" onClick={() => void requestAutomatedSync("Permission update requested.")}>Update permissions</Button>{automated.lastSyncedAt ? <Badge variant="success">Synced {new Date(automated.lastSyncedAt).toLocaleString("pt-BR")}</Badge> : <Badge variant="warning">Waiting for bot sync</Badge>}</div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-h-5 text-sm">

@@ -10,6 +10,8 @@ import { handleServerCloneInteraction } from "../services/serverCloneService";
 import { handleServerGeneratorInteraction } from "../services/serverGeneratorService";
 import type { BotContext } from "../types";
 import { handleMusicInteraction } from "../music/musicService";
+import { handleSafeBotWarningInteraction } from "../services/safeBotWarningService";
+import { handleTemporaryVoiceInteraction } from "../services/temporaryVoiceService";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
   if (await blockInteractionIfMaintenance(interaction)) {
@@ -29,6 +31,14 @@ export async function handleInteractionCreate(interaction: Interaction, context:
   }
 
   if (await handleMissionToolsInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleSafeBotWarningInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleTemporaryVoiceInteraction(interaction, context)) {
     return;
   }
 

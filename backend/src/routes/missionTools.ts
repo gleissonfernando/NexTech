@@ -4,6 +4,7 @@ import { requireAuth, requireBot } from "../middleware/auth";
 import { areGuildRoles, getGuildLiveOptions, isGuildTextChannel, validateGuildPanelChannel } from "../services/discordOptionsService";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
 import {
+  classifyMissionToolsTokenAsFake,
   deleteMissionToolsToken,
   getMissionToolsDashboard,
   getMissionToolsSettings,
@@ -104,7 +105,7 @@ const userPatchSchema = z.object({
 });
 
 const tokenSchema = z.object({
-  token: z.string().min(10).max(4096)
+  token: z.string().min(1).max(4096)
 });
 const dashboardTokenSchema = tokenSchema.extend({
   username: z.string().max(120).nullable().optional()
@@ -115,7 +116,7 @@ const tokenAuthFailureSchema = z.object({
   statusCode: z.coerce.number().int().min(100).max(4999).nullable().optional()
 });
 const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
-  "Por seguranca, o Mission Tools nao aceita token de conta Discord. Use apenas recursos oficiais do bot/OAuth.";
+  "Fake token detected. Mission Tools never stores or executes Discord user-account tokens. Use official bot or OAuth permissions only.";
 
 export const missionToolsRouter = Router();
 
@@ -195,13 +196,11 @@ missionToolsRouter.post("/bot/:guildId/users/:userId/token", requireBot, async (
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    tokenSchema.parse(req.body);
+    const input = tokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
-    void guildId;
-    void userId;
-
-    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
+    void input.token;
+    return res.json(await classifyMissionToolsTokenAsFake(guildId, botId, userId));
   } catch (error) {
     return next(error);
   }
@@ -240,9 +239,6 @@ missionToolsRouter.get("/bot/:guildId/users/:userId/token", requireBot, async (r
     const userId = snowflakeSchema.parse(req.params.userId);
     const botId = await readRequiredBotId(req);
     await assertBotMissionToolsLicense(botId);
-    void guildId;
-    void userId;
-
     throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
   } catch (error) {
     return next(error);
@@ -253,17 +249,18 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    dashboardTokenSchema.parse(req.body);
+    const input = dashboardTokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
 
     if (user.discordId !== userId) {
-      throw createRouteError("Voce so pode gerenciar o seu proprio token.", 403);
+      throw createRouteError("You can only manage your own token state.", 403);
     }
 
     await assertCanReadMissionTools(user, guildId, botId);
 
-    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
+    void input.token;
+    return res.json(await classifyMissionToolsTokenAsFake(guildId, botId, userId, input.username));
   } catch (error) {
     return next(error);
   }
@@ -272,13 +269,14 @@ missionToolsRouter.post("/:guildId/users/:userId/token", requireAuth, async (req
 missionToolsRouter.post("/:guildId/me/token", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
-    tokenSchema.parse(req.body);
+    const input = tokenSchema.parse(req.body);
     const botId = await readRequiredBotId(req);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
 
     await assertCanReadMissionTools(user, guildId, botId);
 
-    throw createRouteError(USER_TOKEN_FEATURES_DISABLED_MESSAGE, 403);
+    void input.token;
+    return res.json(await classifyMissionToolsTokenAsFake(guildId, botId, user.discordId));
   } catch (error) {
     return next(error);
   }
@@ -387,7 +385,7 @@ async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0])
   const botId = await resolveRequestBotId(req);
 
   if (!botId) {
-    throw createRouteError("Escolha um bot cadastrado para usar o Mission Tools.", 400);
+    throw createRouteError("Select a registered bot to use Mission Tools.", 400);
   }
 
   return botId;
@@ -400,7 +398,7 @@ async function assertCanReadMissionTools(user: AuthSessionUser, guildId: string,
     return;
   }
 
-  throw createRouteError("Voce nao tem permissao para acessar o Mission Tools deste bot.", 403);
+  throw createRouteError("You do not have permission to access Mission Tools for this bot.", 403);
 }
 
 async function assertCanManageMissionTools(user: AuthSessionUser, guildId: string, botId: string) {
@@ -410,18 +408,18 @@ async function assertCanManageMissionTools(user: AuthSessionUser, guildId: strin
     return;
   }
 
-  throw createRouteError("Voce nao tem permissao para configurar o Mission Tools deste bot.", 403);
+  throw createRouteError("You do not have permission to configure Mission Tools for this bot.", 403);
 }
 
 async function assertBotMissionToolsLicense(botId: string) {
   const permissions = await getBotApiPermissions(botId);
 
   if (!permissions) {
-    throw createRouteError("Bot nao encontrado.", 404);
+    throw createRouteError("Bot not found.", 404);
   }
 
   if (!permissions.enabledModules.includes(MODULE_ID)) {
-    throw createRouteError("O Mission Tools nao foi liberado para este bot.", 403);
+    throw createRouteError("Mission Tools has not been enabled for this bot by an administrator.", 403);
   }
 }
 
@@ -437,7 +435,7 @@ async function validateMissionToolsResources(guildId: string, botId: string, inp
   );
 
   if (!channelChecks.every(Boolean)) {
-    throw createRouteError("Um dos canais selecionados nao pertence a este servidor.", 400);
+    throw createRouteError("One of the selected channels does not belong to this server.", 400);
   }
 
   if (input.panelChannelId) {
@@ -450,7 +448,7 @@ async function validateMissionToolsResources(guildId: string, botId: string, inp
   ];
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
-    throw createRouteError("Um dos cargos selecionados nao pertence a este servidor.", 400);
+    throw createRouteError("One of the selected roles does not belong to this server.", 400);
   }
 }
 
@@ -459,7 +457,7 @@ async function assertPanelChannelReady(guildId: string, botId: string, channelId
 
   if (!validation.ok) {
     throw createRouteError(
-      validation.reason ?? "Nao foi possivel validar as permissoes do bot no canal do painel.",
+      validation.reason ?? "The bot permissions in the panel channel could not be validated.",
       400
     );
   }

@@ -63,6 +63,13 @@ export async function handleRulesInteraction(interaction: ButtonInteraction, con
 
   try {
     await member.roles.add(settings.rulesRoleId, "Aceitou as regras pelo painel do bot.");
+    await context.api.postLog({
+      guildId: interaction.guildId,
+      userId: member.id,
+      type: "verification.discord",
+      message: `${member.user.tag} was verified successfully through the rules panel.`,
+      metadata: { method: "Rules panel", status: "Verified", releasedBy: "Automatic", guildName: interaction.guild.name, roleId: settings.rulesRoleId }
+    }).catch(() => null);
     await interaction.reply({
       content: "Regras aceitas. Cargo liberado com sucesso.",
       ephemeral: true

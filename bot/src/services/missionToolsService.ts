@@ -65,7 +65,7 @@ const PANEL_ACCENT = 0x4b5563;
 const PANEL_REQUEST_CHECK_INTERVAL_MS = 15_000;
 const DM_REPLY_CLEANUP_DELAY_MS = 2_500;
 const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
-  "Por seguranca, o Mission Tools nao aceita token de conta Discord. Use apenas recursos oficiais do bot/OAuth; tokens pessoais nao devem ser enviados ao painel.";
+  "Fake token detected. Mission Tools never stores or executes Discord user-account tokens. Use official bot or OAuth permissions only.";
 
 let serviceStarted = false;
 let panelRequestCheckRunning = false;
@@ -93,7 +93,7 @@ export function startMissionToolsService(client: Client, context: BotContext) {
       return;
     }
 
-    console.log(`[mission-tools] configuracao atualizada para ${payload.guildId}.`);
+    console.log(`[mission-tools] settings updated for ${payload.guildId}.`);
   });
 
   context.socket.onMissionToolsPanelPublish((payload) => {
@@ -102,7 +102,7 @@ export function startMissionToolsService(client: Client, context: BotContext) {
     }
 
     void publishRequestedMissionToolsPanel(client, context, payload.guildId).catch((error) => {
-      console.error(`[mission-tools] falha ao publicar painel em ${payload.guildId}:`, errorMessage(error));
+      console.error(`[mission-tools] failed to publish panel in ${payload.guildId}:`, errorMessage(error));
     });
   });
 
@@ -114,16 +114,16 @@ export function startMissionToolsService(client: Client, context: BotContext) {
     invalidateRuntimeSessionsFromUserPayload(payload.guildId, payload.user);
     void refreshExistingUserDmPanels(context, payload.guildId, payload.user)
       .then((updated) => {
-        console.log(`[mission-tools] painel de usuario atualizado em ${payload.guildId}: ${updated} mensagem(ns).`);
+        console.log(`[mission-tools] user panel updated in ${payload.guildId}: ${updated} message(s).`);
       })
       .catch((error) => {
-        console.warn(`[mission-tools] falha ao atualizar painel privado em ${payload.guildId}:`, errorMessage(error));
+        console.warn(`[mission-tools] failed to update private panel in ${payload.guildId}:`, errorMessage(error));
       });
   });
 
   void context.api.getActiveMissionToolsConfigs()
-    .then((configs) => console.log(`[mission-tools] ${configs.length} configuracao(oes) ativa(s) carregada(s).`))
-    .catch((error) => console.warn("[mission-tools] nao foi possivel carregar configuracoes:", errorMessage(error)));
+    .then((configs) => console.log(`[mission-tools] ${configs.length} active configuration(s) loaded.`))
+    .catch((error) => console.warn("[mission-tools] settings could not be loaded:", errorMessage(error)));
 
   void processPendingMissionToolsPanelRequests(client, context);
   const interval = setInterval(() => {
@@ -143,7 +143,7 @@ export async function handleMissionToolsInteraction(interaction: Interaction, co
   }
 
   if (!isBotModuleEnabled(MODULE_ID)) {
-    await replySafely(interaction, "O Mission Tools nao foi liberado para este bot na dashboard.");
+    await replySafely(interaction, "Mission Tools has not been enabled for this bot by an administrator.");
     return true;
   }
 
@@ -160,8 +160,8 @@ export async function handleMissionToolsInteraction(interaction: Interaction, co
 
     await handleButton(interaction, context);
   } catch (error) {
-    console.error("[mission-tools] falha ao processar interacao:", error);
-    await replySafely(interaction, readRequestErrorMessage(error) ?? "Nao foi possivel processar essa interacao do Mission Tools.");
+    console.error("[mission-tools] failed to process interaction:", error);
+    await replySafely(interaction, readRequestErrorMessage(error) ?? "This Mission Tools interaction could not be processed.");
   }
 
   return true;
@@ -175,7 +175,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
   const selected = interaction.values[0];
 
   if (!guildId) {
-    await replySafely(interaction, "Painel Mission Tools invalido.");
+    await replySafely(interaction, "Invalid Mission Tools panel.");
     return;
   }
 
@@ -188,7 +188,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
 
     const panelType = panelTypeFromMainValue(selected);
     if (!panelType) {
-      await replySafely(interaction, "Modulo Mission Tools invalido.");
+      await replySafely(interaction, "Invalid Mission Tools module.");
       await resetMainPanelSelection(interaction, context, guildId);
       return;
     }
@@ -217,7 +217,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
       guildOptions: options.guildOptions,
       voiceChannelOptions: options.voiceChannelOptions
     });
-    await editMissionReply(interaction, "Servidor de voz selecionado. Agora escolha o canal.");
+    await editMissionReply(interaction, "Voice server selected. Now choose a channel.");
     return;
   }
 
@@ -244,11 +244,11 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction, contex
     await editOrCreateDmPanel(context, guildId, interaction.user.id, "voice", {
       voiceChannelOptions: channelOptions
     });
-    await editMissionReply(interaction, "Canal de voz selecionado.");
+    await editMissionReply(interaction, "Voice channel selected.");
     return;
   }
 
-  await replySafely(interaction, "Selecao do Mission Tools nao reconhecida.");
+  await replySafely(interaction, "Unknown Mission Tools selection.");
 }
 
 async function handleButton(interaction: ButtonInteraction, context: BotContext) {
@@ -258,7 +258,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
   const guildId = parts[3];
 
   if (!scope || !action || !guildId) {
-    await replySafely(interaction, "Acao Mission Tools invalida.");
+    await replySafely(interaction, "Invalid Mission Tools action.");
     return;
   }
 
@@ -292,7 +292,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     return;
   }
 
-  await replySafely(interaction, "Acao Mission Tools nao reconhecida.");
+  await replySafely(interaction, "Unknown Mission Tools action.");
 }
 
 async function handleModal(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -301,7 +301,7 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   const guildId = parts[3];
 
   if (!modal || !guildId) {
-    await replySafely(interaction, "Formulario Mission Tools invalido.");
+    await replySafely(interaction, "Invalid Mission Tools form.");
     return;
   }
 
@@ -340,7 +340,7 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
     return;
   }
 
-  await replySafely(interaction, "Formulario Mission Tools nao reconhecido.");
+  await replySafely(interaction, "Unknown Mission Tools form.");
 }
 
 async function handleMissionButton(interaction: ButtonInteraction, context: BotContext, guildId: string, action: string) {
@@ -348,7 +348,7 @@ async function handleMissionButton(interaction: ButtonInteraction, context: BotC
     await deferMissionReply(interaction);
     invalidateMissionRunVersion(guildId, interaction.user.id);
     await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
-      currentMission: "Quests por token pessoal bloqueadas",
+      currentMission: "User-token quests disabled",
       missionDetail: USER_TOKEN_FEATURES_DISABLED_MESSAGE,
       missionStatus: "error",
       progress: 0,
@@ -361,14 +361,14 @@ async function handleMissionButton(interaction: ButtonInteraction, context: BotC
 
   if (action === "deactivate") {
     await deferMissionReply(interaction);
-    const cancelled = missionQueue.cancelUser(sessionKey(guildId, interaction.user.id), "Mission System desativado pelo usuario.");
+    const cancelled = missionQueue.cancelUser(sessionKey(guildId, interaction.user.id), "Mission System deactivated by the user.");
     invalidateMissionRunVersion(guildId, interaction.user.id);
     await updateUserAndPanel(context, guildId, interaction.user.id, "mission", {
-      missionDetail: cancelled ? "Operacao cancelada." : "Nenhuma operacao em andamento.",
+      missionDetail: cancelled ? "Operation cancelled." : "No operation is currently running.",
       missionStatus: "deactivated",
       progress: 0
     });
-    await editMissionReply(interaction, "Mission System desativado.");
+    await editMissionReply(interaction, "Mission System deactivated.");
   }
 }
 
@@ -379,7 +379,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
       clearMode: "bulk",
       username: displayUserName(interaction)
     });
-    await editMissionReply(interaction, "Modo de limpeza alterado para em massa.");
+    await editMissionReply(interaction, "Cleanup mode changed to bulk.");
     return;
   }
 
@@ -387,12 +387,12 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
     const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
     const modal = new ModalBuilder()
       .setCustomId(`${PREFIX}:modal:clear-target:${guildId}`)
-      .setTitle("Limpar DM por User ID")
+      .setTitle("Clean DM by User ID")
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("clear_target_user_id")
-            .setLabel("User ID da pessoa")
+            .setLabel("Target user ID")
             .setMaxLength(32)
             .setMinLength(5)
             .setRequired(true)
@@ -413,7 +413,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
     const key = sessionKey(guildId, interaction.user.id);
 
     if (cleanupControllers.has(key)) {
-      await editMissionReply(interaction, "Clean System ja esta rodando.");
+      await editMissionReply(interaction, "Clean System is already running.");
       return;
     }
 
@@ -421,7 +421,7 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
     cleanupControllers.set(key, controller);
     await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
       clearStatus: "running",
-      currentMission: record.clearMode === "userDm" ? "Limpando DM por ID" : "Limpeza em massa",
+      currentMission: record.clearMode === "userDm" ? "Cleaning DM by ID" : "Bulk cleanup",
       username: displayUserName(interaction)
     });
     void runDiscordDmCleanup({
@@ -432,30 +432,30 @@ async function handleClearButton(interaction: ButtonInteraction, context: BotCon
       .then(async () => {
         await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
           clearStatus: "completed",
-          currentMission: "Limpeza finalizada"
+          currentMission: "Cleanup completed"
         });
       })
       .catch(async (error) => {
         const authFailed = await recordTokenAuthFailure(context, guildId, interaction.user.id, error, "clear", "clear");
         await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
           clearStatus: controller.signal.aborted ? "deactivated" : "error",
-          currentMission: authFailed ? "Token precisa ser reconectado." : errorMessage(error)
+          currentMission: authFailed ? "Fake token detected; use an official bot or OAuth flow." : errorMessage(error)
         });
       })
       .finally(() => cleanupControllers.delete(key));
-    await editMissionReply(interaction, "Clean System iniciado.");
+    await editMissionReply(interaction, "Clean System started.");
     return;
   }
 
   if (action === "deactivate") {
     await deferMissionReply(interaction);
-    cleanupControllers.get(sessionKey(guildId, interaction.user.id))?.abort("Clean System desativado pelo usuario.");
+    cleanupControllers.get(sessionKey(guildId, interaction.user.id))?.abort("Clean System deactivated by the user.");
     cleanupControllers.delete(sessionKey(guildId, interaction.user.id));
     await updateUserAndPanel(context, guildId, interaction.user.id, "clear", {
       clearStatus: "deactivated",
-      currentMission: "Sistema desativado"
+      currentMission: "System deactivated"
     });
-    await editMissionReply(interaction, "Clean System desativado.");
+    await editMissionReply(interaction, "Clean System deactivated.");
   }
 }
 
@@ -473,7 +473,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
       guildOptions: options.guildOptions,
       voiceChannelOptions: options.voiceChannelOptions
     });
-    await editMissionReply(interaction, "Lista de servidores/canais atualizada.");
+    await editMissionReply(interaction, "Server and channel list updated.");
     return;
   }
 
@@ -486,7 +486,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("voice_guild_id")
-            .setLabel("ID do servidor")
+            .setLabel("Server ID")
             .setMaxLength(32)
             .setMinLength(5)
             .setRequired(true)
@@ -496,7 +496,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("voice_channel_id")
-            .setLabel("ID do canal de voz")
+            .setLabel("Voice channel ID")
             .setMaxLength(32)
             .setMinLength(5)
             .setRequired(true)
@@ -516,7 +516,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
     const record = await context.api.getMissionToolsUser(guildId, interaction.user.id);
 
     if (!record.voiceGuildId || !record.voiceChannelId) {
-      await editMissionReply(interaction, "Selecione ou configure o servidor e canal de voz primeiro.");
+      await editMissionReply(interaction, "Select or configure a voice server and channel first.");
       return;
     }
 
@@ -540,7 +540,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
     await updateUserAndPanel(context, guildId, interaction.user.id, "voice", {
       voiceStatus: "reconnecting"
     });
-    await editMissionReply(interaction, "Voice Session iniciada.");
+    await editMissionReply(interaction, "Voice Session started.");
     return;
   }
 
@@ -553,7 +553,7 @@ async function handleVoiceButton(interaction: ButtonInteraction, context: BotCon
       voiceConnectedAt: null,
       voiceStatus: "disconnected"
     });
-    await editMissionReply(interaction, "Voice Session desconectada.");
+    await editMissionReply(interaction, "Voice Session disconnected.");
   }
 }
 
@@ -617,7 +617,7 @@ async function handleRichPresenceButton(interaction: ButtonInteraction, context:
     await updateUserAndPanel(context, guildId, interaction.user.id, "richPresence", {
       richPresenceStatus: "inactive"
     });
-    await editMissionReply(interaction, "Rich Presence desativado.");
+    await editMissionReply(interaction, "Rich Presence deactivated.");
     return;
   }
 
@@ -651,7 +651,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId("username_delay")
-            .setLabel("Delay por tentativa em ms")
+            .setLabel("Delay per attempt in ms")
             .setMaxLength(6)
             .setRequired(true)
             .setStyle(TextInputStyle.Short)
@@ -666,7 +666,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
     await deferMissionReply(interaction);
     const key = sessionKey(guildId, interaction.user.id);
     if (usernameCheckerSessions.has(key)) {
-      await editMissionReply(interaction, "Username Checker ja esta rodando.");
+      await editMissionReply(interaction, "Username Checker is already running.");
       return;
     }
 
@@ -694,7 +694,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
     });
     checker.on("error", (payload: { message?: string }) => {
       void context.api.updateMissionToolsUser(guildId, interaction.user.id, {
-        usernameCheckerLastEvent: payload.message ?? "Erro no checker",
+        usernameCheckerLastEvent: payload.message ?? "Checker error",
         usernameCheckerUpdatedAt: new Date().toISOString()
       });
     });
@@ -715,7 +715,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
       username: displayUserName(interaction),
       usernameCheckerStatus: "running"
     });
-    await editMissionReply(interaction, "Username Checker iniciado.");
+    await editMissionReply(interaction, "Username Checker started.");
     return;
   }
 
@@ -727,7 +727,7 @@ async function handleUsernameCheckerButton(interaction: ButtonInteraction, conte
     await updateUserAndPanel(context, guildId, interaction.user.id, "usernameChecker", {
       usernameCheckerStatus: "inactive"
     });
-    await editMissionReply(interaction, "Username Checker parado.");
+    await editMissionReply(interaction, "Username Checker stopped.");
   }
 }
 
@@ -739,7 +739,7 @@ async function handleClearTargetModal(interaction: ModalSubmitInteraction, conte
     clearTargetUserId: targetUserId,
     username: displayUserName(interaction)
   });
-  await editMissionReply(interaction, "DM por ID configurada.");
+  await editMissionReply(interaction, "DM-by-ID cleanup configured.");
 }
 
 async function handleVoiceConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
@@ -753,7 +753,7 @@ async function handleVoiceConfigModal(interaction: ModalSubmitInteraction, conte
     voiceGuildId,
     voiceGuildName: voiceGuildId
   });
-  await editMissionReply(interaction, "Voice Session configurada.");
+  await editMissionReply(interaction, "Voice Session configured.");
 }
 
 async function handleRichPresenceConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
@@ -768,12 +768,12 @@ async function handleRichPresenceConfigModal(interaction: ModalSubmitInteraction
   };
 
   if (!config.name) {
-    await editMissionReply(interaction, "Nome da atividade e obrigatorio.");
+    await editMissionReply(interaction, "Activity name is required.");
     return;
   }
 
   await applyRichConfig(context, guildId, interaction.user.id, config);
-  await editMissionReply(interaction, "Rich Presence atualizado.");
+  await editMissionReply(interaction, "Rich Presence updated.");
 }
 
 async function handleRichPresenceButtonModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
@@ -786,12 +786,12 @@ async function handleRichPresenceButtonModal(interaction: ModalSubmitInteraction
   };
 
   if (Boolean(config.buttonLabel) !== Boolean(config.buttonUrl)) {
-    await editMissionReply(interaction, "Preencha o texto e a URL do botao, ou deixe os dois vazios.");
+    await editMissionReply(interaction, "Provide both the button label and URL, or leave both empty.");
     return;
   }
 
   await applyRichConfig(context, guildId, interaction.user.id, config);
-  await editMissionReply(interaction, "Botao do Rich Presence atualizado.");
+  await editMissionReply(interaction, "Rich Presence button updated.");
 }
 
 async function handleRichPresenceAdvancedModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
@@ -808,7 +808,7 @@ async function handleRichPresenceAdvancedModal(interaction: ModalSubmitInteracti
   };
 
   await applyRichConfig(context, guildId, interaction.user.id, config);
-  await editMissionReply(interaction, "Configuracao avancada atualizada.");
+  await editMissionReply(interaction, "Advanced configuration updated.");
 }
 
 async function handleUsernameCheckerConfigModal(interaction: ModalSubmitInteraction, context: BotContext, guildId: string) {
@@ -822,7 +822,7 @@ async function handleUsernameCheckerConfigModal(interaction: ModalSubmitInteract
     },
     username: displayUserName(interaction)
   });
-  await editMissionReply(interaction, "Username Checker configurado.");
+  await editMissionReply(interaction, "Username Checker configured.");
 }
 
 async function applyRichConfig(context: BotContext, guildId: string, userId: string, config: MissionToolsRichPresenceConfig) {
@@ -899,7 +899,7 @@ async function recordTokenAuthFailure(
     await editOrCreateDmPanel(context, guildId, userId, panelType).catch(() => null);
     await refreshExistingUserDmPanels(context, guildId, result.user).catch(() => null);
   } catch (reportError) {
-    console.warn("[mission-tools] falha ao registrar token invalido:", errorMessage(reportError));
+    console.warn("[mission-tools] failed to record rejected token:", errorMessage(reportError));
   }
 
   return true;
@@ -962,13 +962,13 @@ async function publishMissionToolsPanel(client: Client, context: BotContext, gui
   const settings = await context.api.getMissionToolsSettings(guildId);
 
   if (!settings.enabled || !settings.panelChannelId) {
-    throw new Error("Mission Tools nao esta ativo ou sem canal de painel.");
+    throw new Error("Mission Tools is disabled or has no panel channel configured.");
   }
 
   const channel = await guild.channels.fetch(settings.panelChannelId);
 
   if (!channel || !channel.isTextBased() || !("messages" in channel)) {
-    throw new Error("Canal de painel Mission Tools invalido.");
+    throw new Error("Invalid Mission Tools panel channel.");
   }
 
   assertPanelChannelPermissions(channel, client, "Mission Tools");
@@ -1000,7 +1000,7 @@ async function publishMissionToolsPanel(client: Client, context: BotContext, gui
     guildId,
     messageId
   });
-  console.log(`[mission-tools] painel publicado em ${guild.name}.`);
+  console.log(`[mission-tools] panel published in ${guild.name}.`);
   return saved;
 }
 
@@ -1026,11 +1026,11 @@ async function processPendingMissionToolsPanelRequests(client: Client, context: 
       }
 
       await publishRequestedMissionToolsPanel(client, context, settings.guildId).catch((error) => {
-        logPanelRequestError(key, `[mission-tools] falha ao publicar painel pendente em ${settings.guildId}:`, error);
+        logPanelRequestError(key, `[mission-tools] failed to publish pending panel in ${settings.guildId}:`, error);
       });
     }
   } catch (error) {
-    console.warn("[mission-tools] falha ao verificar pedidos pendentes:", errorMessage(error));
+    console.warn("[mission-tools] failed to check pending requests:", errorMessage(error));
   } finally {
     panelRequestCheckRunning = false;
   }
@@ -1039,7 +1039,7 @@ async function processPendingMissionToolsPanelRequests(client: Client, context: 
 function buildMainPanelPayload(settings: MissionToolsSettings) {
   const select = new StringSelectMenuBuilder()
     .setCustomId(`${PREFIX}:main:select:${settings.guildId}`)
-    .setPlaceholder("Selecione um modulo")
+    .setPlaceholder("Select a module")
     .addOptions(
       featureOption(settings, "mission", "Mission System", "Manage mission automations and progress", MAIN_MISSION_VALUE),
       featureOption(settings, "clear", "Clean System", "Manage system cleanup operations", MAIN_CLEAR_VALUE),
@@ -1054,9 +1054,9 @@ function buildMainPanelPayload(settings: MissionToolsSettings) {
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
   const container = new ContainerBuilder()
     .setAccentColor(PANEL_ACCENT)
-    .addTextDisplayComponents(text("# Control Center\nSelecione um modulo para abrir a interface dedicada por mensagem direta."))
+    .addTextDisplayComponents(text("# Control Center\nSelect a module to open its dedicated interface by direct message."))
     .addSeparatorComponents(separator())
-    .addTextDisplayComponents(text(`**Status:** ${settings.enabled ? "Ativo" : "Inativo"}\n**Modulos liberados:** ${settings.enabledFeatures.length}`))
+    .addTextDisplayComponents(text(`**Status:** ${settings.enabled ? "Active" : "Inactive"}\n**Enabled modules:** ${settings.enabledFeatures.length}`))
     .addActionRowComponents(row);
 
   return componentsV2Payload(container);
@@ -1064,12 +1064,12 @@ function buildMainPanelPayload(settings: MissionToolsSettings) {
 
 function buildClearPanelPayload(record: MissionToolsUserPanel) {
   const modeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(`${PREFIX}:clear:bulk:${record.guildId}`, "Em massa", record.clearMode === "bulk" ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    button(`${PREFIX}:clear:target:${record.guildId}`, "DM por ID", record.clearMode === "userDm" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    button(`${PREFIX}:clear:bulk:${record.guildId}`, "Bulk", record.clearMode === "bulk" ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    button(`${PREFIX}:clear:target:${record.guildId}`, "DM by ID", record.clearMode === "userDm" ? ButtonStyle.Primary : ButtonStyle.Secondary)
   );
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     button(`${PREFIX}:clear:start:${record.guildId}`, "Start", ButtonStyle.Secondary),
-    button(`${PREFIX}:clear:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
+    button(`${PREFIX}:clear:token:${record.guildId}`, "Fake token", ButtonStyle.Secondary),
     button(`${PREFIX}:clear:deactivate:${record.guildId}`, "Deactivate", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
@@ -1079,8 +1079,8 @@ function buildClearPanelPayload(record: MissionToolsUserPanel) {
     .addTextDisplayComponents(text(
       `**System Status:** ${statusLabel(record.clearStatus)}\n`
       + `**Configured Token:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}\n`
-      + `**Modo de limpeza:** ${record.clearMode === "userDm" ? "DM por ID" : "Em massa"}\n`
-      + `**User ID alvo:** ${record.clearTargetUserId ?? "Nao definido"}\n`
+      + `**Cleanup mode:** ${record.clearMode === "userDm" ? "DM by ID" : "Bulk"}\n`
+      + `**Target user ID:** ${record.clearTargetUserId ?? "Not defined"}\n`
       + `**Current Execution:** ${record.currentMission ?? "No execution in progress"}\n`
       + `**Last Synchronization:** ${formatUpdatedAt(record.updatedAt)}`
     ))
@@ -1094,7 +1094,7 @@ function buildClearPanelPayload(record: MissionToolsUserPanel) {
 function buildMissionPanelPayload(record: MissionToolsUserPanel) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     button(`${PREFIX}:mission:start:${record.guildId}`, "Start", ButtonStyle.Secondary),
-    button(`${PREFIX}:mission:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
+    button(`${PREFIX}:mission:token:${record.guildId}`, "Fake token", ButtonStyle.Secondary),
     button(`${PREFIX}:mission:deactivate:${record.guildId}`, "Deactivate", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
@@ -1118,28 +1118,28 @@ function buildMissionPanelPayload(record: MissionToolsUserPanel) {
 
 function buildVoicePanelPayload(record: MissionToolsUserPanel, options: PanelRenderOptions = {}) {
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(`${PREFIX}:voice:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary),
-    button(`${PREFIX}:voice:load:${record.guildId}`, "Buscar canais", ButtonStyle.Secondary),
-    button(`${PREFIX}:voice:manual:${record.guildId}`, "IDs manuais", ButtonStyle.Secondary),
-    button(`${PREFIX}:voice:start:${record.guildId}`, "Conectar", ButtonStyle.Secondary),
-    button(`${PREFIX}:voice:stop:${record.guildId}`, "Desconectar", ButtonStyle.Secondary)
+    button(`${PREFIX}:voice:token:${record.guildId}`, "Fake token", ButtonStyle.Secondary),
+    button(`${PREFIX}:voice:load:${record.guildId}`, "Load channels", ButtonStyle.Secondary),
+    button(`${PREFIX}:voice:manual:${record.guildId}`, "Manual IDs", ButtonStyle.Secondary),
+    button(`${PREFIX}:voice:start:${record.guildId}`, "Connect", ButtonStyle.Secondary),
+    button(`${PREFIX}:voice:stop:${record.guildId}`, "Disconnect", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
     .setAccentColor(PANEL_ACCENT)
-    .addTextDisplayComponents(text("# Voice Session\nGerenciamento de sessao persistente em canal de voz."))
+    .addTextDisplayComponents(text("# Voice Session\nManage a persistent voice-channel session."))
     .addSeparatorComponents(separator())
     .addTextDisplayComponents(text(
-      `**Servidor conectado:** ${record.voiceGuildName ?? "Nao selecionado"}\n`
-      + `**Canal atual:** ${record.voiceChannelName ?? "Nao selecionado"}\n`
-      + `**Tempo de conexao ativo:** ${durationLabel(record.voiceConnectedAt)}\n`
-      + `**Status da sessao:** ${voiceStatusLabel(record.voiceStatus)}\n`
-      + `**Token configurado:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}`
+      `**Connected server:** ${record.voiceGuildName ?? "Not selected"}\n`
+      + `**Current channel:** ${record.voiceChannelName ?? "Not selected"}\n`
+      + `**Active connection time:** ${durationLabel(record.voiceConnectedAt)}\n`
+      + `**Session status:** ${voiceStatusLabel(record.voiceStatus)}\n`
+      + `**Token state:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}`
     ))
     .addSeparatorComponents(separator());
 
   if (options.guildOptions?.length) {
     container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      selectMenu(`${PREFIX}:voice:guild:${record.guildId}`, record.voiceGuildName ?? "Selecionar servidor", options.guildOptions.map((guild) => ({
+      selectMenu(`${PREFIX}:voice:guild:${record.guildId}`, record.voiceGuildName ?? "Select server", options.guildOptions.map((guild) => ({
         label: guild.name,
         value: guild.id
       })))
@@ -1148,7 +1148,7 @@ function buildVoicePanelPayload(record: MissionToolsUserPanel, options: PanelRen
 
   if (options.voiceChannelOptions?.length) {
     container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      selectMenu(`${PREFIX}:voice:channel:${record.guildId}`, record.voiceChannelName ?? "Selecionar canal de voz", options.voiceChannelOptions.map((channel) => ({
+      selectMenu(`${PREFIX}:voice:channel:${record.guildId}`, record.voiceChannelName ?? "Select voice channel", options.voiceChannelOptions.map((channel) => ({
         label: channel.name,
         value: channel.id
       })))
@@ -1162,28 +1162,28 @@ function buildVoicePanelPayload(record: MissionToolsUserPanel, options: PanelRen
 function buildRichPresencePanelPayload(record: MissionToolsUserPanel) {
   const config = record.richPresenceConfig;
   const rowOne = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(`${PREFIX}:rich:start:${record.guildId}`, "Ativar Rich", ButtonStyle.Success),
-    button(`${PREFIX}:rich:stop:${record.guildId}`, "Desativar", ButtonStyle.Secondary),
-    button(`${PREFIX}:rich:reset:${record.guildId}`, "Resetar", ButtonStyle.Danger)
+    button(`${PREFIX}:rich:start:${record.guildId}`, "Activate", ButtonStyle.Success),
+    button(`${PREFIX}:rich:stop:${record.guildId}`, "Deactivate", ButtonStyle.Secondary),
+    button(`${PREFIX}:rich:reset:${record.guildId}`, "Reset", ButtonStyle.Danger)
   );
   const rowTwo = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(`${PREFIX}:rich:config:${record.guildId}`, "Editar textos", ButtonStyle.Primary),
-    button(`${PREFIX}:rich:button:${record.guildId}`, "Botao", ButtonStyle.Secondary),
-    button(`${PREFIX}:rich:advanced:${record.guildId}`, "Avancado", ButtonStyle.Secondary),
-    button(`${PREFIX}:rich:token:${record.guildId}`, "Token bloqueado", ButtonStyle.Secondary)
+    button(`${PREFIX}:rich:config:${record.guildId}`, "Edit text", ButtonStyle.Primary),
+    button(`${PREFIX}:rich:button:${record.guildId}`, "Button", ButtonStyle.Secondary),
+    button(`${PREFIX}:rich:advanced:${record.guildId}`, "Advanced", ButtonStyle.Secondary),
+    button(`${PREFIX}:rich:token:${record.guildId}`, "Fake token", ButtonStyle.Secondary)
   );
   const container = new ContainerBuilder()
     .setAccentColor(PANEL_ACCENT)
-    .addTextDisplayComponents(text("# Personalizar Rich Presence\nAjuste os campos e clique em ativar para refletir no Discord."))
+    .addTextDisplayComponents(text("# Customize Rich Presence\nAdjust the fields and activate the configuration when ready."))
     .addSeparatorComponents(separator())
     .addTextDisplayComponents(text(
-      `**Status:** ${record.richPresenceStatus === "active" ? "Ativo" : "Inativo"}\n`
+      `**Status:** ${record.richPresenceStatus === "active" ? "Active" : "Inactive"}\n`
       + `**Token:** ${tokenLabel(record.tokenConfigured, record.tokenStatus)}\n`
-      + `**Nome:** ${codeValue(config.name)}\n`
-      + `**Detalhes:** ${codeValue(config.details)}\n`
-      + `**Estado:** ${codeValue(config.state)}\n`
-      + `**Botao:** ${config.buttonLabel && config.buttonUrl ? `${config.buttonLabel} -> ${config.buttonUrl}` : "nao definido"}\n`
-      + `**Imagem grande:** ${config.largeImage ?? "nao definida"}`
+      + `**Name:** ${codeValue(config.name)}\n`
+      + `**Details:** ${codeValue(config.details)}\n`
+      + `**State:** ${codeValue(config.state)}\n`
+      + `**Button:** ${config.buttonLabel && config.buttonUrl ? `${config.buttonLabel} -> ${config.buttonUrl}` : "not defined"}\n`
+      + `**Large image:** ${config.largeImage ?? "not defined"}`
     ))
     .addSeparatorComponents(separator())
     .addActionRowComponents(rowOne)
@@ -1231,12 +1231,12 @@ async function sendDmPanel(interaction: StringSelectMenuInteraction, context: Bo
   const feature = featureFromPanelType(panelType);
 
   if (!settings.enabled || !isFeatureEnabled(settings, feature)) {
-    await editMissionReply(interaction, "Este modulo do Mission Tools nao esta liberado na dashboard.");
+    await editMissionReply(interaction, "This Mission Tools module is not enabled in the dashboard.");
     return;
   }
 
   if (!(await userCanUsePanel(interaction, settings))) {
-    await editMissionReply(interaction, "Voce nao possui cargo autorizado para usar o Mission Tools.");
+    await editMissionReply(interaction, "You do not have an authorized role for Mission Tools.");
     return;
   }
 
@@ -1244,7 +1244,7 @@ async function sendDmPanel(interaction: StringSelectMenuInteraction, context: Bo
     username: displayUserName(interaction)
   });
   await editOrCreateDmPanel(context, guildId, interaction.user.id, panelType);
-  await editMissionReply(interaction, "Enviei o painel no seu privado.");
+  await editMissionReply(interaction, "I sent the panel by direct message.");
 }
 
 async function editOrCreateDmPanel(context: BotContext, guildId: string, userId: string, panelType: PanelType, options: PanelRenderOptions = {}) {
@@ -1340,7 +1340,7 @@ async function deleteBotDmPanels(interaction: StringSelectMenuInteraction, conte
     usernameCheckerMessageId: null,
     voiceMessageId: null
   });
-  await editMissionReply(interaction, `Mensagens do Mission Tools removidas do privado: ${deleted}.`);
+  await editMissionReply(interaction, `Mission Tools direct messages removed: ${deleted}.`);
 }
 
 async function resetMainPanelSelection(interaction: StringSelectMenuInteraction, context: BotContext, guildId: string) {
@@ -1379,12 +1379,12 @@ function messagePatchForPanel(panelType: PanelType, messageId: string) {
 function openRichPresenceConfigModal(interaction: ButtonInteraction, guildId: string, config: MissionToolsRichPresenceConfig) {
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:rich-config:${guildId}`)
-    .setTitle("Conteudo do Rich Presence")
+    .setTitle("Rich Presence Content")
     .addComponents(
-      textInputRow("rich_name", "Nome da atividade", config.name, true),
-      textInputRow("rich_details", "Detalhes", config.details, false),
-      textInputRow("rich_state", "Estado", config.state, false),
-      textInputRow("rich_large_text", "Texto imagem grande", config.largeText, false)
+      textInputRow("rich_name", "Activity name", config.name, true),
+      textInputRow("rich_details", "Details", config.details, false),
+      textInputRow("rich_state", "State", config.state, false),
+      textInputRow("rich_large_text", "Large image text", config.largeText, false)
     );
   return interaction.showModal(modal);
 }
@@ -1392,10 +1392,10 @@ function openRichPresenceConfigModal(interaction: ButtonInteraction, guildId: st
 function openRichPresenceButtonModal(interaction: ButtonInteraction, guildId: string, config: MissionToolsRichPresenceConfig) {
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:rich-button:${guildId}`)
-    .setTitle("Configurar Botao")
+    .setTitle("Configure Button")
     .addComponents(
-      textInputRow("rich_button_label", "Texto do botao", config.buttonLabel, false),
-      textInputRow("rich_button_url", "URL do botao", config.buttonUrl, false)
+      textInputRow("rich_button_label", "Button label", config.buttonLabel, false),
+      textInputRow("rich_button_url", "Button URL", config.buttonUrl, false)
     );
   return interaction.showModal(modal);
 }
@@ -1403,13 +1403,13 @@ function openRichPresenceButtonModal(interaction: ButtonInteraction, guildId: st
 function openRichPresenceAdvancedModal(interaction: ButtonInteraction, guildId: string, config: MissionToolsRichPresenceConfig) {
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:rich-advanced:${guildId}`)
-    .setTitle("Rich Presence avancado")
+    .setTitle("Advanced Rich Presence")
     .addComponents(
-      textInputRow("rich_activity_type", "Tipo: 0,1,2,3 ou 5", String(config.activityType ?? 0), false),
+      textInputRow("rich_activity_type", "Type: 0, 1, 2, 3, or 5", String(config.activityType ?? 0), false),
       textInputRow("rich_application_id", "Application ID", config.applicationId, false),
-      textInputRow("rich_large_image", "Imagem grande URL/asset", config.largeImage, false, TextInputStyle.Paragraph),
-      textInputRow("rich_small_image", "Imagem pequena URL/asset", config.smallImage, false, TextInputStyle.Paragraph),
-      textInputRow("rich_start_time", "Inicio opcional", config.startTimestamp, false)
+      textInputRow("rich_large_image", "Large image URL/asset", config.largeImage, false, TextInputStyle.Paragraph),
+      textInputRow("rich_small_image", "Small image URL/asset", config.smallImage, false, TextInputStyle.Paragraph),
+      textInputRow("rich_start_time", "Optional start time", config.startTimestamp, false)
     );
   return interaction.showModal(modal);
 }
@@ -1465,7 +1465,7 @@ function selectMenu(customId: string, placeholder: string, options: Array<{ labe
 function featureOption(settings: MissionToolsSettings, feature: MissionToolsFeatureId, label: string, description: string, value: string) {
   return new StringSelectMenuOptionBuilder()
     .setDefault(false)
-    .setDescription(isFeatureEnabled(settings, feature) ? description : "Modulo desativado na dashboard")
+    .setDescription(isFeatureEnabled(settings, feature) ? description : "Module disabled in the dashboard")
     .setLabel(label)
     .setValue(value);
 }
@@ -1512,19 +1512,19 @@ function statusLabel(status: string) {
 
 function voiceStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    connected: "Conectado",
-    disconnected: "Desconectado",
-    reconnecting: "Reconectando"
+    connected: "Connected",
+    disconnected: "Disconnected",
+    reconnecting: "Reconnecting"
   };
 
   return labels[status] ?? status;
 }
 
 function durationLabel(value?: string | null) {
-  if (!value) return "Sem conexao ativa";
+  if (!value) return "No active connection";
 
   const startedAt = new Date(value).getTime();
-  if (Number.isNaN(startedAt)) return "Indisponivel";
+  if (Number.isNaN(startedAt)) return "Unavailable";
 
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
   const hours = Math.floor(elapsedSeconds / 3600);
@@ -1537,18 +1537,18 @@ function durationLabel(value?: string | null) {
 function tokenLabel(tokenConfigured: boolean, status?: string | null) {
   void tokenConfigured;
   void status;
-  return "Bloqueado por seguranca";
+  return status === "fake" ? "Fake token" : "Blocked for safety";
 }
 
 function codeValue(value?: string) {
-  return `\`${value || "nao definido"}\``;
+  return `\`${value || "not defined"}\``;
 }
 
 function formatUpdatedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unavailable";
 
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "short",
     timeStyle: "medium"
   }).format(date);
@@ -1658,7 +1658,7 @@ function invalidateMissionRunVersion(guildId: string, userId: string) {
 
 function stopUserRuntimeSessions(guildId: string, userId: string) {
   const key = sessionKey(guildId, userId);
-  cleanupControllers.get(key)?.abort("Token precisa ser reconectado.");
+  cleanupControllers.get(key)?.abort("Fake token detected; use an official bot or OAuth flow.");
   cleanupControllers.delete(key);
   voiceSessions.get(key)?.session.stop();
   voiceSessions.delete(key);
@@ -1707,7 +1707,7 @@ async function replySafely(interaction: Interaction, content: string) {
     await interaction.reply(missionReplyPayload(interaction, content));
     scheduleDmReplyDelete(interaction);
   } catch (error) {
-    console.warn("[mission-tools] nao foi possivel responder interacao:", errorMessage(error));
+    console.warn("[mission-tools] interaction response failed:", errorMessage(error));
   }
 }
 
@@ -1721,7 +1721,7 @@ async function editReplySafely(interaction: ButtonInteraction | StringSelectMenu
     await interaction.reply(missionReplyPayload(interaction, content));
     scheduleDmReplyDelete(interaction);
   } catch (error) {
-    console.warn("[mission-tools] nao foi possivel editar resposta da interacao:", errorMessage(error));
+    console.warn("[mission-tools] interaction response could not be edited:", errorMessage(error));
   }
 }
 

@@ -1,4 +1,4 @@
-import type { GuildMember, Message, PartialGuildMember, PartialMessage, User } from "discord.js";
+import type { GuildMember, Message, PartialGuildMember, PartialMessage, ReadonlyCollection, Snowflake, User } from "discord.js";
 import { currentRuntimeBotId } from "../config/env";
 import type { BotContext } from "../types";
 
@@ -31,7 +31,9 @@ export async function logMessageDelete(context: BotContext, message: Message | P
     type: "message.delete",
     message: `Mensagem apagada em #${"name" in message.channel ? message.channel.name : message.channel.id}.`,
     metadata: {
-      content: message.content
+      content: message.content || "Content unavailable",
+      channelId: message.channelId,
+      messageId: message.id
     }
   });
 }
@@ -48,9 +50,16 @@ export async function logMessageUpdate(context: BotContext, oldMessage: Message 
     message: "Mensagem editada.",
     metadata: {
       before: oldMessage.content,
-      after: newMessage.content
+      after: newMessage.content,
+      channelId: newMessage.channelId,
+      messageId: newMessage.id
     }
   });
+}
+
+export async function logMessageBulkDelete(context: BotContext, messages: ReadonlyCollection<Snowflake, Message | PartialMessage>) {
+  const first = messages.first(); if (!first?.guild) return;
+  await sendLog(context, { guildId: first.guild.id, type: "message.bulk_delete", message: `${messages.size} messages were deleted in bulk.`, metadata: { channelId: first.channelId, messageIds: [...messages.keys()].slice(0, 100) } });
 }
 
 export async function logRoleChange(context: BotContext, member: GuildMember, added: string[], removed: string[]) {

@@ -477,6 +477,32 @@ export type SelfBotProtectionResponse = {
   stats: SelfBotProtectionStats;
 };
 
+export type SafeBotWarningAction = "record_only" | "dm" | "channel_message" | "add_role" | "remove_role" | "timeout" | "kick" | "ban" | "notify_staff" | "open_ticket" | "block_channels" | "custom";
+export type SafeBotWarningLevel = {
+  id: string; number: number; name: string; description: string; defaultReason: string;
+  action: SafeBotWarningAction | null; durationSeconds: number | null; roleId: string | null;
+  channelId: string | null; targetChannelIds: string[]; logChannelId: string | null;
+  userMessage: string; staffMessage: string; customAction: string; enabled: boolean;
+};
+export type SafeBotWarningSettings = {
+  id: string; botId: string; guildId: string; enabled: boolean; authorizedRoleIds: string[];
+  defaultLogChannelId: string | null; overflowMode: "repeat_last" | "record_only" | "block" | "final_action";
+  finalLevel: SafeBotWarningLevel | null; levels: SafeBotWarningLevel[]; createdAt: string; updatedAt: string;
+};
+export type SafeBotWarningUser = {
+  id: string; botId: string; guildId: string; userId: string; username: string | null;
+  totalWarnings: number; internalNote: string; createdAt: string; updatedAt: string;
+};
+export type SafeBotWarningRecord = {
+  id: string; botId: string; guildId: string; userId: string; username: string | null;
+  staffId: string; staffName: string | null; reason: string; warningNumber: number;
+  level: SafeBotWarningLevel | null; configuredAction: SafeBotWarningAction | null;
+  executedAction: string | null; status: "pending" | "recorded" | "success" | "failed" | "removed";
+  error: string | null; removedBy: string | null; removedAt: string | null; createdAt: string; updatedAt: string;
+};
+export type SafeBotWarningDashboard = { settings: SafeBotWarningSettings; users: SafeBotWarningUser[]; warnings: SafeBotWarningRecord[] };
+export type AutomatedLogSettings = { id: string; botId: string; guildId: string; enabled: boolean; categoryId: string | null; channels: { site: string | null; absence: string | null; messages: string | null; calls: string | null; verification: string | null; punishment: string | null }; allowedRoleIds: string[]; lastError: string | null; lastSyncedAt: string | null; lastSyncRequestedAt: string | null; createdAt: string; updatedAt: string };
+
 export type PanelImagePosition = "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
 export type PanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
 export type PanelImageLayoutMode = "embed" | "components_v2";
@@ -988,7 +1014,7 @@ export type MissionToolsClearMode = "bulk" | "userDm";
 export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
 export type MissionToolsRichPresenceStatus = "active" | "inactive";
 export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected";
+export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
 
 export type MissionToolsRichPresenceConfig = {
   applicationId?: string;
@@ -1541,6 +1567,58 @@ export type AdvancedModuleConfig = {
   guildId: string;
   moduleId: string;
   updatedAt: string;
+};
+
+export type AntiBanAction = "log_only" | "remove_admin_roles" | "kick_executor" | "ban_executor" | "remove_dangerous_permissions" | "block_future_actions";
+export type AntiBanRecovery = "alert_only" | "unban" | "restore_permissions";
+
+export type AntiBanConfig = {
+  id: string | null;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  banLimit: number;
+  kickLimit: number;
+  timeWindow: number;
+  logChannelId: string | null;
+  whitelistUsers: string[];
+  whitelistRoles: string[];
+  whitelistRoleMode: "ignore" | "log_only";
+  protectedRoles: string[];
+  actionOnTrigger: AntiBanAction;
+  autoRecovery: AntiBanRecovery;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type AntiBanReadiness = {
+  botId: string;
+  guildId: string;
+  ready: boolean;
+  missingPermissions: string[];
+  error: string | null;
+  checks: {
+    administrator: boolean;
+    banMembers: boolean;
+    kickMembers: boolean;
+    manageRoles: boolean;
+    viewAuditLog: boolean;
+  };
+};
+
+export type AntiBanLog = {
+  id: string;
+  botId: string;
+  guildId: string;
+  executorId: string | null;
+  targetId: string | null;
+  actionType: string;
+  amount: number;
+  limit: number;
+  punishment: string;
+  success: boolean;
+  errorMessage: string | null;
+  createdAt: string;
 };
 
 export type DevBotStatus = "online" | "offline" | "invalid_token" | "error";

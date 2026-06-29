@@ -4,11 +4,16 @@ import { handleLinkAntiSpamMessage } from "../services/linkAntiSpamService";
 import { blockMessageIfMaintenance } from "../services/maintenanceService";
 import { handleSafeBotMessage, isSelfBotModuleEnabled } from "../services/safeBotService";
 import { handleSelfBotProtectionMessage } from "../services/selfBotProtectionService";
+import { handleTemporaryVoiceMessage } from "../services/temporaryVoiceService";
 import type { BotContext } from "../types";
 import { handleMusicMessage } from "../music/musicService";
 
 export async function handleMessageCreate(message: Message, context: BotContext) {
   if (await blockMessageIfMaintenance(message)) {
+    return;
+  }
+
+  if (await handleTemporaryVoiceMessage(message, context)) {
     return;
   }
 

@@ -4,6 +4,7 @@ import { requireAuth, requireBot } from "../middleware/auth";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import {
   areGuildAssignableRoles,
+  areGuildRoles,
   isGuildTextChannel
 } from "../services/discordOptionsService";
 import {
@@ -31,6 +32,19 @@ import type {
   SelfBotPunishmentAction
 } from "../services/selfBotProtectionService";
 import { updateGuildSettings } from "../services/settingsService";
+import {
+  SAFE_BOT_WARNING_ACTIONS,
+  completeSafeBotWarning,
+  getSafeBotWarningDashboard,
+  getSafeBotWarningPreview,
+  getSafeBotWarningSettings,
+  getSafeBotWarningUserHistory,
+  issueSafeBotWarning,
+  removeSafeBotWarning,
+  resetSafeBotWarnings,
+  saveSafeBotWarningSettings,
+  setSafeBotWarningUserNote
+} from "../services/safeBotWarningService";
 import type { AuthSessionUser } from "../types/session";
 
 const MODULE_ID = "safe-bot";
@@ -113,8 +127,106 @@ const incidentSchema = z.object({
   punishmentError: z.string().max(500).nullable().optional(),
   metadata: z.record(z.unknown()).optional()
 });
+const warningActionSchema = z.enum(SAFE_BOT_WARNING_ACTIONS as [typeof SAFE_BOT_WARNING_ACTIONS[number], ...typeof SAFE_BOT_WARNING_ACTIONS]);
+const warningLevelSchema = z.object({
+  id: z.string().max(80).optional().default(""),
+  number: z.coerce.number().int().min(1).max(1000),
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).optional().default(""),
+  defaultReason: z.string().max(500).optional().default(""),
+  action: warningActionSchema.nullable().optional().default(null),
+  durationSeconds: z.coerce.number().int().min(5).max(2_419_200).nullable().optional().default(null),
+  roleId: optionalSnowflakeSchema,
+  channelId: optionalSnowflakeSchema,
+  targetChannelIds: z.array(snowflakeSchema).max(100).optional().default([]),
+  logChannelId: optionalSnowflakeSchema,
+  userMessage: z.string().max(1000).optional().default(""),
+  staffMessage: z.string().max(1000).optional().default(""),
+  customAction: z.string().max(500).optional().default(""),
+  enabled: z.boolean().optional().default(false)
+});
+const warningSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  authorizedRoleIds: z.array(snowflakeSchema).max(100).optional(),
+  defaultLogChannelId: optionalSnowflakeSchema,
+  overflowMode: z.enum(["repeat_last", "record_only", "block", "final_action"]).optional(),
+  finalLevel: warningLevelSchema.nullable().optional(),
+  levels: z.array(warningLevelSchema).max(50).optional()
+});
+const issueWarningSchema = z.object({
+  userId: snowflakeSchema,
+  username: z.string().max(120).nullable().optional(),
+  staffId: snowflakeSchema,
+  staffName: z.string().max(120).nullable().optional(),
+  reason: z.string().max(500).nullable().optional()
+});
+const warningOutcomeSchema = z.object({ success: z.boolean(), executedAction: z.string().max(500).nullable().optional(), error: z.string().max(500).nullable().optional() });
+const warningNoteSchema = z.object({ note: z.string().max(2000) });
 
 export const selfBotProtectionRouter = Router();
+
+selfBotProtectionRouter.get("/bot/:guildId/warnings/settings", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await readRequiredBotId(req);
+    await assertBotModuleLicense(botId, guildId);
+    return res.json({ settings: await getSafeBotWarningSettings(guildId, botId) });
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.get("/bot/:guildId/warnings/users/:userId/preview", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    await assertBotModuleLicense(botId, guildId);
+    return res.json({ preview: await getSafeBotWarningPreview(guildId, botId, userId) });
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.get("/bot/:guildId/warnings/users/:userId/history", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    await assertBotModuleLicense(botId, guildId);
+    return res.json(await getSafeBotWarningUserHistory(guildId, botId, userId));
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.post("/bot/:guildId/warnings", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = issueWarningSchema.parse(req.body);
+    const botId = await readRequiredBotId(req);
+    await assertBotModuleLicense(botId, guildId);
+    const warning = await issueSafeBotWarning({ ...input, botId, guildId });
+    const log = await createLog({
+      botId,
+      guildId,
+      userId: input.staffId,
+      type: "safe_bot.warning_created",
+      message: `Safe Bot warning #${warning.warningNumber} recorded for ${input.username ?? input.userId}.`,
+      metadata: { warningId: warning.id, targetUserId: input.userId, level: warning.level?.name ?? null, action: warning.configuredAction, status: warning.status }
+    }).catch(() => null);
+    emitRealtime("safe-bot:warnings_updated", { botId, guildId, userId: input.userId });
+    if (log) emitRealtime("logs:new", log);
+    return res.status(201).json({ warning });
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.patch("/bot/:guildId/warnings/:warningId/outcome", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const warningId = z.string().uuid().parse(req.params.warningId);
+    const input = warningOutcomeSchema.parse(req.body);
+    const botId = await readRequiredBotId(req);
+    await assertBotModuleLicense(botId, guildId);
+    const warning = await completeSafeBotWarning(botId, guildId, warningId, input);
+    emitRealtime("safe-bot:warnings_updated", { botId, guildId, userId: warning.userId });
+    return res.json({ warning });
+  } catch (error) { return next(error); }
+});
 
 selfBotProtectionRouter.get("/bot/:guildId", requireBot, async (req, res, next) => {
   try {
@@ -217,6 +329,73 @@ selfBotProtectionRouter.get("/:guildId", requireAuth, async (req, res, next) => 
   } catch (error) {
     return next(error);
   }
+});
+
+selfBotProtectionRouter.get("/:guildId/warnings", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    await assertCanRead(user, guildId, botId);
+    return res.json(await getSafeBotWarningDashboard(guildId, botId));
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.patch("/:guildId/warnings/settings", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    const input = warningSettingsSchema.parse(req.body);
+    await assertCanManage(user, guildId, botId);
+    await validateWarningResources(guildId, botId, input);
+    const settings = await saveSafeBotWarningSettings(guildId, botId, {
+      ...input,
+      finalLevel: input.finalLevel === undefined ? undefined : input.finalLevel ? normalizeWarningLevelInput(input.finalLevel) : null,
+      levels: input.levels?.map(normalizeWarningLevelInput)
+    }, user.discordId);
+    const log = await createLog({ botId, guildId, userId: user.discordId, type: "safe_bot.warnings.settings_updated", message: "Safe Bot warning settings updated.", metadata: { changedKeys: Object.keys(input), levelCount: settings.levels.length } });
+    emitRealtime("safe-bot:warnings_updated", { botId, guildId });
+    emitRealtime("logs:new", log);
+    return res.json({ settings });
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.patch("/:guildId/warnings/users/:userId/note", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    const input = warningNoteSchema.parse(req.body);
+    await assertCanManage(user, guildId, botId);
+    await setSafeBotWarningUserNote(guildId, botId, userId, input.note);
+    return res.status(204).send();
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.delete("/:guildId/warnings/:warningId", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const warningId = z.string().uuid().parse(req.params.warningId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    await assertCanManage(user, guildId, botId);
+    await removeSafeBotWarning(guildId, botId, warningId, user.discordId);
+    return res.status(204).send();
+  } catch (error) { return next(error); }
+});
+
+selfBotProtectionRouter.delete("/:guildId/warnings/users/:userId", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await readRequiredBotId(req);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+    await assertCanManage(user, guildId, botId);
+    await resetSafeBotWarnings(guildId, botId, userId, user.discordId);
+    return res.status(204).send();
+  } catch (error) { return next(error); }
 });
 
 selfBotProtectionRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
@@ -390,6 +569,32 @@ async function validateResources(
   if (roleIds.length && !(await areGuildAssignableRoles(guildId, [...new Set(roleIds)], botToken))) {
     throw createRouteError("Um dos cargos de punicao precisa ficar abaixo do cargo do bot.", 400);
   }
+}
+
+async function validateWarningResources(guildId: string, botId: string, input: z.infer<typeof warningSettingsSchema>) {
+  const botToken = await getDevBotToken(botId);
+  const levels = [...(input.levels ?? []), ...(input.finalLevel ? [input.finalLevel] : [])];
+  const channelIds = [input.defaultLogChannelId, ...levels.flatMap((level) => [level.channelId, level.logChannelId, ...level.targetChannelIds])]
+    .filter((value): value is string => Boolean(value));
+  const authorizedRoleIds = input.authorizedRoleIds ?? [];
+  const actionRoleIds = levels.map((level) => level.roleId).filter((value): value is string => Boolean(value));
+  const channelsValid = await Promise.all([...new Set(channelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken)));
+  if (!channelsValid.every(Boolean)) throw createRouteError("One of the warning channels does not belong to this server.", 400);
+  if (authorizedRoleIds.length && !(await areGuildRoles(guildId, [...new Set(authorizedRoleIds)], botToken))) {
+    throw createRouteError("One of the authorized staff roles does not belong to this server.", 400);
+  }
+  if (actionRoleIds.length && !(await areGuildAssignableRoles(guildId, [...new Set(actionRoleIds)], botToken))) {
+    throw createRouteError("One of the warning roles is unavailable or above the bot role.", 400);
+  }
+}
+
+function normalizeWarningLevelInput(level: z.infer<typeof warningLevelSchema>) {
+  return {
+    ...level,
+    roleId: level.roleId || null,
+    channelId: level.channelId || null,
+    logChannelId: level.logChannelId || null
+  };
 }
 
 function createRouteError(message: string, statusCode: number) {

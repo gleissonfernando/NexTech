@@ -5,13 +5,13 @@ import type { BotCommand } from "../types";
 export const missionPanelCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("mission-panel")
-    .setDescription("Publica ou atualiza o Control Center do Mission Tools.")
+    .setDescription("Publish or update the Mission Tools Control Center.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   moduleId: "mission-tools",
   async execute(interaction, context) {
     if (!interaction.guildId) {
       await interaction.reply({
-        content: "Use este comando dentro de um servidor.",
+        content: "Use this command inside a server.",
         ephemeral: true
       });
       return;
@@ -23,13 +23,13 @@ export const missionPanelCommand: BotCommand = {
       const settings = await publishConfiguredMissionToolsPanel(context.client, context, interaction.guildId);
       await interaction.editReply({
         content: settings.panelMessageId
-          ? `Control Center publicado/atualizado no canal configurado. Mensagem: ${settings.panelMessageId}.`
-          : "Control Center publicado/atualizado."
+          ? `Control Center published or updated in the configured channel. Message: ${settings.panelMessageId}.`
+          : "Control Center published or updated."
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Não foi possível publicar o Control Center.";
+      const message = error instanceof Error ? error.message : "The Control Center could not be published.";
       await interaction.editReply({
-        content: `${message} Ative o Mission Tools e configure o canal do painel na dashboard.`
+        content: `${message} Enable Mission Tools and configure its panel channel in the dashboard.`
       });
     }
   }

@@ -1,5 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
-import axios from "axios";
+import { randomUUID } from "node:crypto";
 import {
   ensureGuild,
   getMongoCollections,
@@ -19,7 +18,6 @@ import {
 } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
-import { decryptSecret, encryptSecret } from "./secretCryptoService";
 
 export type MissionToolsSettingsDto = {
   id: string;
@@ -142,19 +140,6 @@ export type SaveMissionToolsUserInput = Partial<{
 }>;
 
 const MODULE_ID = "mission-tools";
-const DISCORD_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
-const DISCORD_SUPER_PROPERTIES = Buffer.from(JSON.stringify({
-  browser: "Chrome",
-  browser_user_agent: DISCORD_USER_AGENT,
-  browser_version: "138.0.0.0",
-  client_build_number: 9999,
-  client_event_source: null,
-  design_id: 0,
-  device: "",
-  os: "Windows",
-  os_version: "10"
-})).toString("base64");
 const FEATURE_IDS: MongoMissionToolsFeatureId[] = [
   "mission",
   "clear",
@@ -348,7 +333,7 @@ export async function saveMissionToolsSettings(guildId: string, botId: string, i
     guildId,
     type: "mission_tools.settings_updated",
     userId: actorId,
-    message: "Mission Tools atualizado.",
+    message: "Mission Tools updated.",
     metadata: {
       action: "settings_updated",
       changedKeys: Object.keys(input),
@@ -405,7 +390,7 @@ export async function requestMissionToolsPanelPublish(guildId: string, botId: st
     guildId,
     type: "mission_tools.panel_publish_requested",
     userId: actorId,
-    message: "Publicacao do painel Mission Tools solicitada.",
+    message: "Mission Tools panel publication requested.",
     metadata: {
       action: "panel_publish_requested",
       module: MODULE_ID,
@@ -482,129 +467,53 @@ export async function saveMissionToolsUserPanel(guildId: string, botId: string, 
   return saved;
 }
 
-export type SaveMissionToolsTokenOptions = {
-  username?: string | null;
-  validateOwner?: boolean;
-};
-
-export async function saveMissionToolsToken(guildId: string, botId: string, userId: string, token: string, options: SaveMissionToolsTokenOptions = {}) {
+export async function classifyMissionToolsTokenAsFake(
+  guildId: string,
+  botId: string,
+  userId: string,
+  username?: string | null
+) {
   const { missionToolsTokens } = await getMongoCollections();
-  const normalized = normalizeMissionToolsToken(token);
-  const tokenHash = hashMissionToolsToken(normalized);
-  const duplicate = await missionToolsTokens.findOne({
-    botId,
-    guildId,
-    tokenHash,
-    userId: { $ne: userId }
-  });
 
-  if (duplicate) {
-    throw createMissionError("Esse token ja esta vinculado a outro usuario neste bot.", 409);
-  }
-
-  let tokenUser: { id: string; username: string | null } | null = null;
-
-  if (options.validateOwner) {
-    try {
-      tokenUser = await validateDiscordUserToken(normalized);
-    } catch (error) {
-      await createMissionLog({
-        botId,
-        guildId,
-        type: "mission_tools.token_validation_failed",
-        userId,
-        message: "Falha na validacao do token Mission Tools.",
-        metadata: {
-          action: "token_validation_failed",
-          discordStatusCode: readDiscordStatusCode(error),
-          error: error instanceof Error ? sanitizeAuthFailureReason(error.message) : "Erro desconhecido",
-          module: MODULE_ID,
-          tokenLast4: tokenLast4(normalized)
-        }
-      });
-      throw error;
-    }
-
-    if (tokenUser.id !== userId) {
-      await createMissionLog({
-        botId,
-        guildId,
-        type: "mission_tools.token_owner_mismatch",
-        userId,
-        message: "Token Mission Tools pertence a outro usuario.",
-        metadata: {
-          action: "token_owner_mismatch",
-          module: MODULE_ID,
-          tokenLast4: tokenLast4(normalized),
-          tokenUserId: tokenUser.id
-        }
-      });
-      throw createMissionError("Esse token nao pertence a sua conta do Discord.", 400);
-    }
-  }
-
-  const now = new Date();
-  const validatedOwner = options.validateOwner === true;
-  await missionToolsTokens.updateOne(
-    {
-      botId,
-      guildId,
-      userId
-    },
-    {
-      $set: {
-        botId,
-        guildId,
-        tokenEncrypted: encryptSecret(normalized),
-        tokenHash,
-        tokenLast4: tokenLast4(normalized),
-        tokenStatus: "connected",
-        tokenUserId: tokenUser?.id ?? userId,
-        tokenUsername: tokenUser?.username ?? options.username ?? null,
-        invalidReason: null,
-        lastValidatedAt: validatedOwner ? now : null,
-        lastAuthFailureAt: null,
-        authFailureCount: 0,
-        statusUpdatedAt: now,
-        updatedAt: now,
-        userId
-      },
-      $setOnInsert: {
-        _id: randomUUID(),
-        createdAt: now
-      }
-    },
-    {
-      upsert: true
-    }
-  );
-
+  // Token-shaped input is deliberately never retained. Removing a legacy record also
+  // guarantees that older encrypted user tokens cannot be returned to a bot runtime.
+  await missionToolsTokens.deleteOne({ botId, guildId, userId });
   const user = await saveMissionToolsUserPanel(guildId, botId, userId, {
-    tokenConfigured: true,
-    ...(tokenUser?.username ? { username: tokenUser.username } : {}),
-    ...(options.username !== undefined && !tokenUser?.username ? { username: options.username } : {})
+    tokenConfigured: false,
+    voiceStatus: "disconnected",
+    richPresenceStatus: "inactive",
+    ...(username !== undefined ? { username } : {})
   });
+  const fakeUser = {
+    ...user,
+    tokenConfigured: false,
+    tokenStatus: "fake" as const,
+    tokenLast4: null,
+    tokenUpdatedAt: null,
+    tokenLastValidatedAt: null,
+    tokenInvalidReason: "Fake token detected. Discord user-account tokens are never stored or executed."
+  };
+
   await createMissionLog({
     botId,
     guildId,
-    type: "mission_tools.token_saved",
+    type: "mission_tools.fake_token_detected",
     userId,
-    message: validatedOwner ? "Token Mission Tools validado e salvo." : "Token Mission Tools salvo pelo painel.",
+    message: "Mission Tools identified token-shaped input as a fake token.",
     metadata: {
-      action: "token_saved",
+      action: "fake_token_detected",
       module: MODULE_ID,
-      tokenLast4: tokenLast4(normalized),
-      tokenStatus: "connected",
-      tokenUserId: tokenUser?.id ?? userId,
-      validatedOwner
+      tokenStatus: "fake"
     }
   });
 
   return {
-    tokenConfigured: true,
-    tokenLast4: tokenLast4(normalized),
-    tokenStatus: "connected" satisfies MongoMissionToolsTokenStatus,
-    user
+    accepted: false,
+    fake: true,
+    tokenConfigured: false,
+    tokenLast4: null,
+    tokenStatus: "fake" satisfies MongoMissionToolsTokenStatus,
+    user: fakeUser
   };
 }
 
@@ -622,7 +531,7 @@ export async function deleteMissionToolsToken(guildId: string, botId: string, us
     guildId,
     type: "mission_tools.token_deleted",
     userId,
-    message: "Token Mission Tools desconectado.",
+    message: "Mission Tools token state disconnected.",
     metadata: {
       action: "token_deleted",
       module: MODULE_ID,
@@ -636,13 +545,6 @@ export async function deleteMissionToolsToken(guildId: string, botId: string, us
     tokenStatus: "disconnected" satisfies MongoMissionToolsTokenStatus,
     user
   };
-}
-
-export async function getMissionToolsUserToken(guildId: string, botId: string, userId: string) {
-  const { missionToolsTokens } = await getMongoCollections();
-  const token = await missionToolsTokens.findOne({ botId, guildId, userId });
-
-  return token ? toTokenDto(token) : null;
 }
 
 export type MissionToolsTokenAuthFailureInput = {
@@ -681,8 +583,8 @@ export async function markMissionToolsTokenAuthFailure(
     }
   );
   const user = await saveMissionToolsUserPanel(guildId, botId, userId, {
-    currentMission: tokenStatus === "expired" ? "Token expirado" : "Token invalido",
-    missionDetail: "Token de usuario Discord bloqueado por seguranca.",
+    currentMission: "Fake token detected",
+    missionDetail: "Discord user-account token classified as fake and blocked for safety.",
     missionStatus: "error",
     richPresenceStatus: "inactive",
     voiceStatus: "disconnected"
@@ -693,7 +595,7 @@ export async function markMissionToolsTokenAuthFailure(
     guildId,
     type: "mission_tools.token_auth_failed",
     userId,
-    message: "Falha de autenticacao do token Mission Tools.",
+    message: "Mission Tools token authentication failed.",
     metadata: {
       action: "token_auth_failed",
       module: MODULE_ID,
@@ -725,11 +627,11 @@ function missionToolsStats(users: MissionToolsUserPanelDto[]): MissionToolsStats
 
 function validateSettingsReady(settings: MissionToolsSettingsDto) {
   if (!settings.enabled) {
-    throw createMissionError("O Mission Tools nao esta ativo na dashboard.", 403);
+    throw createMissionError("Mission Tools is not enabled in the dashboard.", 403);
   }
 
   if (!settings.panelChannelId) {
-    throw createMissionError("Configure o canal do painel antes de usar o Mission Tools.", 400);
+    throw createMissionError("Configure the panel channel before using Mission Tools.", 400);
   }
 }
 
@@ -881,7 +783,7 @@ function normalizeNullableSnowflake(value: unknown, fallback: string | null) {
     return value.trim();
   }
 
-  throw createMissionError("Um dos IDs informados nao e valido.", 400);
+  throw createMissionError("One of the supplied IDs is invalid.", 400);
 }
 
 function normalizeSnowflakes(values: string[]) {
@@ -890,7 +792,7 @@ function normalizeSnowflakes(values: string[]) {
 
 async function createMissionLog(input: Parameters<typeof createLog>[0]) {
   return createLog(input).catch((error) => {
-    console.warn("[mission-tools] nao foi possivel registrar log:", error instanceof Error ? error.message : error);
+    console.warn("[mission-tools] log entry could not be recorded:", error instanceof Error ? error.message : error);
     return null;
   });
 }
@@ -949,10 +851,7 @@ function toSettingsDto(settings: MongoMissionToolsSettings): MissionToolsSetting
 
 function toUserDto(user: MongoMissionToolsUserPanel, token?: MongoMissionToolsToken): MissionToolsUserPanelDto {
   const defaults = defaultMissionToolsUserPanel(user.botId, user.guildId, user.userId);
-  const tokenStatus = normalizeTokenStatus(
-    token?.tokenStatus,
-    token || user.tokenConfigured ? "connected" : "disconnected"
-  );
+  const tokenStatus: MongoMissionToolsTokenStatus = token ? "fake" : "disconnected";
 
   return {
     ...defaults,
@@ -967,12 +866,12 @@ function toUserDto(user: MongoMissionToolsUserPanel, token?: MongoMissionToolsTo
     voiceMessageId: user.voiceMessageId ?? null,
     richPresenceMessageId: user.richPresenceMessageId ?? null,
     usernameCheckerMessageId: user.usernameCheckerMessageId ?? null,
-    tokenConfigured: user.tokenConfigured === true && tokenStatus !== "disconnected",
+    tokenConfigured: false,
     tokenStatus,
-    tokenLast4: token?.tokenLast4 ?? null,
-    tokenUpdatedAt: token?.updatedAt?.toISOString?.() ?? null,
-    tokenLastValidatedAt: token?.lastValidatedAt?.toISOString?.() ?? null,
-    tokenInvalidReason: token?.invalidReason ?? null,
+    tokenLast4: null,
+    tokenUpdatedAt: null,
+    tokenLastValidatedAt: null,
+    tokenInvalidReason: token ? "Legacy token data was classified as fake and is unavailable to the runtime." : null,
     clearStatus: normalizeStatus(user.clearStatus, defaults.clearStatus),
     clearMode: normalizeClearMode(user.clearMode, defaults.clearMode),
     clearTargetUserId: user.clearTargetUserId ?? null,
@@ -1001,56 +900,7 @@ function toUserDto(user: MongoMissionToolsUserPanel, token?: MongoMissionToolsTo
   };
 }
 
-function toTokenDto(token: MongoMissionToolsToken) {
-  return {
-    token: decryptSecret(token.tokenEncrypted),
-    tokenConfigured: true,
-    tokenLast4: token.tokenLast4 ?? null,
-    tokenStatus: normalizeTokenStatus(token.tokenStatus, "connected"),
-    invalidReason: token.invalidReason ?? null,
-    lastValidatedAt: token.lastValidatedAt?.toISOString?.() ?? null,
-    updatedAt: token.updatedAt.toISOString()
-  };
-}
-
-function tokenLast4(token: string) {
-  return token.trim().slice(-4) || null;
-}
-
-function hashMissionToolsToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function normalizeMissionToolsToken(value: unknown) {
-  if (typeof value !== "string") {
-    throw createMissionError("Informe um token valido.", 400);
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    throw createMissionError("Informe um token antes de salvar.", 400);
-  }
-
-  if (normalized.length < 10 || normalized.length > 4096) {
-    throw createMissionError("Token fora do tamanho permitido.", 400);
-  }
-
-  if (/[\s\x00-\x1f\x7f]/.test(normalized)) {
-    throw createMissionError("Token invalido: remova espacos ou quebras de linha.", 400);
-  }
-
-  if (/^(Bot|Bearer)\s+/i.test(normalized)) {
-    throw createMissionError("Cole apenas o token autorizado, sem prefixo Bot ou Bearer.", 400);
-  }
-
-  if (!/^[A-Za-z0-9._-]+$/.test(normalized)) {
-    throw createMissionError("Token invalido: caracteres nao permitidos.", 400);
-  }
-
-  return normalized;
-}
-
-const TOKEN_STATUS_IDS: MongoMissionToolsTokenStatus[] = ["connected", "invalid", "expired", "disconnected"];
+const TOKEN_STATUS_IDS: MongoMissionToolsTokenStatus[] = ["connected", "invalid", "expired", "disconnected", "fake"];
 
 function normalizeTokenStatus(
   value: MongoMissionToolsTokenStatus | undefined,
@@ -1060,25 +910,25 @@ function normalizeTokenStatus(
 }
 
 function tokenStatusFromAuthFailure(statusCode: number | null, reason: string | null): MongoMissionToolsTokenStatus {
-  const normalizedReason = reason?.toLowerCase() ?? "";
-
-  if (statusCode === 401 || normalizedReason.includes("expired") || normalizedReason.includes("revogado") || normalizedReason.includes("revoked")) {
-    return "expired";
-  }
-
-  return "invalid";
+  void statusCode;
+  void reason;
+  return "fake";
 }
 
 function tokenStatusReason(status: MongoMissionToolsTokenStatus) {
   if (status === "expired") {
-    return "Token expirado ou revogado. Tokens de usuario Discord estao bloqueados por seguranca.";
+    return "Token expired or revoked. Discord user-account tokens are classified as fake and blocked for safety.";
   }
 
   if (status === "invalid") {
-    return "Token rejeitado pelo Discord. Tokens de usuario Discord estao bloqueados por seguranca.";
+    return "Token rejected by Discord. Discord user-account tokens are classified as fake and blocked for safety.";
   }
 
-  return "Token desconectado.";
+  if (status === "fake") {
+    return "Fake token detected. Discord user-account tokens are never stored or executed.";
+  }
+
+  return "Token disconnected.";
 }
 
 function sanitizeAuthFailureReason(value: unknown) {
@@ -1088,51 +938,6 @@ function sanitizeAuthFailureReason(value: unknown) {
   }
 
   return normalized.replace(/[A-Za-z0-9._-]{10,}/g, "[masked-token]");
-}
-
-function readDiscordStatusCode(error: unknown) {
-  if (!error || typeof error !== "object" || !("discordStatusCode" in error)) {
-    return null;
-  }
-
-  const statusCode = (error as { discordStatusCode?: unknown }).discordStatusCode;
-  return typeof statusCode === "number" ? statusCode : null;
-}
-
-async function validateDiscordUserToken(token: string) {
-  const response = await axios.get<{ id?: string; username?: string; global_name?: string | null }>("https://discord.com/api/v10/users/@me", {
-    headers: {
-      "Accept-Language": "en-US",
-      Authorization: token,
-      "Content-Type": "application/json",
-      "User-Agent": DISCORD_USER_AGENT,
-      origin: "https://discord.com",
-      referer: "https://discord.com/channels/@me",
-      "x-debug-options": "bugReporterEnabled",
-      "x-discord-locale": "en-US",
-      "x-discord-timezone": "America/Sao_Paulo",
-      "x-super-properties": DISCORD_SUPER_PROPERTIES
-    },
-    timeout: 10_000,
-    validateStatus: () => true
-  });
-
-  if (response.status !== 200 || !response.data?.id) {
-    const tokenStatus = tokenStatusFromAuthFailure(response.status, null);
-    const message = tokenStatus === "expired"
-      ? "Token expirado ou revogado. Tokens de usuario Discord estao bloqueados por seguranca."
-      : "Token do usuario invalido. Verifique e tente novamente.";
-
-    throw Object.assign(createMissionError(message, 400), {
-      discordStatusCode: response.status,
-      tokenStatus
-    });
-  }
-
-  return {
-    id: response.data.id,
-    username: response.data.global_name ?? response.data.username ?? null
-  };
 }
 
 function createMissionError(message: string, statusCode: number) {

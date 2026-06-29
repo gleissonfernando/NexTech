@@ -28,6 +28,8 @@ import { startSelfBotProtectionService } from "../services/selfBotProtectionServ
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
 import { startVoiceRecorderService } from "../services/voiceRecorderService";
+import { startTemporaryVoiceService } from "../services/temporaryVoiceService";
+import { startAutomatedLogService } from "../services/automatedLogService";
 import { startXMonitor } from "../services/xMonitor";
 import type { BotContext } from "../types";
 
@@ -56,6 +58,8 @@ export async function handleReady(client: Client<true>, context: BotContext) {
 
     const wasSelfBotEnabled = isSelfBotModuleEnabled();
     const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
+    const wasTemporaryVoiceEnabled = isBotModuleEnabled("temporary-voice");
+    const wereLogsEnabled = isBotModuleEnabled("logs");
     setRuntimeEnabledModules(payload.enabledModules);
     lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
     clearRuntimeModuleAuthorization();
@@ -73,6 +77,8 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     if (!wasMissionToolsEnabled && isBotModuleEnabled("mission-tools")) {
       startMissionToolsService(client, context);
     }
+    if (!wasTemporaryVoiceEnabled && isBotModuleEnabled("temporary-voice")) startTemporaryVoiceService(client, context);
+    if (!wereLogsEnabled && isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
   });
   context.socket.onSelfBotEnsureSetup((payload) => {
     if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) {
@@ -99,6 +105,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     void handleSafeBotSettingsUpdated(settings, client, context);
   });
   startDiscordLogDelivery(context);
+  if (isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
   startMaintenanceService(context);
 
   const commandGuildIds = commandRegistrationGuildIds(client);
@@ -143,6 +150,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   }
   if (isBotModuleEnabled("voice-recorder")) {
     await startVoiceRecorderService(context);
+  }
+  if (isBotModuleEnabled("temporary-voice")) {
+    startTemporaryVoiceService(client, context);
   }
   startSelfBotProtectionService(context);
   if (isSelfBotModuleEnabled()) {
