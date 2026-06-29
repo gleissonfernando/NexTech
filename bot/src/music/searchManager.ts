@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import ytdl from "@distube/ytdl-core";
 import { YouTube, type Video } from "youtube-sr";
 import type { MusicConfig, MusicTrack } from "./types";
 
@@ -24,8 +25,7 @@ export async function resolveMusicQuery(query: string, requester: Requester, con
       return uniqueValidTracks(playlist.videos, requester, config, "playlist").slice(0, config.playlistLimit);
     }
 
-    const video = await YouTube.getVideo(value, requestOptions());
-    return [toTrack(video, requester, config, "link")];
+    return [await directTrack(value, requester, config)];
   }
 
   const videos = await YouTube.search(value, {
@@ -94,6 +94,36 @@ function toTrack(video: Video, requester: Requester, config: MusicConfig, source
   };
 }
 
+async function directTrack(url: string, requester: Requester, config: MusicConfig): Promise<MusicTrack> {
+  const info = await withTimeout(
+    ytdl.getBasicInfo(url),
+    SEARCH_TIMEOUT_MS,
+    "A fonte de música não respondeu a tempo."
+  );
+  const details = info.videoDetails;
+  const durationMs = Math.max(0, Number(details.lengthSeconds) * 1000);
+
+  if (!details.videoId || !details.title || details.isPrivate || details.isLive || details.isLiveContent) {
+    throw new Error("Música indisponível ou transmissão ao vivo.");
+  }
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > config.maxTrackMinutes * 60_000) {
+    throw new Error(`A música excede o limite de ${config.maxTrackMinutes} minutos ou não possui duração válida.`);
+  }
+
+  return {
+    id: randomUUID(),
+    title: details.title,
+    author: details.author?.name ?? "Canal desconhecido",
+    durationMs,
+    url: details.video_url || `https://www.youtube.com/watch?v=${details.videoId}`,
+    thumbnail: details.thumbnails.at(-1)?.url ?? null,
+    requestedById: requester.id,
+    requestedByTag: requester.tag,
+    addedAt: new Date(),
+    source: "link"
+  };
+}
+
 function looksLikeUrl(value: string) {
   try {
     return ["http:", "https:"].includes(new URL(value).protocol);
@@ -113,4 +143,18 @@ function isYouTubeUrl(value: string) {
 
 function requestOptions(): RequestInit {
   return { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) };
+}
+
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string) {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), milliseconds);
+    timer.unref();
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
