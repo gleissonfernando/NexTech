@@ -17,12 +17,16 @@ export type MusicTrack = {
   requestedById: string;
   requestedByTag: string;
   addedAt: Date;
-  source: "link" | "search" | "artist" | "playlist";
+  source: "link" | "search" | "artist" | "playlist" | "spotify" | "soundcloud" | "direct";
+  provider: "youtube" | "soundcloud" | "direct";
 };
 
 export type MusicConfig = {
   enabled: boolean;
   commandChannelId: string | null;
+  allowedChannelIds: string[];
+  blockedChannelIds: string[];
+  djRoleId: string | null;
   permissionMode: "everyone" | "roles" | "administrators";
   allowedRoleIds: string[];
   blockedUserIds: string[];
@@ -32,6 +36,7 @@ export type MusicConfig = {
   artistLimit: number;
   cooldownSeconds: number;
   maxTrackMinutes: number;
+  idleDisconnectSeconds: number;
   allowPlaylists: boolean;
   allowLinks: boolean;
   allowArtistSearch: boolean;
@@ -40,6 +45,7 @@ export type MusicConfig = {
 
 export type MusicSession = {
   guild: Guild;
+  config: MusicConfig;
   voiceChannelId: string;
   textChannel: GuildTextBasedChannel;
   player: AudioPlayer;
@@ -56,7 +62,10 @@ export type MusicSession = {
   idleTimer: NodeJS.Timeout | null;
   aloneTimer: NodeJS.Timeout | null;
   playbackTimer: NodeJS.Timeout | null;
+  trackEndTimer: NodeJS.Timeout | null;
+  idleDisconnectMs: number;
   stopping: boolean;
+  recovering: boolean;
 };
 
 export type MusicActor = {

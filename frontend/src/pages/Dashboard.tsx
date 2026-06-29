@@ -1462,7 +1462,10 @@ function AdvancedModuleFields({
     return (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <AdvancedTextField disabled={disabled} label="Canal de comandos (ID, opcional)" onChange={(value) => onChange({ commandChannelId: value || null })} placeholder="ID do canal de texto" value={stringConfig(config.commandChannelId)} />
+        <AdvancedTextField disabled={disabled} label="Canais permitidos (IDs)" onChange={(value) => onChange({ allowedChannelIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.allowedChannelIds)} />
+        <AdvancedTextField disabled={disabled} label="Canais bloqueados (IDs)" onChange={(value) => onChange({ blockedChannelIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.blockedChannelIds)} />
         <AdvancedTextField disabled={disabled} label="Canal de logs (ID, opcional)" onChange={(value) => onChange({ logChannelId: value || null })} placeholder="ID do canal de texto" value={stringConfig(config.logChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Cargo DJ (opcional)" onChange={(value) => onChange({ djRoleId: value || null })} options={roleOptions} placeholder="Sem cargo DJ" value={stringConfig(config.djRoleId)} />
         <AdvancedSelectField disabled={disabled} label="Quem pode usar" onChange={(value) => onChange({ permissionMode: value })} options={[{ label: "Todos", value: "everyone" }, { label: "Cargos específicos", value: "roles" }, { label: "Administradores", value: "administrators" }]} placeholder="Selecione" value={stringConfig(config.permissionMode) || "everyone"} />
         <AdvancedTextField disabled={disabled} label="IDs dos cargos permitidos" onChange={(value) => onChange({ allowedRoleIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.allowedRoleIds)} />
         <AdvancedTextField disabled={disabled} label="IDs dos usuários bloqueados" onChange={(value) => onChange({ blockedUserIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.blockedUserIds)} />
@@ -1472,6 +1475,7 @@ function AdvancedModuleFields({
         <AdvancedNumberField disabled={disabled} label="Limite por artista" max={50} min={1} onChange={(value) => onChange({ artistLimit: value })} value={numberConfig(config.artistLimit, 25)} />
         <AdvancedNumberField disabled={disabled} label="Cooldown (segundos)" max={60} min={0} onChange={(value) => onChange({ cooldownSeconds: value })} value={numberConfig(config.cooldownSeconds, 5)} />
         <AdvancedNumberField disabled={disabled} label="Duração máxima (minutos)" max={180} min={1} onChange={(value) => onChange({ maxTrackMinutes: value })} value={numberConfig(config.maxTrackMinutes, 15)} />
+        <AdvancedNumberField disabled={disabled} label="Sair com fila vazia (segundos)" max={600} min={5} onChange={(value) => onChange({ idleDisconnectSeconds: value })} value={numberConfig(config.idleDisconnectSeconds, 30)} />
         <AdvancedToggleField checked={config.allowPlaylists !== false} disabled={disabled} label="Permitir playlists" onChange={(checked) => onChange({ allowPlaylists: checked })} />
         <AdvancedToggleField checked={config.allowLinks !== false} disabled={disabled} label="Permitir links" onChange={(checked) => onChange({ allowLinks: checked })} />
         <AdvancedToggleField checked={config.allowArtistSearch !== false} disabled={disabled} label="Permitir busca de artistas" onChange={(checked) => onChange({ allowArtistSearch: checked })} />
@@ -1548,7 +1552,7 @@ function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, un
   }
 
   if (moduleId === "music") {
-    return { enabled: false, commandChannelId: null, permissionMode: "everyone", allowedRoleIds: [], blockedUserIds: [], defaultVolume: 50, queueLimit: 100, playlistLimit: 50, artistLimit: 25, cooldownSeconds: 5, maxTrackMinutes: 15, allowPlaylists: true, allowLinks: true, allowArtistSearch: true, logChannelId: null, ...config };
+    return { enabled: false, commandChannelId: null, allowedChannelIds: [], blockedChannelIds: [], djRoleId: null, permissionMode: "everyone", allowedRoleIds: [], blockedUserIds: [], defaultVolume: 50, queueLimit: 100, playlistLimit: 50, artistLimit: 25, cooldownSeconds: 5, maxTrackMinutes: 15, idleDisconnectSeconds: 30, allowPlaylists: true, allowLinks: true, allowArtistSearch: true, logChannelId: null, ...config };
   }
 
   return { autoAction: false, enabled: false, intervalMinutes: 10, primaryConfig: "", roleId: null, ...config };

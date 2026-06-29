@@ -9,6 +9,9 @@ const cache = new Map<string, { config: MusicConfig; expiresAt: number }>();
 export const defaultMusicConfig: MusicConfig = {
   enabled: false,
   commandChannelId: null,
+  allowedChannelIds: [],
+  blockedChannelIds: [],
+  djRoleId: null,
   permissionMode: "everyone",
   allowedRoleIds: [],
   blockedUserIds: [],
@@ -18,6 +21,7 @@ export const defaultMusicConfig: MusicConfig = {
   artistLimit: 25,
   cooldownSeconds: 5,
   maxTrackMinutes: 15,
+  idleDisconnectSeconds: 30,
   allowPlaylists: true,
   allowLinks: true,
   allowArtistSearch: true,
@@ -43,6 +47,7 @@ export async function getMusicConfig(context: BotContext, guildId: string) {
 export function canUseMusic(member: GuildMember, config: MusicConfig) {
   if (config.blockedUserIds.includes(member.id)) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (config.djRoleId && member.roles.cache.has(config.djRoleId)) return true;
   if (config.permissionMode === "administrators") return false;
   if (config.permissionMode === "roles") {
     return config.allowedRoleIds.some((roleId) => member.roles.cache.has(roleId));
@@ -54,6 +59,9 @@ function normalizeMusicConfig(raw: Record<string, unknown>): MusicConfig {
   return {
     enabled: raw.enabled === true,
     commandChannelId: optionalId(raw.commandChannelId),
+    allowedChannelIds: idArray(raw.allowedChannelIds),
+    blockedChannelIds: idArray(raw.blockedChannelIds),
+    djRoleId: optionalId(raw.djRoleId),
     permissionMode: ["everyone", "roles", "administrators"].includes(String(raw.permissionMode))
       ? raw.permissionMode as MusicConfig["permissionMode"]
       : defaultMusicConfig.permissionMode,
@@ -65,6 +73,7 @@ function normalizeMusicConfig(raw: Record<string, unknown>): MusicConfig {
     artistLimit: integer(raw.artistLimit, 1, 50, 25),
     cooldownSeconds: integer(raw.cooldownSeconds, 0, 60, 5),
     maxTrackMinutes: integer(raw.maxTrackMinutes, 1, 180, 15),
+    idleDisconnectSeconds: integer(raw.idleDisconnectSeconds, 5, 600, 30),
     allowPlaylists: raw.allowPlaylists !== false,
     allowLinks: raw.allowLinks !== false,
     allowArtistSearch: raw.allowArtistSearch !== false,

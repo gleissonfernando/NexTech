@@ -143,6 +143,8 @@ const envSchema = z
     BOT_CACHE_USERS_MAX: envNumber(defaultCacheSize),
     YOUTUBE_COOKIES_JSON: z.string().default(""),
     YOUTUBE_COOKIES_B64: z.string().default(""),
+    SPOTIFY_CLIENT_ID: z.string().default(""),
+    SPOTIFY_CLIENT_SECRET: z.string().default(""),
     CLIPS_MAX_PER_CHECK: envNumber(3),
     CLIPS_LOOKBACK_MS: envNumber(15 * 60_000),
     TWITCH_CLIENT_ID: z.string().default(""),

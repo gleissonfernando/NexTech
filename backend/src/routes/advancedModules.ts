@@ -56,6 +56,9 @@ const autoUnmuteConfigSchema = z.object({
 const musicConfigSchema = z.object({
   enabled: z.boolean().default(false),
   commandChannelId: snowflakeSchema.nullable().default(null),
+  allowedChannelIds: z.array(snowflakeSchema).max(100).default([]),
+  blockedChannelIds: z.array(snowflakeSchema).max(100).default([]),
+  djRoleId: snowflakeSchema.nullable().default(null),
   permissionMode: z.enum(["everyone", "roles", "administrators"]).default("everyone"),
   allowedRoleIds: z.array(snowflakeSchema).max(100).default([]),
   blockedUserIds: z.array(snowflakeSchema).max(250).default([]),
@@ -65,6 +68,7 @@ const musicConfigSchema = z.object({
   artistLimit: z.coerce.number().int().min(1).max(50).default(25),
   cooldownSeconds: z.coerce.number().int().min(0).max(60).default(5),
   maxTrackMinutes: z.coerce.number().int().min(1).max(180).default(15),
+  idleDisconnectSeconds: z.coerce.number().int().min(5).max(600).default(30),
   allowPlaylists: z.boolean().default(true),
   allowLinks: z.boolean().default(true),
   allowArtistSearch: z.boolean().default(true),

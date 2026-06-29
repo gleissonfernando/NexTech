@@ -5,6 +5,7 @@ import { deleteServeCommand } from "./deleteServe";
 import { emojiClonerCommand } from "./emojiCloner";
 import { gravarCommand } from "./gravar";
 import { missionPanelCommand } from "./missionPanel";
+import { musicCommands } from "./music";
 import { pingCommand } from "./ping";
 import { serverClonerCommand } from "./serverCloner";
 import { serverGeneratorCommand } from "./serverGenerator";
@@ -22,6 +23,7 @@ export function createCommandCollection() {
     emojiClonerCommand,
     gravarCommand,
     missionPanelCommand,
+    ...musicCommands,
     ticketCommand,
     serverClonerCommand,
     serverGeneratorCommand

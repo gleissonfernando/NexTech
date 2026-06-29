@@ -105,6 +105,7 @@ export async function updateMusicPanel(session: MusicSession) {
 }
 
 export function formatDuration(durationMs: number) {
+  if (!durationMs) return "Desconhecida";
   const seconds = Math.round(durationMs / 1000);
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;

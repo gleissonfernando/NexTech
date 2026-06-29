@@ -5,6 +5,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type ButtonInteraction,
+  type ChatInputCommandInteraction,
   type GuildMember,
   type Interaction,
   type Message,
@@ -19,6 +20,7 @@ import { musicPanelPayload, queueReplyPayload, formatDuration } from "./panelMan
 import {
   addTracks,
   changeVolume,
+  clearMusicQueue,
   cycleLoop,
   ensureMusicSession,
   getMusicSession,
@@ -35,13 +37,13 @@ import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "../se
 import { hasYouTubeCookies } from "./youtubeAuth";
 
 const PREFIX = ".";
-const COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "volume", "loop", "shuffle"]);
+const COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
 const cooldowns = new Map<string, number>();
 
 export async function handleMusicMessage(message: Message, context: BotContext) {
   if (!message.inGuild() || message.author.bot) return false;
 
-  const directLink = directYouTubeLink(message.content);
+  const directLink = directMusicLink(message.content);
   let command: string;
   let parts: string[];
 
@@ -57,7 +59,7 @@ export async function handleMusicMessage(message: Message, context: BotContext) 
     return false;
   }
 
-  const access = await prepareMessageAccess(message, context, !["music", "queue"].includes(command));
+  const access = await prepareMessageAccess(message, context, !["music", "queue", "nowplaying"].includes(command));
   if (!access) return true;
 
   try {
@@ -86,8 +88,21 @@ export async function handleMusicMessage(message: Message, context: BotContext) 
       await message.reply(queueText(getMusicSession(message.guildId)));
       return true;
     }
+    if (command === "nowplaying") {
+      const session = getMusicSession(message.guildId);
+      await message.reply(session?.current ? `🎶 Tocando agora: **${session.current.title}** — ${session.current.author}` : "📭 Nada está tocando no momento.");
+      return true;
+    }
     await runControlCommand(context, access, command, parts[0]);
   } catch (error) {
+    console.warn(`[music] comando ${command} falhou em ${message.guildId}:`, plainError(error));
+    await context.api.postLog({
+      guildId: message.guildId,
+      userId: message.author.id,
+      type: "music.command_error",
+      message: plainError(error),
+      metadata: { command }
+    }).catch(() => undefined);
     await message.reply(`❌ ${errorMessage(error)}`);
   }
   return true;
@@ -136,8 +151,84 @@ export async function handleMusicInteraction(interaction: Interaction, context: 
     return true;
   }
 
-  await handleMusicButton(interaction, context, access);
+  try {
+    await handleMusicButton(interaction, context, access);
+  } catch (error) {
+    console.warn(`[music] botão ${interaction.customId} falhou em ${interaction.guildId}:`, plainError(error));
+    const content = `❌ ${errorMessage(error)}`;
+    if (interaction.deferred || interaction.replied) await interaction.followUp({ content, ephemeral: true }).catch(() => undefined);
+    else await interaction.reply({ content, ephemeral: true }).catch(() => undefined);
+  }
   return true;
+}
+
+export async function handleMusicSlashCommand(
+  interaction: ChatInputCommandInteraction,
+  context: BotContext,
+  action: "play" | "pause" | "resume" | "skip" | "stop" | "queue" | "clearqueue" | "nowplaying" | "volume" | "shuffle" | "loop"
+) {
+  await interaction.deferReply({ ephemeral: true });
+  const access = await prepareInteractionAccess(interaction, context, !["queue", "nowplaying"].includes(action));
+  if (!access) return;
+
+  try {
+    if (action === "play") {
+      const query = interaction.options.getString("query", true);
+      const tracks = await resolveMusicQuery(query, { id: access.userId, tag: access.userTag }, access.config);
+      const session = await ensureMusicSession(context, access.member.guild, access.voiceChannel, access.textChannel, access.config);
+      const accepted = await addTracks(context, session, tracks, access.config);
+      await logRequest(context, access, accepted);
+      await interaction.editReply(addedTracksMessage(accepted));
+      return;
+    }
+
+    const session = getMusicSession(access.member.guild.id);
+    if (!session) {
+      await interaction.editReply("📭 Não existe reprodução ativa neste servidor.");
+      return;
+    }
+    if (session.voiceChannelId !== access.voiceChannel.id) {
+      await interaction.editReply("❌ Entre no mesmo canal de voz do bot para controlar a reprodução.");
+      return;
+    }
+
+    if (action === "queue") await interaction.editReply(queueText(session));
+    else if (action === "nowplaying") await interaction.editReply(session.current
+      ? `🎶 Tocando agora: **${session.current.title}** — ${session.current.author}\n⏱️ ${formatDuration(session.current.durationMs)} | 🔊 ${session.volume}%`
+      : "📭 Nada está tocando no momento.");
+    else if (action === "pause") await interaction.editReply(pauseMusic(session) ? "⏸️ Música pausada." : "⚠️ A música já está pausada ou não há música tocando.");
+    else if (action === "resume") await interaction.editReply(resumeMusic(session) ? "▶️ Música retomada." : "⚠️ Não existe música pausada no momento.");
+    else if (action === "skip") {
+      const title = session.current?.title ?? "Música";
+      const success = skipMusic(session);
+      if (success) await logAction(context, access, "music.track_skipped", `${title} pulada por ${access.userTag}.`);
+      await interaction.editReply(success ? "⏭️ Música pulada." : "📭 Não há música para pular.");
+    } else if (action === "stop") {
+      await stopMusicSession(context, session, `Fila encerrada por ${access.userTag}.`);
+      await interaction.editReply("⏹️ Reprodução finalizada e fila limpa.");
+    } else if (action === "clearqueue") {
+      const removed = await clearMusicQueue(session);
+      await logAction(context, access, "music.queue_cleared", `${removed} música(s) removida(s) por ${access.userTag}.`);
+      await interaction.editReply(`🧹 Fila limpa: ${removed} música(s) removida(s).`);
+    } else if (action === "volume") {
+      const volume = interaction.options.getInteger("value", true);
+      await interaction.editReply(`🔊 Volume alterado para ${await changeVolume(context, session, volume, true)}%.`);
+    } else if (action === "shuffle") {
+      await shuffleQueue(session);
+      await interaction.editReply("🔀 Fila embaralhada com sucesso.");
+    } else if (action === "loop") {
+      await interaction.editReply(`🔁 Modo loop alterado para: ${loopLabel(await cycleLoop(context, session))}.`);
+    }
+  } catch (error) {
+    await context.api.postLog({
+      guildId: interaction.guildId ?? "unknown",
+      userId: interaction.user.id,
+      type: "music.command_error",
+      message: plainError(error),
+      metadata: { action }
+    }).catch(() => undefined);
+    await interaction.editReply(`❌ ${errorMessage(error)}`);
+  }
 }
 
 export function handleMusicVoiceStateUpdate(oldState: VoiceState, newState: VoiceState, context: BotContext) {
@@ -146,7 +237,9 @@ export function handleMusicVoiceStateUpdate(oldState: VoiceState, newState: Voic
 
   const botId = context.client.user?.id;
   if (newState.id === botId && oldState.channelId === session.voiceChannelId && newState.channelId !== session.voiceChannelId) {
-    void stopMusicSession(context, session, "Bot removido ou movido do canal de voz.");
+    void stopMusicSession(context, session, "Bot removido ou movido do canal de voz.").catch((error) => {
+      console.warn(`[music] falha ao limpar sessão desconectada ${newState.guild.id}:`, plainError(error));
+    });
     return;
   }
 
@@ -186,27 +279,32 @@ async function prepareMessageAccess(message: Message<true>, context: BotContext,
   return { member, voiceChannel, textChannel: message.channel, config: denial.config, userId: message.author.id, userTag: message.author.tag };
 }
 
-async function prepareInteractionAccess(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, applyCooldown: boolean): Promise<Access | null> {
+async function prepareInteractionAccess(interaction: ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction, context: BotContext, applyCooldown: boolean): Promise<Access | null> {
   if (!interaction.guild || !interaction.channel) return null;
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return null;
   const denial = await accessDenial(context, interaction.guild.id, interaction.channel.id, member, applyCooldown);
   if (denial.message) {
-    await interaction.reply({ content: denial.message, ephemeral: true });
+    await replyInteractionDenial(interaction, denial.message);
     return null;
   }
   const voiceChannel = member.voice.channel;
   if (!voiceChannel) {
-    await interaction.reply({ content: "❌ Você precisa estar em um canal de voz para usar o sistema de música.", ephemeral: true });
+    await replyInteractionDenial(interaction, "❌ Você precisa estar em um canal de voz para usar esse comando.");
     return null;
   }
   const permissionError = botVoicePermissionError(voiceChannel);
   if (permissionError) {
-    await interaction.reply({ content: permissionError, ephemeral: true });
+    await replyInteractionDenial(interaction, permissionError);
     return null;
   }
   if (!interaction.channel.isSendable() || interaction.channel.isDMBased()) return null;
   return { member, voiceChannel, textChannel: interaction.channel, config: denial.config, userId: interaction.user.id, userTag: interaction.user.tag };
+}
+
+async function replyInteractionDenial(interaction: ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction, content: string) {
+  if (interaction.deferred || interaction.replied) await interaction.editReply(content);
+  else await interaction.reply({ content, ephemeral: true });
 }
 
 async function accessDenial(context: BotContext, guildId: string, channelId: string, member: GuildMember, applyCooldown: boolean) {
@@ -215,6 +313,8 @@ async function accessDenial(context: BotContext, guildId: string, channelId: str
   if (!authorization.allowed) return { config, message: `❌ ${runtimeModuleDenialMessage(authorization, "O sistema de música")}` };
   if (!config.enabled) return { config, message: "❌ O sistema de música está desativado nas configurações deste servidor." };
   if (config.commandChannelId && config.commandChannelId !== channelId) return { config, message: `❌ Use o sistema de música em <#${config.commandChannelId}>.` };
+  if (config.blockedChannelIds.includes(channelId)) return { config, message: "❌ O sistema de música está bloqueado neste canal." };
+  if (config.allowedChannelIds.length && !config.allowedChannelIds.includes(channelId)) return { config, message: "❌ Este canal não está na lista de canais permitidos para música." };
   if (!canUseMusic(member, config)) return { config, message: "❌ Você não tem permissão para usar o sistema de música." };
 
   if (applyCooldown && config.cooldownSeconds > 0) {
@@ -307,6 +407,10 @@ async function runControlCommand(context: BotContext, access: Access, command: s
   else if (command === "stop") {
     await stopMusicSession(context, session, `Fila limpa por ${access.userTag}.`);
     await access.textChannel.send(`⏹️ Reprodução finalizada e fila limpa por <@${access.userId}>.`);
+  } else if (command === "clearqueue") {
+    const removed = await clearMusicQueue(session);
+    await logAction(context, access, "music.queue_cleared", `${removed} música(s) removida(s) por ${access.userTag}.`);
+    await access.textChannel.send(`🧹 Fila limpa: ${removed} música(s) removida(s).`);
   } else if (command === "volume") {
     const volume = Number(value);
     if (!Number.isInteger(volume) || volume < 10 || volume > 100) throw new Error("Use `.volume <10-100>`. ");
@@ -342,6 +446,7 @@ function botVoicePermissionError(channel: VoiceBasedChannel) {
   return permissions.has(PermissionFlagsBits.ViewChannel, true)
     && permissions.has(PermissionFlagsBits.Connect, true)
     && permissions.has(PermissionFlagsBits.Speak, true)
+    && permissions.has(PermissionFlagsBits.UseVAD, true)
     ? null
     : "❌ Não tenho permissão para entrar ou falar nesse canal de voz.";
 }
@@ -349,8 +454,8 @@ function botVoicePermissionError(channel: VoiceBasedChannel) {
 function addedTracksMessage(tracks: Awaited<ReturnType<typeof resolveMusicQuery>>) {
   const first = tracks[0]!;
   return tracks.length === 1
-    ? `✅ Música adicionada à fila:\n🎵 Nome: **${first.title}**\n👤 Pedido por: <@${first.requestedById}>\n⏱️ Duração: ${formatDuration(first.durationMs)}`
-    : `✅ **${tracks.length} músicas** foram adicionadas à fila.`;
+    ? `✅ Música adicionada à fila com sucesso.\n🎵 Nome: **${first.title}**\n👤 Pedido por: <@${first.requestedById}>\n⏱️ Duração: ${formatDuration(first.durationMs)}`
+    : `✅ Músicas adicionadas à fila com sucesso: **${tracks.length} faixas**.`;
 }
 
 function queueText(session: MusicSession | null) {
@@ -360,6 +465,7 @@ function queueText(session: MusicSession | null) {
 }
 
 async function logRequest(context: BotContext, access: Access, tracks: Array<{ title: string; url: string; source: string }>) {
+  console.log(`[music] ${tracks.length} faixa(s) adicionada(s) em ${access.member.guild.id} por ${access.userTag}.`);
   await context.api.postLog({
     guildId: access.member.guild.id,
     userId: access.userId,
@@ -395,15 +501,17 @@ function errorMessage(error: unknown) {
   return message || "Não foi possível concluir essa ação.";
 }
 
-function directYouTubeLink(content: string) {
+function plainError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function directMusicLink(content: string) {
   const value = content.trim().replace(/^<(.+)>$/, "$1");
   if (!value || /\s/.test(value)) return null;
 
   try {
     const url = new URL(value);
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    return url.protocol === "https:"
-      && (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be")
+    return url.protocol === "https:" && Boolean(url.hostname)
       ? url.toString()
       : null;
   } catch {
