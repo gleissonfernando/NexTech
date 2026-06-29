@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import ytdl from "@distube/ytdl-core";
 import { YouTube, type Video } from "youtube-sr";
 import type { MusicConfig, MusicTrack } from "./types";
+import { getYouTubeAgent, getYouTubeCookieHeader } from "./youtubeAuth";
 
 type Requester = { id: string; tag: string };
 const SEARCH_TIMEOUT_MS = 15_000;
@@ -96,7 +97,7 @@ function toTrack(video: Video, requester: Requester, config: MusicConfig, source
 
 async function directTrack(url: string, requester: Requester, config: MusicConfig): Promise<MusicTrack> {
   const info = await withTimeout(
-    ytdl.getBasicInfo(url),
+    ytdl.getBasicInfo(url, { agent: getYouTubeAgent() }),
     SEARCH_TIMEOUT_MS,
     "A fonte de música não respondeu a tempo."
   );
@@ -142,7 +143,11 @@ function isYouTubeUrl(value: string) {
 }
 
 function requestOptions(): RequestInit {
-  return { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) };
+  const cookie = getYouTubeCookieHeader();
+  return {
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+    headers: cookie ? { cookie } : undefined
+  };
 }
 
 async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string) {

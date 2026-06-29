@@ -13,6 +13,7 @@ import type { Guild, GuildTextBasedChannel, VoiceBasedChannel } from "discord.js
 import type { BotContext } from "../types";
 import { updateMusicPanel } from "./panelManager";
 import type { MusicConfig, MusicLoopMode, MusicSession, MusicTrack } from "./types";
+import { getYouTubeAgent } from "./youtubeAuth";
 
 const sessions = new Map<string, MusicSession>();
 
@@ -196,6 +197,7 @@ async function playNext(context: BotContext, session: MusicSession) {
 
   try {
     const stream = ytdl(track.url, {
+      agent: getYouTubeAgent(),
       filter: (format) => format.hasAudio && !format.hasVideo && format.container === "webm",
       highWaterMark: 1 << 25,
       quality: "highestaudio"

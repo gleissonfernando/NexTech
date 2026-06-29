@@ -32,6 +32,7 @@ import {
 import { resolveArtist, resolveMusicQuery } from "./searchManager";
 import type { MusicConfig, MusicSession } from "./types";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "../services/runtimeModuleGuard";
+import { hasYouTubeCookies } from "./youtubeAuth";
 
 const PREFIX = ".";
 const COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "volume", "loop", "shuffle"]);
@@ -383,6 +384,11 @@ function loopLabel(mode: string) {
 
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
+  if (/sign in to confirm|not a bot|confirm you.?re not a bot/i.test(message)) {
+    return hasYouTubeCookies()
+      ? "A sessão configurada do YouTube expirou ou foi bloqueada. Atualize YOUTUBE_COOKIES_B64 na hospedagem."
+      : "O YouTube exige autenticação neste IP. Configure o segredo YOUTUBE_COOKIES_B64 na hospedagem.";
+  }
   if (/fetch failed|abort|timed?\s*out|timeout/i.test(message)) {
     return "A fonte de música não respondeu a tempo. Tente novamente em instantes.";
   }
