@@ -1446,7 +1446,7 @@ function AdvancedModuleFields({
         <AdvancedTextField disabled={disabled} label="ID da categoria de calls (opcional)" onChange={(value) => onChange({ categoryId: value || null })} placeholder="ID da categoria" value={stringConfig(config.categoryId)} />
         <AdvancedSelectField disabled={disabled} label="Canal de logs" onChange={(value) => onChange({ logChannelId: value || null })} options={textChannelOptions} placeholder="Sem logs" value={stringConfig(config.logChannelId)} />
         <AdvancedNumberField disabled={disabled} label="Limite padrão de usuários" max={99} min={1} onChange={(value) => onChange({ defaultUserLimit: value })} value={numberConfig(config.defaultUserLimit, 10)} />
-        <AdvancedNumberField disabled={disabled} label="Excluir vazia após (minutos)" max={1440} min={1} onChange={(value) => onChange({ emptyDeleteMinutes: value })} value={numberConfig(config.emptyDeleteMinutes, 10)} />
+        <AdvancedNumberField disabled={disabled} label="Excluir vazia após (minutos)" max={1440} min={1} onChange={(value) => onChange({ emptyDeleteMinutes: value })} value={numberConfig(config.emptyDeleteMinutes, 1)} />
       </div>
     );
   }
@@ -1566,7 +1566,7 @@ function AdvancedToggleField({ checked, disabled, label, onChange }: { checked: 
 
 function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, unknown>) {
   if (moduleId === "temporary-voice") {
-    return { enabled: false, panelChannelId: null, panelMessageId: null, categoryId: null, defaultUserLimit: 10, emptyDeleteMinutes: 10, logChannelId: null, ...config };
+    return { enabled: false, panelChannelId: null, panelMessageId: null, categoryId: null, defaultUserLimit: 10, emptyDeleteMinutes: 1, logChannelId: null, ...config };
   }
   if (moduleId === "tag-verification") {
     return { enabled: false, intervalMinutes: 10, removeOnMismatch: true, requiredTag: "", roleId: null, ...config };
@@ -4464,6 +4464,15 @@ function LogsView({
   return (
     <div className="space-y-5">
       <LogsSettingsPanel
+        botId={botId}
+        canManage={canManage}
+        guild={guild}
+        loading={loading}
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+      />
+
+      <NotificationsView
         botId={botId}
         canManage={canManage}
         guild={guild}

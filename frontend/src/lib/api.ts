@@ -647,7 +647,7 @@ export async function saveSafeBotWarningNote(guildId: string, botId: string, use
 }
 
 export async function getAutomatedLogSettings(guildId: string, botId: string) { const { data } = await api.get<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}`, { params: botParams(botId) }); return data.settings; }
-export async function saveAutomatedLogSettings(guildId: string, botId: string, payload: { enabled?: boolean; allowedRoleIds?: string[] }) { const { data } = await api.patch<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}`, payload, { params: botParams(botId) }); return data.settings; }
+export async function saveAutomatedLogSettings(guildId: string, botId: string, payload: { enabled?: boolean; allowedRoleIds?: string[]; enabledChannels?: Partial<import("../types").AutomatedLogSettings["enabledChannels"]> }) { const { data } = await api.patch<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}`, payload, { params: botParams(botId) }); return data.settings; }
 export async function syncAutomatedLogStructure(guildId: string, botId: string) { const { data } = await api.post<{ settings: import("../types").AutomatedLogSettings }>(`/automated-logs/${guildId}/sync`, undefined, { params: botParams(botId) }); return data.settings; }
 
 export async function uploadWelcomeImage(guildId: string, file: File, botId?: string | null) {

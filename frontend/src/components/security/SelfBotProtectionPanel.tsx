@@ -164,7 +164,7 @@ const emptySettings: SelfBotProtectionSettings = {
   punishmentLogChannelId: null,
   logWebhookUrl: null,
   embedColor: "#7c3aed",
-  punishmentSequence: ["delete_message", "add_role", "log"],
+  punishmentSequence: ["delete_message", "log"],
   punishmentSteps: defaultPunishmentSteps(),
   addRoleId: null,
   removeRoleId: null,

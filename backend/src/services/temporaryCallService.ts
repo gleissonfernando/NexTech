@@ -14,7 +14,7 @@ export async function getTemporaryVoiceSettings(botId: string, guildId: string):
     botId, guildId, enabled: config.enabled === true,
     panelChannelId: id(config.panelChannelId), panelMessageId: id(config.panelMessageId), categoryId: id(config.categoryId),
     defaultUserLimit: integer(config.defaultUserLimit, 1, 99, 10),
-    emptyDeleteMinutes: integer(config.emptyDeleteMinutes, 1, 1440, 10),
+    emptyDeleteMinutes: integer(config.emptyDeleteMinutes, 1, 1440, 1),
     logChannelId: id(config.logChannelId)
   };
 }

@@ -254,7 +254,7 @@ export function defaultSelfBotProtectionSettings(guildId: string, botId: string)
     punishmentLogChannelId: null,
     logWebhookUrl: null,
     embedColor: DEFAULT_EMBED_COLOR,
-    punishmentSequence: ["delete_message", "add_role", "log"] as SelfBotPunishmentAction[],
+    punishmentSequence: ["delete_message", "log"] as SelfBotPunishmentAction[],
     punishmentSteps: defaultPunishmentSteps(),
     addRoleId: null,
     removeRoleId: null,
@@ -323,11 +323,7 @@ export async function getSelfBotRoleAssignments(
     .limit(Math.min(Math.max(limit, 1), 1000))
     .toArray();
 
-  if (assignments.length) {
-    return assignments.map(toRoleAssignmentDto);
-  }
-
-  return getLegacySelfBotRoleAssignments(guildId, botId, limit);
+  return assignments.map(toRoleAssignmentDto);
 }
 
 export async function saveSelfBotProtectionSettings(
@@ -817,7 +813,7 @@ function normalizeModuleToggles(value: Partial<Record<SelfBotProtectionModuleId,
 
 function normalizePunishmentSequence(value: readonly string[]) {
   const normalized = value.filter((action): action is SelfBotPunishmentAction => punishmentActionSet.has(action as SelfBotPunishmentAction));
-  return normalized.length ? [...new Set(normalized)] : ["delete_message", "add_role", "log"] as SelfBotPunishmentAction[];
+  return normalized.length ? [...new Set(normalized)] : ["delete_message", "log"] as SelfBotPunishmentAction[];
 }
 
 function defaultPunishmentSteps(): SelfBotPunishmentStepDto[] {

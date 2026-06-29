@@ -42,13 +42,13 @@ async function reconcileAll(client: Client<true>, context: BotContext) {
     if (!settings?.enabled) continue;
 
     const requested = !settings.lastSyncedAt || Boolean(settings.lastSyncRequestedAt && settings.lastSyncRequestedAt > settings.lastSyncedAt);
-    const missingIds = !settings.categoryId || Object.values(settings.channels).some((id) => !id);
+    const missingIds = !settings.categoryId || activeChannelKeys(settings).some((key) => !settings.channels[key]);
     const retryDue = (lastAttemptAt.get(guild.id) ?? 0) < Date.now() - 300_000;
     let shouldSync = requested || (!settings.lastError && missingIds) || (Boolean(settings.lastError) && retryDue);
 
     if (!shouldSync && (lastValidationAt.get(guild.id) ?? 0) < Date.now() - 300_000) {
       lastValidationAt.set(guild.id, Date.now());
-      const ids = [settings.categoryId, ...Object.values(settings.channels)].filter(Boolean) as string[];
+      const ids = [settings.categoryId, ...activeChannelKeys(settings).map((key) => settings.channels[key])].filter(Boolean) as string[];
       const existing = await Promise.all(ids.map((id) => guild.channels.fetch(id).catch(() => null)));
       shouldSync = existing.some((channel) => !channel) || await needsNameSync(guild, settings);
     }
@@ -119,6 +119,11 @@ async function reconcileGuild(guild: Guild, context: BotContext, settings: Autom
   const resolved = { ...settings.channels };
 
   for (const [key, name] of Object.entries(CHANNELS) as Array<[keyof typeof CHANNELS, string]>) {
+    if (!settings.enabledChannels[key]) {
+      resolved[key] = null;
+      continue;
+    }
+
     let channel = resolved[key] ? all.get(resolved[key]!) : null;
 
     if (channel?.type !== ChannelType.GuildText || channel.parentId !== category.id) {
@@ -189,11 +194,19 @@ function overwrites(guild: Guild, settings: AutomatedLogSettings) {
 export function automatedLogChannelForType(settings: AutomatedLogSettings, type: string) {
   const value = type.toLowerCase();
 
-  if (value.startsWith("message.") || value.includes("spam") || value.includes("link")) return settings.channels.messages;
-  if (value.startsWith("voice.") || value.includes("call")) return settings.channels.calls;
-  if (value.includes("verification")) return settings.channels.verification;
-  if (value.includes("absence") || value.includes("ausencia") || value.includes("fivem.fac")) return settings.channels.absence;
-  if (value.includes("warning") || value.includes("punish") || value.includes("moderation") || value.includes("security") || value.includes("self_bot") || value.includes("anti-ban")) return settings.channels.punishment;
+  if (value.startsWith("message.") || value.includes("spam") || value.includes("link")) return selectedChannel(settings, "messages");
+  if (value.startsWith("voice.") || value.includes("call")) return selectedChannel(settings, "calls");
+  if (value.includes("verification")) return selectedChannel(settings, "verification");
+  if (value.includes("absence") || value.includes("ausencia") || value.includes("fivem.fac")) return selectedChannel(settings, "absence");
+  if (value.includes("warning") || value.includes("punish") || value.includes("moderation") || value.includes("security") || value.includes("self_bot") || value.includes("anti-ban")) return selectedChannel(settings, "punishment");
 
-  return settings.channels.site;
+  return selectedChannel(settings, "site");
+}
+
+function activeChannelKeys(settings: AutomatedLogSettings) {
+  return (Object.keys(CHANNELS) as Array<keyof typeof CHANNELS>).filter((key) => settings.enabledChannels[key]);
+}
+
+function selectedChannel(settings: AutomatedLogSettings, key: keyof typeof CHANNELS) {
+  return settings.enabledChannels[key] ? settings.channels[key] : null;
 }

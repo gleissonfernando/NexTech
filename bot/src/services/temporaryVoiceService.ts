@@ -42,6 +42,7 @@ const IDs = {
 } as const;
 
 const emptyTimers = new Map<string, NodeJS.Timeout>();
+const EMPTY_DELETE_AFTER_MS = 60_000;
 let started = false;
 
 export function startTemporaryVoiceService(client: Client<true>, context: BotContext) {
@@ -385,6 +386,10 @@ async function createCall(interaction: ButtonInteraction, context: BotContext, s
       await member.voice.setChannel(channel, "Movido para a própria call temporária");
     }
 
+    if (!member.voice.channelId) {
+      await inspectEmpty(channel, context, call);
+    }
+
     await logCall(context, settings, call, "Call temporária criada", member.id);
     await ephemeral(interaction, member.voice.channelId ? "✅ Sua call temporária foi criada." : "✅ Sua call temporária foi criada. Entre nela quando quiser usar.");
   } catch (error) {
@@ -507,7 +512,7 @@ async function inspectEmpty(raw: Channel | undefined, context: BotContext, call:
     await context.api.updateTemporaryCall(call.guildId, call.id, { emptySince: new Date(emptySince).toISOString() });
   }
 
-  const delay = Math.max(0, settings.emptyDeleteMinutes * 60_000 - (Date.now() - emptySince));
+  const delay = Math.max(0, EMPTY_DELETE_AFTER_MS - (Date.now() - emptySince));
   const timer = setTimeout(() => void deleteEmpty(raw, context, call, settings), delay);
   timer.unref();
   emptyTimers.set(call.channelId, timer);

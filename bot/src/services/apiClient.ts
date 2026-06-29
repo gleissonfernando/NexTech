@@ -381,7 +381,7 @@ export type SafeBotWarningRecord = {
 };
 export type TemporaryVoiceSettings = { botId: string; guildId: string; enabled: boolean; panelChannelId: string | null; panelMessageId: string | null; categoryId: string | null; defaultUserLimit: number; emptyDeleteMinutes: number; logChannelId: string | null };
 export type TemporaryCall = { id: string; botId: string; guildId: string; ownerId: string; channelId: string; channelName: string; userLimit: number; isPrivate: boolean; allowedUsers: string[]; bannedUsers: string[]; createdAt: string; updatedAt: string; emptySince: string | null };
-export type AutomatedLogSettings = { id: string; botId: string; guildId: string; enabled: boolean; categoryId: string | null; channels: { site: string | null; absence: string | null; messages: string | null; calls: string | null; verification: string | null; punishment: string | null }; allowedRoleIds: string[]; lastError: string | null; lastSyncedAt: string | null; lastSyncRequestedAt: string | null; createdAt: string; updatedAt: string };
+export type AutomatedLogSettings = { id: string; botId: string; guildId: string; enabled: boolean; categoryId: string | null; channels: { site: string | null; absence: string | null; messages: string | null; calls: string | null; verification: string | null; punishment: string | null }; enabledChannels: { site: boolean; absence: boolean; messages: boolean; calls: boolean; verification: boolean; punishment: boolean }; allowedRoleIds: string[]; lastError: string | null; lastSyncedAt: string | null; lastSyncRequestedAt: string | null; createdAt: string; updatedAt: string };
 
 export type SocialNotification = {
   id: string;

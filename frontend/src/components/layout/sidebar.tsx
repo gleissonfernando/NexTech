@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   Archive,
-  Bell,
   AtSign,
   Bot,
   Building2,
@@ -110,9 +109,8 @@ const navItems: NavItem[] = [
   { id: "bio-url-verification", label: "URL na Bio", icon: AtSign, moduleId: "bio-url-verification" },
   { id: "first-lady", label: "Primeira Dama", icon: UserPlus, moduleId: "first-lady" },
   { id: "permissions", label: "Usuarios", icon: Users, moduleId: "verification" },
-  { id: "logs", label: "Logs", icon: ScrollText, moduleId: "logs" },
+  { id: "logs", label: "Logs e Notificações", icon: ScrollText, moduleId: "logs" },
   { id: "fivem", label: "FiveM", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-ammo", "fivem-finance", "fivem-fac"] },
-  { id: "notifications", label: "Notificações", icon: Bell },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
   { id: "media-library", label: "Emojis & Sons", icon: Archive, moduleId: "emoji-cloner" },

@@ -80,7 +80,7 @@ const temporaryVoiceConfigSchema = z.object({
   panelMessageId: snowflakeSchema.nullable().default(null),
   categoryId: snowflakeSchema.nullable().default(null),
   defaultUserLimit: z.coerce.number().int().min(1).max(99).default(10),
-  emptyDeleteMinutes: z.coerce.number().int().min(1).max(1440).default(10),
+  emptyDeleteMinutes: z.coerce.number().int().min(1).max(1440).default(1),
   logChannelId: snowflakeSchema.nullable().default(null)
 });
 

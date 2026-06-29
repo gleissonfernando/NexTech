@@ -65,6 +65,15 @@ const DEFAULT_DRAFT: Draft = {
   siteLogCategories: LOG_CATEGORIES.map((category) => category.id)
 };
 
+const AUTOMATED_CHANNEL_LABELS: Record<keyof AutomatedLogSettings["enabledChannels"], string> = {
+  absence: "📋 Logs de ausência",
+  calls: "🔊 Logs de call",
+  messages: "💬 Logs de mensagens",
+  punishment: "🛡️ Logs de punição",
+  site: "🌐 Logs do site",
+  verification: "✅ Verificação DC"
+};
+
 export function LogsSettingsPanel({
   botId,
   canManage,
@@ -172,7 +181,7 @@ export function LogsSettingsPanel({
     try {
       const saved = await patchGuildSettings(guild.id, draft, botId);
       if (botId && automated) {
-        const savedAutomated = await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds });
+        const savedAutomated = await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds, enabledChannels: automated.enabledChannels });
         setAutomated(savedAutomated);
       }
       onSettingsChange(saved);
@@ -192,7 +201,7 @@ export function LogsSettingsPanel({
         const savedGuild = await patchGuildSettings(guild.id, { discordLogsEnabled: true, discordLogCategories: draft.discordLogCategories }, botId);
         onSettingsChange(savedGuild);
       }
-      await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds });
+      await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds, enabledChannels: automated.enabledChannels });
       const next = await syncAutomatedLogStructure(guild.id, botId);
       setAutomated(next);
       setStatus(label);
@@ -259,6 +268,28 @@ export function LogsSettingsPanel({
         <Card>
           <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Estrutura automática de logs</CardTitle><CardDescription>Cria e mantém a categoria privada Logs Geral sem duplicar canais.</CardDescription></div><Switch checked={automated.enabled} disabled={disabled} onCheckedChange={(enabled) => { setAutomated((current) => current ? { ...current, enabled } : current); if (enabled) updateDraft("discordLogsEnabled", true); }} /></div></CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <p className="mb-2 text-sm font-medium text-zinc-200">Canais que serão criados automaticamente</p>
+              <div className="grid gap-2 rounded-lg border border-zinc-800 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {(Object.keys(AUTOMATED_CHANNEL_LABELS) as Array<keyof AutomatedLogSettings["enabledChannels"]>).map((key) => (
+                  <label className="flex items-center gap-2 text-sm text-zinc-300" key={key}>
+                    <input
+                      checked={automated.enabledChannels[key]}
+                      disabled={disabled}
+                      onChange={() => setAutomated((current) => current ? {
+                        ...current,
+                        enabledChannels: {
+                          ...current.enabledChannels,
+                          [key]: !current.enabledChannels[key]
+                        }
+                      } : current)}
+                      type="checkbox"
+                    />
+                    {AUTOMATED_CHANNEL_LABELS[key]}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div><p className="mb-2 text-sm font-medium text-zinc-200">Cargos autorizados a ver logs</p><div className="grid max-h-44 gap-2 overflow-y-auto rounded-lg border border-zinc-800 p-3 sm:grid-cols-2">{roles.map((role) => <label className="flex items-center gap-2 text-sm text-zinc-300" key={role.id}><input type="checkbox" disabled={disabled} checked={automated.allowedRoleIds.includes(role.id)} onChange={() => setAutomated((current) => current ? { ...current, allowedRoleIds: current.allowedRoleIds.includes(role.id) ? current.allowedRoleIds.filter((id) => id !== role.id) : [...current.allowedRoleIds, role.id] } : current)} />@{role.name}</label>)}</div></div>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(automated.channels).map(([key, value]) => <div className="rounded-lg border border-zinc-900 bg-zinc-950 p-3 text-sm" key={key}><span className="text-zinc-500">{key}</span><p className="mt-1 text-zinc-200">{value ? `Canal ${value}` : "Não criado"}</p></div>)}</div>
             {automated.lastError ? <p className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">{automated.lastError}</p> : null}

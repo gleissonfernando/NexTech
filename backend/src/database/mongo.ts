@@ -1259,6 +1259,14 @@ export type MongoAutomatedLogSettings = {
     verification: string | null;
     punishment: string | null;
   };
+  enabledChannels?: {
+    site: boolean;
+    absence: boolean;
+    messages: boolean;
+    calls: boolean;
+    verification: boolean;
+    punishment: boolean;
+  };
   allowedRoleIds: string[];
   lastError: string | null;
   lastSyncedAt: Date | null;

@@ -497,7 +497,7 @@ async function applyConfiguredPunishment(
     return null;
   });
   const step = resolved?.step ?? firstLocalPunishmentStep(runtime.protectionSettings);
-  const sequence = step ? stepActions(step) : ["delete_message", "add_role", "log"] as SelfBotPunishmentAction[];
+  const sequence = step ? stepActions(step) : ["delete_message", "log"] as SelfBotPunishmentAction[];
   const actions: SelfBotPunishmentAction[] = [];
   const errors: string[] = [];
 
