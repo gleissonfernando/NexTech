@@ -105,7 +105,7 @@ const navItems: NavItem[] = [
   { id: "vanity-url-protection", label: "URL Personalizada", icon: ChevronRight, moduleId: "vanity-url-protection" },
   { id: "hide-empty-voice", label: "Chamadas Vazias", icon: Mic2, moduleId: "hide-empty-voice" },
   { id: "auto-unmute", label: "Auto Desmutar", icon: Mic2, moduleId: "auto-unmute" },
-  { id: "temporary-voice", label: "Chamadas Temporarias", icon: Users, moduleId: "temporary-voice" },
+  { id: "temporary-voice", label: "Chamadas Temporárias", icon: Users, moduleId: "temporary-voice" },
   { id: "tag-verification", label: "Verificação de Tag", icon: Hash, moduleId: "tag-verification" },
   { id: "bio-url-verification", label: "URL na Bio", icon: AtSign, moduleId: "bio-url-verification" },
   { id: "first-lady", label: "Primeira Dama", icon: UserPlus, moduleId: "first-lady" },

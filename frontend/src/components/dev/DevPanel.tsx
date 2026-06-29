@@ -98,7 +98,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "vanity-url-protection", label: "Protecao da URL Personalizada" },
   { id: "hide-empty-voice", label: "Esconder Chamadas Vazias" },
   { id: "auto-unmute", label: "Auto Desmutar" },
-  { id: "temporary-voice", label: "Chamadas Temporarias" },
+  { id: "temporary-voice", label: "Chamadas Temporárias" },
   { id: "tag-verification", label: "Verificação de Tag" },
   { id: "bio-url-verification", label: "Verificação de URL na Bio" },
   { id: "first-lady", label: "Sistema Primeira Dama" },
@@ -275,7 +275,7 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "temporary-voice",
-    label: "Chamadas Temporarias",
+    label: "Chamadas Temporárias",
     description: "Criação e controle de salas temporárias",
     icon: Users,
     moduleIds: ["temporary-voice"]

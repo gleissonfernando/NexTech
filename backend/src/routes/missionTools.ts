@@ -385,7 +385,7 @@ async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0])
   const botId = await resolveRequestBotId(req);
 
   if (!botId) {
-    throw createRouteError("Select a registered bot to use Mission Tools.", 400);
+    throw createRouteError("Selecione um bot cadastrado para usar o Mission Tools.", 400);
   }
 
   return botId;
@@ -398,7 +398,7 @@ async function assertCanReadMissionTools(user: AuthSessionUser, guildId: string,
     return;
   }
 
-  throw createRouteError("You do not have permission to access Mission Tools for this bot.", 403);
+  throw createRouteError("Você não tem permissão para acessar o Mission Tools deste bot.", 403);
 }
 
 async function assertCanManageMissionTools(user: AuthSessionUser, guildId: string, botId: string) {
@@ -408,18 +408,18 @@ async function assertCanManageMissionTools(user: AuthSessionUser, guildId: strin
     return;
   }
 
-  throw createRouteError("You do not have permission to configure Mission Tools for this bot.", 403);
+  throw createRouteError("Você não tem permissão para configurar o Mission Tools deste bot.", 403);
 }
 
 async function assertBotMissionToolsLicense(botId: string) {
   const permissions = await getBotApiPermissions(botId);
 
   if (!permissions) {
-    throw createRouteError("Bot not found.", 404);
+    throw createRouteError("Bot não encontrado.", 404);
   }
 
   if (!permissions.enabledModules.includes(MODULE_ID)) {
-    throw createRouteError("Mission Tools has not been enabled for this bot by an administrator.", 403);
+    throw createRouteError("O Mission Tools não foi ativado para este bot por um administrador.", 403);
   }
 }
 

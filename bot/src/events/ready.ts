@@ -210,6 +210,7 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
 
   const wasSelfBotEnabled = isSelfBotModuleEnabled();
   const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
+  const wasTemporaryVoiceEnabled = isBotModuleEnabled("temporary-voice");
   const runtimeModules = runtimeAccess.active ? runtimeAccess.enabledModules : [];
   const nextSignature = runtimeModuleSignature(runtimeAccess.active, runtimeAccess.botId, runtimeModules);
 
@@ -231,6 +232,9 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
 
   if (!wasMissionToolsEnabled && isBotModuleEnabled("mission-tools")) {
     startMissionToolsService(client, context);
+  }
+  if (!wasTemporaryVoiceEnabled && isBotModuleEnabled("temporary-voice")) {
+    startTemporaryVoiceService(client, context);
   }
 }
 

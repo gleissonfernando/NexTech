@@ -67,7 +67,7 @@ export const DEV_MODULES = [
   { id: "vanity-url-protection", label: "Protecao da URL Personalizada" },
   { id: "hide-empty-voice", label: "Esconder Chamadas Vazias" },
   { id: "auto-unmute", label: "Auto Desmutar" },
-  { id: "temporary-voice", label: "Chamadas Temporarias" },
+  { id: "temporary-voice", label: "Chamadas Temporárias" },
   { id: "tag-verification", label: "Verificacao de Tag" },
   { id: "bio-url-verification", label: "Verificacao de URL na Bio" },
   { id: "first-lady", label: "Sistema Primeira Dama" },

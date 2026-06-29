@@ -627,11 +627,11 @@ function missionToolsStats(users: MissionToolsUserPanelDto[]): MissionToolsStats
 
 function validateSettingsReady(settings: MissionToolsSettingsDto) {
   if (!settings.enabled) {
-    throw createMissionError("Mission Tools is not enabled in the dashboard.", 403);
+    throw createMissionError("O Mission Tools não está ativado no painel.", 403);
   }
 
   if (!settings.panelChannelId) {
-    throw createMissionError("Configure the panel channel before using Mission Tools.", 400);
+    throw createMissionError("Configure o canal do painel antes de usar o Mission Tools.", 400);
   }
 }
 

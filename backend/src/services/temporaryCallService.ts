@@ -47,7 +47,7 @@ export async function createTemporaryCall(input: Omit<MongoTemporaryCall, "_id" 
   const now = new Date();
   const call: MongoTemporaryCall = { ...input, _id: randomUUID(), allowedUsers: ids(input.allowedUsers), bannedUsers: ids(input.bannedUsers), userLimit: integer(input.userLimit, 1, 99, 10), isPrivate: input.isPrivate === true, createdAt: now, updatedAt: now, emptySince: null };
   try { await temporaryCalls.insertOne(call); }
-  catch (error) { if (String(error).includes("E11000")) throw statusError("You already have an active temporary call in this server.", 409); throw error; }
+  catch (error) { if (String(error).includes("E11000")) throw statusError("Você já possui uma call temporária ativa neste servidor.", 409); throw error; }
   return dto(call);
 }
 
@@ -61,14 +61,14 @@ export async function updateTemporaryCall(botId: string, guildId: string, callId
   if (patch.bannedUsers !== undefined) $set.bannedUsers = ids(patch.bannedUsers);
   if (patch.emptySince !== undefined) $set.emptySince = patch.emptySince ? new Date(patch.emptySince) : null;
   const call = await temporaryCalls.findOneAndUpdate({ _id: callId, botId, guildId }, { $set }, { returnDocument: "after" });
-  if (!call) throw statusError("Temporary call not found.", 404);
+  if (!call) throw statusError("Call temporária não encontrada.", 404);
   return dto(call);
 }
 
 export async function deleteTemporaryCall(botId: string, guildId: string, callId: string) {
   const { temporaryCalls } = await getMongoCollections();
   const call = await temporaryCalls.findOneAndDelete({ _id: callId, botId, guildId });
-  if (!call) throw statusError("Temporary call not found.", 404);
+  if (!call) throw statusError("Call temporária não encontrada.", 404);
   return dto(call);
 }
 

@@ -19,53 +19,53 @@ const confirmations = new Map<string, { guildId: string; userId: string; reason:
 
 export async function prepareSafeBotWarning(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) {
-    await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "Este comando só pode ser usado dentro de um servidor.", ephemeral: true });
     return;
   }
   const targetUser = interaction.options.getUser("usuario", true);
   const target = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   const staff = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!target || !staff) {
-    await interaction.reply({ content: "The selected member could not be loaded.", ephemeral: true });
+    await interaction.reply({ content: "Não foi possível carregar o membro selecionado.", ephemeral: true });
     return;
   }
   if (target.id === interaction.guild.ownerId || target.permissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({ content: "Server owners and administrators cannot receive Safe Bot warnings.", ephemeral: true });
+    await interaction.reply({ content: "Donos do servidor e administradores não podem receber advertências do Safe Bot.", ephemeral: true });
     return;
   }
   const settings = await context.api.getSafeBotWarningSettings(interaction.guild.id);
   if (!settings.enabled || !settings.levels.length) {
-    await interaction.reply({ content: "The warning system is disabled or has no configured levels.", ephemeral: true });
+    await interaction.reply({ content: "O sistema de advertências está desativado ou não possui níveis configurados.", ephemeral: true });
     return;
   }
   if (!staff.permissions.has(PermissionFlagsBits.ModerateMembers) && !settings.authorizedRoleIds.some((roleId) => staff.roles.cache.has(roleId))) {
-    await interaction.reply({ content: "You do not have permission to issue Safe Bot warnings.", ephemeral: true });
+    await interaction.reply({ content: "Você não tem permissão para aplicar advertências do Safe Bot.", ephemeral: true });
     return;
   }
   const preview = await context.api.getSafeBotWarningPreview(interaction.guild.id, target.id);
   if (preview.blocked) {
-    await interaction.reply({ content: preview.note ?? "New warnings are blocked by the configured overflow rule.", ephemeral: true });
+    await interaction.reply({ content: preview.note ?? "Novas advertências estão bloqueadas pela regra de excedente configurada.", ephemeral: true });
     return;
   }
-  const reason = interaction.options.getString("motivo")?.trim() || preview.level?.defaultReason || "No reason provided.";
+  const reason = interaction.options.getString("motivo")?.trim() || preview.level?.defaultReason || "Nenhum motivo informado.";
   const confirmationId = randomUUID();
   confirmations.set(confirmationId, { guildId: interaction.guild.id, userId: target.id, reason, staffId: interaction.user.id, expiresAt: Date.now() + 5 * 60_000 });
   const embed = new EmbedBuilder()
     .setColor(0xf59e0b)
-    .setTitle("Confirm Safe Bot warning")
+    .setTitle("Confirmar advertência do Safe Bot")
     .setDescription([
-      `**User:** <@${target.id}>`,
-      `**Current warnings:** ${preview.currentWarnings}`,
-      `**Next warning:** ${preview.nextWarningNumber}`,
-      `**Level:** ${preview.level?.name ?? "No configured level (record only)"}`,
-      `**Configured action:** ${actionLabel(preview.level?.action ?? null)}`,
-      `**Reason:** ${reason}`,
-      preview.note ? `**Note:** ${preview.note}` : ""
+      `**Usuário:** <@${target.id}>`,
+      `**Advertências atuais:** ${preview.currentWarnings}`,
+      `**Próxima advertência:** ${preview.nextWarningNumber}`,
+      `**Nível:** ${preview.level?.name ?? "Sem nível configurado (apenas registrar)"}`,
+      `**Ação configurada:** ${actionLabel(preview.level?.action ?? null)}`,
+      `**Motivo:** ${reason}`,
+      preview.note ? `**Observação:** ${preview.note}` : ""
     ].filter(Boolean).join("\n"));
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${confirmationId}`).setLabel("Confirm warning").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${confirmationId}`).setLabel("Cancel").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:history:${confirmationId}`).setLabel("View history").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${confirmationId}`).setLabel("Confirmar advertência").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${confirmationId}`).setLabel("Cancelar").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:history:${confirmationId}`).setLabel("Ver histórico").setStyle(ButtonStyle.Primary)
   );
   await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 }
@@ -76,22 +76,22 @@ export async function handleSafeBotWarningInteraction(interaction: Interaction, 
   const state = confirmationId ? confirmations.get(confirmationId) : null;
   if (!state || state.expiresAt < Date.now()) {
     if (confirmationId) confirmations.delete(confirmationId);
-    await interaction.reply({ content: "This warning confirmation expired.", ephemeral: true });
+    await interaction.reply({ content: "Esta confirmação de advertência expirou.", ephemeral: true });
     return true;
   }
   if (interaction.user.id !== state.staffId || interaction.guildId !== state.guildId) {
-    await interaction.reply({ content: "Only the staff member who opened this confirmation can use it.", ephemeral: true });
+    await interaction.reply({ content: "Apenas o staff que abriu esta confirmação pode usá-la.", ephemeral: true });
     return true;
   }
   if (action === "cancel") {
     confirmations.delete(confirmationId!);
-    await interaction.update({ content: "Warning cancelled. No warning or action was recorded.", embeds: [], components: [] });
+    await interaction.update({ content: "Advertência cancelada. Nenhuma advertência ou ação foi registrada.", embeds: [], components: [] });
     return true;
   }
   if (action === "history") {
     const history = await context.api.getSafeBotWarningHistory(state.guildId, state.userId);
-    const lines = history.warnings.slice(0, 10).map((warning) => `#${warning.warningNumber} • ${warning.level?.name ?? "Unconfigured level"} • ${warning.reason} • ${warning.status}`);
-    await interaction.reply({ content: lines.length ? lines.join("\n").slice(0, 1900) : "This user has no warning history.", ephemeral: true });
+    const lines = history.warnings.slice(0, 10).map((warning) => `#${warning.warningNumber} • ${warning.level?.name ?? "Nível não configurado"} • ${warning.reason} • ${warning.status}`);
+    await interaction.reply({ content: lines.length ? lines.join("\n").slice(0, 1900) : "Este usuário não possui histórico de advertências.", ephemeral: true });
     return true;
   }
   if (action !== "confirm") return true;
@@ -99,14 +99,14 @@ export async function handleSafeBotWarningInteraction(interaction: Interaction, 
   await interaction.deferUpdate();
   try {
     const guild = interaction.guild;
-    if (!guild) throw new Error("Server unavailable.");
+    if (!guild) throw new Error("Servidor indisponível.");
     const target = await guild.members.fetch(state.userId).catch(() => null);
     const staff = await guild.members.fetch(state.staffId).catch(() => null);
-    if (!target || !staff) throw new Error("The target member or staff member is unavailable.");
+    if (!target || !staff) throw new Error("O membro alvo ou o staff está indisponível.");
     const settings = await context.api.getSafeBotWarningSettings(state.guildId);
-    if (!settings.enabled) throw new Error("The warning system was disabled before confirmation.");
+    if (!settings.enabled) throw new Error("O sistema de advertências foi desativado antes da confirmação.");
     if (!staff.permissions.has(PermissionFlagsBits.ModerateMembers) && !settings.authorizedRoleIds.some((roleId) => staff.roles.cache.has(roleId))) {
-      throw new Error("The staff member no longer has permission to issue warnings.");
+      throw new Error("O staff não tem mais permissão para aplicar advertências.");
     }
     const warning = await context.api.issueSafeBotWarning(state.guildId, {
       userId: target.id,
@@ -122,20 +122,20 @@ export async function handleSafeBotWarningInteraction(interaction: Interaction, 
     await sendWarningLog(completed, settings, target, staff);
     await interaction.editReply({
       content: completed.status === "failed"
-        ? `Warning #${completed.warningNumber} was recorded, but no automatic action ran: ${completed.error ?? "configuration check failed"}`
-        : `Warning #${completed.warningNumber} recorded. Action: ${completed.executedAction ?? actionLabel(completed.configuredAction)}.`,
+        ? `Advertência #${completed.warningNumber} registrada, mas nenhuma ação automática foi executada: ${completed.error ?? "falha na verificação da configuração"}`
+        : `Advertência #${completed.warningNumber} registrada. Ação: ${completed.executedAction ?? actionLabel(completed.configuredAction)}.`,
       embeds: [],
       components: []
     });
   } catch (error) {
-    await interaction.editReply({ content: error instanceof Error ? error.message : "The warning could not be applied.", embeds: [], components: [] });
+    await interaction.editReply({ content: error instanceof Error ? error.message : "Não foi possível aplicar a advertência.", embeds: [], components: [] });
   }
   return true;
 }
 
 async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: SafeBotWarningSettings, target: GuildMember, staff: GuildMember) {
   if (warning.status !== "pending" || !warning.level || !warning.configuredAction) {
-    return { success: warning.status !== "failed", executedAction: "Recorded only", error: warning.error };
+    return { success: warning.status !== "failed", executedAction: "Apenas registrada", error: warning.error };
   }
   const level = warning.level;
   const action = warning.configuredAction;
@@ -143,26 +143,26 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
     if (["timeout", "kick", "ban", "add_role", "remove_role"].includes(action)) assertTargetHierarchy(target);
     if (action === "dm") await target.send(render(level.userMessage, warning, target, staff));
     if (action === "channel_message" || action === "notify_staff") await sendConfiguredChannel(level, render(action === "notify_staff" ? level.staffMessage : level.userMessage, warning, target, staff), target);
-    if (action === "add_role") await target.roles.add(level.roleId!, `Safe Bot warning #${warning.warningNumber}: ${warning.reason}`);
-    if (action === "remove_role") await target.roles.remove(level.roleId!, `Safe Bot warning #${warning.warningNumber}: ${warning.reason}`);
+    if (action === "add_role") await target.roles.add(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
+    if (action === "remove_role") await target.roles.remove(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
     if (action === "timeout") {
-      if (!target.moderatable) throw new Error("The bot cannot timeout this member because of Discord hierarchy or permissions.");
-      await target.timeout(level.durationSeconds! * 1000, `Safe Bot warning #${warning.warningNumber}: ${warning.reason}`);
+      if (!target.moderatable) throw new Error("O bot não pode aplicar timeout neste membro por causa da hierarquia ou permissões do Discord.");
+      await target.timeout(level.durationSeconds! * 1000, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
     }
     if (action === "kick") {
-      if (!target.kickable) throw new Error("The bot cannot kick this member because of Discord hierarchy or permissions.");
-      await target.kick(`Safe Bot warning #${warning.warningNumber}: ${warning.reason}`);
+      if (!target.kickable) throw new Error("O bot não pode expulsar este membro por causa da hierarquia ou permissões do Discord.");
+      await target.kick(`Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
     }
     if (action === "ban") {
-      if (!target.bannable) throw new Error("The bot cannot ban this member because of Discord hierarchy or permissions.");
-      await target.ban({ reason: `Safe Bot warning #${warning.warningNumber}: ${warning.reason}` });
+      if (!target.bannable) throw new Error("O bot não pode banir este membro por causa da hierarquia ou permissões do Discord.");
+      await target.ban({ reason: `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}` });
     }
     if (action === "open_ticket") await openWarningTicket(level, warning, target, staff);
     if (action === "block_channels") {
       for (const channelId of level.targetChannelIds) {
         const channel = await target.guild.channels.fetch(channelId).catch(() => null);
-        if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) throw new Error(`Configured channel ${channelId} is unavailable.`);
-        await channel.permissionOverwrites.edit(target.id, { SendMessages: false, ViewChannel: false }, { reason: `Safe Bot warning #${warning.warningNumber}` });
+        if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) throw new Error(`O canal configurado ${channelId} está indisponível.`);
+        await channel.permissionOverwrites.edit(target.id, { SendMessages: false, ViewChannel: false }, { reason: `Advertência Safe Bot #${warning.warningNumber}` });
       }
     }
     if (action === "custom") await sendConfiguredChannel(level, render(level.customAction, warning, target, staff), target);
@@ -174,19 +174,19 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
 }
 
 function assertTargetHierarchy(target: GuildMember) {
-  if (target.id === target.guild.ownerId || target.permissions.has(PermissionFlagsBits.Administrator)) throw new Error("Server owners and administrators cannot receive this action.");
+  if (target.id === target.guild.ownerId || target.permissions.has(PermissionFlagsBits.Administrator)) throw new Error("Donos do servidor e administradores não podem receber esta ação.");
   const me = target.guild.members.me;
-  if (!me || target.roles.highest.position >= me.roles.highest.position) throw new Error("The target member is above or equal to the bot in the role hierarchy.");
+  if (!me || target.roles.highest.position >= me.roles.highest.position) throw new Error("O membro alvo está acima ou no mesmo nível do bot na hierarquia de cargos.");
 }
 
 async function sendConfiguredChannel(level: SafeBotWarningLevel, content: string, target: GuildMember) {
   const channel = level.channelId ? await target.guild.channels.fetch(level.channelId).catch(() => null) : null;
-  if (!channel?.isTextBased() || !channel.isSendable()) throw new Error("The configured action channel is unavailable.");
+  if (!channel?.isTextBased() || !channel.isSendable()) throw new Error("O canal configurado para esta ação está indisponível.");
   await channel.send({ content, allowedMentions: { parse: [] } });
 }
 
 async function openWarningTicket(level: SafeBotWarningLevel, warning: SafeBotWarningRecord, target: GuildMember, staff: GuildMember) {
-  if (!target.guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) throw new Error("The bot lacks Manage Channels permission for an automatic ticket.");
+  if (!target.guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) throw new Error("O bot não possui a permissão Gerenciar Canais para abrir um ticket automático.");
   const channel = await target.guild.channels.create({
     name: `warning-${target.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 90),
     type: ChannelType.GuildText,
@@ -195,13 +195,13 @@ async function openWarningTicket(level: SafeBotWarningLevel, warning: SafeBotWar
       { id: target.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
       { id: staff.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
     ],
-    reason: `Safe Bot warning #${warning.warningNumber}`
+    reason: `Advertência Safe Bot #${warning.warningNumber}`
   });
-  await channel.send({ content: render(level.staffMessage || `Warning #${warning.warningNumber}: {reason}`, warning, target, staff), allowedMentions: { users: [target.id, staff.id] } });
+  await channel.send({ content: render(level.staffMessage || `Advertência #${warning.warningNumber}: {reason}`, warning, target, staff), allowedMentions: { users: [target.id, staff.id] } });
   if (level.channelId) {
     const staffChannel = await target.guild.channels.fetch(level.channelId).catch(() => null);
     if (staffChannel?.isTextBased() && staffChannel.isSendable()) {
-      await staffChannel.send({ content: `Automatic warning ticket created: <#${channel.id}>`, allowedMentions: { parse: [] } });
+      await staffChannel.send({ content: `Ticket automático de advertência criado: <#${channel.id}>`, allowedMentions: { parse: [] } });
     }
   }
 }
@@ -211,23 +211,23 @@ async function sendWarningLog(warning: SafeBotWarningRecord, settings: SafeBotWa
   if (!channelId) return;
   const channel = await target.guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !channel.isSendable()) return;
-  const embed = new EmbedBuilder().setColor(warning.status === "failed" ? 0xed4245 : 0xf59e0b).setTitle("⚠️ New Safe Bot warning").setDescription([
-    `**User:** <@${target.id}>`, `**ID:** ${target.id}`, `**Staff:** <@${staff.id}>`,
-    `**Warning:** ${warning.warningNumber}`, `**Level:** ${warning.level?.name ?? "Unconfigured level"}`,
-    `**Reason:** ${warning.reason}`, `**Configured action:** ${actionLabel(warning.configuredAction)}`,
-    `**Executed action:** ${warning.executedAction ?? "None"}`, `**Status:** ${warning.status}`,
-    warning.error ? `**Error:** ${warning.error}` : ""
+  const embed = new EmbedBuilder().setColor(warning.status === "failed" ? 0xed4245 : 0xf59e0b).setTitle("⚠️ Nova advertência do Safe Bot").setDescription([
+    `**Usuário:** <@${target.id}>`, `**ID:** ${target.id}`, `**Staff:** <@${staff.id}>`,
+    `**Advertência:** ${warning.warningNumber}`, `**Nível:** ${warning.level?.name ?? "Nível não configurado"}`,
+    `**Motivo:** ${warning.reason}`, `**Ação configurada:** ${actionLabel(warning.configuredAction)}`,
+    `**Ação executada:** ${warning.executedAction ?? "Nenhuma"}`, `**Status:** ${warning.status}`,
+    warning.error ? `**Erro:** ${warning.error}` : ""
   ].filter(Boolean).join("\n")).setTimestamp(new Date());
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
 }
 
 function render(template: string, warning: SafeBotWarningRecord, target: GuildMember, staff: GuildMember) {
-  return (template || "Safe Bot warning #{count}: {reason}")
+  return (template || "Advertência Safe Bot #{count}: {reason}")
     .replaceAll("{user}", `<@${target.id}>`).replaceAll("{staff}", `<@${staff.id}>`)
     .replaceAll("{reason}", warning.reason).replaceAll("{count}", String(warning.warningNumber))
-    .replaceAll("{level}", warning.level?.name ?? "Unconfigured level").slice(0, 1900);
+    .replaceAll("{level}", warning.level?.name ?? "Nível não configurado").slice(0, 1900);
 }
 
 function actionLabel(action: SafeBotWarningRecord["configuredAction"] | SafeBotWarningLevel["action"]) {
-  return action ? action.replaceAll("_", " ") : "Record only";
+  return action ? action.replaceAll("_", " ") : "Apenas registrar";
 }

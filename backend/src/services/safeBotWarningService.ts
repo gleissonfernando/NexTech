@@ -113,8 +113,8 @@ export async function issueSafeBotWarning(input: {
 }) {
   const { safeBotWarningRecords, safeBotWarningUsers } = await getMongoCollections();
   const settings = await getSafeBotWarningSettings(input.guildId, input.botId);
-  if (!settings.enabled) throw warningError("The Safe Bot warning system is disabled.", 409);
-  if (!settings.levels.length) throw warningError("No warning levels are configured.", 409);
+  if (!settings.enabled) throw warningError("O sistema de advertências do Safe Bot está desativado.", 409);
+  if (!settings.levels.length) throw warningError("Nenhum nível de advertência foi configurado.", 409);
 
   const now = new Date();
   const user = await safeBotWarningUsers.findOneAndUpdate(
@@ -126,16 +126,16 @@ export async function issueSafeBotWarning(input: {
     },
     { upsert: true, returnDocument: "after" }
   );
-  if (!user) throw warningError("The warning counter could not be updated.", 500);
+  if (!user) throw warningError("Não foi possível atualizar o contador de advertências.", 500);
 
   const resolution = resolveLevel(settings, user.totalWarnings);
   if (resolution.blocked) {
     await safeBotWarningUsers.updateOne({ _id: user._id }, { $inc: { totalWarnings: -1 }, $set: { updatedAt: new Date() } });
-    throw warningError("New warnings are blocked after the last configured level.", 409);
+    throw warningError("Novas advertências estão bloqueadas após o último nível configurado.", 409);
   }
 
   const level = resolution.level;
-  const reason = cleanText(input.reason, 500) || level?.defaultReason || "No reason provided.";
+  const reason = cleanText(input.reason, 500) || level?.defaultReason || "Nenhum motivo informado.";
   const configuredAction = level?.enabled === true ? level.action : null;
   const validationError = validateLevelExecution(level, settings.defaultLogChannelId);
   const record: MongoSafeBotWarningRecord = {
@@ -257,7 +257,7 @@ function resolveLevel(settings: SafeBotWarningSettings, warningNumber: number) {
 
 function validateLevelExecution(level: SafeBotWarningLevel | null, defaultLogChannelId: string | null) {
   if (!level?.enabled || !level.action || level.action === "record_only") return null;
-  if (!(level.logChannelId || defaultLogChannelId)) return "No warning log channel is configured; no automatic action was executed.";
+  if (!(level.logChannelId || defaultLogChannelId)) return "Nenhum canal de logs de advertência foi configurado; nenhuma ação automática foi executada.";
   if ((level.action === "dm") && !level.userMessage) return "The private user message is not configured.";
   if (level.action === "channel_message" && !level.userMessage) return "The channel message is not configured.";
   if (["notify_staff", "open_ticket"].includes(level.action) && !level.staffMessage) return "The staff message is not configured.";

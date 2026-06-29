@@ -1231,12 +1231,12 @@ async function sendDmPanel(interaction: StringSelectMenuInteraction, context: Bo
   const feature = featureFromPanelType(panelType);
 
   if (!settings.enabled || !isFeatureEnabled(settings, feature)) {
-    await editMissionReply(interaction, "This Mission Tools module is not enabled in the dashboard.");
+    await editMissionReply(interaction, "Este módulo do Mission Tools não está ativado no painel.");
     return;
   }
 
   if (!(await userCanUsePanel(interaction, settings))) {
-    await editMissionReply(interaction, "You do not have an authorized role for Mission Tools.");
+    await editMissionReply(interaction, "Você não possui um cargo autorizado para usar o Mission Tools.");
     return;
   }
 
@@ -1244,7 +1244,7 @@ async function sendDmPanel(interaction: StringSelectMenuInteraction, context: Bo
     username: displayUserName(interaction)
   });
   await editOrCreateDmPanel(context, guildId, interaction.user.id, panelType);
-  await editMissionReply(interaction, "I sent the panel by direct message.");
+  await editMissionReply(interaction, "Enviei o painel por mensagem direta.");
 }
 
 async function editOrCreateDmPanel(context: BotContext, guildId: string, userId: string, panelType: PanelType, options: PanelRenderOptions = {}) {

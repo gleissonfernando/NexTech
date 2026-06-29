@@ -1029,7 +1029,7 @@ async function recordEmojiCloneTestLog(input: {
   tokenMasked: string;
   userId: string;
 }) {
-  const { createLog } = await import("../services/logService");
+  const { createLog } = await import("../services/logService.js");
 
   await createLog({
     guildId: input.targetGuildId,
@@ -1047,7 +1047,7 @@ async function recordEmojiCloneTestLog(input: {
 }
 
 async function createEmojiCloneLog(botId: string | null, guildId: string, userId: string, type: string, message: string) {
-  const { createLog } = await import("../services/logService");
+  const { createLog } = await import("../services/logService.js");
 
   await createLog({
     botId,

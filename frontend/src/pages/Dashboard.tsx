@@ -361,7 +361,7 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "temporary-voice",
-    title: "Chamadas Temporarias",
+    title: "Chamadas Temporárias",
     description: "Cria salas temporárias com dono, limite, bloqueio e exclusão automática.",
     icon: Users,
     view: "temporary-voice"
