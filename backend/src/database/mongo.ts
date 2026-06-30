@@ -293,6 +293,55 @@ export type MongoGlobalBlacklistHistory = {
   userId: string;
 };
 
+export type MongoServerBackupSettings = {
+  _id: string;
+  autoEnabled: boolean;
+  authorizedRoleIds: string[];
+  botId: string;
+  frequency: "6h" | "12h" | "daily" | "weekly" | "monthly";
+  guildId: string;
+  limit: number;
+  logChannelId: string | null;
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoServerBackupSnapshot = {
+  _id: string;
+  botId: string;
+  counts: {
+    categories: number;
+    channels: number;
+    emojis: number;
+    roles: number;
+    stickers: number;
+  };
+  createdAt: Date;
+  createdBy: string | null;
+  guildId: string;
+  guildName: string;
+  kind: "manual" | "automatic";
+  snapshot: Record<string, unknown>;
+  status: "completed" | "failed" | "partial";
+  statusMessage: string | null;
+  updatedAt: Date;
+};
+
+export type MongoServerBackupRestoreJob = {
+  _id: string;
+  backupId: string;
+  botId: string;
+  completedAt: Date | null;
+  createdAt: Date;
+  createdBy: string | null;
+  guildId: string;
+  options: string[];
+  preview: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  status: "pending" | "running" | "completed" | "failed" | "partial";
+  updatedAt: Date;
+};
+
 export type MongoLogEntry = {
   _id: string;
   botId?: string | null;
@@ -1861,6 +1910,9 @@ export async function getMongoCollections() {
     globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
     globalBlacklistEntries: db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries"),
     globalBlacklistHistory: db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history"),
+    serverBackupSettings: db.collection<MongoServerBackupSettings>("server_backup_settings"),
+    serverBackupSnapshots: db.collection<MongoServerBackupSnapshot>("server_backup_snapshots"),
+    serverBackupRestoreJobs: db.collection<MongoServerBackupRestoreJob>("server_backup_restore_jobs"),
     logEntries: db.collection<MongoLogEntry>("LogEntry"),
     socialNotifications: db.collection<MongoSocialNotification>("social_notifications"),
     kickApiConfigs: db.collection<MongoKickApiConfig>("kick_api_configs"),
@@ -1988,6 +2040,9 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ userId: 1, active: 1 }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ botId: 1, guildId: 1, active: 1 }),
     db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history").createIndex({ userId: 1, createdAt: -1 }),
+    db.collection<MongoServerBackupSettings>("server_backup_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoServerBackupSnapshot>("server_backup_snapshots").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoServerBackupRestoreJob>("server_backup_restore_jobs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoPanelImageSettings>("panel_image_settings").createIndex(
       { botId: 1, guildId: 1, panelId: 1 },

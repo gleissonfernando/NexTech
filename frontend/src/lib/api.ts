@@ -80,6 +80,11 @@ import type {
   SaveSelfBotProtectionSettingsPayload,
   SaveSocialPanelPayload,
   SaveVoiceRecorderSettingsPayload,
+  ServerBackupDashboard,
+  ServerBackupRestorePart,
+  ServerBackupRestorePreview,
+  ServerBackupSettings,
+  ServerBackupSnapshot,
   SelfBotProtectionResponse,
   SelfBotProtectionSettings,
   SocialMember,
@@ -1691,6 +1696,55 @@ export async function saveAdvancedModuleConfig(
     payload
   );
   return data.module;
+}
+
+export async function getServerBackupDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<ServerBackupDashboard>(`/server-backups/${encodeURIComponent(guildId)}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function saveServerBackupSettings(botId: string, guildId: string, payload: Partial<ServerBackupSettings>) {
+  const { data } = await api.patch<{ settings: ServerBackupSettings }>(
+    `/server-backups/${encodeURIComponent(guildId)}/settings`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function createServerBackup(botId: string, guildId: string) {
+  const { data } = await api.post<{ backup: ServerBackupSnapshot }>(
+    `/server-backups/${encodeURIComponent(guildId)}/backups`,
+    undefined,
+    { params: botParams(botId), timeout: 60000 }
+  );
+  return data.backup;
+}
+
+export async function deleteServerBackup(botId: string, guildId: string, backupId: string) {
+  await api.delete(`/server-backups/${encodeURIComponent(guildId)}/backups/${encodeURIComponent(backupId)}`, {
+    params: botParams(botId)
+  });
+}
+
+export async function previewServerBackupRestore(botId: string, guildId: string, backupId: string, parts: ServerBackupRestorePart[]) {
+  const { data } = await api.post<{ preview: ServerBackupRestorePreview }>(
+    `/server-backups/${encodeURIComponent(guildId)}/backups/${encodeURIComponent(backupId)}/preview`,
+    { parts },
+    { params: botParams(botId), timeout: 30000 }
+  );
+  return data.preview;
+}
+
+export async function restoreServerBackup(botId: string, guildId: string, backupId: string, parts: ServerBackupRestorePart[], confirmation: string) {
+  const { data } = await api.post(
+    `/server-backups/${encodeURIComponent(guildId)}/backups/${encodeURIComponent(backupId)}/restore`,
+    { confirmation, parts },
+    { params: botParams(botId), timeout: 120000 }
+  );
+  return data.job;
 }
 
 export async function getAntiBanConfig(botId: string, guildId: string) {

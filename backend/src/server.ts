@@ -6,6 +6,7 @@ import { runAccessControlStartupAudit } from "./services/accessStartupAuditServi
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
 import { startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
 import { startGiveawayScheduler } from "./services/giveawayService";
+import { startServerBackupScheduler } from "./services/serverBackupService";
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
 
 const httpServer = createServer(app);
@@ -15,6 +16,7 @@ createSocketServer(httpServer);
 httpServer.listen(env.PORT, env.HOST, () => {
   console.log(`[api] rodando em ${env.FRONTEND_URL} (${env.HOST}:${env.PORT})`);
   startGiveawayScheduler();
+  startServerBackupScheduler();
   startVoiceRecorderRetentionScheduler();
   void markDevBotsOfflineAfterBackendRestart()
     .then((count) => {

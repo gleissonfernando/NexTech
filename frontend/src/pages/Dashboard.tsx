@@ -92,6 +92,7 @@ import {
   getLogs,
   getManualRegistrationDashboard,
   getSelfBotProtection,
+  getServerBackupDashboard,
   getSocialNotifications,
   getTickets,
   getXMonitor,
@@ -104,10 +105,15 @@ import {
   saveFivemGoalSettings,
   saveGlobalBlacklistSettings,
   saveManualRegistrationSettings,
+  saveServerBackupSettings,
   syncApplicationEmojis,
   updateSelectedDashboardGuild,
   updateApplicationEmojiSettings,
   updateBotGuildConfig,
+  createServerBackup,
+  deleteServerBackup,
+  previewServerBackupRestore,
+  restoreServerBackup,
   validateEmojiCloneBotToken
 } from "../lib/api";
 import type {
@@ -144,6 +150,11 @@ import type {
   ManualRegistrationSettings,
   ManualRegistrationSubmission,
   SelfBotProtectionSettings,
+  ServerBackupDashboard,
+  ServerBackupRestorePart,
+  ServerBackupRestorePreview,
+  ServerBackupSettings,
+  ServerBackupSnapshot,
   SocialNotification,
   Ticket,
   TicketPanelOption,
@@ -1022,7 +1033,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
           />
         ) : null}
-        {advancedSecurityModuleViews.includes(activeView) && activeView !== "anti-ban" && activeView !== "global-blacklist" ? (
+        {activeView === "server-backup" ? (
+          <ServerBackupPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "server-backup", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {advancedSecurityModuleViews.includes(activeView) && activeView !== "anti-ban" && activeView !== "global-blacklist" && activeView !== "server-backup" ? (
           <AdvancedSecurityModulePanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, viewModuleIds[activeView] ?? "", canManageDashboard)}
@@ -1421,6 +1439,269 @@ function GlobalBlacklistPanel({ botId, canManage, guild }: { botId?: string | nu
   );
 }
 
+const serverBackupParts: Array<{ id: ServerBackupRestorePart; label: string }> = [
+  { id: "roles", label: "Cargos" },
+  { id: "channels", label: "Canais" },
+  { id: "permissions", label: "Permissoes" },
+  { id: "emojis", label: "Emojis" },
+  { id: "settings", label: "Configuracoes do bot" },
+  { id: "panels", label: "Paineis do bot" }
+];
+
+function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; canManage: boolean; guild: DashboardGuild | null }) {
+  const [dashboard, setDashboard] = useState<ServerBackupDashboard | null>(null);
+  const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [workingBackupId, setWorkingBackupId] = useState<string | null>(null);
+  const [selectedBackup, setSelectedBackup] = useState<ServerBackupSnapshot | null>(null);
+  const [selectedParts, setSelectedParts] = useState<ServerBackupRestorePart[]>(serverBackupParts.map((part) => part.id));
+  const [preview, setPreview] = useState<ServerBackupRestorePreview | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const settings = dashboard?.settings;
+  const disabled = !canManage || saving || !botId || !guild;
+  const logChannelOptions = channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }));
+
+  const load = useCallback(async () => {
+    if (!botId || !guild) {
+      setDashboard(null);
+      setRoles([]);
+      setChannels([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+    try {
+      const [page, options] = await Promise.all([
+        getServerBackupDashboard(botId, guild.id),
+        getGuildLiveOptions(guild.id, botId).catch(() => ({ channels: [], roles: [], voiceChannels: [] }))
+      ]);
+      setDashboard(page);
+      setRoles(options.roles ?? []);
+      setChannels(options.channels ?? []);
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel carregar o Backup Completo.");
+    } finally {
+      setLoading(false);
+    }
+  }, [botId, guild]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function patchSettings(patch: Partial<ServerBackupSettings>) {
+    if (!botId || !guild || !settings) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const saved = await saveServerBackupSettings(botId, guild.id, patch);
+      setDashboard((current) => current ? { ...current, settings: saved } : current);
+      setMessage("Configuracao de backup salva.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel salvar as configuracoes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createNow() {
+    if (!botId || !guild) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const backup = await createServerBackup(botId, guild.id);
+      setDashboard((current) => current ? { ...current, backups: [backup, ...current.backups] } : current);
+      setMessage(backup.status === "completed" ? "Backup criado com sucesso." : backup.statusMessage ?? "Backup finalizado com avisos.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel criar o backup.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeBackup(backupId: string) {
+    if (!botId || !guild || !window.confirm("Apagar este backup salvo?")) return;
+    setWorkingBackupId(backupId);
+    try {
+      await deleteServerBackup(botId, guild.id, backupId);
+      setDashboard((current) => current ? { ...current, backups: current.backups.filter((backup) => backup.id !== backupId) } : current);
+      if (selectedBackup?.id === backupId) setSelectedBackup(null);
+      setMessage("Backup apagado.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel apagar o backup.");
+    } finally {
+      setWorkingBackupId(null);
+    }
+  }
+
+  async function previewRestore(backup: ServerBackupSnapshot) {
+    if (!botId || !guild) return;
+    setSelectedBackup(backup);
+    setPreview(null);
+    setConfirmation("");
+    setWorkingBackupId(backup.id);
+    try {
+      setPreview(await previewServerBackupRestore(botId, guild.id, backup.id, selectedParts));
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel gerar a previa.");
+    } finally {
+      setWorkingBackupId(null);
+    }
+  }
+
+  async function confirmRestore() {
+    if (!botId || !guild || !selectedBackup || confirmation !== "CONFIRMAR") return;
+    setWorkingBackupId(selectedBackup.id);
+    setMessage(null);
+    try {
+      await restoreServerBackup(botId, guild.id, selectedBackup.id, selectedParts, confirmation);
+      setMessage("Restauracao iniciada e registrada no historico.");
+      setSelectedBackup(null);
+      setPreview(null);
+      setConfirmation("");
+      await load();
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel restaurar o backup.");
+    } finally {
+      setWorkingBackupId(null);
+    }
+  }
+
+  function togglePart(part: ServerBackupRestorePart, checked: boolean) {
+    setSelectedParts((current) => checked ? [...new Set([...current, part])] : current.filter((item) => item !== part));
+  }
+
+  if (!botId || !guild) {
+    return <Card><CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">Escolha um bot e um servidor para configurar o Backup Completo.</CardContent></Card>;
+  }
+
+  if (loading || !settings) {
+    return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm font-medium text-zinc-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando backups...</CardContent></Card>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {message ? <div className="rounded-lg border border-purple-400/25 bg-purple-500/10 px-4 py-3 text-sm font-semibold text-white">{message}</div> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard icon={Server} label="Backups salvos" value={String(dashboard?.backups.length ?? 0)} />
+        <MetricCard icon={Clock3} label="Automatico" value={settings.autoEnabled ? "Ativo" : "Pausado"} />
+        <MetricCard icon={CalendarClock} label="Frequencia" value={backupFrequencyLabel(settings.frequency)} />
+        <MetricCard icon={ShieldCheck} label="Limite salvo" value={String(settings.limit)} />
+        <MetricCard icon={ScrollText} label="Historico" value={String(dashboard?.restoreJobs.length ?? 0)} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Backup Completo</CardTitle>
+              <CardDescription>Isolado por bot e servidor, com criacao manual, automatica e restauracao seletiva.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={canManage ? "success" : "muted"}>{canManage ? "Liberado" : "Somente leitura"}</Badge>
+              <Badge variant={settings.autoEnabled ? "success" : "muted"}>{settings.autoEnabled ? "Auto ativo" : "Auto pausado"}</Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <AdvancedToggleField checked={settings.autoEnabled} disabled={disabled} label="Backup automatico" onChange={(checked) => void patchSettings({ autoEnabled: checked })} />
+            <AdvancedSelectField disabled={disabled} label="Frequencia do backup" onChange={(value) => void patchSettings({ frequency: value as ServerBackupSettings["frequency"] })} options={[{ label: "A cada 6 horas", value: "6h" }, { label: "A cada 12 horas", value: "12h" }, { label: "Diario", value: "daily" }, { label: "Semanal", value: "weekly" }, { label: "Mensal", value: "monthly" }]} placeholder="Selecione" value={settings.frequency} />
+            <AdvancedNumberField disabled={disabled} label="Limite de backups salvos" max={100} min={1} onChange={(value) => void patchSettings({ limit: value })} value={settings.limit} />
+            <AdvancedSelectField disabled={disabled} label="Canal de logs" onChange={(value) => void patchSettings({ logChannelId: value || null })} options={logChannelOptions} placeholder="Usar logs padrao" value={settings.logChannelId ?? ""} />
+            <div className="sm:col-span-2">
+              <MultiRoleSelect disabled={disabled} label="Cargos autorizados" onChange={(values) => void patchSettings({ authorizedRoleIds: values })} roles={roles.filter((role) => !role.managed)} values={settings.authorizedRoleIds} />
+            </div>
+          </div>
+          <Button disabled={disabled || saving} onClick={() => void createNow()}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Criar backup agora
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Backups Salvos</CardTitle>
+          <CardDescription>Data, origem, tipo, contagens e status de cada snapshot.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {(dashboard?.backups ?? []).length ? dashboard!.backups.map((backup) => (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4" key={backup.id}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{backup.guildName}</p>
+                    <Badge variant={backup.status === "completed" ? "success" : backup.status === "partial" ? "warning" : "danger"}>{backup.status}</Badge>
+                    <Badge variant="muted">{backup.kind === "manual" ? "Manual" : "Automatico"}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">{formatDate(backup.createdAt)} - criado por {backup.createdBy ?? "sistema"}</p>
+                  <p className="mt-2 text-sm text-zinc-300">{backup.counts.roles} cargos, {backup.counts.categories} categorias, {backup.counts.channels} canais, {backup.counts.emojis} emojis, {backup.counts.stickers} stickers</p>
+                  {backup.statusMessage ? <p className="mt-2 text-xs text-amber-300">{backup.statusMessage}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={workingBackupId === backup.id} onClick={() => void previewRestore(backup)} variant="secondary">{workingBackupId === backup.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Restaurar</Button>
+                  <Button disabled={disabled || workingBackupId === backup.id} onClick={() => void removeBackup(backup.id)} variant="destructive"><Trash2 className="h-4 w-4" />Apagar</Button>
+                </div>
+              </div>
+            </div>
+          )) : <EmptyState icon={Server} title="Nenhum backup salvo" />}
+        </CardContent>
+      </Card>
+
+      {selectedBackup ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Restauracao seletiva</CardTitle>
+            <CardDescription>Escolha as partes, gere a previa e digite CONFIRMAR para executar.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {serverBackupParts.map((part) => <AdvancedToggleField checked={selectedParts.includes(part.id)} disabled={!canManage} key={part.id} label={part.label} onChange={(checked) => togglePart(part.id, checked)} />)}
+            </div>
+            <Button disabled={workingBackupId === selectedBackup.id || !selectedParts.length} onClick={() => void previewRestore(selectedBackup)} variant="secondary">{workingBackupId === selectedBackup.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Atualizar previa</Button>
+            {preview ? (
+              <div className="rounded-lg border border-zinc-800 bg-black/40 p-4 text-sm text-zinc-300">
+                <p className="font-semibold text-white">Previa: {preview.summary.roles} cargos, {preview.summary.categories} categorias, {preview.summary.channels} canais, {preview.summary.emojis} emojis e {preview.summary.settings} configuracoes.</p>
+                {preview.missingPermissions.length ? <p className="mt-2 text-red-300">Permissoes faltando: {preview.missingPermissions.join(", ")}</p> : <p className="mt-2 text-emerald-300">Permissoes principais validadas.</p>}
+                {preview.warnings.map((warning) => <p className="mt-1 text-amber-300" key={warning}>{warning}</p>)}
+              </div>
+            ) : null}
+            <AdvancedTextField disabled={!canManage || preview?.canRestore === false} label="Confirmacao" onChange={setConfirmation} placeholder="Digite CONFIRMAR" value={confirmation} />
+            <Button disabled={!canManage || !preview?.canRestore || confirmation !== "CONFIRMAR" || workingBackupId === selectedBackup.id} onClick={() => void confirmRestore()} variant="destructive">{workingBackupId === selectedBackup.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}Confirmar restauracao</Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historico</CardTitle>
+          <CardDescription>Restauracoes e eventos recentes deste bot neste servidor.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {(dashboard?.restoreJobs ?? []).length ? dashboard!.restoreJobs.map((job) => (
+            <div className="flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" key={job.id}>
+              <span className="font-semibold text-white">{job.status}</span>
+              <span className="text-zinc-500">{formatDate(job.createdAt)} - {job.options.join(", ")}</span>
+            </div>
+          )) : <p className="text-sm text-zinc-500">Nenhuma restauracao registrada.</p>}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function backupFrequencyLabel(value: ServerBackupSettings["frequency"]) {
+  return ({ "6h": "6 horas", "12h": "12 horas", daily: "Diario", weekly: "Semanal", monthly: "Mensal" } as Record<ServerBackupSettings["frequency"], string>)[value];
+}
+
 function AdvancedSecurityModulePanel({
   botId,
   canManage,
@@ -1675,7 +1956,7 @@ function AdvancedModuleFields({
   if (moduleId === "auto-unmute") {
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        <AdvancedSelectField disabled={disabled} label="Canal de voz monitorado" onChange={(value) => onChange({ voiceChannelId: value || null })} options={voiceChannelOptions} placeholder="Selecione um canal de voz" value={stringConfig(config.voiceChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Canal de voz monitorado (opcional)" onChange={(value) => onChange({ voiceChannelId: value || null })} options={voiceChannelOptions} placeholder="Todo o servidor" value={stringConfig(config.voiceChannelId)} />
         <AdvancedSelectField disabled={disabled} label="Cargo permitido (opcional)" onChange={(value) => onChange({ requiredRoleId: value || null })} options={roleOptions} placeholder="Todos os usuarios" value={stringConfig(config.requiredRoleId)} />
         <AdvancedNumberField disabled={disabled} label="Delay para desmutar (segundos)" max={60} min={0} onChange={(value) => onChange({ delaySeconds: value })} value={numberConfig(config.delaySeconds, 0)} />
         <AdvancedNumberField disabled={disabled} label="Limite anti-spam (segundos)" max={300} min={1} onChange={(value) => onChange({ antiSpamSeconds: value })} value={numberConfig(config.antiSpamSeconds, 10)} />

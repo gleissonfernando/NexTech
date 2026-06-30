@@ -219,6 +219,76 @@ export type EmojiCloneRemoteEmoji = {
   url: string;
 };
 
+export type ServerBackupFrequency = "6h" | "12h" | "daily" | "weekly" | "monthly";
+export type ServerBackupRestorePart = "roles" | "channels" | "permissions" | "emojis" | "settings" | "panels";
+
+export type ServerBackupSettings = {
+  autoEnabled: boolean;
+  authorizedRoleIds: string[];
+  botId: string;
+  frequency: ServerBackupFrequency;
+  guildId: string;
+  limit: number;
+  logChannelId: string | null;
+  updatedAt: string | null;
+};
+
+export type ServerBackupSnapshot = {
+  botId: string;
+  counts: {
+    categories: number;
+    channels: number;
+    emojis: number;
+    roles: number;
+    stickers: number;
+  };
+  createdAt: string;
+  createdBy: string | null;
+  guildId: string;
+  guildName: string;
+  id: string;
+  kind: "manual" | "automatic";
+  status: "completed" | "failed" | "partial";
+  statusMessage: string | null;
+  updatedAt: string;
+};
+
+export type ServerBackupRestorePreview = {
+  backupId: string;
+  canRestore: boolean;
+  missingPermissions: string[];
+  parts: ServerBackupRestorePart[];
+  summary: {
+    categories: number;
+    channels: number;
+    emojis: number;
+    roles: number;
+    settings: number;
+  };
+  warnings: string[];
+};
+
+export type ServerBackupRestoreJob = {
+  id: string;
+  backupId: string;
+  botId: string;
+  completedAt: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  guildId: string;
+  options: ServerBackupRestorePart[];
+  preview: ServerBackupRestorePreview;
+  result: unknown;
+  status: "pending" | "running" | "completed" | "failed" | "partial";
+  updatedAt: string;
+};
+
+export type ServerBackupDashboard = {
+  backups: ServerBackupSnapshot[];
+  restoreJobs: ServerBackupRestoreJob[];
+  settings: ServerBackupSettings;
+};
+
 export type ApplicationEmojiItem = {
   animated: boolean;
   applicationEmojiId: string;

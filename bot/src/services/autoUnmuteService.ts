@@ -45,7 +45,11 @@ export async function handleAutoUnmuteVoiceStateUpdate(oldState: VoiceState, new
 
   const config = await readAutoUnmuteConfig(context, botId, newState.guild.id);
 
-  if (!config.enabled || !config.voiceChannelId || config.voiceChannelId !== newState.channelId) {
+  if (!config.enabled) {
+    return;
+  }
+
+  if (config.voiceChannelId && config.voiceChannelId !== newState.channelId) {
     return;
   }
 
@@ -69,7 +73,7 @@ export async function handleAutoUnmuteVoiceStateUpdate(oldState: VoiceState, new
 
   const member = await newState.guild.members.fetch(newState.id).catch(() => null);
 
-  if (!member || member.voice.channelId !== config.voiceChannelId || !member.voice.serverMute) {
+  if (!member || !member.voice.channelId || (config.voiceChannelId && member.voice.channelId !== config.voiceChannelId) || !member.voice.serverMute) {
     return;
   }
 
@@ -95,12 +99,12 @@ export async function handleAutoUnmuteVoiceStateUpdate(oldState: VoiceState, new
   }
 
   try {
-    await member.voice.setMute(false, "Auto Desmutar: usuario entrou no canal configurado.");
+    await member.voice.setMute(false, config.voiceChannelId ? "Auto Desmutar: usuario entrou no canal configurado." : "Auto Desmutar: usuario entrou em canal de voz do servidor.");
     await writeAutoUnmuteLog(
       context,
       member.guild.id,
       "auto_unmute.executed",
-      `Auto Desmutar executado: usuario ${member.user.tag} foi desmutado ao entrar no canal #${channel.name}.`,
+      `Auto Desmutar executado: usuario ${member.user.tag} foi desmutado ao entrar ${config.voiceChannelId ? `no canal #${channel.name}` : `em #${channel.name}`}.`,
       {
         botId,
         channelId: channel.id,
@@ -156,6 +160,11 @@ async function validateConfiguredRole(context: BotContext, member: GuildMember, 
 }
 
 async function resolveConfiguredVoiceChannel(context: BotContext, member: GuildMember, config: AutoUnmuteConfig) {
+  if (!config.voiceChannelId) {
+    const channel = member.voice.channel;
+    return channel?.type === ChannelType.GuildVoice || channel?.type === ChannelType.GuildStageVoice ? channel : null;
+  }
+
   const channel = member.guild.channels.cache.get(config.voiceChannelId ?? "");
 
   if (channel?.type === ChannelType.GuildVoice || channel?.type === ChannelType.GuildStageVoice) {
