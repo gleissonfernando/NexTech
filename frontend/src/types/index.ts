@@ -688,6 +688,49 @@ export type FivemGoalDashboard = {
   settings: FivemGoalSettings;
 };
 
+export type GlobalBlacklistSafeBotSettings = {
+  autoBlacklistOnSafeBotBan: boolean;
+  botId: string | null;
+  directActions: string[];
+  enabledSafeBotModules: string[];
+  guildId: string;
+  infractionLimit: number;
+  kickMode: "history_only" | "alert" | "blacklist";
+  logChannelId: string | null;
+  requireApprovalAfterRemoval: boolean;
+  updatedAt: string | null;
+};
+
+export type GlobalBlacklistEntry = {
+  active: boolean;
+  addedAt: string;
+  addedBy: string | null;
+  addedByType: "safebot" | "staff";
+  botId: string | null;
+  guildId: string;
+  id: string;
+  reason: string;
+  safeBotModule: string | null;
+  userId: string;
+};
+
+export type GlobalBlacklistHistory = {
+  action: "infraction" | "blacklisted" | "removed" | "monitored" | "approval_required";
+  createdAt: string;
+  guildId: string;
+  id: string;
+  infractionType: string;
+  reason: string;
+  safeBotModule: string | null;
+  userId: string;
+};
+
+export type GlobalBlacklistDashboard = {
+  entries: GlobalBlacklistEntry[];
+  history: GlobalBlacklistHistory[];
+  settings: GlobalBlacklistSafeBotSettings;
+};
+
 export type GuildChannelOption = {
   id: string;
   name: string;

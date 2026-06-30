@@ -83,6 +83,7 @@ import {
   getBotGuildConfig,
   getFivemModules,
   getFivemGoals,
+  getGlobalBlacklistDashboard,
   getGuildLiveOptions,
   getGuildSettings,
   getEmojiLibrary,
@@ -101,6 +102,7 @@ import {
   resendEmojiFromLibrary,
   saveAdvancedModuleConfig,
   saveFivemGoalSettings,
+  saveGlobalBlacklistSettings,
   saveManualRegistrationSettings,
   syncApplicationEmojis,
   updateSelectedDashboardGuild,
@@ -125,6 +127,9 @@ import type {
   FivemGoalField,
   FivemGoalItem,
   FivemGoalSettings,
+  GlobalBlacklistEntry,
+  GlobalBlacklistHistory,
+  GlobalBlacklistSafeBotSettings,
   GuildChannelOption,
   GuildRoleOption,
   GuildSettings,
@@ -1010,7 +1015,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
           />
         ) : null}
-        {advancedSecurityModuleViews.includes(activeView) && activeView !== "anti-ban" ? (
+        {activeView === "global-blacklist" ? (
+          <GlobalBlacklistPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "global-blacklist", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {advancedSecurityModuleViews.includes(activeView) && activeView !== "anti-ban" && activeView !== "global-blacklist" ? (
           <AdvancedSecurityModulePanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, viewModuleIds[activeView] ?? "", canManageDashboard)}
@@ -1233,6 +1245,181 @@ const advancedSecurityModuleDetails: Record<string, {
     items: ["Comandos por prefixo", "Fila por servidor", "Permissões e limites", "Player em Componentes V2"]
   }
 };
+
+const safeBotBlacklistModules = [
+  "safe-bot",
+  "anti-abuse",
+  "anti-bot",
+  "anti-fake",
+  "anti-link",
+  "anti-spam",
+  "anti-flood",
+  "anti-raid",
+  "anti-role",
+  "anti-ban",
+  "anti-kick",
+  "anti-channel-delete",
+  "anti-role-delete",
+  "anti-permissions"
+];
+
+function GlobalBlacklistPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
+  const [settings, setSettings] = useState<GlobalBlacklistSafeBotSettings | null>(null);
+  const [entries, setEntries] = useState<GlobalBlacklistEntry[]>([]);
+  const [history, setHistory] = useState<GlobalBlacklistHistory[]>([]);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!guild || !botId) {
+      setSettings(null);
+      setEntries([]);
+      setHistory([]);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+    Promise.all([getGlobalBlacklistDashboard(guild.id, botId), getGuildLiveOptions(guild.id, botId)])
+      .then(([dashboard, options]) => {
+        if (!active) return;
+        setSettings(dashboard.settings);
+        setEntries(dashboard.entries);
+        setHistory(dashboard.history);
+        setChannels(options.channels);
+      })
+      .catch(() => {
+        if (active) setError("Nao foi possivel carregar a Blacklist Global.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [botId, guild?.id]);
+
+  function update(patch: Partial<GlobalBlacklistSafeBotSettings>) {
+    setSettings((current) => current ? { ...current, ...patch } : current);
+  }
+
+  function toggleModule(moduleId: string) {
+    if (!settings) return;
+    const exists = settings.enabledSafeBotModules.includes(moduleId);
+    update({
+      enabledSafeBotModules: exists
+        ? settings.enabledSafeBotModules.filter((item) => item !== moduleId)
+        : [...settings.enabledSafeBotModules, moduleId]
+    });
+  }
+
+  async function save() {
+    if (!guild || !botId || !settings) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const saved = await saveGlobalBlacklistSettings(guild.id, settings, botId);
+      setSettings(saved);
+      setMessage("Integracao SafeBot salva.");
+    } catch {
+      setError("Nao foi possivel salvar a integracao SafeBot.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!guild) return <EmptyState icon={LockKeyhole} title="Selecione um servidor para configurar a Blacklist Global" />;
+
+  return (
+    <Card className="border-red-500/10 bg-zinc-950/75">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2"><LockKeyhole className="h-5 w-5 text-red-300" /> Blacklist Global</CardTitle>
+            <CardDescription>Entrada automatica somente por eventos do SafeBot ou por acao manual autorizada.</CardDescription>
+          </div>
+          <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Salvar
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {error ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div> : null}
+        {message ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</div> : null}
+        {loading || !settings ? <div className="h-48 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/70" /> : (
+          <>
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Integracao SafeBot</h3>
+                <p className="mt-1 text-xs text-zinc-500">Configure quais eventos do SafeBot podem gerar historico e blacklist automatica.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block text-xs font-medium text-zinc-400">Limite de infracoes
+                  <input className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} min={1} onChange={(event) => update({ infractionLimit: Number(event.target.value) })} type="number" value={settings.infractionLimit} />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">Canal de logs
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => update({ logChannelId: event.target.value || null })} value={settings.logChannelId ?? ""}>
+                    <option value="">Sem canal</option>
+                    {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                  </select>
+                </label>
+                <label className="flex h-11 items-center gap-2 rounded-lg border border-zinc-800 px-3 text-sm text-zinc-300">
+                  <input checked={settings.autoBlacklistOnSafeBotBan} disabled={!canManage} onChange={(event) => update({ autoBlacklistOnSafeBotBan: event.target.checked })} type="checkbox" />
+                  Ban automatico do SafeBot envia para blacklist
+                </label>
+                <label className="flex h-11 items-center gap-2 rounded-lg border border-zinc-800 px-3 text-sm text-zinc-300">
+                  <input checked={settings.requireApprovalAfterRemoval} disabled={!canManage} onChange={(event) => update({ requireApprovalAfterRemoval: event.target.checked })} type="checkbox" />
+                  Removido da blacklist cai em aprovacao pendente
+                </label>
+              </div>
+              <label className="block text-xs font-medium text-zinc-400">Kick automatico do SafeBot
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => update({ kickMode: event.target.value as GlobalBlacklistSafeBotSettings["kickMode"] })} value={settings.kickMode}>
+                  <option value="history_only">Apenas registrar historico</option>
+                  <option value="alert">Registrar e gerar alerta</option>
+                  <option value="blacklist">Enviar direto para blacklist</option>
+                </select>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {safeBotBlacklistModules.map((moduleId) => (
+                  <button
+                    className={`rounded-md border px-3 py-1.5 text-xs transition ${settings.enabledSafeBotModules.includes(moduleId) ? "border-red-400/40 bg-red-500/15 text-red-100" : "border-zinc-800 bg-zinc-950 text-zinc-500"}`}
+                    disabled={!canManage}
+                    key={moduleId}
+                    onClick={() => toggleModule(moduleId)}
+                    type="button"
+                  >
+                    {moduleId}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <div className="grid gap-3 md:grid-cols-3">
+              <MetricCard icon={LockKeyhole} label="Ativos" value={String(entries.filter((entry) => entry.active).length)} />
+              <MetricCard icon={ShieldAlert} label="Historico SafeBot" value={String(history.filter((item) => item.safeBotModule).length)} />
+              <MetricCard icon={Users} label="Usuarios" value={String(new Set(history.map((item) => item.userId)).size)} />
+            </div>
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-white">Ultimos registros</h3>
+              {history.slice(0, 8).map((item) => (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 px-3 py-2 text-sm" key={item.id}>
+                  <span className="min-w-0 truncate text-zinc-300">{item.action} - {item.infractionType} - {item.reason}</span>
+                  <Badge variant={item.action === "blacklisted" ? "danger" : "muted"}>{item.safeBotModule ?? "manual"}</Badge>
+                </div>
+              ))}
+            </section>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function AdvancedSecurityModulePanel({
   botId,

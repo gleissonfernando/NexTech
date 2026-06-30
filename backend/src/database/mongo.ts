@@ -245,6 +245,54 @@ export type MongoFivemGoalEntry = {
   userId: string;
 };
 
+export type MongoGlobalBlacklistSafeBotSettings = {
+  _id: string;
+  autoBlacklistOnSafeBotBan: boolean;
+  botId: string | null;
+  directActions: string[];
+  enabledSafeBotModules: string[];
+  guildId: string;
+  infractionLimit: number;
+  kickMode: "history_only" | "alert" | "blacklist";
+  logChannelId: string | null;
+  requireApprovalAfterRemoval: boolean;
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoGlobalBlacklistEntry = {
+  _id: string;
+  active: boolean;
+  addedAt: Date;
+  addedBy: string | null;
+  addedByType: "safebot" | "staff";
+  botId: string | null;
+  evidence: Record<string, unknown>;
+  guildId: string;
+  reason: string;
+  removedAt?: Date | null;
+  removedBy?: string | null;
+  removedReason?: string | null;
+  requiresApprovalAfterRemoval?: boolean;
+  safeBotModule: string | null;
+  updatedAt: Date;
+  userId: string;
+};
+
+export type MongoGlobalBlacklistHistory = {
+  _id: string;
+  action: "infraction" | "blacklisted" | "removed" | "monitored" | "approval_required";
+  actorId: string | null;
+  botId: string | null;
+  createdAt: Date;
+  evidence: Record<string, unknown>;
+  guildId: string;
+  infractionType: string;
+  reason: string;
+  safeBotModule: string | null;
+  userId: string;
+};
+
 export type MongoLogEntry = {
   _id: string;
   botId?: string | null;
@@ -1810,6 +1858,9 @@ export async function getMongoCollections() {
     fivemGoalSettings: db.collection<MongoFivemGoalSettings>("fivem_goal_settings"),
     fivemGoalUserChannels: db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels"),
     fivemGoalEntries: db.collection<MongoFivemGoalEntry>("fivem_goal_entries"),
+    globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
+    globalBlacklistEntries: db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries"),
+    globalBlacklistHistory: db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history"),
     logEntries: db.collection<MongoLogEntry>("LogEntry"),
     socialNotifications: db.collection<MongoSocialNotification>("social_notifications"),
     kickApiConfigs: db.collection<MongoKickApiConfig>("kick_api_configs"),
@@ -1933,6 +1984,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, channelId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ userId: 1, active: 1 }),
+    db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ botId: 1, guildId: 1, active: 1 }),
+    db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history").createIndex({ userId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoPanelImageSettings>("panel_image_settings").createIndex(
       { botId: 1, guildId: 1, panelId: 1 },

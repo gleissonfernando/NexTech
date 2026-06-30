@@ -119,6 +119,25 @@ export async function handleSafeBotWarningInteraction(interaction: Interaction, 
     const completed = warning.status === "pending"
       ? await context.api.completeSafeBotWarning(state.guildId, warning.id, outcome)
       : warning;
+    await context.api.recordGlobalBlacklistSafeBotInfraction({
+      actionTaken: completed.executedAction ?? completed.configuredAction ?? "record_only",
+      actorId: staff.id,
+      evidence: {
+        warningId: completed.id,
+        warningNumber: completed.warningNumber,
+        status: completed.status,
+        configuredAction: completed.configuredAction,
+        executedAction: completed.executedAction,
+        error: completed.error
+      },
+      guildId: state.guildId,
+      infractionType: completed.configuredAction ?? "safe_bot_warning",
+      reason: completed.reason,
+      safeBotModule: "safe-bot",
+      userId: target.id
+    }).catch((error) => {
+      console.warn("[safe-warning] nao foi possivel registrar infracao na Blacklist Global:", error instanceof Error ? error.message : error);
+    });
     await sendWarningLog(completed, settings, target, staff);
     await interaction.editReply({
       content: completed.status === "failed"

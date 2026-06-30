@@ -33,6 +33,8 @@ import type {
   GiveawayIdentity,
   GiveawayLivePreview,
   GiveawaySpinResult,
+  GlobalBlacklistDashboard,
+  GlobalBlacklistSafeBotSettings,
   GuildLiveOptions,
   KickChannelPreview,
   KickIntegrationStatus,
@@ -1322,6 +1324,20 @@ export async function getFivemFac(guildId: string, botId: string) {
 export async function getFivemModules() {
   const { data } = await api.get<{ modules: FivemModuleDefinition[] }>("/fivem/modules");
   return data.modules;
+}
+
+export async function getGlobalBlacklistDashboard(guildId: string, botId?: string | null) {
+  const { data } = await api.get<GlobalBlacklistDashboard>(`/global-blacklist/${guildId}`, {
+    params: botId ? { botId } : undefined
+  });
+  return data;
+}
+
+export async function saveGlobalBlacklistSettings(guildId: string, payload: Partial<GlobalBlacklistSafeBotSettings>, botId?: string | null) {
+  const { data } = await api.patch<{ settings: GlobalBlacklistSafeBotSettings }>(`/global-blacklist/${guildId}/settings`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.settings;
 }
 
 export async function getFivemGoals(guildId: string, botId?: string | null) {

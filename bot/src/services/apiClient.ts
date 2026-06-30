@@ -1128,6 +1128,20 @@ export class ApiClient {
     return data.submission;
   }
 
+  async recordGlobalBlacklistSafeBotInfraction(input: {
+    actionTaken?: string | null;
+    actorId?: string | null;
+    evidence?: Record<string, unknown>;
+    guildId: string;
+    infractionType: string;
+    reason: string;
+    safeBotModule?: string | null;
+    userId: string;
+  }) {
+    const { data } = await this.http.post("/global-blacklist/bot/safebot/infractions", input);
+    return data;
+  }
+
   async getFivemGoalSettings(guildId: string) {
     const { data } = await this.http.get<{ settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}`);
     return data.settings;
