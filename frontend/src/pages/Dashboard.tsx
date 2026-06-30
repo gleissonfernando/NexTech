@@ -333,6 +333,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "anti-ban"
   },
   {
+    id: "anti-abuse",
+    title: "DEV Control Panel",
+    description: "Controle central Anti Abuse para mute, deafen, move, disconnect e auto-correcao de call.",
+    icon: ShieldAlert,
+    view: "anti-abuse"
+  },
+  {
     id: "suspicious-servers",
     title: "Servidores Suspeitos",
     description: "Monitora entradas e identifica membros ligados a servidores suspeitos.",
@@ -517,6 +524,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   music: "music",
   "self-bot-protection": "safe-bot",
   security: "account-age-security",
+  "anti-abuse": "anti-abuse",
   "anti-ban": "anti-ban",
   "suspicious-servers": "suspicious-servers",
   "global-blacklist": "global-blacklist",
@@ -1202,6 +1210,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
 }
 
 const advancedSecurityModuleViews: ViewId[] = [
+  "anti-abuse",
   "anti-ban",
   "suspicious-servers",
   "global-blacklist",
@@ -1225,6 +1234,12 @@ const advancedSecurityModuleDetails: Record<string, {
   icon: typeof Bot;
   items: string[];
 }> = {
+  "anti-abuse": {
+    title: "DEV Control Panel",
+    description: "Central Anti Abuse para controlar mute, deafen, move, disconnect, auto-reconnect e auto-unmute.",
+    icon: ShieldAlert,
+    items: ["Master switch", "Modulos independentes", "Auto-reversao", "Logs de abuso"]
+  },
   "anti-ban": {
     title: "Sistema Anti Ban",
     description: "Módulo isolado para proteger cargos e membros contra ações administrativas indevidas.",
@@ -2149,6 +2164,28 @@ function AdvancedModuleFields({
     );
   }
 
+  if (moduleId === "anti-abuse") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <AdvancedToggleField checked={config.masterEnabled !== false} disabled={disabled} label="Master Switch Anti Abuse" onChange={(checked) => onChange({ masterEnabled: checked })} />
+        <AdvancedToggleField checked={config.antiDisconnectEnabled !== false} disabled={disabled} label="Anti Disconnect" onChange={(checked) => onChange({ antiDisconnectEnabled: checked })} />
+        <AdvancedToggleField checked={config.autoReconnectEnabled !== false} disabled={disabled} label="Auto Reconnect" onChange={(checked) => onChange({ autoReconnectEnabled: checked })} />
+        <AdvancedToggleField checked={config.antiMoveAbuseEnabled !== false} disabled={disabled} label="Anti Move Abuse" onChange={(checked) => onChange({ antiMoveAbuseEnabled: checked })} />
+        <AdvancedToggleField checked={config.antiMuteAbuseEnabled !== false} disabled={disabled} label="Anti Mute Abuse" onChange={(checked) => onChange({ antiMuteAbuseEnabled: checked })} />
+        <AdvancedToggleField checked={config.antiDeafenAbuseEnabled !== false} disabled={disabled} label="Anti Deafen Abuse" onChange={(checked) => onChange({ antiDeafenAbuseEnabled: checked })} />
+        <AdvancedToggleField checked={config.antiKickVoiceEnabled !== false} disabled={disabled} label="Anti Kick Voice" onChange={(checked) => onChange({ antiKickVoiceEnabled: checked })} />
+        <AdvancedToggleField checked={config.autoUnmuteEnabled !== false} disabled={disabled} label="Auto Unmute forcado" onChange={(checked) => onChange({ autoUnmuteEnabled: checked })} />
+        <AdvancedToggleField checked={config.strictDevOverride !== false} disabled={disabled} label="DEV override estrito" onChange={(checked) => onChange({ strictDevOverride: checked })} />
+        <AdvancedTextField disabled={disabled} label="IDs dos cargos autorizados" onChange={(value) => onChange({ allowedRoleIds: splitIds(value) })} placeholder="Cargos que podem executar acoes de voz" value={arrayConfig(config.allowedRoleIds)} />
+        <AdvancedTextField disabled={disabled} label="IDs dos cargos protegidos" onChange={(value) => onChange({ protectedRoleIds: splitIds(value) })} placeholder="Vazio protege todos" value={arrayConfig(config.protectedRoleIds)} />
+        <AdvancedTextField disabled={disabled} label="IDs dos cargos imunes" onChange={(value) => onChange({ immuneRoleIds: splitIds(value) })} placeholder="Usado somente sem override estrito" value={arrayConfig(config.immuneRoleIds)} />
+        <AdvancedSelectField disabled={disabled} label="Canal de logs" onChange={(value) => onChange({ logChannelId: value || null })} options={textChannelOptions} placeholder="Sem logs dedicado" value={stringConfig(config.logChannelId)} />
+        <AdvancedNumberField disabled={disabled} label="Delay da reversao (ms)" max={5000} min={100} onChange={(value) => onChange({ revertDelayMs: value })} value={numberConfig(config.revertDelayMs, 600)} />
+        <AdvancedNumberField disabled={disabled} label="Cooldown anti-loop (segundos)" max={60} min={1} onChange={(value) => onChange({ cooldownSeconds: value })} value={numberConfig(config.cooldownSeconds, 5)} />
+      </div>
+    );
+  }
+
   if (moduleId === "music") {
     return (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -2247,6 +2284,28 @@ function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, un
 
   if (moduleId === "anti-disconnect") {
     return { allowedRoleIds: [], cooldownSeconds: 5, enabled: false, logChannelId: null, protectedRoleIds: [], reconnectDelayMs: 800, ...config };
+  }
+
+  if (moduleId === "anti-abuse") {
+    return {
+      allowedRoleIds: [],
+      antiDeafenAbuseEnabled: true,
+      antiDisconnectEnabled: true,
+      antiKickVoiceEnabled: true,
+      antiMoveAbuseEnabled: true,
+      antiMuteAbuseEnabled: true,
+      autoReconnectEnabled: true,
+      autoUnmuteEnabled: true,
+      cooldownSeconds: 5,
+      enabled: false,
+      immuneRoleIds: [],
+      logChannelId: null,
+      masterEnabled: true,
+      protectedRoleIds: [],
+      revertDelayMs: 600,
+      strictDevOverride: true,
+      ...config
+    };
   }
 
   if (moduleId === "music") {

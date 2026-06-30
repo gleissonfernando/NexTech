@@ -13,6 +13,7 @@ import type { AuthSessionUser } from "../types/session";
 const guildIdSchema = z.string().regex(/^\d{5,32}$/);
 const botIdSchema = z.string().min(1).max(120);
 const moduleIdSchema = z.enum([
+  "anti-abuse",
   "anti-ban",
   "suspicious-servers",
   "global-blacklist",
@@ -61,6 +62,25 @@ const antiDisconnectConfigSchema = z.object({
   logChannelId: snowflakeSchema.nullable().default(null),
   reconnectDelayMs: z.coerce.number().int().min(250).max(5000).default(800),
   cooldownSeconds: z.coerce.number().int().min(1).max(60).default(5)
+});
+const antiAbuseConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  masterEnabled: z.boolean().default(true),
+  antiDisconnectEnabled: z.boolean().default(true),
+  antiMuteAbuseEnabled: z.boolean().default(true),
+  antiDeafenAbuseEnabled: z.boolean().default(true),
+  antiMoveAbuseEnabled: z.boolean().default(true),
+  antiKickVoiceEnabled: z.boolean().default(true),
+  autoReconnectEnabled: z.boolean().default(true),
+  autoUnmuteEnabled: z.boolean().default(true),
+  allowedRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  immuneRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  protectedRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  logChannelId: snowflakeSchema.nullable().default(null),
+  revertDelayMs: z.coerce.number().int().min(100).max(5000).default(600),
+  cooldownSeconds: z.coerce.number().int().min(1).max(60).default(5),
+  strictDevOverride: z.boolean().default(true),
+  punishAbuser: z.boolean().default(false)
 });
 const musicConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -190,6 +210,28 @@ function normalizeModuleConfig(moduleId: z.infer<typeof moduleIdSchema>, config:
     });
   }
 
+  if (moduleId === "anti-abuse") {
+    return antiAbuseConfigSchema.parse({
+      allowedRoleIds: Array.isArray(config.allowedRoleIds) ? config.allowedRoleIds : [],
+      antiDeafenAbuseEnabled: config.antiDeafenAbuseEnabled,
+      antiDisconnectEnabled: config.antiDisconnectEnabled,
+      antiKickVoiceEnabled: config.antiKickVoiceEnabled,
+      antiMoveAbuseEnabled: config.antiMoveAbuseEnabled,
+      antiMuteAbuseEnabled: config.antiMuteAbuseEnabled,
+      autoReconnectEnabled: config.autoReconnectEnabled,
+      autoUnmuteEnabled: config.autoUnmuteEnabled,
+      cooldownSeconds: config.cooldownSeconds,
+      enabled: config.enabled,
+      immuneRoleIds: Array.isArray(config.immuneRoleIds) ? config.immuneRoleIds : [],
+      logChannelId: config.logChannelId || null,
+      masterEnabled: config.masterEnabled,
+      protectedRoleIds: Array.isArray(config.protectedRoleIds) ? config.protectedRoleIds : [],
+      punishAbuser: config.punishAbuser,
+      revertDelayMs: config.revertDelayMs,
+      strictDevOverride: config.strictDevOverride
+    });
+  }
+
   if (moduleId === "music") {
     return musicConfigSchema.parse(config);
   }
@@ -209,7 +251,7 @@ async function writeModuleConfigLogs(input: {
   previousConfig: Record<string, unknown>;
   user: AuthSessionUser;
 }) {
-  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId;
+  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId === "anti-abuse" ? "Anti Abuse" : input.moduleId;
   const enabled = input.config.enabled === true;
   const wasEnabled = input.previousConfig.enabled === true;
 

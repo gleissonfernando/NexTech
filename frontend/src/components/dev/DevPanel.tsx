@@ -120,6 +120,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "anti-ban", label: "Sistema Anti Ban" },
+  { id: "anti-abuse", label: "DEV Control Panel - Anti Abuse" },
   { id: "suspicious-servers", label: "Servidores Suspeitos" },
   { id: "global-blacklist", label: "Blacklist Global" },
   { id: "advanced-permissions", label: "Gerenciamento de Permissões" },
@@ -159,6 +160,7 @@ type BotMenuId =
   | "manual-registration"
   | "verification"
   | "logs"
+  | "anti-abuse"
   | "cloning"
   | "anti-ban"
   | "suspicious-servers"
@@ -238,6 +240,13 @@ const botMenuItems: BotMenuItem[] = [
     description: "Eventos e auditoria",
     icon: ScrollText,
     moduleIds: ["logs"]
+  },
+  {
+    id: "anti-abuse",
+    label: "DEV Control Panel",
+    description: "Controle global Anti Abuse por bot",
+    icon: ShieldCheck,
+    moduleIds: ["anti-abuse"]
   },
   {
     id: "cloning",
@@ -3753,6 +3762,7 @@ function iconForModule(moduleId: string) {
 
 function moduleDescription(moduleId: string) {
   const descriptions: Record<string, string> = {
+    "anti-abuse": "Central Anti Abuse para mute, deafen, move, disconnect e auto-correcao de voz.",
     "account-age-security": "Bloqueia contas novas conforme a idade mínima configurada.",
     "advanced-permissions": "Controla permissões sensíveis por cargo e registra tentativas.",
     "anti-ban": "Protege membros e cargos contra ban, kick, timeout e remoção indevida.",

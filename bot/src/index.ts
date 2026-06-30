@@ -18,7 +18,7 @@ const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
 const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
-const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
+const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
 const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeBot;
 const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "account-age-security", "anti-ban"].some(isBotModuleEnabled)
   || isSelfBotModuleEnabled()

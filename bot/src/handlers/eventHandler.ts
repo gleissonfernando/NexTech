@@ -17,6 +17,7 @@ import { clearSafeBotSetupCache, ensureSafeBotSetup, isSelfBotModuleEnabled } fr
 import { handleSelfBotProtectionGuildMutation } from "../services/selfBotProtectionService";
 import { handleAutoUnmuteVoiceStateUpdate } from "../services/autoUnmuteService";
 import { handleAntiDisconnectVoiceStateUpdate } from "../services/antiDisconnectService";
+import { handleAntiAbuseVoiceStateUpdate } from "../services/antiAbuseService";
 import { handleVoiceRecorderVoiceStateUpdate } from "../services/voiceRecorderService";
 import { handleMusicVoiceStateUpdate } from "../music/musicService";
 import { handleTemporaryCallChannelDelete, handleTemporaryVoiceStateUpdate } from "../services/temporaryVoiceService";
@@ -216,9 +217,12 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (managedRuntimeBot || isBotModuleEnabled("music") || isBotModuleEnabled("voice-recorder") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("auto-unmute") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs")) {
+  if (managedRuntimeBot || isBotModuleEnabled("music") || isBotModuleEnabled("voice-recorder") || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("auto-unmute") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs")) {
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (isMaintenanceModeActive()) return;
+      if (managedRuntimeBot || isBotModuleEnabled("anti-abuse")) {
+        runEvent("voiceStateUpdate.antiAbuse", () => handleAntiAbuseVoiceStateUpdate(oldState, newState, context));
+      }
       if (isBotModuleEnabled("voice-recorder")) {
         runEvent("voiceStateUpdate.voiceRecorder", () => handleVoiceRecorderVoiceStateUpdate(oldState, newState, context));
       }

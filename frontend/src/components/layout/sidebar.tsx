@@ -49,6 +49,7 @@ export type ViewId =
   | "music"
   | "self-bot-protection"
   | "security"
+  | "anti-abuse"
   | "anti-ban"
   | "suspicious-servers"
   | "global-blacklist"
@@ -98,6 +99,7 @@ const navItems: NavItem[] = [
   { id: "music", label: "Música", icon: Music2, moduleId: "music" },
   { id: "self-bot-protection", label: "SelfBot Protection", icon: ShieldCheck, moduleId: "safe-bot" },
   { id: "security", label: "Seguranca", icon: ShieldAlert, moduleId: "account-age-security" },
+  { id: "anti-abuse", label: "DEV Control", icon: ShieldCheck, moduleId: "anti-abuse" },
   { id: "anti-ban", label: "Anti Ban", icon: ShieldCheck, moduleId: "anti-ban" },
   { id: "suspicious-servers", label: "Servidores Suspeitos", icon: Search, moduleId: "suspicious-servers" },
   { id: "global-blacklist", label: "Blacklist Global", icon: LockKeyhole, moduleId: "global-blacklist" },

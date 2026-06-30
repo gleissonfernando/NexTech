@@ -60,6 +60,7 @@ export const DEV_MODULES = [
   { id: "safe-bot", label: "SelfBot Protection" },
   { id: "account-age-security", label: "Seguranca por Idade da Conta" },
   { id: "anti-ban", label: "Sistema Anti Ban" },
+  { id: "anti-abuse", label: "DEV Control Panel - Anti Abuse" },
   { id: "suspicious-servers", label: "Servidores Suspeitos" },
   { id: "global-blacklist", label: "Blacklist Global" },
   { id: "advanced-permissions", label: "Gerenciamento de Permissoes" },
