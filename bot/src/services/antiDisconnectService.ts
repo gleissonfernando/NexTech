@@ -43,7 +43,13 @@ export async function handleAntiDisconnectVoiceStateUpdate(oldState: VoiceState,
   if (Date.now() - lastReconnect < config.cooldownSeconds * 1000) return;
 
   const audit = await findRecentDisconnectExecutor(oldState);
-  if (!audit?.executorId || audit.executorId === member.id || audit.executorId === oldState.client.user?.id) return;
+  if (!audit.executorId) {
+    if (audit.reason) {
+      await writeAntiDisconnectLog(context, oldState.guild.id, config, "anti_disconnect.audit_failed", `Anti Disconnect nao conseguiu ler o audit log para ${member.user.tag}: ${audit.reason}.`, { botId, channelId: oldState.channel.id, reason: audit.reason, userId: member.id }, member.id);
+    }
+    return;
+  }
+  if (audit.executorId === member.id || audit.executorId === oldState.client.user?.id) return;
 
   const executorMember = await oldState.guild.members.fetch(audit.executorId).catch(() => null);
   if (executorHasSystemPermission(executorMember, config)) return;
@@ -70,9 +76,23 @@ async function readAntiDisconnectConfig(context: BotContext, botId: string, guil
 }
 
 async function findRecentDisconnectExecutor(oldState: VoiceState) {
-  const logs = await oldState.guild.fetchAuditLogs({ limit: 3, type: AuditLogEvent.MemberDisconnect }).catch(() => null);
-  const entry = logs?.entries.find((item) => Date.now() - item.createdTimestamp < 5_000);
-  return entry?.executor ? { executorId: entry.executor.id } : null;
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(500);
+    }
+
+    const logs = await oldState.guild.fetchAuditLogs({ limit: 5, type: AuditLogEvent.MemberDisconnect }).catch((error) => {
+      lastError = readError(error);
+      return null;
+    });
+    const entry = logs?.entries.find((item) => Date.now() - item.createdTimestamp < 10_000);
+    if (entry?.executor) {
+      return { executorId: entry.executor.id, reason: null };
+    }
+  }
+
+  return { executorId: null, reason: lastError };
 }
 
 function isMemberProtected(member: GuildMember, config: AntiDisconnectConfig) {
@@ -140,4 +160,8 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 
 function readError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

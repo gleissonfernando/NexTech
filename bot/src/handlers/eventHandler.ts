@@ -228,7 +228,7 @@ export function registerEvents(client: Client, context: BotContext) {
       if (isBotModuleEnabled("auto-unmute")) {
         runEvent("voiceStateUpdate.autoUnmute", () => handleAutoUnmuteVoiceStateUpdate(oldState, newState, context));
       }
-      if (isBotModuleEnabled("anti-disconnect")) {
+      if (managedRuntimeBot || isBotModuleEnabled("anti-disconnect")) {
         runEvent("voiceStateUpdate.antiDisconnect", () => handleAntiDisconnectVoiceStateUpdate(oldState, newState, context));
       }
       if (isBotModuleEnabled("temporary-voice")) {
