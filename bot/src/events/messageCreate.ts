@@ -7,7 +7,9 @@ import { handleSelfBotProtectionMessage } from "../services/selfBotProtectionSer
 import { handleTemporaryVoiceMessage } from "../services/temporaryVoiceService";
 import { handleFivemGoalMessage } from "../services/fivemGoalService";
 import type { BotContext } from "../types";
-import { handleMusicMessage } from "../music/musicService";
+import { isBotModuleEnabled } from "../config/env";
+
+const MUSIC_PREFIX_COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
 
 export async function handleMessageCreate(message: Message, context: BotContext) {
   if (await blockMessageIfMaintenance(message)) {
@@ -30,8 +32,11 @@ export async function handleMessageCreate(message: Message, context: BotContext)
     return;
   }
 
-  if (await handleMusicMessage(message, context)) {
-    return;
+  if (isPotentialMusicMessage(message.content) && isBotModuleEnabled("music")) {
+    const { handleMusicMessage } = await import("../music/musicService.js");
+    if (await handleMusicMessage(message, context)) {
+      return;
+    }
   }
 
   if (await handleFivemGoalMessage(message, context)) {
@@ -53,4 +58,15 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   if (linkBlocked) {
     return;
   }
+}
+
+function isPotentialMusicMessage(content: string) {
+  const trimmed = content.trim();
+
+  if (trimmed.startsWith(".")) {
+    const command = trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+    return MUSIC_PREFIX_COMMANDS.has(command);
+  }
+
+  return /^<?https:\/\/\S+>?$/i.test(trimmed);
 }

@@ -27,7 +27,6 @@ import { clearRuntimeModuleAuthorization } from "../services/runtimeModuleGuard"
 import { startSelfBotProtectionService } from "../services/selfBotProtectionService";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
-import { startVoiceRecorderService } from "../services/voiceRecorderService";
 import { startTemporaryVoiceService } from "../services/temporaryVoiceService";
 import { startAutomatedLogService } from "../services/automatedLogService";
 import { startTagVerificationService, stopTagVerificationService } from "../services/tagVerificationService";
@@ -153,6 +152,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     startImageAntiSpamService(context);
   }
   if (isBotModuleEnabled("voice-recorder")) {
+    const { startVoiceRecorderService } = await import("../services/voiceRecorderService.js");
     await startVoiceRecorderService(context);
   }
   if (isBotModuleEnabled("temporary-voice")) {

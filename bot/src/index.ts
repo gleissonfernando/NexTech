@@ -12,7 +12,6 @@ import { isLinkAntiSpamEnabled } from "./services/linkAntiSpamService";
 import { isSelfBotModuleEnabled } from "./services/safeBotService";
 import type { BotContext } from "./types";
 import { BotSocketClient } from "./websocket/socketClient";
-import { destroyLavalink, initializeLavalink } from "./music/lavalinkManager";
 
 const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
@@ -124,7 +123,19 @@ const context: BotContext = {
 };
 
 registerEvents(client, context);
-initializeLavalink(client);
+
+let destroyLavalinkIfLoaded: (() => void) | null = null;
+
+if (needsMusic) {
+  void import("./music/lavalinkManager.js")
+    .then(({ destroyLavalink, initializeLavalink }) => {
+      destroyLavalinkIfLoaded = destroyLavalink;
+      initializeLavalink(client);
+    })
+    .catch((error) => {
+      console.warn("[music:lavalink] falha ao carregar modulo:", error instanceof Error ? error.message : error);
+    });
+}
 
 if (!env.DISCORD_BOT_TOKEN) {
   console.error("[bot] DISCORD_BOT_TOKEN nao configurado.");
@@ -183,7 +194,7 @@ function shutdown(signal: string, exitCode = 0) {
   void stopEventProcessing().finally(() => {
     try {
       context.socket.disconnect(client);
-      destroyLavalink();
+      destroyLavalinkIfLoaded?.();
       client.destroy();
     } catch (error) {
       console.error("[bot] falha durante encerramento:", error);

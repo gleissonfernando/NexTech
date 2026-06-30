@@ -1,9 +1,5 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { BotCommand } from "../types";
-import {
-  handleVoiceRecordStartCommand,
-  handleVoiceRecordStopCommand
-} from "../services/voiceRecorderService";
 
 export const gravarCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -22,6 +18,10 @@ export const gravarCommand: BotCommand = {
     ),
   moduleId: "voice-recorder",
   async execute(interaction, context) {
+    const {
+      handleVoiceRecordStartCommand,
+      handleVoiceRecordStopCommand
+    } = await import("../services/voiceRecorderService.js");
     const subcommand = interaction.options.getSubcommand(true);
 
     if (subcommand === "iniciar") {

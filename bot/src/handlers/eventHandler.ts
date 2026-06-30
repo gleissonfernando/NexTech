@@ -18,8 +18,6 @@ import { handleSelfBotProtectionGuildMutation } from "../services/selfBotProtect
 import { handleAutoUnmuteVoiceStateUpdate } from "../services/autoUnmuteService";
 import { handleAntiDisconnectVoiceStateUpdate } from "../services/antiDisconnectService";
 import { handleAntiAbuseVoiceStateUpdate } from "../services/antiAbuseService";
-import { handleVoiceRecorderVoiceStateUpdate } from "../services/voiceRecorderService";
-import { handleMusicVoiceStateUpdate } from "../music/musicService";
 import { handleTemporaryCallChannelDelete, handleTemporaryVoiceStateUpdate } from "../services/temporaryVoiceService";
 import { handleVoiceLogStateUpdate } from "../services/voiceLogService";
 import type { BotContext } from "../types";
@@ -241,10 +239,15 @@ export function registerEvents(client: Client, context: BotContext) {
         runEvent("voiceStateUpdate.antiAbuse", () => handleAntiAbuseVoiceStateUpdate(oldState, newState, context));
       }
       if (isBotModuleEnabled("voice-recorder")) {
-        runEvent("voiceStateUpdate.voiceRecorder", () => handleVoiceRecorderVoiceStateUpdate(oldState, newState, context));
+        runEvent("voiceStateUpdate.voiceRecorder", async () => {
+          const { handleVoiceRecorderVoiceStateUpdate } = await import("../services/voiceRecorderService.js");
+          await handleVoiceRecorderVoiceStateUpdate(oldState, newState, context);
+        });
       }
       if (isBotModuleEnabled("music")) {
-        handleMusicVoiceStateUpdate(oldState, newState, context);
+        void import("../music/musicService.js")
+          .then(({ handleMusicVoiceStateUpdate }) => handleMusicVoiceStateUpdate(oldState, newState, context))
+          .catch((error) => console.warn("[music] falha ao carregar handler de voz:", error instanceof Error ? error.message : error));
       }
       if (isBotModuleEnabled("auto-unmute")) {
         runEvent("voiceStateUpdate.autoUnmute", () => handleAutoUnmuteVoiceStateUpdate(oldState, newState, context));

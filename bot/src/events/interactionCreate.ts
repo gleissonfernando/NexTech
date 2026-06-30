@@ -9,7 +9,6 @@ import { handleRulesInteraction } from "../services/rulesService";
 import { handleServerCloneInteraction } from "../services/serverCloneService";
 import { handleServerGeneratorInteraction } from "../services/serverGeneratorService";
 import type { BotContext } from "../types";
-import { handleMusicInteraction } from "../music/musicService";
 import { handleSafeBotWarningInteraction } from "../services/safeBotWarningService";
 import { handleTemporaryVoiceInteraction } from "../services/temporaryVoiceService";
 import { handleTicketPanelInteraction } from "../services/ticketPanelService";
@@ -44,8 +43,11 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
     return;
   }
 
-  if (await handleMusicInteraction(interaction, context)) {
-    return;
+  if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith("music_")) {
+    const { handleMusicInteraction } = await import("../music/musicService.js");
+    if (await handleMusicInteraction(interaction, context)) {
+      return;
+    }
   }
 
   if (await handleFivemFacInteraction(interaction, context)) {

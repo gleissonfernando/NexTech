@@ -1,14 +1,16 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { BotCommand } from "../types";
-import { handleMusicSlashCommand } from "../music/musicService";
 
-type MusicAction = Parameters<typeof handleMusicSlashCommand>[2];
+type MusicAction = "play" | "pause" | "resume" | "skip" | "stop" | "queue" | "clearqueue" | "nowplaying" | "volume" | "shuffle" | "loop";
 
 function command(data: BotCommand["data"], action: MusicAction): BotCommand {
   return {
     data,
     moduleId: "music",
-    execute: (interaction, context) => handleMusicSlashCommand(interaction, context, action)
+    execute: async (interaction, context) => {
+      const { handleMusicSlashCommand } = await import("../music/musicService.js");
+      await handleMusicSlashCommand(interaction, context, action);
+    }
   };
 }
 
