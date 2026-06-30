@@ -802,9 +802,80 @@ export type FivemGoalEntry = {
   userId: string;
 };
 
+export type FivemGoalConfig = {
+  approverRoleIds: string[];
+  botId: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  currentValue: number;
+  deleteRoleIds: string[];
+  description: string | null;
+  editRoleIds: string[];
+  fields: FivemGoalField[];
+  guildId: string;
+  id: string;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  name: string;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  participantRoleIds: string[];
+  period: "daily" | "weekly" | "monthly" | "custom";
+  requiresApproval: boolean;
+  requiresProof: boolean;
+  resetConfig: {
+    customDate: string | null;
+    enabled: boolean;
+    frequency: "none" | "daily" | "weekly" | "monthly" | "custom";
+  };
+  rules: string | null;
+  status: "active" | "paused" | "finished";
+  targetValue: number;
+  totalParticipants: number;
+  type: string;
+  updatedAt: string;
+  updatedBy?: string | null;
+  viewerRoleIds: string[];
+};
+
+export type FivemGoalSubmission = {
+  approvedAt: string | null;
+  approvedBy: string | null;
+  botId: string | null;
+  createdAt: string;
+  description: string | null;
+  fields: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  id: string;
+  metaId: string;
+  proofUrl: string | null;
+  refusedAt: string | null;
+  refusedBy: string | null;
+  refusalReason: string | null;
+  roleIdsSnapshot: string[];
+  status: "pending" | "approved" | "refused";
+  updatedAt: string;
+  userId: string;
+  value: number;
+};
+
+export type FivemGoalLog = {
+  action: string;
+  botId: string | null;
+  createdAt: string;
+  details: Record<string, unknown>;
+  guildId: string;
+  id: string;
+  metaId: string | null;
+  userId: string | null;
+};
+
 export type FivemGoalDashboard = {
+  configs: FivemGoalConfig[];
   entries: FivemGoalEntry[];
+  logs: FivemGoalLog[];
   settings: FivemGoalSettings;
+  submissions: FivemGoalSubmission[];
 };
 
 export type GlobalBlacklistSafeBotSettings = {

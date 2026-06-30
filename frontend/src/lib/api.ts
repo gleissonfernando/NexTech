@@ -24,8 +24,10 @@ import type {
   FivemFacAbsence,
   FivemFacResponse,
   FivemFacSettings,
+  FivemGoalConfig,
   FivemGoalDashboard,
   FivemGoalSettings,
+  FivemGoalSubmission,
   FivemModuleDefinition,
   Giveaway,
   GiveawayDiagnostics,
@@ -1357,6 +1359,37 @@ export async function saveFivemGoalSettings(guildId: string, payload: Partial<Fi
     params: botId ? { botId } : undefined
   });
   return data.settings;
+}
+
+export async function createFivemGoalConfig(guildId: string, payload: Partial<FivemGoalConfig>, botId?: string | null) {
+  const { data } = await api.post<{ config: FivemGoalConfig }>(`/fivem/${guildId}/goals/configs`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.config;
+}
+
+export async function updateFivemGoalConfig(guildId: string, metaId: string, payload: Partial<FivemGoalConfig>, botId?: string | null) {
+  const { data } = await api.patch<{ config: FivemGoalConfig }>(`/fivem/${guildId}/goals/configs/${encodeURIComponent(metaId)}`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.config;
+}
+
+export async function deleteFivemGoalConfig(guildId: string, metaId: string, deleteHistory: boolean, botId?: string | null) {
+  const { data } = await api.delete<{ config: FivemGoalConfig }>(`/fivem/${guildId}/goals/configs/${encodeURIComponent(metaId)}`, {
+    params: {
+      ...(botId ? { botId } : {}),
+      history: deleteHistory ? "1" : undefined
+    }
+  });
+  return data.config;
+}
+
+export async function moderateFivemGoalSubmission(guildId: string, submissionId: string, payload: { refusalReason?: string | null; status: "approved" | "refused" }, botId?: string | null) {
+  const { data } = await api.patch<{ submission: FivemGoalSubmission }>(`/fivem/${guildId}/goals/submissions/${encodeURIComponent(submissionId)}`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.submission;
 }
 
 export async function getDevFivemModules() {

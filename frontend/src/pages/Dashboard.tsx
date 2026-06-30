@@ -72,6 +72,8 @@ import {
   applicationEmojiDownloadUrl,
   cloneEmojiToGuild,
   cloneSelectedEmojiCloneBotToken,
+  createFivemGoalConfig,
+  deleteFivemGoalConfig,
   emojiLibraryDownloadUrl,
   fetchEmojiCloneBotTokenEmojis,
   getAdvancedModuleConfig,
@@ -107,6 +109,7 @@ import {
   saveManualRegistrationSettings,
   saveServerBackupSettings,
   syncApplicationEmojis,
+  updateFivemGoalConfig,
   updateSelectedDashboardGuild,
   updateApplicationEmojiSettings,
   updateBotGuildConfig,
@@ -130,9 +133,11 @@ import type {
   DashboardMeGuild,
   DashboardMeResponse,
   FivemModuleDefinition,
+  FivemGoalConfig,
   FivemGoalEntry,
   FivemGoalField,
   FivemGoalItem,
+  FivemGoalSubmission,
   FivemGoalSettings,
   GlobalBlacklistEntry,
   GlobalBlacklistHistory,
@@ -2637,6 +2642,11 @@ function FivemOrdersPanel({ canManage, guild }: { canManage: boolean; guild: Das
 function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
   const [settings, setSettings] = useState<FivemGoalSettings | null>(null);
   const [entries, setEntries] = useState<FivemGoalEntry[]>([]);
+  const [configs, setConfigs] = useState<FivemGoalConfig[]>([]);
+  const [submissions, setSubmissions] = useState<FivemGoalSubmission[]>([]);
+  const [draft, setDraft] = useState<FivemGoalConfig | null>(null);
+  const [goalFilter, setGoalFilter] = useState("all");
+  const [goalSearch, setGoalSearch] = useState("");
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [categories, setCategories] = useState<GuildChannelOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
@@ -2654,6 +2664,9 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
         if (!active) return;
         setSettings(dashboard.settings);
         setEntries(dashboard.entries);
+        setConfigs(dashboard.configs ?? []);
+        setSubmissions(dashboard.submissions ?? []);
+        setDraft((dashboard.configs ?? [])[0] ?? null);
         setChannels(options.channels);
         setCategories((options.categories ?? []).map((category) => ({ ...category, parentId: null, type: "text" as const })));
         setRoles(options.roles);
@@ -2671,6 +2684,10 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
 
   function patch(patchValue: Partial<FivemGoalSettings>) {
     setSettings((current) => current ? { ...current, ...patchValue } : current);
+  }
+
+  function patchDraft(patchValue: Partial<FivemGoalConfig>) {
+    setDraft((current) => current ? { ...current, ...patchValue } : current);
   }
 
   function patchField(index: number, value: Partial<FivemGoalField>) {
@@ -2701,18 +2718,96 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     }
   }
 
+  function createDraft() {
+    if (!guild) return;
+    setDraft({
+      approverRoleIds: [],
+      botId: botId ?? null,
+      createdAt: new Date().toISOString(),
+      createdBy: null,
+      currentValue: 0,
+      deleteRoleIds: [],
+      description: "",
+      editRoleIds: [],
+      fields: settings?.fields ?? [],
+      guildId: guild.id,
+      id: "new",
+      logChannelId: settings?.logChannelId ?? null,
+      managerRoleIds: settings?.managerRoleId ? [settings.managerRoleId] : [],
+      name: "Nova Meta",
+      panelChannelId: null,
+      panelMessageId: null,
+      participantRoleIds: settings?.viewRoleId ? [settings.viewRoleId] : [],
+      period: "weekly",
+      requiresApproval: false,
+      requiresProof: true,
+      resetConfig: { customDate: null, enabled: false, frequency: "none" },
+      rules: "",
+      status: "active",
+      targetValue: 1,
+      totalParticipants: 0,
+      type: "personalizada",
+      updatedAt: new Date().toISOString(),
+      viewerRoleIds: []
+    });
+  }
+
+  async function saveDraft() {
+    if (!guild || !draft) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const saved = draft.id === "new"
+        ? await createFivemGoalConfig(guild.id, draft, botId)
+        : await updateFivemGoalConfig(guild.id, draft.id, draft, botId);
+      setConfigs((current) => [saved, ...current.filter((config) => config.id !== saved.id)]);
+      setDraft(saved);
+      setMessage("Meta salva.");
+    } catch {
+      setError("Nao foi possivel salvar a meta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeDraft(deleteHistory = false) {
+    if (!guild || !draft || draft.id === "new") return;
+    if (!window.confirm(deleteHistory ? "Excluir esta meta e todo o historico vinculado?" : "Excluir esta meta sem apagar o historico?")) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteFivemGoalConfig(guild.id, draft.id, deleteHistory, botId);
+      const next = configs.filter((config) => config.id !== draft.id);
+      setConfigs(next);
+      setDraft(next[0] ?? null);
+      setMessage(deleteHistory ? "Meta e historico excluidos." : "Meta excluida. Historico preservado.");
+    } catch {
+      setError("Nao foi possivel excluir a meta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Card className="border-emerald-500/10 bg-zinc-950/75">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-emerald-300" /> Gerenciamento de Metas FiveM</CardTitle>
-            <CardDescription>Vinculado ao Cadastro Manual: ao aprovar, o bot cria o canal individual de metas.</CardDescription>
+            <CardDescription>Metas independentes com cargos, canais, comprovantes, aprovacao e historico.</CardDescription>
           </div>
-          <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-            Salvar
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!canManage || !settings || saving || loading} onClick={createDraft} size="sm" type="button" variant="outline">
+              <ListChecks className="mr-2 h-4 w-4" />
+              Criar Meta
+            </Button>
+            <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              Salvar Geral
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -2720,6 +2815,113 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
         {message ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</div> : null}
         {loading || !settings ? <div className="h-40 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/60" /> : (
           <>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <MetricCard icon={ListChecks} label="Metas criadas" value={String(configs.length)} />
+              <MetricCard icon={Users} label="Participantes" value={String(new Set(submissions.map((entry) => entry.userId)).size || new Set(entries.map((entry) => entry.userId)).size)} />
+              <MetricCard icon={Clock3} label="Pendentes" value={String(submissions.filter((entry) => entry.status === "pending").length)} />
+              <MetricCard icon={CalendarClock} label="Hoje" value={String(entries.filter((entry) => new Date(entry.createdAt).toDateString() === new Date().toDateString()).length)} />
+            </div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative min-w-[220px] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                    <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] pl-9 pr-3 text-sm text-zinc-100" onChange={(event) => setGoalSearch(event.target.value)} placeholder="Buscar meta" value={goalSearch} />
+                  </div>
+                  <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setGoalFilter(event.target.value)} value={goalFilter}>
+                    <option value="all">Todas</option>
+                    <option value="active">Ativas</option>
+                    <option value="paused">Pausadas</option>
+                    <option value="finished">Finalizadas</option>
+                    <option value="daily">Diarias</option>
+                    <option value="weekly">Semanais</option>
+                    <option value="monthly">Mensais</option>
+                    <option value="custom">Personalizadas</option>
+                  </select>
+                </div>
+                <div className="grid gap-3">
+                  {configs
+                    .filter((config) => goalFilter === "all" || config.status === goalFilter || config.period === goalFilter)
+                    .filter((config) => `${config.name} ${config.type} ${config.description ?? ""}`.toLowerCase().includes(goalSearch.toLowerCase()))
+                    .map((config) => {
+                      const progress = Math.min(100, Math.round((config.currentValue / Math.max(1, config.targetValue)) * 100));
+                      return (
+                        <button className={`rounded-lg border p-3 text-left transition ${draft?.id === config.id ? "border-emerald-500/50 bg-emerald-500/10" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"}`} key={config.id} onClick={() => setDraft(config)} type="button">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-white">{config.name}</p>
+                              <p className="mt-1 text-xs text-zinc-400">{config.type} - {config.period} - {config.participantRoleIds.length} cargos</p>
+                            </div>
+                            <Badge variant={config.status === "active" ? "success" : config.status === "paused" ? "warning" : "muted"}>{config.status}</Badge>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+                            <div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} />
+                          </div>
+                          <div className="mt-2 flex justify-between text-xs text-zinc-500">
+                            <span>{config.currentValue} / {config.targetValue}</span>
+                            <span>{config.totalParticipants} participantes</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+              {draft ? (
+                <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-white">{draft.id === "new" ? "Criar meta" : "Editar meta"}</p>
+                    <Button disabled={!canManage || saving} onClick={() => void saveDraft()} size="sm" type="button">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button>
+                  </div>
+                  <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchDraft({ name: value })} value={draft.name} />
+                  <TicketField disabled={!canManage} label="Descricao" onChange={(value) => patchDraft({ description: value })} value={draft.description ?? ""} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <TicketField disabled={!canManage} label="Tipo" onChange={(value) => patchDraft({ type: value })} value={draft.type} />
+                    <TicketField disabled={!canManage} label="Valor necessario" onChange={(value) => patchDraft({ targetValue: Number(value) || 1 })} value={String(draft.targetValue)} />
+                    <label className="block text-xs font-medium text-zinc-400">Status
+                      <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ status: event.target.value as FivemGoalConfig["status"] })} value={draft.status}>
+                        <option value="active">Ativa</option>
+                        <option value="paused">Pausada</option>
+                        <option value="finished">Finalizada</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs font-medium text-zinc-400">Periodo
+                      <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ period: event.target.value as FivemGoalConfig["period"] })} value={draft.period}>
+                        <option value="daily">Diaria</option>
+                        <option value="weekly">Semanal</option>
+                        <option value="monthly">Mensal</option>
+                        <option value="custom">Personalizada</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block text-xs font-medium text-zinc-400">Canal do painel
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ panelChannelId: event.target.value || null })} value={draft.panelChannelId ?? ""}>
+                      <option value="">Sem painel</option>
+                      {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-zinc-400">Canal de logs
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ logChannelId: event.target.value || null })} value={draft.logChannelId ?? ""}>
+                      <option value="">Sem logs</option>
+                      {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                    </select>
+                  </label>
+                  <MultiRoleSelect disabled={!canManage} label="Cargos participantes" onChange={(value) => patchDraft({ participantRoleIds: value })} roles={roles} values={draft.participantRoleIds} />
+                  <MultiRoleSelect disabled={!canManage} label="Cargos administradores" onChange={(value) => patchDraft({ managerRoleIds: value })} roles={roles} values={draft.managerRoleIds} />
+                  <MultiRoleSelect disabled={!canManage} label="Cargos aprovadores" onChange={(value) => patchDraft({ approverRoleIds: value })} roles={roles} values={draft.approverRoleIds} />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300"><input checked={draft.requiresProof} disabled={!canManage} onChange={(event) => patchDraft({ requiresProof: event.target.checked })} type="checkbox" /> Exigir comprovante</label>
+                    <label className="flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300"><input checked={draft.requiresApproval} disabled={!canManage} onChange={(event) => patchDraft({ requiresApproval: event.target.checked })} type="checkbox" /> Aprovacao manual</label>
+                  </div>
+                  <TicketField disabled={!canManage} label="Regras" onChange={(value) => patchDraft({ rules: value })} value={draft.rules ?? ""} />
+                  {draft.id !== "new" ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={!canManage || saving} onClick={() => void removeDraft(false)} size="sm" type="button" variant="destructive"><Trash2 className="mr-2 h-4 w-4" />Excluir meta</Button>
+                      <Button disabled={!canManage || saving} onClick={() => void removeDraft(true)} size="sm" type="button" variant="outline">Excluir com historico</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs font-medium text-zinc-400">Status
                 <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ enabled: event.target.value === "true" })} value={String(settings.enabled)}>

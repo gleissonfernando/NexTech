@@ -245,6 +245,77 @@ export type MongoFivemGoalEntry = {
   userId: string;
 };
 
+export type MongoFivemGoalConfigStatus = "active" | "paused" | "finished";
+export type MongoFivemGoalConfigPeriod = "daily" | "weekly" | "monthly" | "custom";
+
+export type MongoFivemGoalResetConfig = {
+  enabled: boolean;
+  frequency: "none" | "daily" | "weekly" | "monthly" | "custom";
+  customDate: string | null;
+};
+
+export type MongoFivemGoalConfig = {
+  _id: string;
+  botId: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  description: string | null;
+  editRoleIds: string[];
+  approverRoleIds: string[];
+  deleteRoleIds: string[];
+  fields: MongoFivemGoalField[];
+  guildId: string;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  name: string;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  participantRoleIds: string[];
+  period: MongoFivemGoalConfigPeriod;
+  requiresApproval: boolean;
+  requiresProof: boolean;
+  resetConfig: MongoFivemGoalResetConfig;
+  rules: string | null;
+  status: MongoFivemGoalConfigStatus;
+  targetValue: number;
+  type: string;
+  updatedAt: Date;
+  updatedBy?: string | null;
+  viewerRoleIds: string[];
+};
+
+export type MongoFivemGoalSubmission = {
+  _id: string;
+  approvedAt?: Date | null;
+  approvedBy?: string | null;
+  botId: string | null;
+  createdAt: Date;
+  description: string | null;
+  fields: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  metaId: string;
+  proofUrl: string | null;
+  refusedAt?: Date | null;
+  refusedBy?: string | null;
+  refusalReason?: string | null;
+  roleIdsSnapshot: string[];
+  status: "pending" | "approved" | "refused";
+  updatedAt: Date;
+  userId: string;
+  value: number;
+};
+
+export type MongoFivemGoalLog = {
+  _id: string;
+  action: string;
+  botId: string | null;
+  createdAt: Date;
+  details: Record<string, unknown>;
+  guildId: string;
+  metaId: string | null;
+  userId: string | null;
+};
+
 export type MongoGlobalBlacklistSafeBotSettings = {
   _id: string;
   autoBlacklistOnSafeBotBan: boolean;
@@ -1942,6 +2013,9 @@ export async function getMongoCollections() {
     fivemGoalSettings: db.collection<MongoFivemGoalSettings>("fivem_goal_settings"),
     fivemGoalUserChannels: db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels"),
     fivemGoalEntries: db.collection<MongoFivemGoalEntry>("fivem_goal_entries"),
+    fivemGoalConfigs: db.collection<MongoFivemGoalConfig>("fivem_goal_configs"),
+    fivemGoalSubmissions: db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions"),
+    fivemGoalLogs: db.collection<MongoFivemGoalLog>("fivem_goal_logs"),
     globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
     globalBlacklistEntries: db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries"),
     globalBlacklistHistory: db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history"),
@@ -2073,6 +2147,12 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, channelId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalConfig>("fivem_goal_configs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalConfig>("fivem_goal_configs").createIndex({ botId: 1, guildId: 1, status: 1 }),
+    db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalLog>("fivem_goal_logs").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
     db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ userId: 1, active: 1 }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ botId: 1, guildId: 1, active: 1 }),

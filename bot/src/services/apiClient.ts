@@ -111,6 +111,7 @@ export type FivemGoalItem = {
 };
 
 export type FivemGoalSettings = {
+  configs?: FivemGoalConfig[];
   categoryId: string | null;
   channelNameTemplate: string;
   enabled: boolean;
@@ -120,6 +121,26 @@ export type FivemGoalSettings = {
   logChannelId: string | null;
   managerRoleId: string | null;
   viewRoleId: string | null;
+};
+
+export type FivemGoalConfig = {
+  approverRoleIds: string[];
+  currentValue: number;
+  description: string | null;
+  fields: FivemGoalField[];
+  id: string;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  name: string;
+  panelChannelId: string | null;
+  participantRoleIds: string[];
+  period: "daily" | "weekly" | "monthly" | "custom";
+  requiresApproval: boolean;
+  requiresProof: boolean;
+  status: "active" | "paused" | "finished";
+  targetValue: number;
+  type: string;
+  viewerRoleIds: string[];
 };
 
 export type FivemGoalUserChannel = {
@@ -1164,8 +1185,8 @@ export class ApiClient {
   }
 
   async getFivemGoalSettings(guildId: string) {
-    const { data } = await this.http.get<{ settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}`);
-    return data.settings;
+    const { data } = await this.http.get<{ configs?: FivemGoalConfig[]; settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}`);
+    return { ...data.settings, configs: data.configs ?? [] };
   }
 
   async getFivemGoalChannelByChannel(channelId: string) {
@@ -1189,7 +1210,9 @@ export class ApiClient {
     guildId: string;
     imageUrl: string;
     itemId?: string | null;
+    metaId?: string | null;
     quantity?: number | null;
+    roleIdsSnapshot?: string[];
     userId: string;
   }) {
     const { data } = await this.http.post("/fivem/bot/goals/entries", input);

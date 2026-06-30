@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { ensureGuild, getMongoCollections, type MongoFivemGoalEntry, type MongoFivemGoalSettings, type MongoFivemGoalUserChannel } from "../database/mongo";
+import {
+  ensureGuild,
+  getMongoCollections,
+  type MongoFivemGoalConfig,
+  type MongoFivemGoalEntry,
+  type MongoFivemGoalLog,
+  type MongoFivemGoalSettings,
+  type MongoFivemGoalSubmission,
+  type MongoFivemGoalUserChannel
+} from "../database/mongo";
 
 export const FIVEM_GOALS_MODULE_ID = "fivem-goals";
 
@@ -60,6 +69,77 @@ export type FivemGoalUserChannelDto = {
   userId: string;
 };
 
+export type FivemGoalConfigStatus = "active" | "paused" | "finished";
+export type FivemGoalConfigPeriod = "daily" | "weekly" | "monthly" | "custom";
+
+export type FivemGoalConfigDto = {
+  approverRoleIds: string[];
+  botId: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  currentValue: number;
+  deleteRoleIds: string[];
+  description: string | null;
+  editRoleIds: string[];
+  fields: FivemGoalFieldDto[];
+  guildId: string;
+  id: string;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  name: string;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  participantRoleIds: string[];
+  period: FivemGoalConfigPeriod;
+  requiresApproval: boolean;
+  requiresProof: boolean;
+  resetConfig: {
+    customDate: string | null;
+    enabled: boolean;
+    frequency: "none" | "daily" | "weekly" | "monthly" | "custom";
+  };
+  rules: string | null;
+  status: FivemGoalConfigStatus;
+  targetValue: number;
+  totalParticipants: number;
+  type: string;
+  updatedAt: string;
+  updatedBy?: string | null;
+  viewerRoleIds: string[];
+};
+
+export type FivemGoalSubmissionDto = {
+  approvedAt: string | null;
+  approvedBy: string | null;
+  botId: string | null;
+  createdAt: string;
+  description: string | null;
+  fields: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  id: string;
+  metaId: string;
+  proofUrl: string | null;
+  refusedAt: string | null;
+  refusedBy: string | null;
+  refusalReason: string | null;
+  roleIdsSnapshot: string[];
+  status: "pending" | "approved" | "refused";
+  updatedAt: string;
+  userId: string;
+  value: number;
+};
+
+export type FivemGoalLogDto = {
+  action: string;
+  botId: string | null;
+  createdAt: string;
+  details: Record<string, unknown>;
+  guildId: string;
+  id: string;
+  metaId: string | null;
+  userId: string | null;
+};
+
 const DEFAULT_FIELDS: FivemGoalFieldDto[] = [
   { id: "euro_sujo", label: "Euro Sujo", maxLength: 80, minLength: 1, placeholder: "Ex: 100000", required: true, style: "short" },
   { id: "itens", label: "Itens", maxLength: 300, minLength: 1, placeholder: "Ex: 5 Diamantes", required: true, style: "short" },
@@ -118,7 +198,97 @@ export async function saveFivemGoalSettings(guildId: string, botId: string | nul
     { upsert: true }
   );
 
-  return getFivemGoalSettings(guildId, normalizedBotId);
+  const saved = await getFivemGoalSettings(guildId, normalizedBotId);
+  await ensureDefaultGoalConfigFromLegacy(saved, actorId);
+  return saved;
+}
+
+export async function getFivemGoalDashboard(guildId: string, botId?: string | null) {
+  const settings = await getFivemGoalSettings(guildId, botId);
+  const configs = await listFivemGoalConfigs(guildId, botId, true);
+
+  return {
+    configs,
+    entries: await listFivemGoalEntries(guildId, botId),
+    logs: await listFivemGoalLogs(guildId, botId),
+    settings,
+    submissions: await listFivemGoalSubmissions(guildId, botId)
+  };
+}
+
+export async function listFivemGoalConfigs(guildId: string, botId?: string | null, ensureLegacy = false) {
+  const normalizedBotId = normalizeBotId(botId);
+  if (ensureLegacy) {
+    await ensureDefaultGoalConfigFromLegacy(await getFivemGoalSettings(guildId, normalizedBotId), null);
+  }
+  const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
+  const [rows, progress] = await Promise.all([
+    fivemGoalConfigs.find(scopeQuery(guildId, normalizedBotId)).sort({ createdAt: -1 }).limit(100).toArray(),
+    fivemGoalSubmissions.aggregate<{ _id: string; currentValue: number; totalParticipants: number }>([
+      { $match: { ...scopeQuery(guildId, normalizedBotId), status: "approved" } },
+      { $group: { _id: "$metaId", currentValue: { $sum: "$value" }, participants: { $addToSet: "$userId" } } },
+      { $project: { _id: 1, currentValue: 1, totalParticipants: { $size: "$participants" } } }
+    ]).toArray()
+  ]);
+  const progressByMeta = new Map(progress.map((item) => [item._id, item]));
+  return rows.map((row) => toConfigDto(row, progressByMeta.get(row._id)));
+}
+
+export async function getFivemGoalConfig(guildId: string, metaId: string, botId?: string | null) {
+  const { fivemGoalConfigs } = await getMongoCollections();
+  const row = await fivemGoalConfigs.findOne({ _id: metaId, ...scopeQuery(guildId, normalizeBotId(botId)) });
+  return row ? toConfigDto(row) : null;
+}
+
+export async function createFivemGoalConfig(guildId: string, botId: string | null, input: Partial<FivemGoalConfigDto>, actorId: string | null) {
+  const now = new Date();
+  const normalizedBotId = normalizeBotId(botId);
+  const doc: MongoFivemGoalConfig = {
+    ...normalizeConfigInput(input, guildId, normalizedBotId),
+    _id: randomUUID(),
+    botId: normalizedBotId,
+    createdAt: now,
+    createdBy: actorId,
+    guildId,
+    panelMessageId: null,
+    updatedAt: now,
+    updatedBy: actorId
+  };
+  const { fivemGoalConfigs } = await getMongoCollections();
+  await ensureGuild(guildId);
+  await fivemGoalConfigs.insertOne(doc);
+  await writeFivemGoalLog({ action: "meta.created", botId: normalizedBotId, details: { name: doc.name }, guildId, metaId: doc._id, userId: actorId });
+  return toConfigDto(doc);
+}
+
+export async function updateFivemGoalConfig(guildId: string, botId: string | null, metaId: string, input: Partial<FivemGoalConfigDto>, actorId: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const { fivemGoalConfigs } = await getMongoCollections();
+  const current = await fivemGoalConfigs.findOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
+  if (!current) return null;
+  const now = new Date();
+  const next = {
+    ...normalizeConfigInput({ ...toConfigDto(current), ...input }, guildId, normalizedBotId),
+    panelMessageId: normalizeSnowflake(input.panelMessageId ?? current.panelMessageId),
+    updatedAt: now,
+    updatedBy: actorId
+  };
+  await fivemGoalConfigs.updateOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) }, { $set: next });
+  await writeFivemGoalLog({ action: "meta.updated", botId: normalizedBotId, details: { name: next.name }, guildId, metaId, userId: actorId });
+  return getFivemGoalConfig(guildId, metaId, normalizedBotId);
+}
+
+export async function deleteFivemGoalConfig(guildId: string, botId: string | null, metaId: string, actorId: string | null, deleteHistory = false) {
+  const normalizedBotId = normalizeBotId(botId);
+  const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
+  const current = await fivemGoalConfigs.findOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
+  if (!current) return null;
+  await fivemGoalConfigs.deleteOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
+  if (deleteHistory) {
+    await fivemGoalSubmissions.deleteMany({ ...scopeQuery(guildId, normalizedBotId), metaId });
+  }
+  await writeFivemGoalLog({ action: deleteHistory ? "meta.deleted_with_history" : "meta.deleted", botId: normalizedBotId, details: { name: current.name }, guildId, metaId, userId: actorId });
+  return toConfigDto(current);
 }
 
 export async function upsertFivemGoalUserChannel(input: { botId?: string | null; channelId: string; guildId: string; userId: string }) {
@@ -155,7 +325,9 @@ export async function createFivemGoalEntry(input: {
   guildId: string;
   imageUrl: string;
   itemId?: string | null;
+  metaId?: string | null;
   quantity?: number | null;
+  roleIdsSnapshot?: string[];
   userId: string;
 }) {
   const now = new Date();
@@ -174,6 +346,17 @@ export async function createFivemGoalEntry(input: {
   };
   const { fivemGoalEntries } = await getMongoCollections();
   await fivemGoalEntries.insertOne(doc);
+  await createFivemGoalSubmission({
+    botId: input.botId,
+    description: input.fields.find((field) => /obs|descricao|descri/i.test(field.id))?.value ?? null,
+    fields: input.fields,
+    guildId: input.guildId,
+    metaId: input.metaId ?? null,
+    proofUrl: input.imageUrl,
+    roleIdsSnapshot: input.roleIdsSnapshot ?? [],
+    userId: input.userId,
+    value: doc.quantity ?? 0
+  }).catch(() => null);
   return toEntryDto(doc);
 }
 
@@ -185,6 +368,117 @@ export async function listFivemGoalEntries(guildId: string, botId?: string | nul
     .limit(200)
     .toArray();
   return rows.map(toEntryDto);
+}
+
+export async function createFivemGoalSubmission(input: {
+  botId?: string | null;
+  description?: string | null;
+  fields?: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  metaId?: string | null;
+  proofUrl?: string | null;
+  roleIdsSnapshot?: string[];
+  userId: string;
+  value: number;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  const configs = await listFivemGoalConfigs(input.guildId, normalizedBotId, true);
+  const meta = input.metaId ? configs.find((config) => config.id === input.metaId) : configs.find((config) => config.status === "active") ?? configs[0];
+  if (!meta) return null;
+  const now = new Date();
+  const status = meta.requiresApproval ? "pending" as const : "approved" as const;
+  const doc: MongoFivemGoalSubmission = {
+    _id: randomUUID(),
+    approvedAt: status === "approved" ? now : null,
+    approvedBy: status === "approved" ? "system" : null,
+    botId: normalizedBotId,
+    createdAt: now,
+    description: normalizeText(input.description, 1000),
+    fields: (input.fields ?? []).map((field) => ({ id: normalizeText(field.id, 80) || "campo", label: normalizeText(field.label, 100) || "Campo", value: normalizeText(field.value, 1500) || "" })).slice(0, 10),
+    guildId: input.guildId,
+    metaId: meta.id,
+    proofUrl: normalizeText(input.proofUrl, 2048),
+    refusedAt: null,
+    refusedBy: null,
+    refusalReason: null,
+    roleIdsSnapshot: normalizeRoleIds(input.roleIdsSnapshot ?? []),
+    status,
+    updatedAt: now,
+    userId: input.userId,
+    value: Number.isFinite(input.value) ? Math.max(0, input.value) : 0
+  };
+  const { fivemGoalSubmissions } = await getMongoCollections();
+  await fivemGoalSubmissions.insertOne(doc);
+  await writeFivemGoalLog({ action: status === "approved" ? "submission.auto_approved" : "submission.created", botId: normalizedBotId, details: { proofUrl: doc.proofUrl, value: doc.value }, guildId: input.guildId, metaId: meta.id, userId: input.userId });
+  return toSubmissionDto(doc);
+}
+
+export async function listFivemGoalSubmissions(guildId: string, botId?: string | null, metaId?: string | null) {
+  const { fivemGoalSubmissions } = await getMongoCollections();
+  const rows = await fivemGoalSubmissions
+    .find({ ...scopeQuery(guildId, normalizeBotId(botId)), ...(metaId ? { metaId } : {}) })
+    .sort({ createdAt: -1 })
+    .limit(300)
+    .toArray();
+  return rows.map(toSubmissionDto);
+}
+
+export async function moderateFivemGoalSubmission(guildId: string, botId: string | null, submissionId: string, actorId: string | null, status: "approved" | "refused", refusalReason?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const now = new Date();
+  const { fivemGoalSubmissions } = await getMongoCollections();
+  const update = status === "approved"
+    ? { approvedAt: now, approvedBy: actorId, refusedAt: null, refusedBy: null, refusalReason: null, status, updatedAt: now }
+    : { refusedAt: now, refusedBy: actorId, refusalReason: normalizeText(refusalReason, 800), status, updatedAt: now };
+  const row = await fivemGoalSubmissions.findOneAndUpdate(
+    { _id: submissionId, ...scopeQuery(guildId, normalizedBotId) },
+    { $set: update },
+    { returnDocument: "after" }
+  );
+  if (!row) return null;
+  await writeFivemGoalLog({ action: status === "approved" ? "submission.approved" : "submission.refused", botId: normalizedBotId, details: { refusalReason: update.refusalReason ?? null, value: row.value }, guildId, metaId: row.metaId, userId: actorId });
+  return toSubmissionDto(row);
+}
+
+export async function listFivemGoalLogs(guildId: string, botId?: string | null, metaId?: string | null) {
+  const { fivemGoalLogs } = await getMongoCollections();
+  const rows = await fivemGoalLogs
+    .find({ ...scopeQuery(guildId, normalizeBotId(botId)), ...(metaId ? { metaId } : {}) })
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .toArray();
+  return rows.map(toLogDto);
+}
+
+async function ensureDefaultGoalConfigFromLegacy(settings: FivemGoalSettingsDto, actorId: string | null) {
+  const { fivemGoalConfigs } = await getMongoCollections();
+  const exists = await fivemGoalConfigs.findOne(scopeQuery(settings.guildId, normalizeBotId(settings.botId)));
+  if (exists || (!settings.enabled && !settings.updatedAt)) return;
+  const now = new Date();
+  const doc: MongoFivemGoalConfig = {
+    _id: randomUUID(),
+    ...normalizeConfigInput({
+      description: "Meta migrada automaticamente da configuracao antiga.",
+      fields: settings.fields,
+      logChannelId: settings.logChannelId,
+      managerRoleIds: settings.managerRoleId ? [settings.managerRoleId] : [],
+      name: "Meta Principal",
+      participantRoleIds: settings.viewRoleId ? [settings.viewRoleId] : [],
+      requiresApproval: false,
+      requiresProof: true,
+      status: settings.enabled ? "active" : "paused",
+      targetValue: 1,
+      type: "farm"
+    }, settings.guildId, normalizeBotId(settings.botId)),
+    botId: normalizeBotId(settings.botId),
+    createdAt: now,
+    createdBy: actorId,
+    guildId: settings.guildId,
+    panelMessageId: null,
+    updatedAt: now,
+    updatedBy: actorId
+  };
+  await fivemGoalConfigs.insertOne(doc);
 }
 
 function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto {
@@ -254,6 +548,141 @@ function toUserChannelDto(row: MongoFivemGoalUserChannel): FivemGoalUserChannelD
 
 function toEntryDto(row: MongoFivemGoalEntry): FivemGoalEntryDto {
   return { botId: normalizeBotId(row.botId), channelId: row.channelId, createdAt: row.createdAt.toISOString(), fields: row.fields, guildId: row.guildId, id: row._id, imageUrl: row.imageUrl, itemId: row.itemId, quantity: row.quantity, updatedAt: row.updatedAt.toISOString(), userId: row.userId };
+}
+
+function toConfigDto(row: MongoFivemGoalConfig, progress?: { currentValue: number; totalParticipants: number }): FivemGoalConfigDto {
+  return {
+    approverRoleIds: row.approverRoleIds ?? [],
+    botId: normalizeBotId(row.botId),
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy ?? null,
+    currentValue: progress?.currentValue ?? 0,
+    deleteRoleIds: row.deleteRoleIds ?? [],
+    description: row.description ?? null,
+    editRoleIds: row.editRoleIds ?? [],
+    fields: normalizeFields(row.fields as FivemGoalFieldDto[]),
+    guildId: row.guildId,
+    id: row._id,
+    logChannelId: row.logChannelId ?? null,
+    managerRoleIds: row.managerRoleIds ?? [],
+    name: row.name,
+    panelChannelId: row.panelChannelId ?? null,
+    panelMessageId: row.panelMessageId ?? null,
+    participantRoleIds: row.participantRoleIds ?? [],
+    period: normalizePeriod(row.period),
+    requiresApproval: row.requiresApproval === true,
+    requiresProof: row.requiresProof !== false,
+    resetConfig: normalizeResetConfig(row.resetConfig),
+    rules: row.rules ?? null,
+    status: normalizeStatus(row.status),
+    targetValue: Number.isFinite(row.targetValue) ? row.targetValue : 1,
+    totalParticipants: progress?.totalParticipants ?? 0,
+    type: normalizeText(row.type, 80) || "personalizada",
+    updatedAt: row.updatedAt.toISOString(),
+    updatedBy: row.updatedBy ?? null,
+    viewerRoleIds: row.viewerRoleIds ?? []
+  };
+}
+
+function toSubmissionDto(row: MongoFivemGoalSubmission): FivemGoalSubmissionDto {
+  return {
+    approvedAt: row.approvedAt?.toISOString() ?? null,
+    approvedBy: row.approvedBy ?? null,
+    botId: normalizeBotId(row.botId),
+    createdAt: row.createdAt.toISOString(),
+    description: row.description ?? null,
+    fields: row.fields ?? [],
+    guildId: row.guildId,
+    id: row._id,
+    metaId: row.metaId,
+    proofUrl: row.proofUrl ?? null,
+    refusedAt: row.refusedAt?.toISOString() ?? null,
+    refusedBy: row.refusedBy ?? null,
+    refusalReason: row.refusalReason ?? null,
+    roleIdsSnapshot: row.roleIdsSnapshot ?? [],
+    status: row.status,
+    updatedAt: row.updatedAt.toISOString(),
+    userId: row.userId,
+    value: row.value
+  };
+}
+
+function toLogDto(row: MongoFivemGoalLog): FivemGoalLogDto {
+  return {
+    action: row.action,
+    botId: normalizeBotId(row.botId),
+    createdAt: row.createdAt.toISOString(),
+    details: row.details ?? {},
+    guildId: row.guildId,
+    id: row._id,
+    metaId: row.metaId ?? null,
+    userId: row.userId ?? null
+  };
+}
+
+function normalizeConfigInput(input: Partial<FivemGoalConfigDto>, guildId: string, botId: string | null): Omit<MongoFivemGoalConfig, "_id" | "createdAt" | "createdBy" | "guildId" | "panelMessageId" | "updatedAt" | "updatedBy"> {
+  return {
+    approverRoleIds: normalizeRoleIds(input.approverRoleIds ?? []),
+    botId,
+    deleteRoleIds: normalizeRoleIds(input.deleteRoleIds ?? []),
+    description: normalizeText(input.description, 1000),
+    editRoleIds: normalizeRoleIds(input.editRoleIds ?? []),
+    fields: normalizeFields(input.fields ?? DEFAULT_FIELDS),
+    logChannelId: normalizeSnowflake(input.logChannelId),
+    managerRoleIds: normalizeRoleIds(input.managerRoleIds ?? []),
+    name: normalizeText(input.name, 100) || "Nova Meta",
+    panelChannelId: normalizeSnowflake(input.panelChannelId),
+    participantRoleIds: normalizeRoleIds(input.participantRoleIds ?? []),
+    period: normalizePeriod(input.period),
+    requiresApproval: input.requiresApproval === true,
+    requiresProof: input.requiresProof === true,
+    resetConfig: normalizeResetConfig(input.resetConfig),
+    rules: normalizeText(input.rules, 2000),
+    status: normalizeStatus(input.status),
+    targetValue: normalizeTargetValue(input.targetValue),
+    type: normalizeText(input.type, 80) || "personalizada",
+    viewerRoleIds: normalizeRoleIds(input.viewerRoleIds ?? [])
+  };
+}
+
+async function writeFivemGoalLog(input: Omit<MongoFivemGoalLog, "_id" | "createdAt">) {
+  const { fivemGoalLogs } = await getMongoCollections();
+  await fivemGoalLogs.insertOne({
+    _id: randomUUID(),
+    action: input.action,
+    botId: normalizeBotId(input.botId),
+    createdAt: new Date(),
+    details: input.details ?? {},
+    guildId: input.guildId,
+    metaId: input.metaId ?? null,
+    userId: input.userId ?? null
+  });
+}
+
+function normalizeRoleIds(values: string[]) {
+  return [...new Set((Array.isArray(values) ? values : []).map(normalizeSnowflake).filter((value): value is string => Boolean(value)))].slice(0, 100);
+}
+
+function normalizeStatus(value: unknown): FivemGoalConfigStatus {
+  return value === "paused" || value === "finished" ? value : "active";
+}
+
+function normalizePeriod(value: unknown): FivemGoalConfigPeriod {
+  return value === "daily" || value === "monthly" || value === "custom" ? value : "weekly";
+}
+
+function normalizeResetConfig(value: FivemGoalConfigDto["resetConfig"] | undefined) {
+  const frequency: "none" | "daily" | "weekly" | "monthly" | "custom" = value?.frequency === "daily" || value?.frequency === "weekly" || value?.frequency === "monthly" || value?.frequency === "custom" ? value.frequency : "none";
+  return {
+    customDate: /^\d{4}-\d{2}-\d{2}$/.test(value?.customDate ?? "") ? value?.customDate ?? null : null,
+    enabled: value?.enabled === true && frequency !== "none",
+    frequency
+  };
+}
+
+function normalizeTargetValue(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
+  return Math.max(1, Math.trunc(value));
 }
 
 function scopeQuery(guildId: string, botId: string | null) {

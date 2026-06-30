@@ -147,11 +147,13 @@ async function showGoalModal(interaction: ButtonInteraction, context: BotContext
   }
 
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
+  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  const fieldsToRender = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:${encodeURIComponent(imageToken ?? "")}`)
-    .setTitle("Registrar Meta");
+    .setTitle((activeConfig?.name ?? "Registrar Meta").slice(0, 45));
 
-  settings.fields.slice(0, 5).forEach((field) => {
+  fieldsToRender.forEach((field) => {
     const input = new TextInputBuilder()
       .setCustomId(field.id)
       .setLabel(field.label.slice(0, 45))
@@ -185,7 +187,10 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
 
   const imageUrl = pending.imageUrl;
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
-  const fields = settings.fields.slice(0, 5).map((field) => ({
+  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  const fieldsToRead = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  const fields = fieldsToRead.map((field) => ({
     id: field.id,
     label: field.label,
     value: interaction.fields.getTextInputValue(field.id) || "-"
@@ -198,7 +203,9 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     fields,
     guildId: interaction.guild.id,
     imageUrl,
+    metaId: activeConfig?.id ?? null,
     quantity: Number.isFinite(quantity) ? quantity : null,
+    roleIdsSnapshot: member ? [...member.roles.cache.keys()] : [],
     userId: interaction.user.id
   });
   pendingImages.delete(token);
