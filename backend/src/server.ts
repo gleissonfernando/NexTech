@@ -13,6 +13,11 @@ import { registerBackgroundJobHandler, startBackgroundJobWorker, stopBackgroundJ
 const httpServer = createServer(app);
 let shuttingDown = false;
 
+httpServer.keepAliveTimeout = 65_000;
+httpServer.headersTimeout = 70_000;
+httpServer.requestTimeout = 30_000;
+httpServer.maxHeadersCount = 100;
+
 createSocketServer(httpServer);
 registerBackgroundJobHandler("server-backup.restore", processQueuedServerBackupRestore);
 registerBackgroundJobHandler("server-backup.capture", processQueuedServerBackupCapture);
