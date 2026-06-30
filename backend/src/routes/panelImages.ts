@@ -51,7 +51,7 @@ panelImagesRouter.get("/:guildId/:panelId", requireAuth, async (req, res, next) 
     const panelId = panelIdSchema.parse(req.params.panelId);
     const botId = await readRequiredBotId(req);
 
-    await assertCanRead(res.locals.dashboardAuth.user, guildId, botId);
+    await assertCanRead(res.locals.dashboardAuth.user, guildId, botId, moduleIdForPanel(panelId));
 
     return res.json({
       settings: await getPanelImageSettings(guildId, botId, panelId)
@@ -69,7 +69,7 @@ panelImagesRouter.put("/:guildId/:panelId", requireAuth, async (req, res, next) 
     const input = settingsSchema.parse(req.body);
     const user = res.locals.dashboardAuth.user;
 
-    await assertCanManage(user, guildId, botId);
+    await assertCanManage(user, guildId, botId, moduleIdForPanel(panelId));
 
     return res.json({
       settings: await savePanelImageSettings(guildId, botId, panelId, input, user.discordId)
@@ -87,7 +87,7 @@ panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload
     const user = res.locals.dashboardAuth.user;
     const mimeType = req.header("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
 
-    await assertCanManage(user, guildId, botId);
+    await assertCanManage(user, guildId, botId, moduleIdForPanel(panelId));
 
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       throw createRouteError("Envie uma imagem para o painel.", 400);
@@ -118,20 +118,26 @@ async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0])
   return botId;
 }
 
-async function assertCanRead(user: AuthSessionUser, guildId: string, botId: string) {
-  if (await canReadDevBotModule(user, botId, guildId, MODULE_ID)) {
+async function assertCanRead(user: AuthSessionUser, guildId: string, botId: string, moduleId = MODULE_ID) {
+  if (await canReadDevBotModule(user, botId, guildId, moduleId)) {
     return;
   }
 
   throw createRouteError("Voce nao tem permissao para ver imagens dos paineis deste bot.", 403);
 }
 
-async function assertCanManage(user: AuthSessionUser, guildId: string, botId: string) {
-  if (await canUseDevBotModule(user, botId, guildId, MODULE_ID)) {
+async function assertCanManage(user: AuthSessionUser, guildId: string, botId: string, moduleId = MODULE_ID) {
+  if (await canUseDevBotModule(user, botId, guildId, moduleId)) {
     return;
   }
 
   throw createRouteError("Voce nao tem permissao para configurar imagens dos paineis deste bot.", 403);
+}
+
+function moduleIdForPanel(panelId: string) {
+  if (panelId === "manual-registration") return "manual-registration";
+  if (panelId === "fivem-orders") return "fivem-orders";
+  return MODULE_ID;
 }
 
 function createRouteError(message: string, statusCode: number) {

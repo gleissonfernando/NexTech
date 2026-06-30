@@ -15,11 +15,7 @@ import type {
 } from "./apiClient";
 import { clearSafeBotSetupCache, ensureSafeBotSetup, ensureSelfBotRole, isSelfBotModuleEnabled } from "./safeBotService";
 import { clearRuntimeModuleAuthorization, isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
-
-type CachedSettings = {
-  expiresAt: number;
-  settings: SelfBotProtectionSettings;
-};
+import { canModerateMessage, getModerationSettings } from "./moderationChannelPolicy";
 
 type MessageHistoryEntry = {
   at: number;
@@ -47,9 +43,7 @@ type PunishmentResult = {
   succeeded: boolean;
 };
 
-const SETTINGS_CACHE_MS = 30_000;
 const MODULE_ID = "safe-bot";
-const settingsCache = new Map<string, CachedSettings>();
 const messageHistory = new Map<string, MessageHistoryEntry[]>();
 const attachmentHistory = new Map<string, AttachmentHistoryEntry[]>();
 const guildJoinWindows = new Map<string, number[]>();
@@ -78,7 +72,6 @@ export function startSelfBotProtectionService(context: BotContext) {
     }
 
     clearRuntimeModuleAuthorization(payload.guildId);
-    settingsCache.delete(runtimeScopeKey(payload.guildId));
     clearSafeBotSetupCache(payload.guildId);
     clearGuildWindows(payload.guildId);
 
@@ -93,6 +86,7 @@ export async function handleSelfBotProtectionMessage(message: Message, context: 
   if (!isSelfBotModuleEnabled() || !message.guild || message.author.id === message.client.user?.id) {
     return false;
   }
+  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
 
   if (!(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
     return false;
@@ -371,19 +365,7 @@ async function handleViolation(input: {
 }
 
 async function getCachedSettings(guildId: string, context: BotContext) {
-  const cacheKey = runtimeScopeKey(guildId);
-  const cached = settingsCache.get(cacheKey);
-
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.settings;
-  }
-
-  const settings = await context.api.getSelfBotProtectionSettings(guildId);
-  settingsCache.set(cacheKey, {
-    expiresAt: Date.now() + SETTINGS_CACHE_MS,
-    settings
-  });
-  return settings;
+  return getModerationSettings(guildId, context);
 }
 
 async function ensureRoleForEnabledGuild(guild: Guild, context: BotContext) {

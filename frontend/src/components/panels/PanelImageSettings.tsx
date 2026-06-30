@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, Loader2, Save, Trash2, Upload } from "lucide-react";
-import { listPanelImageSettings, savePanelImageSettings, uploadPanelImage } from "../../lib/api";
+import { getPanelImageSettings, listPanelImageSettings, savePanelImageSettings, uploadPanelImage } from "../../lib/api";
 import type {
   PanelImageLayoutMode,
   PanelImagePosition,
@@ -95,8 +95,11 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
 
     setLoading(true);
     setError(null);
-    listPanelImageSettings(guildId, botId)
-      .then((items) => {
+    const request = panelId
+      ? getPanelImageSettings(guildId, panelId, botId).then((item) => [item])
+      : listPanelImageSettings(guildId, botId);
+
+    request.then((items) => {
         if (!active) return;
         setSettingsByPanel(Object.fromEntries(items.map((item) => [item.panelId, item])));
       })
@@ -115,6 +118,15 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
       active = false;
     };
   }, [botId, guildId]);
+
+  function updateImageUrl(value: string) {
+    setDraft((current) => ({
+      ...current,
+      imageEnabled: value.trim() ? true : current.imageEnabled,
+      imagePosition: value.trim() && current.imagePosition === "none" ? "banner" : current.imagePosition,
+      imageUrl: value
+    }));
+  }
 
   useEffect(() => {
     setDraft(settingsByPanel[selectedPanelId] ?? defaultSettings(guildId ?? "", botId ?? "", selectedPanelId));
@@ -308,8 +320,9 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
                   <input
                     className="min-h-11 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-purple-500/60"
                     disabled={disabled}
-                    readOnly
-                    placeholder="URL gerada pelo upload"
+                    onChange={(event) => updateImageUrl(event.target.value)}
+                    placeholder="Cole uma URL HTTPS ou envie um arquivo"
+                    type="url"
                     value={draft.imageUrl}
                   />
                 </div>

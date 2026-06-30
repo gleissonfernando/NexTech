@@ -1888,6 +1888,7 @@ export type MongoSafeBotWarningLevel = {
   description: string;
   defaultReason: string;
   action: MongoSafeBotWarningAction | null;
+  actions?: MongoSafeBotWarningAction[];
   durationSeconds: number | null;
   roleId: string | null;
   channelId: string | null;
@@ -1922,6 +1923,12 @@ export type MongoSafeBotWarningUser = {
   userId: string;
   username: string | null;
   totalWarnings: number;
+  totalInfractions?: number;
+  firstInfractionAt?: Date | null;
+  lastInfractionAt?: Date | null;
+  lastRuleId?: string | null;
+  lastPunishment?: string | null;
+  recentEventKeys?: string[];
   internalNote: string;
   createdAt: Date;
   updatedAt: Date;
@@ -1936,6 +1943,11 @@ export type MongoSafeBotWarningRecord = {
   staffId: string;
   staffName: string | null;
   reason: string;
+  idempotencyKey?: string | null;
+  channelId?: string | null;
+  ruleId?: string | null;
+  ruleName?: string | null;
+  infractionNumber?: number;
   warningNumber: number;
   level: MongoSafeBotWarningLevel | null;
   configuredAction: MongoSafeBotWarningAction | null;
@@ -2991,7 +3003,11 @@ async function ensureSafeBotWarningIndexes(db: Db) {
     db.collection<MongoSafeBotWarningUser>("safe_bot_warning_users").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     db.collection<MongoSafeBotWarningUser>("safe_bot_warning_users").createIndex({ botId: 1, guildId: 1, totalWarnings: -1 }),
     db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
-    db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 })
+    db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoSafeBotWarningRecord>("safe_bot_warning_records").createIndex(
+      { botId: 1, guildId: 1, idempotencyKey: 1 },
+      { unique: true, partialFilterExpression: { idempotencyKey: { $type: "string" } } }
+    )
   ]);
 }
 

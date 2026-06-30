@@ -2676,12 +2676,32 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
   function addHierarchy() {
     setDraft((current) => current ? {
       ...current,
-      hierarchies: [...current.hierarchies, { active: true, color: null, description: null, emoji: "👤", id: `hierarquia-${Date.now()}`, limit: null, name: "Nova hierarquia", order: current.hierarchies.length + 1, roleId: roles[0]?.id ?? "" }]
+      hierarchies: [...current.hierarchies, { active: true, color: null, description: null, emoji: "👤", id: `hierarquia-${Date.now()}`, limit: null, name: "", order: current.hierarchies.length + 1, roleId: "" }]
     } : current);
+  }
+
+  function removeHierarchy(index: number) {
+    setDraft((current) => current ? {
+      ...current,
+      hierarchies: current.hierarchies
+        .filter((_, itemIndex) => itemIndex !== index)
+        .map((item, itemIndex) => ({ ...item, order: itemIndex + 1 }))
+    } : current);
+  }
+
+  function hierarchyValidationError(panel: FivemHierarchyPanelType, requireChannel = false) {
+    const selectedRoleIds = panel.hierarchies.map((item) => item.roleId).filter(Boolean);
+    if (!panel.hierarchies.length) return "Adicione pelo menos um cargo ao painel.";
+    if (panel.hierarchies.some((item) => !item.roleId || !item.name.trim())) return "Escolha o cargo e informe o que ele representa em todas as linhas.";
+    if (new Set(selectedRoleIds).size !== selectedRoleIds.length) return "O mesmo cargo nao pode aparecer duas vezes no painel.";
+    if (requireChannel && !panel.panelChannelId) return "Escolha o canal onde o painel sera publicado.";
+    return null;
   }
 
   async function savePanel() {
     if (!guild || !draft) return;
+    const validationError = hierarchyValidationError(draft);
+    if (validationError) return setError(validationError);
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -2698,13 +2718,18 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
   }
 
   async function publishPanel() {
-    if (!guild || !draft || draft.id === "new") return;
+    if (!guild || !draft) return;
+    const validationError = hierarchyValidationError(draft, true);
+    if (validationError) return setError(validationError);
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      await publishFivemHierarchyPanel(guild.id, draft.id, botId);
-      setMessage("Painel FAQ enviado para atualizacao no Discord.");
+      const saved = await saveFivemHierarchyPanel(guild.id, draft, botId);
+      setPanels((current) => [saved, ...current.filter((panel) => panel.id !== saved.id && panel.id !== draft.id)]);
+      setDraft(saved);
+      await publishFivemHierarchyPanel(guild.id, saved.id, botId);
+      setMessage("Hierarquia salva e publicada no Discord.");
     } catch {
       setError("Nao foi possivel publicar. Confira canal, cargos e permissoes do bot.");
     } finally {
@@ -2740,7 +2765,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManage || !guild} onClick={() => setDraft(createEmptyHierarchyPanel(guild?.id ?? "", botId))} size="sm" type="button" variant="outline">Novo painel</Button>
             <Button disabled={!canManage || !draft || saving} onClick={() => void savePanel()} size="sm" type="button">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button>
-            <Button disabled={!canManage || !draft || draft.id === "new" || saving} onClick={() => void publishPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Publicar</Button>
+            <Button disabled={!canManage || !draft || saving} onClick={() => void publishPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Salvar e publicar</Button>
           </div>
         </div>
       </CardHeader>
@@ -2787,18 +2812,28 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
                 </div>
               </div>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-white">Hierarquias cadastradas</p>
-                  <Button disabled={!canManage} onClick={addHierarchy} size="sm" type="button" variant="outline">Adicionar hierarquia</Button>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Cargos exibidos no painel</p>
+                    <p className="mt-1 text-xs text-zinc-500">Escolha um cargo do Discord e defina o nome da funcao que aparecera acima dos membros.</p>
+                  </div>
+                  <Button disabled={!canManage} onClick={addHierarchy} size="sm" type="button" variant="outline">Adicionar cargo</Button>
                 </div>
                 {draft.hierarchies.map((item, index) => (
-                  <div className="grid gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 md:grid-cols-[80px_1fr_1fr_90px]" key={item.id}>
+                  <div className="grid gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 md:grid-cols-[1.2fr_1fr_80px_90px_auto]" key={item.id}>
+                    <RoleSelect disabled={!canManage} label="Cargo do Discord" onChange={(value) => patchHierarchy(index, { roleId: value })} roles={roles} value={item.roleId} />
+                    <TicketField disabled={!canManage} label="Exibir como" onChange={(value) => patchHierarchy(index, { name: value })} value={item.name} />
                     <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchHierarchy(index, { emoji: value })} value={item.emoji ?? ""} />
-                    <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchHierarchy(index, { name: value })} value={item.name} />
-                    <RoleSelect disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchHierarchy(index, { roleId: value })} roles={roles} value={item.roleId} />
                     <TicketField disabled={!canManage} label="Ordem" onChange={(value) => patchHierarchy(index, { order: Number(value) || index + 1 })} value={String(item.order)} />
+                    <div className="flex items-end">
+                      <Button disabled={!canManage} onClick={() => removeHierarchy(index)} size="icon" title="Remover cargo" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
+                    </div>
                   </div>
                 ))}
+                {!draft.hierarchies.length ? <div className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">Nenhum cargo configurado. Clique em Adicionar cargo para comecar.</div> : null}
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-xs text-emerald-100">
+                  Depois de salvar e publicar, quem receber ou perder um desses cargos entra ou sai automaticamente do painel no Discord.
+                </div>
               </div>
               {draft.id !== "new" ? <Button disabled={!canManage || saving} onClick={() => void removePanel()} size="sm" type="button" variant="destructive"><Trash2 className="mr-2 h-4 w-4" />Excluir painel</Button> : null}
             </div>
@@ -4203,6 +4238,33 @@ function SettingsView({
           guild={guild}
         />
       </div>
+    );
+  }
+
+  if (enabledModules.includes("server-generator")) {
+    blocks.push(
+      <Card key="server-generator">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Server className="h-5 w-5 text-red-300" />Apagar canais e cargos</CardTitle>
+          <CardDescription>Ferramenta de limpeza total disponibilizada pelo comando /delete-serve.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            Este comando apaga todos os canais e cargos editaveis. Por seguranca, somente o dono do servidor pode executar.
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3">
+              <p className="text-xs text-zinc-500">Comando</p>
+              <p className="mt-1 font-mono text-sm text-white">/delete-serve</p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3">
+              <p className="text-xs text-zinc-500">Confirmacao obrigatoria</p>
+              <p className="mt-1 font-mono text-sm text-white">APAGAR TUDO</p>
+            </div>
+          </div>
+          <p className="text-xs text-zinc-500">O bot precisa das permissoes Gerenciar Canais e Gerenciar Cargos e ignora itens acima do cargo dele.</p>
+        </CardContent>
+      </Card>
     );
   }
 

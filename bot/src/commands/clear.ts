@@ -1,6 +1,5 @@
 import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
-import { requireModerationLogDestination } from "../services/moderationLogGuard";
 
 type BulkDeletableChannel = {
   bulkDelete: (messages: ClearableMessage[], filterOld?: boolean) => Promise<{ size: number }>;
@@ -24,7 +23,6 @@ export const clearCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("clear")
     .setDescription("Apaga mensagens recentes do canal.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addIntegerOption((option) =>
       option
         .setName("quantidade")
@@ -33,7 +31,6 @@ export const clearCommand: BotCommand = {
         .setMaxValue(100)
         .setRequired(true)
     ),
-  moduleId: "moderation",
   async execute(interaction, context) {
     if (!interaction.guild) {
       await interaction.reply({
@@ -46,31 +43,6 @@ export const clearCommand: BotCommand = {
     await interaction.deferReply({
       ephemeral: true
     });
-
-    const authorization = await authorizeClearCommand(interaction, context);
-
-    if (!authorization.allowed) {
-      await interaction.editReply({
-        content: `O /clear esta bloqueado neste servidor: ${authorization.reason}`
-      });
-      return;
-    }
-
-    const logDestination = await requireModerationLogDestination(interaction, context);
-
-    if (!logDestination) {
-      return;
-    }
-
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
-      await logClearDiagnostic(context, interaction, "moderation.clear.permission_denied", "Usuário sem permissão Gerenciar Mensagens tentou usar /clear.", {
-        reasonCode: "user_missing_manage_messages"
-      });
-      await interaction.editReply({
-        content: "Você precisa da permissão Gerenciar Mensagens para usar este comando."
-      });
-      return;
-    }
 
     const channel = interaction.channel;
     const amount = interaction.options.getInteger("quantidade", true);
@@ -134,47 +106,6 @@ export const clearCommand: BotCommand = {
     });
   }
 };
-
-async function authorizeClearCommand(interaction: ChatInputCommandInteraction, context: BotContext) {
-  try {
-    const authorization = await context.api.authorizeCommand({
-      channelId: interaction.channelId,
-      commandName: CLEAR_COMMAND_NAME,
-      guildId: interaction.guild!.id,
-      userId: interaction.user.id
-    });
-
-    console.log(
-      `[clear] dashboard auth guild=${interaction.guild!.id} user=${interaction.user.id} allowed=${authorization.allowed} reason=${authorization.reasonCode}`
-    );
-
-    return authorization;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    console.warn(
-      `[clear] falha de comunicacao com a dashboard guild=${interaction.guild!.id} user=${interaction.user.id}:`,
-      message
-    );
-    await logClearDiagnostic(context, interaction, "moderation.clear.authorization_failed", "Falha ao validar /clear na dashboard.", {
-      error: message,
-      policy: "fail_closed",
-      reasonCode: "dashboard_unavailable"
-    });
-
-    return {
-      allowed: false,
-      botId: null,
-      checkedAt: new Date().toISOString(),
-      commandName: CLEAR_COMMAND_NAME,
-      guildId: interaction.guild!.id,
-      moduleId: "moderation",
-      policy: "fail_closed" as const,
-      reason: "não consegui comunicar com a dashboard para validar a licença.",
-      reasonCode: "dashboard_unavailable"
-    };
-  }
-}
 
 async function logClearDiagnostic(
   context: BotContext,

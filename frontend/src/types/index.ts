@@ -615,7 +615,7 @@ export type SelfBotProtectionResponse = {
 export type SafeBotWarningAction = "record_only" | "dm" | "channel_message" | "add_role" | "remove_role" | "timeout" | "kick" | "ban" | "notify_staff" | "open_ticket" | "block_channels" | "custom";
 export type SafeBotWarningLevel = {
   id: string; number: number; name: string; description: string; defaultReason: string;
-  action: SafeBotWarningAction | null; durationSeconds: number | null; roleId: string | null;
+  action: SafeBotWarningAction | null; actions?: SafeBotWarningAction[]; durationSeconds: number | null; roleId: string | null;
   channelId: string | null; targetChannelIds: string[]; logChannelId: string | null;
   userMessage: string; staffMessage: string; customAction: string; enabled: boolean;
 };

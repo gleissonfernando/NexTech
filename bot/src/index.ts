@@ -33,7 +33,7 @@ const needsMessageEvents = needsLegacyMessageModeration
   || isBotModuleEnabled("temporary-voice")
   || needsMessageLogs;
 
-if (needsTagVerification || (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents)) {
+if (needsTagVerification || (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) || managedRuntimeBot || isBotModuleEnabled("fivem-hierarchy")) {
   intents.push(GatewayIntentBits.GuildMembers);
 }
 

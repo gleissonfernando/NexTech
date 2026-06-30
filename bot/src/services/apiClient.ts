@@ -531,7 +531,7 @@ export type SelfBotProtectionIncident = {
 export type SafeBotWarningAction = "record_only" | "dm" | "channel_message" | "add_role" | "remove_role" | "timeout" | "kick" | "ban" | "notify_staff" | "open_ticket" | "block_channels" | "custom";
 export type SafeBotWarningLevel = {
   id: string; number: number; name: string; description: string; defaultReason: string;
-  action: SafeBotWarningAction | null; durationSeconds: number | null; roleId: string | null;
+  action: SafeBotWarningAction | null; actions?: SafeBotWarningAction[]; durationSeconds: number | null; roleId: string | null;
   channelId: string | null; targetChannelIds: string[]; logChannelId: string | null;
   userMessage: string; staffMessage: string; customAction: string; enabled: boolean;
 };
@@ -547,7 +547,8 @@ export type SafeBotWarningPreview = {
 };
 export type SafeBotWarningRecord = {
   id: string; botId: string; guildId: string; userId: string; username: string | null;
-  staffId: string; staffName: string | null; reason: string; warningNumber: number;
+  staffId: string; staffName: string | null; reason: string; warningNumber: number; infractionNumber?: number;
+  idempotencyKey?: string | null; channelId?: string | null; ruleId?: string | null; ruleName?: string | null;
   level: SafeBotWarningLevel | null; configuredAction: SafeBotWarningAction | null;
   executedAction: string | null; status: "pending" | "recorded" | "success" | "failed" | "removed";
   error: string | null; createdAt: string; updatedAt: string;
@@ -1601,7 +1602,7 @@ export class ApiClient {
     return data;
   }
 
-  async issueSafeBotWarning(guildId: string, input: { userId: string; username?: string | null; staffId: string; staffName?: string | null; reason?: string | null }) {
+  async issueSafeBotWarning(guildId: string, input: { userId: string; username?: string | null; staffId: string; staffName?: string | null; reason?: string | null; idempotencyKey?: string | null; channelId?: string | null; ruleId?: string | null; ruleName?: string | null }) {
     const { data } = await this.http.post<{ warning: SafeBotWarningRecord }>(`/self-bot-protection/bot/${guildId}/warnings`, input);
     return data.warning;
   }

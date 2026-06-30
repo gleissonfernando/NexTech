@@ -338,8 +338,9 @@ function WarningLevelEditor({
   onMoveUp?: () => void;
 }) {
   const patch = (next: Partial<SafeBotWarningLevel>) => onChange({ ...level, ...next });
-  const needsRole = level.action === "add_role" || level.action === "remove_role";
-  const needsChannel = level.action === "channel_message" || level.action === "notify_staff" || level.action === "open_ticket" || level.action === "custom";
+  const selectedActions = level.actions ?? (level.action ? [level.action] : []);
+  const needsRole = selectedActions.some((action) => action === "add_role" || action === "remove_role");
+  const needsChannel = selectedActions.some((action) => action === "channel_message" || action === "notify_staff" || action === "open_ticket" || action === "custom");
 
   return (
     <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/65 p-4">
@@ -355,7 +356,16 @@ function WarningLevelEditor({
       <div className="grid gap-3 md:grid-cols-2">
         <Text disabled={disabled} label="Descrição" onChange={(description) => patch({ description })} value={level.description} />
         <Text disabled={disabled} label="Motivo padrão" onChange={(defaultReason) => patch({ defaultReason })} value={level.defaultReason} />
-        <Select disabled={disabled} label="Ação configurada" onChange={(value) => patch({ action: value ? value as SafeBotWarningAction : null })} options={actions.map((action) => ({ value: action.id, label: action.label }))} value={level.action ?? ""} />
+        <div className="md:col-span-2">
+          <p className="mb-2 text-sm font-medium text-zinc-200">Ações configuradas (podem ser combinadas)</p>
+          <div className="grid gap-2 rounded-lg border border-zinc-800 p-3 sm:grid-cols-2">
+            {actions.filter((item) => item.id).map((item) => {
+              const selected = level.actions ?? (level.action ? [level.action] : []);
+              const actionId = item.id as SafeBotWarningAction;
+              return <label className="flex items-center gap-2 text-sm" key={item.id}><input checked={selected.includes(actionId)} disabled={disabled} onChange={() => { const next = selected.includes(actionId) ? selected.filter((action) => action !== actionId) : [...selected, actionId]; patch({ actions: next, action: next[0] ?? null }); }} type="checkbox" />{item.label}</label>;
+            })}
+          </div>
+        </div>
         <Select disabled={disabled} label="Canal de logs" onChange={(value) => patch({ logChannelId: value || null })} options={channels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))} value={level.logChannelId ?? ""} />
       </div>
 
@@ -375,7 +385,7 @@ function WarningLevelEditor({
 }
 
 function newLevel(number: number, name = `Advertência ${number}`): SafeBotWarningLevel {
-  return { id: crypto.randomUUID(), number, name, description: "", defaultReason: "", action: null, durationSeconds: null, roleId: null, channelId: null, targetChannelIds: [], logChannelId: null, userMessage: "", staffMessage: "", customAction: "", enabled: false };
+  return { id: crypto.randomUUID(), number, name, description: "", defaultReason: "", action: null, actions: [], durationSeconds: null, roleId: null, channelId: null, targetChannelIds: [], logChannelId: null, userMessage: "", staffMessage: "", customAction: "", enabled: false };
 }
 
 function Select({ label, value, disabled, onChange, options }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {

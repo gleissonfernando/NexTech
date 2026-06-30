@@ -26,6 +26,8 @@ import type {
   SelfBotPunishmentAction
 } from "./apiClient";
 import { isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
+import { applyAutomaticSafeBotInfraction } from "./safeBotWarningService";
+import { canModerateMessage, getModerationSettings } from "./moderationChannelPolicy";
 
 const MODULE_ID = "safe-bot";
 const SELF_BOT_ROLE_NAME = "Self Bot";
@@ -135,7 +137,7 @@ async function reconcileSafeBotSetup(guild: Guild, context: BotContext, knownSet
     return null;
   }
 
-  const protectionSettings = await context.api.getSelfBotProtectionSettings(guild.id).catch((error) => {
+  const protectionSettings = await getModerationSettings(guild.id, context).catch((error) => {
     console.warn("[safe-bot] nao foi possivel carregar configuracao avancada:", errorMessage(error));
     return null;
   });
@@ -296,6 +298,7 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
   if (!shouldCheckSelfBotRuntime() || !message.guild || message.author.bot) {
     return false;
   }
+  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
 
   if (!(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
     return false;
@@ -372,7 +375,8 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
   }
 
   if (message.channelId === runtime.filterChannelId) {
-    const punishment = await applyFilterChannelPunishment(context, member, message, runtime);
+    const punishment = await applyProgressivePunishment(message, context, "filter-channel", "Canal exclusivo do SafeBot", "Mensagem enviada no canal exclusivo do SafeBot.")
+      ?? await applyFilterChannelPunishment(context, member, message, runtime);
     await Promise.allSettled([
       sendFilterLog(message, runtime, punishment),
       recordSafeBotIncident(context, message, runtime, {
@@ -407,7 +411,8 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
       return false;
     }
 
-    const punishment = await applyConfiguredPunishment(
+    const punishment = await applyProgressivePunishment(message, context, detected.moduleId, detected.label, `SafeBot: ${detected.label} enviado por usuário marcado.`)
+      ?? await applyConfiguredPunishment(
       context,
       member,
       message,
@@ -445,7 +450,8 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
       return false;
     }
 
-    const punishment = await applyConfiguredPunishment(context, member, message, runtime, flood.moduleId, `SafeBot: ${flood.reason}`, flood.messages);
+    const punishment = await applyProgressivePunishment(message, context, flood.moduleId, flood.reason, `SafeBot: ${flood.reason}`)
+      ?? await applyConfiguredPunishment(context, member, message, runtime, flood.moduleId, `SafeBot: ${flood.reason}`, flood.messages);
     await Promise.allSettled([
       sendFloodLog(message, runtime, flood.reason, punishment),
       recordSafeBotIncident(context, message, runtime, {
@@ -461,6 +467,17 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
   }
 
   return false;
+}
+
+async function applyProgressivePunishment(message: Message, context: BotContext, ruleId: string, ruleName: string, reason: string): Promise<SequencePunishmentOutcome | null> {
+  const warning = await applyAutomaticSafeBotInfraction(message, context, { id: ruleId, name: ruleName, reason });
+  if (!warning) return null;
+  return {
+    actions: ["warn"],
+    succeeded: warning.status !== "failed",
+    error: warning.error,
+    step: null
+  };
 }
 
 async function applyFilterChannelPunishment(

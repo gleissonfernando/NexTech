@@ -135,6 +135,7 @@ const warningLevelSchema = z.object({
   description: z.string().max(500).optional().default(""),
   defaultReason: z.string().max(500).optional().default(""),
   action: warningActionSchema.nullable().optional().default(null),
+  actions: z.array(warningActionSchema).max(20).optional().default([]),
   durationSeconds: z.coerce.number().int().min(5).max(2_419_200).nullable().optional().default(null),
   roleId: optionalSnowflakeSchema,
   channelId: optionalSnowflakeSchema,
@@ -158,7 +159,11 @@ const issueWarningSchema = z.object({
   username: z.string().max(120).nullable().optional(),
   staffId: snowflakeSchema,
   staffName: z.string().max(120).nullable().optional(),
-  reason: z.string().max(500).nullable().optional()
+  reason: z.string().max(500).nullable().optional(),
+  idempotencyKey: z.string().min(1).max(160).nullable().optional(),
+  channelId: optionalSnowflakeSchema,
+  ruleId: z.string().max(80).nullable().optional(),
+  ruleName: z.string().max(120).nullable().optional()
 });
 const warningOutcomeSchema = z.object({ success: z.boolean(), executedAction: z.string().max(500).nullable().optional(), error: z.string().max(500).nullable().optional() });
 const warningNoteSchema = z.object({ note: z.string().max(2000) });

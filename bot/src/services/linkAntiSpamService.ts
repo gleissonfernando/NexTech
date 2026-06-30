@@ -3,6 +3,7 @@ import { isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import { logModeration } from "./logService";
 import { isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
+import { canModerateMessage } from "./moderationChannelPolicy";
 
 type UserLinkWindow = {
   expiresAt: number;
@@ -20,6 +21,7 @@ export async function handleLinkAntiSpamMessage(message: Message, context: BotCo
   if (!message.guild || message.author.bot) {
     return false;
   }
+  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
 
   if (!(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
     return false;

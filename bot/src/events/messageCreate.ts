@@ -8,6 +8,7 @@ import { handleTemporaryVoiceMessage } from "../services/temporaryVoiceService";
 import { handleFivemGoalMessage } from "../services/fivemGoalService";
 import type { BotContext } from "../types";
 import { isBotModuleEnabled } from "../config/env";
+import { canModerateMessage } from "../services/moderationChannelPolicy";
 
 const MUSIC_PREFIX_COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
 
@@ -20,16 +21,12 @@ export async function handleMessageCreate(message: Message, context: BotContext)
     return;
   }
 
-  const safeBotBlocked = await handleSafeBotMessage(message, context);
-
-  if (safeBotBlocked) {
-    return;
-  }
-
-  const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
-
-  if (selfBotBlocked) {
-    return;
+  const moderation = await canModerateMessage(message, context, "message-create");
+  if (!moderation.ignored) {
+    const safeBotBlocked = await handleSafeBotMessage(message, context);
+    if (safeBotBlocked) return;
+    const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
+    if (selfBotBlocked) return;
   }
 
   if (isPotentialMusicMessage(message.content) && isBotModuleEnabled("music")) {
@@ -46,6 +43,8 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   if (isSelfBotModuleEnabled()) {
     return;
   }
+
+  if (moderation.ignored) return;
 
   const imageBlocked = await handleImageAntiSpamMessage(message, context);
 

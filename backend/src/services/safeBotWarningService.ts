@@ -110,6 +110,10 @@ export async function issueSafeBotWarning(input: {
   staffId: string;
   staffName?: string | null;
   reason?: string | null;
+  idempotencyKey?: string | null;
+  channelId?: string | null;
+  ruleId?: string | null;
+  ruleName?: string | null;
 }) {
   const { safeBotWarningRecords, safeBotWarningUsers } = await getMongoCollections();
   const settings = await getSafeBotWarningSettings(input.guildId, input.botId);
@@ -117,16 +121,26 @@ export async function issueSafeBotWarning(input: {
   if (!settings.levels.length) throw warningError("Nenhum nível de advertência foi configurado.", 409);
 
   const now = new Date();
+  const idempotencyKey = cleanText(input.idempotencyKey, 160);
+  if (idempotencyKey) {
+    const existing = await safeBotWarningRecords.findOne({ botId: input.botId, guildId: input.guildId, idempotencyKey });
+    if (existing) return toRecordDto(existing);
+  }
   const user = await safeBotWarningUsers.findOneAndUpdate(
-    { botId: input.botId, guildId: input.guildId, userId: input.userId },
+    { botId: input.botId, guildId: input.guildId, userId: input.userId, ...(idempotencyKey ? { recentEventKeys: { $ne: idempotencyKey } } : {}) },
     {
-      $inc: { totalWarnings: 1 },
-      $set: { username: input.username ?? null, updatedAt: now },
-      $setOnInsert: { _id: randomUUID(), botId: input.botId, guildId: input.guildId, userId: input.userId, internalNote: "", createdAt: now }
+      $inc: { totalWarnings: 1, totalInfractions: 1 },
+      $set: { username: input.username ?? null, updatedAt: now, lastInfractionAt: now, lastRuleId: cleanText(input.ruleId, 80) },
+      ...(idempotencyKey ? { $push: { recentEventKeys: { $each: [idempotencyKey], $slice: -100 } } } : {}),
+      $setOnInsert: { _id: randomUUID(), botId: input.botId, guildId: input.guildId, userId: input.userId, internalNote: "", firstInfractionAt: now, lastPunishment: null, createdAt: now }
     },
     { upsert: true, returnDocument: "after" }
   );
-  if (!user) throw warningError("Não foi possível atualizar o contador de advertências.", 500);
+  if (!user) {
+    const existing = idempotencyKey ? await safeBotWarningRecords.findOne({ botId: input.botId, guildId: input.guildId, idempotencyKey }) : null;
+    if (existing) return toRecordDto(existing);
+    throw warningError("Esta infração já está sendo processada.", 409);
+  }
 
   const resolution = resolveLevel(settings, user.totalWarnings);
   if (resolution.blocked) {
@@ -136,8 +150,9 @@ export async function issueSafeBotWarning(input: {
 
   const level = resolution.level;
   const reason = cleanText(input.reason, 500) || level?.defaultReason || "Nenhum motivo informado.";
-  const configuredAction = level?.enabled === true ? level.action : null;
+  const configuredAction = level?.enabled === true ? (level.actions?.[0] ?? level.action) : null;
   const validationError = validateLevelExecution(level, settings.defaultLogChannelId);
+  const hasExecutableAction = Boolean(level?.enabled && (level.actions?.length ? level.actions : [level.action]).some((item) => item && item !== "record_only"));
   const record: MongoSafeBotWarningRecord = {
     _id: randomUUID(),
     botId: input.botId,
@@ -147,11 +162,16 @@ export async function issueSafeBotWarning(input: {
     staffId: input.staffId,
     staffName: input.staffName ?? null,
     reason,
+    idempotencyKey,
+    channelId: normalizeOptionalId(input.channelId, null),
+    ruleId: cleanText(input.ruleId, 80),
+    ruleName: cleanText(input.ruleName, 120),
+    infractionNumber: user.totalInfractions,
     warningNumber: user.totalWarnings,
     level: level ?? null,
     configuredAction,
     executedAction: null,
-    status: configuredAction && configuredAction !== "record_only" && !validationError ? "pending" : validationError ? "failed" : "recorded",
+    status: hasExecutableAction && !validationError ? "pending" : validationError ? "failed" : "recorded",
     error: validationError,
     removedBy: null,
     removedAt: null,
@@ -192,7 +212,7 @@ export async function getSafeBotWarningDashboard(guildId: string, botId: string)
   ]);
   return {
     settings,
-    users: users.map((user) => ({ ...user, id: user._id, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() })),
+    users: users.map((user) => ({ ...user, id: user._id, totalInfractions: user.totalInfractions ?? user.totalWarnings ?? 0, firstInfractionAt: user.firstInfractionAt?.toISOString() ?? null, lastInfractionAt: user.lastInfractionAt?.toISOString() ?? null, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() })),
     warnings: warnings.map(toRecordDto)
   };
 }
@@ -256,16 +276,18 @@ function resolveLevel(settings: SafeBotWarningSettings, warningNumber: number) {
 }
 
 function validateLevelExecution(level: SafeBotWarningLevel | null, defaultLogChannelId: string | null) {
-  if (!level?.enabled || !level.action || level.action === "record_only") return null;
+  if (!level?.enabled) return null;
+  const actions = level.actions?.length ? level.actions : level.action ? [level.action] : [];
+  if (!actions.some((action) => action !== "record_only")) return null;
   if (!(level.logChannelId || defaultLogChannelId)) return "Nenhum canal de logs de advertência foi configurado; nenhuma ação automática foi executada.";
-  if ((level.action === "dm") && !level.userMessage) return "The private user message is not configured.";
-  if (level.action === "channel_message" && !level.userMessage) return "The channel message is not configured.";
-  if (["notify_staff", "open_ticket"].includes(level.action) && !level.staffMessage) return "The staff message is not configured.";
-  if (["channel_message", "notify_staff", "open_ticket", "custom"].includes(level.action) && !level.channelId) return "The action channel is not configured.";
-  if (["add_role", "remove_role"].includes(level.action) && !level.roleId) return "The action role is not configured.";
-  if (level.action === "timeout" && (!level.durationSeconds || level.durationSeconds < 5)) return "The timeout duration is invalid or missing.";
-  if (level.action === "block_channels" && !level.targetChannelIds.length) return "No channels are configured to be blocked.";
-  if (level.action === "custom" && !level.customAction) return "The custom punishment description is not configured.";
+  if (actions.includes("dm") && !level.userMessage) return "The private user message is not configured.";
+  if (actions.includes("channel_message") && !level.userMessage) return "The channel message is not configured.";
+  if (actions.some((action) => ["notify_staff", "open_ticket"].includes(action)) && !level.staffMessage) return "The staff message is not configured.";
+  if (actions.some((action) => ["channel_message", "notify_staff", "open_ticket", "custom"].includes(action)) && !level.channelId) return "The action channel is not configured.";
+  if (actions.some((action) => ["add_role", "remove_role"].includes(action)) && !level.roleId) return "The action role is not configured.";
+  if (actions.includes("timeout") && (!level.durationSeconds || level.durationSeconds < 5)) return "The timeout duration is invalid or missing.";
+  if (actions.includes("block_channels") && !level.targetChannelIds.length) return "No channels are configured to be blocked.";
+  if (actions.includes("custom") && !level.customAction) return "The custom punishment description is not configured.";
   return null;
 }
 
@@ -286,6 +308,7 @@ function normalizeLevel(level: SafeBotWarningLevel, fallbackNumber: number): Saf
     description: cleanText(level.description, 500) || "",
     defaultReason: cleanText(level.defaultReason, 500) || "",
     action,
+    actions: [...new Set((level.actions ?? (action ? [action] : [])).filter((item) => SAFE_BOT_WARNING_ACTIONS.includes(item)))],
     durationSeconds: level.durationSeconds ? Math.max(5, Math.min(2_419_200, Number(level.durationSeconds))) : null,
     roleId: normalizeOptionalId(level.roleId, null),
     channelId: normalizeOptionalId(level.channelId, null),

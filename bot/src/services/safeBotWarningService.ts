@@ -13,9 +13,42 @@ import {
 } from "discord.js";
 import type { SafeBotWarningLevel, SafeBotWarningRecord, SafeBotWarningSettings } from "./apiClient";
 import type { BotContext } from "../types";
+import type { Message } from "discord.js";
 
 const PREFIX = "safe_warning";
 const confirmations = new Map<string, { guildId: string; userId: string; reason: string; staffId: string; expiresAt: number }>();
+
+export async function applyAutomaticSafeBotInfraction(
+  message: Message,
+  context: BotContext,
+  rule: { id: string; name: string; reason: string }
+) {
+  const guild = message.guild;
+  if (!guild) return null;
+  const settings = await context.api.getSafeBotWarningSettings(guild.id);
+  if (!settings.enabled || !settings.levels.some((level) => level.enabled)) return null;
+  const target = await guild.members.fetch(message.author.id).catch(() => null);
+  const botMember = guild.members.me;
+  if (!target || !botMember) return null;
+
+  const warning = await context.api.issueSafeBotWarning(guild.id, {
+    userId: target.id,
+    username: target.user.tag,
+    staffId: botMember.id,
+    staffName: botMember.user.tag,
+    reason: rule.reason,
+    idempotencyKey: `message:${message.id}:${rule.id}`,
+    channelId: message.channelId,
+    ruleId: rule.id,
+    ruleName: rule.name
+  });
+  const outcome = await executeConfiguredAction(warning, settings, target, botMember);
+  const completed = warning.status === "pending"
+    ? await context.api.completeSafeBotWarning(guild.id, warning.id, outcome)
+    : warning;
+  await sendWarningLog(completed, settings, target, botMember);
+  return completed;
+}
 
 export async function prepareSafeBotWarning(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) {
@@ -157,8 +190,10 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
     return { success: warning.status !== "failed", executedAction: "Apenas registrada", error: warning.error };
   }
   const level = warning.level;
-  const action = warning.configuredAction;
+  const configuredActions = level.actions?.length ? level.actions : [warning.configuredAction];
+  const executed: string[] = [];
   try {
+    for (const action of configuredActions) {
     if (["timeout", "kick", "ban", "add_role", "remove_role"].includes(action)) assertTargetHierarchy(target);
     if (action === "dm") await target.send(render(level.userMessage, warning, target, staff));
     if (action === "channel_message" || action === "notify_staff") await sendConfiguredChannel(level, render(action === "notify_staff" ? level.staffMessage : level.userMessage, warning, target, staff), target);
@@ -185,10 +220,12 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
       }
     }
     if (action === "custom") await sendConfiguredChannel(level, render(level.customAction, warning, target, staff), target);
-    if (level.userMessage && action !== "dm" && !["kick", "ban"].includes(action)) await target.send(render(level.userMessage, warning, target, staff)).catch(() => null);
-    return { success: true, executedAction: actionLabel(action), error: null };
+    executed.push(actionLabel(action));
+    }
+    if (level.userMessage && !configuredActions.includes("dm") && !configuredActions.some((action) => ["kick", "ban"].includes(action))) await target.send(render(level.userMessage, warning, target, staff)).catch(() => null);
+    return { success: true, executedAction: executed.join(", "), error: null };
   } catch (error) {
-    return { success: false, executedAction: actionLabel(action), error: error instanceof Error ? error.message : String(error) };
+    return { success: false, executedAction: executed.join(", ") || "Nenhuma", error: error instanceof Error ? error.message : String(error) };
   }
 }
 

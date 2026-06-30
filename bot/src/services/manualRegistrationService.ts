@@ -99,7 +99,18 @@ export async function handleManualRegistrationInteraction(interaction: Interacti
     return true;
   }
   if (interaction.isButton() && interaction.customId === `${PREFIX}:help`) {
-    await interaction.reply({ content: "Escolha o set, preencha os dados solicitados e aguarde a analise da equipe.", ephemeral: true });
+    await interaction.reply({
+      content: [
+        "## Como solicitar seu set",
+        "1. Clique em **Solicitar Set**.",
+        "2. Escolha o set desejado, quando houver mais de uma opcao.",
+        "3. Preencha todos os dados solicitados e envie o formulario.",
+        "4. Use **Meu Status** para acompanhar a analise.",
+        "",
+        "Se precisar corrigir alguma informacao, procure a equipe responsavel."
+      ].join("\n"),
+      ephemeral: true
+    });
     return true;
   }
   if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:modal:`)) {
@@ -401,18 +412,57 @@ async function canReview(interaction: ButtonInteraction | ModalSubmitInteraction
 
 function createPanelPayload(settings: ManualRegistrationSettings) {
   const imageUrl = resolveImageUrl(settings.panelImage?.imageUrl ?? null);
+  const thumbnailUrl = resolveImageUrl(settings.thumbnailUrl ?? null);
+  const availableSets = settings.setRoles.filter((item) => item.enabled && item.requestable).length;
   const components: Array<Record<string, unknown>> = [];
   if (imageUrl && settings.bannerPosition === "top") components.push(mediaGallery(imageUrl));
-  components.push({ type: 10, content: [`# ${settings.emoji ? `${settings.emoji} ` : ""}${settings.title}`, settings.description ?? "", settings.footerText ? `-# ${settings.footerText}` : ""].filter(Boolean).join("\n\n") });
+  const heading = {
+    type: 10,
+    content: [
+      `# ${settings.emoji ? `${settings.emoji} ` : ""}${settings.title}`,
+      settings.description || "Solicite seu set de forma rapida e acompanhe a analise da equipe."
+    ].join("\n\n")
+  };
+  components.push(thumbnailUrl ? {
+    type: 9,
+    components: [{
+      type: 10,
+      content: heading.content
+    }],
+    accessory: { type: 11, media: { url: thumbnailUrl } }
+  } : heading);
+  components.push({ type: 14, divider: true, spacing: 1 });
+  components.push({
+    type: 10,
+    content: [
+      "### Como funciona",
+      "`1` Clique em **Solicitar Set**.",
+      availableSets > 1 ? "`2` Escolha o set que deseja receber." : "`2` Confirme o set disponivel.",
+      "`3` Preencha o formulario com seus dados.",
+      "`4` Acompanhe o resultado em **Meu Status**."
+    ].join("\n")
+  });
+  components.push({ type: 14, divider: true, spacing: 1 });
+  components.push({
+    type: 10,
+    content: [
+      "### Informacoes importantes",
+      `> **Sets disponiveis:** ${availableSets || "definido pela equipe"}`,
+      "> **Analise:** realizada pela equipe responsavel",
+      settings.cooldownMinutes > 0 ? `> **Novo pedido:** liberado apos ${settings.cooldownMinutes} minuto(s)` : "> **Novo pedido:** sem tempo de espera",
+      "",
+      settings.footerText ? `-# ${settings.footerText}` : "-# Preencha os dados corretamente para evitar atrasos na analise."
+    ].join("\n")
+  });
   if (imageUrl && settings.bannerPosition === "bottom") components.push(mediaGallery(imageUrl));
   return {
     allowedMentions: { parse: [] as never[] },
     components: [
       { type: 17, accent_color: parseColor(settings.color), components },
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:start`).setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status`).setLabel("Ver Status").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status`).setEmoji("🔎").setLabel("Meu Status").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:help`).setEmoji("❔").setLabel("Como funciona").setStyle(ButtonStyle.Secondary)
       )
     ],
     flags: MessageFlags.IsComponentsV2 as const

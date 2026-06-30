@@ -13,6 +13,7 @@ import type {
   ImageAntiSpamSettings
 } from "./apiClient";
 import { clearRuntimeModuleAuthorization, isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
+import { canModerateMessage } from "./moderationChannelPolicy";
 
 type CachedSettings = {
   expiresAt: number;
@@ -89,14 +90,9 @@ export async function handleImageAntiSpamMessage(message: Message, context: BotC
   if (!message.guild || message.author.bot) {
     return false;
   }
+  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
 
   if (!isBotModuleEnabled(MODULE_ID) || !(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
-    return false;
-  }
-
-  const media = inspectMediaMessage(message);
-
-  if (media.mediaCount === 0) {
     return false;
   }
 
@@ -104,7 +100,7 @@ export async function handleImageAntiSpamMessage(message: Message, context: BotC
   const previous = processingQueues.get(key) ?? Promise.resolve(false);
   const next = previous
     .catch(() => false)
-    .then(() => processImageMessage(message, media, context))
+    .then(() => processImageMessage(message, context))
     .catch((error) => {
       console.warn("[image-anti-spam] falha ao processar mensagem:", errorMessage(error));
       return false;
@@ -119,7 +115,7 @@ export async function handleImageAntiSpamMessage(message: Message, context: BotC
   return next;
 }
 
-async function processImageMessage(message: Message, media: MediaSummary, context: BotContext) {
+async function processImageMessage(message: Message, context: BotContext) {
   const guild = message.guild;
 
   if (!guild) {
@@ -128,7 +124,7 @@ async function processImageMessage(message: Message, media: MediaSummary, contex
 
   const settings = await getCachedSettings(guild.id, context);
 
-  if (!settings.enabled || isIgnoredChannel(message, settings)) {
+  if (!settings.enabled) {
     return false;
   }
 
@@ -137,6 +133,9 @@ async function processImageMessage(message: Message, media: MediaSummary, contex
   if (!member || isImmune(member, settings)) {
     return false;
   }
+
+  const media = inspectMediaMessage(message);
+  if (media.mediaCount === 0) return false;
 
   const key = runtimeScopeKey(guild.id, message.author.id);
   const now = Date.now();
