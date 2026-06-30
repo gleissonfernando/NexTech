@@ -8,6 +8,7 @@ import {
   PermissionFlagsBits,
   TextInputBuilder,
   TextInputStyle,
+  type Attachment,
   type ButtonInteraction,
   type Guild,
   type Interaction,
@@ -18,7 +19,9 @@ import type { BotContext } from "../types";
 import type { FivemGoalSettings } from "./apiClient";
 
 const PREFIX = "fivem_goal";
-const pendingImages = new Map<string, { expiresAt: number; imageUrl: string }>();
+const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const pendingImages = new Map<string, { channelId: string; expiresAt: number; imageUrl: string; userId: string }>();
 
 export async function ensureFivemGoalChannelForUser(context: BotContext, guild: Guild, userId: string, username: string) {
   const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
@@ -55,16 +58,59 @@ export async function ensureFivemGoalChannelForUser(context: BotContext, guild: 
 
 export async function handleFivemGoalMessage(message: Message, context: BotContext) {
   if (!message.guild || message.author.bot || !message.attachments.size) return false;
-  const image = message.attachments.find((attachment) => attachment.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(attachment.url));
-  if (!image) return false;
-
   const goalChannel = await context.api.getFivemGoalChannelByChannel(message.channel.id).catch(() => null);
-  if (!goalChannel || goalChannel.userId !== message.author.id) return false;
+
+  if (!goalChannel) {
+    return false;
+  }
+
+  if (goalChannel.userId !== message.author.id) {
+    await message.reply("Essa call/canal de meta pertence a outro usuário. Envie sua foto apenas no seu canal individual de meta.").catch(() => null);
+    await context.api.postLog({
+      guildId: message.guild.id,
+      message: "Foto de meta enviada no canal individual errado.",
+      metadata: {
+        channelId: message.channel.id,
+        ownerId: goalChannel.userId
+      },
+      type: "fivem.goals.photo_wrong_channel",
+      userId: message.author.id
+    }).catch(() => null);
+    return true;
+  }
 
   const settings = await context.api.getFivemGoalSettings(message.guild.id).catch(() => null);
   if (!settings?.enabled) return false;
 
-  await message.reply(createImageReviewPayload(message.author.id, image.url));
+  const image = message.attachments.find(isAllowedGoalImage);
+
+  if (!image) {
+    await message.reply("Envie uma imagem válida em PNG, JPG, JPEG ou WEBP no seu canal de meta. Outros arquivos não são aceitos.").catch(() => null);
+    await context.api.postLog({
+      guildId: message.guild.id,
+      message: "Foto de meta recusada por formato inválido.",
+      metadata: {
+        channelId: message.channel.id,
+        attachmentCount: message.attachments.size,
+        allowedFormats: ["png", "jpg", "jpeg", "webp"]
+      },
+      type: "fivem.goals.photo_invalid",
+      userId: message.author.id
+    }).catch(() => null);
+    return true;
+  }
+
+  await message.reply(createImageReviewPayload(message.author.id, message.channel.id, image.url));
+  await context.api.postLog({
+    guildId: message.guild.id,
+    message: "Foto de meta recebida no canal individual.",
+    metadata: {
+      channelId: message.channel.id,
+      imageUrl: image.url
+    },
+    type: "fivem.goals.photo_received",
+    userId: message.author.id
+  }).catch(() => null);
   return true;
 }
 
@@ -87,6 +133,19 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
 async function showGoalModal(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
   const [, , imageToken] = interaction.customId.split(":");
+  const pending = pendingImages.get(imageToken ?? "");
+
+  if (!pending || pending.expiresAt < Date.now()) {
+    pendingImages.delete(imageToken ?? "");
+    await interaction.reply({ content: "Essa foto expirou. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
+    return;
+  }
+
+  if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
+    await interaction.reply({ content: "Somente o dono do canal de meta pode registrar essa foto, dentro do próprio canal.", ephemeral: true });
+    return;
+  }
+
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:${encodeURIComponent(imageToken ?? "")}`)
@@ -111,7 +170,20 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   if (!interaction.guild) return;
   await interaction.deferReply({ ephemeral: true });
   const token = interaction.customId.split(":")[2] ?? "";
-  const imageUrl = pendingImages.get(token)?.imageUrl ?? "";
+  const pending = pendingImages.get(token);
+
+  if (!pending || pending.expiresAt < Date.now()) {
+    pendingImages.delete(token);
+    await interaction.editReply("Essa foto expirou. Envie a imagem novamente no seu canal de meta.");
+    return;
+  }
+
+  if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
+    await interaction.editReply("Essa foto só pode ser registrada pelo dono, no canal individual de meta correto.");
+    return;
+  }
+
+  const imageUrl = pending.imageUrl;
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
   const fields = settings.fields.slice(0, 5).map((field) => ({
     id: field.id,
@@ -129,13 +201,25 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     quantity: Number.isFinite(quantity) ? quantity : null,
     userId: interaction.user.id
   });
+  pendingImages.delete(token);
+  await context.api.postLog({
+    guildId: interaction.guild.id,
+    message: "Meta registrada a partir de foto enviada no canal individual.",
+    metadata: {
+      channelId: interaction.channelId,
+      imageUrl,
+      quantity
+    },
+    type: "fivem.goals.entry_created",
+    userId: interaction.user.id
+  }).catch(() => null);
 
   await interaction.editReply("Meta registrada com sucesso.");
 }
 
-function createImageReviewPayload(userId: string, imageUrl: string) {
+function createImageReviewPayload(userId: string, channelId: string, imageUrl: string) {
   const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  pendingImages.set(token, { expiresAt: Date.now() + 60 * 60 * 1000, imageUrl });
+  pendingImages.set(token, { channelId, expiresAt: Date.now() + 60 * 60 * 1000, imageUrl, userId });
   cleanupPendingImages();
 
   return {
@@ -155,6 +239,11 @@ function createImageReviewPayload(userId: string, imageUrl: string) {
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function isAllowedGoalImage(attachment: Attachment) {
+  const contentType = attachment.contentType?.split(";")[0]?.toLowerCase() ?? "";
+  return ALLOWED_IMAGE_TYPES.has(contentType) || ALLOWED_IMAGE_EXTENSIONS.test(attachment.url);
 }
 
 function cleanupPendingImages() {

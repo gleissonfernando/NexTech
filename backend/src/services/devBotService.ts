@@ -49,6 +49,7 @@ export const DEV_MODULES = [
   { id: "logs", label: "Sistema de Logs" },
   { id: "roles", label: "Sistema de Cargos" },
   { id: "tickets", label: "Sistema de Tickets" },
+  { id: "manual-registration", label: "Cadastro Manual" },
   { id: "moderation", label: "Sistema de Moderacao" },
   { id: "rules", label: "Sistema de Regras" },
   { id: "mission-tools", label: "Mission Tools" },
