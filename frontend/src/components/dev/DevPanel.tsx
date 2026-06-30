@@ -12,6 +12,7 @@ import {
     Gamepad2,
     Hash,
     LayoutDashboard,
+    ListChecks,
     Link2,
     Loader2,
     LockKeyhole,
@@ -138,6 +139,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-orders", label: "FiveM - Sistema de Encomendas" },
   { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
+  { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalização" }
 ];
@@ -179,6 +181,7 @@ type BotMenuId =
   | "fivem-ammo"
   | "fivem-orders"
   | "fivem-finance"
+  | "fivem-goals"
   | "fivem-production"
   | "integrations";
 
@@ -394,6 +397,13 @@ const botMenuItems: BotMenuItem[] = [
         description: "Caixa e financeiro",
         icon: ScrollText,
         moduleIds: ["fivem-finance"]
+      },
+      {
+        id: "fivem-goals",
+        label: "Metas",
+        description: "Metas e producao",
+        icon: ListChecks,
+        moduleIds: ["fivem-goals"]
       },
       {
         id: "fivem-production",

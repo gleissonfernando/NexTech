@@ -185,6 +185,66 @@ export type MongoManualRegistrationSubmission = {
   username: string;
 };
 
+export type MongoFivemGoalField = {
+  id: string;
+  label: string;
+  maxLength?: number | null;
+  minLength?: number | null;
+  placeholder?: string | null;
+  required: boolean;
+  style: "short" | "paragraph";
+};
+
+export type MongoFivemGoalItem = {
+  category: string | null;
+  color: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type MongoFivemGoalSettings = {
+  _id: string;
+  botId: string | null;
+  categoryId: string | null;
+  channelNameTemplate: string;
+  enabled: boolean;
+  fields: MongoFivemGoalField[];
+  guildId: string;
+  items: MongoFivemGoalItem[];
+  logChannelId: string | null;
+  managerRoleId: string | null;
+  updatedAt: Date;
+  updatedBy?: string | null;
+  viewRoleId: string | null;
+};
+
+export type MongoFivemGoalUserChannel = {
+  _id: string;
+  botId: string | null;
+  channelId: string;
+  createdAt: Date;
+  guildId: string;
+  updatedAt: Date;
+  userId: string;
+};
+
+export type MongoFivemGoalEntry = {
+  _id: string;
+  botId: string | null;
+  channelId: string;
+  createdAt: Date;
+  fields: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  imageUrl: string;
+  itemId: string | null;
+  quantity: number | null;
+  updatedAt: Date;
+  userId: string;
+};
+
 export type MongoLogEntry = {
   _id: string;
   botId?: string | null;
@@ -1747,6 +1807,9 @@ export async function getMongoCollections() {
     tickets: db.collection<MongoTicket>("Ticket"),
     manualRegistrationSettings: db.collection<MongoManualRegistrationSettings>("manual_registration_settings"),
     manualRegistrationSubmissions: db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions"),
+    fivemGoalSettings: db.collection<MongoFivemGoalSettings>("fivem_goal_settings"),
+    fivemGoalUserChannels: db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels"),
+    fivemGoalEntries: db.collection<MongoFivemGoalEntry>("fivem_goal_entries"),
     logEntries: db.collection<MongoLogEntry>("LogEntry"),
     socialNotifications: db.collection<MongoSocialNotification>("social_notifications"),
     kickApiConfigs: db.collection<MongoKickApiConfig>("kick_api_configs"),
@@ -1866,6 +1929,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
       { botId: 1, guildId: 1, createdAt: -1 }
     ),
+    db.collection<MongoFivemGoalSettings>("fivem_goal_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, channelId: 1 }, { unique: true }),
+    db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoPanelImageSettings>("panel_image_settings").createIndex(
       { botId: 1, guildId: 1, panelId: 1 },

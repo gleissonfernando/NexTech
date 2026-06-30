@@ -635,6 +635,59 @@ export type ManualRegistrationDashboard = {
   submissions: ManualRegistrationSubmission[];
 };
 
+export type FivemGoalField = {
+  id: string;
+  label: string;
+  maxLength: number | null;
+  minLength: number | null;
+  placeholder: string | null;
+  required: boolean;
+  style: "short" | "paragraph";
+};
+
+export type FivemGoalItem = {
+  category: string | null;
+  color: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type FivemGoalSettings = {
+  botId: string | null;
+  categoryId: string | null;
+  channelNameTemplate: string;
+  enabled: boolean;
+  fields: FivemGoalField[];
+  guildId: string;
+  items: FivemGoalItem[];
+  logChannelId: string | null;
+  managerRoleId: string | null;
+  updatedAt: string | null;
+  viewRoleId: string | null;
+};
+
+export type FivemGoalEntry = {
+  botId: string | null;
+  channelId: string;
+  createdAt: string;
+  fields: Array<{ id: string; label: string; value: string }>;
+  guildId: string;
+  id: string;
+  imageUrl: string;
+  itemId: string | null;
+  quantity: number | null;
+  updatedAt: string;
+  userId: string;
+};
+
+export type FivemGoalDashboard = {
+  entries: FivemGoalEntry[];
+  settings: FivemGoalSettings;
+};
+
 export type GuildChannelOption = {
   id: string;
   name: string;

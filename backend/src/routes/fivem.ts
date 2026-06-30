@@ -2,7 +2,7 @@ import { Router, raw } from "express";
 import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
-import { areGuildAssignableRoles, areGuildRoles, getGuildLiveOptions, isGuildTextChannel, validateGuildPanelChannel } from "../services/discordOptionsService";
+import { areGuildAssignableRoles, areGuildRoles, getGuildLiveOptions, isGuildCategoryChannel, isGuildTextChannel, validateGuildPanelChannel } from "../services/discordOptionsService";
 import {
     approveFivemFacAbsence,
     closeFivemFacAbsence,
@@ -25,6 +25,16 @@ import {
     updateFivemFacPanelMessageState
 } from "../services/fivemFacService";
 import { listFivemModules } from "../services/fivemModuleService";
+import {
+  createFivemGoalEntry,
+  FIVEM_GOALS_MODULE_ID,
+  getFivemGoalSettings,
+  getFivemGoalUserChannelByChannel,
+  getFivemGoalUserChannelByUser,
+  listFivemGoalEntries,
+  saveFivemGoalSettings,
+  upsertFivemGoalUserChannel
+} from "../services/fivemGoalService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import type { AuthSessionUser } from "../types/session";
 
@@ -81,6 +91,48 @@ const createAbsenceSchema = z.object({
   startDate: dateOnlySchema,
   endDate: dateOnlySchema,
   notes: z.string().max(1000).nullable().optional()
+});
+const goalFieldSchema = z.object({
+  id: z.string().max(80),
+  label: z.string().min(1).max(80),
+  maxLength: z.coerce.number().int().min(1).max(1500).nullable().optional().default(null),
+  minLength: z.coerce.number().int().min(0).max(1500).nullable().optional().default(null),
+  placeholder: z.string().max(100).nullable().optional().default(null),
+  required: z.boolean(),
+  style: z.enum(["short", "paragraph"])
+});
+const goalItemSchema = z.object({
+  category: z.string().max(80).nullable().optional().default(null),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional().default(null),
+  emoji: z.string().max(80).nullable().optional().default(null),
+  enabled: z.boolean(),
+  id: z.string().max(80),
+  name: z.string().min(1).max(80),
+  order: z.coerce.number().int().min(0).max(10000)
+});
+const goalSettingsSchema = z.object({
+  categoryId: optionalSnowflakeSchema,
+  channelNameTemplate: z.string().max(80).optional(),
+  enabled: z.boolean().optional(),
+  fields: z.array(goalFieldSchema).max(5).optional(),
+  items: z.array(goalItemSchema).max(100).optional(),
+  logChannelId: optionalSnowflakeSchema,
+  managerRoleId: optionalSnowflakeSchema,
+  viewRoleId: optionalSnowflakeSchema
+});
+const goalUserChannelSchema = z.object({
+  channelId: snowflakeSchema,
+  guildId: guildIdSchema,
+  userId: snowflakeSchema
+});
+const goalEntrySchema = z.object({
+  channelId: snowflakeSchema,
+  fields: z.array(z.object({ id: z.string().max(80), label: z.string().max(100), value: z.string().max(1500) })).max(5),
+  guildId: guildIdSchema,
+  imageUrl: z.string().max(2048),
+  itemId: z.string().max(80).nullable().optional(),
+  quantity: z.coerce.number().nullable().optional(),
+  userId: snowflakeSchema
 });
 const userAbsenceSchema = z.object({
   guildId: guildIdSchema,
@@ -146,6 +198,88 @@ fivemRouter.get("/:guildId/fac/options", requireAuth, async (req, res, next) => 
     return res.json({
       options: await getGuildLiveOptions(guildId, await getDevBotToken(botId))
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/:guildId/goals", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId) throw createRouteError("Selecione um bot DEV para acessar metas FiveM.", 400);
+    await assertCanReadFivemGoals(res.locals.dashboardAuth.user, guildId, botId);
+    return res.json({
+      entries: await listFivemGoalEntries(guildId, botId),
+      settings: await getFivemGoalSettings(guildId, botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.patch("/:guildId/goals", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId) throw createRouteError("Selecione um bot DEV para configurar metas FiveM.", 400);
+    await assertCanManageFivemGoals(res.locals.dashboardAuth.user, guildId, botId);
+    const input = goalSettingsSchema.parse(req.body);
+    await validateGoalResources(guildId, botId, input);
+    return res.json({
+      settings: await saveFivemGoalSettings(guildId, botId, normalizeGoalSettingsInput(input), res.locals.dashboardAuth.user.discordId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ settings: await getFivemGoalSettings(guildId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/channel/:channelId", requireBot, async (req, res, next) => {
+  try {
+    const channelId = snowflakeSchema.parse(req.params.channelId);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ channel: await getFivemGoalUserChannelByChannel(channelId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId/users/:userId/channel", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ channel: await getFivemGoalUserChannelByUser(guildId, userId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/channels", requireBot, async (req, res, next) => {
+  try {
+    const input = goalUserChannelSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.status(201).json({ channel: await upsertFivemGoalUserChannel({ ...input, botId }) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/entries", requireBot, async (req, res, next) => {
+  try {
+    const input = goalEntrySchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.status(201).json({ entry: await createFivemGoalEntry({ ...input, botId }) });
   } catch (error) {
     return next(error);
   }
@@ -513,6 +647,38 @@ async function assertCanManageFac(user: AuthSessionUser, guildId: string, botId:
   throw createRouteError("Voce nao tem permissao para configurar o FAC deste bot.", 403);
 }
 
+async function assertCanReadFivemGoals(user: AuthSessionUser, guildId: string, botId: string) {
+  await assertBotFivemGoalsLicense(botId);
+
+  if (await canReadDevBotModule(user, botId, guildId, FIVEM_GOALS_MODULE_ID)) {
+    return;
+  }
+
+  throw createRouteError("Voce nao tem permissao para acessar metas FiveM deste bot.", 403);
+}
+
+async function assertCanManageFivemGoals(user: AuthSessionUser, guildId: string, botId: string) {
+  await assertBotFivemGoalsLicense(botId);
+
+  if (await canUseDevBotModule(user, botId, guildId, FIVEM_GOALS_MODULE_ID)) {
+    return;
+  }
+
+  throw createRouteError("Voce nao tem permissao para configurar metas FiveM deste bot.", 403);
+}
+
+async function assertBotFivemGoalsLicense(botId: string) {
+  const permissions = await getBotApiPermissions(botId);
+
+  if (!permissions) {
+    throw createRouteError("Bot nao encontrado.", 404);
+  }
+
+  if (!permissions.enabledModules.includes(FIVEM_GOALS_MODULE_ID)) {
+    throw createRouteError("O sistema de metas FiveM nao foi liberado para este cliente.", 403);
+  }
+}
+
 async function assertBotFacLicense(botId: string) {
   const permissions = await getBotApiPermissions(botId);
 
@@ -583,6 +749,30 @@ async function validateFacResources(guildId: string, botId: string, input: z.inf
   }
 }
 
+async function validateGoalResources(guildId: string, botId: string, input: z.infer<typeof goalSettingsSchema>) {
+  const botToken = await getDevBotToken(botId);
+  const channelIds = [input.logChannelId].filter((channelId): channelId is string => typeof channelId === "string" && Boolean(channelId));
+
+  const channelChecks = await Promise.all(
+    [...new Set(channelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken))
+  );
+
+  if (!channelChecks.every(Boolean)) {
+    throw createRouteError("Um dos canais selecionados nao pertence a este servidor.", 400);
+  }
+
+  if (input.categoryId) {
+    if (!(await isGuildCategoryChannel(guildId, input.categoryId, botToken))) {
+      throw createRouteError("A categoria de metas nao pertence a este servidor.", 400);
+    }
+  }
+
+  const roleIds = [input.viewRoleId, input.managerRoleId].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
+  if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
+    throw createRouteError("Um dos cargos selecionados nao pertence a este servidor.", 400);
+  }
+}
+
 async function assertPanelChannelReady(guildId: string, botId: string, channelId: string) {
   const validation = await validateGuildPanelChannel(guildId, channelId, await getDevBotToken(botId));
 
@@ -629,6 +819,16 @@ function normalizeFacSettingsInput(input: z.infer<typeof facSettingsSchema>) {
   }
 
   return normalized;
+}
+
+function normalizeGoalSettingsInput(input: z.infer<typeof goalSettingsSchema>) {
+  return {
+    ...input,
+    categoryId: normalizeOptionalId(input.categoryId),
+    logChannelId: normalizeOptionalId(input.logChannelId),
+    managerRoleId: normalizeOptionalId(input.managerRoleId),
+    viewRoleId: normalizeOptionalId(input.viewRoleId)
+  };
 }
 
 function normalizeOptionalId(value: string | null | undefined) {

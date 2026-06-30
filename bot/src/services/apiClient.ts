@@ -93,6 +93,41 @@ export type ManualRegistrationSubmission = {
   fields: Array<{ id: string; label: string; value: string }>;
 };
 
+export type FivemGoalField = {
+  id: string;
+  label: string;
+  maxLength: number | null;
+  minLength: number | null;
+  placeholder: string | null;
+  required: boolean;
+  style: "short" | "paragraph";
+};
+
+export type FivemGoalItem = {
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+};
+
+export type FivemGoalSettings = {
+  categoryId: string | null;
+  channelNameTemplate: string;
+  enabled: boolean;
+  fields: FivemGoalField[];
+  guildId: string;
+  items: FivemGoalItem[];
+  logChannelId: string | null;
+  managerRoleId: string | null;
+  viewRoleId: string | null;
+};
+
+export type FivemGoalUserChannel = {
+  channelId: string;
+  guildId: string;
+  userId: string;
+};
+
 export type SafeBotMessageState = {
   botId: string | null;
   guildId: string;
@@ -1091,6 +1126,39 @@ export class ApiClient {
   async updateManualRegistrationSubmissionStatus(id: string, status: "approved" | "rejected", actorId: string) {
     const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${id}/status`, { actorId, status });
     return data.submission;
+  }
+
+  async getFivemGoalSettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}`);
+    return data.settings;
+  }
+
+  async getFivemGoalChannelByChannel(channelId: string) {
+    const { data } = await this.http.get<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/channel/${channelId}`);
+    return data.channel;
+  }
+
+  async getFivemGoalChannelByUser(guildId: string, userId: string) {
+    const { data } = await this.http.get<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/${guildId}/users/${userId}/channel`);
+    return data.channel;
+  }
+
+  async saveFivemGoalChannel(input: { channelId: string; guildId: string; userId: string }) {
+    const { data } = await this.http.post<{ channel: FivemGoalUserChannel }>("/fivem/bot/goals/channels", input);
+    return data.channel;
+  }
+
+  async createFivemGoalEntry(input: {
+    channelId: string;
+    fields: Array<{ id: string; label: string; value: string }>;
+    guildId: string;
+    imageUrl: string;
+    itemId?: string | null;
+    quantity?: number | null;
+    userId: string;
+  }) {
+    const { data } = await this.http.post("/fivem/bot/goals/entries", input);
+    return data;
   }
 
   async syncSelfBotRole(input: { guildId: string; roleId: string; roleName?: string | null }) {

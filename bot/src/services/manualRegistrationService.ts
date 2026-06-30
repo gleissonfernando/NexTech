@@ -14,6 +14,7 @@ import {
 import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
+import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 
 const PREFIX = "manual_registration";
 
@@ -146,6 +147,9 @@ async function reviewSubmission(
       await member.roles.add(roleId).catch(() => null);
     }
     await member.send("Seu cadastro foi aprovado com sucesso.\n\nAgora voce possui acesso ao servidor.\n\nSeja bem-vindo.").catch(() => null);
+    await ensureFivemGoalChannelForUser(context, interaction.guild, submission.userId, member.user.username).catch((error) => {
+      console.warn("[manual-registration] nao foi possivel criar canal de metas FiveM:", error instanceof Error ? error.message : error);
+    });
   }
 
   if (status === "rejected" && member) {

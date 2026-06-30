@@ -14,6 +14,7 @@ import { handleSafeBotWarningInteraction } from "../services/safeBotWarningServi
 import { handleTemporaryVoiceInteraction } from "../services/temporaryVoiceService";
 import { handleTicketPanelInteraction } from "../services/ticketPanelService";
 import { handleManualRegistrationInteraction } from "../services/manualRegistrationService";
+import { handleFivemGoalInteraction } from "../services/fivemGoalService";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
   if (await blockInteractionIfMaintenance(interaction)) {
@@ -49,6 +50,10 @@ export async function handleInteractionCreate(interaction: Interaction, context:
   }
 
   if (await handleManualRegistrationInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleFivemGoalInteraction(interaction, context)) {
     return;
   }
 

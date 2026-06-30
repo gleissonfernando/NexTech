@@ -82,6 +82,7 @@ import {
   getDashboardMe,
   getBotGuildConfig,
   getFivemModules,
+  getFivemGoals,
   getGuildLiveOptions,
   getGuildSettings,
   getEmojiLibrary,
@@ -99,6 +100,7 @@ import {
   removeAllApplicationEmojis,
   resendEmojiFromLibrary,
   saveAdvancedModuleConfig,
+  saveFivemGoalSettings,
   saveManualRegistrationSettings,
   syncApplicationEmojis,
   updateSelectedDashboardGuild,
@@ -119,6 +121,10 @@ import type {
   DashboardMeGuild,
   DashboardMeResponse,
   FivemModuleDefinition,
+  FivemGoalEntry,
+  FivemGoalField,
+  FivemGoalItem,
+  FivemGoalSettings,
   GuildChannelOption,
   GuildRoleOption,
   GuildSettings,
@@ -1634,6 +1640,7 @@ function FivemView({
     );
   }
   const absencesEnabled = enabledModules.includes("fivem-absences") || enabledModules.includes("fivem-fac");
+  const goalsEnabled = enabledModules.includes("fivem-goals");
 
   return (
     <div className="space-y-5">
@@ -1653,7 +1660,159 @@ function FivemView({
         ))}
       </div>
       {absencesEnabled ? <FacAbsencePanel botId={botId} canManage={canManage} guild={guild} /> : null}
+      {goalsEnabled ? <FivemGoalsPanel botId={botId} canManage={canManage} guild={guild} /> : null}
     </div>
+  );
+}
+
+function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
+  const [settings, setSettings] = useState<FivemGoalSettings | null>(null);
+  const [entries, setEntries] = useState<FivemGoalEntry[]>([]);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [categories, setCategories] = useState<GuildChannelOption[]>([]);
+  const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!guild) return;
+    let active = true;
+    setLoading(true);
+    Promise.all([getFivemGoals(guild.id, botId), getGuildLiveOptions(guild.id, botId)])
+      .then(([dashboard, options]) => {
+        if (!active) return;
+        setSettings(dashboard.settings);
+        setEntries(dashboard.entries);
+        setChannels(options.channels);
+        setCategories((options.categories ?? []).map((category) => ({ ...category, parentId: null, type: "text" as const })));
+        setRoles(options.roles);
+      })
+      .catch(() => {
+        if (active) setError("Nao foi possivel carregar metas FiveM.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [botId, guild?.id]);
+
+  function patch(patchValue: Partial<FivemGoalSettings>) {
+    setSettings((current) => current ? { ...current, ...patchValue } : current);
+  }
+
+  function patchField(index: number, value: Partial<FivemGoalField>) {
+    setSettings((current) => current ? { ...current, fields: current.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...value } : field) } : current);
+  }
+
+  function patchItem(index: number, value: Partial<FivemGoalItem>) {
+    setSettings((current) => current ? { ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...value } : item) } : current);
+  }
+
+  function addItem() {
+    setSettings((current) => current ? { ...current, items: [...current.items, { category: "Geral", color: "#7c3aed", emoji: "📦", enabled: true, id: `item-${current.items.length + 1}`, name: `Item ${current.items.length + 1}`, order: current.items.length + 1 }] } : current);
+  }
+
+  async function save() {
+    if (!guild || !settings) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const saved = await saveFivemGoalSettings(guild.id, settings, botId);
+      setSettings(saved);
+      setMessage("Metas FiveM salvas.");
+    } catch {
+      setError("Nao foi possivel salvar metas FiveM.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="border-emerald-500/10 bg-zinc-950/75">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-emerald-300" /> Gerenciamento de Metas FiveM</CardTitle>
+            <CardDescription>Vinculado ao Cadastro Manual: ao aprovar, o bot cria o canal individual de metas.</CardDescription>
+          </div>
+          <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Salvar
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div> : null}
+        {message ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</div> : null}
+        {loading || !settings ? <div className="h-40 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/60" /> : (
+          <>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-xs font-medium text-zinc-400">Status
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ enabled: event.target.value === "true" })} value={String(settings.enabled)}>
+                  <option value="true">Ativado</option>
+                  <option value="false">Desativado</option>
+                </select>
+              </label>
+              <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
+              <label className="block text-xs font-medium text-zinc-400">Categoria dos canais
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ categoryId: event.target.value || null })} value={settings.categoryId ?? ""}>
+                  <option value="">Sem categoria</option>
+                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-zinc-400">Canal de logs
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ logChannelId: event.target.value || null })} value={settings.logChannelId ?? ""}>
+                  <option value="">Sem logs</option>
+                  {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                </select>
+              </label>
+              <RoleSelect disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
+              <RoleSelect disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-white">Campos do modal</p>
+              {settings.fields.map((field, index) => (
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 md:grid-cols-[1fr_1fr_120px]" key={field.id}>
+                  <TicketField disabled={!canManage} label="Label" onChange={(value) => patchField(index, { id: slugTicketOption(value, index), label: value })} value={field.label} />
+                  <TicketField disabled={!canManage} label="Placeholder" onChange={(value) => patchField(index, { placeholder: value })} value={field.placeholder ?? ""} />
+                  <label className="block text-xs font-medium text-zinc-400">Tipo
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchField(index, { style: event.target.value as FivemGoalField["style"] })} value={field.style}>
+                      <option value="short">Curto</option>
+                      <option value="paragraph">Longo</option>
+                    </select>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">Itens de meta</p>
+                <Button disabled={!canManage} onClick={addItem} size="sm" type="button" variant="outline">Adicionar item</Button>
+              </div>
+              {settings.items.map((item, index) => (
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[90px_1fr_1fr_100px_90px]" key={`${item.id}-${index}`}>
+                  <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchItem(index, { emoji: value })} value={item.emoji ?? ""} />
+                  <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchItem(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
+                  <TicketField disabled={!canManage} label="Categoria" onChange={(value) => patchItem(index, { category: value })} value={item.category ?? ""} />
+                  <TicketField disabled={!canManage} label="Cor" onChange={(value) => patchItem(index, { color: value })} type="color" value={item.color ?? "#7c3aed"} />
+                  <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={item.enabled} disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked })} type="checkbox" />Ativo</span></label>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricCard icon={ListChecks} label="Metas" value={String(entries.length)} />
+              <MetricCard icon={Users} label="Usuarios" value={String(new Set(entries.map((entry) => entry.userId)).size)} />
+              <MetricCard icon={CalendarClock} label="Hoje" value={String(entries.filter((entry) => new Date(entry.createdAt).toDateString() === new Date().toDateString()).length)} />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1664,7 +1823,8 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Solicitacoes e aprovacao de ausencias RP.", id: "fivem-absences", permissions: "Admin FiveM", title: "Ausencias" },
     { builtIn: true, description: "Pedidos, entregas e acompanhamento de encomendas.", id: "fivem-orders", permissions: "Admin FiveM", title: "Encomendas" },
     { builtIn: true, description: "Controle de municoes, estoque e distribuicao.", id: "fivem-ammo", permissions: "Admin FiveM", title: "Municoes" },
-    { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" }
+    { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
+    { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" }
   ];
   const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
   const enabled = new Set(enabledModules.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
@@ -1686,6 +1846,7 @@ function fivemIconForModule(moduleId: string) {
     "fivem-corporations": Server,
     "fivem-factions": Building2,
     "fivem-finance": Activity,
+    "fivem-goals": ListChecks,
     "fivem-orders": ListChecks
   };
 
@@ -3019,6 +3180,37 @@ function MultiRoleSelect({
         onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}
         value={values}
       >
+        {roles.map((role) => (
+          <option key={role.id} value={role.id}>{role.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RoleSelect({
+  disabled,
+  label,
+  onChange,
+  roles,
+  value
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  roles: GuildRoleOption[];
+  value: string;
+}) {
+  return (
+    <label className="block text-xs font-medium text-zinc-400">
+      {label}
+      <select
+        className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">Nenhum</option>
         {roles.map((role) => (
           <option key={role.id} value={role.id}>{role.name}</option>
         ))}

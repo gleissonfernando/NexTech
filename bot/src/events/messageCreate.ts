@@ -5,6 +5,7 @@ import { blockMessageIfMaintenance } from "../services/maintenanceService";
 import { handleSafeBotMessage, isSelfBotModuleEnabled } from "../services/safeBotService";
 import { handleSelfBotProtectionMessage } from "../services/selfBotProtectionService";
 import { handleTemporaryVoiceMessage } from "../services/temporaryVoiceService";
+import { handleFivemGoalMessage } from "../services/fivemGoalService";
 import type { BotContext } from "../types";
 import { handleMusicMessage } from "../music/musicService";
 
@@ -30,6 +31,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handleMusicMessage(message, context)) {
+    return;
+  }
+
+  if (await handleFivemGoalMessage(message, context)) {
     return;
   }
 

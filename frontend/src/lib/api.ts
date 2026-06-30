@@ -24,6 +24,8 @@ import type {
   FivemFacAbsence,
   FivemFacResponse,
   FivemFacSettings,
+  FivemGoalDashboard,
+  FivemGoalSettings,
   FivemModuleDefinition,
   Giveaway,
   GiveawayDiagnostics,
@@ -1320,6 +1322,20 @@ export async function getFivemFac(guildId: string, botId: string) {
 export async function getFivemModules() {
   const { data } = await api.get<{ modules: FivemModuleDefinition[] }>("/fivem/modules");
   return data.modules;
+}
+
+export async function getFivemGoals(guildId: string, botId?: string | null) {
+  const { data } = await api.get<FivemGoalDashboard>(`/fivem/${guildId}/goals`, {
+    params: botId ? { botId } : undefined
+  });
+  return data;
+}
+
+export async function saveFivemGoalSettings(guildId: string, payload: Partial<FivemGoalSettings>, botId?: string | null) {
+  const { data } = await api.patch<{ settings: FivemGoalSettings }>(`/fivem/${guildId}/goals`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.settings;
 }
 
 export async function getDevFivemModules() {

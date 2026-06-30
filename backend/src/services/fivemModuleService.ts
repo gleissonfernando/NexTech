@@ -57,6 +57,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
     id: "fivem-finance",
     permissions: "Admin FiveM, Financeiro",
     title: "Sistema Financeiro"
+  },
+  {
+    builtIn: true,
+    description: "Metas por membro com canais individuais, fotos e registros via Components V2.",
+    id: "fivem-goals",
+    permissions: "Admin FiveM, Lideranca",
+    title: "Sistema de Metas"
   }
 ];
 
