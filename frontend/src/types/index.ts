@@ -703,6 +703,7 @@ export type Ticket = {
 };
 
 export type ManualRegistrationField = {
+  enabled: boolean;
   id: string;
   label: string;
   maxLength: number | null;

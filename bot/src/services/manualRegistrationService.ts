@@ -162,7 +162,7 @@ async function showEditSetMenu(interaction: ButtonInteraction, context: BotConte
     await interaction.reply({ content: "Nenhum set ativo foi configurado.", ephemeral: true });
     return;
   }
-  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:edit_set_select:${id}:${userId}`).setPlaceholder("Selecione o novo set").addOptions(roles.slice(0, 25).map((item) => ({ label: item.name, value: item.roleId, description: item.description?.slice(0, 100) || undefined, emoji: item.emoji || undefined })));
+  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:edit_set_select:${id}:${userId}`).setPlaceholder("Selecione o novo set").addOptions(roles.slice(0, 25).map((item) => ({ label: item.name, value: item.roleId, description: item.description?.slice(0, 100) || undefined, emoji: normalizeComponentEmoji(item.emoji) })));
   await interaction.reply({ components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], ephemeral: true });
 }
 
@@ -237,7 +237,7 @@ async function startSetRequest(interaction: ButtonInteraction, context: BotConte
     const select = new StringSelectMenuBuilder()
       .setCustomId(`${PREFIX}:select_set`)
       .setPlaceholder("Selecione o set desejado")
-      .addOptions(roles.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, emoji: item.emoji || undefined, label: item.name.slice(0, 100), value: item.roleId })));
+      .addOptions(roles.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, emoji: normalizeComponentEmoji(item.emoji), label: item.name.slice(0, 100), value: item.roleId })));
     await interaction.reply({ components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], ephemeral: true });
     return;
   }
@@ -247,7 +247,7 @@ async function startSetRequest(interaction: ButtonInteraction, context: BotConte
 async function showRegistrationModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, requestedRoleId: string | null) {
   if (!interaction.guildId) return;
   const settings = await context.api.getManualRegistrationSettings(interaction.guildId);
-  const fields = settings.fields.slice(0, 5);
+  const fields = settings.fields.filter((field) => field.enabled !== false).slice(0, 5);
   if (!fields.length) {
     await interaction.reply({ content: "Nenhum campo foi configurado para o pedido.", ephemeral: true });
     return;
@@ -274,7 +274,7 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
   const requestedRoleId = interaction.customId.split(":")[2] === "default" ? null : interaction.customId.split(":")[2] ?? null;
-  const fields = settings.fields.slice(0, 5).map((field) => ({ id: field.id, label: field.label, value: interaction.fields.getTextInputValue(field.id) || "-" }));
+  const fields = settings.fields.filter((field) => field.enabled !== false).slice(0, 5).map((field) => ({ id: field.id, label: field.label, value: interaction.fields.getTextInputValue(field.id) || "-" }));
   let submission = await context.api.createManualRegistrationSubmission({ fields, guildId: interaction.guild.id, requestedRoleId, userAvatar: interaction.user.displayAvatarURL(), userId: interaction.user.id, username: interaction.user.tag });
   let automaticError: string | null = null;
   if (settings.automaticApproval) {
@@ -464,7 +464,9 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     components: [
       { type: 17, accent_color: parseColor(settings.color), components },
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status`).setLabel("Meu Status").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
       )
     ],
     flags: MessageFlags.IsComponentsV2 as const
@@ -533,4 +535,12 @@ function resolveImageUrl(value: string | null) {
 
 function parseColor(value: string) {
   return Number.parseInt(value.replace("#", ""), 16) || 0x7c3aed;
+}
+
+function normalizeComponentEmoji(value: string | null) {
+  const emoji = value?.trim();
+  if (!emoji) return undefined;
+  if (/^<a?:[A-Za-z0-9_]{2,32}:\d{5,32}>$/.test(emoji)) return emoji;
+  if (/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)(?:\uFE0F|\u200D|\p{Emoji_Modifier}|\p{Extended_Pictographic})*$/u.test(emoji)) return emoji;
+  return undefined;
 }

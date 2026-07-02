@@ -136,6 +136,7 @@ export type MongoTicket = {
 };
 
 export type MongoManualRegistrationField = {
+  enabled?: boolean;
   id: string;
   label: string;
   maxLength?: number | null;

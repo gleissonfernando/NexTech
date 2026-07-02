@@ -23,6 +23,7 @@ const snowflakeSchema = z.string().regex(/^\d{5,32}$/);
 const optionalSnowflakeSchema = z.union([snowflakeSchema, z.literal(""), z.null()]).optional();
 
 const fieldSchema = z.object({
+  enabled: z.boolean().optional(),
   id: z.string().max(80),
   label: z.string().min(1).max(80),
   maxLength: z.coerce.number().int().min(1).max(1500).nullable().optional().default(null),
@@ -257,6 +258,7 @@ async function assertRuntimeModule(botId: string | null, guildId: string) {
 function normalizeSettingsInput(input: z.infer<typeof settingsSchema>) {
   return {
     ...input,
+    fields: input.fields?.map((field) => ({ ...field, enabled: field.enabled !== false })),
     setRoles: input.setRoles?.map((item) => ({ ...item, description: item.description ?? null, emoji: item.emoji ?? null }))
   };
 }

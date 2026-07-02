@@ -4604,6 +4604,7 @@ function ManualRegistrationPanel({
       fields: [
         ...current.fields,
         {
+          enabled: true,
           id: `campo-${current.fields.length + 1}`,
           label: `Campo ${current.fields.length + 1}`,
           maxLength: 120,
@@ -4795,7 +4796,7 @@ function ManualRegistrationPanel({
                 <Button disabled={!canManage || settings.fields.length >= 25} onClick={addField} size="sm" type="button" variant="outline">Adicionar campo</Button>
               </div>
               {settings.fields.map((field, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_120px_100px_auto]" key={`${field.id}-${index}`}>
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_120px_180px_auto]" key={`${field.id}-${index}`}>
                   <TicketField disabled={!canManage} label="Label" onChange={(value) => patchField(index, { label: value, id: slugTicketOption(value, index), name: slugTicketOption(value, index).replace(/-/g, "_") })} value={field.label} />
                   <TicketField disabled={!canManage} label="Placeholder" onChange={(value) => patchField(index, { placeholder: value })} value={field.placeholder ?? ""} />
                   <label className="block text-xs font-medium text-zinc-400">Tipo
@@ -4805,6 +4806,10 @@ function ManualRegistrationPanel({
                     </select>
                   </label>
                   <label className="flex items-end gap-2 text-xs text-zinc-300">
+                    <span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3">
+                      <input checked={field.enabled !== false} disabled={!canManage} onChange={(event) => patchField(index, { enabled: event.target.checked })} type="checkbox" />
+                      Ativo
+                    </span>
                     <span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3">
                       <input checked={field.required} disabled={!canManage} onChange={(event) => patchField(index, { required: event.target.checked })} type="checkbox" />
                       Obrig.

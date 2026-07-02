@@ -4,6 +4,7 @@ import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
 export type ManualRegistrationFieldDto = {
+  enabled: boolean;
   id: string;
   label: string;
   maxLength: number | null;
@@ -94,11 +95,11 @@ export type ManualRegistrationLogDto = {
 export type SaveManualRegistrationSettingsInput = Partial<Omit<ManualRegistrationSettingsDto, "botId" | "guildId" | "updatedAt">>;
 
 const DEFAULT_FIELDS: ManualRegistrationFieldDto[] = [
-  { id: "nome_personagem", label: "Nome do personagem", maxLength: 80, minLength: 2, name: "nome_personagem", placeholder: "Nome e sobrenome no RP", required: true, style: "short" },
-  { id: "id_fivem", label: "ID in-game", maxLength: 32, minLength: 1, name: "id_fivem", placeholder: "Seu ID no servidor", required: true, style: "short" },
-  { id: "telefone", label: "Telefone in-game", maxLength: 32, minLength: 1, name: "telefone", placeholder: "Numero do personagem", required: false, style: "short" },
-  { id: "recrutador", label: "Quem recrutou", maxLength: 80, minLength: 2, name: "recrutador", placeholder: "Nome do recrutador", required: false, style: "short" },
-  { id: "observacoes", label: "Observacoes", maxLength: 1000, minLength: null, name: "observacoes", placeholder: "Informacoes adicionais", required: false, style: "paragraph" }
+  { enabled: true, id: "nome_personagem", label: "Nome do personagem", maxLength: 80, minLength: 2, name: "nome_personagem", placeholder: "Nome e sobrenome no RP", required: true, style: "short" },
+  { enabled: true, id: "id_fivem", label: "ID in-game", maxLength: 32, minLength: 1, name: "id_fivem", placeholder: "Seu ID no servidor", required: true, style: "short" },
+  { enabled: true, id: "telefone", label: "Telefone in-game", maxLength: 32, minLength: 1, name: "telefone", placeholder: "Numero do personagem", required: false, style: "short" },
+  { enabled: true, id: "recrutador", label: "Quem recrutou", maxLength: 80, minLength: 2, name: "recrutador", placeholder: "Nome do recrutador", required: false, style: "short" },
+  { enabled: true, id: "observacoes", label: "Observacoes", maxLength: 1000, minLength: null, name: "observacoes", placeholder: "Informacoes adicionais", required: false, style: "paragraph" }
 ];
 
 export function defaultManualRegistrationSettings(guildId: string, botId: string | null = null): ManualRegistrationSettingsDto {
@@ -396,6 +397,7 @@ function normalizeFields(fields: ManualRegistrationFieldDto[]) {
     const label = normalizeText(field.label, 80) || `Campo ${index + 1}`;
     const id = normalizeText(field.id, 80) || slug(label) || `campo-${index + 1}`;
     return {
+      enabled: field.enabled !== false,
       id,
       label,
       maxLength: clamp(field.maxLength, 1, 1500),

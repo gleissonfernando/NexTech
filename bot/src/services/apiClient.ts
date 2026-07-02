@@ -51,6 +51,7 @@ export type MaintenanceState = {
 };
 
 export type ManualRegistrationField = {
+  enabled: boolean;
   id: string;
   label: string;
   maxLength: number | null;
