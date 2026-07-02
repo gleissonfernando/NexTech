@@ -16,6 +16,7 @@ import {
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction
 } from "discord.js";
+import axios from "axios";
 import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
@@ -275,7 +276,13 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
   const requestedRoleId = interaction.customId.split(":")[2] === "default" ? null : interaction.customId.split(":")[2] ?? null;
   const fields = settings.fields.filter((field) => field.enabled !== false).slice(0, 5).map((field) => ({ id: field.id, label: field.label, value: interaction.fields.getTextInputValue(field.id) || "-" }));
-  let submission = await context.api.createManualRegistrationSubmission({ fields, guildId: interaction.guild.id, requestedRoleId, userAvatar: interaction.user.displayAvatarURL(), userId: interaction.user.id, username: interaction.user.tag });
+  let submission: ManualRegistrationSubmission;
+  try {
+    submission = await context.api.createManualRegistrationSubmission({ fields, guildId: interaction.guild.id, requestedRoleId, userAvatar: interaction.user.displayAvatarURL(), userId: interaction.user.id, username: interaction.user.tag });
+  } catch (error) {
+    await interaction.editReply(manualRegistrationErrorMessage(error));
+    return;
+  }
   let automaticError: string | null = null;
   if (settings.automaticApproval) {
     try {
@@ -543,4 +550,14 @@ function normalizeComponentEmoji(value: string | null) {
   if (/^<a?:[A-Za-z0-9_]{2,32}:\d{5,32}>$/.test(emoji)) return emoji;
   if (/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)(?:\uFE0F|\u200D|\p{Emoji_Modifier}|\p{Extended_Pictographic})*$/u.test(emoji)) return emoji;
   return undefined;
+}
+
+function manualRegistrationErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data && typeof error.response.data === "object" && "message" in error.response.data
+      ? error.response.data.message
+      : null;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return "Nao foi possivel enviar o pedido de set. Tente novamente em alguns instantes.";
 }
