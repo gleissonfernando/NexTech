@@ -372,13 +372,23 @@ export async function getGuildMemberOptions(
   const token = botToken || env.DISCORD_BOT_TOKEN;
   const normalizedQuery = query.trim();
 
-  if (!token || normalizedQuery.length < 2) {
+  if (!token) {
     return [];
   }
 
   const membersById = new Map<string, GuildMemberOptionDto>();
 
-  if (/^\d{5,32}$/.test(normalizedQuery)) {
+  if (!normalizedQuery) {
+    try {
+      const members = await discordFetch<DiscordGuildMember[]>(`/guilds/${guildId}/members?limit=1000`, token);
+      for (const member of members) {
+        const option = toGuildMemberOption(member, guildId);
+        if (option) membersById.set(option.id, option);
+      }
+    } catch (error) {
+      throw Object.assign(new Error("Nao foi possivel carregar os membros deste servidor pelo Discord."), { cause: error, statusCode: 502 });
+    }
+  } else if (/^\d{5,32}$/.test(normalizedQuery)) {
     try {
       const member = await discordFetch<DiscordGuildMember>(`/guilds/${guildId}/members/${normalizedQuery}`, token);
       const option = toGuildMemberOption(member, guildId);
@@ -391,7 +401,7 @@ export async function getGuildMemberOptions(
     }
   }
 
-  try {
+  if (normalizedQuery) try {
     const searchParams = new URLSearchParams({
       limit: "12",
       query: normalizedQuery
@@ -419,7 +429,8 @@ export async function getGuildMemberOptions(
 
   return [...membersById.values()]
     .filter((member) => !member.bot)
-    .slice(0, 12);
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "pt-BR"))
+    .slice(0, normalizedQuery ? 12 : 1000);
 }
 
 export async function isGuildTextChannel(guildId: string, channelId: string, botToken?: string | null) {

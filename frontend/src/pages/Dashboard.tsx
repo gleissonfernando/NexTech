@@ -4539,7 +4539,6 @@ function ManualRegistrationPanel({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [memberQuery, setMemberQuery] = useState("");
   const [memberOptions, setMemberOptions] = useState<GuildMemberOption[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [manualRoleId, setManualRoleId] = useState("");
@@ -4559,9 +4558,10 @@ function ManualRegistrationPanel({
 
     Promise.all([
       getManualRegistrationDashboard(guild.id, botId),
-      getGuildLiveOptions(guild.id, botId)
+      getGuildLiveOptions(guild.id, botId),
+      getGuildMemberOptions(guild.id, "", botId)
     ])
-      .then(([dashboard, options]) => {
+      .then(([dashboard, options, members]) => {
         if (!active) return;
         setSettings(dashboard.settings);
         setSubmissions(dashboard.submissions);
@@ -4569,6 +4569,7 @@ function ManualRegistrationPanel({
         setChannels(options.channels);
         setCategories(options.categories ?? []);
         setRoles(options.roles);
+        setMemberOptions(members.filter((member) => !member.bot));
       })
       .catch(() => {
         if (active) setError("Nao foi possivel carregar o cadastro manual.");
@@ -4581,19 +4582,6 @@ function ManualRegistrationPanel({
       active = false;
     };
   }, [botId, guild?.id]);
-
-  useEffect(() => {
-    if (!guild || memberQuery.trim().length < 2) {
-      setMemberOptions([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void getGuildMemberOptions(guild.id, memberQuery.trim(), botId)
-        .then((members) => setMemberOptions(members.filter((member) => !member.bot)))
-        .catch(() => setMemberOptions([]));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [botId, guild?.id, memberQuery]);
 
   useEffect(() => {
     if (!guild) return;
@@ -4725,7 +4713,7 @@ function ManualRegistrationPanel({
         userAvatar: member.avatarUrl, userId: member.id, username: member.displayName || member.username
       }, botId);
       setSubmissions((current) => [submission, ...current]);
-      setMemberQuery(""); setMemberOptions([]); setSelectedMemberId(""); setManualRoleId(""); setCharacterName(""); setGameId("");
+      setSelectedMemberId(""); setManualRoleId(""); setCharacterName(""); setGameId("");
       setMessage("Cadastro enviado ao bot. O cargo e o canal de meta serao preparados automaticamente.");
     } catch {
       setError("Nao foi possivel cadastrar o membro.");
@@ -4764,13 +4752,10 @@ function ManualRegistrationPanel({
         {loading || !settings ? <div className="h-40 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/60" /> : (
           <>
             <div className="space-y-3 rounded-lg border border-purple-500/20 bg-purple-500/[0.04] p-4">
-              <div><p className="text-sm font-semibold text-white">Cadastrar membro</p><p className="text-xs text-zinc-500">Selecione o usuario e o cargo. O bot entrega o cargo e cria o canal privado de meta se ele ainda nao existir.</p></div>
+              <div><p className="text-sm font-semibold text-white">Cadastrar membro</p><p className="text-xs text-zinc-500">Os usuarios do Discord sao carregados automaticamente. Selecione o membro e o cargo para criar o canal privado de meta.</p></div>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                <label className="block text-xs font-medium text-zinc-400">Buscar usuario
-                  <input className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => { setMemberQuery(event.target.value); setSelectedMemberId(""); }} placeholder="Nome ou ID do Discord" value={memberQuery} />
-                </label>
                 <label className="block text-xs font-medium text-zinc-400">Usuario
-                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || !memberOptions.length} onChange={(event) => setSelectedMemberId(event.target.value)} value={selectedMemberId}>
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || !memberOptions.length} onChange={(event) => { const member = memberOptions.find((item) => item.id === event.target.value); setSelectedMemberId(event.target.value); if (member) setCharacterName(member.displayName); }} value={selectedMemberId}>
                     <option value="">Selecionar usuario</option>
                     {memberOptions.map((member) => <option key={member.id} value={member.id}>{member.displayName} ({member.id})</option>)}
                   </select>

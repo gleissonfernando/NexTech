@@ -162,12 +162,6 @@ guildsRouter.get("/:guildId/member-options", async (req, res, next) => {
       });
     }
 
-    if (query.length < 2) {
-      return res.json({
-        members: []
-      });
-    }
-
     if (
       !canManageDashboardGuild(res.locals.dashboardAuth.user, guildId) &&
       !(await canManageDevBotGuild(res.locals.dashboardAuth.user, botId, guildId))
