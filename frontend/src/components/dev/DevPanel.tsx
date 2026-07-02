@@ -244,7 +244,7 @@ const botMenuItems: BotMenuItem[] = [
     label: "Tickets",
     description: "Atendimento e suporte",
     icon: Ticket,
-    moduleIds: ["tickets", "manual-registration"]
+    moduleIds: ["tickets"]
   },
   {
     id: "verification",
