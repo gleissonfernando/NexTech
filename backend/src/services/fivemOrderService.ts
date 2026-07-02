@@ -126,6 +126,7 @@ export async function createFivemOrder(input: {
   quantity: number;
   sourceId?: string | null;
   userId: string;
+  washingPercentage?: number | null;
 }) {
   const botId = normalizeBotId(input.botId);
   const settings = await getFivemOrderSettings(input.guildId, botId);
@@ -138,7 +139,8 @@ export async function createFivemOrder(input: {
   const product = await fivemOrderProducts.findOne({ _id: input.productId, ...scopeQuery(input.guildId, botId), active: true });
   if (!product) throw orderError("Produto indisponivel.", 404);
   const quantity = product.type === "washing" ? 1 : clampNumber(input.quantity, 1, 1_000_000, 1);
-  const totals = calculateTotals(product, quantity, input.grossValue);
+  const washingPercentage = product.type === "washing" ? resolveWashingPercentage(product, input.washingPercentage) : null;
+  const totals = calculateTotals(product, quantity, input.grossValue, washingPercentage);
   if (product.useStock) {
     const stockUpdate = await fivemOrderProducts.updateOne({ _id: product._id, ...scopeQuery(input.guildId, botId), stock: { $gte: quantity } }, { $inc: { stock: -quantity }, $set: { updatedAt: new Date() } });
     if (!stockUpdate.modifiedCount) throw orderError("Estoque insuficiente para este produto.", 409);
@@ -151,7 +153,7 @@ export async function createFivemOrder(input: {
     createdAt: now, expectedDelivery: normalizeDate(input.expectedDelivery), finalValue: totals.finalValue, grossValue: totals.grossValue, guildId: input.guildId,
     history: [{ actorId: input.userId, at: now, from: null, note: null, to: status }], notes: settings.allowCustomNotes ? normalizeText(input.notes, 1000) : null,
     orderNumber, productId: product._id, productName: product.name, profit: totals.profit, proofUrl: settings.allowAttachments ? normalizeUrl(input.proofUrl) : null,
-    quantity, responsibleId: null, sourceId: normalizeText(input.sourceId, 120), status, unitPrice: totals.unitPrice, updatedAt: now, userId: input.userId
+    quantity, responsibleId: null, sourceId: normalizeText(input.sourceId, 120), status, unitPrice: totals.unitPrice, updatedAt: now, userId: input.userId, washingPercentage
   };
   try {
     await fivemOrders.insertOne(doc);
@@ -238,10 +240,10 @@ export async function requestFivemOrderPanelPublish(guildId: string, botId: stri
   return settings;
 }
 
-function calculateTotals(product: MongoFivemOrderProduct, quantity: number, grossValue?: number | null) {
+function calculateTotals(product: MongoFivemOrderProduct, quantity: number, grossValue?: number | null, washingPercentage?: number | null) {
   if (product.type === "washing") {
     const gross = clampNumber(grossValue, 0, 1_000_000_000_000, 0);
-    const discount = roundMoney(gross * product.factionPercentage / 100);
+    const discount = roundMoney(gross * (washingPercentage ?? product.factionPercentage) / 100);
     return { costTotal: roundMoney(gross - discount), finalValue: roundMoney(gross - discount), grossValue: gross, profit: discount, unitPrice: gross };
   }
   const gross = roundMoney(product.price * quantity);
@@ -270,7 +272,8 @@ function normalizeProduct(value: Partial<FivemOrderProductDto>, guildId: string,
     cost: money(value.cost), description: normalizeText(value.description, 500), emoji: normalizeText(value.emoji, 80), factionPercentage: clampNumber(value.factionPercentage, 0, 100, type === "washing" ? 20 : 0),
     featured: value.featured === true, guildId, minimumStock: clampNumber(value.minimumStock, 0, 1_000_000_000, 0), name: normalizeText(value.name, 100) || "Novo produto",
     order: clampNumber(value.order, 0, 10000, 0), price: money(value.price), sellerPercentage: clampNumber(value.sellerPercentage, 0, 100, 0), stock: value.useStock ? clampNumber(value.stock, 0, 1_000_000_000, 0) : null,
-    type, useStock: value.useStock === true
+    type, useStock: value.useStock === true,
+    washingPercentages: normalizePercentages(value.washingPercentages, value.factionPercentage, type)
   };
 }
 
@@ -293,4 +296,6 @@ function normalizeDate(value: string | null | undefined) { return /^\d{4}-\d{2}-
 function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number) { return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback; }
 function money(value: number | null | undefined) { return roundMoney(clampNumber(value, 0, 1_000_000_000_000, 0)); }
 function roundMoney(value: number) { return Math.round(value * 100) / 100; }
+function normalizePercentages(values: number[] | undefined, fallback: number | undefined, type: MongoFivemOrderProduct["type"]) { if (type !== "washing") return []; const normalized = [...new Set([...(values ?? []), clampNumber(fallback, 0, 100, 20)].map((item) => clampNumber(item, 0, 100, 0)))].sort((a, b) => a - b).slice(0, 25); return normalized.length ? normalized : [20]; }
+function resolveWashingPercentage(product: MongoFivemOrderProduct, requested: number | null | undefined) { const allowed = normalizePercentages(product.washingPercentages, product.factionPercentage, "washing"); const selected = requested ?? allowed[0] ?? 20; if (!allowed.includes(selected)) throw orderError("Percentual de lavagem nao permitido.", 400); return selected; }
 function orderError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

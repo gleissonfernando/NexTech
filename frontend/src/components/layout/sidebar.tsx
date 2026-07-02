@@ -5,6 +5,7 @@ import {
   AtSign,
   Bot,
   Building2,
+  CircleDollarSign,
   ChevronLeft,
   ChevronRight,
   Film,
@@ -70,6 +71,7 @@ export type ViewId =
   | "fivem"
   | "fivem-hierarchy"
   | "fivem-orders"
+  | "fivem-washing"
   | "fivem-goals"
   | "manual-registration"
   | "notifications"
@@ -122,6 +124,7 @@ const navItems: NavItem[] = [
   { id: "fivem", label: "FiveM Geral", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-ammo", "fivem-finance", "fivem-fac"] },
   { id: "fivem-hierarchy", label: "Hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
+  { id: "fivem-washing", label: "Lavagem", icon: CircleDollarSign, moduleId: "fivem-orders" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },

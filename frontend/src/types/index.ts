@@ -954,7 +954,7 @@ export type FivemOrderSettings = {
 };
 export type FivemOrderProduct = {
   active: boolean; allowCustomQuantity: boolean; allowNotes: boolean; botId: string | null; category: string; cost: number; createdAt: string;
-  description: string | null; emoji: string | null; factionPercentage: number; featured: boolean; guildId: string; id: string; minimumStock: number;
+  description: string | null; emoji: string | null; factionPercentage: number; washingPercentages?: number[]; featured: boolean; guildId: string; id: string; minimumStock: number;
   name: string; order: number; price: number; sellerPercentage: number; stock: number | null; type: "standard" | "washing" | "ammo" | "weapon";
   updatedAt: string; useStock: boolean;
 };
@@ -962,7 +962,7 @@ export type FivemOrder = {
   botId: string | null; category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; finalValue: number;
   grossValue: number; guildId: string; history: Array<{ actorId: string | null; at: string; from: FivemOrderStatus | null; note: string | null; to: FivemOrderStatus }>;
   id: string; notes: string | null; orderNumber: number; productId: string; productName: string; profit: number; proofUrl: string | null; quantity: number;
-  responsibleId: string | null; sourceId: string | null; status: FivemOrderStatus; unitPrice: number; updatedAt: string; userId: string;
+  responsibleId: string | null; sourceId: string | null; status: FivemOrderStatus; unitPrice: number; updatedAt: string; userId: string; washingPercentage?: number | null;
 };
 export type FivemOrderLog = { action: string; actorId: string | null; botId: string | null; createdAt: string; data: Record<string, unknown>; guildId: string; id: string; orderId: string | null; productId: string | null };
 export type FivemOrderDashboard = {

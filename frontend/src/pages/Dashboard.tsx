@@ -537,6 +537,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   fivem: "fivem",
   "fivem-hierarchy": "fivem-hierarchy",
   "fivem-orders": "fivem-orders",
+  "fivem-washing": "fivem-orders",
   "fivem-goals": "fivem-goals",
   "manual-registration": "manual-registration",
   "voice-recorder": "voice-recorder",
@@ -1201,6 +1202,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
             mode="orders"
           />
+        ) : null}
+        {activeView === "fivem-washing" ? (
+          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)} guild={selectedGuild} mode="washing" />
         ) : null}
         {activeView === "fivem-goals" ? (
           <FivemView

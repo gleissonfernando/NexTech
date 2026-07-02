@@ -178,13 +178,13 @@ export type FivemOrderSettings = {
 };
 export type FivemOrderProduct = {
   active: boolean; allowCustomQuantity: boolean; allowNotes: boolean; category: string; cost: number; description: string | null; emoji: string | null;
-  factionPercentage: number; featured: boolean; id: string; minimumStock: number; name: string; order: number; price: number; sellerPercentage: number;
+  factionPercentage: number; washingPercentages?: number[]; featured: boolean; id: string; minimumStock: number; name: string; order: number; price: number; sellerPercentage: number;
   stock: number | null; type: "standard" | "washing" | "ammo" | "weapon"; useStock: boolean;
 };
 export type FivemOrder = {
   category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; finalValue: number; grossValue: number; id: string;
   notes: string | null; orderNumber: number; productId: string; productName: string; profit: number; proofUrl: string | null; quantity: number;
-  responsibleId: string | null; status: FivemOrderStatus; unitPrice: number; userId: string;
+  responsibleId: string | null; status: FivemOrderStatus; unitPrice: number; userId: string; washingPercentage?: number | null;
 };
 
 export type FivemGoalUserChannel = {
@@ -1285,7 +1285,7 @@ export class ApiClient {
     return data;
   }
 
-  async createFivemOrder(input: { clientName: string; expectedDelivery?: string | null; grossValue?: number | null; guildId: string; notes?: string | null; productId: string; proofUrl?: string | null; quantity: number; sourceId?: string | null; userId: string }) {
+  async createFivemOrder(input: { clientName: string; expectedDelivery?: string | null; grossValue?: number | null; guildId: string; notes?: string | null; productId: string; proofUrl?: string | null; quantity: number; sourceId?: string | null; userId: string; washingPercentage?: number | null }) {
     const { data } = await this.http.post<{ order: FivemOrder }>("/fivem-orders/bot/orders", input);
     return data.order;
   }

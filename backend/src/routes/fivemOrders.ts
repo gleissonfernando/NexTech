@@ -35,13 +35,15 @@ const productSchema = z.object({
   active: z.boolean().optional(), allowCustomQuantity: z.boolean().optional(), allowNotes: z.boolean().optional(), category: z.string().max(80).optional(),
   cost: z.coerce.number().min(0).max(1_000_000_000_000).optional(), description: z.string().max(500).nullable().optional(), emoji: z.string().max(80).nullable().optional(),
   factionPercentage: z.coerce.number().min(0).max(100).optional(), featured: z.boolean().optional(), minimumStock: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  washingPercentages: z.array(z.coerce.number().min(0).max(100)).max(25).optional(),
   name: z.string().min(1).max(100).optional(), order: z.coerce.number().int().min(0).max(10000).optional(), price: z.coerce.number().min(0).max(1_000_000_000_000).optional(),
   sellerPercentage: z.coerce.number().min(0).max(100).optional(), stock: z.coerce.number().min(0).max(1_000_000_000).nullable().optional(), type: z.enum(["standard", "washing", "ammo", "weapon"]).optional(), useStock: z.boolean().optional()
 });
 const createOrderSchema = z.object({
   clientName: z.string().min(1).max(120), expectedDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), grossValue: z.coerce.number().min(0).max(1_000_000_000_000).nullable().optional(),
   guildId: snowflake, notes: z.string().max(1000).nullable().optional(), productId: z.string().min(1).max(80), proofUrl: z.string().max(2048).nullable().optional(),
-  quantity: z.coerce.number().min(1).max(1_000_000), sourceId: z.string().max(120).nullable().optional(), userId: snowflake
+  quantity: z.coerce.number().min(1).max(1_000_000), sourceId: z.string().max(120).nullable().optional(), userId: snowflake,
+  washingPercentage: z.coerce.number().min(0).max(100).nullable().optional()
 });
 const updateStatusSchema = z.object({ actorId: snowflake, guildId: snowflake, note: z.string().max(500).nullable().optional(), status: statusSchema });
 

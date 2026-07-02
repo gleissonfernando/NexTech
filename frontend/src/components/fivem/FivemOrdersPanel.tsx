@@ -10,7 +10,7 @@ import type { DashboardGuild, FivemOrder, FivemOrderDashboard, FivemOrderProduct
 
 type Tab = "overview" | "settings" | "products" | "orders" | "reports";
 
-export function FivemOrdersManager({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
+export function FivemOrdersManager({ botId, canManage, guild, mode = "orders" }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null; mode?: "orders" | "washing" }) {
   const [dashboard, setDashboard] = useState<FivemOrderDashboard | null>(null);
   const [settings, setSettings] = useState<FivemOrderSettings | null>(null);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
@@ -29,11 +29,12 @@ export function FivemOrdersManager({ botId, canManage, guild }: { botId?: string
     setLoading(true);
     return Promise.all([getFivemOrders(guild.id, botId), getGuildLiveOptions(guild.id, botId)]).then(([data, options]) => {
       setDashboard(data); setSettings(data.settings); setChannels(options.channels); setRoles(options.roles);
-      setDraft((current) => data.products.find((item) => item.id === current?.id) ?? data.products[0] ?? null);
+      const products = mode === "washing" ? data.products.filter((item) => item.type === "washing") : data.products;
+      setDraft((current) => products.find((item) => item.id === current?.id) ?? products[0] ?? null);
     }).catch(() => setError("Nao foi possivel carregar o sistema de encomendas.")).finally(() => setLoading(false));
   }
 
-  useEffect(() => { void load(); }, [botId, guild?.id]);
+  useEffect(() => { void load(); }, [botId, guild?.id, mode]);
   useEffect(() => {
     if (!guild) return;
     const socket = createDashboardSocket();
@@ -42,9 +43,12 @@ export function FivemOrdersManager({ botId, canManage, guild }: { botId?: string
     return () => { socket.off("fivem:orders:updated", refresh); socket.disconnect(); };
   }, [botId, guild?.id]);
 
-  const filteredOrders = useMemo(() => (dashboard?.orders ?? []).filter((order) => statusFilter === "all" || order.status === statusFilter).filter((order) => `${order.orderNumber} ${order.clientName} ${order.productName} ${order.userId}`.toLowerCase().includes(search.toLowerCase())), [dashboard?.orders, search, statusFilter]);
+  const washingProductIds = useMemo(() => new Set((dashboard?.products ?? []).filter((item) => item.type === "washing").map((item) => item.id)), [dashboard?.products]);
+  const visibleProducts = useMemo(() => (dashboard?.products ?? []).filter((item) => mode !== "washing" || item.type === "washing"), [dashboard?.products, mode]);
+  const visibleOrders = useMemo(() => (dashboard?.orders ?? []).filter((order) => mode !== "washing" || washingProductIds.has(order.productId)), [dashboard?.orders, mode, washingProductIds]);
+  const filteredOrders = useMemo(() => visibleOrders.filter((order) => statusFilter === "all" || order.status === statusFilter).filter((order) => `${order.orderNumber} ${order.clientName} ${order.productName} ${order.userId}`.toLowerCase().includes(search.toLowerCase())), [visibleOrders, search, statusFilter]);
 
-  if (!guild) return <Card><CardContent className="py-10 text-sm text-zinc-400">Selecione um servidor para configurar Encomendas RP.</CardContent></Card>;
+  if (!guild) return <Card><CardContent className="py-10 text-sm text-zinc-400">Selecione um servidor para configurar {mode === "washing" ? "Lavagem" : "Encomendas RP"}.</CardContent></Card>;
   if (loading && !dashboard) return <div className="h-64 animate-pulse border border-zinc-800 bg-zinc-950" />;
   if (!dashboard || !settings) return <Card><CardContent className="py-10 text-sm text-red-300">{error ?? "Modulo indisponivel."}</CardContent></Card>;
   const guildId = guild.id;
@@ -60,7 +64,7 @@ export function FivemOrdersManager({ botId, canManage, guild }: { botId?: string
   }
   function newProduct() {
     const now = new Date().toISOString();
-    setDraft({ active: true, allowCustomQuantity: true, allowNotes: true, botId: botId ?? null, category: "Outros", cost: 0, createdAt: now, description: "", emoji: "", factionPercentage: 0, featured: false, guildId, id: "new", minimumStock: 0, name: "Novo produto", order: productCount + 1, price: 0, sellerPercentage: 0, stock: null, type: "standard", updatedAt: now, useStock: false });
+    setDraft({ active: true, allowCustomQuantity: true, allowNotes: mode !== "washing", botId: botId ?? null, category: mode === "washing" ? "Lavagem" : "Outros", cost: 0, createdAt: now, description: "", emoji: "", factionPercentage: mode === "washing" ? 20 : 0, washingPercentages: mode === "washing" ? [10, 20, 30] : [], featured: false, guildId, id: "new", minimumStock: 0, name: mode === "washing" ? "Lavagem" : "Novo produto", order: productCount + 1, price: 0, sellerPercentage: 0, stock: null, type: mode === "washing" ? "washing" : "standard", updatedAt: now, useStock: false });
     setTab("products");
   }
   async function saveProduct() {
@@ -82,16 +86,16 @@ export function FivemOrdersManager({ botId, canManage, guild }: { botId?: string
   return (
     <Card className="border-emerald-500/10 bg-zinc-950/75">
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Boxes className="h-5 w-5 text-emerald-300" /> Encomendas RP</CardTitle><CardDescription>Produtos, calculos, estoque, producao, entregas e relatorios isolados por bot e servidor.</CardDescription></div><div className="flex gap-2"><Button disabled={!canManage || saving || !settings.enabled || !settings.panelChannelId} onClick={() => void sendPanel()} size="sm" variant="outline"><Send className="mr-2 h-4 w-4" />Enviar painel</Button><Button disabled={!canManage || saving} onClick={() => void saveSettings()} size="sm">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button></div></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Boxes className="h-5 w-5 text-emerald-300" /> {mode === "washing" ? "Sistema de Lavagem" : "Encomendas RP"}</CardTitle><CardDescription>{mode === "washing" ? "Familias, percentuais, valores recebidos, repasses e historico de lavagem." : "Produtos, calculos, estoque, producao, entregas e relatorios isolados por bot e servidor."}</CardDescription></div><div className="flex gap-2"><Button disabled={!canManage || saving || !settings.enabled || !settings.panelChannelId} onClick={() => void sendPanel()} size="sm" variant="outline"><Send className="mr-2 h-4 w-4" />Enviar painel</Button><Button disabled={!canManage || saving} onClick={() => void saveSettings()} size="sm">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button></div></div>
       </CardHeader>
       <CardContent className="space-y-5">
         {error ? <div className="border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div> : null}{message ? <div className="border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</div> : null}
         <div className="flex flex-wrap border-b border-zinc-800">{tabs.map((item) => <button className={`border-b-2 px-4 py-2 text-sm ${tab === item.id ? "border-emerald-400 text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`} key={item.id} onClick={() => setTab(item.id)} type="button">{item.label}</button>)}</div>
         {tab === "overview" ? <Overview dashboard={dashboard} settings={settings} /> : null}
         {tab === "settings" ? <Settings settings={settings} channels={channels} roles={roles} disabled={!canManage} patch={(value) => setSettings((current) => current ? { ...current, ...value } : current)} botId={botId} guildId={guild.id} /> : null}
-        {tab === "products" ? <Products products={dashboard.products} draft={draft} disabled={!canManage} onAdd={newProduct} onDraft={setDraft} onPatch={(value) => setDraft((current) => current ? { ...current, ...value } : current)} onRemove={() => void removeProduct()} onSave={() => void saveProduct()} saving={saving} /> : null}
-        {tab === "orders" ? <Orders orders={filteredOrders} search={search} status={statusFilter} onSearch={setSearch} onStatus={setStatusFilter} onChange={(order, status) => void changeStatus(order, status)} /> : null}
-        {tab === "reports" ? <Reports dashboard={dashboard} /> : null}
+        {tab === "products" ? <Products products={visibleProducts} draft={draft} disabled={!canManage} onAdd={newProduct} onDraft={setDraft} onPatch={(value) => setDraft((current) => current ? { ...current, ...value } : current)} onRemove={() => void removeProduct()} onSave={() => void saveProduct()} saving={saving} /> : null}
+        {tab === "orders" ? mode === "washing" ? <WashingOrders orders={filteredOrders} onChange={(order, status) => void changeStatus(order, status)} /> : <Orders orders={filteredOrders} search={search} status={statusFilter} onSearch={setSearch} onStatus={setStatusFilter} onChange={(order, status) => void changeStatus(order, status)} /> : null}
+        {tab === "reports" ? <Reports dashboard={{ ...dashboard, orders: visibleOrders, products: visibleProducts }} /> : null}
       </CardContent>
     </Card>
   );
@@ -140,3 +144,7 @@ function money(value: number) { return new Intl.NumberFormat("pt-BR", { currency
 function statusName(value: FivemOrderStatus) { return STATUS_OPTIONS.find((item) => item.id === value)?.name ?? value; }
 function downloadText(filename: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); }
 function escapeHtml(value: string) { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+function WashingOrders({ orders, onChange }: { orders: FivemOrder[]; onChange: (order: FivemOrder, status: FivemOrderStatus) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left text-sm"><thead className="border-b border-zinc-800 text-xs text-zinc-500"><tr><th className="py-2">Numero</th><th>Familia</th><th>Valor entregue</th><th>Percentual</th><th>Valor da familia</th><th>Valor retido</th><th>Status</th><th>Atualizar</th></tr></thead><tbody className="divide-y divide-zinc-900">{orders.map((order) => <tr key={order.id}><td className="py-3 font-mono text-zinc-300">#{String(order.orderNumber).padStart(5, "0")}</td><td className="font-medium text-white">{order.clientName}</td><td>{money(order.grossValue)}</td><td><Badge variant="muted">{order.washingPercentage ?? 0}%</Badge></td><td className="text-emerald-300">{money(order.finalValue)}</td><td className="text-amber-300">{money(order.profit)}</td><td><Badge variant={order.status === "delivered" ? "success" : order.status === "cancelled" || order.status === "rejected" ? "danger" : "muted"}>{statusName(order.status)}</Badge></td><td><select className="h-8 border border-zinc-800 bg-black px-2 text-xs text-white" value={order.status} onChange={(event) => onChange(order, event.target.value as FivemOrderStatus)}>{STATUS_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></td></tr>)}</tbody></table>{!orders.length ? <p className="py-6 text-center text-sm text-zinc-500">Nenhuma lavagem registrada.</p> : null}</div>;
+}

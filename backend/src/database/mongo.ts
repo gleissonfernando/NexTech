@@ -405,6 +405,7 @@ export type MongoFivemOrderProduct = {
   description: string | null;
   emoji: string | null;
   factionPercentage: number;
+  washingPercentages?: number[];
   featured: boolean;
   guildId: string;
   minimumStock: number;
@@ -430,6 +431,7 @@ export type MongoFivemOrder = {
   expectedDelivery: string | null;
   finalValue: number;
   grossValue: number;
+  washingPercentage?: number | null;
   guildId: string;
   history: Array<{ actorId: string | null; at: Date; from: MongoFivemOrderStatus | null; note: string | null; to: MongoFivemOrderStatus }>;
   notes: string | null;
