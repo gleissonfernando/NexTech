@@ -80,6 +80,7 @@ export type ViewId =
   | "application-emojis"
   | "media-library"
   | "server-cloner"
+  | "delete-channels"
   | "settings";
 
 export type NavItem = {
@@ -131,6 +132,7 @@ const navItems: NavItem[] = [
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
   { id: "media-library", label: "Emojis & Sons", icon: Archive, moduleId: "emoji-cloner" },
   { id: "server-cloner", label: "Clonagem", icon: SmilePlus, moduleIds: ["emoji-cloner", "server-cloner"] },
+  { id: "delete-channels", label: "Apagar canais", icon: UserMinus },
   { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["tickets", "avisos", "network", "server-generator"] }
 ];
 
@@ -163,7 +165,7 @@ export function Sidebar({
 }: SidebarProps) {
   const enabledModuleSet = new Set(enabledModules);
   const visibleItems = navItems.filter((item) => {
-    if (item.id === "overview" || item.id === "notifications") {
+    if (item.id === "overview" || item.id === "notifications" || item.id === "delete-channels") {
       return true;
     }
 
@@ -302,7 +304,7 @@ function BotManagementSidebar({
   }, [bots, query]);
   const botOnline = Boolean(selectedBot && (selectedBot.status === "online" || status.online));
   const botNavItems = navItems.filter((item) => {
-    if (item.id === "overview" || item.id === "notifications") return true;
+    if (item.id === "overview" || item.id === "notifications" || item.id === "delete-channels") return true;
     if (item.moduleId) return enabledModuleSet.has(item.moduleId);
     return Boolean(item.moduleIds?.some((moduleId) => enabledModuleSet.has(moduleId)));
   });

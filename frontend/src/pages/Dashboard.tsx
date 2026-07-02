@@ -75,6 +75,7 @@ import {
   cloneSelectedEmojiCloneBotToken,
   createFivemGoalConfig,
   deleteFivemGoalConfig,
+  deleteGuildChannels,
   deleteFivemHierarchyPanel,
   fetchEmojiCloneBotTokenEmojis,
   getAdvancedModuleConfig,
@@ -1168,6 +1169,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             onSettingsChange={setSettings}
             settings={settings}
           />
+        ) : null}
+        {activeView === "delete-channels" ? (
+          <DeleteChannelsPanel botId={activeBotId} canManage={canManageDashboard} guild={selectedGuild} />
         ) : null}
         {activeView === "media-library" ? (
           <MediaLibraryPanel
@@ -4161,6 +4165,164 @@ function RulesView({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function DeleteChannelsPanel({
+  botId,
+  canManage,
+  guild
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+}) {
+  const [options, setOptions] = useState<{ categories: Array<{ id: string; name: string }>; voiceChannels: GuildVoiceChannelOption[] }>({ categories: [], voiceChannels: [] });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const loadChannels = useCallback(async () => {
+    if (!guild) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      const result = await getGuildLiveOptions(guild.id, botId, true);
+      setOptions({ categories: result.categories ?? [], voiceChannels: result.voiceChannels ?? [] });
+      setSelectedIds([]);
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel carregar as calls e categorias.");
+    } finally {
+      setLoading(false);
+    }
+  }, [botId, guild]);
+
+  useEffect(() => {
+    void loadChannels();
+  }, [loadChannels]);
+
+  function toggleChannel(channelId: string) {
+    setSelectedIds((current) => current.includes(channelId)
+      ? current.filter((id) => id !== channelId)
+      : [...current, channelId]);
+  }
+
+  function toggleGroup(channelIds: string[]) {
+    const allSelected = channelIds.length > 0 && channelIds.every((id) => selectedIds.includes(id));
+    setSelectedIds((current) => allSelected
+      ? current.filter((id) => !channelIds.includes(id))
+      : [...new Set([...current, ...channelIds])]);
+  }
+
+  async function handleDelete() {
+    if (!guild || !selectedIds.length) return;
+    const confirmed = window.confirm(`Apagar permanentemente ${selectedIds.length} call(s) e/ou categoria(s) selecionada(s)? Esta acao nao pode ser desfeita.`);
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setMessage(null);
+    try {
+      const result = await deleteGuildChannels(guild.id, selectedIds, botId);
+      setMessage(result.failed.length
+        ? `${result.deleted.length} removido(s). ${result.failed.length} falharam por permissao ou limite do Discord.`
+        : `${result.deleted.length} canal(is) removido(s) com sucesso.`);
+      await loadChannels();
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Nao foi possivel apagar os canais selecionados.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (!guild) {
+    return <EmptyState icon={Trash2} title="Selecione um servidor para gerenciar os canais" />;
+  }
+
+  const categoryIds = options.categories.map((channel) => channel.id);
+  const voiceIds = options.voiceChannels.map((channel) => channel.id);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5 text-red-300" />Apagar calls e categorias</CardTitle>
+        <CardDescription>Selecione quantas calls, palcos e categorias quiser remover do servidor {guild.name}.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          A exclusao e permanente. O bot precisa da permissao Gerenciar Canais. Apagar uma categoria nao apaga automaticamente os canais que nao foram selecionados.
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <Button disabled={loading || deleting} onClick={() => void loadChannels()} variant="secondary">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Atualizar lista
+          </Button>
+          <Button disabled={!canManage || loading || deleting || !selectedIds.length} onClick={() => void handleDelete()} variant="destructive">
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Apagar selecionados ({selectedIds.length})
+          </Button>
+        </div>
+
+        {message ? <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-200">{message}</p> : null}
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          <ChannelDeleteGroup
+            channelIds={voiceIds}
+            emptyLabel="Nenhuma call encontrada."
+            items={options.voiceChannels.map((channel) => ({ id: channel.id, label: channel.name, detail: channel.type === "stage" ? "Palco" : "Call" }))}
+            onToggle={toggleChannel}
+            onToggleAll={() => toggleGroup(voiceIds)}
+            selectedIds={selectedIds}
+            title="Calls e palcos"
+          />
+          <ChannelDeleteGroup
+            channelIds={categoryIds}
+            emptyLabel="Nenhuma categoria encontrada."
+            items={options.categories.map((channel) => ({ id: channel.id, label: channel.name, detail: "Categoria" }))}
+            onToggle={toggleChannel}
+            onToggleAll={() => toggleGroup(categoryIds)}
+            selectedIds={selectedIds}
+            title="Categorias"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChannelDeleteGroup({
+  channelIds,
+  emptyLabel,
+  items,
+  onToggle,
+  onToggleAll,
+  selectedIds,
+  title
+}: {
+  channelIds: string[];
+  emptyLabel: string;
+  items: Array<{ id: string; label: string; detail: string }>;
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+  selectedIds: string[];
+  title: string;
+}) {
+  const allSelected = channelIds.length > 0 && channelIds.every((id) => selectedIds.includes(id));
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="font-medium text-white">{title} ({items.length})</h3>
+        <Button disabled={!items.length} onClick={onToggleAll} size="sm" variant="ghost">{allSelected ? "Desmarcar todas" : "Selecionar todas"}</Button>
+      </div>
+      <div className="discord-scrollbar max-h-96 space-y-2 overflow-y-auto pr-1">
+        {items.length ? items.map((item) => (
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-zinc-800 px-3 py-2 transition hover:border-zinc-700 hover:bg-zinc-900" key={item.id}>
+            <input checked={selectedIds.includes(item.id)} className="h-4 w-4 accent-red-500" onChange={() => onToggle(item.id)} type="checkbox" />
+            <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{item.label}</span>
+            <span className="text-xs text-zinc-500">{item.detail}</span>
+          </label>
+        )) : <p className="py-6 text-center text-sm text-zinc-500">{emptyLabel}</p>}
+      </div>
+    </section>
   );
 }
 

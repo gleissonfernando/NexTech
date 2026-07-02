@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { canManageDevBotGuild, getDevBotToken } from "../services/devBotService";
-import { getGuildLiveOptions, getGuildMemberOptions, getGuildRoleOptions } from "../services/discordOptionsService";
+import { createLog } from "../services/logService";
+import { deleteGuildVoiceChannelsAndCategories, getGuildLiveOptions, getGuildMemberOptions, getGuildRoleOptions } from "../services/discordOptionsService";
 import { getBotStatus } from "../services/statsService";
 
 export const guildsRouter = Router();
@@ -74,6 +76,43 @@ guildsRouter.get("/:guildId/live-options", async (req, res, next) => {
     return res.json({
       options: await getGuildLiveOptions(guildId, await getDevBotToken(botId), forceRefresh)
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+guildsRouter.post("/:guildId/delete-channels", async (req, res, next) => {
+  try {
+    const guildId = req.params.guildId;
+    const input = z.object({
+      botId: z.string().trim().min(1).nullable().optional(),
+      channelIds: z.array(z.string().regex(/^\d{16,22}$/)).min(1).max(500)
+    }).parse(req.body);
+    const botId = input.botId ?? null;
+
+    if (
+      !canManageDashboardGuild(res.locals.dashboardAuth.user, guildId) &&
+      !(await canManageDevBotGuild(res.locals.dashboardAuth.user, botId, guildId))
+    ) {
+      return res.status(403).json({ message: "Voce nao tem permissao para apagar canais deste servidor." });
+    }
+
+    const result = await deleteGuildVoiceChannelsAndCategories(
+      guildId,
+      input.channelIds,
+      await getDevBotToken(botId)
+    );
+
+    await createLog({
+      botId,
+      guildId,
+      userId: res.locals.dashboardAuth.user.discordId ?? res.locals.dashboardAuth.user.id,
+      type: "dashboard.channels_deleted",
+      message: `${result.deleted.length} canal(is) removido(s) pela dashboard.`,
+      metadata: { deletedIds: result.deleted.map((channel) => channel.id), failedIds: result.failed.map((channel) => channel.id) }
+    }).catch(() => null);
+
+    return res.json({ result });
   } catch (error) {
     return next(error);
   }

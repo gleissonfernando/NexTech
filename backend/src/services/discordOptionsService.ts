@@ -82,6 +82,11 @@ export type GuildLiveOptionsDto = {
   voiceChannels: GuildVoiceChannelOptionDto[];
 };
 
+export type DeleteGuildChannelsResultDto = {
+  deleted: Array<{ id: string; name: string; type: "category" | "voice" | "stage" }>;
+  failed: Array<{ id: string; name: string; reason: string; type: "category" | "voice" | "stage" }>;
+};
+
 export type GuildMemberOptionDto = {
   avatarUrl: string | null;
   bot: boolean;
@@ -201,6 +206,54 @@ export async function getGuildLiveOptions(
 
   guildLiveOptionsRequests.set(cacheKey, request);
   return request;
+}
+
+export async function deleteGuildVoiceChannelsAndCategories(
+  guildId: string,
+  channelIds: string[],
+  botToken?: string | null
+): Promise<DeleteGuildChannelsResultDto> {
+  const token = botToken || env.DISCORD_BOT_TOKEN;
+
+  if (!token) {
+    throw new Error("Token do bot nao configurado.");
+  }
+
+  const requestedIds = [...new Set(channelIds)];
+  const guildChannels = await discordFetch<DiscordChannel[]>(`/guilds/${guildId}/channels`, token);
+  const allowedChannels = new Map(
+    guildChannels
+      .filter((channel) => channel.type === 2 || channel.type === 4 || channel.type === 13)
+      .map((channel) => [channel.id, channel] as const)
+  );
+
+  const invalidIds = requestedIds.filter((channelId) => !allowedChannels.has(channelId));
+  if (invalidIds.length) {
+    throw Object.assign(new Error("A selecao contem canais invalidos ou que nao pertencem a este servidor."), { statusCode: 400 });
+  }
+
+  const orderedChannels = requestedIds
+    .map((channelId) => allowedChannels.get(channelId)!)
+    .sort((left, right) => Number(left.type === 4) - Number(right.type === 4));
+  const result: DeleteGuildChannelsResultDto = { deleted: [], failed: [] };
+
+  for (const channel of orderedChannels) {
+    const type = channel.type === 4 ? "category" : channel.type === 13 ? "stage" : "voice";
+    try {
+      await discordDelete(`/channels/${channel.id}`, token, "Removido pela dashboard");
+      result.deleted.push({ id: channel.id, name: channel.name, type });
+    } catch (error) {
+      result.failed.push({
+        id: channel.id,
+        name: channel.name,
+        reason: error instanceof Error ? error.message : "Falha desconhecida.",
+        type
+      });
+    }
+  }
+
+  guildLiveOptionsCache.delete(createLiveOptionsCacheKey(guildId, token));
+  return result;
 }
 
 async function fetchGuildLiveOptions(guildId: string, token: string): Promise<GuildLiveOptionsDto> {
@@ -690,6 +743,30 @@ async function discordFetch<TResponse>(path: string, token: string, attempt = 0)
   }
 
   return (await response.json()) as TResponse;
+}
+
+async function discordDelete(path: string, token: string, reason: string, attempt = 0): Promise<void> {
+  const response = await fetch(`${DISCORD_API_URL}${path}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bot ${token}`,
+      "X-Audit-Log-Reason": encodeURIComponent(reason)
+    }
+  });
+
+  if (response.status === 429 && attempt < MAX_DISCORD_RATE_LIMIT_RETRIES) {
+    await wait(Math.min(await readDiscordRetryAfterMs(response), MAX_DISCORD_RETRY_DELAY_MS));
+    return discordDelete(path, token, reason, attempt + 1);
+  }
+
+  if (!response.ok) {
+    throw new DiscordApiRequestError(
+      response.status === 403
+        ? "O bot nao tem permissao para apagar este canal."
+        : `Discord API respondeu ${response.status}.`,
+      response.status
+    );
+  }
 }
 
 async function readDiscordRetryAfterMs(response: Response) {

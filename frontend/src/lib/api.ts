@@ -276,6 +276,16 @@ export async function getGuildLiveOptions(guildId: string, botId?: string | null
   return data.options;
 }
 
+export async function deleteGuildChannels(guildId: string, channelIds: string[], botId?: string | null) {
+  const { data } = await api.post<{
+    result: {
+      deleted: Array<{ id: string; name: string; type: "category" | "voice" | "stage" }>;
+      failed: Array<{ id: string; name: string; reason: string; type: "category" | "voice" | "stage" }>;
+    };
+  }>(`/guilds/${guildId}/delete-channels`, { botId: botId ?? null, channelIds });
+  return data.result;
+}
+
 export async function getGuildRoleOptions(guildId: string, botId?: string | null) {
   const { data } = await api.get<{ roles: GuildRoleOption[] }>(`/guilds/${guildId}/role-options`, {
     params: botParams(botId)
