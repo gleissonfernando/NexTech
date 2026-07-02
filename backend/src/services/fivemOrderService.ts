@@ -143,7 +143,7 @@ export async function updateFivemOrderProduct(guildId: string, botId: string | n
   if (!current) return null;
   const next = { ...normalizeProduct({ ...toProductDto(current), ...input }, guildId, normalizedBotId), updatedAt: new Date() };
   await fivemOrderProducts.updateOne({ _id: productId, ...scopeQuery(guildId, normalizedBotId) }, { $set: next });
-  await writeLog({ action: current.stock !== next.stock ? "stock.updated" : "product.updated", actorId, botId: normalizedBotId, data: { name: next.name, stock: next.stock }, guildId, orderId: null, productId });
+  await writeLog({ action: "product.updated", actorId, botId: normalizedBotId, data: { name: next.name }, guildId, orderId: null, productId });
   emitUpdated(guildId, normalizedBotId);
   return toProductDto({ ...current, ...next });
 }
@@ -198,10 +198,6 @@ export async function createFivemOrder(input: {
   if (product.type !== "washing" && (input.quantity < (product.minimumQuantity ?? 1) || input.quantity > (product.maximumQuantity ?? 1_000_000))) throw orderError(`A quantidade deve ficar entre ${product.minimumQuantity ?? 1} e ${product.maximumQuantity ?? 1_000_000}.`, 400);
   const washingPercentage = product.type === "washing" ? resolveWashingPercentage(product, input.washingPercentage) : null;
   const totals = calculateTotals(product, quantity, input.grossValue, washingPercentage);
-  if (product.useStock) {
-    const stockUpdate = await fivemOrderProducts.updateOne({ _id: product._id, ...scopeQuery(input.guildId, botId), stock: { $gte: quantity } }, { $inc: { stock: -quantity }, $set: { updatedAt: new Date() } });
-    if (!stockUpdate.modifiedCount) throw orderError("Estoque insuficiente para este produto.", 409);
-  }
   const effectiveSettings = mergeProductSettings(settings, product);
   const now = new Date();
   const status: MongoFivemOrderStatus = effectiveSettings.approvalRequired ? "pending_approval" : "open";
@@ -213,12 +209,7 @@ export async function createFivemOrder(input: {
     orderNumber, productId: product._id, productName: product.name, profit: totals.profit, proofUrl: effectiveSettings.allowAttachments ? normalizeUrl(input.proofUrl) : null,
     quantity, responsibleId: null, sourceId: normalizeText(input.sourceId, 120), status, unitPrice: totals.unitPrice, updatedAt: now, userId: input.userId, washingPercentage
   };
-  try {
-    await fivemOrders.insertOne(doc);
-  } catch (error) {
-    if (product.useStock) await fivemOrderProducts.updateOne({ _id: product._id, ...scopeQuery(input.guildId, botId) }, { $inc: { stock: quantity } });
-    throw error;
-  }
+  await fivemOrders.insertOne(doc);
   await writeLog({ action: "order.created", actorId: input.userId, botId, data: { familyId: family._id, familyName: family.name, finalValue: doc.finalValue, orderNumber, product: product.name, quantity }, guildId: input.guildId, orderId: doc._id, productId: product._id });
   emitUpdated(input.guildId, botId);
   return toOrderDto(doc);
@@ -238,7 +229,7 @@ export async function getFivemOrderByNumber(guildId: string, botId: string | nul
 
 export async function updateFivemOrderStatus(guildId: string, botId: string | null, orderId: string, status: MongoFivemOrderStatus, actorId: string | null, note?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
-  const { fivemOrderProducts, fivemOrders } = await getMongoCollections();
+  const { fivemOrders } = await getMongoCollections();
   const current = await fivemOrders.findOne({ _id: orderId, ...scopeQuery(guildId, normalizedBotId) });
   if (!current) return null;
   if (current.status === status) return toOrderDto(current);
@@ -251,10 +242,6 @@ export async function updateFivemOrderStatus(guildId: string, botId: string | nu
     { returnDocument: "after" }
   );
   if (!updated) throw orderError("A encomenda foi atualizada por outra pessoa. Tente novamente.", 409);
-  if (["cancelled", "rejected"].includes(status) && !["cancelled", "rejected", "delivered"].includes(current.status)) {
-    const product = await fivemOrderProducts.findOne({ _id: current.productId, ...scopeQuery(guildId, normalizedBotId) });
-    if (product?.useStock) await fivemOrderProducts.updateOne({ _id: product._id }, { $inc: { stock: current.quantity }, $set: { updatedAt: now } });
-  }
   await writeLog({ action: `order.${status}`, actorId, botId: normalizedBotId, data: { familyId: current.familyId, familyName: current.familyName, from: current.status, note: normalizeText(note, 500), orderNumber: current.orderNumber, orderType: current.category, to: status, totalValue: current.finalValue }, guildId, orderId, productId: current.productId });
   emitUpdated(guildId, normalizedBotId);
   const dto = toOrderDto(updated);
@@ -346,9 +333,9 @@ function normalizeProduct(value: Partial<FivemOrderProductDto>, guildId: string,
     category: normalizeText(value.category, 80) || (type === "washing" ? "Lavagem" : type === "ammo" ? "Municao" : type === "weapon" ? "Armas" : "Outros"),
     config: normalizeProductConfig(value.config),
     cost: money(value.cost), description: normalizeText(value.description, 500), emoji: normalizeText(value.emoji, 80), factionPercentage: clampNumber(value.factionPercentage, 0, 100, type === "washing" ? 20 : 0),
-    defaultQuantity: clampNumber(value.defaultQuantity, 1, 1_000_000, 1), featured: value.featured === true, guildId, maximumQuantity: clampNumber(value.maximumQuantity, 1, 1_000_000, 1_000_000), minimumQuantity: clampNumber(value.minimumQuantity, 1, 1_000_000, 1), minimumStock: clampNumber(value.minimumStock, 0, 1_000_000_000, 0), name: normalizeText(value.name, 100) || "Novo produto",
-    order: clampNumber(value.order, 0, 10000, 0), price: money(value.price), sellerPercentage: clampNumber(value.sellerPercentage, 0, 100, 0), stock: value.useStock ? clampNumber(value.stock, 0, 1_000_000_000, 0) : null,
-    type, useStock: value.useStock === true,
+    defaultQuantity: clampNumber(value.defaultQuantity, 1, 1_000_000, 1), featured: value.featured === true, guildId, maximumQuantity: clampNumber(value.maximumQuantity, 1, 1_000_000, 1_000_000), minimumQuantity: clampNumber(value.minimumQuantity, 1, 1_000_000, 1), name: normalizeText(value.name, 100) || "Novo produto",
+    order: clampNumber(value.order, 0, 10000, 0), price: money(value.price), sellerPercentage: clampNumber(value.sellerPercentage, 0, 100, 0),
+    type,
     washingPercentages: normalizePercentages(value.washingPercentages, value.factionPercentage, type)
   };
 }

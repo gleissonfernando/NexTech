@@ -60,7 +60,7 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
-    description: "Estoque, retirada, distribuicao e auditoria de municoes.",
+    description: "Pedidos, producao, entrega, logs e financeiro de municoes.",
     id: "fivem-ammo",
     permissions: "Admin FiveM, Arsenal",
     title: "Sistema de Municoes"

@@ -975,9 +975,9 @@ export type FivemOrderProduct = {
     orderCreatedMessage?: string | null;
     orderDeliveredMessage?: string | null;
   };
-  defaultQuantity: number; description: string | null; emoji: string | null; factionPercentage: number; washingPercentages?: number[]; featured: boolean; guildId: string; id: string; maximumQuantity: number; minimumQuantity: number; minimumStock: number;
-  name: string; order: number; price: number; sellerPercentage: number; stock: number | null; type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom";
-  updatedAt: string; useStock: boolean;
+  defaultQuantity: number; description: string | null; emoji: string | null; factionPercentage: number; washingPercentages?: number[]; featured: boolean; guildId: string; id: string; maximumQuantity: number; minimumQuantity: number;
+  name: string; order: number; price: number; sellerPercentage: number; type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom";
+  updatedAt: string;
 };
 export type FivemOrder = {
   botId: string | null; category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; familyId: string; familyName: string; finalValue: number;

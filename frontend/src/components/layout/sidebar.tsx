@@ -74,6 +74,7 @@ export type ViewId =
   | "fivem-absence"
   | "fivem-hierarchy"
   | "fivem-orders"
+  | "fivem-families"
   | "fivem-washing"
   | "fivem-ammo"
   | "fivem-drug"
@@ -133,6 +134,7 @@ const navItems: NavItem[] = [
   { id: "fivem-absence", label: "Ausência", icon: CalendarClock, moduleIds: ["fivem-absences", "fivem-fac"] },
   { id: "fivem-hierarchy", label: "Hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
+  { id: "fivem-families", label: "Famílias", icon: Users, moduleIds: ["fivem-orders", "fivem-drugs", "fivem-washing"] },
   { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },
   { id: "fivem-ammo", label: "Munição", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },

@@ -199,8 +199,8 @@ export type FivemOrderProduct = {
     orderCreatedMessage?: string | null;
     orderDeliveredMessage?: string | null;
   };
-  factionPercentage: number; washingPercentages?: number[]; featured: boolean; id: string; minimumStock: number; name: string; order: number; price: number; sellerPercentage: number;
-  defaultQuantity: number; maximumQuantity: number; minimumQuantity: number; stock: number | null; type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom"; useStock: boolean;
+  factionPercentage: number; washingPercentages?: number[]; featured: boolean; id: string; name: string; order: number; price: number; sellerPercentage: number;
+  defaultQuantity: number; maximumQuantity: number; minimumQuantity: number; type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom";
 };
 export type FivemOrder = {
   category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; familyId: string; familyName: string; finalValue: number; grossValue: number; id: string;

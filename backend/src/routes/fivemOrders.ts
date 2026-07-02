@@ -56,10 +56,10 @@ const productSchema = z.object({
     orderDeliveredMessage: z.string().max(500).nullable().optional()
   }).optional(),
   cost: z.coerce.number().min(0).max(1_000_000_000_000).optional(), description: z.string().max(500).nullable().optional(), emoji: z.string().max(80).nullable().optional(),
-  defaultQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), factionPercentage: z.coerce.number().min(0).max(100).optional(), featured: z.boolean().optional(), maximumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), minimumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), minimumStock: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  defaultQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), factionPercentage: z.coerce.number().min(0).max(100).optional(), featured: z.boolean().optional(), maximumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), minimumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(),
   washingPercentages: z.array(z.coerce.number().min(0).max(100)).max(25).optional(),
   name: z.string().min(1).max(100).optional(), order: z.coerce.number().int().min(0).max(10000).optional(), price: z.coerce.number().min(0).max(1_000_000_000_000).optional(),
-  sellerPercentage: z.coerce.number().min(0).max(100).optional(), stock: z.coerce.number().min(0).max(1_000_000_000).nullable().optional(), type: z.enum(["standard", "washing", "ammo", "drug", "weapon", "custom"]).optional(), useStock: z.boolean().optional()
+  sellerPercentage: z.coerce.number().min(0).max(100).optional(), type: z.enum(["standard", "washing", "ammo", "drug", "weapon", "custom"]).optional()
 });
 const familySchema = z.object({
   active: z.boolean().optional(),

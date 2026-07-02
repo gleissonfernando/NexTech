@@ -555,6 +555,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-absence": "fivem-absences",
   "fivem-hierarchy": "fivem-hierarchy",
   "fivem-orders": "fivem-orders",
+  "fivem-families": "fivem-orders",
   "fivem-washing": "fivem-washing",
   "fivem-ammo": "fivem-orders",
   "fivem-drug": "fivem-drugs",
@@ -1244,6 +1245,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
             mode="orders"
           />
+        ) : null}
+        {activeView === "fivem-families" ? (
+          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard) || canManageModule(selectedBot, "fivem-drugs", canManageDashboard) || canManageModule(selectedBot, "fivem-washing", canManageDashboard)} guild={selectedGuild} initialTab="families" mode="orders" />
         ) : null}
         {activeView === "fivem-washing" ? (
           <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-washing", canManageDashboard)} guild={selectedGuild} mode="washing" />
@@ -3432,7 +3436,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Pedidos, entregas e acompanhamento de encomendas.", id: "fivem-orders", permissions: "Admin FiveM", title: "Encomendas" },
     { builtIn: true, description: "Lavagem RP com regras de porcentagem, calculo automatico, logs e historico.", id: "fivem-washing", permissions: "Admin FiveM", title: "Sistema de Lavagem" },
     { builtIn: true, description: "Drogas, familias autorizadas, pedidos, producao, logs e historico isolados.", id: "fivem-drugs", permissions: "Admin FiveM", title: "Sistema de Drogas" },
-    { builtIn: true, description: "Controle de municoes, estoque e distribuicao.", id: "fivem-ammo", permissions: "Admin FiveM", title: "Municoes" },
+    { builtIn: true, description: "Pedidos, producao, entrega, logs e financeiro de municoes.", id: "fivem-ammo", permissions: "Admin FiveM", title: "Municoes" },
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Painel automatico de hierarquia por cargos.", id: "fivem-hierarchy", permissions: "Admin FiveM", title: "Hierarquia FAQ" }
@@ -8118,6 +8122,10 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
 
   if (view === "fivem-absence") {
     return enabledModules.includes("fivem-absences") || enabledModules.includes("fivem-fac");
+  }
+
+  if (view === "fivem-families") {
+    return enabledModules.includes("fivem-orders") || enabledModules.includes("fivem-drugs") || enabledModules.includes("fivem-washing");
   }
 
   const requiredModule = viewModuleIds[view];

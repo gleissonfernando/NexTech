@@ -444,7 +444,6 @@ export type MongoFivemOrderProduct = {
   washingPercentages?: number[];
   featured: boolean;
   guildId: string;
-  minimumStock: number;
   defaultQuantity: number;
   minimumQuantity: number;
   maximumQuantity: number;
@@ -452,10 +451,8 @@ export type MongoFivemOrderProduct = {
   order: number;
   price: number;
   sellerPercentage: number;
-  stock: number | null;
   type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom";
   updatedAt: Date;
-  useStock: boolean;
 };
 
 export type MongoFivemOrderStatus = "open" | "pending_approval" | "approved" | "in_production" | "ready" | "delivered" | "cancelled" | "rejected";

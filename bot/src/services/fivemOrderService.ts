@@ -73,7 +73,7 @@ export async function updateFivemOrderByNumber(interaction: ChatInputCommandInte
 export async function showFivemOrderReport(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) return;
   const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
-  const products = runtime.products.map((item) => `${item.emoji ?? "-"} ${item.name}: estoque ${item.useStock ? item.stock ?? 0 : "livre"}`).join("\n") || "Nenhum produto ativo.";
+  const products = runtime.products.map((item) => `${item.emoji ?? "-"} ${item.name}: ${formatMoney(item.price)} unidade`).join("\n") || "Nenhum produto ativo.";
   await interaction.reply({ content: `**Relatorio rapido de encomendas**\n${products}`, ephemeral: true });
 }
 

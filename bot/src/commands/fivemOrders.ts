@@ -10,10 +10,9 @@ export const fivemOrdersCommand: BotCommand = {
     .addSubcommand((cmd) => cmd.setName("status").setDescription("Consulta uma encomenda.").addIntegerOption((option) => option.setName("numero").setDescription("Numero da encomenda").setRequired(true).setMinValue(1)))
     .addSubcommand((cmd) => cmd.setName("entregar").setDescription("Marca uma encomenda como entregue.").addIntegerOption((option) => option.setName("numero").setDescription("Numero da encomenda").setRequired(true).setMinValue(1)))
     .addSubcommand((cmd) => cmd.setName("cancelar").setDescription("Cancela uma encomenda.").addIntegerOption((option) => option.setName("numero").setDescription("Numero da encomenda").setRequired(true).setMinValue(1)))
-    .addSubcommand((cmd) => cmd.setName("produto-adicionar").setDescription("Adiciona um produto.").addStringOption((option) => option.setName("nome").setDescription("Nome").setRequired(true)).addStringOption((option) => option.setName("categoria").setDescription("Categoria").setRequired(true)).addNumberOption((option) => option.setName("preco").setDescription("Valor unitario").setRequired(true).setMinValue(0)).addNumberOption((option) => option.setName("custo").setDescription("Custo unitario").setMinValue(0)).addIntegerOption((option) => option.setName("estoque").setDescription("Estoque inicial").setMinValue(0)))
+    .addSubcommand((cmd) => cmd.setName("produto-adicionar").setDescription("Adiciona um produto.").addStringOption((option) => option.setName("nome").setDescription("Nome").setRequired(true)).addStringOption((option) => option.setName("categoria").setDescription("Categoria").setRequired(true)).addNumberOption((option) => option.setName("preco").setDescription("Valor unitario").setRequired(true).setMinValue(0)).addNumberOption((option) => option.setName("custo").setDescription("Custo unitario").setMinValue(0)))
     .addSubcommand((cmd) => cmd.setName("produto-remover").setDescription("Remove um produto.").addStringOption((option) => option.setName("produto-id").setDescription("ID do produto").setRequired(true)))
-    .addSubcommand((cmd) => cmd.setName("estoque").setDescription("Consulta ou altera o estoque.").addStringOption((option) => option.setName("produto-id").setDescription("ID do produto").setRequired(true)).addIntegerOption((option) => option.setName("quantidade").setDescription("Novo estoque").setMinValue(0)))
-    .addSubcommand((cmd) => cmd.setName("relatorio").setDescription("Mostra o resumo de produtos e estoque."))
+    .addSubcommand((cmd) => cmd.setName("relatorio").setDescription("Mostra o resumo de produtos e valores."))
     .addSubcommand((cmd) => cmd.setName("configurar").setDescription("Mostra onde configurar o sistema.")),
   moduleId: "fivem-orders",
   async execute(interaction, context) {
@@ -29,10 +28,9 @@ export const fivemOrdersCommand: BotCommand = {
     if (subcommand === "entregar") { await updateFivemOrderByNumber(interaction, context, interaction.options.getInteger("numero", true), "delivered"); return; }
     if (subcommand === "cancelar") { await updateFivemOrderByNumber(interaction, context, interaction.options.getInteger("numero", true), "cancelled"); return; }
     if (subcommand === "relatorio") { await showFivemOrderReport(interaction, context); return; }
-    if (subcommand === "configurar") { await interaction.reply({ content: "Use a aba **Encomendas RP** na dashboard para configurar canais, cargos, produtos, estoque, mensagens e permissoes.", ephemeral: true }); return; }
+    if (subcommand === "configurar") { await interaction.reply({ content: "Use a aba **Encomendas RP** na dashboard para configurar canais, cargos, produtos, mensagens e permissoes.", ephemeral: true }); return; }
     if (subcommand === "produto-adicionar") {
-      const stock = interaction.options.getInteger("estoque");
-      const product = await context.api.createFivemOrderProduct(interaction.guild.id, { actorId: interaction.user.id, category: interaction.options.getString("categoria", true), cost: interaction.options.getNumber("custo") ?? 0, name: interaction.options.getString("nome", true), price: interaction.options.getNumber("preco", true), stock, useStock: stock !== null });
+      const product = await context.api.createFivemOrderProduct(interaction.guild.id, { actorId: interaction.user.id, category: interaction.options.getString("categoria", true), cost: interaction.options.getNumber("custo") ?? 0, name: interaction.options.getString("nome", true), price: interaction.options.getNumber("preco", true) });
       await interaction.reply({ content: `Produto **${product.name}** criado. ID: \`${product.id}\`.`, ephemeral: true }); return;
     }
     const productId = interaction.options.getString("produto-id", true);
@@ -40,11 +38,5 @@ export const fivemOrdersCommand: BotCommand = {
       await context.api.deleteFivemOrderProduct(interaction.guild.id, productId, interaction.user.id);
       await interaction.reply({ content: "Produto removido.", ephemeral: true }); return;
     }
-    const product = runtime.products.find((item) => item.id === productId);
-    if (!product) { await interaction.reply({ content: "Produto nao encontrado.", ephemeral: true }); return; }
-    const quantity = interaction.options.getInteger("quantidade");
-    if (quantity === null) { await interaction.reply({ content: `${product.name}: estoque ${product.useStock ? product.stock ?? 0 : "desativado"}.`, ephemeral: true }); return; }
-    const saved = await context.api.updateFivemOrderProduct(interaction.guild.id, productId, { actorId: interaction.user.id, stock: quantity, useStock: true });
-    await interaction.reply({ content: `Estoque de ${saved.name} atualizado para ${saved.stock}.`, ephemeral: true });
   }
 };
