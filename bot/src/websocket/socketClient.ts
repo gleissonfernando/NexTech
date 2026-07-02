@@ -68,6 +68,7 @@ export type FivemGoalPanelPublishEvent = {
   guildId: string;
   settings?: unknown;
 };
+export type FivemFinancePanelPublishEvent = { botId?: string | null; guildId: string };
 export type FivemOrderPanelPublishEvent = { botId?: string | null; guildId: string };
 export type FivemOrderStatusUpdatedEvent = { actorId?: string | null; botId?: string | null; guildId: string; order: FivemOrder };
 
@@ -208,6 +209,7 @@ export class BotSocketClient {
   private fivemFacSettingsHandler: ((payload: FivemFacSettingsEvent) => void) | null = null;
   private fivemFacPanelPublishHandler: ((payload: FivemFacPanelPublishEvent) => void) | null = null;
   private fivemGoalPanelPublishHandler: ((payload: FivemGoalPanelPublishEvent) => void) | null = null;
+  private fivemFinancePanelPublishHandler: ((payload: FivemFinancePanelPublishEvent) => void) | null = null;
   private fivemOrderPanelPublishHandler: ((payload: FivemOrderPanelPublishEvent) => void) | null = null;
   private fivemOrderStatusUpdatedHandler: ((payload: FivemOrderStatusUpdatedEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
@@ -305,6 +307,7 @@ export class BotSocketClient {
     if (this.fivemGoalPanelPublishHandler) {
       this.socket.on("fivem:goals:panel_publish", this.fivemGoalPanelPublishHandler);
     }
+    if (this.fivemFinancePanelPublishHandler) this.socket.on("fivem:finance:panel_publish", this.fivemFinancePanelPublishHandler);
     if (this.fivemOrderPanelPublishHandler) this.socket.on("fivem:orders:panel_publish", this.fivemOrderPanelPublishHandler);
     if (this.fivemOrderStatusUpdatedHandler) this.socket.on("fivem:orders:status_updated", this.fivemOrderStatusUpdatedHandler);
 
@@ -465,6 +468,13 @@ export class BotSocketClient {
     this.socket?.off("fivem:goals:panel_publish");
     this.socket?.on("fivem:goals:panel_publish", handler);
   }
+
+  onFivemFinancePanelPublish(handler: (payload: FivemFinancePanelPublishEvent) => void) {
+    this.fivemFinancePanelPublishHandler = handler;
+    this.socket?.off("fivem:finance:panel_publish");
+    this.socket?.on("fivem:finance:panel_publish", handler);
+  }
+
   onFivemOrderPanelPublish(handler: (payload: FivemOrderPanelPublishEvent) => void) {
     this.fivemOrderPanelPublishHandler = handler;
     this.socket?.off("fivem:orders:panel_publish");

@@ -10,6 +10,7 @@ import { startClipsMonitor } from "../services/clipsMonitor";
 import { startDiscordLogDelivery } from "../services/discordLogDeliveryService";
 import { startFivemFacService } from "../services/fivemFacService";
 import { startFivemGoalService } from "../services/fivemGoalService";
+import { startFivemFinanceService } from "../services/fivemFinanceService";
 import { startFivemOrderService } from "../services/fivemOrderService";
 import { startFivemHierarchyService } from "../services/fivemHierarchyService";
 import { startGiveawayService } from "../services/giveawayService";
@@ -154,6 +155,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   }
   if (isBotModuleEnabled("fivem-goals")) {
     startFivemGoalService(client, context);
+  }
+  if (isBotModuleEnabled("fivem-finance")) {
+    startFivemFinanceService(client, context);
   }
   if (isBotModuleEnabled("fivem-orders") || isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing")) startFivemOrderService(client, context);
   if (isBotModuleEnabled("fivem-hierarchy")) {

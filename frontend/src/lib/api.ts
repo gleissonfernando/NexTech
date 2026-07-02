@@ -1442,6 +1442,23 @@ export async function updateFivemOrderStatus(guildId: string, orderId: string, s
   const { data } = await api.patch<{ order: import("../types").FivemOrder }>(`/fivem-orders/${guildId}/orders/${encodeURIComponent(orderId)}/status`, { status }, { params: botId ? { botId } : undefined }); return data.order;
 }
 
+export async function getFivemFinance(guildId: string, botId?: string | null) {
+  const { data } = await api.get<import("../types").FivemFinanceDashboard>(`/fivem-finance/${guildId}`, { params: botId ? { botId } : undefined });
+  return data;
+}
+export async function saveFivemFinanceSettings(guildId: string, payload: Partial<import("../types").FivemFinanceSettings>, botId?: string | null) {
+  const { data } = await api.put<{ settings: import("../types").FivemFinanceSettings }>(`/fivem-finance/${guildId}/settings`, payload, { params: botId ? { botId } : undefined });
+  return data.settings;
+}
+export async function publishFivemFinancePanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ settings: import("../types").FivemFinanceSettings }>(`/fivem-finance/${guildId}/panel`, undefined, { params: botId ? { botId } : undefined });
+  return data.settings;
+}
+export async function updateFivemFinanceTransaction(guildId: string, transactionId: string, payload: Partial<import("../types").FivemFinanceTransaction>, botId?: string | null) {
+  const { data } = await api.patch<{ transaction: import("../types").FivemFinanceTransaction }>(`/fivem-finance/${guildId}/transactions/${encodeURIComponent(transactionId)}`, payload, { params: botId ? { botId } : undefined });
+  return data.transaction;
+}
+
 export async function saveFivemGoalSettings(guildId: string, payload: Partial<FivemGoalSettings>, botId?: string | null) {
   const { data } = await api.patch<{ settings: FivemGoalSettings }>(`/fivem/${guildId}/goals`, payload, {
     params: botId ? { botId } : undefined

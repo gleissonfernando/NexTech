@@ -177,6 +177,7 @@ export async function savePanelImageSettings(
 function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
   const events: Record<string, string> = {
     "fivem-orders": "fivem:orders:panel_publish",
+    "fivem-finance": "fivem:finance:panel_publish",
     "fivem-general": "fivem:fac:panel_publish",
     "manual-registration": "manual-registration:panel_publish",
     "mission-tools": "mission-tools:panel_publish"

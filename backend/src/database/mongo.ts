@@ -500,6 +500,66 @@ export type MongoFivemOrderLog = {
   productId: string | null;
 };
 
+export type MongoFivemFinanceSettings = {
+  _id: string;
+  adminRoleIds: string[];
+  allowBalanceQuery: boolean;
+  allowNegativeBalance: boolean;
+  autoCloseMinutes: number;
+  bannerMode: "above" | "inside" | "below" | "none";
+  botId: string | null;
+  color: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelMessageId: string | null;
+  panelTitle: string;
+  tempCategoryId: string | null;
+  useRoleIds: string[];
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoFivemFinanceTransactionStatus = "completed" | "reviewed" | "cancelled" | "corrected";
+
+export type MongoFivemFinanceTransaction = {
+  _id: string;
+  amount: number;
+  botId: string | null;
+  createdAt: Date;
+  guildId: string;
+  logChannelId: string | null;
+  logMessageId: string | null;
+  newBalance: number;
+  notes: string | null;
+  oldBalance: number;
+  proofImageUrl: string;
+  proofMessageId: string | null;
+  status: MongoFivemFinanceTransactionStatus;
+  tempChannelId: string | null;
+  transactionId: string;
+  type: "add" | "remove";
+  updatedAt: Date;
+  userAvatar: string | null;
+  userId: string;
+  username: string;
+};
+
+export type MongoFivemFinanceLog = {
+  _id: string;
+  action: string;
+  actorId: string | null;
+  botId: string | null;
+  createdAt: Date;
+  data: Record<string, unknown>;
+  guildId: string;
+  transactionId: string | null;
+};
+
 export type MongoFivemHierarchyEntry = {
   active: boolean;
   color: string | null;
@@ -2286,6 +2346,9 @@ export async function getMongoCollections() {
     fivemOrderProducts: db.collection<MongoFivemOrderProduct>("fivem_order_products"),
     fivemOrders: db.collection<MongoFivemOrder>("fivem_orders"),
     fivemOrderLogs: db.collection<MongoFivemOrderLog>("fivem_order_logs"),
+    fivemFinanceSettings: db.collection<MongoFivemFinanceSettings>("fivem_finance_settings"),
+    fivemFinanceTransactions: db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions"),
+    fivemFinanceLogs: db.collection<MongoFivemFinanceLog>("fivem_finance_logs"),
     fivemHierarchyPanels: db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels"),
     fivemHierarchyLogs: db.collection<MongoFivemHierarchyLog>("fivem_hierarchy_logs"),
     globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
@@ -2439,6 +2502,11 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemOrderLog>("fivem_order_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoFivemFinanceSettings>("fivem_finance_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, transactionId: 1 }, { unique: true }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoFivemFinanceLog>("fivem_finance_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, guildId: 1, enabled: 1 }),
     db.collection<MongoFivemHierarchyLog>("fivem_hierarchy_logs").createIndex({ botId: 1, guildId: 1, panelId: 1, createdAt: -1 }),

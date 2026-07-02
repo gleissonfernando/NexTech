@@ -47,6 +47,7 @@ import { DashboardLayout } from "../components/layout/dashboard-layout";
 import type { ViewId } from "../components/layout/sidebar";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
+import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
@@ -561,6 +562,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-drug": "fivem-drugs",
   "fivem-weapon": "fivem-orders",
   "fivem-custom": "fivem-orders",
+  "fivem-finance": "fivem-finance",
   "fivem-goals": "fivem-goals",
   "manual-registration": "manual-registration",
   "voice-recorder": "voice-recorder",
@@ -1263,6 +1265,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
         {activeView === "fivem-custom" ? (
           <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)} guild={selectedGuild} mode="custom" />
+        ) : null}
+        {activeView === "fivem-finance" ? (
+          <FivemFinancePanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-finance", canManageDashboard)} guild={selectedGuild} />
         ) : null}
         {activeView === "fivem-goals" ? (
           <FivemView

@@ -234,7 +234,7 @@ async function joinDashboardLogRooms(socket: Socket) {
   const defaultGuildRooms = [...getAccessibleGuildIds(auth.user)]
     .map((guildId) => dashboardLogRealtimeRoom(guildId));
   const bots = await listAccessibleDashboardBots(auth.user).catch(() => []);
-  const botGuildRooms = bots.flatMap((bot) => bot.enabledModules.some((moduleId) => moduleId === "logs" || moduleId === "fivem-goals" || moduleId === "fivem-orders" || moduleId === "manual-registration")
+  const botGuildRooms = bots.flatMap((bot) => bot.enabledModules.some((moduleId) => moduleId === "logs" || moduleId === "fivem-goals" || moduleId === "fivem-orders" || moduleId === "fivem-finance" || moduleId === "manual-registration")
     ? bot.guildIds.map((guildId) => dashboardLogRealtimeRoom(guildId, bot.id))
     : []);
 

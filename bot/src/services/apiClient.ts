@@ -208,6 +208,32 @@ export type FivemOrder = {
   responsibleId: string | null; status: FivemOrderStatus; unitPrice: number; updatedAt?: string | null; userId: string; washingPercentage?: number | null;
 };
 
+export type FivemFinanceSettings = {
+  adminRoleIds: string[];
+  allowBalanceQuery: boolean;
+  allowNegativeBalance: boolean;
+  autoCloseMinutes: number;
+  bannerMode: "above" | "inside" | "below" | "none";
+  color: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelImage: { imageEnabled: boolean; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault?: boolean } | null;
+  panelMessageId: string | null;
+  panelTitle: string;
+  tempCategoryId: string | null;
+  useRoleIds: string[];
+};
+export type FivemFinanceTransaction = {
+  amount: number; createdAt: string; id: string; logChannelId: string | null; logMessageId: string | null; newBalance: number; oldBalance: number;
+  proofImageUrl: string; proofMessageId: string | null; status: "completed" | "reviewed" | "cancelled" | "corrected"; tempChannelId: string | null; transactionId: string;
+  type: "add" | "remove"; updatedAt: string; userAvatar: string | null; userId: string; username: string;
+};
+
 export type FivemGoalUserChannel = {
   channelId: string;
   guildId: string;
@@ -1342,6 +1368,26 @@ export class ApiClient {
 
   async updateFivemOrderPanelState(guildId: string, messageId: string | null) {
     const { data } = await this.http.put<{ settings: FivemOrderSettings }>(`/fivem-orders/bot/${guildId}/panel-state`, { messageId });
+    return data.settings;
+  }
+
+  async getFivemFinanceRuntime(guildId: string) {
+    const { data } = await this.http.get<{ settings: FivemFinanceSettings; transactions: FivemFinanceTransaction[] }>(`/fivem-finance/bot/${guildId}/runtime`);
+    return data;
+  }
+
+  async createFivemFinanceTransaction(guildId: string, input: { amount: number; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl: string; proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove"; userAvatar?: string | null; userId: string; username: string }) {
+    const { data } = await this.http.post<{ transaction: FivemFinanceTransaction }>(`/fivem-finance/bot/${guildId}/transactions`, input);
+    return data.transaction;
+  }
+
+  async updateFivemFinanceTransactionLog(guildId: string, transactionId: string, input: { logChannelId?: string | null; logMessageId?: string | null }) {
+    const { data } = await this.http.patch<{ transaction: FivemFinanceTransaction }>(`/fivem-finance/bot/${guildId}/transactions/${transactionId}/log`, input);
+    return data.transaction;
+  }
+
+  async updateFivemFinancePanelState(guildId: string, messageId: string | null) {
+    const { data } = await this.http.put<{ settings: FivemFinanceSettings }>(`/fivem-finance/bot/${guildId}/panel-state`, { messageId });
     return data.settings;
   }
 

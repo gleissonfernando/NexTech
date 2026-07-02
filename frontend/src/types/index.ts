@@ -979,6 +979,64 @@ export type FivemOrderProduct = {
   name: string; order: number; price: number; sellerPercentage: number; type: "standard" | "washing" | "ammo" | "drug" | "weapon" | "custom";
   updatedAt: string;
 };
+
+export type FivemFinanceSettings = {
+  adminRoleIds: string[];
+  allowBalanceQuery: boolean;
+  allowNegativeBalance: boolean;
+  autoCloseMinutes: number;
+  bannerMode: "above" | "inside" | "below" | "none";
+  botId: string | null;
+  color: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelImage: PanelImageSettings | null;
+  panelMessageId: string | null;
+  panelTitle: string;
+  tempCategoryId: string | null;
+  updatedAt: string | null;
+  useRoleIds: string[];
+};
+export type FivemFinanceTransaction = {
+  amount: number;
+  botId: string | null;
+  createdAt: string;
+  guildId: string;
+  id: string;
+  logChannelId: string | null;
+  logMessageId: string | null;
+  newBalance: number;
+  notes: string | null;
+  oldBalance: number;
+  proofImageUrl: string;
+  proofMessageId: string | null;
+  status: "completed" | "reviewed" | "cancelled" | "corrected";
+  tempChannelId: string | null;
+  transactionId: string;
+  type: "add" | "remove";
+  updatedAt: string;
+  userAvatar: string | null;
+  userId: string;
+  username: string;
+};
+export type FivemFinanceDashboard = {
+  report: {
+    balance: number;
+    lastUpdatedAt: string | null;
+    topAdders: Array<{ amount: number; count: number; userId: string; username: string }>;
+    topRemovers: Array<{ amount: number; count: number; userId: string; username: string }>;
+    totalIn: number;
+    totalOut: number;
+    transactions: number;
+  };
+  settings: FivemFinanceSettings;
+  transactions: FivemFinanceTransaction[];
+};
 export type FivemOrder = {
   botId: string | null; category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; familyId: string; familyName: string; finalValue: number;
   grossValue: number; guildId: string; history: Array<{ actorId: string | null; at: string; from: FivemOrderStatus | null; note: string | null; to: FivemOrderStatus }>;

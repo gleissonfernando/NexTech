@@ -80,6 +80,7 @@ export type ViewId =
   | "fivem-drug"
   | "fivem-weapon"
   | "fivem-custom"
+  | "fivem-finance"
   | "fivem-goals"
   | "manual-registration"
   | "notifications"
@@ -140,6 +141,7 @@ const navItems: NavItem[] = [
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },
   { id: "fivem-weapon", label: "Armas", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-custom", label: "Personalizados", icon: Archive, moduleId: "fivem-orders" },
+  { id: "fivem-finance", label: "Financeiro", icon: CircleDollarSign, moduleId: "fivem-finance" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
   { id: "entry-leave", label: "Entrada/Saida", icon: UserPlus, moduleIds: ["welcome", "leave"] },
