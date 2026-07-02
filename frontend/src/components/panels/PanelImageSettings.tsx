@@ -40,12 +40,15 @@ const PANELS: PanelDefinition[] = [
 
 const positionOptions: Array<{ label: string; value: PanelImagePosition }> = [
   { label: "Sem imagem", value: "none" },
-  { label: "Banner embaixo", value: "banner" },
-  { label: "Miniatura direita", value: "thumbnail" },
-  { label: "Topo", value: "top" },
-  { label: "Abaixo do texto", value: "below_text" },
-  { label: "Acima dos botoes", value: "above_buttons" },
-  { label: "Rodape", value: "footer" }
+  { label: "Banner principal", value: "banner" },
+  { label: "Miniatura", value: "thumbnail" },
+  { label: "Lateral", value: "side" },
+  { label: "Topo do painel", value: "top" },
+  { label: "Abaixo do titulo", value: "below_title" },
+  { label: "Meio do conteudo", value: "middle" },
+  { label: "Final do painel", value: "bottom" },
+  { label: "Antes dos botoes", value: "before_buttons" },
+  { label: "Imagem no rodape", value: "footer" }
 ];
 
 const sizeOptions: Array<{ label: string; value: PanelImageSize }> = [
@@ -61,7 +64,7 @@ const layoutOptions: Array<{ label: string; value: PanelImageLayoutMode }> = [
   { label: "Components V2", value: "components_v2" }
 ];
 
-const advancedPositions = new Set<PanelImagePosition>(["top", "below_text", "above_buttons"]);
+const advancedPositions = new Set<PanelImagePosition>(["top", "below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons"]);
 
 export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLabel }: PanelImageSettingsProps) {
   const [settingsByPanel, setSettingsByPanel] = useState<Record<string, PanelImageSettingsDto>>({});
@@ -141,7 +144,8 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
     setDraft((current) => {
       const next = {
         ...current,
-        [key]: value
+        [key]: value,
+        ...(key !== "useGlobalDefault" && selectedPanelId !== "global-default" ? { useGlobalDefault: false } : {})
       };
 
       if (key === "imagePosition" && advancedPositions.has(value as PanelImagePosition)) {
@@ -284,6 +288,8 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
           ) : null}
 
           <div className="space-y-4">
+            {selectedPanelId !== "global-default" ? <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300"><span><strong className="block text-zinc-100">Usar padrão visual global</strong>Desative para personalizar somente este módulo.</span><Switch checked={draft.useGlobalDefault} disabled={disabled} onCheckedChange={(checked) => updateDraft("useGlobalDefault", checked)} /></label> : null}
+            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs leading-5 text-blue-100">Topo/banner destacam a imagem primeiro; thumbnail/lateral mantêm o texto ao lado; meio e abaixo do título dividem o conteúdo; antes dos botões destaca a ação; final e rodapé encerram o painel.</div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {!fixedPanel ? <label className="grid gap-2 text-sm">
                 <span className="font-medium text-zinc-200">Painel</span>
@@ -360,7 +366,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
 
             <div className="rounded-lg border border-zinc-900 bg-black p-4">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "top" ? (
+                {draft.imageEnabled && draft.imageUrl && ["top", "banner"].includes(draft.imagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
                 ) : null}
                 <div className="flex items-start gap-3">
@@ -373,18 +379,20 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
                   {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "thumbnail" ? (
                     <img alt="" className="h-20 w-20 shrink-0 rounded-md border border-zinc-800 object-cover" src={draft.imageUrl} />
                   ) : null}
+                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <img alt="" className="h-28 w-36 shrink-0 rounded-md border border-zinc-800 object-cover" src={draft.imageUrl} /> : null}
                 </div>
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "below_text" ? (
+                {draft.imageEnabled && draft.imageUrl && ["below_title", "below_text"].includes(draft.imagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "above_buttons" ? (
+                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} /></> : null}
+                {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(draft.imagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botao principal</span>
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botao secundario</span>
                 </div>
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "banner" ? (
+                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "bottom" ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
@@ -407,6 +415,7 @@ export function PanelImageSettings({ botId, canManage, guildId, panelId, panelLa
             <Trash2 className="h-4 w-4" />
             Remover imagem
           </Button>
+          <Button disabled={disabled} onClick={() => { setDraft(defaultSettings(guildId ?? "", botId ?? "", selectedPanelId)); setStatus("Padrao restaurado. Clique em salvar para confirmar."); }} type="button" variant="ghost">Restaurar padrão</Button>
           {loading ? (
             <span className="flex items-center gap-2 text-xs text-zinc-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -510,7 +519,8 @@ function defaultSettings(guildId: string, botId: string, panelId: string): Panel
     imageUrl: "",
     layoutMode: "embed",
     panelId,
-    updatedAt: null
+    updatedAt: null,
+    useGlobalDefault: panelId !== "global-default"
   };
 }
 
@@ -526,7 +536,8 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
     imagePosition: settings.imageEnabled ? settings.imagePosition : "none",
     imageSize: settings.imageSize,
     imageUrl: settings.imageEnabled ? settings.imageUrl : "",
-    layoutMode
+    layoutMode,
+    useGlobalDefault: settings.useGlobalDefault
   };
 }
 

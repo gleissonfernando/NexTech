@@ -638,7 +638,7 @@ export type SafeBotWarningRecord = {
 export type SafeBotWarningDashboard = { settings: SafeBotWarningSettings; users: SafeBotWarningUser[]; warnings: SafeBotWarningRecord[] };
 export type AutomatedLogSettings = { id: string; botId: string; guildId: string; enabled: boolean; categoryId: string | null; channels: { site: string | null; absence: string | null; messages: string | null; calls: string | null; verification: string | null; punishment: string | null }; enabledChannels: { site: boolean; absence: boolean; messages: boolean; calls: boolean; verification: boolean; punishment: boolean }; allowedRoleIds: string[]; lastError: string | null; lastSyncedAt: string | null; lastSyncRequestedAt: string | null; createdAt: string; updatedAt: string };
 
-export type PanelImagePosition = "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
+export type PanelImagePosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 export type PanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
 export type PanelImageLayoutMode = "embed" | "components_v2";
 
@@ -654,11 +654,12 @@ export type PanelImageSettings = {
   layoutMode: PanelImageLayoutMode;
   panelId: string;
   updatedAt: string | null;
+  useGlobalDefault: boolean;
 };
 
 export type SavePanelImageSettingsPayload = Partial<Pick<
   PanelImageSettings,
-  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode"
+  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "useGlobalDefault"
 >>;
 
 export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<

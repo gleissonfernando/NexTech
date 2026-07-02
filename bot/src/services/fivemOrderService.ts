@@ -17,8 +17,8 @@ import {
   type StringSelectMenuInteraction
 } from "discord.js";
 import type { BotContext } from "../types";
-import { env } from "../config/env";
 import type { FivemOrder, FivemOrderProduct, FivemOrderSettings, FivemOrderStatus } from "./apiClient";
+import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
 const PREFIX = "fivem_order";
 const cooldowns = new Map<string, number>();
@@ -107,15 +107,7 @@ function createMainPanel(settings: FivemOrderSettings, products: FivemOrderProdu
     new ButtonBuilder().setCustomId(`${PREFIX}:families`).setLabel("Ver Familias").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Como Funciona").setStyle(ButtonStyle.Secondary)
   ));
-  const imageUrl = resolveImageUrl(settings.panelImage?.imageUrl ?? null);
-  const containerComponents: Array<Record<string, unknown>> = [];
-  if (imageUrl) containerComponents.push({ type: 12, items: [{ media: { url: imageUrl }, description: "painel de encomendas" }] });
-  containerComponents.push({ type: 10, content: `# ${settings.panelTitle}\n${settings.panelDescription}\n\n**Produtos ativos:** ${products.length}\n**Categorias:** ${categories.join(", ") || "Nenhuma"}${settings.footerText ? `\n\n-# ${settings.footerText}` : ""}` });
-  return {
-    allowedMentions: { parse: [] as never[] },
-    components: [{ type: 17, accent_color: parseColor(settings.color), components: containerComponents }, ...rows],
-    flags: MessageFlags.IsComponentsV2 as const
-  };
+  return renderComponentsV2Panel({ accentColor: parseColor(settings.color), actions: rows, description: settings.panelDescription, fields: [`**Produtos ativos:** ${products.length}\n**Categorias:** ${categories.join(", ") || "Nenhuma"}`, ...(settings.footerText ? [`-# ${settings.footerText}`] : [])], image: settings.panelImage, moduleId: "fivem-orders", title: settings.panelTitle });
 }
 
 async function selectCategory(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -301,4 +293,3 @@ function normalizeProductModule(type: FivemOrderProduct["type"]) { return type =
 function formatMoney(value: number) { return new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" }).format(value); }
 function parseColor(value: string) { return Number.parseInt(value.replace("#", ""), 16) || 0x22c55e; }
 function parseBrazilianNumber(value: string) { const raw = value.trim().replace(/[^\d.,-]/g, ""); if (!raw) return null; const comma = raw.lastIndexOf(","); const dot = raw.lastIndexOf("."); let normalized = raw; if (comma >= 0 && dot >= 0) normalized = comma > dot ? raw.replace(/\./g, "").replace(",", ".") : raw.replace(/,/g, ""); else if (/^\d{1,3}([.,]\d{3})+$/.test(raw)) normalized = raw.replace(/[.,]/g, ""); else if (comma >= 0) normalized = raw.replace(",", "."); const number = Number(normalized); return Number.isFinite(number) ? number : null; }
-function resolveImageUrl(value: string | null) { if (!value) return null; if (/^https?:\/\//i.test(value)) return value; const origin = env.BACKEND_API_URL ? new URL(env.BACKEND_API_URL).origin : ""; return origin ? `${origin}${value.startsWith("/") ? value : `/${value}`}` : null; }

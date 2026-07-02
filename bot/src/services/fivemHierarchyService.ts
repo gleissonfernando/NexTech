@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
@@ -14,6 +13,7 @@ import {
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
 import type { FivemHierarchyPanel } from "./apiClient";
+import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
 
 const PREFIX = "fivem_hierarchy";
 const scheduledGuilds = new Map<string, NodeJS.Timeout>();
@@ -89,7 +89,8 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
   if (!panel.enabled || !panel.panelChannelId) return;
   const channel = await guild.channels.fetch(panel.panelChannelId).catch(() => null);
   if (!channel || !("send" in channel) || !("messages" in channel)) return;
-  const payload = createHierarchyPayload(guild, panel);
+  const visual = await context.api.getPanelVisualSettings(guild.id, "fivem-hierarchy").catch(() => null);
+  const payload = createHierarchyPayload(guild, panel, visual);
   let message = panel.panelMessageId ? await channel.messages.fetch(panel.panelMessageId).catch(() => null) : null;
   if (message) {
     await message.edit(payload).catch(async () => {
@@ -103,37 +104,12 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
   }
 }
 
-function createHierarchyPayload(guild: Guild, panel: FivemHierarchyPanel) {
-  const blocks: unknown[] = [];
-  if (panel.imageUrl && panel.imagePosition === "top") {
-    blocks.push({ type: 12, items: [{ media: { url: panel.imageUrl }, description: panel.title }] });
-  }
-  blocks.push({ type: 10, content: `# ${panel.title}\n${panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor."}` });
-  if (panel.imageUrl && panel.imagePosition === "thumbnail") {
-    blocks.push({ type: 12, items: [{ media: { url: panel.imageUrl }, description: panel.title }] });
-  }
-  blocks.push({ type: 10, content: renderHierarchyText(guild, panel) });
-  if (panel.imageUrl && panel.imagePosition === "bottom") {
-    blocks.push({ type: 12, items: [{ media: { url: panel.imageUrl }, description: panel.title }] });
-  }
-  if (panel.footerEnabled && panel.footerText) {
-    blocks.push({ type: 10, content: `_${panel.footerText}_` });
-  }
-
-  return {
-    allowedMentions: { parse: [] as never[] },
-    components: [
-      {
-        type: 17,
-        accent_color: colorToInt(panel.color),
-        components: blocks
-      },
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
+function createHierarchyPayload(guild: Guild, panel: FivemHierarchyPanel, visual: PanelVisualConfig | null) {
+  const fallbackVisual: PanelVisualConfig | null = panel.imageUrl ? { imageEnabled: true, imagePosition: panel.imagePosition === "bottom" ? "bottom" : panel.imagePosition, imageUrl: panel.imageUrl } : null;
+  const action = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`${PREFIX}:refresh:${panel.id}`).setLabel("Atualizar painel").setStyle(ButtonStyle.Secondary)
-      )
-    ],
-    flags: MessageFlags.IsComponentsV2 as const
-  };
+      );
+  return renderComponentsV2Panel({ accentColor: colorToInt(panel.color), actions: [action], description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.", fields: [renderHierarchyText(guild, panel), ...(panel.footerEnabled && panel.footerText ? [`_${panel.footerText}_`] : [])], image: visual?.imageEnabled ? visual : fallbackVisual, moduleId: "fivem-hierarchy", title: panel.title });
 }
 
 function renderHierarchyText(guild: Guild, panel: FivemHierarchyPanel) {

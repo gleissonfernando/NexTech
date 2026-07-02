@@ -120,7 +120,8 @@ export type PanelImageSettings = {
   customWidth: number | null;
   guildId: string;
   imageEnabled: boolean;
-  imagePosition: "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
+  imagePosition: import("./services/panelVisualRenderer").PanelVisualPosition;
+  useGlobalDefault?: boolean;
   imageSize: "small" | "medium" | "large" | "full_banner" | "custom";
   imageUrl: string;
   layoutMode: "embed" | "components_v2";

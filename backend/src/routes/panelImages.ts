@@ -1,7 +1,7 @@
 import { Router, raw } from "express";
 import { z } from "zod";
-import { requireAuth } from "../middleware/auth";
-import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
+import { requireAuth, requireBot } from "../middleware/auth";
+import { canAccessDevBotGuild, canManageDevBotGuild, canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import {
   getPanelImageSettings,
   listPanelImageSettings,
@@ -18,10 +18,11 @@ const settingsSchema = z.object({
   customHeight: z.coerce.number().int().min(16).max(2000).nullable().optional(),
   customWidth: z.coerce.number().int().min(16).max(2000).nullable().optional(),
   imageEnabled: z.boolean().optional(),
-  imagePosition: z.enum(["banner", "thumbnail", "top", "below_text", "above_buttons", "footer", "none"]).optional(),
+  imagePosition: z.enum(["banner", "thumbnail", "top", "below_title", "middle", "bottom", "side", "footer", "before_buttons", "below_text", "above_buttons", "none"]).optional(),
   imageSize: z.enum(["small", "medium", "large", "full_banner", "custom"]).optional(),
   imageUrl: z.string().max(2048).optional(),
-  layoutMode: z.enum(["embed", "components_v2"]).optional()
+  layoutMode: z.enum(["embed", "components_v2"]).optional(),
+  useGlobalDefault: z.boolean().optional()
 });
 const panelImageUpload = raw({
   limit: "10mb",
@@ -29,6 +30,10 @@ const panelImageUpload = raw({
 });
 
 export const panelImagesRouter = Router();
+
+panelImagesRouter.get("/bot/:guildId/:panelId", requireBot, async (req, res, next) => {
+  try { const guildId = guildIdSchema.parse(req.params.guildId); const panelId = panelIdSchema.parse(req.params.panelId); const botId = await readRequiredBotId(req); return res.json({ settings: await getPanelImageSettings(guildId, botId, panelId) }); } catch (error) { return next(error); }
+});
 
 panelImagesRouter.get("/:guildId", requireAuth, async (req, res, next) => {
   try {
@@ -119,7 +124,7 @@ async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0])
 }
 
 async function assertCanRead(user: AuthSessionUser, guildId: string, botId: string, moduleId = MODULE_ID) {
-  if (await canReadDevBotModule(user, botId, guildId, moduleId)) {
+  if (await canReadDevBotModule(user, botId, guildId, moduleId) || await canAccessDevBotGuild(user, botId, guildId)) {
     return;
   }
 
@@ -127,7 +132,7 @@ async function assertCanRead(user: AuthSessionUser, guildId: string, botId: stri
 }
 
 async function assertCanManage(user: AuthSessionUser, guildId: string, botId: string, moduleId = MODULE_ID) {
-  if (await canUseDevBotModule(user, botId, guildId, moduleId)) {
+  if (await canUseDevBotModule(user, botId, guildId, moduleId) || await canManageDevBotGuild(user, botId, guildId)) {
     return;
   }
 

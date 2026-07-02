@@ -144,11 +144,11 @@ export function createMemberPanelPayload(
 
   const components: Array<Record<string, unknown>> = [];
 
-  if (imageUrl && imagePosition === "top") {
+  if (imageUrl && ["top", "banner"].includes(imagePosition)) {
     components.push(mediaGalleryComponent(imageUrl, input.mode));
   }
 
-  if (imageUrl && imagePosition === "thumbnail" && contentBlocks.length) {
+  if (imageUrl && ["thumbnail", "side"].includes(imagePosition) && contentBlocks.length) {
     const sectionBlocks = contentBlocks.splice(0, 3);
     components.push({
       type: 9,
@@ -165,11 +165,11 @@ export function createMemberPanelPayload(
 
   components.push(...contentBlocks.map(textDisplayComponent));
 
-  if (imageUrl && ["below_text", "above_buttons", "banner", "footer"].includes(imagePosition)) {
+  if (imageUrl && ["below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons", "footer"].includes(imagePosition)) {
     components.push(mediaGalleryComponent(imageUrl, input.mode));
   }
 
-  if (imageUrl && imagePosition === "thumbnail" && !components.length) {
+  if (imageUrl && ["thumbnail", "side"].includes(imagePosition) && !components.length) {
     components.push(mediaGalleryComponent(imageUrl, input.mode));
   }
 

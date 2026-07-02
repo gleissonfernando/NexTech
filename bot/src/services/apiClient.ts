@@ -86,7 +86,9 @@ export type ManualRegistrationSettings = {
   panelMessageId: string | null;
   panelImage: {
     imageEnabled: boolean;
+    imagePosition: import("./panelVisualRenderer").PanelVisualPosition;
     imageUrl: string;
+    useGlobalDefault?: boolean;
   } | null;
   rejectionMessage: string;
   removeRoleIds: string[];
@@ -174,7 +176,7 @@ export type FivemOrderSettings = {
   cancelRoleIds: string[]; color: string; createRoleIds: string[]; deliveryChannelId: string | null; enabled: boolean; enabledOrderModules: Array<"washing" | "ammo" | "drug" | "weapon" | "custom">; errorMessage: string; finishRoleIds: string[];
   footerText: string | null; guildId: string; logChannelId: string | null; maxOpenHours: number; orderCancelledMessage: string; orderCreatedMessage: string;
   orderDeliveredMessage: string; panelChannelId: string | null; panelDescription: string; panelMessageId: string | null; panelTitle: string;
-  panelImage: { imageEnabled: boolean; imageUrl: string } | null;
+  panelImage: { imageEnabled: boolean; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault?: boolean } | null;
 };
 export type FivemOrderFamily = { active: boolean; id: string; logChannelId: string | null; name: string; notes: string | null; responsibleId: string; roleId: string };
 export type FivemOrderProduct = {
@@ -1284,6 +1286,11 @@ export class ApiClient {
   async getFivemOrderRuntime(guildId: string) {
     const { data } = await this.http.get<{ families: FivemOrderFamily[]; products: FivemOrderProduct[]; settings: FivemOrderSettings }>(`/fivem-orders/bot/${guildId}/runtime`);
     return data;
+  }
+
+  async getPanelVisualSettings(guildId: string, panelId: string) {
+    const { data } = await this.http.get<{ settings: { imageEnabled: boolean; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault: boolean } }>(`/panel-images/bot/${guildId}/${encodeURIComponent(panelId)}`);
+    return data.settings;
   }
 
   async createFivemOrder(input: { clientName: string; expectedDelivery?: string | null; familyId: string; grossValue?: number | null; guildId: string; notes?: string | null; productId: string; proofUrl?: string | null; quantity: number; sourceId?: string | null; userId: string; washingPercentage?: number | null }) {

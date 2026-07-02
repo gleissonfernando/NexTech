@@ -13,6 +13,7 @@ import {
 import { env } from "../config/env";
 import type { BotContext, GuildSettings, PanelImageSettings, TicketPanelOption } from "../types";
 import { getFreshGuildSettings } from "./guildSettingsCache";
+import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 
@@ -99,32 +100,13 @@ function createTicketPanelPayload(settings: GuildSettings) {
     settings.ticketPanelFooterText ? `-# ${settings.ticketPanelFooterText}` : null
   ].filter((block): block is string => Boolean(block?.trim()));
   const imageUrl = resolveImageUrl(settings.ticketPanelImage);
-  const components: Array<Record<string, unknown>> = [];
-
-  if (imageUrl) {
-    components.push(mediaGalleryComponent(imageUrl));
-  }
-
-  components.push(...contentBlocks.map((content) => ({ type: 10, content })));
-  components.push({ type: 14 });
-
-  return {
-    allowedMentions: { parse: [] as never[] },
-    components: [
-      {
-        type: 17,
-        accent_color: parseColor(settings.ticketPanelColor),
-        components
-      },
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+  const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(TICKET_PANEL_CUSTOM_ID)
           .setPlaceholder(settings.ticketPanelPlaceholder || "Selecione o tipo de atendimento")
           .addOptions(options.map(toSelectOption))
-      )
-    ],
-    flags: MessageFlags.IsComponentsV2 as const
-  };
+      );
+  return renderComponentsV2Panel({ accentColor: parseColor(settings.ticketPanelColor), actions: [action], description: contentBlocks[1] ?? "", fields: contentBlocks.slice(2), image: settings.ticketPanelImage && imageUrl ? { ...settings.ticketPanelImage, imageUrl } : null, moduleId: "ticket", title: contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte" });
 }
 
 async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption) {

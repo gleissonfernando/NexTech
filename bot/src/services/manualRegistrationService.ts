@@ -412,10 +412,11 @@ async function canReview(interaction: ButtonInteraction | ModalSubmitInteraction
 
 function createPanelPayload(settings: ManualRegistrationSettings) {
   const imageUrl = resolveImageUrl(settings.panelImage?.imageUrl ?? null);
+  const imagePosition = imageUrl ? settings.panelImage?.imagePosition ?? settings.bannerPosition : "none";
   const thumbnailUrl = resolveImageUrl(settings.thumbnailUrl ?? null);
   const availableSets = settings.setRoles.filter((item) => item.enabled && item.requestable).length;
   const components: Array<Record<string, unknown>> = [];
-  if (imageUrl && settings.bannerPosition === "top") components.push(mediaGallery(imageUrl));
+  if (imageUrl && ["top", "banner"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   const heading = {
     type: 10,
     content: [
@@ -423,15 +424,18 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
       settings.description || "Solicite seu set de forma rapida e acompanhe a analise da equipe."
     ].join("\n\n")
   };
-  components.push(thumbnailUrl ? {
+  const sideImageUrl = imageUrl && ["thumbnail", "side"].includes(imagePosition) ? imageUrl : thumbnailUrl;
+  components.push(sideImageUrl ? {
     type: 9,
     components: [{
       type: 10,
       content: heading.content
     }],
-    accessory: { type: 11, media: { url: thumbnailUrl } }
+    accessory: { type: 11, media: { url: sideImageUrl } }
   } : heading);
+  if (imageUrl && ["below_title", "below_text"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   components.push({ type: 14, divider: true, spacing: 1 });
+  if (imageUrl && imagePosition === "middle") components.push(mediaGallery(imageUrl));
   components.push({
     type: 10,
     content: [
@@ -454,7 +458,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
       settings.footerText ? `-# ${settings.footerText}` : "-# Preencha os dados corretamente para evitar atrasos na analise."
     ].join("\n")
   });
-  if (imageUrl && settings.bannerPosition === "bottom") components.push(mediaGallery(imageUrl));
+  if (imageUrl && ["before_buttons", "above_buttons", "bottom", "footer"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   return {
     allowedMentions: { parse: [] as never[] },
     components: [

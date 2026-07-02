@@ -966,6 +966,16 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           status={displayedBotStatus}
         />
 
+        {activeView !== "delete-channels" ? (
+          <PanelImageSettings
+            botId={activeBotId}
+            canManage={canManageDashboard}
+            guildId={selectedGuild?.id ?? null}
+            panelId={activeView === "settings" || activeView === "overview" ? "global-default" : visualPanelIdForView(activeView)}
+            panelLabel={activeView === "settings" || activeView === "overview" ? "Padrão visual global" : `Configuração Visual do Painel — ${activeView}`}
+          />
+        ) : null}
+
         {activeView === "overview" ? (
           <OverviewView
             availableModules={availableModules}
@@ -8001,6 +8011,18 @@ function readResponseMessage(error: unknown) {
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+function visualPanelIdForView(view: ViewId) {
+  const aliases: Partial<Record<ViewId, string>> = {
+    "self-bot-protection": "safe-bot",
+    "entry-leave": "welcome",
+    "fivem": "fivem-general",
+    "fivem-washing": "fivem-washing",
+    "manual-registration": "manual-registration",
+    "server-cloner": "server-cloner"
+  };
+  return aliases[view] ?? view;
 }
 
 function isViewAllowed(view: ViewId, enabledModules: string[]) {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import {
   ensureGuild,
   getMongoCollections,
@@ -26,17 +27,23 @@ export type PanelImageSettingsDto = {
   layoutMode: PanelImageLayoutMode;
   panelId: string;
   updatedAt: string | null;
+  useGlobalDefault: boolean;
 };
 
 export type SavePanelImageSettingsInput = Partial<Pick<
   PanelImageSettingsDto,
-  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode"
+  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "useGlobalDefault"
 >>;
 
 const IMAGE_POSITIONS = new Set<PanelImagePosition>([
   "banner",
   "thumbnail",
   "top",
+  "below_title",
+  "middle",
+  "bottom",
+  "side",
+  "before_buttons",
   "below_text",
   "above_buttons",
   "footer",
@@ -58,7 +65,8 @@ const DEFAULT_SETTINGS = {
   imagePosition: "none" as PanelImagePosition,
   imageSize: "medium" as PanelImageSize,
   imageUrl: "",
-  layoutMode: "embed" as PanelImageLayoutMode
+  layoutMode: "embed" as PanelImageLayoutMode,
+  useGlobalDefault: true
 };
 
 export function defaultPanelImageSettings(guildId: string, botId: string, panelId: string): PanelImageSettingsDto {
@@ -67,15 +75,20 @@ export function defaultPanelImageSettings(guildId: string, botId: string, panelI
     guildId,
     panelId,
     updatedAt: null,
-    ...DEFAULT_SETTINGS
+    ...DEFAULT_SETTINGS,
+    useGlobalDefault: panelId !== "global-default"
   };
 }
 
 export async function getPanelImageSettings(guildId: string, botId: string, panelId: string) {
   const { panelImageSettings } = await getMongoCollections();
   const settings = await panelImageSettings.findOne({ botId, guildId, panelId });
-
-  return settings ? toDto(settings) : defaultPanelImageSettings(guildId, botId, panelId);
+  const own = settings ? toDto(settings) : defaultPanelImageSettings(guildId, botId, panelId);
+  if (panelId === "global-default" || !own.useGlobalDefault) return own;
+  const global = await panelImageSettings.findOne({ botId, guildId, panelId: "global-default" });
+  if (!global) return own;
+  const inherited = toDto(global);
+  return { ...inherited, botId, guildId, panelId, updatedAt: own.updatedAt ?? inherited.updatedAt, useGlobalDefault: true };
 }
 
 export async function listPanelImageSettings(guildId: string, botId: string) {
@@ -95,6 +108,9 @@ export async function savePanelImageSettings(
   input: SavePanelImageSettingsInput,
   actorId: string | null
 ) {
+  if (input.imageEnabled === true && input.imageUrl !== undefined && !normalizeImageUrl(input.imageUrl)) {
+    throw Object.assign(new Error("URL de imagem invalida. Use HTTPS ou envie um arquivo suportado."), { statusCode: 400 });
+  }
   const current = await getPanelImageSettings(guildId, botId, panelId);
   const next = normalizeSettings({
     ...current,
@@ -104,6 +120,7 @@ export async function savePanelImageSettings(
     panelId
   });
   const now = new Date();
+  const changed = (["customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
   const { panelImageSettings } = await getMongoCollections();
 
   await ensureGuild(guildId);
@@ -122,7 +139,8 @@ export async function savePanelImageSettings(
         layoutMode: next.layoutMode,
         panelId,
         updatedAt: now,
-        updatedBy: actorId
+        updatedBy: actorId,
+        useGlobalDefault: next.useGlobalDefault
       },
       $setOnInsert: {
         _id: randomUUID(),
@@ -133,7 +151,20 @@ export async function savePanelImageSettings(
     { upsert: true }
   );
 
+  if (changed) emitPanelRefresh(guildId, botId, panelId);
+
   return getPanelImageSettings(guildId, botId, panelId);
+}
+
+function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
+  const events: Record<string, string> = {
+    "fivem-orders": "fivem:orders:panel_publish",
+    "fivem-general": "fivem:fac:panel_publish",
+    "manual-registration": "manual-registration:panel_publish",
+    "mission-tools": "mission-tools:panel_publish"
+  };
+  const event = events[panelId];
+  if (event) emitRealtimeToRoom(devBotRealtimeRoom(botId), event, { botId, guildId });
 }
 
 export async function savePanelImageUpload(input: {
@@ -168,7 +199,8 @@ export async function savePanelImageUpload(input: {
     imagePosition: current.imagePosition === "none" ? "banner" : current.imagePosition,
     imageSize: current.imageSize,
     imageUrl,
-    layoutMode: current.layoutMode
+    layoutMode: current.layoutMode,
+    useGlobalDefault: false
   }, input.actorId);
 }
 
@@ -195,7 +227,7 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
 }
 
 function resolveLayoutMode(layoutMode: PanelImageLayoutMode, imagePosition: PanelImagePosition) {
-  if (["top", "below_text", "above_buttons"].includes(imagePosition)) {
+  if (["top", "below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons"].includes(imagePosition)) {
     return "components_v2";
   }
 
@@ -246,6 +278,7 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
     imageUrl: settings.imageUrl ?? "",
     layoutMode: settings.layoutMode ?? DEFAULT_SETTINGS.layoutMode,
     panelId: settings.panelId,
-    updatedAt: settings.updatedAt?.toISOString() ?? null
+    updatedAt: settings.updatedAt?.toISOString() ?? null,
+    useGlobalDefault: settings.useGlobalDefault ?? false
   };
 }

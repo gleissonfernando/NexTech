@@ -2170,7 +2170,7 @@ export type MongoDashboardAuditLog = {
   createdAt: Date;
 };
 
-export type MongoGlobalPanelImagePosition = "banner" | "thumbnail" | "top" | "below_text" | "above_buttons" | "footer" | "none";
+export type MongoGlobalPanelImagePosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 export type MongoGlobalPanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
 export type MongoGlobalPanelImageLayoutMode = "embed" | "components_v2";
 
@@ -2190,6 +2190,7 @@ export type MongoPanelImageSettings = {
   updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+  useGlobalDefault?: boolean;
 };
 
 const globalForMongo = globalThis as unknown as {
