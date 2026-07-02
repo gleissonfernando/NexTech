@@ -155,7 +155,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("fivem-goals")) {
     startFivemGoalService(client, context);
   }
-  if (isBotModuleEnabled("fivem-orders") || isBotModuleEnabled("fivem-drugs")) startFivemOrderService(client, context);
+  if (isBotModuleEnabled("fivem-orders") || isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing")) startFivemOrderService(client, context);
   if (isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }

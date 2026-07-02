@@ -139,6 +139,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-corporations", label: "FiveM - Sistema de Corporações" },
   { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
   { id: "fivem-orders", label: "Sistema de Encomendas RP" },
+  { id: "fivem-washing", label: "FiveM - Sistema de Lavagem" },
   { id: "fivem-drugs", label: "FiveM - Sistema de Drogas" },
   { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
@@ -186,6 +187,7 @@ type BotMenuId =
   | "fivem-factions"
   | "fivem-ammo"
   | "fivem-orders"
+  | "fivem-washing"
   | "fivem-drugs"
   | "fivem-finance"
   | "fivem-goals"
@@ -412,6 +414,13 @@ const botMenuItems: BotMenuItem[] = [
         description: "Pedidos e entregas",
         icon: Ticket,
         moduleIds: ["fivem-orders"]
+      },
+      {
+        id: "fivem-washing",
+        label: "Sistema de Lavagem",
+        description: "Lavagem RP, porcentagens, repasses e historico",
+        icon: ScrollText,
+        moduleIds: ["fivem-washing"]
       },
       {
         id: "fivem-drugs",

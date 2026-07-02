@@ -178,8 +178,9 @@ const enabledModules = new Set(
 const MODULE_ALIASES: Record<string, string[]> = {
   "fivem-absences": ["fivem-absences", "fivem-fac"],
   "fivem-fac": ["fivem-fac", "fivem-absences"],
-  "fivem-orders": ["fivem-orders", "fivem-drugs"],
-  "fivem-drugs": ["fivem-drugs", "fivem-orders"]
+  "fivem-orders": ["fivem-orders", "fivem-drugs", "fivem-washing"],
+  "fivem-drugs": ["fivem-drugs", "fivem-orders"],
+  "fivem-washing": ["fivem-washing", "fivem-orders"]
 };
 let runtimeEnabledModules: Set<string> | null = null;
 let runtimeBotId = env.DASHBOARD_BOT_ID.trim() || null;

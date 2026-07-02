@@ -181,8 +181,13 @@ export async function createFivemOrder(input: {
     const duplicate = await fivemOrders.findOne({ ...scopeQuery(input.guildId, botId), sourceId: input.sourceId });
     if (duplicate) return toOrderDto(duplicate);
   }
-  const product = await fivemOrderProducts.findOne({ _id: input.productId, ...scopeQuery(input.guildId, botId), active: true });
+  let product = await fivemOrderProducts.findOne({ _id: input.productId, ...scopeQuery(input.guildId, botId), active: true });
   if (!product) throw orderError("Produto indisponivel.", 404);
+  if (product.type === "washing") {
+    const gross = clampNumber(input.grossValue, 0, 1_000_000_000_000, 0);
+    const matchingRule = await findWashingRuleForGrossValue(input.guildId, botId, gross);
+    if (matchingRule) product = matchingRule;
+  }
   const moduleId = product.type === "standard" ? "custom" : product.type;
   const family = await fivemOrderFamilies.findOne({ _id: input.familyId, ...scopeQuery(input.guildId, botId), active: true });
   if (!family) throw orderError("Selecione uma familia ativa para criar a encomenda.", 400);
@@ -313,6 +318,12 @@ function calculateTotals(product: MongoFivemOrderProduct, quantity: number, gros
   return { costTotal, finalValue: gross, grossValue: gross, profit: roundMoney(gross - costTotal), unitPrice: product.price };
 }
 
+async function findWashingRuleForGrossValue(guildId: string, botId: string | null, grossValue: number) {
+  const { fivemOrderProducts } = await getMongoCollections();
+  const rules = await fivemOrderProducts.find({ ...scopeQuery(guildId, botId), active: true, type: "washing" }).sort({ minimumQuantity: -1, order: 1, createdAt: 1 }).limit(250).toArray();
+  return rules.find((rule) => grossValue >= (rule.minimumQuantity ?? 1) && grossValue <= (rule.maximumQuantity ?? 1_000_000_000_000)) ?? null;
+}
+
 function normalizeSettings(value: FivemOrderSettingsDto): FivemOrderSettingsDto {
   return {
     ...value,
@@ -363,5 +374,5 @@ function clampNumber(value: number | null | undefined, min: number, max: number,
 function money(value: number | null | undefined) { return roundMoney(clampNumber(value, 0, 1_000_000_000_000, 0)); }
 function roundMoney(value: number) { return Math.round(value * 100) / 100; }
 function normalizePercentages(values: number[] | undefined, fallback: number | undefined, type: MongoFivemOrderProduct["type"]) { if (type !== "washing") return []; const normalized = [...new Set([...(values ?? []), clampNumber(fallback, 0, 100, 20)].map((item) => clampNumber(item, 0, 100, 0)))].sort((a, b) => a - b).slice(0, 25); return normalized.length ? normalized : [20]; }
-function resolveWashingPercentage(product: MongoFivemOrderProduct, requested: number | null | undefined) { const allowed = normalizePercentages(product.washingPercentages, product.factionPercentage, "washing"); const selected = requested ?? allowed[0] ?? 20; if (!allowed.includes(selected)) throw orderError("Percentual de lavagem nao permitido.", 400); return selected; }
+function resolveWashingPercentage(product: MongoFivemOrderProduct, requested: number | null | undefined) { const allowed = normalizePercentages(product.washingPercentages, product.factionPercentage, "washing"); const selected = requested ?? product.factionPercentage ?? allowed[0] ?? 20; if (!allowed.includes(selected)) throw orderError("Percentual de lavagem nao permitido.", 400); return selected; }
 function orderError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

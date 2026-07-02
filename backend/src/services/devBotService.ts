@@ -80,6 +80,7 @@ export const DEV_MODULES = [
   { id: "fivem-corporations", label: "FiveM - Sistema de Corporacoes" },
   { id: "fivem-absences", label: "FiveM - Sistema de Ausencias" },
   { id: "fivem-orders", label: "Sistema de Encomendas RP" },
+  { id: "fivem-washing", label: "FiveM - Sistema de Lavagem" },
   { id: "fivem-drugs", label: "FiveM - Sistema de Drogas" },
   { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },

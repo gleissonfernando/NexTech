@@ -46,6 +46,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Lavagem RP isolada com regras de porcentagem, calculo automatico, logs e historico.",
+    id: "fivem-washing",
+    permissions: "Admin FiveM, Financeiro",
+    title: "Sistema de Lavagem"
+  },
+  {
+    builtIn: true,
     description: "Controle isolado de drogas, familias autorizadas, pedidos, producao, entrega, logs e historico.",
     id: "fivem-drugs",
     permissions: "Admin FiveM, Lideranca",

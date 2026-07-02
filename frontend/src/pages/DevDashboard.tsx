@@ -874,6 +874,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "fivem-corporations": BriefcaseBusiness,
     "fivem-factions": Building2,
     "fivem-finance": Activity,
+    "fivem-washing": PackagePlus,
     "fivem-drugs": PackagePlus,
     "fivem-orders": PackagePlus
   };

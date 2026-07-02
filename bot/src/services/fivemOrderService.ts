@@ -187,9 +187,8 @@ async function showOrderModal(interaction: StringSelectMenuInteraction, context:
   const product = runtime.products.find((item) => item.id === interaction.values[0]);
   if (!product) return interaction.reply({ content: "Produto indisponivel.", ephemeral: true });
   if (product.type === "washing") {
-    const percentages = product.washingPercentages?.length ? product.washingPercentages : [product.factionPercentage];
-    const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:washing_percentage:${product.id}:${familyId}`).setPlaceholder("Selecione a porcentagem da lavagem").addOptions(percentages.slice(0, 25).map((percentage) => ({ label: `${percentage}%`, value: String(percentage), description: `A familia recebe ${100 - percentage}% do valor entregue` })));
-    return interaction.reply({ content: "Selecione a porcentagem configurada para esta lavagem.", components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], ephemeral: true });
+    await openOrderModal(interaction, product, familyId, null, runtime.settings);
+    return;
   }
   await openOrderModal(interaction, product, familyId, null, runtime.settings);
 }

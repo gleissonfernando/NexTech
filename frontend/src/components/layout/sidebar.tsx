@@ -130,7 +130,7 @@ const navItems: NavItem[] = [
   { id: "fivem", label: "FiveM Geral", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-ammo", "fivem-finance", "fivem-fac"] },
   { id: "fivem-hierarchy", label: "Hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
-  { id: "fivem-washing", label: "Lavagem", icon: CircleDollarSign, moduleId: "fivem-orders" },
+  { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },
   { id: "fivem-ammo", label: "Munição", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },
   { id: "fivem-weapon", label: "Armas", icon: Archive, moduleId: "fivem-orders" },
