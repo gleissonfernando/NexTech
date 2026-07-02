@@ -8056,7 +8056,7 @@ function readResponseMessage(error: unknown) {
 }
 
 function isViewAllowed(view: ViewId, enabledModules: string[]) {
-  if (view === "overview" || view === "notifications") {
+  if (view === "overview" || view === "notifications" || view === "delete-channels") {
     return true;
   }
 
