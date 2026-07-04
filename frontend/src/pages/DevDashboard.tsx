@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Activity,
   Boxes,
@@ -19,6 +19,7 @@ import {
   Trash2,
   Users,
   Wrench,
+  UserCog,
   Bell,
   CreditCard
 } from "lucide-react";
@@ -32,19 +33,22 @@ import { Switch } from "../components/ui/switch";
 import {
   createDevFivemModule,
   deleteDevFivemModule,
+  deleteDevAccessEntry,
   getDashboardMe,
+  getDevAccessEntries,
   getDevBots,
   getDevFivemModules,
   getMaintenanceState,
   getLogs,
   sendMaintenanceAlert,
+  saveDevAccessEntry,
   setMaintenanceMode,
   updateDevBotModules,
   updateDevFivemModule
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, DashboardBot, DashboardMeResponse, DevBot, FivemModuleDefinition, LogEntry, MaintenanceState } from "../types";
+import type { AuthResponse, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, FivemModuleDefinition, LogEntry, MaintenanceState } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -52,7 +56,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "sales" | "fivem" | "logs" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "sales" | "fivem" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -200,6 +204,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
             { id: "sales" as const, label: "Vendas" },
             { id: "fivem" as const, label: "FiveM" },
             { id: "logs" as const, label: "Logs" },
+            { id: "access" as const, label: "Acessos" },
             { id: "maintenance" as const, label: "Manutenção" }
           ].map((item) => (
             <Button
@@ -241,6 +246,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
         ) : null}
 
         {activeView === "logs" ? <TechnicalLogsPanel botId={selectedBotId} guildId={selectedGuildId} /> : null}
+        {activeView === "access" ? <DevAccessPanel /> : null}
         {activeView === "maintenance" ? <MaintenancePanel /> : null}
       </div>
     </main>
@@ -254,6 +260,7 @@ function devPathForView(view: DevView) {
   if (view === "sales") return "/dev/vendas-orvitech";
   if (view === "fivem") return "/dev/fivem";
   if (view === "logs") return "/dev/logs";
+  if (view === "access") return "/dev/acessos";
   if (view === "maintenance") return "/dev/maintenance";
   return "/dev";
 }
@@ -285,6 +292,7 @@ function DevSidebar({
     { icon: CreditCard, id: "sales", label: "Vendas OrviTech" },
     { icon: Building2, id: "fivem", label: "FiveM" },
     { icon: ScrollText, id: "logs", label: "Logs" },
+    { icon: UserCog, id: "access", label: "Acessos DEV" },
     { icon: Wrench, id: "maintenance", label: "Manutenção" }
   ];
 
@@ -367,6 +375,138 @@ function DevUserCard({ canViewDev, user }: { canViewDev: boolean; user: AuthResp
         <div className="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-200">
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
           Online
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DevAccessPanel() {
+  const [entries, setEntries] = useState<DevAccessEntry[]>([]);
+  const [userId, setUserId] = useState("");
+  const [role, setRole] = useState<DevAccessRole>("dev");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    getDevAccessEntries()
+      .then((items) => {
+        if (mounted) setEntries(items);
+      })
+      .catch((error) => {
+        if (mounted) setMessage(readRequestMessage(error) ?? "Nao foi possivel carregar os acessos DEV.");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedUserId = userId.trim();
+
+    if (!/^\d{5,32}$/.test(normalizedUserId)) {
+      setMessage("Informe um Discord ID valido.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const saved = await saveDevAccessEntry({ role, userId: normalizedUserId });
+      setEntries((current) => [saved, ...current.filter((item) => item.userId !== saved.userId)]);
+      setUserId("");
+      setMessage("Acesso DEV salvo.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel salvar o acesso DEV.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(entry: DevAccessEntry) {
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      await deleteDevAccessEntry(entry.userId);
+      setEntries((current) => current.filter((item) => item.userId !== entry.userId));
+      setMessage("Acesso DEV removido.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Nao foi possivel remover o acesso DEV.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="border-purple-500/20 bg-[#0b0b10]/90">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UserCog className="h-5 w-5 text-purple-200" />
+          Acessos DEV
+        </CardTitle>
+        <CardDescription>Cadastre contas Discord autorizadas a entrar no painel DEV.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {message ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100">{message}</div> : null}
+
+        <form className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]" onSubmit={(event) => void handleSubmit(event)}>
+          <input
+            className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-purple-400"
+            onChange={(event) => setUserId(event.target.value)}
+            placeholder="Discord ID do usuario"
+            value={userId}
+          />
+          <select
+            className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-purple-400"
+            onChange={(event) => setRole(event.target.value as DevAccessRole)}
+            value={role}
+          >
+            <option value="dev">Dev</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
+          <Button disabled={saving} type="submit">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Salvar
+          </Button>
+        </form>
+
+        <div className="grid gap-3">
+          {loading ? (
+            <div className="flex min-h-32 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950/60">
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            </div>
+          ) : entries.length ? (
+            entries.map((entry) => (
+              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 sm:flex-row sm:items-center sm:justify-between" key={entry.userId}>
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm font-semibold text-white">{entry.userId}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Criado em {new Date(entry.createdAt).toLocaleString("pt-BR")}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={entry.role === "owner" ? "success" : "muted"}>{entry.role}</Badge>
+                  <Button disabled={saving} onClick={() => void handleDelete(entry)} size="sm" variant="outline">
+                    <Trash2 className="h-4 w-4" />
+                    Remover
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 p-6 text-sm text-zinc-500">
+              Nenhum acesso adicional cadastrado.
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -955,4 +1095,9 @@ function formatDate(value: string) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function readRequestMessage(error: unknown) {
+  const response = (error as { response?: { data?: { message?: unknown } } }).response;
+  return typeof response?.data?.message === "string" ? response.data.message : null;
 }

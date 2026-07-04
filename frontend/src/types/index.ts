@@ -2756,6 +2756,19 @@ export type MaintenanceState = {
   updatedByName: string | null;
 };
 
+export type DevAccessRole = "owner" | "admin" | "dev";
+
+export type DevAccessEntry = {
+  id: string;
+  userId: string;
+  role: DevAccessRole;
+  canCreateBot: boolean;
+  canEditBot: boolean;
+  canDeleteBot: boolean;
+  canManageModules: boolean;
+  createdAt: string;
+};
+
 export type CreateDevBotPayload = {
   token: string;
   mainGuildId: string;

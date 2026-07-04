@@ -19,6 +19,8 @@ import type {
   CreateDevBotPayload,
   DashboardBot,
   DashboardMeResponse,
+  DevAccessEntry,
+  DevAccessRole,
   DevBot,
   DevModuleDefinition,
   FivemFacAbsence,
@@ -2133,8 +2135,32 @@ export async function sendMaintenanceAlert() {
   return data.maintenance;
 }
 
+export async function getDevAccessEntries() {
+  const { data } = await api.get<{ entries: DevAccessEntry[] }>("/dev/access");
+  return data.entries;
+}
+
+export async function saveDevAccessEntry(payload: { role: DevAccessRole; userId: string }) {
+  const { data } = await api.post<{ entry: DevAccessEntry }>("/dev/access", payload);
+  return data.entry;
+}
+
+export async function deleteDevAccessEntry(userId: string) {
+  const { data } = await api.delete<{ entry: DevAccessEntry }>(`/dev/access/${encodeURIComponent(userId)}`);
+  return data.entry;
+}
+
 export async function createDevBot(payload: CreateDevBotPayload) {
   const { data } = await api.post<{ bot: DevBot }>("/dev/bots/create", payload, {
+    timeout: 16000
+  });
+  return data.bot;
+}
+
+export async function updateDevBotToken(botId: string, token: string) {
+  const { data } = await api.patch<{ bot: DevBot }>(`/dev/bots/${encodeURIComponent(botId)}`, {
+    token
+  }, {
     timeout: 16000
   });
   return data.bot;

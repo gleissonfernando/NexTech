@@ -45,6 +45,12 @@ import {
   setMaintenanceMode
 } from "../services/maintenanceService";
 import {
+  canManageDevPermissions,
+  deleteDevPermission,
+  listDevPermissions,
+  upsertDevPermission
+} from "../services/devPermissionService";
+import {
   deleteOrvitechPaymentProvider,
   deleteOrvitechProduct,
   deleteScopedOrvitechSalesPlan,
@@ -214,6 +220,11 @@ const orvitechSaleStatusSchema = z.object({
   status: z.enum(["pending", "paid", "cancelled", "refunded"])
 });
 
+const devAccessSchema = z.object({
+  role: z.enum(["owner", "admin", "dev"]).default("dev"),
+  userId: z.string().regex(/^\d{5,32}$/)
+});
+
 export const devRouter = Router();
 
 devRouter.use(requireDevAccess);
@@ -222,6 +233,64 @@ devRouter.get("/modules", (_req, res) => {
   return res.json({
     modules: DEV_MODULES
   });
+});
+
+devRouter.get("/access", async (_req, res, next) => {
+  try {
+    return res.json({
+      entries: await listDevPermissions()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/access", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = devAccessSchema.parse(req.body);
+
+    if (!(await canManageDevPermissions(auth.user.discordId))) {
+      return res.status(403).json({
+        message: "Voce nao tem permissao para gerenciar acessos DEV."
+      });
+    }
+
+    return res.status(201).json({
+      entry: await upsertDevPermission({
+        actorId: auth.user.discordId,
+        role: input.role,
+        userId: input.userId
+      })
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/access/:userId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const userId = z.string().regex(/^\d{5,32}$/).parse(req.params.userId);
+
+    if (!(await canManageDevPermissions(auth.user.discordId))) {
+      return res.status(403).json({
+        message: "Voce nao tem permissao para gerenciar acessos DEV."
+      });
+    }
+
+    const entry = await deleteDevPermission(auth.user.discordId, userId);
+
+    if (!entry) {
+      return res.status(404).json({
+        message: "Acesso DEV nao encontrado."
+      });
+    }
+
+    return res.json({ entry });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 devRouter.get("/maintenance", async (_req, res, next) => {

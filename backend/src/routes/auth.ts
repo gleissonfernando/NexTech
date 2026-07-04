@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Request } from "express";
 import { Router } from "express";
 import { env } from "../config/env";
-import { isDashboardDevUserId } from "../config/devOwner";
 import {
   buildDiscordAuthUrl,
   discordAvatarUrl,
@@ -30,6 +29,7 @@ import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsServ
 import { clearStoredDiscordTokens, saveDiscordUser } from "../services/userService";
 import type { AuthSessionUser } from "../types/session";
 import { getDevBot, getDevBotBySlug } from "../services/devBotService";
+import { canAccessDevDashboard } from "../services/devPermissionService";
 
 export const authRouter = Router();
 const errorPath = "/auth/error";
@@ -342,7 +342,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       })
     );
 
-    if (verifiedState.type === "dev" && !isDashboardDevUserId(discordUser.id)) {
+    if (verifiedState.type === "dev" && !(await canAccessDevDashboard(discordUser.id))) {
       console.warn(`[auth] oauth dev negado: discordId=${discordUser.id}.`);
       clearAuthCookies(res);
       req.session.user = undefined;

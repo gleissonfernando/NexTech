@@ -1,5 +1,4 @@
 import { env } from "../config/env";
-import { isDashboardDevUserId } from "../config/devOwner";
 import type { AuthSessionUser } from "../types/session";
 import {
   canManageDashboardAccessLevel,
@@ -9,6 +8,7 @@ import {
   type SessionAccessLevel
 } from "./dashboardPermissionService";
 import { scanAccessibleDevBots } from "./devBotService";
+import { canAccessDevDashboard } from "./devPermissionService";
 import { saveDiscordAccessSnapshot } from "./userService";
 
 export type GuildAccessCheck = {
@@ -62,7 +62,7 @@ export async function evaluateDashboardAccess(
     requiredRoleIds: [],
     requiredUserIds: []
   }));
-  const authorizedUser = isDashboardDevUserId(user.discordId);
+  const authorizedUser = await canAccessDevDashboard(user.discordId);
 
   if (authorizedUser) {
     const validation = createValidationResult(baseChecks, true, [], "admin");

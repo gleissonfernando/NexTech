@@ -66,6 +66,7 @@ import {
     stopDevBot,
     updateBotGuildConfig,
     updateDevBotModules,
+    updateDevBotToken,
     updateOrvitechProduct,
     updateOrvitechSaleStatus,
     updateOrvitechSalesPlan,
@@ -520,6 +521,7 @@ export function DevPanel({
   const [tokenVisible, setTokenVisible] = useState(false);
   const [bulkPowerAction, setBulkPowerAction] = useState<"start" | "stop" | null>(null);
   const [poweringBotId, setPoweringBotId] = useState<string | null>(null);
+  const [updatingTokenBotId, setUpdatingTokenBotId] = useState<string | null>(null);
   const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -731,11 +733,6 @@ export function DevPanel({
   async function handlePower(bot: DevBot) {
     const shouldStop = bot.status === "online";
 
-    if (shouldStop) {
-      setMessage("Use o controle geral isolado para desligar os bots conectados.");
-      return;
-    }
-
     setPoweringBotId(bot.id);
     setMessage(null);
 
@@ -764,6 +761,23 @@ export function DevPanel({
       setMessage(readRequestMessage(error) ?? (shouldStop ? "Não foi possível desligar esse bot." : "Não foi possível ligar esse bot."));
     } finally {
       setPoweringBotId(null);
+    }
+  }
+
+  async function handleUpdateToken(bot: DevBot, token: string) {
+    setUpdatingTokenBotId(bot.id);
+    setMessage(null);
+
+    try {
+      const updated = await updateDevBotToken(bot.id, token.trim());
+      setBots((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      onBotUpdated?.(updated);
+      setMessage(`Token de ${updated.name} atualizado e aplicado com sucesso.`);
+    } catch (error) {
+      setMessage(maskSensitiveText(readRequestMessage(error) ?? "Não foi possível atualizar o token do bot."));
+      throw error;
+    } finally {
+      setUpdatingTokenBotId(null);
     }
   }
 
@@ -1048,7 +1062,9 @@ export function DevPanel({
             onOpenLogs={() => openSelectedBotView("logs")}
             onOpenSettings={openModuleSettings}
             onPower={() => void handlePower(selectedBot)}
+            onUpdateToken={(token) => handleUpdateToken(selectedBot, token)}
             powering={poweringBotId === selectedBot.id}
+            updatingToken={updatingTokenBotId === selectedBot.id}
           />
         ) : (
           <Card className="flex h-full min-h-[420px] border-dashed border-purple-500/20 bg-zinc-950/60 hover:translate-y-0">
@@ -1111,13 +1127,13 @@ export function DevPanel({
                         </button>
                         <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
                           <Button
-                            disabled={poweringBotId === bot.id || bot.status === "online"}
+                            disabled={poweringBotId === bot.id}
                             onClick={() => void handlePower(bot)}
                             size="icon"
-                            title={bot.status === "online" ? "Use Desligar todos no controle geral" : "Ligar bot"}
-                            variant="outline"
+                            title={bot.status === "online" ? "Desligar bot" : "Ligar bot"}
+                            variant={bot.status === "online" ? "destructive" : "outline"}
                           >
-                            {poweringBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                            {poweringBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : bot.status === "online" ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                           </Button>
                           <Button
                             disabled={deletingBotId === bot.id}
@@ -1239,7 +1255,9 @@ function ConnectedBotPanel({
   onOpenLogs,
   onOpenSettings,
   onPower,
-  powering
+  onUpdateToken,
+  powering,
+  updatingToken
 }: {
   bot: DevBot;
   deleting: boolean;
@@ -1249,9 +1267,14 @@ function ConnectedBotPanel({
   onOpenLogs: () => void;
   onOpenSettings: () => void;
   onPower: () => void;
+  onUpdateToken: (token: string) => Promise<void>;
   powering: boolean;
+  updatingToken: boolean;
 }) {
   const [copiedDashboardUrl, setCopiedDashboardUrl] = useState(false);
+  const [editingToken, setEditingToken] = useState(false);
+  const [newToken, setNewToken] = useState("");
+  const [newTokenVisible, setNewTokenVisible] = useState(false);
   const [channels, setChannels] = useState<{
     error: string | null;
     loading: boolean;
@@ -1267,7 +1290,22 @@ function ConnectedBotPanel({
 
   useEffect(() => {
     setCopiedDashboardUrl(false);
+    setEditingToken(false);
+    setNewToken("");
+    setNewTokenVisible(false);
   }, [bot.id]);
+
+  async function handleSaveToken() {
+    if (newToken.trim().length < 10) return;
+    try {
+      await onUpdateToken(newToken);
+      setNewToken("");
+      setNewTokenVisible(false);
+      setEditingToken(false);
+    } catch {
+      // A mensagem de erro e tratada pelo painel principal.
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -1363,6 +1401,34 @@ function ConnectedBotPanel({
           </div>
         ) : null}
 
+        <div className="rounded-lg border border-zinc-800 bg-black/35 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-white">Token do bot</p>
+              <p className="mt-1 font-mono text-xs text-zinc-400">Atual: {bot.tokenMasked || "protegido"}</p>
+            </div>
+            <Button onClick={() => setEditingToken((current) => !current)} size="sm" variant="outline">
+              <LockKeyhole className="h-4 w-4" />
+              {editingToken ? "Cancelar" : "Editar token"}
+            </Button>
+          </div>
+          {editingToken ? (
+            <div className="mt-4 space-y-3">
+              <ProtectedTokenInput
+                hidden={!newTokenVisible}
+                label="Novo token"
+                onChange={setNewToken}
+                onToggle={() => setNewTokenVisible((current) => !current)}
+                value={newToken}
+              />
+              <Button disabled={updatingToken || newToken.trim().length < 10} onClick={() => void handleSaveToken()} size="sm">
+                {updatingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {updatingToken ? "Validando..." : "Salvar novo token"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
         <div className="rounded-lg border border-purple-500/25 bg-purple-500/[0.08] p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -1399,13 +1465,13 @@ function ConnectedBotPanel({
             Logs
           </Button>
           <Button
-            disabled={powering || bot.status === "online"}
+            disabled={powering}
             onClick={onPower}
             size="icon"
-            title={bot.status === "online" ? "Use Desligar todos no controle geral" : "Ligar bot"}
-            variant="outline"
+            title={bot.status === "online" ? "Desligar bot" : "Ligar bot"}
+            variant={bot.status === "online" ? "destructive" : "outline"}
           >
-            {powering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+            {powering ? <Loader2 className="h-4 w-4 animate-spin" /> : bot.status === "online" ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
           </Button>
           <Button disabled={deleting} onClick={onDelete} size="icon" title="Desconectar bot" variant="destructive">
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}

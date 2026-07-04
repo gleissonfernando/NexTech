@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import axios from "axios";
-import { isDashboardDevUserId } from "../config/devOwner";
 import { env } from "../config/env";
 import {
   getMongoCollections,
@@ -30,6 +29,7 @@ import { getSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./
 import { createLog } from "./logService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
+import { canAccessDevDashboard } from "./devPermissionService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
@@ -446,7 +446,7 @@ export async function listAccessibleDevBots(user: AuthSessionUser, options: Acce
 }
 
 export async function scanAccessibleDevBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {
-  if (isDashboardDevUserId(user.discordId)) {
+  if (await canAccessDevDashboard(user.discordId)) {
     if (options.botSlug) {
       const bot = await getDevBotBySlug(options.botSlug);
       return {
@@ -518,7 +518,7 @@ export async function listAccessibleDashboardBots(user: AuthSessionUser, options
 }
 
 export async function userHasAccessibleDevBot(user: AuthSessionUser) {
-  if (isDashboardDevUserId(user.discordId)) {
+  if (await canAccessDevDashboard(user.discordId)) {
     return true;
   }
 
@@ -569,7 +569,7 @@ export async function findDevBotIdByClientId(clientId: string) {
 }
 
 export async function canManageDevBot(user: AuthSessionUser, botId: string) {
-  if (isDashboardDevUserId(user.discordId)) {
+  if (await canAccessDevDashboard(user.discordId)) {
     return true;
   }
 
@@ -2879,7 +2879,7 @@ async function checkAccessDevBotGuild(
     };
   }
 
-  if (isDashboardDevUserId(user.discordId)) {
+  if (await canAccessDevDashboard(user.discordId)) {
     return {
       allowed: true,
       accessLevel: "admin",

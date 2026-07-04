@@ -1,16 +1,16 @@
+import axios from "axios";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
-import axios from "axios";
 import { env } from "../config/env";
 import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import { sendDevBotUnexpectedExitLog } from "./devBotDiscordLogService";
 import {
-  getDevBotRuntimeConfig,
-  listDevBotRuntimeConfigs,
-  updateDevBotRuntimeStatus,
-  type DevBotRuntimeConfig
+    getDevBotRuntimeConfig,
+    listDevBotRuntimeConfigs,
+    updateDevBotRuntimeStatus,
+    type DevBotRuntimeConfig
 } from "./devBotService";
 
 type RunningBot = {
