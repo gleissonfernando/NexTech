@@ -158,7 +158,8 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-hierarchy", label: "Policia - Hierarquia" },
-  { id: "fivem-actions", label: "FiveM - Sistema de Ações" },
+  { id: "fivem-actions", label: "FiveM - Acoes FAC" },
+  { id: "police-actions", label: "Policia - Acoes" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalização" }
@@ -209,6 +210,7 @@ type BotMenuId =
   | "fivem-goals"
   | "fivem-hierarchy"
   | "fivem-actions"
+  | "police-actions"
   | "police-patrol-reports"
   | "fivem-production"
   | "integrations";
@@ -470,8 +472,8 @@ const botMenuItems: BotMenuItem[] = [
       },
       {
         id: "fivem-actions",
-        description: "Acoes profissionais para FAC e Policia",
-        label: "Sistema de Ações",
+        description: "Acoes profissionais para FAC",
+        label: "Acoes FAC",
         icon: Gamepad2,
         moduleIds: ["fivem-actions"]
       },
@@ -494,9 +496,9 @@ const botMenuItems: BotMenuItem[] = [
   {
     id: "police-patrol-reports",
     label: "Policia",
-    description: "Hierarquia policial e relatorios de patrulhamento",
+    description: "Hierarquia, acoes e relatorios policiais",
     icon: ShieldCheck,
-    moduleIds: ["fivem-hierarchy", "police-patrol-reports"]
+    moduleIds: ["fivem-hierarchy", "police-actions", "police-patrol-reports"]
   },
   {
     id: "integrations",
@@ -739,7 +741,7 @@ export function DevPanel({
 
   async function handleToggleModule(bot: DevBot, moduleId: string, checked: boolean) {
     const nextModules = checked
-      ? [...new Set([...bot.enabledModules, ...(isFiveMModule(moduleId) && moduleId !== "fivem" ? ["fivem"] : []), moduleId])]
+      ? [...new Set([...bot.enabledModules, ...(isFiveMModule(moduleId) && !isPoliceReleaseModule(moduleId) && moduleId !== "fivem" ? ["fivem"] : []), moduleId])]
       : bot.enabledModules.filter((item) => item !== moduleId);
 
     setBots((current) => current.map((item) => (item.id === bot.id ? { ...item, enabledModules: nextModules } : item)));
@@ -4112,12 +4114,14 @@ function ModuleSwitchGrid({
   modules: DevModuleDefinition[];
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
-  const standardModules = modules.filter((module) => !isFiveMModule(module.id));
-  const fiveMModules = modules.filter((module) => isFiveMModule(module.id));
+  const policeModules = modules.filter((module) => isPoliceReleaseModule(module.id));
+  const standardModules = modules.filter((module) => !isFiveMModule(module.id) && !isPoliceReleaseModule(module.id));
+  const fiveMModules = modules.filter((module) => isFiveMModule(module.id) && !isPoliceReleaseModule(module.id));
 
   return (
     <div className="space-y-5">
       <ModuleSwitchSection enabledModules={enabledModules} modules={standardModules} onToggle={onToggle} title="Sistemas do bot" />
+      <ModuleSwitchSection enabledModules={enabledModules} modules={policeModules} onToggle={onToggle} title="Sistemas Policia" />
       <ModuleSwitchSection enabledModules={enabledModules} modules={fiveMModules} onToggle={onToggle} title="Sistemas FiveM" />
     </div>
   );
@@ -4184,6 +4188,7 @@ function iconForModule(moduleId: string) {
     return ShieldCheck;
   }
 
+  if (moduleId.includes("police")) return ShieldCheck;
   if (moduleId.includes("fivem")) return Gamepad2;
   if (moduleId.includes("clip")) return Copy;
   if (moduleId.includes("emoji")) return Copy;
@@ -4280,6 +4285,7 @@ function modulesForMenu(item: BotMenuItem, modules: DevModuleDefinition[], inclu
 
   if (item.id === "fivem") {
     moduleIds.delete("fivem-hierarchy");
+    moduleIds.delete("police-actions");
     moduleIds.delete("police-patrol-reports");
   }
 
@@ -4293,7 +4299,7 @@ function visibleBotMenuItems(items: BotMenuItem[], modules: DevModuleDefinition[
     }
 
     const children = item.children
-      ? visibleBotMenuItems(item.children, modules, enabledModules).filter((child) => item.id !== "fivem" || !["fivem-hierarchy", "police-patrol-reports"].includes(child.id))
+      ? visibleBotMenuItems(item.children, modules, enabledModules).filter((child) => item.id !== "fivem" || !["fivem-hierarchy", "police-actions", "police-patrol-reports"].includes(child.id))
       : undefined;
     const ownEnabled = modulesForMenu(item, modules).some((module) => enabledModules.includes(module.id));
 
@@ -4340,7 +4346,7 @@ function moduleManagerGroups(modules: DevModuleDefinition[]) {
       }
 
       for (const child of item.children) {
-        if (item.id === "fivem" && ["fivem-hierarchy", "police-patrol-reports"].includes(child.id)) {
+        if (item.id === "fivem" && ["fivem-hierarchy", "police-actions", "police-patrol-reports"].includes(child.id)) {
           continue;
         }
 
@@ -4392,6 +4398,10 @@ function countEnabledMenuModules(item: BotMenuItem, modules: DevModuleDefinition
 
 function isFiveMModule(moduleId: string) {
   return moduleId === "fivem" || moduleId.startsWith("fivem-");
+}
+
+function isPoliceReleaseModule(moduleId: string) {
+  return moduleId === "fivem-hierarchy" || moduleId === "police-actions" || moduleId === "police-patrol-reports";
 }
 
 function StatusBadge({ status }: { status: DevBotStatus }) {

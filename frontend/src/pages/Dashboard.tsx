@@ -581,6 +581,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-absence": "fivem-absences",
   "fivem-hierarchy": "fivem-hierarchy",
   "fivem-actions": "fivem-actions",
+  "police-actions": "police-actions",
   "police-patrol-reports": "police-patrol-reports",
   "fivem-orders": "fivem-orders",
   "fivem-families": "fivem-orders",
@@ -1286,6 +1287,15 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <FivemActionsPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "fivem-actions", canManageDashboard)}
+            fixedArchitecture="fac"
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "police-actions" ? (
+          <FivemActionsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police-actions", canManageDashboard)}
+            fixedArchitecture="police"
             guild={selectedGuild}
           />
         ) : null}
@@ -3503,7 +3513,8 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Painel automatico de hierarquia policial por cargos.", id: "fivem-hierarchy", permissions: "Admin Policia", title: "Hierarquia Policial" },
-    { builtIn: true, description: "Ações profissionais separadas para FAC e Polícia.", id: "fivem-actions", permissions: "Admin FiveM", title: "Sistema de Ações" },
+    { builtIn: true, description: "Acoes profissionais da FAC com painel, participantes e relatorios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Acoes FAC" },
+    { builtIn: true, description: "Operacoes policiais com painel, participantes e relatorios separados.", id: "police-actions", permissions: "Admin Policia", title: "Acoes Policiais" },
     { builtIn: true, description: "Relatórios de patrulhamento exclusivos para oficiais.", id: "police-patrol-reports", permissions: "Admin Polícia", title: "Relatórios Policiais" }
   ];
   const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
@@ -3514,7 +3525,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     .filter((module) => {
       if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences";
+      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports";
     })
     .map((module) => ({
       description: module.description,
@@ -3533,9 +3544,11 @@ function fivemIconForModule(moduleId: string) {
     "fivem-finance": Activity,
     "fivem-washing": CircleDollarSign,
     "fivem-goals": ListChecks,
+    "fivem-actions": Activity,
     "fivem-drugs": Boxes,
     "fivem-hierarchy": Users,
-    "fivem-orders": ListChecks
+    "fivem-orders": ListChecks,
+    "police-actions": Activity
   };
 
   return icons[moduleId] ?? Boxes;
@@ -3615,6 +3628,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "fivem-goals",
       "fivem-hierarchy",
       "fivem-actions",
+      "police-actions",
       "police-patrol-reports",
       "fivem-fac"
     ].includes(moduleId);
@@ -8236,12 +8250,12 @@ function visualPanelIdForView(view: ViewId) {
 }
 
 function policePanelImageSlotsForView(view: ViewId) {
-  if (view !== "fivem-hierarchy" && view !== "police-patrol-reports") {
+  if (view !== "fivem-hierarchy" && view !== "police-actions" && view !== "police-patrol-reports") {
     return null;
   }
 
   const basePanelId = visualPanelIdForView(view);
-  const label = view === "fivem-hierarchy" ? "Hierarquia" : "Relatorios";
+  const label = view === "fivem-hierarchy" ? "Hierarquia" : view === "police-actions" ? "Acoes" : "Relatorios";
 
   return [
     { id: basePanelId, label: `${label} - Banner 1` },

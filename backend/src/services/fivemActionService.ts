@@ -8,6 +8,7 @@ import {
 } from "../database/mongo";
 
 export const FIVEM_ACTIONS_MODULE_ID = "fivem-actions";
+export const POLICE_ACTIONS_MODULE_ID = "police-actions";
 
 export type ActionSettingsInput = Partial<Pick<MongoFivemActionSettings,
   "enabled" | "categoryId" | "panelChannelId" | "actionChannelId" | "reportChannelId" |
@@ -77,9 +78,10 @@ export async function deleteFivemActionDefinition(botId: string, guildId: string
   return deleted ? actionDto(deleted) : null;
 }
 
-export async function listActiveFivemActionSettings(botId: string) {
+export async function listActiveFivemActionSettings(botId: string, architectures?: MongoFivemActionArchitecture[]) {
   const { fivemActionSettings } = await getMongoCollections();
-  return (await fivemActionSettings.find({ botId, enabled: true }).toArray()).map(settingsDto);
+  const query = architectures?.length ? { botId, enabled: true, architecture: { $in: architectures } } : { botId, enabled: true };
+  return (await fivemActionSettings.find(query).toArray()).map(settingsDto);
 }
 
 export async function createFivemActionSession(input: { botId: string; guildId: string; architecture: MongoFivemActionArchitecture; actionId: string; openerId: string; openerName: string }) {

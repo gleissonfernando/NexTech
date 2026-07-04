@@ -1062,7 +1062,7 @@ function normalizeFiveMModules(moduleIds: string[]) {
 
 function nextFiveMModulesAfterDisable(moduleIds: string[], disabledModuleId: string) {
   const withoutModule = moduleIds.filter((moduleId) => moduleId !== disabledModuleId);
-  const hasOtherFiveMModule = withoutModule.some((moduleId) => moduleId.startsWith("fivem-"));
+  const hasOtherFiveMModule = withoutModule.some((moduleId) => moduleId.startsWith("fivem-") && !isPoliceModule(moduleId));
 
   if (hasOtherFiveMModule) {
     return [...new Set([...withoutModule, "fivem"])];
@@ -1089,6 +1089,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "fivem-drugs": PackagePlus,
     "fivem-orders": PackagePlus,
     "fivem-hierarchy": Users,
+    "police-actions": Activity,
     "police-patrol-reports": ShieldCheck
   };
 
@@ -1096,7 +1097,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
 }
 
 function isPoliceModule(moduleId: string) {
-  return moduleId === "fivem-hierarchy" || moduleId === "police-patrol-reports";
+  return moduleId === "fivem-hierarchy" || moduleId === "police-actions" || moduleId === "police-patrol-reports";
 }
 
 function isFiveMManagerModule(moduleId: string) {

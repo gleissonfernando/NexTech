@@ -6,13 +6,15 @@ import {
 import { isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { FivemActionArchitecture, FivemActionSession, FivemActionSettings } from "./apiClient";
+import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 
 const PREFIX = "fivem_action";
+const MODULE_BY_ARCHITECTURE: Record<FivemActionArchitecture, string> = { fac: "fivem-actions", police: "police-actions" };
 const handledRequests = new Map<string, string>();
 let polling = false;
 
 export function startFivemActionService(client: Client, context: BotContext) {
-  if (!isBotModuleEnabled("fivem-actions")) return;
+  if (!isFivemActionRuntimeEnabled()) return;
   void processPanelRequests(client, context);
   const interval = setInterval(() => void processPanelRequests(client, context), 15_000);
   interval.unref();
@@ -20,7 +22,7 @@ export function startFivemActionService(client: Client, context: BotContext) {
 
 export async function handleFivemActionInteraction(interaction: Interaction, context: BotContext) {
   if (!(interaction.isButton() || interaction.isStringSelectMenu()) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
-  if (!isBotModuleEnabled("fivem-actions")) { await interaction.reply({ content: "Sistema de Ações não liberado para este bot.", ephemeral: true }); return true; }
+  if (!isFivemActionRuntimeEnabled()) { await interaction.reply({ content: "Sistema de Ações não liberado para este bot.", ephemeral: true }); return true; }
   if (!interaction.guildId || !interaction.guild) { await interaction.reply({ content: "Use este sistema dentro de um servidor.", ephemeral: true }); return true; }
   const [, action, id] = interaction.customId.split(":");
   if (interaction.isStringSelectMenu() && action === "open") await openAction(interaction, context);
@@ -58,8 +60,11 @@ async function publishMainPanel(client: Client, context: BotContext, config: Fiv
   const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:open:${config.architecture}`).setPlaceholder("🎯 Escolha uma ação").addOptions(enabled.slice(0, 25).map((item) => ({ label: item.name.slice(0, 100), value: `${config.architecture}|${item.id}`, description: item.description.slice(0, 100) || undefined, emoji: item.emoji || undefined })));
   const intro = { type: 10, content: [`# ${config.panelTitle}`, config.panelDescription].join("\n") };
   const tutorial = { type: 10, content: ["## 📖 Como funciona", "1️⃣ Escolha uma ação no menu.", "2️⃣ Vá ao painel criado.", "3️⃣ Entre na ação e aguarde a equipe.", "4️⃣ O responsável encerra em Resultado da ação.", "5️⃣ O relatório será enviado automaticamente."].join("\n") };
-  const image = config.imageUrl && config.imagePosition !== "none" ? { type: 12, items: [{ media: { url: config.imageUrl } }] } : null;
-  const contentComponents: any[] = config.imagePosition === "top" && image ? [image, intro, tutorial] : config.imagePosition === "center" && image ? [intro, image, tutorial] : [intro, tutorial, ...(image ? [image] : [])];
+  const visuals = config.architecture === "police" ? await getPanelVisualSlots(context, config.guildId, "police-actions") : [];
+  const fallbackImageUrl = config.imageUrl && config.imagePosition !== "none" ? resolvePanelImageUrl(config.imageUrl) : null;
+  const media = visuals.length ? visuals.map((visual) => mediaBlock(visual.imageUrl!, config.panelTitle)) : fallbackImageUrl ? [mediaBlock(fallbackImageUrl, config.panelTitle)] : [];
+  const imagePosition = visuals[0] ? actionImagePosition(visuals[0].imagePosition) : config.imagePosition;
+  const contentComponents: any[] = imagePosition === "top" && media.length ? [...media, intro, tutorial] : imagePosition === "center" && media.length ? [intro, ...media, tutorial] : [intro, tutorial, ...media];
   const navigation = enabled.length > 25 ? [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:page:${config.architecture}|1`).setLabel("Mais ações").setEmoji("➡️").setStyle(ButtonStyle.Secondary))] : [];
   const payload = { components: [{ type: 17, accent_color: parseColor(config.color), components: [...contentComponents, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select), ...navigation] }], flags: MessageFlags.IsComponentsV2 as const };
   let message = config.panelMessageId ? await channel.messages.fetch(config.panelMessageId).catch(() => null) : null;
@@ -72,6 +77,7 @@ async function openAction(interaction: StringSelectMenuInteraction, context: Bot
   const [architectureRaw, actionId] = (interaction.values[0] ?? "").split("|");
   const architecture = architectureRaw as FivemActionArchitecture;
   if (!actionId || !["fac", "police"].includes(architecture)) return void await interaction.editReply("Ação inválida.");
+  if (!isFivemActionRuntimeEnabled(architecture)) return void await interaction.editReply(architecture === "police" ? "Acoes policiais nao liberadas para este bot." : "Acoes FAC nao liberadas para este bot.");
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
   const channelId = dashboard.settings.actionChannelId;
   if (!channelId) return void await interaction.editReply("Canal de ações não configurado.");
@@ -86,6 +92,7 @@ async function openAction(interaction: StringSelectMenuInteraction, context: Bot
 async function showActionPage(interaction: any, context: BotContext, token: string) {
   const [architectureRaw, pageRaw] = token.split("|");
   const architecture = architectureRaw as FivemActionArchitecture;
+  if (!isFivemActionRuntimeEnabled(architecture)) return void await interaction.reply({ content: architecture === "police" ? "Acoes policiais nao liberadas para este bot." : "Acoes FAC nao liberadas para este bot.", ephemeral: true });
   const page = Math.max(0, Number.parseInt(pageRaw ?? "0", 10) || 0);
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
   const actions = dashboard.actions.filter((item) => item.enabled).sort((a, b) => a.order - b.order);
@@ -154,6 +161,33 @@ function sessionPayload(session: FivemActionSession) {
   const details = { type: 10, content: `# ${session.actionEmoji ?? "🎯"} ${session.actionName.toUpperCase()}\n${session.actionDescription}\n\n**Status:** ${status}\n**Participantes:** ${active.length}/${session.maxParticipants}\n**Responsável:** <@${session.openerId}>\n\n${active.map((item) => `• <@${item.userId}>`).join("\n") || "Aguardando participantes."}` };
   const image = session.actionImageUrl ? [{ type: 12, items: [{ media: { url: session.actionImageUrl } }] }] : [];
   return { components: [{ type: 17, accent_color: session.status === "active" ? parseColor(session.actionColor) : session.status === "victory" ? 0x22c55e : 0xef4444, components: [details, ...image, ...rows] }], flags: MessageFlags.IsComponentsV2 as const };
+}
+
+async function getPanelVisualSlots(context: BotContext, guildId: string, basePanelId: string) {
+  const panelIds = [basePanelId, `${basePanelId}-banner-2`, `${basePanelId}-banner-3`];
+  const visuals = await Promise.all(panelIds.map((panelId) => context.api.getPanelVisualSettings(guildId, panelId).catch(() => null)));
+
+  return visuals.flatMap((visual, index): PanelVisualConfig[] => {
+    if (!visual?.imageEnabled || !visual.imageUrl) return [];
+    if (index > 0 && visual.useGlobalDefault) return [];
+    return [{ imageEnabled: visual.imageEnabled, imagePosition: visual.imagePosition, imageUrl: resolvePanelImageUrl(visual.imageUrl) ?? visual.imageUrl }];
+  });
+}
+
+function actionImagePosition(position: PanelVisualConfig["imagePosition"]): FivemActionSettings["imagePosition"] {
+  if (position === "top" || position === "banner") return "top";
+  if (position === "middle" || position === "below_title" || position === "below_text" || position === "before_buttons" || position === "above_buttons") return "center";
+  if (position === "none") return "none";
+  return "bottom";
+}
+
+function mediaBlock(url: string, description: string) {
+  return { type: 12, items: [{ media: { url }, description }] };
+}
+
+function isFivemActionRuntimeEnabled(architecture?: FivemActionArchitecture) {
+  if (architecture) return isBotModuleEnabled(MODULE_BY_ARCHITECTURE[architecture]);
+  return isBotModuleEnabled(MODULE_BY_ARCHITECTURE.fac) || isBotModuleEnabled(MODULE_BY_ARCHITECTURE.police);
 }
 
 function parseColor(value: string) { return Number.parseInt(value.replace("#", ""), 16) || 0x7c3aed; }

@@ -85,6 +85,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
     id: "fivem-hierarchy",
     permissions: "Admin Policia, Lideranca",
     title: "Hierarquia Policial"
+  },
+  {
+    builtIn: true,
+    description: "Operacoes policiais com painel, participantes e relatorios separados da FAC.",
+    id: "police-actions",
+    permissions: "Admin Policia, Operador",
+    title: "Acoes Policiais"
   }
 ];
 

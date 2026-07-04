@@ -173,7 +173,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }
-  if (isBotModuleEnabled("fivem-actions")) {
+  if (isBotModuleEnabled("fivem-actions") || isBotModuleEnabled("police-actions")) {
     startFivemActionService(client, context);
   }
   if (isBotModuleEnabled("police-patrol-reports")) {

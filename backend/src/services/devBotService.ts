@@ -88,7 +88,8 @@ export const DEV_MODULES = [
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-hierarchy", label: "Policia - Hierarquia" },
-  { id: "fivem-actions", label: "FiveM - Sistema de Ações" },
+  { id: "fivem-actions", label: "FiveM - Acoes FAC" },
+  { id: "police-actions", label: "Policia - Acoes" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }

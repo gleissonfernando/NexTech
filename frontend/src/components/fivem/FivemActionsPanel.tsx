@@ -8,8 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Switch } from "../ui/switch";
 import { FivemResourceSelect } from "./FivemResourceSelect";
 
-export function FivemActionsPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
-  const [architecture, setArchitecture] = useState<FivemActionArchitecture>("fac");
+type FivemActionsPanelProps = {
+  botId?: string | null;
+  canManage: boolean;
+  fixedArchitecture?: FivemActionArchitecture;
+  guild: DashboardGuild | null;
+};
+
+export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }: FivemActionsPanelProps) {
+  const [architecture, setArchitecture] = useState<FivemActionArchitecture>(fixedArchitecture ?? "fac");
   const [dashboard, setDashboard] = useState<FivemActionDashboard | null>(null);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [categories, setCategories] = useState<GuildCategoryOption[]>([]);
@@ -17,11 +24,20 @@ export function FivemActionsPanel({ botId, canManage, guild }: { botId?: string 
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (fixedArchitecture) {
+      setArchitecture(fixedArchitecture);
+    }
+  }, [fixedArchitecture]);
+
   useEffect(() => { if (!botId || !guild) { setLoading(false); return; } let active = true; setLoading(true); Promise.all([getFivemActions(guild.id, architecture, botId), getGuildLiveOptions(guild.id, botId)]).then(([data, options]) => { if (active) { setDashboard(data); setChannels(options.channels); setCategories(options.categories ?? []); } }).catch((error) => active && setMessage(readMessage(error))).finally(() => active && setLoading(false)); return () => { active = false; }; }, [architecture, botId, guild?.id]);
 
   if (!botId || !guild) return <Empty text="Selecione um bot e um servidor para configurar o Sistema de Ações." />;
   if (loading || !dashboard) return <Empty loading text="Carregando Sistema de Ações..." />;
   const settings = dashboard.settings;
+  const scopedTitle = architecture === "police" ? "Acoes Policiais" : "Acoes FAC";
+  const scopedDescription = architecture === "police" ? "Sistema policial separado, com painel, acoes e relatorios proprios." : "Sistema FAC separado, com painel, acoes e relatorios proprios.";
+  const HeaderIcon = architecture === "police" ? Shield : Activity;
   const patchSettings = (patch: Partial<typeof settings>) => setDashboard((current) => current ? { ...current, settings: { ...current.settings, ...patch } } : current);
 
   async function saveSettings() { setBusy("settings"); setMessage(null); try { const saved = await saveFivemActionSettings(guild!.id, architecture, botId!, settings); patchSettings(saved); setMessage("Configurações salvas."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
@@ -33,7 +49,7 @@ export function FivemActionsPanel({ botId, canManage, guild }: { botId?: string 
   const updateAction = (id: string, patch: Partial<FivemActionDefinition>) => setDashboard((current) => current ? { ...current, actions: current.actions.map((item) => item.id === id ? { ...item, ...patch } : item) } : current);
 
   return <div className="space-y-5">
-    <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-purple-300" />Sistema de Ações</CardTitle><CardDescription>FAC e Polícia usam a mesma tecnologia com dados completamente separados.</CardDescription></div><div className="flex gap-2"><Button variant={architecture === "fac" ? "default" : "outline"} onClick={() => setArchitecture("fac")}><Activity className="h-4 w-4" />FAC</Button><Button variant={architecture === "police" ? "default" : "outline"} onClick={() => setArchitecture("police")}><Shield className="h-4 w-4" />Polícia</Button></div></div></CardHeader></Card>
+    <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><HeaderIcon className="h-5 w-5 text-purple-300" />{scopedTitle}</CardTitle><CardDescription>{scopedDescription}</CardDescription></div>{fixedArchitecture ? null : <div className="flex gap-2"><Button variant={architecture === "fac" ? "default" : "outline"} onClick={() => setArchitecture("fac")}><Activity className="h-4 w-4" />FAC</Button><Button variant={architecture === "police" ? "default" : "outline"} onClick={() => setArchitecture("police")}><Shield className="h-4 w-4" />Polícia</Button></div>}</div></CardHeader></Card>
     {message ? <div className="rounded-lg border border-purple-500/25 bg-purple-500/10 p-3 text-sm text-white">{message}</div> : null}
     <Card><CardHeader><CardTitle>Configuração {architecture === "fac" ? "FAC" : "Polícia"}</CardTitle><CardDescription>Painel principal, painel da ação e relatórios.</CardDescription></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">
       <label className="text-sm text-zinc-300">Título<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.panelTitle} disabled={!canManage} onChange={(e) => patchSettings({ panelTitle: e.target.value })} /></label>
