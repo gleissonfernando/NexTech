@@ -101,7 +101,6 @@ function isLocalUrl(value: string) {
   }
 }
 
-
 applyPackedEnv();
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
@@ -169,8 +168,9 @@ const enabledModules = new Set(
     .filter(Boolean)
 );
 const MODULE_ALIASES: Record<string, string[]> = {
-  "fivem-absences": ["fivem-absences", "fivem-fac"],
-  "fivem-fac": ["fivem-fac", "fivem-absences"],
+  "fivem-absences": ["fivem-absences", "fivem-fac", "police-absences"],
+  "fivem-fac": ["fivem-fac", "fivem-absences", "police-absences"],
+  "police-absences": ["police-absences", "fivem-absences", "fivem-fac"],
   "fivem-orders": ["fivem-orders", "fivem-drugs", "fivem-washing"],
   "fivem-drugs": ["fivem-drugs", "fivem-orders"],
   "fivem-washing": ["fivem-washing", "fivem-orders"]
@@ -226,4 +226,3 @@ if (env.NODE_ENV === "production") {
     console.warn(`[bot env] variaveis pendentes na hospedagem: ${missing.join(", ")}.`);
   }
 }
-

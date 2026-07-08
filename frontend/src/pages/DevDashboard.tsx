@@ -1089,6 +1089,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "fivem-drugs": PackagePlus,
     "fivem-orders": PackagePlus,
     "fivem-hierarchy": Users,
+    "police-absences": CalendarClock,
     "police-actions": Activity,
     "police-patrol-reports": ShieldCheck
   };
@@ -1097,7 +1098,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
 }
 
 function isPoliceModule(moduleId: string) {
-  return moduleId === "fivem-hierarchy" || moduleId === "police-actions" || moduleId === "police-patrol-reports";
+  return moduleId === "fivem-hierarchy" || moduleId === "police-absences" || moduleId === "police-actions" || moduleId === "police-patrol-reports";
 }
 
 function isFiveMManagerModule(moduleId: string) {

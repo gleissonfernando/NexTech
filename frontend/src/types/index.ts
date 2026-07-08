@@ -157,6 +157,7 @@ export type GuildSettings = {
   ticketPanelColor: string;
   ticketPanelPlaceholder: string | null;
   ticketPanelOptions: TicketPanelOption[];
+  reportSystem: ReportSystemSettings;
   logChannelId: string | null;
   discordLogsEnabled: boolean;
   siteLogsEnabled: boolean;
@@ -199,6 +200,60 @@ export type TicketPanelOption = {
   enabled: boolean;
   label: string;
   value: string;
+};
+
+export type ReportSystemCategory = {
+  channelOrCategoryId: string | null;
+  color: string;
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type ReportSystemStatus = { color: string; id: string; name: string; order: number };
+export type ReportSystemButtonKey = "claim" | "reply" | "status" | "requestEvidence" | "addMember" | "removeMember" | "transcript" | "close" | "reopen" | "delete";
+export type ReportSystemLogKey = "opened" | "closed" | "replies" | "statusChanged" | "messagesDeleted" | "anonymous" | "admin";
+export type ReportSystemSettings = {
+  adminRoleIds: string[];
+  allowAnonymousReports: boolean;
+  allowAnonymousStaffReplies: boolean;
+  anonymousAvatarUrl: string | null;
+  anonymousEmbedColor: string;
+  anonymousInvestigatorName: string;
+  anonymousReporterName: string;
+  auditChannelId: string | null;
+  buttonText: string;
+  buttons: Record<ReportSystemButtonKey, boolean>;
+  categories: ReportSystemCategory[];
+  categoryId: string | null;
+  closeRoleIds: string[];
+  createRoleIds: string[];
+  enabled: boolean;
+  footerText: string | null;
+  imageUrl: string | null;
+  infoMessage: string;
+  logChannelId: string | null;
+  logs: Record<ReportSystemLogKey, boolean>;
+  mentionRoleIds: string[];
+  name: string;
+  openMessage: string;
+  panelChannelId: string | null;
+  panelColor: string;
+  panelDescription: string;
+  panelEmoji: string | null;
+  panelPlaceholder: string;
+  panelTitle: string;
+  permissionRoleIds: string[];
+  reopenRoleIds: string[];
+  replyRoleIds: string[];
+  statusRoleIds: string[];
+  statuses: ReportSystemStatus[];
+  thumbnailUrl: string | null;
+  transcriptChannelId: string | null;
+  viewRoleIds: string[];
 };
 
 export type EmojiLibraryItem = {

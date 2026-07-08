@@ -12,6 +12,7 @@ import type { BotContext } from "../types";
 import { handleSafeBotWarningInteraction } from "../services/safeBotWarningService";
 import { handleTemporaryVoiceInteraction } from "../services/temporaryVoiceService";
 import { handleTicketPanelInteraction } from "../services/ticketPanelService";
+import { handleReportSystemInteraction } from "../services/reportSystemService";
 import { handleManualRegistrationInteraction } from "../services/manualRegistrationService";
 import { handleFivemGoalInteraction } from "../services/fivemGoalService";
 import { handleFivemFinanceInteraction } from "../services/fivemFinanceService";
@@ -78,6 +79,10 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   }
 
   if (await handleTicketPanelInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleReportSystemInteraction(interaction, context)) {
     return;
   }
 

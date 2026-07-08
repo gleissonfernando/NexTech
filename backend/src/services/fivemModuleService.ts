@@ -88,6 +88,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Fluxo de ausencias, aprovacoes e historico para oficiais da policia.",
+    id: "police-absences",
+    permissions: "Admin Policia, Lideranca",
+    title: "Ausencia Policial"
+  },
+  {
+    builtIn: true,
     description: "Operacoes policiais com painel, participantes e relatorios separados da FAC.",
     id: "police-actions",
     permissions: "Admin Policia, Operador",

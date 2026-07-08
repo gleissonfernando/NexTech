@@ -78,6 +78,7 @@ export type ViewId =
   | "fivem-absence"
   | "fivem-hierarchy"
   | "fivem-actions"
+  | "police-absence"
   | "police-actions"
   | "police-patrol-reports"
   | "fivem-orders"
@@ -154,7 +155,8 @@ const navItems: NavItem[] = [
   { id: "fivem-absence", label: "Ausência", icon: CalendarClock, moduleIds: ["fivem-absences", "fivem-fac"] },
   { id: "fivem-hierarchy", label: "Hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-actions", label: "Ações FAC", icon: Activity, moduleId: "fivem-actions" },
-  { id: "police-actions", label: "Ações Policiais", icon: Activity, moduleId: "police-actions" },
+  { id: "police-absence", label: "Ausencia Policial", icon: CalendarClock, moduleId: "police-absences" },
+  { id: "police-actions", label: "Acoes Policiais", icon: Activity, moduleId: "police-actions" },
   { id: "police-patrol-reports", label: "Relatórios Policiais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
   { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-families", label: "Famílias", icon: Users, moduleIds: ["fivem-orders", "fivem-drugs", "fivem-washing"] },
@@ -177,9 +179,11 @@ const navItems: NavItem[] = [
 function navSectionForItem(item: NavItem): NavSectionId {
   if (
     item.id === "fivem-hierarchy"
+    || item.id === "police-absence"
     || item.id === "police-actions"
     || item.id === "police-patrol-reports"
     || item.moduleId === "fivem-hierarchy"
+    || item.moduleId === "police-absences"
     || item.moduleId === "police-actions"
     || item.moduleId === "police-patrol-reports"
   ) {

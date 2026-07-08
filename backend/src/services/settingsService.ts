@@ -47,6 +47,7 @@ export type GuildSettingsDto = {
   ticketPanelColor: string;
   ticketPanelPlaceholder: string | null;
   ticketPanelOptions: TicketPanelOptionDto[];
+  reportSystem: ReportSystemSettingsDto;
   logChannelId: string | null;
   discordLogsEnabled: boolean;
   siteLogsEnabled: boolean;
@@ -89,6 +90,85 @@ export type TicketPanelOptionDto = {
   enabled: boolean;
   label: string;
   value: string;
+};
+
+export type ReportSystemCategoryDto = {
+  channelOrCategoryId: string | null;
+  color: string;
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type ReportSystemStatusDto = {
+  color: string;
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type ReportSystemButtonKey =
+  | "claim"
+  | "reply"
+  | "status"
+  | "requestEvidence"
+  | "addMember"
+  | "removeMember"
+  | "transcript"
+  | "close"
+  | "reopen"
+  | "delete";
+
+export type ReportSystemLogKey =
+  | "opened"
+  | "closed"
+  | "replies"
+  | "statusChanged"
+  | "messagesDeleted"
+  | "anonymous"
+  | "admin";
+
+export type ReportSystemSettingsDto = {
+  adminRoleIds: string[];
+  allowAnonymousReports: boolean;
+  allowAnonymousStaffReplies: boolean;
+  anonymousAvatarUrl: string | null;
+  anonymousEmbedColor: string;
+  anonymousInvestigatorName: string;
+  anonymousReporterName: string;
+  auditChannelId: string | null;
+  buttonText: string;
+  buttons: Record<ReportSystemButtonKey, boolean>;
+  categories: ReportSystemCategoryDto[];
+  categoryId: string | null;
+  closeRoleIds: string[];
+  createRoleIds: string[];
+  enabled: boolean;
+  footerText: string | null;
+  imageUrl: string | null;
+  infoMessage: string;
+  logChannelId: string | null;
+  logs: Record<ReportSystemLogKey, boolean>;
+  mentionRoleIds: string[];
+  name: string;
+  openMessage: string;
+  panelChannelId: string | null;
+  panelColor: string;
+  panelDescription: string;
+  panelEmoji: string | null;
+  panelPlaceholder: string;
+  panelTitle: string;
+  permissionRoleIds: string[];
+  reopenRoleIds: string[];
+  replyRoleIds: string[];
+  statusRoleIds: string[];
+  statuses: ReportSystemStatusDto[];
+  thumbnailUrl: string | null;
+  transcriptChannelId: string | null;
+  viewRoleIds: string[];
 };
 
 export const LOG_CATEGORIES = [
@@ -196,6 +276,24 @@ const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
     value: "suporte"
   }
 ];
+const REPORT_BUTTON_KEYS: ReportSystemButtonKey[] = ["claim", "reply", "status", "requestEvidence", "addMember", "removeMember", "transcript", "close", "reopen", "delete"];
+const REPORT_LOG_KEYS: ReportSystemLogKey[] = ["opened", "closed", "replies", "statusChanged", "messagesDeleted", "anonymous", "admin"];
+const DEFAULT_REPORT_CATEGORIES: ReportSystemCategoryDto[] = [
+  { channelOrCategoryId: null, color: "#dc2626", description: "Denuncias contra oficiais.", emoji: "👮", enabled: true, id: "oficial", name: "Contra Oficial", order: 1 },
+  { channelOrCategoryId: null, color: "#991b1b", description: "Denuncias contra alto comando.", emoji: "⭐", enabled: true, id: "alto-comando", name: "Contra Alto Comando", order: 2 },
+  { channelOrCategoryId: null, color: "#7f1d1d", description: "Denuncias contra corregedoria.", emoji: "🛡️", enabled: true, id: "corregedoria", name: "Contra Corregedoria", order: 3 },
+  { channelOrCategoryId: null, color: "#b91c1c", description: "Denuncias contra conselho.", emoji: "⚖️", enabled: true, id: "conselho", name: "Contra Conselho", order: 4 },
+  { channelOrCategoryId: null, color: "#ef4444", description: "Denuncias contra unidade.", emoji: "🏢", enabled: true, id: "unidade", name: "Contra Unidade", order: 5 },
+  { channelOrCategoryId: null, color: "#f97316", description: "Outros assuntos da corregedoria.", emoji: "📌", enabled: true, id: "outros", name: "Outros Assuntos", order: 6 }
+];
+const DEFAULT_REPORT_STATUSES: ReportSystemStatusDto[] = [
+  { color: "#22c55e", id: "aberta", name: "Aberta", order: 1 },
+  { color: "#f59e0b", id: "em-analise", name: "Em analise", order: 2 },
+  { color: "#38bdf8", id: "aguardando-resposta", name: "Aguardando resposta", order: 3 },
+  { color: "#818cf8", id: "respondida", name: "Respondida", order: 4 },
+  { color: "#64748b", id: "finalizada", name: "Finalizada", order: 5 },
+  { color: "#475569", id: "arquivada", name: "Arquivada", order: 6 }
+];
 
 export function defaultSettings(guildId: string, botId: string | null = null): GuildSettingsDto {
   return {
@@ -239,6 +337,7 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     ticketPanelColor: "#7c3aed",
     ticketPanelPlaceholder: DEFAULT_TICKET_PANEL_PLACEHOLDER,
     ticketPanelOptions: DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option })),
+    reportSystem: defaultReportSystemSettings(),
     logChannelId: null,
     discordLogsEnabled: false,
     siteLogsEnabled: true,
@@ -336,7 +435,11 @@ export async function getPersistedDashboardAccess(
   return specificAccess ?? legacyAccess;
 }
 
-export async function updateGuildSettings(guildId: string, input: Partial<GuildSettingsDto>, botId?: string | null) {
+export async function updateGuildSettings(
+  guildId: string,
+  input: Partial<Omit<GuildSettingsDto, "reportSystem"> & { reportSystem?: unknown }>,
+  botId?: string | null
+) {
   const normalizedBotId = normalizeBotId(botId);
   const current = await getGuildSettings(guildId, normalizedBotId);
   const autoRoleIds = "autoRoleIds" in input
@@ -435,6 +538,7 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
     leaveChannelLabel: normalizePanelText("leaveChannelLabel" in input ? input.leaveChannelLabel : current.leaveChannelLabel),
     leaveFooterText: normalizePanelText("leaveFooterText" in input ? input.leaveFooterText : current.leaveFooterText),
     leaveColor: normalizePanelColor("leaveColor" in input ? input.leaveColor : current.leaveColor),
+    reportSystem: normalizeReportSystemSettings("reportSystem" in input ? input.reportSystem : current.reportSystem, current.reportSystem),
     verificationRoleIds,
     dashboardRolePermissions,
     dashboardUserPermissions,
@@ -490,6 +594,7 @@ export async function updateGuildSettings(guildId: string, input: Partial<GuildS
           ticketPanelColor: next.ticketPanelColor,
           ticketPanelPlaceholder: next.ticketPanelPlaceholder,
           ticketPanelOptions: next.ticketPanelOptions,
+          reportSystem: next.reportSystem,
           logChannelId: next.logChannelId,
           discordLogsEnabled: next.discordLogsEnabled,
           siteLogsEnabled: next.siteLogsEnabled,
@@ -660,6 +765,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     ticketPanelColor: normalizeTicketPanelColor(settings.ticketPanelColor),
     ticketPanelPlaceholder: normalizePanelText(settings.ticketPanelPlaceholder) || defaults.ticketPanelPlaceholder,
     ticketPanelOptions: normalizeTicketPanelOptions(settings.ticketPanelOptions),
+    reportSystem: normalizeReportSystemSettings(settings.reportSystem, defaults.reportSystem),
     logChannelId: settings.logChannelId,
     discordLogsEnabled: settings.discordLogsEnabled ?? Boolean(settings.logChannelId),
     siteLogsEnabled: settings.siteLogsEnabled ?? defaults.siteLogsEnabled,
@@ -938,6 +1044,152 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
     .slice(0, 25);
 
   return options.length ? options : DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
+}
+
+function defaultReportSystemSettings(): ReportSystemSettingsDto {
+  return {
+    adminRoleIds: [],
+    allowAnonymousReports: true,
+    allowAnonymousStaffReplies: true,
+    anonymousAvatarUrl: null,
+    anonymousEmbedColor: "#dc2626",
+    anonymousInvestigatorName: "Equipe IAB",
+    anonymousReporterName: "Denunciante Anonimo",
+    auditChannelId: null,
+    buttonText: "Abrir denuncia",
+    buttons: Object.fromEntries(REPORT_BUTTON_KEYS.map((key) => [key, true])) as Record<ReportSystemButtonKey, boolean>,
+    categories: DEFAULT_REPORT_CATEGORIES.map((item) => ({ ...item })),
+    categoryId: null,
+    closeRoleIds: [],
+    createRoleIds: [],
+    enabled: true,
+    footerText: "IAB / Corregedoria",
+    imageUrl: null,
+    infoMessage: "Este sistema garante total confidencialidade aos denunciantes. Caso escolha o modo anonimo, sua identidade permanecera oculta para todos os participantes do atendimento. As denuncias serao analisadas exclusivamente pela equipe autorizada.",
+    logChannelId: null,
+    logs: Object.fromEntries(REPORT_LOG_KEYS.map((key) => [key, true])) as Record<ReportSystemLogKey, boolean>,
+    mentionRoleIds: [],
+    name: "IAB",
+    openMessage: "Sua denuncia foi aberta. Envie as informacoes solicitadas e aguarde a equipe autorizada.",
+    panelChannelId: null,
+    panelColor: "#dc2626",
+    panelDescription: "Selecione abaixo o tipo de denuncia e informe os detalhes com seguranca.",
+    panelEmoji: "🛡️",
+    panelPlaceholder: "Selecione o tipo de denuncia",
+    panelTitle: "Sistema de Denuncias",
+    permissionRoleIds: [],
+    reopenRoleIds: [],
+    replyRoleIds: [],
+    statusRoleIds: [],
+    statuses: DEFAULT_REPORT_STATUSES.map((item) => ({ ...item })),
+    thumbnailUrl: null,
+    transcriptChannelId: null,
+    viewRoleIds: []
+  };
+}
+
+function normalizeReportSystemSettings(value: unknown, fallback = defaultReportSystemSettings()): ReportSystemSettingsDto {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    ...fallback,
+    adminRoleIds: normalizeSnowflakes(asArray(record.adminRoleIds)),
+    allowAnonymousReports: record.allowAnonymousReports !== false,
+    allowAnonymousStaffReplies: record.allowAnonymousStaffReplies !== false,
+    anonymousAvatarUrl: normalizeUrl(record.anonymousAvatarUrl),
+    anonymousEmbedColor: normalizePanelColor(String(record.anonymousEmbedColor ?? fallback.anonymousEmbedColor)),
+    anonymousInvestigatorName: normalizeNullableText(record.anonymousInvestigatorName, 80) ?? fallback.anonymousInvestigatorName,
+    anonymousReporterName: normalizeNullableText(record.anonymousReporterName, 80) ?? fallback.anonymousReporterName,
+    auditChannelId: normalizeSnowflake(String(record.auditChannelId ?? "")),
+    buttonText: normalizeNullableText(record.buttonText, 80) ?? fallback.buttonText,
+    buttons: normalizeBooleanMap(record.buttons, REPORT_BUTTON_KEYS, fallback.buttons),
+    categories: normalizeReportCategories(record.categories),
+    categoryId: normalizeSnowflake(String(record.categoryId ?? "")),
+    closeRoleIds: normalizeSnowflakes(asArray(record.closeRoleIds)),
+    createRoleIds: normalizeSnowflakes(asArray(record.createRoleIds)),
+    enabled: record.enabled !== false,
+    footerText: normalizeNullableText(record.footerText, 180),
+    imageUrl: normalizeUrl(record.imageUrl),
+    infoMessage: normalizeNullableText(record.infoMessage, 1800) ?? fallback.infoMessage,
+    logChannelId: normalizeSnowflake(String(record.logChannelId ?? "")),
+    logs: normalizeBooleanMap(record.logs, REPORT_LOG_KEYS, fallback.logs),
+    mentionRoleIds: normalizeSnowflakes(asArray(record.mentionRoleIds)),
+    name: normalizeNullableText(record.name, 80) ?? fallback.name,
+    openMessage: normalizeNullableText(record.openMessage, 1000) ?? fallback.openMessage,
+    panelChannelId: normalizeSnowflake(String(record.panelChannelId ?? "")),
+    panelColor: normalizePanelColor(String(record.panelColor ?? fallback.panelColor)),
+    panelDescription: normalizeNullableText(record.panelDescription, 1000) ?? fallback.panelDescription,
+    panelEmoji: normalizeNullableText(record.panelEmoji, 80),
+    panelPlaceholder: normalizeNullableText(record.panelPlaceholder, 120) ?? fallback.panelPlaceholder,
+    panelTitle: normalizeNullableText(record.panelTitle, 120) ?? fallback.panelTitle,
+    permissionRoleIds: normalizeSnowflakes(asArray(record.permissionRoleIds)),
+    reopenRoleIds: normalizeSnowflakes(asArray(record.reopenRoleIds)),
+    replyRoleIds: normalizeSnowflakes(asArray(record.replyRoleIds)),
+    statusRoleIds: normalizeSnowflakes(asArray(record.statusRoleIds)),
+    statuses: normalizeReportStatuses(record.statuses),
+    thumbnailUrl: normalizeUrl(record.thumbnailUrl),
+    transcriptChannelId: normalizeSnowflake(String(record.transcriptChannelId ?? "")),
+    viewRoleIds: normalizeSnowflakes(asArray(record.viewRoleIds))
+  };
+}
+
+function normalizeReportCategories(value: unknown): ReportSystemCategoryDto[] {
+  const seen = new Set<string>();
+  const source = Array.isArray(value) ? value : DEFAULT_REPORT_CATEGORIES;
+  const items = source.map((item, index): ReportSystemCategoryDto | null => {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    const name = normalizeNullableText(record.name, 80);
+    if (!name) return null;
+    const fallbackId = slug(name) || `categoria-${index + 1}`;
+    const id = normalizeNullableText(record.id, 80) ?? fallbackId;
+    if (seen.has(id)) return null;
+    seen.add(id);
+    return {
+      channelOrCategoryId: normalizeSnowflake(String(record.channelOrCategoryId ?? "")),
+      color: normalizePanelColor(String(record.color ?? "#dc2626")),
+      description: normalizeNullableText(record.description, 100),
+      emoji: normalizeNullableText(record.emoji, 80),
+      enabled: record.enabled !== false,
+      id,
+      name,
+      order: clampInteger(Number(record.order ?? index + 1), 1, 1000, index + 1)
+    };
+  }).filter((item): item is ReportSystemCategoryDto => Boolean(item)).slice(0, 25);
+  return (items.length ? items : DEFAULT_REPORT_CATEGORIES.map((item) => ({ ...item }))).sort((a, b) => a.order - b.order);
+}
+
+function normalizeReportStatuses(value: unknown): ReportSystemStatusDto[] {
+  const seen = new Set<string>();
+  const source = Array.isArray(value) ? value : DEFAULT_REPORT_STATUSES;
+  const items = source.map((item, index): ReportSystemStatusDto | null => {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    const name = normalizeNullableText(record.name, 80);
+    if (!name) return null;
+    const id = normalizeNullableText(record.id, 80) ?? (slug(name) || `status-${index + 1}`);
+    if (seen.has(id)) return null;
+    seen.add(id);
+    return { color: normalizePanelColor(String(record.color ?? "#64748b")), id, name, order: clampInteger(Number(record.order ?? index + 1), 1, 1000, index + 1) };
+  }).filter((item): item is ReportSystemStatusDto => Boolean(item)).slice(0, 25);
+  return (items.length ? items : DEFAULT_REPORT_STATUSES.map((item) => ({ ...item }))).sort((a, b) => a.order - b.order);
+}
+
+function normalizeBooleanMap<T extends string>(value: unknown, keys: T[], fallback: Record<T, boolean>): Record<T, boolean> {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return Object.fromEntries(keys.map((key) => [key, typeof record[key] === "boolean" ? record[key] : fallback[key]])) as Record<T, boolean>;
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function normalizeUrl(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim().slice(0, 2048) : "";
+  return normalized && /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function slug(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
 function normalizeNullableText(value: unknown, maxLength: number) {

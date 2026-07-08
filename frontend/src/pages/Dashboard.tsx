@@ -484,6 +484,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "fivem-absence"
   },
   {
+    id: "police-absences",
+    title: "Ausencia Policial",
+    description: "Solicitacoes, analise, cargo temporario e historico de ausencia para oficiais.",
+    icon: CalendarClock,
+    view: "police-absence"
+  },
+  {
     id: "fivem-orders",
     title: "Encomendas FiveM",
     description: "Controle separado para pedidos, fila, producao, entrega e historico de encomendas.",
@@ -581,6 +588,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-absence": "fivem-absences",
   "fivem-hierarchy": "fivem-hierarchy",
   "fivem-actions": "fivem-actions",
+  "police-absence": "police-absences",
   "police-actions": "police-actions",
   "police-patrol-reports": "police-patrol-reports",
   "fivem-orders": "fivem-orders",
@@ -1274,6 +1282,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "fivem-absences", canManageDashboard) || canManageModule(selectedBot, "fivem-fac", canManageDashboard)}
             guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "police-absence" ? (
+          <FacAbsencePanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police-absences", canManageDashboard)}
+            guild={selectedGuild}
+            variant="police"
           />
         ) : null}
         {activeView === "fivem-hierarchy" ? (
@@ -3514,6 +3530,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Painel automatico de hierarquia policial por cargos.", id: "fivem-hierarchy", permissions: "Admin Policia", title: "Hierarquia Policial" },
     { builtIn: true, description: "Acoes profissionais da FAC com painel, participantes e relatorios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Acoes FAC" },
+    { builtIn: true, description: "Solicitacoes e aprovacao de ausencias para oficiais.", id: "police-absences", permissions: "Admin Policia", title: "Ausencia Policial" },
     { builtIn: true, description: "Operacoes policiais com painel, participantes e relatorios separados.", id: "police-actions", permissions: "Admin Policia", title: "Acoes Policiais" },
     { builtIn: true, description: "Relatórios de patrulhamento exclusivos para oficiais.", id: "police-patrol-reports", permissions: "Admin Polícia", title: "Relatórios Policiais" }
   ];
@@ -3525,7 +3542,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     .filter((module) => {
       if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports";
+      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports";
     })
     .map((module) => ({
       description: module.description,
@@ -3548,6 +3565,7 @@ function fivemIconForModule(moduleId: string) {
     "fivem-drugs": Boxes,
     "fivem-hierarchy": Users,
     "fivem-orders": ListChecks,
+    "police-absences": CalendarClock,
     "police-actions": Activity
   };
 
@@ -3628,6 +3646,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "fivem-goals",
       "fivem-hierarchy",
       "fivem-actions",
+      "police-absences",
       "police-actions",
       "police-patrol-reports",
       "fivem-fac"
@@ -3650,6 +3669,10 @@ function isModuleReleasedForBot(bot: DashboardBot, moduleId: string) {
 
   if (moduleId === "fivem-fac") {
     return released.has("fivem-fac") || released.has("fivem-absences");
+  }
+
+  if (moduleId === "police-absences") {
+    return released.has("police-absences");
   }
 
   if (moduleId === "fivem-drugs") {
@@ -8305,6 +8328,10 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
 
   if (view === "fivem-absence") {
     return enabledModules.includes("fivem-absences") || enabledModules.includes("fivem-fac");
+  }
+
+  if (view === "police-absence") {
+    return enabledModules.includes("police-absences");
   }
 
   if (view === "fivem-families") {

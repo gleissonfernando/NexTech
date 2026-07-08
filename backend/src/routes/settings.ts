@@ -70,6 +70,59 @@ const settingsSchema = z.object({
     label: z.string().min(1).max(80),
     value: z.string().min(1).max(80)
   })).max(25).optional(),
+  reportSystem: z.object({
+    adminRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    allowAnonymousReports: z.boolean().optional(),
+    allowAnonymousStaffReplies: z.boolean().optional(),
+    anonymousAvatarUrl: z.string().url().max(2048).nullable().optional(),
+    anonymousEmbedColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    anonymousInvestigatorName: z.string().max(80).optional(),
+    anonymousReporterName: z.string().max(80).optional(),
+    auditChannelId: z.string().nullable().optional(),
+    buttonText: z.string().max(80).optional(),
+    buttons: z.record(z.boolean()).optional(),
+    categories: z.array(z.object({
+      channelOrCategoryId: z.string().nullable().optional(),
+      color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+      description: z.string().max(100).nullable().optional(),
+      emoji: z.string().max(80).nullable().optional(),
+      enabled: z.boolean().optional(),
+      id: z.string().min(1).max(80),
+      name: z.string().min(1).max(80),
+      order: z.coerce.number().int().min(1).max(1000).optional()
+    })).max(25).optional(),
+    categoryId: z.string().nullable().optional(),
+    closeRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    createRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    enabled: z.boolean().optional(),
+    footerText: z.string().max(180).nullable().optional(),
+    imageUrl: z.string().url().max(2048).nullable().optional(),
+    infoMessage: z.string().max(1800).optional(),
+    logChannelId: z.string().nullable().optional(),
+    logs: z.record(z.boolean()).optional(),
+    mentionRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    name: z.string().max(80).optional(),
+    openMessage: z.string().max(1000).optional(),
+    panelChannelId: z.string().nullable().optional(),
+    panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    panelDescription: z.string().max(1000).optional(),
+    panelEmoji: z.string().max(80).nullable().optional(),
+    panelPlaceholder: z.string().max(120).optional(),
+    panelTitle: z.string().max(120).optional(),
+    permissionRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    reopenRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    replyRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    statusRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    statuses: z.array(z.object({
+      color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+      id: z.string().min(1).max(80),
+      name: z.string().min(1).max(80),
+      order: z.coerce.number().int().min(1).max(1000).optional()
+    })).max(25).optional(),
+    thumbnailUrl: z.string().url().max(2048).nullable().optional(),
+    transcriptChannelId: z.string().nullable().optional(),
+    viewRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional()
+  }).optional(),
   logChannelId: z.string().nullable().optional(),
   discordLogsEnabled: z.boolean().optional(),
   siteLogsEnabled: z.boolean().optional(),
@@ -166,6 +219,39 @@ settingsRouter.get("/:guildId", requireAuthOrBot, async (req, res) => {
   return res.json({
     settings: await getGuildSettings(guildId, botId)
   });
+});
+
+settingsRouter.patch("/bot/:guildId", requireBot, async (req, res, next) => {
+  try {
+    const { guildId } = req.params;
+    const botId = await resolveRequestBotId(req);
+    const input = settingsSchema.parse(req.body);
+
+    if (!guildId) {
+      return res.status(400).json({ message: "guildId obrigatorio." });
+    }
+
+    await validateGuildResources(guildId, botId, input);
+    const settings = await updateGuildSettings(guildId, input, botId);
+    emitRealtime("settings:updated", settings);
+
+    const settingsLog = await createLog({
+      botId,
+      guildId,
+      userId: null,
+      type: "discord.settings.updated",
+      message: friendlySettingsMessage(input),
+      metadata: { botId, guildId, changedKeys: Object.keys(input), moduleName: inferSettingsModuleName(input) }
+    }).catch(() => null);
+
+    if (settingsLog) {
+      emitRealtime("logs:new", settingsLog);
+    }
+
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 settingsRouter.post("/bot/:guildId/self-bot-role", requireBot, async (req, res, next) => {
@@ -792,6 +878,7 @@ async function canPatchSettings(
     ticketPanelColor: ["tickets"],
     ticketPanelPlaceholder: ["tickets"],
     ticketPanelOptions: ["tickets"],
+    reportSystem: ["tickets"],
     logChannelId: ["logs"],
     discordLogsEnabled: ["logs"],
     siteLogsEnabled: ["logs"],
@@ -888,7 +975,11 @@ async function validateGuildResources(
     input.safeBotChannelId,
     input.safeBotLogChannelId,
     input.emojiCloneLogChannelId,
-    input.rulesChannelId
+    input.rulesChannelId,
+    input.reportSystem?.panelChannelId,
+    input.reportSystem?.logChannelId,
+    input.reportSystem?.transcriptChannelId,
+    input.reportSystem?.auditChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
 
   const textChannelChecks = await Promise.all(
@@ -933,6 +1024,13 @@ async function validateGuildResources(
     throw createSettingsError("A categoria de tickets nao pertence a este servidor.");
   }
 
+  if (
+    input.reportSystem?.categoryId
+    && !(await isGuildCategoryChannel(guildId, input.reportSystem.categoryId, botToken))
+  ) {
+    throw createSettingsError("A categoria de denuncias nao pertence a este servidor.");
+  }
+
   const roleIds = [
     ...(input.autoRoleIds ?? []),
     ...(input.verificationRoleIds ?? []),
@@ -942,7 +1040,16 @@ async function validateGuildResources(
     input.safeBotRoleId,
     input.verificationRoleId,
     ...(input.emojiCloneAllowedRoleIds ?? []),
-    input.rulesRoleId
+    input.rulesRoleId,
+    ...(input.reportSystem?.viewRoleIds ?? []),
+    ...(input.reportSystem?.replyRoleIds ?? []),
+    ...(input.reportSystem?.closeRoleIds ?? []),
+    ...(input.reportSystem?.reopenRoleIds ?? []),
+    ...(input.reportSystem?.adminRoleIds ?? []),
+    ...(input.reportSystem?.createRoleIds ?? []),
+    ...(input.reportSystem?.permissionRoleIds ?? []),
+    ...(input.reportSystem?.mentionRoleIds ?? []),
+    ...(input.reportSystem?.statusRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId));
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
@@ -987,6 +1094,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("safeBot"))) return "self_bot";
   if ([...keys].some((key) => key.startsWith("emojiClone"))) return "emoji_cloner";
   if ([...keys].some((key) => key.startsWith("rules"))) return "rules";
+  if (keys.has("reportSystem")) return "reports";
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
@@ -1034,6 +1142,10 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
 
   if (Object.keys(input).some((key) => key.startsWith("rules"))) {
     return "Sistema de regras atualizado.";
+  }
+
+  if (input.reportSystem !== undefined) {
+    return "Sistema de denuncias atualizado.";
   }
 
   if (input.ticketEnabled !== undefined) {

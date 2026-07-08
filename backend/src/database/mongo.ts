@@ -77,6 +77,7 @@ export type MongoGuildSettings = {
     label: string;
     value: string;
   }>;
+  reportSystem?: Record<string, unknown>;
   logChannelId: string | null;
   discordLogsEnabled?: boolean;
   siteLogsEnabled?: boolean;

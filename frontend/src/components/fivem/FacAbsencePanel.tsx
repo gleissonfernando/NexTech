@@ -42,6 +42,7 @@ type FacAbsencePanelProps = {
   botId?: string | null;
   canManage: boolean;
   guild: DashboardGuild | null;
+  variant?: "fac" | "police";
 };
 
 const defaultMessages: FivemFacMessages = {
@@ -74,7 +75,7 @@ const emptySettings: FivemFacSettings = {
 const FAC_PHOTO_MAX_SIZE = 10 * 1024 * 1024;
 const FAC_PHOTO_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
-export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProps) {
+export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: FacAbsencePanelProps) {
   const [settings, setSettings] = useState<FivemFacSettings>(emptySettings);
   const [absences, setAbsences] = useState<FivemFacAbsence[]>([]);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
@@ -86,6 +87,27 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
+  const copy = variant === "police"
+    ? {
+        description: "Ausencias para policiais e oficiais.",
+        empty: "Selecione um bot e um servidor para configurar a ausencia policial.",
+        loadError: "Nao foi possivel carregar a ausencia policial.",
+        panelTitle: "Ausencia Policial",
+        publishError: "Nao foi possivel publicar o painel de ausencia policial.",
+        saveButton: "Salvar Policia",
+        saveError: "Nao foi possivel salvar a ausencia policial.",
+        saveSuccess: "Configuracao de ausencia policial salva."
+      }
+    : {
+        description: "Ausencias para faccoes e organizacoes.",
+        empty: "Selecione um bot e um servidor para configurar o FiveM FAC.",
+        loadError: "Nao foi possivel carregar o FAC.",
+        panelTitle: "FiveM FAC",
+        publishError: "Nao foi possivel publicar o painel FAC.",
+        saveButton: "Salvar FAC",
+        saveError: "Nao foi possivel salvar o FAC.",
+        saveSuccess: "Configuracao do FAC salva."
+      };
   const assignableRoles = useMemo(() => roles.filter((role) => role.assignable), [roles]);
   const regularRoles = useMemo(() => roles.filter((role) => role.id !== guild?.id), [roles, guild?.id]);
 
@@ -117,7 +139,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
     load()
       .catch((error) => {
         if (mounted) {
-          setMessage(readRequestMessage(error) ?? "Não foi possível carregar o FAC.");
+          setMessage(readRequestMessage(error) ?? copy.loadError);
         }
       })
       .finally(() => {
@@ -129,7 +151,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
     return () => {
       mounted = false;
     };
-  }, [botId, guild?.id]);
+  }, [botId, copy.loadError, guild?.id]);
 
   function updateSetting<K extends keyof FivemFacSettings>(key: K, value: FivemFacSettings[K]) {
     setSettings((current) => ({
@@ -189,9 +211,9 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
         viewerRoleIds: settings.viewerRoleIds
       });
       setSettings(saved);
-      setMessage("Configuração do FAC salva.");
+      setMessage(copy.saveSuccess);
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o FAC.");
+      setMessage(readRequestMessage(error) ?? copy.saveError);
     } finally {
       setSaving(false);
     }
@@ -208,7 +230,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
       setSettings(saved);
       setMessage("Publicação do painel solicitada ao bot.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível publicar o painel FAC.");
+      setMessage(readRequestMessage(error) ?? copy.publishError);
     } finally {
       setPublishing(false);
     }
@@ -238,7 +260,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
     return (
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center p-6 text-sm text-zinc-500">
-          Selecione um bot e um servidor para configurar o FiveM FAC.
+          {copy.empty}
         </CardContent>
       </Card>
     );
@@ -269,9 +291,9 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-zinc-300" />
-                  FiveM FAC
+                  {copy.panelTitle}
                 </CardTitle>
-                <CardDescription>Ausências para facções e organizações.</CardDescription>
+                <CardDescription>{copy.description}</CardDescription>
               </div>
               <Switch
                 checked={settings.enabled}
@@ -350,7 +372,7 @@ export function FacAbsencePanel({ botId, canManage, guild }: FacAbsencePanelProp
               </Button>
               <Button disabled={!canManage || saving} onClick={() => void handleSave()}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Salvar FAC
+                {copy.saveButton}
               </Button>
               <Button disabled={!canManage || publishing || !settings.enabled || !settings.panelChannelId} onClick={() => void handlePublishPanel()} variant="outline">
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

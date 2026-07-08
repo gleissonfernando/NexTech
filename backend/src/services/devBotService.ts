@@ -89,6 +89,7 @@ export const DEV_MODULES = [
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-hierarchy", label: "Policia - Hierarquia" },
   { id: "fivem-actions", label: "FiveM - Acoes FAC" },
+  { id: "police-absences", label: "Policia - Sistema de Ausencias" },
   { id: "police-actions", label: "Policia - Acoes" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
@@ -109,6 +110,7 @@ const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number
   "anti-links": "safe-bot",
   "anti-spam": "safe-bot",
   "fivem-fac": "fivem-absences",
+  "police-fac": "police-absences",
   "image-anti-spam": "safe-bot",
   "link-anti-spam": "safe-bot"
 };

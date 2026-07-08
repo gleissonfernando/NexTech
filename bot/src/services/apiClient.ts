@@ -1399,6 +1399,11 @@ export class ApiClient {
     return data.settings;
   }
 
+  async updateSettingsFromBot(guildId: string, input: Partial<GuildSettings>) {
+    const { data } = await this.http.patch<{ settings: GuildSettings }>(`/settings/bot/${guildId}`, input);
+    return data.settings;
+  }
+
   async getManualRegistrationSettings(guildId: string) {
     const { data } = await this.http.get<{ settings: ManualRegistrationSettings }>(`/manual-registration/${guildId}/settings`);
     return data.settings;
