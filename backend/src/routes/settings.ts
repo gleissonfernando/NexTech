@@ -94,9 +94,24 @@ const settingsSchema = z.object({
     })).max(25).optional(),
     categoryId: z.string().nullable().optional(),
     closeRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    comissarioCategoryId: z.string().nullable().optional(),
+    comissarioLogChannelId: z.string().nullable().optional(),
+    comissarioRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    competenceCommandRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    conselhoCategoryId: z.string().nullable().optional(),
+    conselhoLogChannelId: z.string().nullable().optional(),
+    conselhoRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
     createRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    defaultDeadline: z.string().max(120).optional(),
+    dmBannerUrl: z.string().url().max(2048).nullable().optional(),
     enabled: z.boolean().optional(),
     footerText: z.string().max(180).nullable().optional(),
+    hcmdCategoryId: z.string().nullable().optional(),
+    hcmdLogChannelId: z.string().nullable().optional(),
+    hcmdRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    iabCategoryId: z.string().nullable().optional(),
+    iabLogChannelId: z.string().nullable().optional(),
+    iabRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
     imageUrl: z.string().url().max(2048).nullable().optional(),
     infoMessage: z.string().max(1800).optional(),
     logChannelId: z.string().nullable().optional(),
@@ -110,6 +125,8 @@ const settingsSchema = z.object({
     panelEmoji: z.string().max(80).nullable().optional(),
     panelPlaceholder: z.string().max(120).optional(),
     panelTitle: z.string().max(120).optional(),
+    subpoenaDmText: z.string().max(1000).optional(),
+    subpoenaPanelBannerUrl: z.string().url().max(2048).nullable().optional(),
     permissionRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
     reopenRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
     replyRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
@@ -1028,7 +1045,11 @@ async function validateGuildResources(
     input.reportSystem?.panelChannelId,
     input.reportSystem?.logChannelId,
     input.reportSystem?.transcriptChannelId,
-    input.reportSystem?.auditChannelId
+    input.reportSystem?.auditChannelId,
+    input.reportSystem?.iabLogChannelId,
+    input.reportSystem?.conselhoLogChannelId,
+    input.reportSystem?.hcmdLogChannelId,
+    input.reportSystem?.comissarioLogChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
 
   const textChannelChecks = await Promise.all(
@@ -1080,6 +1101,20 @@ async function validateGuildResources(
     throw createSettingsError("A categoria de denuncias nao pertence a este servidor.");
   }
 
+  const reportCategoryIds = [
+    input.reportSystem?.iabCategoryId,
+    input.reportSystem?.conselhoCategoryId,
+    input.reportSystem?.hcmdCategoryId,
+    input.reportSystem?.comissarioCategoryId
+  ].filter((categoryId): categoryId is string => Boolean(categoryId));
+
+  if (reportCategoryIds.length) {
+    const categoryChecks = await Promise.all([...new Set(reportCategoryIds)].map((categoryId) => isGuildCategoryChannel(guildId, categoryId, botToken)));
+    if (!categoryChecks.every(Boolean)) {
+      throw createSettingsError("Uma das categorias de competencia nao pertence a este servidor.");
+    }
+  }
+
   const roleIds = [
     ...(input.autoRoleIds ?? []),
     ...(input.verificationRoleIds ?? []),
@@ -1098,7 +1133,12 @@ async function validateGuildResources(
     ...(input.reportSystem?.createRoleIds ?? []),
     ...(input.reportSystem?.permissionRoleIds ?? []),
     ...(input.reportSystem?.mentionRoleIds ?? []),
-    ...(input.reportSystem?.statusRoleIds ?? [])
+    ...(input.reportSystem?.statusRoleIds ?? []),
+    ...(input.reportSystem?.iabRoleIds ?? []),
+    ...(input.reportSystem?.conselhoRoleIds ?? []),
+    ...(input.reportSystem?.hcmdRoleIds ?? []),
+    ...(input.reportSystem?.comissarioRoleIds ?? []),
+    ...(input.reportSystem?.competenceCommandRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId));
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {

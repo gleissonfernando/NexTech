@@ -145,9 +145,24 @@ export type ReportSystemSettingsDto = {
   categories: ReportSystemCategoryDto[];
   categoryId: string | null;
   closeRoleIds: string[];
+  comissarioCategoryId: string | null;
+  comissarioLogChannelId: string | null;
+  comissarioRoleIds: string[];
+  competenceCommandRoleIds: string[];
+  conselhoCategoryId: string | null;
+  conselhoLogChannelId: string | null;
+  conselhoRoleIds: string[];
   createRoleIds: string[];
+  defaultDeadline: string;
+  dmBannerUrl: string | null;
   enabled: boolean;
   footerText: string | null;
+  hcmdCategoryId: string | null;
+  hcmdLogChannelId: string | null;
+  hcmdRoleIds: string[];
+  iabCategoryId: string | null;
+  iabLogChannelId: string | null;
+  iabRoleIds: string[];
   imageUrl: string | null;
   infoMessage: string;
   logChannelId: string | null;
@@ -161,6 +176,8 @@ export type ReportSystemSettingsDto = {
   panelEmoji: string | null;
   panelPlaceholder: string;
   panelTitle: string;
+  subpoenaDmText: string;
+  subpoenaPanelBannerUrl: string | null;
   permissionRoleIds: string[];
   reopenRoleIds: string[];
   replyRoleIds: string[];
@@ -1064,9 +1081,24 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     categories: DEFAULT_REPORT_CATEGORIES.map((item) => ({ ...item })),
     categoryId: null,
     closeRoleIds: [],
+    comissarioCategoryId: null,
+    comissarioLogChannelId: null,
+    comissarioRoleIds: [],
+    competenceCommandRoleIds: [],
+    conselhoCategoryId: null,
+    conselhoLogChannelId: null,
+    conselhoRoleIds: [],
     createRoleIds: [],
+    defaultDeadline: "24 horas",
+    dmBannerUrl: null,
     enabled: true,
     footerText: "Denúncias IAB • Sigilo institucional • Auditoria autorizada",
+    hcmdCategoryId: null,
+    hcmdLogChannelId: null,
+    hcmdRoleIds: [],
+    iabCategoryId: null,
+    iabLogChannelId: null,
+    iabRoleIds: [],
     imageUrl: null,
     infoMessage: "Este sistema garante total confidencialidade aos denunciantes. Caso escolha o modo anonimo, sua identidade permanecera oculta para todos os participantes do atendimento. As denuncias serao analisadas exclusivamente pela equipe autorizada.",
     logChannelId: null,
@@ -1080,6 +1112,8 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     panelEmoji: "🛡️",
     panelPlaceholder: "Selecione o órgão competente",
     panelTitle: "Denúncias IAB",
+    subpoenaDmText: "Voce recebeu uma intimacao institucional. Acesse o canal indicado e responda dentro do prazo.",
+    subpoenaPanelBannerUrl: null,
     permissionRoleIds: [],
     reopenRoleIds: [],
     replyRoleIds: [],
@@ -1108,9 +1142,24 @@ function normalizeReportSystemSettings(value: unknown, fallback = defaultReportS
     categories: normalizeReportCategories(record.categories),
     categoryId: normalizeSnowflake(String(record.categoryId ?? "")),
     closeRoleIds: normalizeSnowflakes(asArray(record.closeRoleIds)),
+    comissarioCategoryId: normalizeSnowflake(String(record.comissarioCategoryId ?? "")),
+    comissarioLogChannelId: normalizeSnowflake(String(record.comissarioLogChannelId ?? "")),
+    comissarioRoleIds: normalizeSnowflakes(asArray(record.comissarioRoleIds)),
+    competenceCommandRoleIds: normalizeSnowflakes(asArray(record.competenceCommandRoleIds)),
+    conselhoCategoryId: normalizeSnowflake(String(record.conselhoCategoryId ?? "")),
+    conselhoLogChannelId: normalizeSnowflake(String(record.conselhoLogChannelId ?? "")),
+    conselhoRoleIds: normalizeSnowflakes(asArray(record.conselhoRoleIds)),
     createRoleIds: normalizeSnowflakes(asArray(record.createRoleIds)),
+    defaultDeadline: normalizeNullableText(record.defaultDeadline, 120) ?? fallback.defaultDeadline,
+    dmBannerUrl: normalizeUrl(record.dmBannerUrl),
     enabled: record.enabled !== false,
     footerText: normalizeNullableText(record.footerText, 180),
+    hcmdCategoryId: normalizeSnowflake(String(record.hcmdCategoryId ?? "")),
+    hcmdLogChannelId: normalizeSnowflake(String(record.hcmdLogChannelId ?? "")),
+    hcmdRoleIds: normalizeSnowflakes(asArray(record.hcmdRoleIds)),
+    iabCategoryId: normalizeSnowflake(String(record.iabCategoryId ?? "")),
+    iabLogChannelId: normalizeSnowflake(String(record.iabLogChannelId ?? "")),
+    iabRoleIds: normalizeSnowflakes(asArray(record.iabRoleIds)),
     imageUrl: normalizeUrl(record.imageUrl),
     infoMessage: normalizeNullableText(record.infoMessage, 1800) ?? fallback.infoMessage,
     logChannelId: normalizeSnowflake(String(record.logChannelId ?? "")),
@@ -1124,6 +1173,8 @@ function normalizeReportSystemSettings(value: unknown, fallback = defaultReportS
     panelEmoji: normalizeNullableText(record.panelEmoji, 80),
     panelPlaceholder: normalizeNullableText(record.panelPlaceholder, 120) ?? fallback.panelPlaceholder,
     panelTitle: normalizeNullableText(record.panelTitle, 120) ?? fallback.panelTitle,
+    subpoenaDmText: normalizeNullableText(record.subpoenaDmText, 1000) ?? fallback.subpoenaDmText,
+    subpoenaPanelBannerUrl: normalizeUrl(record.subpoenaPanelBannerUrl),
     permissionRoleIds: normalizeSnowflakes(asArray(record.permissionRoleIds)),
     reopenRoleIds: normalizeSnowflakes(asArray(record.reopenRoleIds)),
     replyRoleIds: normalizeSnowflakes(asArray(record.replyRoleIds)),

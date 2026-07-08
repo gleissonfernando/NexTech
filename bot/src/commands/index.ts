@@ -19,6 +19,7 @@ import { iabCommand, sistemaCommand } from "./reportSystem";
 import { policePatrolReportCommand, viewPolicePatrolReportCommand } from "./policePatrolReports";
 import { policeHiddenChannelCommand } from "../services/policeHiddenChannelService";
 import { dmBarCommand } from "../services/dmBarService";
+import { policeSubpoenaCommand } from "../services/policeSubpoenaService";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -44,6 +45,7 @@ export function createCommandCollection() {
     viewPolicePatrolReportCommand,
     policeHiddenChannelCommand,
     dmBarCommand,
+    policeSubpoenaCommand,
     sistemaCommand,
     iabCommand,
     serverClonerCommand,

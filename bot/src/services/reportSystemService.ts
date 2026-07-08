@@ -311,6 +311,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
   }
 
   const channel = await createReportChannel(interaction.guild!, settings, {
+    categoryId: category.id,
     categoryName: category.name,
     mode,
     openerId: interaction.user.id,
@@ -335,6 +336,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
   await sendReportLog(interaction.guild!, settings, {
     categoryName: category.name,
     channelId: channel.id,
+    competence: reportCompetence(category.id, category.name),
     mode,
     openerId: interaction.user.id,
     summary
@@ -347,16 +349,20 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
   );
 }
 
-async function createReportChannel(guild: Guild, settings: GuildSettings, input: { categoryName: string; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
+async function createReportChannel(guild: Guild, settings: GuildSettings, input: { categoryId: string; categoryName: string; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
   if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     return null;
   }
 
   const report = settings.reportSystem;
-  const staffRoleIds = [...new Set([...report.viewRoleIds, ...report.replyRoleIds, ...report.closeRoleIds, ...report.reopenRoleIds, ...report.adminRoleIds])];
+  const competence = reportCompetence(input.categoryId, input.categoryName);
+  const staffRoleIds = reportCompetenceRoleIds(report, competence);
+  const otherRoleIds = allReportCompetenceRoleIds(report).filter((roleId) => !staffRoleIds.includes(roleId));
+  const parent = reportCompetenceCategoryId(report, competence) ?? report.categoryId ?? undefined;
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+    ...otherRoleIds.map((id) => ({ id, deny: [PermissionFlagsBits.ViewChannel] })),
     ...staffRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
   ];
 
@@ -367,7 +373,7 @@ async function createReportChannel(guild: Guild, settings: GuildSettings, input:
   const channelName = `denuncia-${input.mode === "anonymous" ? "anonima" : "id"}-${slug(input.categoryName)}-${input.openerId.slice(-4)}`.slice(0, 90);
   return guild.channels.create({
     name: channelName,
-    parent: report.categoryId ?? undefined,
+    parent,
     permissionOverwrites: overwrites,
     reason: `Denuncia ${input.mode} aberta por ${input.openerId}: ${input.summary}`,
     type: ChannelType.GuildText
@@ -399,10 +405,11 @@ function createOpenedReportPayload(settings: GuildSettings, input: { categoryNam
   });
 }
 
-async function sendReportLog(guild: Guild, settings: GuildSettings, input: { categoryName: string; channelId: string; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
+async function sendReportLog(guild: Guild, settings: GuildSettings, input: { categoryName: string; channelId: string; competence: "iab" | "conselho" | "hcmd" | "comissario"; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
   const report = settings.reportSystem;
-  if (!report.logChannelId || !report.logs.opened) return;
-  const channel = await guild.channels.fetch(report.logChannelId).catch(() => null);
+  const logChannelId = reportCompetenceLogChannelId(report, input.competence);
+  if (!logChannelId || !report.logs.opened) return;
+  const channel = await guild.channels.fetch(logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
   await channel.send({
     content: `Nova denuncia ${input.mode === "anonymous" ? "anonima" : "identificada"} em <#${input.channelId}> | Tipo: **${input.categoryName}** | Resumo: **${input.summary}**${input.mode === "identified" ? ` | Autor: <@${input.openerId}>` : ""}`
@@ -414,6 +421,55 @@ function canCreateReport(member: GuildMember | null, report: ReportSystemSetting
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (!report.permissionRoleIds.length && !report.createRoleIds.length) return true;
   return [...report.permissionRoleIds, ...report.createRoleIds].some((roleId) => member.roles.cache.has(roleId));
+}
+
+function reportCompetence(categoryId: string, categoryName: string): "iab" | "conselho" | "hcmd" | "comissario" {
+  const value = `${categoryId} ${categoryName}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (value.includes("comiss")) return "comissario";
+  if (value.includes("high") || value.includes("hcmd") || value.includes("command")) return "hcmd";
+  if (value.includes("conselho")) return "conselho";
+  return "iab";
+}
+
+function reportCompetenceRoleIds(report: ReportSystemSettings, competence: "iab" | "conselho" | "hcmd" | "comissario") {
+  const fallbackIab = [...report.viewRoleIds, ...report.replyRoleIds, ...report.closeRoleIds, ...report.reopenRoleIds, ...report.adminRoleIds];
+  const ids = competence === "iab"
+    ? [...report.iabRoleIds, ...fallbackIab]
+    : competence === "conselho"
+      ? report.conselhoRoleIds
+      : competence === "hcmd"
+        ? report.hcmdRoleIds
+        : report.comissarioRoleIds;
+  return [...new Set(ids)];
+}
+
+function allReportCompetenceRoleIds(report: ReportSystemSettings) {
+  return [...new Set([
+    ...reportCompetenceRoleIds(report, "iab"),
+    ...reportCompetenceRoleIds(report, "conselho"),
+    ...reportCompetenceRoleIds(report, "hcmd"),
+    ...reportCompetenceRoleIds(report, "comissario")
+  ])];
+}
+
+function reportCompetenceCategoryId(report: ReportSystemSettings, competence: "iab" | "conselho" | "hcmd" | "comissario") {
+  return competence === "iab"
+    ? report.iabCategoryId
+    : competence === "conselho"
+      ? report.conselhoCategoryId
+      : competence === "hcmd"
+        ? report.hcmdCategoryId
+        : report.comissarioCategoryId;
+}
+
+function reportCompetenceLogChannelId(report: ReportSystemSettings, competence: "iab" | "conselho" | "hcmd" | "comissario") {
+  return competence === "iab"
+    ? report.iabLogChannelId ?? report.logChannelId
+    : competence === "conselho"
+      ? report.conselhoLogChannelId ?? report.logChannelId
+      : competence === "hcmd"
+        ? report.hcmdLogChannelId ?? report.logChannelId
+        : report.comissarioLogChannelId ?? report.logChannelId;
 }
 
 function isPublicReportCustomId(customId: string) {
