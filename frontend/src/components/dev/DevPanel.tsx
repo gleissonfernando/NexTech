@@ -211,6 +211,7 @@ type BotMenuId =
   | "fivem-goals"
   | "fivem-hierarchy"
   | "fivem-actions"
+  | "police"
   | "police-absences"
   | "police-actions"
   | "police-patrol-reports"
@@ -466,32 +467,11 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-goals"]
       },
       {
-        id: "fivem-hierarchy",
-        label: "Hierarquia FAQ",
-        description: "Painel de cargos e hierarquia",
-        icon: Users,
-        moduleIds: ["fivem-hierarchy"]
-      },
-      {
         id: "fivem-actions",
         description: "Acoes profissionais para FAC",
         label: "Acoes FAC",
         icon: Gamepad2,
         moduleIds: ["fivem-actions"]
-      },
-      {
-        id: "police-absences",
-        label: "Ausencias Policiais",
-        description: "Solicitacoes e aprovacao de ausencias para oficiais",
-        icon: CalendarDays,
-        moduleIds: ["police-absences"]
-      },
-      {
-        id: "police-patrol-reports",
-        label: "Relatórios Policiais",
-        description: "Relatórios profissionais de patrulhamento",
-        icon: ShieldCheck,
-        moduleIds: ["police-patrol-reports"]
       },
       {
         id: "fivem-production",
@@ -503,11 +483,41 @@ const botMenuItems: BotMenuItem[] = [
     ]
   },
   {
-    id: "police-patrol-reports",
+    id: "police",
     label: "Policia",
     description: "Hierarquia, acoes e relatorios policiais",
     icon: ShieldCheck,
-    moduleIds: ["fivem-hierarchy", "police-absences", "police-actions", "police-patrol-reports"]
+    moduleIds: [],
+    children: [
+      {
+        id: "fivem-hierarchy",
+        label: "Hierarquia",
+        description: "Painel de cargos e hierarquia policial",
+        icon: Users,
+        moduleIds: ["fivem-hierarchy"]
+      },
+      {
+        id: "police-absences",
+        label: "Ausencias Policiais",
+        description: "Solicitacoes e aprovacao de ausencias para oficiais",
+        icon: CalendarDays,
+        moduleIds: ["police-absences"]
+      },
+      {
+        id: "police-actions",
+        label: "Acoes Policiais",
+        description: "Operacoes policiais com participantes e relatorios",
+        icon: ShieldCheck,
+        moduleIds: ["police-actions"]
+      },
+      {
+        id: "police-patrol-reports",
+        label: "Relatorios Policiais",
+        description: "Relatorios profissionais de patrulhamento",
+        icon: ScrollText,
+        moduleIds: ["police-patrol-reports"]
+      }
+    ]
   },
   {
     id: "integrations",

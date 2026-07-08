@@ -491,6 +491,27 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-absence"
   },
   {
+    id: "fivem-hierarchy",
+    title: "Hierarquia Policial",
+    description: "Painel automatico de hierarquia policial por cargos do servidor.",
+    icon: Users,
+    view: "fivem-hierarchy"
+  },
+  {
+    id: "police-actions",
+    title: "Acoes Policiais",
+    description: "Operacoes policiais com painel, participantes e relatorios separados.",
+    icon: ShieldCheck,
+    view: "police-actions"
+  },
+  {
+    id: "police-patrol-reports",
+    title: "Relatorios Policiais",
+    description: "Relatorios de patrulhamento exclusivos para oficiais.",
+    icon: ScrollText,
+    view: "police-patrol-reports"
+  },
+  {
     id: "fivem-orders",
     title: "Encomendas FiveM",
     description: "Controle separado para pedidos, fila, producao, entrega e historico de encomendas.",
