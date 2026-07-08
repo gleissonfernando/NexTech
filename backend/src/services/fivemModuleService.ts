@@ -99,6 +99,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
     id: "police-actions",
     permissions: "Admin Policia, Operador",
     title: "Acoes Policiais"
+  },
+  {
+    builtIn: true,
+    description: "Relatorios de patrulhamento exclusivos para oficiais, com anexos, auditoria e historico.",
+    id: "police-patrol-reports",
+    permissions: "Admin Policia, Supervisor",
+    title: "Relatorios Policiais"
   }
 ];
 
