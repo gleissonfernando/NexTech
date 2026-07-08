@@ -134,7 +134,10 @@ function isLocalUrl(value: string) {
 
 applyPackedEnv();
 
-const configuredSiteOrigin = cleanEnvValue(process.env.SITE_ORIGIN) ?? cleanEnvValue(process.env.FRONTEND_URL);
+const configuredSiteOrigin =
+  cleanEnvValue(process.env.SITE_ORIGIN)
+  ?? cleanEnvValue(process.env.FRONTEND_URL)
+  ?? cleanEnvValue(process.env.BACKEND_URL);
 const productionSiteOrigin = configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin)
   ? normalizeUrl(configuredSiteOrigin)
   : productionPublicUrl;
@@ -179,6 +182,8 @@ const envSchema = z
     DISCLOUD_APP_IDS: z.string().optional().default(""),
     DISCLOUD_APP_ID_BY_BOT: z.string().optional().default(""),
     SITE_ORIGIN: envUrl("SITE_ORIGIN", defaultSiteOrigin),
+    BACKEND_URL: envUrl("BACKEND_URL", defaultSiteOrigin),
+    DISCORD_REDIRECT_URI: envUrl("DISCORD_REDIRECT_URI", canonicalDiscordRedirectUri),
     DISCORD_OAUTH_REDIRECT_URI: envUrl("DISCORD_OAUTH_REDIRECT_URI", canonicalDiscordRedirectUri),
     DISCORD_CALLBACK_URL: envUrl("DISCORD_CALLBACK_URL", canonicalDiscordRedirectUri),
     DISCORD_SCOPES: z.string().default(requiredDiscordScopes),
@@ -212,19 +217,33 @@ const envSchema = z
   })
   .transform((value) => {
     const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";
-    const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
+    const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL) ?? cleanEnvValue(value.BACKEND_URL);
     const oauthFrontendUrl = configuredOrigin && !isLocalUrl(configuredOrigin)
       ? normalizeUrl(configuredOrigin)
       : productionSiteOrigin;
     const oauthCallbackUrl = oauthFrontendUrl ? discordRedirectUriFor(oauthFrontendUrl) : "";
+    const configuredDiscordRedirect =
+      cleanEnvValue(value.DISCORD_REDIRECT_URI)
+      ?? cleanEnvValue(value.DISCORD_OAUTH_REDIRECT_URI)
+      ?? cleanEnvValue(value.DISCORD_CALLBACK_URL);
+    const normalizedDiscordRedirect = configuredDiscordRedirect && !isLocalUrl(configuredDiscordRedirect)
+      ? normalizeUrl(configuredDiscordRedirect)
+      : "";
+    const effectiveDiscordRedirect = oauthCallbackUrl || normalizedDiscordRedirect;
+
+    if (normalizedDiscordRedirect && oauthCallbackUrl && normalizedDiscordRedirect !== oauthCallbackUrl) {
+      console.warn(`[env] Discord redirect configurado (${normalizedDiscordRedirect}) difere do dominio canonico (${oauthCallbackUrl}); usando o canonico.`);
+    }
 
     return {
       ...value,
       MONGODB_URI: mongoUrl,
       SITE_ORIGIN: oauthFrontendUrl,
       FRONTEND_URL: oauthFrontendUrl,
-      DISCORD_OAUTH_REDIRECT_URI: oauthCallbackUrl,
-      DISCORD_CALLBACK_URL: oauthCallbackUrl,
+      BACKEND_URL: oauthFrontendUrl,
+      DISCORD_REDIRECT_URI: effectiveDiscordRedirect,
+      DISCORD_OAUTH_REDIRECT_URI: effectiveDiscordRedirect,
+      DISCORD_CALLBACK_URL: effectiveDiscordRedirect,
       TWITCH_OAUTH_REDIRECT_URI: value.TWITCH_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/twitch/callback` : ""),
       KICK_OAUTH_REDIRECT_URI: value.KICK_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/kick/callback` : ""),
       DISCORD_SCOPES: mergeSpaceValues(value.DISCORD_SCOPES, requiredDiscordScopes),
@@ -243,6 +262,8 @@ export const env = envSchema.parse(process.env);
 process.env.MONGODB_URI = env.MONGODB_URI;
 process.env.SITE_ORIGIN = env.SITE_ORIGIN;
 process.env.FRONTEND_URL = env.FRONTEND_URL;
+process.env.BACKEND_URL = env.BACKEND_URL;
+process.env.DISCORD_REDIRECT_URI = env.DISCORD_REDIRECT_URI;
 process.env.DISCORD_OAUTH_REDIRECT_URI = env.DISCORD_OAUTH_REDIRECT_URI;
 process.env.DISCORD_CALLBACK_URL = env.DISCORD_CALLBACK_URL;
 process.env.BOT_API_TOKEN = env.BOT_API_TOKEN;

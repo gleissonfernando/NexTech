@@ -8,7 +8,8 @@ import {
   discordUserTag,
   exchangeDiscordCode,
   fetchDiscordGuilds,
-  fetchDiscordUser
+  fetchDiscordUser,
+  getDiscordOAuthDiagnostics
 } from "../services/discordOAuthService";
 import { toDashboardGuilds } from "../services/guildService";
 import { requireAuthenticated } from "../middleware/auth";
@@ -164,7 +165,12 @@ async function ensureBotGuildsLoaded() {
 }
 
 function ensureOAuthConfigured(res: Parameters<Parameters<typeof authRouter.get>[1]>[1]) {
+  const diagnostics = getDiscordOAuthDiagnostics();
+
+  console.info(`[auth] oauth config: client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri} scopes=${diagnostics.scopes}.`);
+
   if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_OAUTH_REDIRECT_URI) {
+    console.warn(`[auth] oauth config incompleto: client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri} client_secret=${diagnostics.clientSecret}.`);
     res.status(503).json({
       message: "OAuth2 Discord ainda nao esta configurado."
     });
@@ -191,7 +197,8 @@ authRouter.get("/discord/dev", async (req, res, next) => {
       type: "dev",
       returnTo: "/dev"
     });
-    console.info(`[auth] login Discord iniciado: type=dev returnTo=/dev`);
+    const diagnostics = getDiscordOAuthDiagnostics();
+    console.info(`[auth] login Discord iniciado: type=dev returnTo=/dev client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
 
     return res.redirect(buildDiscordAuthUrl(state));
   } catch (error) {
@@ -235,7 +242,8 @@ authRouter.get("/discord/bot/:slug", async (req, res, next) => {
       botSlug: bot.slug,
       returnTo
     });
-    console.info(`[auth] login Discord iniciado: type=bot slug=${bot.slug} botId=${bot.id} returnTo=${returnTo}`);
+    const diagnostics = getDiscordOAuthDiagnostics();
+    console.info(`[auth] login Discord iniciado: type=bot slug=${bot.slug} botId=${bot.id} returnTo=${returnTo} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
 
     return res.redirect(buildDiscordAuthUrl(state));
   } catch (error) {
@@ -272,6 +280,9 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
     const verifiedState = state ? consumeOAuthState(req, state) : null;
+    const diagnostics = getDiscordOAuthDiagnostics();
+
+    console.info(`[auth] callback Discord recebido: code=${code ? "present" : "missing"} state=${state ? "present" : "missing"} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
 
     if (!code || !state || !verifiedState) {
       console.warn("[auth] callback recusado: state ausente ou invalido.");
@@ -280,7 +291,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       return res.redirect(errorRedirectUrl("callback"));
     }
 
-    console.info(`[auth] callback Discord recebido: type=${verifiedState.type} slug=${verifiedState.botSlug ?? "none"}.`);
+    console.info(`[auth] callback Discord validado: type=${verifiedState.type} slug=${verifiedState.botSlug ?? "none"}.`);
     console.info("[auth] oauth: trocando code do Discord.");
     const tokens = await withAuthTimeout("discord_token_exchange", exchangeDiscordCode(code));
     await withAuthTimeout("bot_guilds_refresh", ensureBotGuildsLoaded());

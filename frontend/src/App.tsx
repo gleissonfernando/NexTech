@@ -113,7 +113,7 @@ function readAuthError() {
     return "Você não está liberado para acessar esta dashboard.";
   }
 
-  return "Nao foi possivel concluir a autenticacao Discord. Tente novamente.";
+  return "Não foi possível conectar com o Discord. Verifique se o aplicativo está configurado corretamente.";
 }
 
 function rouletteTokenFromPath(path: string) {

@@ -27,14 +27,42 @@ export type DiscordCurrentUserGuildMember = {
   roles?: string[];
 };
 
-function encodeOAuthParams(params: Record<string, string>) {
-  return Object.entries(params)
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join("&");
+type DiscordOAuthErrorPayload = {
+  error?: string;
+  error_description?: string;
+  message?: string;
+};
+
+export class DiscordOAuthError extends Error {
+  statusCode: number;
+  discordError?: string;
+  discordDescription?: string;
+
+  constructor(message: string, input: { statusCode: number; discordError?: string; discordDescription?: string }) {
+    super(message);
+    this.name = "DiscordOAuthError";
+    this.statusCode = input.statusCode;
+    this.discordError = input.discordError;
+    this.discordDescription = input.discordDescription;
+  }
+}
+
+function safeClientSecretFingerprint() {
+  const secret = env.DISCORD_CLIENT_SECRET.trim();
+  return secret ? `${secret.slice(0, 4)}...${secret.slice(-4)} len=${secret.length}` : "empty";
+}
+
+export function getDiscordOAuthDiagnostics() {
+  return {
+    clientId: env.DISCORD_CLIENT_ID || "empty",
+    clientSecret: safeClientSecretFingerprint(),
+    redirectUri: env.DISCORD_OAUTH_REDIRECT_URI || "empty",
+    scopes: env.DISCORD_SCOPES || "empty"
+  };
 }
 
 export function buildDiscordAuthUrl(state: string) {
-  const params = encodeOAuthParams({
+  const params = new URLSearchParams({
     client_id: env.DISCORD_CLIENT_ID,
     redirect_uri: env.DISCORD_OAUTH_REDIRECT_URI,
     response_type: "code",
@@ -54,13 +82,17 @@ export async function exchangeDiscordCode(code: string) {
     redirect_uri: env.DISCORD_OAUTH_REDIRECT_URI
   });
 
-  const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    }
-  });
+  try {
+    const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    });
 
-  return data;
+    return data;
+  } catch (error) {
+    throw normalizeDiscordOAuthError(error, "trocar code por token");
+  }
 }
 
 export async function refreshDiscordTokens(refreshToken: string) {
@@ -71,13 +103,17 @@ export async function refreshDiscordTokens(refreshToken: string) {
     refresh_token: refreshToken
   });
 
-  const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    }
-  });
+  try {
+    const { data } = await axios.post<DiscordTokenResponse>(`${DISCORD_API}/oauth2/token`, body, {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    });
 
-  return data;
+    return data;
+  } catch (error) {
+    throw normalizeDiscordOAuthError(error, "renovar token");
+  }
 }
 
 export async function fetchDiscordUser(accessToken: string) {
@@ -160,4 +196,45 @@ function discordDefaultAvatarUrl(user: Pick<DiscordUser, "id"> & Partial<Pick<Di
   } catch {
     return "https://cdn.discordapp.com/embed/avatars/0.png";
   }
+}
+
+function normalizeDiscordOAuthError(error: unknown, action: string) {
+  if (!axios.isAxiosError<DiscordOAuthErrorPayload>(error)) {
+    return error;
+  }
+
+  const payload = error.response?.data;
+  const status = error.response?.status ?? 502;
+  const discordError = payload?.error ?? payload?.message;
+  const discordDescription = payload?.error_description;
+  const hint = oauthErrorHint(discordError, discordDescription);
+  const diagnostics = getDiscordOAuthDiagnostics();
+
+  console.warn(
+    `[auth] discord oauth falhou ao ${action}: status=${status} error=${discordError ?? "unknown"} description=${discordDescription ?? "none"} hint=${hint} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri} client_secret=${diagnostics.clientSecret}.`
+  );
+
+  return new DiscordOAuthError(`Discord OAuth falhou ao ${action}: ${hint}`, {
+    statusCode: status,
+    discordError,
+    discordDescription
+  });
+}
+
+function oauthErrorHint(error?: string, description?: string) {
+  const text = `${error ?? ""} ${description ?? ""}`.toLowerCase();
+
+  if (text.includes("redirect_uri")) {
+    return "redirect_uri invalido ou diferente do cadastrado no Developer Portal";
+  }
+
+  if (text.includes("client_secret")) {
+    return "client_secret invalido para o client_id configurado";
+  }
+
+  if (text.includes("unknown") || text.includes("invalid_client") || text.includes("client_id")) {
+    return "client_id invalido ou aplicativo Discord incorreto";
+  }
+
+  return "resposta OAuth recusada pelo Discord";
 }
