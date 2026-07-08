@@ -17,6 +17,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestConfig = useRef<DmBarConfig | null>(null);
 
   async function load() {
     if (!botId || !guild) return;
@@ -47,6 +48,10 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
   }, []);
 
+  useEffect(() => {
+    latestConfig.current = data?.config ?? null;
+  }, [data?.config]);
+
   const lastLog = useMemo(() => data?.logs.find((log) => log.status === "sent" || log.status === "test") ?? null, [data]);
 
   if (!botId || !guild) return <Empty text="Selecione um bot e servidor para configurar a Barra DM." />;
@@ -54,7 +59,8 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
 
   const config = data.config;
   const patch = (next: Partial<DmBarConfig>) => {
-    const nextConfig = { ...config, ...next };
+    const nextConfig = { ...(latestConfig.current ?? config), ...next };
+    latestConfig.current = nextConfig;
     setDirty(true);
     setData((current) => current ? { ...current, config: nextConfig } : current);
     scheduleAutosave(nextConfig);
@@ -67,6 +73,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
       setSaving(true);
       void saveDmBarConfig(guild.id, botId, nextConfig)
         .then((saved) => {
+          latestConfig.current = saved;
           setData((current) => current ? { ...current, config: saved } : current);
           setDirty(false);
           setMessage("Configurações salvas automaticamente.");
@@ -79,27 +86,27 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
   async function save() {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     setSaving(true); setMessage(null);
-    try { const next = await saveDmBarConfig(guild!.id, botId!, config); setData((current) => current ? { ...current, config: next } : current); setDirty(false); setMessage("Configurações salvas com sucesso."); }
+    try { const next = await saveDmBarConfig(guild!.id, botId!, latestConfig.current ?? config); latestConfig.current = next; setData((current) => current ? { ...current, config: next } : current); setDirty(false); setMessage("Configurações salvas com sucesso."); }
     catch (error) { setMessage(readMessage(error)); }
     finally { setSaving(false); }
   }
   async function reset() {
     if (!confirm("Restaurar padrão da Barra DM?")) return;
     setSaving(true);
-    try { const next = await resetDmBarConfig(guild!.id, botId!); setData((current) => current ? { ...current, config: next } : current); setDirty(false); }
+    try { const next = await resetDmBarConfig(guild!.id, botId!); latestConfig.current = next; setData((current) => current ? { ...current, config: next } : current); setDirty(false); }
     catch (error) { setMessage(readMessage(error)); }
     finally { setSaving(false); }
   }
   async function upload(kind: "main" | "footer", file: File | null) {
     if (!file) return;
     setSaving(true); setMessage(null);
-    try { const next = await uploadDmBarImage(guild!.id, botId!, kind, file); setData((current) => current ? { ...current, config: next } : current); setDirty(false); setMessage("Imagem enviada."); }
+    try { const next = await uploadDmBarImage(guild!.id, botId!, kind, file); latestConfig.current = next; setData((current) => current ? { ...current, config: next } : current); setDirty(false); setMessage("Imagem enviada."); }
     catch (error) { setMessage(readMessage(error)); }
     finally { setSaving(false); }
   }
   async function removeImage(kind: "main" | "footer") {
     setSaving(true);
-    try { const next = await removeDmBarImage(guild!.id, botId!, kind); setData((current) => current ? { ...current, config: next } : current); setDirty(false); }
+    try { const next = await removeDmBarImage(guild!.id, botId!, kind); latestConfig.current = next; setData((current) => current ? { ...current, config: next } : current); setDirty(false); }
     catch (error) { setMessage(readMessage(error)); }
     finally { setSaving(false); }
   }
@@ -107,7 +114,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
   return <div className="space-y-5">
     <Card><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-emerald-300" />Barra DM</CardTitle><CardDescription>Envio de mensagens privadas com painel visual, permissões, imagens e logs.</CardDescription></div><Button disabled={!canManage || saving || !dirty} onClick={() => void save()} size="sm">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar alterações</Button></div></CardHeader></Card>
     {message ? <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-white">{message}</div> : null}
-    {dirty ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">Existem alterações não salvas. Clique em Salvar alterações para aplicar no bot.</div> : null}
+    {dirty ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">Salvando alterações automaticamente. O botão Salvar alterações também aplica agora.</div> : null}
     <div className="grid gap-3 sm:grid-cols-5">
       <Metric label="Status" value={config.enabled ? "Ativo" : "Desativado"} />
       <Metric label="Servidor" value={guild.name} />
