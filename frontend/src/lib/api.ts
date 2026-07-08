@@ -138,6 +138,7 @@ export const api = axios.create({
 });
 
 const VERIFICATION_STORAGE_KEY = "dashboard.tab_verification";
+let tabVerificationToken: string | null = null;
 
 api.interceptors.request.use((config) => {
   const token = readTabVerification();
@@ -241,14 +242,12 @@ export async function logout() {
 }
 
 export function readTabVerification() {
-  try {
-    return window.sessionStorage.getItem(VERIFICATION_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return tabVerificationToken;
 }
 
 function storeTabVerification(token: string) {
+  tabVerificationToken = token;
+
   try {
     window.sessionStorage.setItem(VERIFICATION_STORAGE_KEY, token);
   } catch {
@@ -256,7 +255,9 @@ function storeTabVerification(token: string) {
   }
 }
 
-function clearTabVerification() {
+export function clearTabVerification() {
+  tabVerificationToken = null;
+
   try {
     window.sessionStorage.removeItem(VERIFICATION_STORAGE_KEY);
   } catch {

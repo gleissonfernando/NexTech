@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { checkSiteAccess, getSession, logout as logoutRequest, verifyAccess } from "../lib/api";
+import { checkSiteAccess, clearTabVerification, getSession, logout as logoutRequest, verifyAccess } from "../lib/api";
 import { appUrl, dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
@@ -84,6 +84,7 @@ export function useAuth() {
   }, []);
 
   const loginDiscord = useCallback(() => {
+    clearTabVerification();
     setStatus("Conectando ao Discord...");
     const botSlug = dashboardSlugFromPath(window.location.pathname);
     const path = window.location.pathname.startsWith("/dev")

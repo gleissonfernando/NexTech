@@ -41,10 +41,11 @@ import { startTemporaryVoiceService } from "../services/temporaryVoiceService";
 import { startAutomatedLogService } from "../services/automatedLogService";
 import { startTagVerificationService, stopTagVerificationService } from "../services/tagVerificationService";
 import { startXMonitor } from "../services/xMonitor";
-import type { BotContext } from "../types";
+import type { BotCommand, BotContext } from "../types";
 
 let lastRuntimeModuleSignature = "";
 let lastRuntimeStatusWarningAt = 0;
+let commandSyncPromise: Promise<void> | null = null;
 
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
@@ -75,6 +76,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     setRuntimeEnabledModules(payload.enabledModules);
     lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
     clearRuntimeModuleAuthorization();
+    void syncVisibleGuildCommands(client, context, "module_update");
 
     if (!wasSelfBotEnabled && isSelfBotModuleEnabled()) {
       startSelfBotProtectionService(context);
@@ -125,18 +127,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
   startMaintenanceService(context);
 
-  const commandGuildIds = commandRegistrationGuildIds(client);
-  const commands = [...context.commands.values()];
-  const commandNames = commands.map((command) => command.data.name).join(", ");
-
-  for (const commandGuildId of commandGuildIds) {
-    try {
-      await registerGuildCommands(commands, client.user.id, commandGuildId);
-      console.log(`[bot] comandos sincronizados no servidor ${commandGuildId}: ${commandNames}`);
-    } catch (error) {
-      console.warn(`[bot] falha ao sincronizar comandos no servidor ${commandGuildId}:`, error instanceof Error ? error.message : error);
-    }
-  }
+  await syncVisibleGuildCommands(client, context, "ready");
 
   if (isBotModuleEnabled("live")) {
     startSocialNotificationMonitor(client, context.api);
@@ -238,6 +229,37 @@ function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
 
+async function syncVisibleGuildCommands(client: Client<true>, context: BotContext, reason: string) {
+  if (commandSyncPromise) {
+    await commandSyncPromise;
+  }
+
+  commandSyncPromise = syncVisibleGuildCommandsNow(client, context, reason).finally(() => {
+    commandSyncPromise = null;
+  });
+
+  await commandSyncPromise;
+}
+
+async function syncVisibleGuildCommandsNow(client: Client<true>, context: BotContext, reason: string) {
+  const commandGuildIds = commandRegistrationGuildIds(client);
+  const commands = visibleCommands([...context.commands.values()]);
+  const commandNames = commands.map((command) => command.data.name).join(", ") || "nenhum comando";
+
+  for (const commandGuildId of commandGuildIds) {
+    try {
+      await registerGuildCommands(commands, client.user.id, commandGuildId);
+      console.log(`[bot] comandos sincronizados no servidor ${commandGuildId} (${reason}): ${commandNames}`);
+    } catch (error) {
+      console.warn(`[bot] falha ao sincronizar comandos no servidor ${commandGuildId} (${reason}):`, error instanceof Error ? error.message : error);
+    }
+  }
+}
+
+function visibleCommands(commands: BotCommand[]) {
+  return commands.filter((command) => !command.moduleId || isBotModuleEnabled(command.moduleId));
+}
+
 async function reportRuntimeStatus(context: BotContext, client: Client, online: boolean) {
   try {
     await context.api.reportRuntimeStatus({
@@ -316,6 +338,8 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   if (wasTagVerificationEnabled && !isBotModuleEnabled("tag-verification")) {
     stopTagVerificationService();
   }
+
+  await syncVisibleGuildCommands(client, context, "module_reconcile");
 }
 
 function runtimeModuleSignature(active: boolean, botId: string | null | undefined, moduleIds: string[]) {

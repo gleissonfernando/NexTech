@@ -12,6 +12,8 @@ import {
   PackagePlus,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   ScrollText,
   Settings,
   Shield,
@@ -974,7 +976,7 @@ function MaintenancePanel() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+      <div className="grid gap-6">
         <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0">
           <CardHeader>
             <CardTitle className="text-white">Controle e alerta</CardTitle>
@@ -995,35 +997,6 @@ function MaintenancePanel() {
               Os bots estão em manutenção no momento.<br />
               Aguarde a nossa equipe finalizar a manutenção para realizar novamente.
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0">
-          <CardHeader>
-            <CardTitle className="text-white">Logs de manutenção</CardTitle>
-            <CardDescription className="font-medium text-zinc-300">Histórico de ativações, desativações e alertas manuais.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {maintenance?.logs.length ? (
-              <div className="space-y-3">
-                {maintenance.logs.map((log) => (
-                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-3" key={log.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Badge variant={log.action === "enabled" ? "danger" : log.action === "disabled" ? "success" : "muted"}>
-                        {maintenanceActionLabel(log.action)}
-                      </Badge>
-                      <span className="text-xs font-medium text-zinc-400">{formatDate(log.createdAt)}</span>
-                    </div>
-                    <p className="mt-2 text-sm font-semibold text-white">{log.message}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-300">{log.actorName ?? "Sistema"} · {log.actorId ?? "sem-id"}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm font-medium text-zinc-300">
-                Nenhum log de manutenção registrado.
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -1086,12 +1059,6 @@ function MaintenanceMetric({ label, value }: { label: string; value: string }) {
       <p className="mt-2 truncate text-lg font-bold text-white">{value}</p>
     </div>
   );
-}
-
-function maintenanceActionLabel(action: MaintenanceState["logs"][number]["action"]) {
-  if (action === "enabled") return "Ativação";
-  if (action === "disabled") return "Desativação";
-  return "Alerta manual";
 }
 
 function formatDuration(ms: number) {
@@ -1357,23 +1324,28 @@ function DevFiveMManager({
             const custom = !module.builtIn;
 
             return (
-              <div className="flex min-h-[112px] gap-4 rounded-lg border border-zinc-900 bg-black/35 p-4" key={module.id}>
+              <div className="flex min-h-[112px] flex-col gap-4 rounded-lg border border-zinc-900 bg-black/35 p-4 sm:flex-row" key={module.id}>
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
                   <module.icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-white">{module.title}</p>
                       <p className="mt-1 text-xs leading-5 text-zinc-500">{module.description}</p>
                       <p className="mt-2 truncate text-xs text-zinc-400">Permissões: {module.permissions}</p>
                     </div>
-                    <Switch checked={active} disabled={!selectedBot || savingModuleId === module.id} onCheckedChange={(checked) => void handleToggle(module.id, checked)} />
+                    <ModuleActivationButton
+                      active={active}
+                      disabled={!selectedBot || savingModuleId === module.id}
+                      loading={savingModuleId === module.id}
+                      onToggle={(checked) => void handleToggle(module.id, checked)}
+                    />
                   </div>
                   {custom ? (
-                    <div className="mt-3 flex gap-2">
-                      <Button disabled={savingModuleId === module.id} onClick={() => void handleEditCustom(module.id)} size="sm" variant="outline"><Pencil className="h-4 w-4" />Editar</Button>
-                      <Button disabled={savingModuleId === module.id} onClick={() => void handleRemoveCustom(module.id)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Remover</Button>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <Button className="w-full sm:w-auto" disabled={savingModuleId === module.id} onClick={() => void handleEditCustom(module.id)} size="sm" variant="outline"><Pencil className="h-4 w-4" />Editar</Button>
+                      <Button className="w-full sm:w-auto" disabled={savingModuleId === module.id} onClick={() => void handleRemoveCustom(module.id)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Remover</Button>
                     </div>
                   ) : null}
                 </div>
@@ -1383,6 +1355,42 @@ function DevFiveMManager({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ModuleActivationButton({
+  active,
+  disabled,
+  loading,
+  onToggle
+}: {
+  active: boolean;
+  disabled: boolean;
+  loading: boolean;
+  onToggle: (checked: boolean) => void;
+}) {
+  const Icon = loading ? Loader2 : active ? PowerOff : Power;
+
+  return (
+    <Button
+      aria-pressed={active}
+      className={`min-h-11 w-full shrink-0 justify-between px-3 py-2 sm:w-36 sm:justify-center ${
+        active
+          ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300/60 hover:bg-emerald-500/15 hover:text-emerald-50"
+          : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-[#FFD500]/55 hover:bg-[#FFD500]/10 hover:text-[#FFEA70]"
+      }`}
+      disabled={disabled}
+      onClick={() => onToggle(!active)}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className={`h-4 w-4 shrink-0 ${loading ? "animate-spin" : ""}`} />
+        <span className="truncate">{active ? "Desativar" : "Ativar"}</span>
+      </span>
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full sm:hidden ${active ? "bg-emerald-300" : "bg-zinc-500"}`} />
+    </Button>
   );
 }
 
