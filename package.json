@@ -23,7 +23,7 @@
     "start:scheduler": "npm run start:scheduler --workspace backend",
     "start:backfill": "npm run start:backfill --workspace backend",
     "start:bot": "npm run dev:bot",
-    "build": "npm --prefix frontend run build && npm --prefix backend run build && npm --prefix bot run build",
+    "build": "npm install --include=dev && npm --prefix frontend run build && npm --prefix backend run build && npm --prefix bot run build",
     "typecheck": "npm run typecheck --workspaces",
     "deploy:check": "npm run build && node scripts/deploy-check.mjs",
     "deploy:check:fast": "node scripts/deploy-check.mjs fast",
