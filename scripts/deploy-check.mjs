@@ -10,7 +10,7 @@ const requiredDiscloud = {
   NAME: "OrviteK",
   TYPE: "bot",
   MAIN: "index.js",
-  RAM: "512",
+  RAM: "1024",
   VERSION: "latest",
   BUILD: "npm install && npm run build",
   START: "npm start"

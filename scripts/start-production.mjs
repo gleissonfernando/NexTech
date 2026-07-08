@@ -55,8 +55,17 @@ function ensureBuild() {
     "frontend/vite.config.mjs"
   ];
 
-  if (requiredBuildFiles.every((file) => existsSync(file)) && !isBuildStale(requiredBuildFiles, sourcePaths)) {
+  const buildFilesExist = requiredBuildFiles.every((file) => existsSync(file));
+
+  if (buildFilesExist && (process.env.NODE_ENV === "production" || !isBuildStale(requiredBuildFiles, sourcePaths))) {
     return;
+  }
+
+  if (process.env.NODE_ENV === "production" && process.env.ORVITEK_RUNTIME_BUILD !== "true") {
+    const missing = requiredBuildFiles.filter((file) => !existsSync(file));
+    const detail = missing.length > 0 ? `Arquivos ausentes: ${missing.join(", ")}.` : "Arquivos de build existem, mas parecem desatualizados.";
+    console.error(`[start] build de producao nao encontrado. ${detail} Rode o BUILD da hospedagem antes do START.`);
+    process.exit(1);
   }
 
   console.log("[start] build ausente ou desatualizado; gerando arquivos de producao...");

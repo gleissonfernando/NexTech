@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { discloud, type ApiTerminal } from "discloud.app";
 import { env } from "../config/env";
 import { getMongoDb } from "../database/mongo";
 import { listDevBots, type DevBotDto } from "./devBotService";
@@ -70,7 +69,7 @@ type DiscloudMonitoringPayload = {
 
 const CACHE_TTL_MS = 5_000;
 let monitoringCache: CacheEntry | null = null;
-let loggedIn = false;
+const DISCLOUD_API_BASE_URL = "https://api.discloud.app/v2";
 
 export async function getDiscloudMonitoring(force = false): Promise<DiscloudMonitoringPayload> {
   if (!force && monitoringCache && monitoringCache.expiresAt > Date.now()) {
@@ -87,7 +86,7 @@ export async function getDiscloudMonitoring(force = false): Promise<DiscloudMoni
 }
 
 export async function getDiscloudLogsForBot(botId: string) {
-  await ensureDiscloudLogin();
+  ensureDiscloudToken();
   const bot = (await listDevBots()).find((item) => item.id === botId);
   const appId = resolveAppId(bot, botId);
 
@@ -95,7 +94,7 @@ export async function getDiscloudLogsForBot(botId: string) {
     throw createDiscloudError("Aplicacao Discloud nao vinculada a este bot.", 404);
   }
 
-  const logs = await discloud.apps.terminal(appId);
+  const logs = await discloudApi(`/app/${encodeURIComponent(appId)}/logs`);
   await recordDiscloudEvent({
     appId,
     botId,
@@ -107,7 +106,7 @@ export async function getDiscloudLogsForBot(botId: string) {
 }
 
 export async function runDiscloudBotAction(botId: string, action: DiscloudAction) {
-  await ensureDiscloudLogin();
+  ensureDiscloudToken();
   const bot = (await listDevBots()).find((item) => item.id === botId);
   const appId = resolveAppId(bot, botId);
 
@@ -125,13 +124,9 @@ export async function runDiscloudBotAction(botId: string, action: DiscloudAction
     throw createDiscloudError("Redeploy automatico nao foi habilitado. Use deploy manual na Discloud.", 409);
   }
 
-  if (action === "start") {
-    await discloud.apps.start(appId);
-  } else if (action === "stop") {
-    await discloud.apps.stop(appId);
-  } else {
-    await discloud.apps.restart(appId);
-  }
+  await discloudApi(`/app/${encodeURIComponent(appId)}/${action}`, {
+    method: "PUT"
+  });
 
   monitoringCache = null;
   await recordDiscloudEvent({
@@ -145,7 +140,7 @@ export async function runDiscloudBotAction(botId: string, action: DiscloudAction
 }
 
 export async function runDiscloudConsoleCommand(botId: string, command: string) {
-  await ensureDiscloudLogin();
+  ensureDiscloudToken();
   const bot = (await listDevBots()).find((item) => item.id === botId);
   const appId = resolveAppId(bot, botId);
 
@@ -153,7 +148,13 @@ export async function runDiscloudConsoleCommand(botId: string, command: string) 
     throw createDiscloudError("Aplicacao Discloud nao vinculada a este bot.", 404);
   }
 
-  const result = await discloud.apps.console(appId, command);
+  const result = await discloudApi(`/app/${encodeURIComponent(appId)}/exec`, {
+    body: JSON.stringify({ cmd: command }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PUT"
+  });
   await recordDiscloudEvent({
     appId,
     botId,
@@ -162,9 +163,9 @@ export async function runDiscloudConsoleCommand(botId: string, command: string) 
   });
 
   return {
-    online: Boolean(result.online),
-    stderr: String(result.stderr ?? ""),
-    stdout: String(result.stdout ?? "")
+    online: readBoolean(readPayloadValue(result, "online")),
+    stderr: String(readPayloadValue(result, "stderr") ?? readPayloadValue(result, "error") ?? ""),
+    stdout: String(readPayloadValue(result, "stdout") ?? readPayloadValue(result, "output") ?? readPayloadValue(result, "message") ?? "")
   };
 }
 
@@ -180,12 +181,12 @@ async function readDiscloudMonitoring(): Promise<DiscloudMonitoringPayload> {
     };
   }
 
-  await ensureDiscloudLogin();
+  ensureDiscloudToken();
 
   const startedAt = Date.now();
   const [devBots, apps, statuses] = await Promise.all([
     listDevBots(),
-    discloud.apps.fetch("all").catch(() => new Map()),
+    fetchAllApps().catch(() => new Map()),
     fetchAllStatuses()
   ]);
   const appById = mapFromUnknown(apps);
@@ -193,7 +194,7 @@ async function readDiscloudMonitoring(): Promise<DiscloudMonitoringPayload> {
   const appIds = appIdsForBots(devBots, appById);
   const snapshots = await Promise.all(appIds.map(async ({ bot, appId }) => {
     const app = appById.get(appId) ?? null;
-    const status = statusById.get(appId) ?? await discloud.apps.status.fetch(appId).catch(() => null);
+    const status = statusById.get(appId) ?? await fetchStatus(appId).catch(() => null);
     return normalizeSnapshot({
       apiPingMs: Date.now() - startedAt,
       app,
@@ -215,29 +216,72 @@ async function readDiscloudMonitoring(): Promise<DiscloudMonitoringPayload> {
   };
 }
 
+async function fetchAllApps() {
+  return mapDiscloudItems(await discloudApi("/app/all"));
+}
+
 async function fetchAllStatuses() {
-  const statusManager = discloud.apps.status as unknown as {
-    fetch: (appId: string) => Promise<unknown>;
-  };
-  const apps = await discloud.apps.fetch("all");
+  const statuses = mapDiscloudItems(await discloudApi("/app/all/status").catch(() => null));
+
+  if (statuses.size > 0) {
+    return statuses;
+  }
+
+  const apps = await fetchAllApps();
   const pairs = await Promise.all([...apps.keys()].map(async (appId) => [
     appId,
-    await statusManager.fetch(appId).catch(() => null)
+    await fetchStatus(appId).catch(() => null)
   ] as const));
 
   return new Map(pairs.filter(([, status]) => status));
 }
 
-async function ensureDiscloudLogin() {
+async function fetchStatus(appId: string) {
+  const status = await discloudApi(`/app/${encodeURIComponent(appId)}/status`);
+  return readPayloadValue(status, "appStatus") ?? readPayloadValue(status, "status") ?? readPayloadValue(status, "apps") ?? status;
+}
+
+async function discloudApi(path: string, init: RequestInit = {}) {
+  ensureDiscloudToken();
+
+  const response = await fetch(`${DISCLOUD_API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Accept": "application/json",
+      "api-token": env.DISCLOUD_TOKEN.trim(),
+      ...init.headers
+    }
+  });
+  const text = await response.text();
+  const data = parseJsonResponse(text);
+
+  if (!response.ok) {
+    const message = readString(readPayloadValue(data, "message"))
+      ?? readString(readPayloadValue(data, "error"))
+      ?? `Erro ${response.status} na API da Discloud.`;
+    throw createDiscloudError(message, response.status);
+  }
+
+  return data;
+}
+
+function ensureDiscloudToken() {
   const token = env.DISCLOUD_TOKEN.trim();
 
   if (!token) {
     throw createDiscloudError("DISCLOUD_TOKEN nao configurado no backend.", 503);
   }
+}
 
-  if (!loggedIn) {
-    await discloud.login(token);
-    loggedIn = true;
+function parseJsonResponse(text: string) {
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { message: text };
   }
 }
 
@@ -359,10 +403,10 @@ function normalizeSnapshot(input: {
   };
 }
 
-function normalizeTerminal(logs: ApiTerminal) {
+function normalizeTerminal(logs: unknown) {
   return {
-    full: String(logs.big ?? ""),
-    small: String(logs.small ?? ""),
+    full: String(readPayloadValue(logs, "big") ?? readPayloadValue(logs, "full") ?? readPayloadValue(logs, "logs") ?? readPayloadValue(logs, "message") ?? ""),
+    small: String(readPayloadValue(logs, "small") ?? readPayloadValue(logs, "summary") ?? ""),
     updatedAt: new Date().toISOString()
   };
 }
@@ -484,11 +528,41 @@ function mapFromUnknown(value: unknown) {
     return new Map([...value.entries()].map(([key, item]) => [String(key), item]));
   }
 
+  return mapDiscloudItems(value);
+}
+
+function mapDiscloudItems(value: unknown) {
+  const payload = readPayloadValue(value, "apps") ?? readPayloadValue(value, "app") ?? value;
+
+  if (Array.isArray(payload)) {
+    return new Map(payload.map((item) => [readItemId(item), item]).filter((item): item is [string, unknown] => Boolean(item[0])));
+  }
+
+  if (payload && typeof payload === "object") {
+    const object = payload as Record<string, unknown>;
+    return new Map(Object.entries(object).map(([key, item]) => [readItemId(item) ?? key, item]));
+  }
+
   return new Map<string, unknown>();
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function readItemId(value: unknown) {
+  const object = objectRecord(value);
+  return readString(object.id)
+    ?? readString(object.appId)
+    ?? readString(object.appID)
+    ?? readString(object.app_id)
+    ?? readString(object.containerId)
+    ?? readString(object.containerID);
+}
+
+function readPayloadValue(value: unknown, key: string): unknown {
+  const object = objectRecord(value);
+  return object[key];
 }
 
 function readString(value: unknown) {
