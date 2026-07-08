@@ -5,7 +5,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 const children = new Set();
 process.env.NODE_ENV = "production";
 process.env.HOST ||= "0.0.0.0";
-process.env.PORT ||= "80";
+process.env.PORT ||= "8080";
 process.env.BOT_API_TOKEN ||= packedConfigValue("BOT_API_TOKEN") || randomBytes(32).toString("hex");
 process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;

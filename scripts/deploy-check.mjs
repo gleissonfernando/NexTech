@@ -8,7 +8,8 @@ const root = process.cwd();
 const require = createRequire(import.meta.url);
 const requiredDiscloud = {
   NAME: "OrviteK",
-  TYPE: "bot",
+  TYPE: "site",
+  ID: "orvitek-bots",
   MAIN: "index.js",
   RAM: "1024",
   VERSION: "latest",
