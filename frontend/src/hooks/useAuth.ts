@@ -116,7 +116,7 @@ export function useAuth() {
       setAuth(session);
       setAccessValidation(session.validation ?? null);
       setStatus("Acesso liberado.");
-      if (!isDashboardRoutePath(window.location.pathname)) {
+      if (!isProtectedPanelPath(window.location.pathname)) {
         window.location.replace(dashboardUrl());
       }
     } catch (requestError) {
@@ -152,6 +152,10 @@ export function useAuth() {
     verify,
     verifying
   };
+}
+
+function isProtectedPanelPath(path: string) {
+  return isDashboardRoutePath(path) || path === "/dev" || path.startsWith("/dev/");
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
