@@ -7,4 +7,4 @@ Este diretório configura um nó Lavalink v4 separado do processo Node.js. O bot
 3. Inicie o nó aqui com `java -jar Lavalink.jar`.
 4. No bot, configure `LAVALINK_URL` (por exemplo, `http://127.0.0.1:2333`) e a mesma senha em `LAVALINK_PASSWORD`.
 
-Em produção, use um nó privado/externo acessível pela Shardcloud. Não exponha a porta sem senha ou firewall.
+Em produção, use um nó privado/externo acessível pela hospedagem atual. Não exponha a porta sem senha ou firewall.

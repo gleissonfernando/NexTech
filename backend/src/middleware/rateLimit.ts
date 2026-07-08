@@ -88,9 +88,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
 function shouldSkipRateLimit(req: Request) {
   return req.path.startsWith("/health")
-    || req.path.startsWith("/_shardcloud/health")
-    || req.path.startsWith("/api/health")
-    || req.path.startsWith("/api/_shardcloud/health");
+    || req.path.startsWith("/api/health");
 }
 
 function policyForRequest(req: Request): RateLimitPolicy {

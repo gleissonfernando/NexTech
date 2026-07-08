@@ -36,8 +36,7 @@ function ensureBuild() {
     "backend/dist/server.js",
     "bot/dist/index.js",
     "frontend/dist/index.html",
-    "frontend/dist/health",
-    "frontend/dist/_shardcloud/health"
+    "frontend/dist/health"
   ];
   const sourcePaths = [
     ".env",

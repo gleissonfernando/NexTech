@@ -6,7 +6,7 @@ import { z } from "zod";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const productionPublicUrl = "https://bots-orvitek.shardweb.app";
+const productionPublicUrl = "";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
 const requiredDiscordScopes = "identify email guilds guilds.members.read";
@@ -94,7 +94,7 @@ function envUrl(name: string, fallback: string) {
     (value) => {
       const cleaned = cleanEnvValue(value);
 
-      if (cleaned && (isLocalUrl(cleaned) || isNonCanonicalShardUrl(cleaned))) {
+      if (cleaned && isLocalUrl(cleaned)) {
         return fallback;
       }
 
@@ -132,20 +132,10 @@ function isLocalUrl(value: string) {
   }
 }
 
-function isNonCanonicalShardUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.hostname.endsWith(".shardweb.app") && url.hostname !== "bots-orvitek.shardweb.app";
-  } catch {
-    return false;
-  }
-}
-
 applyPackedEnv();
 
 const configuredSiteOrigin = cleanEnvValue(process.env.SITE_ORIGIN) ?? cleanEnvValue(process.env.FRONTEND_URL);
 const productionSiteOrigin = configuredSiteOrigin && !isLocalUrl(configuredSiteOrigin)
-  && !isNonCanonicalShardUrl(configuredSiteOrigin)
   ? normalizeUrl(configuredSiteOrigin)
   : productionPublicUrl;
 const defaultSiteOrigin = productionSiteOrigin;
@@ -221,7 +211,6 @@ const envSchema = z
     const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";
     const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL);
     const oauthFrontendUrl = configuredOrigin && !isLocalUrl(configuredOrigin)
-      && !isNonCanonicalShardUrl(configuredOrigin)
       ? normalizeUrl(configuredOrigin)
       : productionSiteOrigin;
     const oauthCallbackUrl = oauthFrontendUrl ? discordRedirectUriFor(oauthFrontendUrl) : "";

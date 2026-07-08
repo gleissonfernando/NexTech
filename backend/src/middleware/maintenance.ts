@@ -46,9 +46,7 @@ function isMaintenanceBypass(req: Request) {
 
   if (
     path === "/health"
-    || path === "/_shardcloud/health"
     || path.startsWith("/api/health")
-    || path.startsWith("/api/_shardcloud/health")
     || path.startsWith("/auth")
     || path.startsWith("/api/auth")
     || path.startsWith("/api/persistent-images")
@@ -64,7 +62,7 @@ function isMaintenanceBypass(req: Request) {
     return true;
   }
 
-  if (path.startsWith("/assets") || path.startsWith("/_shardcloud")) {
+  if (path.startsWith("/assets")) {
     return true;
   }
 

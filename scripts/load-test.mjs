@@ -166,7 +166,7 @@ function parseArgs(args) {
     concurrency: 500,
     progressMs: 5_000,
     timeoutMs: 10_000,
-    url: "http://127.0.0.1:3010/_shardcloud/health",
+    url: "http://127.0.0.1:3010/health",
     users: 10_000
   };
 

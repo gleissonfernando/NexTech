@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const isProduction = process.env.NODE_ENV === "production";
-const productionPublicUrl = "https://bots-orvitek.shardweb.app";
+const productionPublicUrl = "";
 const defaultCacheSize = isProduction ? 50 : 200;
 const defaultMessageCacheSize = isProduction ? 5 : 10;
 
@@ -101,20 +101,12 @@ function isLocalUrl(value: string) {
   }
 }
 
-function isNonCanonicalShardUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.hostname.endsWith(".shardweb.app") && url.hostname !== "bots-orvitek.shardweb.app";
-  } catch {
-    return false;
-  }
-}
 
 applyPackedEnv();
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
 const productionFrontendUrl =
-  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl) && !isNonCanonicalShardUrl(configuredFrontendUrl)
+  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl)
     ? normalizeUrl(configuredFrontendUrl)
     : productionPublicUrl;
 const defaultBackendUrl = productionFrontendUrl;
@@ -234,3 +226,4 @@ if (env.NODE_ENV === "production") {
     console.warn(`[bot env] variaveis pendentes na hospedagem: ${missing.join(", ")}.`);
   }
 }
+

@@ -45,7 +45,6 @@ import { xWebhookRouter } from "./xWebhook";
 export const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
-apiRouter.use("/_shardcloud/health", healthRouter);
 apiRouter.use("/advanced-modules", advancedModulesRouter);
 apiRouter.use("/anti-ban", antiBanBotRouter);
 apiRouter.use("/image-anti-spam", imageAntiSpamRouter);

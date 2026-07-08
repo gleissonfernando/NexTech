@@ -7,16 +7,7 @@ import { backgroundJobHealth } from "../services/backgroundJobService";
 
 export const healthRouter = Router();
 
-healthRouter.get("/", async (req, res) => {
-  if (req.baseUrl.includes("_shardcloud")) {
-    res.setHeader("Cache-Control", "no-store");
-    return res.json({
-      status: "ok",
-      service: "orvitek",
-      timestamp: new Date().toISOString()
-    });
-  }
-
+healthRouter.get("/", async (_req, res) => {
   const [database, redis, jobs] = await Promise.all([
     databaseHealth(),
     redisHealth(),

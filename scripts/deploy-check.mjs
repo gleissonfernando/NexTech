@@ -6,13 +6,14 @@ import path from "node:path";
 const mode = process.argv[2] ?? "full";
 const root = process.cwd();
 const require = createRequire(import.meta.url);
-const appId = "3748bc53-e5aa-4619-827e-1323e3abb267";
-const requiredShardcloud = {
-  APPID: appId,
-  LANGUAGE: "node",
-  MEMORY: "512",
+const requiredDiscloud = {
+  NAME: "OrviteK",
+  TYPE: "bot",
   MAIN: "index.js",
-  CUSTOM_COMMAND: "npm start"
+  RAM: "512",
+  VERSION: "latest",
+  BUILD: "npm install && npm run build",
+  START: "npm start"
 };
 
 const checks = [];
@@ -83,18 +84,18 @@ function readProjectFile(file) {
   return readFileSync(path.join(root, file), "utf8");
 }
 
-check("configuracao .shardcloud", () => {
-  if (!existsSync(path.join(root, ".shardcloud"))) {
-    return;
+check("configuracao discloud.config", () => {
+  if (!existsSync(path.join(root, "discloud.config"))) {
+    fail("discloud.config nao encontrado na raiz.");
   }
 
-  const config = parseKeyValueFile(".shardcloud");
+  const config = parseKeyValueFile("discloud.config");
 
-  for (const [key, expected] of Object.entries(requiredShardcloud)) {
+  for (const [key, expected] of Object.entries(requiredDiscloud)) {
     const actual = config.get(key);
 
     if (actual !== expected) {
-      fail(`.shardcloud ${key} esperado "${expected}", recebido "${actual ?? "<ausente>"}".`);
+      fail(`discloud.config ${key} esperado "${expected}", recebido "${actual ?? "<ausente>"}".`);
     }
   }
 });
@@ -126,8 +127,7 @@ check("arquivos dist", () => {
     "backend/dist/server.js",
     "bot/dist/index.js",
     "frontend/dist/index.html",
-    "frontend/dist/health",
-    "frontend/dist/_shardcloud/health"
+    "frontend/dist/health"
   ];
 
   for (const file of requiredFiles) {

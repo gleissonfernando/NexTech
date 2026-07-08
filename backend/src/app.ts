@@ -30,8 +30,6 @@ if (env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-app.use("/_shardcloud/health", healthRouter);
-
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -74,7 +72,7 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev", {
-  skip: (req) => req.path.startsWith("/health") || req.path.startsWith("/_shardcloud/health")
+  skip: (req) => req.path.startsWith("/health")
 }));
 app.use(requestMetricsMiddleware);
 app.use(rateLimitMiddleware);

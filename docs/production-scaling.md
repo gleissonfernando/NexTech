@@ -28,8 +28,7 @@ Keep `MONGODB_URI`, `BOT_API_TOKEN`, and the bot/backend realtime configuration 
 
 ## Operations
 
-- `GET /_shardcloud/health` is a lightweight process liveness probe and performs no external calls.
-- `GET /api/health` reports MongoDB, Redis, bot/shard state, queue depth, failed jobs, active workers, and oldest pending job age.
+- `GET /health` and `GET /api/health` report MongoDB, Redis, bot/shard state, queue depth, failed jobs, active workers, and oldest pending job age.
 - `GET /api/health/metrics` reports process CPU/memory and queue metrics.
 - Backup capture, staged restore, scheduled giveaway transitions, and their recovery paths run through persistent idempotent jobs.
 - Fatal process errors use non-zero exits. The production supervisor restarts backend and bot independently and allows up to 25 seconds for graceful shutdown.
