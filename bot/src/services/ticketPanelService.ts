@@ -21,6 +21,7 @@ import {
 } from "discord.js";
 import { env } from "../config/env";
 import type { BotContext, GuildSettings, PanelImageSettings, TicketPanelOption } from "../types";
+import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
@@ -102,6 +103,7 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
   }
 
   await interaction.deferReply({ ephemeral: true });
+  void resetSelectMenuMessage(interaction);
 
   let channelId: string | null = null;
   try {

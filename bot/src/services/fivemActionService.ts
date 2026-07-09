@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
+import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { FivemActionArchitecture, FivemActionSession, FivemActionSettings } from "./apiClient";
 import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 
@@ -79,6 +80,7 @@ async function publishMainPanel(client: Client, context: BotContext, config: Fiv
 
 async function openAction(interaction: StringSelectMenuInteraction, context: BotContext) {
   await interaction.deferReply({ ephemeral: true });
+  void resetSelectMenuMessage(interaction);
   const [architectureRaw, actionId] = (interaction.values[0] ?? "").split("|");
   const architecture = architectureRaw as FivemActionArchitecture;
   if (!actionId || !["fac", "police"].includes(architecture)) return void await interaction.editReply("Ação inválida.");
@@ -132,6 +134,7 @@ async function chooseResult(interaction: any, context: BotContext, sessionId: st
 
 async function finishAction(interaction: StringSelectMenuInteraction, context: BotContext, sessionId: string) {
   await interaction.deferReply({ ephemeral: true });
+  void resetSelectMenuMessage(interaction);
   const result = interaction.values[0] as "victory" | "defeat";
   const session = await context.api.finishFivemActionSession(sessionId, interaction.user.id, result);
   await refreshSessionMessage(interaction, session);

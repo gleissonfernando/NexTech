@@ -19,6 +19,7 @@ import {
 } from "discord.js";
 import { currentRuntimeBotId, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
+import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "./runtimeModuleGuard";
 
@@ -86,6 +87,7 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
       content: `Itens selecionados: ${partsLabel(parts)}.`,
       ephemeral: true
     });
+    void resetSelectMenuMessage(interaction);
     return true;
   }
 

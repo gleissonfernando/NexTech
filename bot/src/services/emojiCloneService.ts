@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, GuildSettings } from "../types";
+import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "./runtimeModuleGuard";
 
@@ -124,7 +125,7 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
         )
       );
 
-    await interaction.showModal(modal);
+    await showModalAndResetSelect(interaction, modal);
     return true;
   }
 

@@ -20,6 +20,7 @@ import {
 import axios from "axios";
 import { env } from "../config/env";
 import type { BotContext } from "../types";
+import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 import { buildV2Container, renderPanelBlocks } from "./panelVisualRenderer";
@@ -124,7 +125,8 @@ export async function showManualRegistrationQuickConfig(interaction: ChatInputCo
   for (const [id, label, required] of fields) {
     modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setMinLength(required ? 5 : 0).setMaxLength(32).setRequired(required).setStyle(TextInputStyle.Short)));
   }
-  await interaction.showModal(modal);
+  if (interaction.isStringSelectMenu()) await showModalAndResetSelect(interaction, modal);
+  else await interaction.showModal(modal);
 }
 
 export async function handleManualRegistrationInteraction(interaction: Interaction, context: BotContext) {

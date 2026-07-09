@@ -113,6 +113,7 @@ export async function handlePoliceSubpoenaInteraction(interaction: Interaction, 
 
   if (interaction.isStringSelectMenu() && action === "competence") return selectCompetence(interaction);
   if (interaction.isUserSelectMenu() && action === "target") return selectTarget(interaction, context, settings, parts[2] as Competence);
+  if (interaction.isButton() && action === "open-modal") return openSubpoenaModal(interaction, parts[2] as Competence, parts[3] ?? "");
   if (interaction.isModalSubmit() && action === "modal") return submitSubpoena(interaction, context, settings, parseCompetence(parts[2]), parts[3] ?? "");
   if (interaction.isButton() && ["finish", "cancel", "remind", "note"].includes(action ?? "")) return handleCaseButton(interaction, context, settings, action ?? "", parts[2] ?? "");
   if (interaction.isModalSubmit() && action === "note-modal") return submitNote(interaction, context, settings, parts[2] ?? "");
@@ -138,7 +139,22 @@ async function selectTarget(interaction: UserSelectMenuInteraction, _context: Bo
     return true;
   }
 
-  await interaction.showModal(subpoenaModal(selectedCompetence, targetId));
+  await interaction.update(targetSelectedPanel(settings, selectedCompetence, targetMember));
+  return true;
+}
+
+async function openSubpoenaModal(interaction: ButtonInteraction, selectedCompetence: Competence, targetId: string) {
+  const competence = parseCompetence(selectedCompetence);
+  if (!competence || !targetId) {
+    await interaction.reply({ content: "Seleção inválida. Selecione o intimado novamente.", ephemeral: true });
+    return true;
+  }
+  const targetMember = await interaction.guild!.members.fetch(targetId).catch(() => null);
+  if (!targetMember) {
+    await interaction.reply({ content: "Usuário não encontrado no servidor. Selecione o intimado novamente.", ephemeral: true });
+    return true;
+  }
+  await interaction.showModal(subpoenaModal(competence, targetId));
   return true;
 }
 
@@ -383,6 +399,17 @@ async function sendCompetenceDestinationNotice(guild: Guild, settings: GuildSett
 
 function panel(settings: GuildSettings | null, title: string, description: string, actions: unknown[]) {
   return renderComponentsV2Panel({ accentColor: color(settings?.reportSystem.panelColor), actions, description, fields: [], image: null, moduleId: "police-subpoena-flow", title });
+}
+
+function targetSelectedPanel(settings: GuildSettings, competence: Competence, target: GuildMember) {
+  return panel(settings, "Intimado selecionado", `Intimado: <@${target.id}>\nÓrgão inicial: **${COMPETENCE_LABEL[competence]}**`, [
+    new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+      new UserSelectMenuBuilder().setCustomId(`${PREFIX}:target:${competence}`).setPlaceholder("Trocar intimado").setMinValues(1).setMaxValues(1)
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PREFIX}:open-modal:${competence}:${target.id}`).setLabel("Continuar").setStyle(ButtonStyle.Primary)
+    )
+  ]);
 }
 
 function anonymousIssuerPayload(message: Message, displayName: string): MessageCreateOptions {

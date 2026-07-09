@@ -27,6 +27,7 @@ import {
 } from "discord.js";
 import { env } from "../config/env";
 import type { BotContext, GuildSettings, ReportSystemButtonKey, ReportSystemLogKey, ReportSystemSettings } from "../types";
+import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
@@ -260,6 +261,7 @@ async function handlePublicReportSelect(interaction: StringSelectMenuInteraction
 
   if (!report.allowAnonymousReports) {
     await interaction.reply({ ...anonymousDisabledPayload(selectedCategoryId), flags: MessageFlags.Ephemeral });
+    void resetSelectMenuMessage(interaction);
     return;
   }
 
@@ -285,6 +287,7 @@ async function handlePublicReportSelect(interaction: StringSelectMenuInteraction
     ],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
+  void resetSelectMenuMessage(interaction);
 }
 
 async function handlePublicReportInteraction(interaction: Interaction, context: BotContext) {
@@ -1438,7 +1441,7 @@ async function handleCategoryAction(interaction: StringSelectMenuInteraction, co
   const categories = [...settings.reportSystem.categories];
   const index = categories.findIndex((item) => item.id === id);
   if (index < 0) return interaction.update(createAdminPayload(settings, "categories"));
-  if (op === "edit") return interaction.showModal(createModal(`category-edit-${id}`, settings.reportSystem));
+  if (op === "edit") return showModalAndResetSelect(interaction, createModal(`category-edit-${id}`, settings.reportSystem));
   if (op === "delete") categories.splice(index, 1);
   if (op === "toggle") {
     const current = categories[index];
@@ -1462,7 +1465,7 @@ async function handleStatusAction(interaction: StringSelectMenuInteraction, cont
   const statuses = [...settings.reportSystem.statuses];
   const index = statuses.findIndex((item) => item.id === id);
   if (index < 0) return interaction.update(createAdminPayload(settings, "status"));
-  if (op === "edit") return interaction.showModal(createModal(`status-edit-${id}`, settings.reportSystem));
+  if (op === "edit") return showModalAndResetSelect(interaction, createModal(`status-edit-${id}`, settings.reportSystem));
   if (op === "delete") statuses.splice(index, 1);
   if (op === "up" && index > 0) {
     const current = statuses[index];

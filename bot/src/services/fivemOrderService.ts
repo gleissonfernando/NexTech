@@ -20,6 +20,7 @@ import {
   type StringSelectMenuInteraction
 } from "discord.js";
 import type { BotContext } from "../types";
+import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { FivemOrder, FivemOrderProduct, FivemOrderSettings, FivemOrderStatus } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
@@ -154,7 +155,8 @@ async function replyWithFamilySelect(interaction: ButtonInteraction | StringSele
   const availableFamilies = families.filter((family) => familyMatchesOrderType(family, type));
   if (!availableFamilies.length) return interaction.reply({ content: "Nenhuma familia ativa foi cadastrada para este tipo de encomenda. Configure as familias na dashboard.", ephemeral: true });
   const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:family:${type}`).setPlaceholder("Escolha a familia").addOptions(availableFamilies.slice(0, 25).map((family) => ({ label: family.name.slice(0, 100), value: family.id, description: family.notes?.slice(0, 100) || "Familia ativa" })));
-  return interaction.reply({ components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: "## Selecione a familia responsavel pela encomenda" }] }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: "## Selecione a familia responsavel pela encomenda" }] }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  if (interaction.isStringSelectMenu()) void resetSelectMenuMessage(interaction);
 }
 
 async function selectOrderType(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -179,7 +181,8 @@ async function replyWithProductSelect(interaction: ButtonInteraction | StringSel
   const filtered = products.filter((item) => !category || item.category === category).slice(0, 25);
   if (!filtered.length) return interaction.reply({ content: "Nenhum produto disponivel nesta categoria.", ephemeral: true });
   const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:product:${familyId}`).setPlaceholder("Escolha o produto").addOptions(filtered.map((item) => ({ label: item.name.slice(0, 100), value: item.id, description: `${item.category} - ${formatMoney(item.price)}`.slice(0, 100), emoji: item.emoji || undefined })));
-  return interaction.reply({ components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: `## Escolha o produto${category ? `\nCategoria: **${category}**` : ""}` }] }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: `## Escolha o produto${category ? `\nCategoria: **${category}**` : ""}` }] }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  if (interaction.isStringSelectMenu()) void resetSelectMenuMessage(interaction);
 }
 
 async function showOrderModal(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -214,11 +217,11 @@ async function showWashingModal(interaction: StringSelectMenuInteraction, contex
 async function openOrderModal(interaction: StringSelectMenuInteraction, product: FivemOrderProduct, familyId: string, washingPercentage: number | null, settings: FivemOrderSettings) {
   const modal = new ModalBuilder().setCustomId(`${PREFIX}:modal:${product.id}:${familyId}${washingPercentage === null ? "" : `:${washingPercentage}`}`).setTitle(`Encomenda - ${product.name}`.slice(0, 45));
   modal.addComponents(inputRow("quantity", product.type === "washing" ? "Valor entregue pela familia" : "Quantidade", product.type === "washing" ? "Ex: 100000" : "Ex: 10", true));
-  if (product.type === "washing") return interaction.showModal(modal);
+  if (product.type === "washing") return showModalAndResetSelect(interaction, modal);
   if (product.allowNotes) modal.addComponents(inputRow("notes", "Observacao", "Detalhes adicionais", false, true));
   if (settings.allowAttachments) modal.addComponents(inputRow("proof", "Link do comprovante", "https://...", false));
   modal.addComponents(inputRow("delivery", "Entrega prevista", "AAAA-MM-DD", false));
-  await interaction.showModal(modal);
+  await showModalAndResetSelect(interaction, modal);
 }
 
 async function submitOrder(interaction: ModalSubmitInteraction, context: BotContext) {

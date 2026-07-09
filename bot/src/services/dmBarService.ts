@@ -18,6 +18,7 @@ import {
   type UserSelectMenuInteraction
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
+import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { DmBarConfig } from "./apiClient";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import type { BotCommand, BotContext } from "../types";
@@ -74,7 +75,7 @@ export function clearDmBarConfigCache(guildId?: string | null) {
 async function selectTarget(interaction: UserSelectMenuInteraction, context: BotContext) {
   const targetId = interaction.values[0]!;
   const config = await getConfig(context, interaction.guildId!);
-  await interaction.showModal(dmModal(targetId, config.titleTemplate, ""));
+  await showModalAndResetSelect(interaction, dmModal(targetId, config.titleTemplate, ""));
   return true;
 }
 

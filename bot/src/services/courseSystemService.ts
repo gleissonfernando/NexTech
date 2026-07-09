@@ -27,6 +27,7 @@ import {
   type ChannelSelectMenuInteraction
 } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
+import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/selectMenuReset";
 import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { Course, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseScheduleRequest, CourseSettings } from "./apiClient";
 import { openReportSystemAdmin } from "./reportSystemService";
@@ -480,7 +481,7 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
   }
   if (interaction.customId === IDS.publishSelect) {
     const course = await context.api.getCourse(interaction.guildId!, courseId);
-    await interaction.showModal(publicationModal(course));
+    await showModalAndResetSelect(interaction, publicationModal(course));
     return;
   }
   if (interaction.customId === IDS.editSelect) {
@@ -489,7 +490,7 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
     return;
   }
   if (interaction.customId === IDS.scheduleSelect) {
-    await interaction.showModal(scheduleModal(courseId));
+    await showModalAndResetSelect(interaction, scheduleModal(courseId));
     return;
   }
   if (interaction.customId === IDS.reportSelect) {
@@ -499,12 +500,14 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
   }
   if (interaction.customId === IDS.startSelect) {
     await interaction.deferUpdate();
+    void resetSelectMenuMessage(interaction);
     const message = await startPublicationById(interaction, context, courseId);
     await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
     return;
   }
   if (interaction.customId === IDS.proofSelect) {
     await interaction.deferUpdate();
+    void resetSelectMenuMessage(interaction);
     const message = await startCourseExamById(interaction, context, courseId);
     await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
   }
@@ -526,7 +529,7 @@ async function handleUserSelect(interaction: UserSelectMenuInteraction, context:
       await interaction.update({ components: [], content: "Relatório expirado. Execute /relatorio curso novamente." });
       return;
     }
-    await interaction.showModal(new ModalBuilder()
+    await showModalAndResetSelect(interaction, new ModalBuilder()
       .setCustomId(`course_report_note:${interaction.values[0]}`)
       .setTitle("Nota do Oficial")
       .addComponents(
