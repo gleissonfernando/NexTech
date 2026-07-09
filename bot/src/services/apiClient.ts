@@ -1249,7 +1249,7 @@ export type OpenDutySettings = {
   footerImageUrl: string | null;
   footerText: string | null;
   footerIconUrl: string | null;
-  imagePosition: "top" | "middle" | "bottom" | "footer";
+  imagePosition: "top" | "middle" | "bottom" | "footer" | "none";
   panelColor: string;
   buttonEmojis: { cancel: string; config: string; edit: string; logs: string; reset: string; save: string; search: string; send: string };
   counterMode: "accumulate" | "reset_after_3" | "cycles";

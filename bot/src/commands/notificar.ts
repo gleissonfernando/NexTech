@@ -370,18 +370,26 @@ function extractTargetIdFromDraftId(draftId: string) {
 }
 
 function extractTargetIdFromMessage(message: ButtonInteraction["message"]) {
-  return collectComponentText(message.components)
+  return collectMessageText(message)
     .join("\n")
     .match(/Usuario selecionado:\s*<@!?(\d{5,32})>|Previa editada para\s*<@!?(\d{5,32})>|Prezada\(o\)\s*<@!?(\d{5,32})>/i)?.slice(1).find(Boolean) ?? null;
 }
 
 function extractNotificationMessage(message: ButtonInteraction["message"]) {
-  const texts = collectComponentText(message.components).map((text) => text.trim()).filter(Boolean);
+  const texts = collectMessageText(message).map((text) => text.trim()).filter(Boolean);
   const directMessage = [...texts].reverse().find((text) => /Prezada\(o\)|Verificamos que seu ponto|Se voce esqueceu|Se você esqueceu/i.test(text));
   if (directMessage) return directMessage.replace(/^#+\s*Confirmar Envio\s*/i, "").trim().slice(0, 3000);
   const joined = texts.join("\n\n");
   const previewIndex = joined.search(/Previa da mensagem que sera enviada por DM:|Previa editada para/i);
   return previewIndex >= 0 ? joined.slice(previewIndex).replace(/^.*?(?:DM:|:)\s*/s, "").trim().slice(0, 3000) || null : null;
+}
+
+function collectMessageText(message: ButtonInteraction["message"]) {
+  const output: string[] = [];
+  collectComponentText(message.content, output);
+  collectComponentText(message.components, output);
+  if (typeof message.toJSON === "function") collectComponentText(message.toJSON(), output);
+  return [...new Set(output)];
 }
 
 function collectComponentText(value: unknown, output: string[] = []) {
@@ -393,8 +401,10 @@ function collectComponentText(value: unknown, output: string[] = []) {
   if (typeof value !== "object") return output;
   const record = value as Record<string, unknown>;
   if (typeof record.content === "string") output.push(record.content);
+  if (record.data) collectComponentText(record.data, output);
   if (record.components) collectComponentText(record.components, output);
   if (record.items) collectComponentText(record.items, output);
+  if (record.component) collectComponentText(record.component, output);
   return output;
 }
 
