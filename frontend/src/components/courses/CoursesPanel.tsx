@@ -3,6 +3,7 @@ import { BookOpen, CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-reac
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
+import { FivemResourceMultiSelect, FivemResourceSelect } from "../fivem/FivemResourceSelect";
 import {
   createCourseApi,
   deleteCourseApi,
@@ -253,7 +254,7 @@ function TextAreaField({ disabled, label, onChange, value }: { disabled?: boolea
 }
 
 function SelectField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string | null) => void; options: Array<{ id: string; name: string }>; value: string }) {
-  return <label className="grid gap-2 text-sm"><span className="font-semibold text-zinc-300">{label}</span><select className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => onChange(event.target.value || null)} value={value}><option value="">Não configurado</option>{options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>;
+  return <FivemResourceSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} placeholder="Não configurado" prefix="#" value={value || null} />;
 }
 
 function SelectValueField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; options: Array<[string, string]>; value: string }) {
@@ -261,7 +262,7 @@ function SelectValueField({ disabled, label, onChange, options, value }: { disab
 }
 
 function MultiRoleField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string[]) => void; options: Array<{ id: string; name: string }>; value: string[] }) {
-  return <label className="grid gap-2 text-sm md:col-span-2"><span className="font-semibold text-zinc-300">{label}</span><select className="min-h-28 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100" disabled={disabled} multiple onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))} value={value}>{options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>;
+  return <div className="md:col-span-2"><FivemResourceMultiSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} prefix="@" values={value} /></div>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
