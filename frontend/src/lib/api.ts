@@ -18,6 +18,8 @@ import type {
   BotGuildConfig,
   CreateDevBotPayload,
   Course,
+  CourseExamDashboard,
+  CourseExamQuestion,
   CoursesDashboard,
   DashboardBot,
   DashboardMeResponse,
@@ -88,6 +90,8 @@ import type {
   RhAdminDashboard,
   SaveClipsConfigPayload,
   SaveCoursePayload,
+  SaveCourseExamQuestionPayload,
+  SaveCourseExamSettingsPayload,
   SaveCourseSettingsPayload,
   SaveFivemFacSettingsPayload,
   SaveManualPaymentSettingsPayload,
@@ -2073,6 +2077,58 @@ export async function deleteCourseApi(botId: string, guildId: string, courseId: 
     { params: botParams(botId) }
   );
   return data.course;
+}
+
+export async function getCourseExamDashboard(botId: string, guildId: string, courseId: string) {
+  const { data } = await api.get<CourseExamDashboard>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam`,
+    { params: botParams(botId) }
+  );
+  return data;
+}
+
+export async function saveCourseExamSettings(botId: string, guildId: string, courseId: string, payload: SaveCourseExamSettingsPayload) {
+  const { data } = await api.patch<{ settings: CourseExamDashboard["settings"] }>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/settings`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function createCourseExamQuestionApi(botId: string, guildId: string, courseId: string, payload: SaveCourseExamQuestionPayload) {
+  const { data } = await api.post<{ question: CourseExamQuestion }>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/questions`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.question;
+}
+
+export async function updateCourseExamQuestionApi(botId: string, guildId: string, courseId: string, questionId: string, payload: Partial<SaveCourseExamQuestionPayload>) {
+  const { data } = await api.patch<{ question: CourseExamQuestion }>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/questions/${encodeURIComponent(questionId)}`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.question;
+}
+
+export async function deleteCourseExamQuestionApi(botId: string, guildId: string, courseId: string, questionId: string) {
+  const { data } = await api.delete<{ question: CourseExamQuestion }>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/questions/${encodeURIComponent(questionId)}`,
+    { params: botParams(botId) }
+  );
+  return data.question;
+}
+
+export async function duplicateCourseExamQuestionApi(botId: string, guildId: string, courseId: string, questionId: string) {
+  const { data } = await api.post<{ question: CourseExamQuestion }>(
+    `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/questions/${encodeURIComponent(questionId)}/duplicate`,
+    undefined,
+    { params: botParams(botId) }
+  );
+  return data.question;
 }
 
 export async function getRhAdminDashboard(botId: string, guildId: string) {

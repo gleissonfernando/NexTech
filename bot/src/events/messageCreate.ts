@@ -14,6 +14,7 @@ import { capturePolicePatrolMessage } from "../services/policePatrolReportServic
 import { handlePoliceHiddenChannelMessage } from "../services/policeHiddenChannelService";
 import { handlePoliceSubpoenaMessage } from "../services/policeSubpoenaService";
 import { handleReportSystemMessage } from "../services/reportSystemService";
+import { handleCourseExamMessage } from "../services/courseSystemService";
 
 const MUSIC_PREFIX_COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
 
@@ -38,6 +39,9 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handleTemporaryVoiceMessage(message, context)) {
+    return;
+  }
+  if (await handleCourseExamMessage(message, context)) {
     return;
   }
 

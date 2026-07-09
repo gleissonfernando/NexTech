@@ -395,6 +395,87 @@ export type MongoCourseLog = {
   createdAt: Date;
 };
 
+export type MongoCourseExamSettings = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  enabled: boolean;
+  minScore: number;
+  maxTimeMinutes: number | null;
+  correctionChannelId: string | null;
+  logChannelId: string | null;
+  deleteWrittenAnswers: boolean;
+  allowCurrentQuestionReview: boolean;
+  initialMessage: string;
+  finalMessage: string;
+  approvalMessage: string;
+  rejectionMessage: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoCourseExamQuestion = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  order: number;
+  type: "selection" | "written";
+  prompt: string;
+  description: string | null;
+  points: number;
+  alternatives: Array<{ id: "A" | "B" | "C" | "D" | "E"; text: string }>;
+  correctAlternativeId: "A" | "B" | "C" | "D" | "E" | null;
+  placeholder: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoCourseExamAttempt = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  publicationId: string;
+  channelId: string;
+  studentId: string;
+  instructorId: string;
+  status: "in_progress" | "finished" | "approved" | "rejected";
+  startedAt: Date;
+  finishedAt: Date | null;
+  correctedAt: Date | null;
+  correctedBy: string | null;
+  currentQuestionIndex: number;
+  objectiveCorrect: number;
+  objectiveWrong: number;
+  writtenCount: number;
+  score: number;
+  maxScore: number;
+  percent: number;
+  correctionMessageId: string | null;
+  rejectionReason: string | null;
+  updatedAt: Date;
+};
+
+export type MongoCourseExamAnswer = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  attemptId: string;
+  courseId: string;
+  questionId: string;
+  questionOrder: number;
+  type: "selection" | "written";
+  selectedAlternativeId: string | null;
+  writtenAnswer: string | null;
+  correct: boolean | null;
+  pointsEarned: number;
+  answeredAt: Date;
+};
+
 export type MongoOpenDutyCounterMode = "accumulate" | "reset_after_3" | "cycles";
 
 export type MongoOpenDutySettings = {
@@ -3156,6 +3237,10 @@ export async function getMongoCollections() {
     courseScheduleRequests: db.collection<MongoCourseScheduleRequest>("course_schedule_requests"),
     courseReports: db.collection<MongoCourseReport>("course_reports"),
     courseLogs: db.collection<MongoCourseLog>("course_logs"),
+    courseExamSettings: db.collection<MongoCourseExamSettings>("course_exam_settings"),
+    courseExamQuestions: db.collection<MongoCourseExamQuestion>("course_exam_questions"),
+    courseExamAttempts: db.collection<MongoCourseExamAttempt>("course_exam_attempts"),
+    courseExamAnswers: db.collection<MongoCourseExamAnswer>("course_exam_answers"),
     openDutySettings: db.collection<MongoOpenDutySettings>("open_duty_settings"),
     openDutyCounters: db.collection<MongoOpenDutyWarningCounter>("open_duty_counters"),
     openDutyNotifications: db.collection<MongoOpenDutyNotification>("open_duty_notifications"),

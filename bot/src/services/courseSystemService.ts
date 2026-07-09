@@ -18,6 +18,7 @@ import {
   type Client,
   type GuildMember,
   type Interaction,
+  type Message,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
   type TextChannel,
@@ -27,7 +28,7 @@ import {
 } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
-import type { Course, CoursePublication, CourseScheduleRequest, CourseSettings } from "./apiClient";
+import type { Course, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseScheduleRequest, CourseSettings } from "./apiClient";
 import { openReportSystemAdmin } from "./reportSystemService";
 
 const IDS = {
@@ -62,6 +63,7 @@ const IDS = {
 } as const;
 
 const reportDrafts = new Map<string, { courseId: string; students: Array<{ note: string; observation: string | null; userId: string }> }>();
+const pendingExamAnswers = new Map<string, { question: CourseExamQuestion; selectedAlternativeId?: string | null; writtenAnswer?: string | null }>();
 let serviceStarted = false;
 
 export function startCourseSystemService(client: Client, context: BotContext) {
@@ -339,7 +341,27 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     return;
   }
   if (interaction.customId.startsWith("course_exam_begin:")) {
-    await beginStudentExam(interaction);
+    await beginStudentExam(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_retry:")) {
+    await retryExamQuestion(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_next:")) {
+    await commitExamAnswer(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_written_continue:")) {
+    await commitExamAnswer(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_finish:")) {
+    await finishExam(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_review:")) {
+    await reviewExam(interaction, context);
     return;
   }
   if (interaction.customId.startsWith("course_cancel:")) {
@@ -369,6 +391,10 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
 
 async function handleStringSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
   const courseId = interaction.values[0] ?? "";
+  if (interaction.customId.startsWith("course_exam_answer:")) {
+    await selectExamAnswer(interaction, context);
+    return;
+  }
   if (interaction.customId === IDS.publishSelect) {
     await interaction.showModal(publicationModal(courseId));
     return;
@@ -653,16 +679,137 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
   ].filter(Boolean).join("\n\n").slice(0, 1900));
 }
 
-async function beginStudentExam(interaction: ButtonInteraction) {
+async function beginStudentExam(interaction: ButtonInteraction, context: BotContext) {
   const [, publicationId, studentId] = interaction.customId.split(":");
+  if (!publicationId || !studentId) {
+    await interaction.reply({ content: "Painel de prova inválido.", flags: MessageFlags.Ephemeral });
+    return;
+  }
   if (interaction.user.id !== studentId) {
     await interaction.reply({ content: "Somente o aluno deste canal pode iniciar esta prova.", flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.reply({
-    content: `Prova vinculada à publicação ${publicationId}. As perguntas ainda precisam ser configuradas na dashboard para liberar a execução completa.`,
-    flags: MessageFlags.Ephemeral
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId).catch(() => null);
+  if (!publication) return interaction.editReply("Publicação de curso não encontrada.");
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, publication.courseId),
+    context.api.getCourseExamRuntime(interaction.guildId!, publication.courseId)
+  ]);
+  if (!runtime.settings.enabled) return interaction.editReply("A prova deste curso está desativada na dashboard.");
+  if (!runtime.questions.length) return interaction.editReply("A prova deste curso ainda não possui perguntas ativas.");
+  const attempt = await context.api.createCourseExamAttempt(interaction.guildId!, {
+    channelId: interaction.channelId,
+    courseId: publication.courseId,
+    instructorId: publication.instructorId,
+    publicationId,
+    studentId
   });
+  await interaction.editReply("Prova iniciada. A primeira pergunta foi enviada no canal.");
+  const channel = interaction.channel;
+  if (!channel?.isTextBased() || !("send" in channel)) return;
+  await channel.send(examIntroPanel(course, runtime.settings)).catch(() => null);
+  await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, attempt, runtime.questions);
+}
+
+export async function handleCourseExamMessage(message: Message, context: BotContext) {
+  if (!message.guild || message.author.bot || !message.channel.isTextBased()) return false;
+  const attempt = await context.api.getCourseExamAttemptByChannel(message.guild.id, message.channel.id).catch(() => null);
+  if (!attempt || attempt.studentId !== message.author.id || attempt.status !== "in_progress") return false;
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(message.guild.id, attempt.courseId),
+    context.api.getCourseExamRuntime(message.guild.id, attempt.courseId)
+  ]);
+  const question = runtime.questions[attempt.currentQuestionIndex];
+  if (!question || question.type !== "written") return false;
+  pendingExamAnswers.set(examPendingKey(attempt.id), { question, writtenAnswer: message.content.trim().slice(0, 3000) });
+  if (runtime.settings.deleteWrittenAnswers) await message.delete().catch(() => null);
+  if ("send" in message.channel) await message.channel.send(writtenCapturedPanel(course, attempt, question));
+  return true;
+}
+
+async function selectExamAnswer(interaction: StringSelectMenuInteraction, context: BotContext) {
+  const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id || bundle.attempt.status !== "in_progress") {
+    await interaction.reply({ content: "Tentativa de prova inválida.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, bundle.attempt.courseId);
+  const question = runtime.questions[bundle.attempt.currentQuestionIndex];
+  if (!question || question.type !== "selection") {
+    await interaction.reply({ content: "Pergunta inválida.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  pendingExamAnswers.set(examPendingKey(attemptId), { question, selectedAlternativeId: interaction.values[0] ?? null });
+  await interaction.update(answerConfirmationPanel(question, attemptId, runtime.settings));
+}
+
+async function retryExamQuestion(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferUpdate();
+  const attemptId = idFromCustomId(interaction.customId);
+  pendingExamAnswers.delete(examPendingKey(attemptId));
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, bundle.attempt.courseId),
+    context.api.getCourseExamRuntime(interaction.guildId!, bundle.attempt.courseId)
+  ]);
+  await interaction.message.edit({ components: [] }).catch(() => null);
+  await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, bundle.attempt, runtime.questions);
+}
+
+async function commitExamAnswer(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferUpdate();
+  const attemptId = idFromCustomId(interaction.customId);
+  const pending = pendingExamAnswers.get(examPendingKey(attemptId));
+  if (!pending) {
+    await interaction.followUp({ content: "Responda a pergunta antes de continuar.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const answer = await context.api.saveCourseExamAnswer(interaction.guildId!, attemptId, pending);
+  pendingExamAnswers.delete(examPendingKey(attemptId));
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, bundle.attempt.courseId),
+    context.api.getCourseExamRuntime(interaction.guildId!, bundle.attempt.courseId)
+  ]);
+  await interaction.message.edit({ components: [] }).catch(() => null);
+  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `📝 Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${bundle.attempt.studentId}>\nPergunta: ${pending.question.prompt}\nResposta: ${answer.type === "selection" ? answer.selectedAlternativeId : "discursiva"}`);
+  await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, bundle.attempt, runtime.questions);
+}
+
+async function finishExam(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferUpdate();
+  const attemptId = idFromCustomId(interaction.customId);
+  const result = await context.api.finalizeCourseExamAttempt(interaction.guildId!, attemptId);
+  const [course, settings] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, result.attempt.courseId),
+    context.api.getCourseSettings(interaction.guildId!)
+  ]);
+  await interaction.message.edit({ components: [] }).catch(() => null);
+  await interaction.followUp({ content: "Prova finalizada e enviada para correção.", flags: MessageFlags.Ephemeral });
+  await sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers);
+  await sendCourseLog(interaction, settings, `✅ Prova finalizada\nTentativa: ${attemptId}\nAluno: <@${result.attempt.studentId}>\nNota: ${result.attempt.score}/${result.attempt.maxScore} (${result.attempt.percent}%)`);
+}
+
+async function reviewExam(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const [, , status, attemptId] = interaction.customId.split(":");
+  if (!attemptId) {
+    await interaction.editReply("Tentativa de prova inválida.");
+    return;
+  }
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
+  if (bundle.attempt.instructorId !== interaction.user.id) {
+    await interaction.editReply("Somente o instrutor responsável pode corrigir esta prova.");
+    return;
+  }
+  const reviewed = await context.api.reviewCourseExamAttempt(interaction.guildId!, attemptId, { actorId: interaction.user.id, status: status === "approved" ? "approved" : "rejected" });
+  await interaction.message.edit({ components: [] }).catch(() => null);
+  const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, reviewed.courseId);
+  const student = await interaction.guild!.members.fetch(reviewed.studentId).catch(() => null);
+  await student?.send(status === "approved" ? runtime.settings.approvalMessage : runtime.settings.rejectionMessage).catch(() => null);
+  await interaction.editReply(status === "approved" ? "Prova aprovada." : "Prova reprovada.");
 }
 
 async function decideSchedule(interaction: ButtonInteraction, context: BotContext) {
@@ -1031,6 +1178,152 @@ function studentExamWelcomePanel(course: Course, publication: CoursePublication,
   });
 }
 
+function examIntroPanel(course: Course, settings: CourseExamSettings) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    description: settings.initialMessage,
+    fields: [`Curso: ${course.name}`],
+    image: course.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: course.bannerUrl } : null,
+    moduleId: "courses",
+    title: "Início da Prova"
+  });
+}
+
+async function sendExamQuestion(channel: TextChannel, settings: CourseExamSettings, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[]) {
+  const question = questions[attempt.currentQuestionIndex];
+  if (!question) {
+    await channel.send(examFinishPanel(course, settings, attempt));
+    return;
+  }
+  if (question.type === "selection") {
+    await channel.send(selectionQuestionPanel(course, attempt, question, attempt.currentQuestionIndex + 1, questions.length));
+    return;
+  }
+  await channel.send(writtenQuestionPanel(course, attempt, question, attempt.currentQuestionIndex + 1, questions.length));
+}
+
+function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`course_exam_answer:${attempt.id}`)
+          .setPlaceholder("Marque uma alternativa")
+          .setMinValues(1)
+          .setMaxValues(1)
+          .addOptions(question.alternatives.slice(0, 5).map((alternative) => ({
+            label: `Alternativa ${alternative.id}`.slice(0, 100),
+            value: alternative.id,
+            description: alternative.text.slice(0, 100)
+          })))
+      )
+    ],
+    description: question.description || "Selecione uma alternativa para continuar.",
+    fields: [
+      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `**${question.prompt}**`,
+      question.alternatives.map((alternative) => `(${alternative.id}) ${alternative.text}`).join("\n")
+    ],
+    moduleId: "courses",
+    title: "Questão Objetiva"
+  });
+}
+
+function writtenQuestionPanel(course: Course, attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_written_continue:${attempt.id}`).setLabel("Continuar").setStyle(ButtonStyle.Success)
+    )],
+    description: "Agora responda escrevendo sua resposta neste canal. Após enviar sua mensagem clique em Continuar.",
+    fields: [
+      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `**${question.prompt}**`,
+      question.description || question.placeholder || "Envie sua resposta em uma mensagem abaixo."
+    ],
+    moduleId: "courses",
+    title: "Questão Discursiva"
+  });
+}
+
+function writtenCapturedPanel(course: Course, attempt: CourseExamAttempt, question: CourseExamQuestion) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_exam_retry:${attempt.id}`).setLabel("Responder Novamente").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`course_exam_next:${attempt.id}`).setLabel("Próxima Pergunta").setStyle(ButtonStyle.Success)
+      )
+    ],
+    description: "Resposta escrita capturada. Escolha uma opção.",
+    fields: [`Pergunta: ${question.prompt}`],
+    moduleId: "courses",
+    title: "Pergunta respondida"
+  });
+}
+
+function answerConfirmationPanel(question: CourseExamQuestion, attemptId: string, settings: CourseExamSettings) {
+  return renderComponentsV2Panel({
+    accentColor: 0x2563eb,
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_exam_retry:${attemptId}`).setLabel("Responder Novamente").setStyle(ButtonStyle.Secondary).setDisabled(!settings.allowCurrentQuestionReview),
+        new ButtonBuilder().setCustomId(`course_exam_next:${attemptId}`).setLabel("Próxima Pergunta").setStyle(ButtonStyle.Success)
+      )
+    ],
+    description: "Pergunta respondida. Escolha uma opção.",
+    fields: [`Pergunta: ${question.prompt}`],
+    moduleId: "courses",
+    title: "Confirmação da Resposta"
+  });
+}
+
+function examFinishPanel(course: Course, settings: CourseExamSettings, attempt: CourseExamAttempt) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_finish:${attempt.id}`).setLabel("Finalizar Prova").setStyle(ButtonStyle.Success)
+    )],
+    description: settings.finalMessage,
+    fields: [`Curso: ${course.name}`, `Aluno: <@${attempt.studentId}>`],
+    moduleId: "courses",
+    title: "Prova concluída"
+  });
+}
+
+async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
+  const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId);
+  const channelId = runtime.settings.correctionChannelId || runtime.settings.logChannelId || (await context.api.getCourseSettings(interaction.guildId!)).reportChannelId;
+  if (!channelId) return;
+  const channel = await interaction.guild!.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) return;
+  const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
+  const fields = [
+    `Aluno: <@${attempt.studentId}>\nCurso: ${course.name}\nInstrutor: <@${attempt.instructorId}>\nInício: <t:${Math.floor(new Date(attempt.startedAt).getTime() / 1000)}:F>\nFim: ${attempt.finishedAt ? `<t:${Math.floor(new Date(attempt.finishedAt).getTime() / 1000)}:F>` : "-"}\nNota: ${attempt.score}/${attempt.maxScore}\nPercentual: ${attempt.percent}%`,
+    ...questions.slice(0, 12).map((question, index) => {
+      const answer = answerByQuestion.get(question.id);
+      if (question.type === "selection") {
+        const marked = answer?.selectedAlternativeId ?? "-";
+        return `${index + 1}. ${question.prompt}\nMarcada: ${marked}\nCorreta: ${question.correctAlternativeId ?? "-"}\nResultado: ${answer?.correct ? "✅ Correta" : "❌ Errada"}\nPontos: ${answer?.pointsEarned ?? 0}/${question.points}`;
+      }
+      return `${index + 1}. ${question.prompt}\nResposta:\n${answer?.writtenAnswer?.slice(0, 700) || "-"}\nCorreção: manual`;
+    })
+  ];
+  const message = await (channel as TextChannel).send(renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setLabel("✅ Aprovar").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setLabel("❌ Reprovar").setStyle(ButtonStyle.Danger)
+    )],
+    description: "Painel de correção automática e manual da prova.",
+    fields,
+    moduleId: "courses",
+    title: "Correção de Prova"
+  }));
+  await context.api.setCourseExamCorrectionMessage(interaction.guildId!, attempt.id, message.id).catch(() => null);
+}
+
 function schedulePanel(course: Course, request: CourseScheduleRequest) {
   const status = request.status === "pending" ? "Pendente" : request.status === "approved" ? "Aprovado" : "Recusado";
   return renderComponentsV2Panel({
@@ -1153,6 +1446,10 @@ function ephemeral<T extends Record<string, unknown>>(payload: T) {
 
 function draftKey(interaction: { guildId: string | null; user: { id: string } }) {
   return `${interaction.guildId}:${interaction.user.id}`;
+}
+
+function examPendingKey(attemptId: string) {
+  return `exam:${attemptId}`;
 }
 
 function parseColor(value: string | null | undefined) {

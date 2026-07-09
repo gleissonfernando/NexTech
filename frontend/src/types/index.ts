@@ -913,6 +913,77 @@ export type CourseReport = {
   createdAt: string;
 };
 
+export type CourseExamSettings = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  enabled: boolean;
+  minScore: number;
+  maxTimeMinutes: number | null;
+  correctionChannelId: string | null;
+  logChannelId: string | null;
+  deleteWrittenAnswers: boolean;
+  allowCurrentQuestionReview: boolean;
+  initialMessage: string;
+  finalMessage: string;
+  approvalMessage: string;
+  rejectionMessage: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type CourseExamQuestion = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  order: number;
+  type: "selection" | "written";
+  prompt: string;
+  description: string | null;
+  points: number;
+  alternatives: Array<{ id: "A" | "B" | "C" | "D" | "E"; text: string }>;
+  correctAlternativeId: "A" | "B" | "C" | "D" | "E" | null;
+  placeholder: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type CourseExamAttempt = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  publicationId: string;
+  channelId: string;
+  studentId: string;
+  instructorId: string;
+  status: "in_progress" | "finished" | "approved" | "rejected";
+  startedAt: string;
+  finishedAt: string | null;
+  correctedAt: string | null;
+  correctedBy: string | null;
+  currentQuestionIndex: number;
+  objectiveCorrect: number;
+  objectiveWrong: number;
+  writtenCount: number;
+  score: number;
+  maxScore: number;
+  percent: number;
+  correctionMessageId: string | null;
+  rejectionReason: string | null;
+  updatedAt: string;
+};
+
+export type CourseExamDashboard = {
+  attempts: CourseExamAttempt[];
+  questions: CourseExamQuestion[];
+  settings: CourseExamSettings;
+};
+
 export type CourseLog = {
   id: string;
   action: string;
@@ -934,6 +1005,8 @@ export type CoursesDashboard = {
 
 export type SaveCourseSettingsPayload = Partial<Omit<CourseSettings, "id" | "botId" | "guildId" | "updatedAt">>;
 export type SaveCoursePayload = Partial<Omit<Course, "id" | "botId" | "guildId" | "createdAt" | "updatedAt">> & { name: string };
+export type SaveCourseExamSettingsPayload = Partial<Omit<CourseExamSettings, "id" | "botId" | "guildId" | "courseId" | "updatedAt">>;
+export type SaveCourseExamQuestionPayload = Partial<Omit<CourseExamQuestion, "id" | "botId" | "guildId" | "courseId" | "createdAt" | "updatedAt">> & { prompt: string; type: "selection" | "written" };
 
 export type RhAdminSettings = {
   id: string;

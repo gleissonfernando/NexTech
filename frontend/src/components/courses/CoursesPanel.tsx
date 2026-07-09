@@ -6,14 +6,20 @@ import { Badge } from "../ui/badge";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../fivem/FivemResourceSelect";
 import {
   createCourseApi,
+  createCourseExamQuestionApi,
   deleteCourseApi,
+  deleteCourseExamQuestionApi,
+  duplicateCourseExamQuestionApi,
+  getCourseExamDashboard,
   getCoursesDashboard,
   getGuildLiveOptions,
   publishCoursePanel,
+  saveCourseExamSettings,
   saveCourseSettings,
+  updateCourseExamQuestionApi,
   updateCourseApi
 } from "../../lib/api";
-import type { Course, CoursesDashboard, GuildLiveOptions, SaveCoursePayload } from "../../types";
+import type { Course, CourseExamDashboard, CourseExamQuestion, CoursesDashboard, GuildLiveOptions, SaveCourseExamQuestionPayload, SaveCoursePayload } from "../../types";
 
 type CoursesPanelProps = {
   botId: string;
@@ -47,6 +53,24 @@ const emptyCourse: SaveCoursePayload = {
   thumbnailUrl: null
 };
 
+const emptyQuestion: SaveCourseExamQuestionPayload = {
+  active: true,
+  alternatives: [
+    { id: "A", text: "" },
+    { id: "B", text: "" },
+    { id: "C", text: "" },
+    { id: "D", text: "" },
+    { id: "E", text: "" }
+  ],
+  correctAlternativeId: "A",
+  description: null,
+  order: 0,
+  placeholder: "Explique com suas palavras...",
+  points: 1,
+  prompt: "",
+  type: "selection"
+};
+
 export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [dashboard, setDashboard] = useState<CoursesDashboard | null>(null);
   const [liveOptions, setLiveOptions] = useState<GuildLiveOptions | null>(null);
@@ -57,6 +81,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [exam, setExam] = useState<CourseExamDashboard | null>(null);
+  const [examDraft, setExamDraft] = useState<SaveCourseExamQuestionPayload>(emptyQuestion);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
   const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? liveOptions?.channels ?? [];
 
@@ -67,9 +94,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   useEffect(() => {
     if (!selectedCourse) {
       setDraft(emptyCourse);
+      setExam(null);
       return;
     }
     setDraft(toPayload(selectedCourse));
+    void loadExam(selectedCourse.id);
   }, [selectedCourse]);
 
   async function load() {
@@ -155,6 +184,80 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setError(err instanceof Error ? err.message : "Não foi possível publicar o painel de cursos.");
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function loadExam(courseId: string) {
+    setExam(null);
+    try {
+      setExam(await getCourseExamDashboard(botId, guildId, courseId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Provas.");
+    }
+  }
+
+  async function saveExamSettings(patch: Partial<CourseExamDashboard["settings"]>) {
+    if (!selectedCourse || !exam) return;
+    setSaving(true);
+    try {
+      const settings = await saveCourseExamSettings(botId, guildId, selectedCourse.id, patch);
+      setExam({ ...exam, settings });
+      setMessage("Configuração da prova salva.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível salvar a prova.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveQuestion() {
+    if (!selectedCourse || !exam || !examDraft.prompt.trim()) return;
+    setSaving(true);
+    try {
+      const payload = normalizeQuestionDraft(examDraft, exam.questions.length);
+      const question = editingQuestionId
+        ? await updateCourseExamQuestionApi(botId, guildId, selectedCourse.id, editingQuestionId, payload)
+        : await createCourseExamQuestionApi(botId, guildId, selectedCourse.id, payload);
+      setExam({
+        ...exam,
+        questions: editingQuestionId
+          ? exam.questions.map((item) => item.id === question.id ? question : item).sort((a, b) => a.order - b.order)
+          : [...exam.questions, question].sort((a, b) => a.order - b.order)
+      });
+      setExamDraft(emptyQuestion);
+      setEditingQuestionId(null);
+      setMessage("Pergunta salva.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível salvar a pergunta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeQuestion(question: CourseExamQuestion) {
+    if (!selectedCourse || !exam) return;
+    setSaving(true);
+    try {
+      await deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id);
+      setExam({ ...exam, questions: exam.questions.filter((item) => item.id !== question.id) });
+      setMessage("Pergunta excluída.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível excluir a pergunta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function duplicateQuestion(question: CourseExamQuestion) {
+    if (!selectedCourse || !exam) return;
+    setSaving(true);
+    try {
+      const duplicated = await duplicateCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id);
+      setExam({ ...exam, questions: [...exam.questions, duplicated].sort((a, b) => a.order - b.order) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível duplicar a pergunta.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -245,6 +348,104 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
         </Card>
       </div>
 
+      {selectedCourse && exam ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sistema de Provas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
+                Prova ativa
+                <input checked={exam.settings.enabled} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ enabled: event.target.checked })} type="checkbox" />
+              </label>
+              <InputField disabled={!canManage || saving} label="Nota mínima" onChange={(value) => void saveExamSettings({ minScore: Number(value) || 0 })} value={String(exam.settings.minScore)} />
+              <InputField disabled={!canManage || saving} label="Tempo máximo em minutos" onChange={(value) => void saveExamSettings({ maxTimeMinutes: value ? Number(value) : null })} value={exam.settings.maxTimeMinutes ? String(exam.settings.maxTimeMinutes) : ""} />
+              <SelectField disabled={!canManage || saving} label="Canal de correção" onChange={(correctionChannelId) => void saveExamSettings({ correctionChannelId })} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveExamSettings({ logChannelId })} options={textChannels} value={exam.settings.logChannelId ?? ""} />
+              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
+                Apagar respostas escritas
+                <input checked={exam.settings.deleteWrittenAnswers} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ deleteWrittenAnswers: event.target.checked })} type="checkbox" />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
+                Permitir revisar pergunta atual
+                <input checked={exam.settings.allowCurrentQuestionReview} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ allowCurrentQuestionReview: event.target.checked })} type="checkbox" />
+              </label>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              <TextAreaField disabled={!canManage || saving} label="Mensagem inicial" onChange={(initialMessage) => void saveExamSettings({ initialMessage })} value={exam.settings.initialMessage} />
+              <TextAreaField disabled={!canManage || saving} label="Mensagem final" onChange={(finalMessage) => void saveExamSettings({ finalMessage })} value={exam.settings.finalMessage} />
+              <TextAreaField disabled={!canManage || saving} label="Mensagem de aprovação" onChange={(approvalMessage) => void saveExamSettings({ approvalMessage })} value={exam.settings.approvalMessage} />
+              <TextAreaField disabled={!canManage || saving} label="Mensagem de reprovação" onChange={(rejectionMessage) => void saveExamSettings({ rejectionMessage })} value={exam.settings.rejectionMessage} />
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "+ Criar Pergunta"}</p>
+                {editingQuestionId ? <Button onClick={() => { setEditingQuestionId(null); setExamDraft(emptyQuestion); }} size="sm" type="button" variant="outline">Cancelar edição</Button> : null}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <SelectValueField disabled={!canManage || saving} label="Tipo da pergunta" onChange={(type) => setExamDraft({ ...examDraft, type: type as "selection" | "written" })} options={[["selection", "Seleção"], ["written", "Escrita"]]} value={examDraft.type} />
+                <InputField disabled={!canManage || saving} label="Nota da questão" onChange={(value) => setExamDraft({ ...examDraft, points: Number(value) || 0 })} value={String(examDraft.points ?? 1)} />
+              </div>
+              <div className="mt-3 space-y-3">
+                <TextAreaField disabled={!canManage || saving} label="Pergunta" onChange={(prompt) => setExamDraft({ ...examDraft, prompt })} value={examDraft.prompt} />
+                <TextAreaField disabled={!canManage || saving} label={examDraft.type === "written" ? "Texto de apoio" : "Descrição"} onChange={(description) => setExamDraft({ ...examDraft, description })} value={examDraft.description ?? ""} />
+                {examDraft.type === "selection" ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {(examDraft.alternatives ?? []).slice(0, 5).map((alternative, index) => (
+                      <InputField
+                        disabled={!canManage || saving}
+                        key={alternative.id ?? index}
+                        label={`Alternativa ${["A", "B", "C", "D", "E"][index]}`}
+                        onChange={(text) => setExamDraft({ ...examDraft, alternatives: (examDraft.alternatives ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, id: ["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E", text } : item) })}
+                        value={alternative.text}
+                      />
+                    ))}
+                    <SelectValueField disabled={!canManage || saving} label="Resposta correta" onChange={(correctAlternativeId) => setExamDraft({ ...examDraft, correctAlternativeId: correctAlternativeId as "A" | "B" | "C" | "D" | "E" })} options={[["A", "Alternativa A"], ["B", "Alternativa B"], ["C", "Alternativa C"], ["D", "Alternativa D"], ["E", "Alternativa E"]]} value={examDraft.correctAlternativeId ?? "A"} />
+                  </div>
+                ) : (
+                  <InputField disabled={!canManage || saving} label="Placeholder da resposta" onChange={(placeholder) => setExamDraft({ ...examDraft, placeholder })} value={examDraft.placeholder ?? ""} />
+                )}
+                <Button disabled={!canManage || saving || !examDraft.prompt.trim()} onClick={() => void saveQuestion()} type="button"><Save className="h-4 w-4" />Salvar pergunta</Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {exam.questions.map((question, index) => (
+                <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300" key={question.id}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-white">{index + 1}. {question.prompt}</p>
+                    <Badge variant={question.active ? "success" : "muted"}>{question.type === "selection" ? "Seleção" : "Escrita"}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">Nota: {question.points} • Status: {question.active ? "ativa" : "inativa"}</p>
+                  {question.type === "selection" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((item) => `${item.id}) ${item.text}`).join(" | ")}</p> : <p className="mt-2 text-xs text-zinc-400">{question.placeholder}</p>}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button disabled={!canManage || saving} onClick={() => { setEditingQuestionId(question.id); setExamDraft(toQuestionPayload(question)); }} size="sm" type="button" variant="outline">Editar</Button>
+                    <Button disabled={!canManage || saving} onClick={() => void duplicateQuestion(question)} size="sm" type="button" variant="outline">Duplicar</Button>
+                    <Button disabled={!canManage || saving} onClick={() => void removeQuestion(question)} size="sm" type="button" variant="destructive">Excluir</Button>
+                  </div>
+                </div>
+              ))}
+              {!exam.questions.length ? <p className="rounded-lg border border-dashed border-zinc-800 p-5 text-sm text-zinc-500">Nenhuma pergunta cadastrada para este curso.</p> : null}
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
+              <p className="font-semibold text-white">Resultados recentes</p>
+              <div className="mt-3 grid gap-2">
+                {exam.attempts.slice(0, 8).map((attempt) => (
+                  <div className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300" key={attempt.id}>
+                    <span>Aluno: {attempt.studentId}</span> • <span>Status: {attempt.status}</span> • <span>Nota: {attempt.score}/{attempt.maxScore} ({attempt.percent}%)</span>
+                  </div>
+                ))}
+                {!exam.attempts.length ? <p className="text-sm text-zinc-500">Nenhuma prova realizada ainda.</p> : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-300" /> Monitoramento</CardTitle></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
@@ -293,6 +494,34 @@ function toPayload(course: Course): SaveCoursePayload {
     publishText: course.publishText,
     startedText: course.startedText,
     thumbnailUrl: course.thumbnailUrl
+  };
+}
+
+function toQuestionPayload(question: CourseExamQuestion): SaveCourseExamQuestionPayload {
+  return {
+    active: question.active,
+    alternatives: question.alternatives.length ? question.alternatives : emptyQuestion.alternatives,
+    correctAlternativeId: question.correctAlternativeId,
+    description: question.description,
+    order: question.order,
+    placeholder: question.placeholder,
+    points: question.points,
+    prompt: question.prompt,
+    type: question.type
+  };
+}
+
+function normalizeQuestionDraft(question: SaveCourseExamQuestionPayload, fallbackOrder: number): SaveCourseExamQuestionPayload {
+  const alternatives = (question.alternatives ?? [])
+    .slice(0, 5)
+    .map((item, index) => ({ id: ["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E", text: item.text.trim() }))
+    .filter((item) => item.text);
+  return {
+    ...question,
+    alternatives: question.type === "selection" ? alternatives : [],
+    correctAlternativeId: question.type === "selection" ? question.correctAlternativeId ?? "A" : null,
+    order: question.order ?? fallbackOrder,
+    points: Number(question.points) || 0
   };
 }
 

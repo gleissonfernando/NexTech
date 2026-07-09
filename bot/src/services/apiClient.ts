@@ -171,6 +171,87 @@ export type CourseReport = {
   createdAt: string;
 };
 
+export type CourseExamSettings = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  enabled: boolean;
+  minScore: number;
+  maxTimeMinutes: number | null;
+  correctionChannelId: string | null;
+  logChannelId: string | null;
+  deleteWrittenAnswers: boolean;
+  allowCurrentQuestionReview: boolean;
+  initialMessage: string;
+  finalMessage: string;
+  approvalMessage: string;
+  rejectionMessage: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type CourseExamQuestion = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  order: number;
+  type: "selection" | "written";
+  prompt: string;
+  description: string | null;
+  points: number;
+  alternatives: Array<{ id: "A" | "B" | "C" | "D" | "E"; text: string }>;
+  correctAlternativeId: "A" | "B" | "C" | "D" | "E" | null;
+  placeholder: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type CourseExamAttempt = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  courseId: string;
+  publicationId: string;
+  channelId: string;
+  studentId: string;
+  instructorId: string;
+  status: "in_progress" | "finished" | "approved" | "rejected";
+  startedAt: string;
+  finishedAt: string | null;
+  correctedAt: string | null;
+  correctedBy: string | null;
+  currentQuestionIndex: number;
+  objectiveCorrect: number;
+  objectiveWrong: number;
+  writtenCount: number;
+  score: number;
+  maxScore: number;
+  percent: number;
+  correctionMessageId: string | null;
+  rejectionReason: string | null;
+  updatedAt: string;
+};
+
+export type CourseExamAnswer = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  attemptId: string;
+  courseId: string;
+  questionId: string;
+  questionOrder: number;
+  type: "selection" | "written";
+  selectedAlternativeId: string | null;
+  writtenAnswer: string | null;
+  correct: boolean | null;
+  pointsEarned: number;
+  answeredAt: string;
+};
+
 export type RhAdminSettings = {
   id: string;
   botId: string | null;
@@ -1853,6 +1934,45 @@ export class ApiClient {
   }) {
     const { data } = await this.http.post<{ report: CourseReport }>(`/courses/bot/${guildId}/reports`, input);
     return data.report;
+  }
+
+  async getCourseExamRuntime(guildId: string, courseId: string) {
+    const { data } = await this.http.get<{ questions: CourseExamQuestion[]; settings: CourseExamSettings }>(`/courses/bot/${guildId}/courses/${courseId}/exam`);
+    return data;
+  }
+
+  async createCourseExamAttempt(guildId: string, input: { channelId: string; courseId: string; instructorId: string; publicationId: string; studentId: string }) {
+    const { data } = await this.http.post<{ attempt: CourseExamAttempt }>(`/courses/bot/${guildId}/exam-attempts`, input);
+    return data.attempt;
+  }
+
+  async getCourseExamAttemptByChannel(guildId: string, channelId: string) {
+    const { data } = await this.http.get<{ attempt: CourseExamAttempt | null }>(`/courses/bot/${guildId}/exam-attempts/channel/${channelId}`);
+    return data.attempt;
+  }
+
+  async getCourseExamAttempt(guildId: string, attemptId: string) {
+    const { data } = await this.http.get<{ answers: CourseExamAnswer[]; attempt: CourseExamAttempt }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}`);
+    return data;
+  }
+
+  async saveCourseExamAnswer(guildId: string, attemptId: string, input: { question: CourseExamQuestion; selectedAlternativeId?: string | null; writtenAnswer?: string | null }) {
+    const { data } = await this.http.post<{ answer: CourseExamAnswer }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/answers`, input);
+    return data.answer;
+  }
+
+  async finalizeCourseExamAttempt(guildId: string, attemptId: string) {
+    const { data } = await this.http.post<{ answers: CourseExamAnswer[]; attempt: CourseExamAttempt; questions: CourseExamQuestion[] }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/finalize`, {});
+    return data;
+  }
+
+  async reviewCourseExamAttempt(guildId: string, attemptId: string, input: { actorId: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
+    const { data } = await this.http.post<{ attempt: CourseExamAttempt }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/review`, input);
+    return data.attempt;
+  }
+
+  async setCourseExamCorrectionMessage(guildId: string, attemptId: string, messageId: string) {
+    await this.http.patch(`/courses/bot/${guildId}/exam-attempts/${attemptId}/correction-message`, { messageId });
   }
 
   async getRhAdminSettings(guildId: string) {

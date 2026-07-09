@@ -28,6 +28,23 @@ import {
   updateCoursePublicationMessage,
   updateScheduleRequest
 } from "../services/courseService";
+import {
+  createCourseExamQuestion,
+  createOrResumeCourseExamAttempt,
+  deleteCourseExamQuestion,
+  duplicateCourseExamQuestion,
+  finalizeCourseExamAttempt,
+  getCourseExamAttemptBundle,
+  getCourseExamAttemptByChannel,
+  getCourseExamDashboard,
+  getCourseExamRuntime,
+  reorderCourseExamQuestions,
+  reviewCourseExamAttempt,
+  saveCourseExamAnswer,
+  saveCourseExamSettings,
+  setCourseExamCorrectionMessage,
+  updateCourseExamQuestion
+} from "../services/courseExamService";
 
 export const coursesRouter = Router();
 
@@ -138,6 +155,39 @@ const reportSchema = z.object({
     userId: snowflake
   })).min(1).max(50)
 });
+const examSettingsSchema = z.object({
+  allowCurrentQuestionReview: z.boolean().optional(),
+  approvalMessage: z.string().max(1200).optional(),
+  correctionChannelId: optionalSnowflake,
+  deleteWrittenAnswers: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  finalMessage: z.string().max(1200).optional(),
+  initialMessage: z.string().max(1200).optional(),
+  logChannelId: optionalSnowflake,
+  maxTimeMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+  minScore: z.number().min(0).max(1000).optional(),
+  rejectionMessage: z.string().max(1200).optional()
+});
+const examQuestionSchema = z.object({
+  active: z.boolean().optional(),
+  alternatives: z.array(z.object({ id: z.enum(["A", "B", "C", "D", "E"]).optional(), text: z.string().max(500) })).max(5).optional(),
+  correctAlternativeId: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
+  description: z.string().max(1200).nullable().optional().or(z.literal("")),
+  order: z.number().int().min(0).optional(),
+  placeholder: z.string().max(300).nullable().optional().or(z.literal("")),
+  points: z.number().min(0).max(1000).optional(),
+  prompt: z.string().min(1).max(1200),
+  type: z.enum(["selection", "written"])
+});
+const reorderExamQuestionsSchema = z.object({ questionIds: z.array(z.string().min(1)).max(500) });
+const attemptSchema = z.object({ channelId: snowflake, courseId: z.string().min(1), instructorId: snowflake, publicationId: z.string().min(1), studentId: snowflake });
+const answerSchema = z.object({
+  question: examQuestionSchema.extend({ id: z.string().min(1), botId: z.string().nullable().optional(), guildId: z.string(), courseId: z.string(), createdAt: z.string().optional(), updatedAt: z.string().optional(), updatedBy: z.string().nullable().optional() }),
+  selectedAlternativeId: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
+  writtenAnswer: z.string().max(3000).nullable().optional()
+});
+const reviewSchema = z.object({ actorId: snowflake, rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
+const correctionMessageSchema = z.object({ messageId: snowflake });
 
 coursesRouter.use(requireAuthOrBot);
 
@@ -216,6 +266,78 @@ coursesRouter.delete("/:guildId/courses/:courseId", async (req, res, next) => {
   }
 });
 
+coursesRouter.get("/:guildId/courses/:courseId/exam", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para ver provas." });
+    return res.json(await getCourseExamDashboard(botId, guildId, routeParam(req, "courseId")));
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/:guildId/courses/:courseId/exam/settings", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para configurar provas." });
+    const settings = await saveCourseExamSettings(botId, guildId, routeParam(req, "courseId"), examSettingsSchema.parse(req.body ?? {}), res.locals.dashboardAuth.user.discordId);
+    return res.json({ settings });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/:guildId/courses/:courseId/exam/questions", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para criar perguntas." });
+    const question = await createCourseExamQuestion(botId, guildId, routeParam(req, "courseId"), examQuestionSchema.parse(req.body ?? {}), res.locals.dashboardAuth.user.discordId);
+    return res.status(201).json({ question });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/:guildId/courses/:courseId/exam/questions/:questionId", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para editar perguntas." });
+    const question = await updateCourseExamQuestion(botId, guildId, routeParam(req, "courseId"), routeParam(req, "questionId"), examQuestionSchema.partial({ prompt: true }).parse(req.body ?? {}), res.locals.dashboardAuth.user.discordId);
+    if (!question) return res.status(404).json({ message: "Pergunta nao encontrada." });
+    return res.json({ question });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.delete("/:guildId/courses/:courseId/exam/questions/:questionId", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para excluir perguntas." });
+    const question = await deleteCourseExamQuestion(botId, guildId, routeParam(req, "courseId"), routeParam(req, "questionId"), res.locals.dashboardAuth.user.discordId);
+    if (!question) return res.status(404).json({ message: "Pergunta nao encontrada." });
+    return res.json({ question });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/:guildId/courses/:courseId/exam/questions/:questionId/duplicate", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para duplicar perguntas." });
+    const question = await duplicateCourseExamQuestion(botId, guildId, routeParam(req, "courseId"), routeParam(req, "questionId"), res.locals.dashboardAuth.user.discordId);
+    if (!question) return res.status(404).json({ message: "Pergunta nao encontrada." });
+    return res.status(201).json({ question });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/:guildId/courses/:courseId/exam/questions/reorder", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para reordenar perguntas." });
+    const { questionIds } = reorderExamQuestionsSchema.parse(req.body ?? {});
+    return res.json({ questions: await reorderCourseExamQuestions(botId, guildId, routeParam(req, "courseId"), questionIds, res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { return next(error); }
+});
+
 coursesRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
@@ -224,6 +346,95 @@ coursesRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next) =
   } catch (error) {
     return next(error);
   }
+});
+
+coursesRouter.get("/bot/:guildId/courses/:courseId/exam", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.json(await getCourseExamRuntime(botId, guildId, routeParam(req, "courseId")));
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/exam-attempts", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.status(201).json({ attempt: await createOrResumeCourseExamAttempt(botId, guildId, attemptSchema.parse(req.body ?? {})) });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/bot/:guildId/exam-attempts/channel/:channelId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.json({ attempt: await getCourseExamAttemptByChannel(botId, guildId, snowflake.parse(req.params.channelId)) });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/bot/:guildId/exam-attempts/:attemptId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const bundle = await getCourseExamAttemptBundle(botId, guildId, routeParam(req, "attemptId"));
+    if (!bundle) return res.status(404).json({ message: "Tentativa nao encontrada." });
+    return res.json(bundle);
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/answers", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const parsed = answerSchema.parse(req.body ?? {});
+    const answer = await saveCourseExamAnswer(botId, guildId, routeParam(req, "attemptId"), {
+      ...parsed.question,
+      active: parsed.question.active ?? true,
+      alternatives: (parsed.question.alternatives ?? []).map((item, index) => ({ id: item.id ?? (["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E"), text: item.text })),
+      botId: parsed.question.botId ?? null,
+      correctAlternativeId: parsed.question.correctAlternativeId ?? null,
+      createdAt: parsed.question.createdAt ?? new Date().toISOString(),
+      description: parsed.question.description ?? null,
+      order: parsed.question.order ?? 0,
+      placeholder: parsed.question.placeholder ?? null,
+      points: parsed.question.points ?? 0,
+      updatedAt: parsed.question.updatedAt ?? new Date().toISOString(),
+      updatedBy: parsed.question.updatedBy ?? null
+    }, parsed);
+    if (!answer) return res.status(404).json({ message: "Tentativa nao encontrada." });
+    return res.status(201).json({ answer });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/finalize", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const result = await finalizeCourseExamAttempt(botId, guildId, routeParam(req, "attemptId"));
+    if (!result) return res.status(404).json({ message: "Tentativa nao encontrada." });
+    return res.json(result);
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/review", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const parsed = reviewSchema.parse(req.body ?? {});
+    const attempt = await reviewCourseExamAttempt(botId, guildId, routeParam(req, "attemptId"), parsed.actorId, parsed.status, parsed.rejectionReason);
+    if (!attempt) return res.status(404).json({ message: "Tentativa nao encontrada." });
+    return res.json({ attempt });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/bot/:guildId/exam-attempts/:attemptId/correction-message", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const { messageId } = correctionMessageSchema.parse(req.body ?? {});
+    await setCourseExamCorrectionMessage(botId, guildId, routeParam(req, "attemptId"), messageId);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
 });
 
 coursesRouter.post("/bot/:guildId/settings", requireBot, async (req, res, next) => {
