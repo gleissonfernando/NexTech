@@ -627,14 +627,9 @@ async function finishReport(context: BotContext, guild: Guild, settings: GuildSe
 
 async function closeReportChannel(context: BotContext, guild: Guild, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic, actorId: string, managementMessageId?: string) {
   if (topic.status === "closed") return;
-  const closedAt = new Date().toISOString();
-  await context.api.updateTicketStatus(ticket.id, { closedAt, closedById: actorId, closeReason: "Finalizado", finalResult: "Finalizado", status: "CLOSED" });
-  const nextTopic = { ...topic, status: "closed" as const };
-  await channel.setTopic(makeTopic(nextTopic)).catch(() => null);
   const managementMessage = managementMessageId ? await channel.messages.fetch(managementMessageId).catch(() => null) : null;
-  if (managementMessage) await managementMessage.edit(createManagementPayload(settings, { ...ticket, status: "CLOSED" }, nextTopic, "Finalizando") as never).catch(() => null);
   await channel.send({ allowedMentions: { parse: [] }, content: "Este canal sera finalizado em 10 segundos." }).catch(() => null);
-  await logIabEvent(context, guild, settings, nextTopic, "Finalizado", `Denuncia finalizada e canal agendado para exclusao por <@${actorId}>.`, actorId);
+  await finishReport(context, guild, settings, channel, ticket, topic, "Finalizado", false, actorId, managementMessage ?? undefined);
   await new Promise((resolve) => setTimeout(resolve, 10_000));
   await channel.delete(`Denuncia IAB finalizada por ${actorId}`).catch(() => null);
 }
@@ -730,7 +725,7 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
     fields: [
       `**Numero da denuncia:** ${ticket.id}\n**Orgao responsavel:** ${topic.categoryName}\n**Status:** ${statusLabel}\n**Denunciante:** ${topic.mode === "anonymous" ? "Anonimo" : `<@${topic.openerId}>`}`,
       `**Data de envio:** ${topic.submittedAt ? `<t:${Math.floor(Date.parse(topic.submittedAt) / 1000)}:F>` : "-"}\n**Mensagens enviadas:** ${stats?.messageCount ?? "-"}\n**Anexos enviados:** ${stats?.attachmentCount ?? "-"}`,
-      `**Responsavel atual:** ${ticket.responsibleUserId ? (topic.mode === "anonymous" ? "Equipe responsavel" : `<@${ticket.responsibleUserId}>`) : "Ninguem assumiu ainda"}\n**Denunciante chamado de volta:** ${topic.reporterCalled ? "Sim" : "Nao"}\n**Transcript:** ${topic.status === "archived" ? "Gerado" : "Aguardando arquivamento"}`,
+      `**Responsavel atual:** ${ticket.responsibleUserId ? (topic.mode === "anonymous" ? "Equipe responsavel" : `<@${ticket.responsibleUserId}>`) : "Ninguem assumiu ainda"}\n**Denunciante chamado de volta:** ${topic.reporterCalled ? "Sim" : "Nao"}\n**Transcript:** ${topic.status === "archived" || topic.status === "closed" ? "Gerado" : "Aguardando arquivamento/finalizacao"}`,
       `**Canal de origem:** <#${topic.channelId}>\n**Categoria atual:** ${topic.categoryName}`
     ],
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
