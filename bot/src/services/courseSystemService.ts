@@ -228,10 +228,6 @@ async function startPublishFlow(interaction: ChatInputCommandInteraction | Butto
     await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
     return;
   }
-  if (courses.length === 1) {
-    await interaction.showModal(publicationModal(courses[0]!));
-    return;
-  }
   await interaction.reply(ephemeral(selectCoursePanel("Selecione o curso que deseja publicar.", IDS.publishSelect, courses)));
 }
 
