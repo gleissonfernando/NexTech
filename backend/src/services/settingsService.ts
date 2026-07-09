@@ -53,6 +53,7 @@ export type GuildSettingsDto = {
   siteLogsEnabled: boolean;
   discordLogCategories: LogCategory[];
   siteLogCategories: LogCategory[];
+  globalLogConfig: GlobalLogConfigDto;
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;
@@ -82,6 +83,22 @@ export type GuildSettingsDto = {
   verificationRoleIds: string[];
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
+};
+
+export type GlobalLogConfigDto = {
+  transcriptChannelId: string | null;
+  logViewRoleId: string | null;
+  transcriptViewRoleId: string | null;
+  transcriptRequired: boolean;
+  transcriptWebsiteEnabled: boolean;
+  transcriptTextEnabled: boolean;
+  transcriptExpirationDays: number | null;
+  panelBannerUrl: string | null;
+  panelFooterText: string | null;
+  panelColor: string;
+  moduleEmoji: string | null;
+  moduleName: string | null;
+  showAnonymousAuthorToRoleIds: string[];
 };
 
 export type TicketPanelOptionDto = {
@@ -265,6 +282,21 @@ export const MAX_AUTOMATIC_ROLES = 2;
 const DEFAULT_ACCOUNT_AGE_MIN_DAYS = 10;
 const MAX_ACCOUNT_AGE_MIN_DAYS = 3_650;
 const DEFAULT_LOG_CATEGORIES = [...LOG_CATEGORIES];
+const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
+  transcriptChannelId: null,
+  logViewRoleId: null,
+  transcriptViewRoleId: null,
+  transcriptRequired: true,
+  transcriptWebsiteEnabled: true,
+  transcriptTextEnabled: true,
+  transcriptExpirationDays: 30,
+  panelBannerUrl: null,
+  panelFooterText: "Logs do sistema - acesso restrito",
+  panelColor: "#2563eb",
+  moduleEmoji: "📁",
+  moduleName: null,
+  showAnonymousAuthorToRoleIds: []
+};
 const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 25;
 const MAX_EMOJI_CLONE_MAX_PER_RUN = 100;
 const DEFAULT_RULES_TITLE = "Regras da comunidade";
@@ -363,6 +395,7 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     siteLogsEnabled: true,
     discordLogCategories: [...DEFAULT_LOG_CATEGORIES],
     siteLogCategories: [...DEFAULT_LOG_CATEGORIES],
+    globalLogConfig: { ...DEFAULT_GLOBAL_LOG_CONFIG },
     moderationEnabled: true,
     accountAgeSecurityEnabled: false,
     accountAgeMinDays: DEFAULT_ACCOUNT_AGE_MIN_DAYS,
@@ -457,7 +490,7 @@ export async function getPersistedDashboardAccess(
 
 export async function updateGuildSettings(
   guildId: string,
-  input: Partial<Omit<GuildSettingsDto, "reportSystem"> & { reportSystem?: unknown }>,
+  input: Partial<Omit<GuildSettingsDto, "globalLogConfig" | "reportSystem"> & { globalLogConfig?: unknown; reportSystem?: unknown }>,
   botId?: string | null
 ) {
   const normalizedBotId = normalizeBotId(botId);
@@ -494,6 +527,9 @@ export async function updateGuildSettings(
   const siteLogCategories = "siteLogCategories" in input
     ? normalizeLogCategories(input.siteLogCategories)
     : current.siteLogCategories;
+  const globalLogConfig = "globalLogConfig" in input
+    ? normalizeGlobalLogConfig(input.globalLogConfig, current.globalLogConfig)
+    : current.globalLogConfig;
   const next = normalizeVerificationRoles({
     ...current,
     ...input,
@@ -509,6 +545,7 @@ export async function updateGuildSettings(
     accountAgeAllowedUserIds,
     discordLogCategories,
     siteLogCategories,
+    globalLogConfig,
     safeBotChannelId: normalizeSnowflake(
       "safeBotChannelId" in input ? input.safeBotChannelId : current.safeBotChannelId
     ),
@@ -620,6 +657,7 @@ export async function updateGuildSettings(
           siteLogsEnabled: next.siteLogsEnabled,
           discordLogCategories: next.discordLogCategories,
           siteLogCategories: next.siteLogCategories,
+          globalLogConfig: next.globalLogConfig,
           moderationEnabled: next.moderationEnabled,
           accountAgeSecurityEnabled: next.accountAgeSecurityEnabled,
           accountAgeMinDays: next.accountAgeMinDays,
@@ -791,6 +829,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     siteLogsEnabled: settings.siteLogsEnabled ?? defaults.siteLogsEnabled,
     discordLogCategories: normalizeLogCategories(settings.discordLogCategories),
     siteLogCategories: normalizeLogCategories(settings.siteLogCategories),
+    globalLogConfig: normalizeGlobalLogConfig(settings.globalLogConfig, defaults.globalLogConfig),
     moderationEnabled: settings.moderationEnabled,
     accountAgeSecurityEnabled: settings.accountAgeSecurityEnabled ?? defaults.accountAgeSecurityEnabled,
     accountAgeMinDays: clampInteger(
@@ -984,6 +1023,30 @@ function normalizeLogCategories(values: LogCategory[] | null | undefined) {
 
   const allowed = new Set<string>(LOG_CATEGORIES);
   return [...new Set(values.filter((value): value is LogCategory => allowed.has(value)))];
+}
+
+function normalizeGlobalLogConfig(value: unknown, fallback: GlobalLogConfigDto = DEFAULT_GLOBAL_LOG_CONFIG): GlobalLogConfigDto {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const expirationRaw = Number(record.transcriptExpirationDays ?? fallback.transcriptExpirationDays);
+  const transcriptExpirationDays = Number.isFinite(expirationRaw)
+    ? Math.min(3650, Math.max(1, Math.trunc(expirationRaw)))
+    : null;
+
+  return {
+    transcriptChannelId: normalizeSnowflake(String(record.transcriptChannelId ?? fallback.transcriptChannelId ?? "")),
+    logViewRoleId: normalizeSnowflake(String(record.logViewRoleId ?? fallback.logViewRoleId ?? "")),
+    transcriptViewRoleId: normalizeSnowflake(String(record.transcriptViewRoleId ?? fallback.transcriptViewRoleId ?? "")),
+    transcriptRequired: record.transcriptRequired ?? fallback.transcriptRequired ? true : false,
+    transcriptWebsiteEnabled: record.transcriptWebsiteEnabled ?? fallback.transcriptWebsiteEnabled ? true : false,
+    transcriptTextEnabled: record.transcriptTextEnabled ?? fallback.transcriptTextEnabled ? true : false,
+    transcriptExpirationDays,
+    panelBannerUrl: normalizeUrl(record.panelBannerUrl) ?? fallback.panelBannerUrl,
+    panelFooterText: normalizeNullableText(record.panelFooterText, 180) ?? fallback.panelFooterText,
+    panelColor: normalizePanelColor(String(record.panelColor ?? fallback.panelColor)),
+    moduleEmoji: normalizeNullableText(record.moduleEmoji, 80) ?? fallback.moduleEmoji,
+    moduleName: normalizeNullableText(record.moduleName, 80),
+    showAnonymousAuthorToRoleIds: normalizeSnowflakes(asArray(record.showAnonymousAuthorToRoleIds))
+  };
 }
 
 function normalizeSnowflake(value: string | null | undefined) {

@@ -70,6 +70,21 @@ export type GuildSettings = {
   siteLogsEnabled: boolean;
   discordLogCategories: LogCategory[];
   siteLogCategories: LogCategory[];
+  globalLogConfig: {
+    transcriptChannelId: string | null;
+    logViewRoleId: string | null;
+    transcriptViewRoleId: string | null;
+    transcriptRequired: boolean;
+    transcriptWebsiteEnabled: boolean;
+    transcriptTextEnabled: boolean;
+    transcriptExpirationDays: number | null;
+    panelBannerUrl: string | null;
+    panelFooterText: string | null;
+    panelColor: string;
+    moduleEmoji: string | null;
+    moduleName: string | null;
+    showAnonymousAuthorToRoleIds: string[];
+  };
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;

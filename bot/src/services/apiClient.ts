@@ -6,6 +6,14 @@ export type CreateLogInput = {
   botId?: string | null;
   guildId: string;
   userId?: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  module?: string | null;
+  action?: string | null;
+  caseId?: string | null;
+  status?: string | null;
+  transcriptId?: string | null;
   type: string;
   message: string;
   metadata?: unknown;

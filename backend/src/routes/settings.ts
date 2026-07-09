@@ -146,6 +146,21 @@ const settingsSchema = z.object({
   siteLogsEnabled: z.boolean().optional(),
   discordLogCategories: z.array(z.enum(LOG_CATEGORIES)).optional(),
   siteLogCategories: z.array(z.enum(LOG_CATEGORIES)).optional(),
+  globalLogConfig: z.object({
+    transcriptChannelId: z.string().nullable().optional(),
+    logViewRoleId: z.string().nullable().optional(),
+    transcriptViewRoleId: z.string().nullable().optional(),
+    transcriptRequired: z.boolean().optional(),
+    transcriptWebsiteEnabled: z.boolean().optional(),
+    transcriptTextEnabled: z.boolean().optional(),
+    transcriptExpirationDays: z.coerce.number().int().min(1).max(3650).nullable().optional(),
+    panelBannerUrl: z.string().url().max(2048).nullable().optional(),
+    panelFooterText: z.string().max(180).nullable().optional(),
+    panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    moduleEmoji: z.string().max(80).nullable().optional(),
+    moduleName: z.string().max(80).nullable().optional(),
+    showAnonymousAuthorToRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional()
+  }).optional(),
   moderationEnabled: z.boolean().optional(),
   accountAgeSecurityEnabled: z.boolean().optional(),
   accountAgeMinDays: z.coerce.number().int().min(0).max(3650).optional(),
@@ -950,6 +965,7 @@ async function canPatchSettings(
     siteLogsEnabled: ["logs"],
     discordLogCategories: ["logs"],
     siteLogCategories: ["logs"],
+    globalLogConfig: ["logs"],
     moderationEnabled: ["moderation"],
     accountAgeSecurityEnabled: ["account-age-security"],
     accountAgeMinDays: ["account-age-security"],
@@ -1049,7 +1065,8 @@ async function validateGuildResources(
     input.reportSystem?.iabLogChannelId,
     input.reportSystem?.conselhoLogChannelId,
     input.reportSystem?.hcmdLogChannelId,
-    input.reportSystem?.comissarioLogChannelId
+    input.reportSystem?.comissarioLogChannelId,
+    input.globalLogConfig?.transcriptChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
 
   const textChannelChecks = await Promise.all(
@@ -1066,6 +1083,7 @@ async function validateGuildResources(
     || input.logChannelId !== undefined
     || input.discordLogCategories !== undefined
     || input.siteLogCategories !== undefined
+    || input.globalLogConfig !== undefined
   ) {
     const current = await getGuildSettings(guildId, botId);
     const logChannelId = "logChannelId" in input ? input.logChannelId : current.logChannelId;
@@ -1138,7 +1156,10 @@ async function validateGuildResources(
     ...(input.reportSystem?.conselhoRoleIds ?? []),
     ...(input.reportSystem?.hcmdRoleIds ?? []),
     ...(input.reportSystem?.comissarioRoleIds ?? []),
-    ...(input.reportSystem?.competenceCommandRoleIds ?? [])
+    ...(input.reportSystem?.competenceCommandRoleIds ?? []),
+    input.globalLogConfig?.logViewRoleId,
+    input.globalLogConfig?.transcriptViewRoleId,
+    ...(input.globalLogConfig?.showAnonymousAuthorToRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId));
 
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
@@ -1187,7 +1208,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
   if ([...keys].some((key) => key.startsWith("ticket"))) return "tickets";
-  if ([...keys].some((key) => key.startsWith("log") || key.startsWith("discordLog") || key.startsWith("siteLog"))) return "logs";
+  if ([...keys].some((key) => key.startsWith("log") || key.startsWith("discordLog") || key.startsWith("siteLog") || key === "globalLogConfig")) return "logs";
   if ([...keys].some((key) => key.startsWith("moderation"))) return "moderation";
   if ([...keys].some((key) => key.startsWith("twitch") || key.startsWith("booster"))) return "roles";
 
@@ -1209,6 +1230,7 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
     || input.siteLogsEnabled !== undefined
     || input.discordLogCategories !== undefined
     || input.siteLogCategories !== undefined
+    || input.globalLogConfig !== undefined
   ) {
     return "Sistema de logs atualizado.";
   }

@@ -163,6 +163,7 @@ export type GuildSettings = {
   siteLogsEnabled: boolean;
   discordLogCategories: LogCategory[];
   siteLogCategories: LogCategory[];
+  globalLogConfig: GlobalLogConfig;
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;
   accountAgeMinDays: number;
@@ -192,6 +193,22 @@ export type GuildSettings = {
   verificationRoleIds: string[];
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
+};
+
+export type GlobalLogConfig = {
+  transcriptChannelId: string | null;
+  logViewRoleId: string | null;
+  transcriptViewRoleId: string | null;
+  transcriptRequired: boolean;
+  transcriptWebsiteEnabled: boolean;
+  transcriptTextEnabled: boolean;
+  transcriptExpirationDays: number | null;
+  panelBannerUrl: string | null;
+  panelFooterText: string | null;
+  panelColor: string;
+  moduleEmoji: string | null;
+  moduleName: string | null;
+  showAnonymousAuthorToRoleIds: string[];
 };
 
 export type TicketPanelOption = {
@@ -745,6 +762,14 @@ export type LogEntry = {
   botId: string | null;
   guildId: string;
   userId?: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  module?: string | null;
+  action?: string | null;
+  caseId?: string | null;
+  status?: string | null;
+  transcriptId?: string | null;
   type: string;
   message: string;
   metadata?: unknown;

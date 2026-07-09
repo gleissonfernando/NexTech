@@ -2,6 +2,27 @@ import type { GuildMember, Message, PartialGuildMember, PartialMessage, Readonly
 import { currentRuntimeBotId } from "../config/env";
 import type { BotContext } from "../types";
 
+export type CreateSystemLogInput = {
+  guildId: string;
+  module: string;
+  action: string;
+  caseId?: string | null;
+  userId?: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  status?: string | null;
+  message?: string;
+  metadata?: unknown;
+  transcript?: {
+    id?: string | null;
+    enabled?: boolean;
+    generateWebsite?: boolean;
+    generateText?: boolean;
+    passwordProtected?: boolean;
+  };
+};
+
 export async function logMemberJoin(context: BotContext, member: GuildMember) {
   await sendLog(context, {
     guildId: member.guild.id,
@@ -91,7 +112,36 @@ export async function logModeration(context: BotContext, guildId: string, user: 
   });
 }
 
-async function sendLog(context: BotContext, payload: { guildId: string; type: string; message: string; userId?: string | null; metadata?: unknown }) {
+export async function createSystemLog(context: BotContext, input: CreateSystemLogInput) {
+  const type = `${slug(input.module)}.${slug(input.action)}`;
+  await sendLog(context, {
+    action: input.action,
+    caseId: input.caseId ?? null,
+    channelId: input.channelId ?? null,
+    executorId: input.executorId ?? null,
+    guildId: input.guildId,
+    logChannelId: input.logChannelId ?? null,
+    module: input.module,
+    status: input.status ?? "info",
+    transcriptId: input.transcript?.id ?? null,
+    userId: input.userId ?? null,
+    type,
+    message: input.message ?? `Log ${input.module}/${input.action}${input.caseId ? ` caso ${input.caseId}` : ""} registrado.`,
+    metadata: {
+      module: input.module,
+      action: input.action,
+      caseId: input.caseId ?? null,
+      executorId: input.executorId ?? null,
+      channelId: input.channelId ?? null,
+      logChannelId: input.logChannelId ?? null,
+      status: input.status ?? "info",
+      transcript: input.transcript ?? null,
+      details: input.metadata ?? null
+    }
+  });
+}
+
+async function sendLog(context: BotContext, payload: { action?: string | null; caseId?: string | null; channelId?: string | null; executorId?: string | null; guildId: string; logChannelId?: string | null; module?: string | null; status?: string | null; transcriptId?: string | null; type: string; message: string; userId?: string | null; metadata?: unknown }) {
   const scopedPayload = {
     ...payload,
     botId: currentRuntimeBotId()
@@ -108,6 +158,10 @@ async function sendLog(context: BotContext, payload: { guildId: string; type: st
 
     context.socket.emitLog(scopedPayload);
   }
+}
+
+function slug(value: string) {
+  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "system";
 }
 
 function isAuthorizationFailure(error: unknown) {

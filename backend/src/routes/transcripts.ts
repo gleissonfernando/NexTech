@@ -1,12 +1,19 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { z } from "zod";
 import { isBotRequest, requireAuthOrBot } from "../middleware/auth";
+import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
+import { canUseDevBotModule } from "../services/devBotService";
+import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
   createNewTemporaryPassword,
   createTranscript,
+  getTranscriptForExport,
   getTranscriptPublicMeta,
   renderTranscriptHtml,
+  renderTranscriptText,
   revokeTranscriptTemporaryPasswords,
+  softDeleteTranscript,
   validateTranscriptPassword
 } from "../services/transcriptService";
 
@@ -24,8 +31,11 @@ const createTranscriptSchema = z.object({
   responsibleUserId: z.string().optional().nullable(),
   closedById: z.string().optional().nullable(),
   closeReason: z.string().optional().nullable(),
+  openReason: z.string().optional().nullable(),
   finalResult: z.string().optional().nullable(),
   internalNotes: z.string().optional().nullable(),
+  rolesInvolved: z.array(z.string()).optional(),
+  metadata: z.record(z.unknown()).optional(),
   status: z.enum(["Finalizado", "Incompleto"]).optional(),
   isPartial: z.boolean().optional(),
   partialReason: z.string().optional().nullable(),
@@ -51,7 +61,9 @@ const createTranscriptSchema = z.object({
     embeds: z.array(z.unknown()).optional().default([]),
     createdAt: z.string(),
     editedAt: z.string().optional().nullable(),
-    system: z.boolean().optional()
+    system: z.boolean().optional(),
+    anonymous: z.boolean().optional(),
+    botRelayed: z.boolean().optional()
   })).optional(),
   events: z.array(z.object({
     authorId: z.string().optional().nullable(),
@@ -100,6 +112,38 @@ publicTranscriptsRouter.post("/:id", async (req, res, next) => {
   }
 });
 
+publicTranscriptsRouter.get("/:id/export.:format", async (req, res, next) => {
+  try {
+    if (req.query.token !== "session") {
+      return res.status(401).send("Senha obrigatoria.");
+    }
+
+    const transcript = await getTranscriptForExport(req.params.id);
+    if (!transcript) return res.status(404).send("Transcript nao encontrado.");
+
+    const format = req.params.format;
+    const fileBase = `transcript-${transcript._id}`;
+
+    if (format === "txt") {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.txt"`);
+      return res.send(transcript.textContent || renderTranscriptText(transcript));
+    }
+
+    if (format === "pdf") {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.html"`);
+      return res.send(renderTranscriptHtml(transcript, "Protegido"));
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.html"`);
+    return res.send(renderTranscriptHtml(transcript, "Protegido"));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 transcriptsRouter.use(requireAuthOrBot);
 
 transcriptsRouter.post("/bot", async (req, res, next) => {
@@ -129,6 +173,20 @@ transcriptsRouter.post("/bot/:id/passwords", async (req, res, next) => {
   }
 });
 
+transcriptsRouter.post("/:id/passwords", async (req, res, next) => {
+  try {
+    if (!(await canManageTranscript(req))) {
+      return res.status(403).json({ message: "Sem permissao para alterar este transcript." });
+    }
+    const ttlHours = Number(req.body?.ttlHours ?? 72);
+    const result = await createNewTemporaryPassword(req.params.id, ttlHours);
+    if (!result) return res.status(404).json({ message: "Transcript nao encontrado." });
+    return res.status(201).json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 transcriptsRouter.post("/bot/:id/passwords/revoke", async (req, res, next) => {
   try {
     if (!isBotRequest(req)) {
@@ -141,12 +199,64 @@ transcriptsRouter.post("/bot/:id/passwords/revoke", async (req, res, next) => {
   }
 });
 
+transcriptsRouter.post("/:id/passwords/revoke", async (req, res, next) => {
+  try {
+    if (!(await canManageTranscript(req))) {
+      return res.status(403).json({ message: "Sem permissao para alterar este transcript." });
+    }
+    await revokeTranscriptTemporaryPasswords(req.params.id);
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+transcriptsRouter.delete("/bot/:id", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) {
+      return res.status(403).json({ message: "Rota disponivel apenas para o bot." });
+    }
+    const transcript = await softDeleteTranscript(req.params.id);
+    if (!transcript) return res.status(404).json({ message: "Transcript nao encontrado." });
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+transcriptsRouter.delete("/:id", async (req, res, next) => {
+  try {
+    if (!(await canManageTranscript(req))) {
+      return res.status(403).json({ message: "Sem permissao para excluir este transcript." });
+    }
+    const transcript = await softDeleteTranscript(req.params.id);
+    if (!transcript) return res.status(404).json({ message: "Transcript nao encontrado." });
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+async function canManageTranscript(req: Request) {
+  if (isBotRequest(req)) return true;
+  const transcriptId = req.params.id;
+  if (!transcriptId) return false;
+  const transcript = await getTranscriptForExport(transcriptId);
+  const user = req.res?.locals.dashboardAuth.user;
+  if (!transcript || !user) return false;
+  const botId = await resolveRequestBotId(req);
+  return botId
+    ? canUseDevBotModule(user, botId, transcript.guildId, "logs")
+    : canManageDashboardGuild(user, transcript.guildId);
+}
+
 function renderLoginPage(meta: Awaited<ReturnType<typeof getTranscriptPublicMeta>>, message?: string) {
   const statusMessage = message ? `<p class="error">${escapeHtml(message)}</p>` : "";
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
+  <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Acesso ao Transcript</title>
   <style>

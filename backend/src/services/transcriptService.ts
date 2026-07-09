@@ -25,6 +25,9 @@ export type TranscriptInput = {
   closeReason?: string | null;
   finalResult?: string | null;
   internalNotes?: string | null;
+  openReason?: string | null;
+  rolesInvolved?: string[];
+  metadata?: Record<string, unknown>;
   status?: MongoTranscript["status"];
   isPartial?: boolean;
   partialReason?: string | null;
@@ -73,7 +76,10 @@ export async function createTranscript(input: TranscriptInput) {
     categoryName: input.categoryName ?? null,
     htmlPath: `/transcripts/${encodeURIComponent(transcriptId)}`,
     pdfPath: null,
+    txtPath: `/transcripts/${encodeURIComponent(transcriptId)}/export.txt`,
     htmlContent: "",
+    textContent: "",
+    websiteUrl: null,
     status: input.status ?? (input.isPartial ? "Incompleto" : "Finalizado"),
     createdAt: toDate(input.createdAt) ?? now,
     closedAt: toDate(input.closedAt) ?? now,
@@ -85,8 +91,11 @@ export async function createTranscript(input: TranscriptInput) {
     responsibleUserId: input.responsibleUserId ?? null,
     closedById: input.closedById ?? null,
     closeReason: input.closeReason ?? null,
+    openReason: input.openReason ?? null,
     finalResult: input.finalResult ?? null,
     internalNotes: input.internalNotes ?? null,
+    rolesInvolved: input.rolesInvolved ?? [],
+    metadata: input.metadata ?? {},
     participants: input.participants ?? [],
     messages: normalizedMessages,
     attachments,
@@ -100,6 +109,7 @@ export async function createTranscript(input: TranscriptInput) {
   };
 
   transcript.htmlContent = renderTranscriptHtml(transcript, "Protegido");
+  transcript.textContent = renderTranscriptText(transcript);
   await collections.transcripts.insertOne(transcript);
 
   if (temporaryPassword) {
@@ -133,6 +143,22 @@ export async function createTranscript(input: TranscriptInput) {
 
   emitRealtime("transcripts:new", publicTranscriptSummary(transcript));
   return { transcript: publicTranscriptSummary(transcript), temporaryPassword, temporaryPasswordExpiresAt: expiresAt?.toISOString() ?? null };
+}
+
+export async function getTranscriptForExport(transcriptId: string) {
+  const { transcripts } = await getMongoCollections();
+  return transcripts.findOne({ _id: transcriptId, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+}
+
+export async function softDeleteTranscript(transcriptId: string) {
+  const { transcripts, transcriptPasswords } = await getMongoCollections();
+  await transcriptPasswords.updateMany({ transcriptId, revokedAt: null }, { $set: { revokedAt: new Date() } });
+  const result = await transcripts.findOneAndUpdate(
+    { _id: transcriptId },
+    { $set: { deletedAt: new Date(), status: "Incompleto" } },
+    { returnDocument: "after" }
+  );
+  return result;
 }
 
 export async function getTranscriptPublicMeta(transcriptId: string) {
@@ -234,6 +260,7 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
+  <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Transcript ${escapeHtml(transcript._id)}</title>
   <style>
@@ -263,6 +290,7 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
       <div class="box">Responsável: ${escapeHtml(formatUser(transcript.responsibleUserId))}</div>
       <div class="box">Criado em: ${formatDate(transcript.createdAt)}</div>
       <div class="box">Finalizado em: ${transcript.closedAt ? formatDate(transcript.closedAt) : "-"}</div>
+      <div class="box">Motivo de abertura: ${escapeHtml(transcript.openReason ?? "-")}</div>
       <div class="box">Motivo: ${escapeHtml(transcript.closeReason ?? "-")}</div>
       <div class="box">Senha usada: ${passwordType}</div>
       <div class="box">Validade temporária: ${temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : "-"}</div>
@@ -276,11 +304,35 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
     <button onclick="navigator.clipboard.writeText('${escapeAttribute(transcript._id)}')">Copiar ID</button>
     <button onclick="navigator.clipboard.writeText(location.href)">Copiar link</button>
     <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.html?token=session" download>Exportar HTML</a>
+    <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.txt?token=session" download>Exportar TXT</a>
+    <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.pdf?token=session" download>Exportar PDF</a>
     <a href="/dashboard">Voltar para painel de logs</a>
   </section>
 </main>
 </body>
 </html>`;
+}
+
+export function renderTranscriptText(transcript: MongoTranscript) {
+  const header = [
+    "LOG DO SISTEMA",
+    `Modulo: ${transcript.type}`,
+    `Caso: ${transcript.ticketId ?? transcript._id}`,
+    `Status: ${transcript.status}`,
+    `Aberto por: ${formatUser(transcript.openedById)}`,
+    `Responsavel: ${formatUser(transcript.responsibleUserId)}`,
+    `Aberto em: ${formatDate(transcript.createdAt)}`,
+    `Finalizado em: ${transcript.closedAt ? formatDate(transcript.closedAt) : "-"}`,
+    `Mensagens registradas: ${transcript.messages.length}`,
+    `Anexos registrados: ${transcript.attachments.length}`,
+    ""
+  ];
+  const messages = transcript.messages.map((message) => {
+    const flags = [message.system ? "sistema" : null, message.anonymous ? "anonimo" : null, message.botRelayed ? "bot" : null].filter(Boolean).join(", ");
+    return `[${formatDate(message.createdAt)}] ${message.authorName}${flags ? ` (${flags})` : ""}: ${message.content || "(sem texto)"}`;
+  });
+  const events = transcript.events.map((event) => `[${formatDate(event.createdAt)}] ${event.eventType}: ${event.content}`);
+  return [...header, "MENSAGENS", ...messages, "", "ACOES DO SISTEMA", ...events].join("\n");
 }
 
 function publicTranscriptSummary(transcript: MongoTranscript) {

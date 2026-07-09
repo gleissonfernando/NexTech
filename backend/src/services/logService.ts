@@ -12,6 +12,14 @@ export type LogEntryDto = {
   botId: string | null;
   guildId: string;
   userId?: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  module?: string | null;
+  action?: string | null;
+  caseId?: string | null;
+  status?: string | null;
+  transcriptId?: string | null;
   type: string;
   message: string;
   metadata?: unknown;
@@ -22,9 +30,31 @@ export type CreateLogInput = {
   botId?: string | null;
   guildId: string;
   userId?: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  module?: string | null;
+  action?: string | null;
+  caseId?: string | null;
+  status?: string | null;
+  transcriptId?: string | null;
   type: string;
   message: string;
   metadata?: unknown;
+};
+
+export type CreateSystemLogInput = Omit<CreateLogInput, "type" | "message"> & {
+  module: string;
+  action: string;
+  message?: string;
+  type?: string;
+  transcript?: {
+    id?: string | null;
+    enabled?: boolean;
+    generateWebsite?: boolean;
+    generateText?: boolean;
+    passwordProtected?: boolean;
+  };
 };
 
 const memoryLogs: LogEntryDto[] = [];
@@ -35,6 +65,14 @@ export async function createLog(input: CreateLogInput) {
     botId: normalizeBotId(input.botId),
     guildId: input.guildId,
     userId: input.userId,
+    executorId: input.executorId ?? null,
+    channelId: input.channelId ?? null,
+    logChannelId: input.logChannelId ?? null,
+    module: input.module ?? moduleNameFromType(input.type),
+    action: input.action ?? actionNameFromType(input.type),
+    caseId: input.caseId ?? null,
+    status: input.status ?? statusFromType(input.type),
+    transcriptId: input.transcriptId ?? null,
     type: input.type,
     message: input.message,
     metadata: input.metadata,
@@ -52,6 +90,14 @@ export async function createLog(input: CreateLogInput) {
       botId: normalizeBotId(input.botId),
       guildId: input.guildId,
       userId: input.userId ?? null,
+      executorId: input.executorId ?? null,
+      channelId: input.channelId ?? null,
+      logChannelId: input.logChannelId ?? null,
+      module: input.module ?? moduleNameFromType(input.type),
+      action: input.action ?? actionNameFromType(input.type),
+      caseId: input.caseId ?? null,
+      status: input.status ?? statusFromType(input.type),
+      transcriptId: input.transcriptId ?? null,
       type: input.type,
       message: input.message,
       createdAt: new Date()
@@ -68,6 +114,14 @@ export async function createLog(input: CreateLogInput) {
       id: doc._id,
       botId: normalizeBotId(doc.botId),
       userId: doc.userId,
+      executorId: doc.executorId ?? null,
+      channelId: doc.channelId ?? null,
+      logChannelId: doc.logChannelId ?? null,
+      module: doc.module ?? null,
+      action: doc.action ?? null,
+      caseId: doc.caseId ?? null,
+      status: doc.status ?? null,
+      transcriptId: doc.transcriptId ?? null,
       createdAt: doc.createdAt.toISOString()
     };
 
@@ -98,6 +152,14 @@ export async function listLogs(guildId?: string, botId?: string | null) {
       botId: normalizeBotId(log.botId),
       guildId: log.guildId,
       userId: log.userId,
+      executorId: log.executorId ?? null,
+      channelId: log.channelId ?? null,
+      logChannelId: log.logChannelId ?? null,
+      module: log.module ?? null,
+      action: log.action ?? null,
+      caseId: log.caseId ?? null,
+      status: log.status ?? null,
+      transcriptId: log.transcriptId ?? null,
       type: log.type,
       message: log.message,
       metadata: log.metadata,
@@ -112,6 +174,27 @@ export async function listLogs(guildId?: string, botId?: string | null) {
 
     return filterSiteLogs(entries, guildId, normalizedBotId);
   }
+}
+
+export async function createSystemLog(input: CreateSystemLogInput) {
+  const type = input.type ?? `${slug(input.module)}.${slug(input.action)}`;
+  const status = input.status ?? "info";
+  const message = input.message ?? formatSystemLogMessage(input.module, input.action, status, input.caseId);
+  const transcriptId = input.transcriptId ?? input.transcript?.id ?? null;
+
+  return createLog({
+    ...input,
+    action: input.action,
+    metadata: {
+      ...(isRecord(input.metadata) ? input.metadata : { value: input.metadata }),
+      transcript: input.transcript ?? null
+    },
+    message,
+    module: input.module,
+    status,
+    transcriptId,
+    type
+  });
 }
 
 export function logCategoryForType(type: string): LogCategory {
@@ -183,4 +266,33 @@ function scopedQuery(guildId: string | undefined, botId: string | null) {
       };
 
   return guildId ? { guildId, ...botScope } : botScope;
+}
+
+function moduleNameFromType(type: string) {
+  return type.split(".").at(0) || "system";
+}
+
+function actionNameFromType(type: string) {
+  return type.split(".").slice(1).join(".") || type;
+}
+
+function statusFromType(type: string) {
+  const normalized = type.toLowerCase();
+  if (normalized.includes("error") || normalized.includes("failed") || normalized.includes("falha")) return "error";
+  if (normalized.includes("denied") || normalized.includes("rejected")) return "denied";
+  if (normalized.includes("warning") || normalized.includes("warn")) return "warning";
+  if (normalized.includes("success") || normalized.includes("completed")) return "success";
+  return "info";
+}
+
+function formatSystemLogMessage(moduleName: string, action: string, status: string, caseId?: string | null) {
+  return `Log ${moduleName}/${action}${caseId ? ` caso ${caseId}` : ""} registrado com status ${status}.`;
+}
+
+function slug(value: string) {
+  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "system";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

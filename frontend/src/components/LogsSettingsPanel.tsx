@@ -4,9 +4,12 @@ import {
   CheckSquare2,
   Gauge,
   Hash,
+  Image,
+  KeyRound,
   LayoutDashboard,
   Loader2,
   MessageSquareText,
+  Palette,
   Save,
   Shield,
   UserRound,
@@ -42,6 +45,7 @@ type Draft = Pick<
   | "logChannelId"
   | "discordLogCategories"
   | "siteLogCategories"
+  | "globalLogConfig"
 >;
 
 const LOG_CATEGORIES: Array<{
@@ -62,7 +66,22 @@ const DEFAULT_DRAFT: Draft = {
   siteLogsEnabled: true,
   logChannelId: null,
   discordLogCategories: LOG_CATEGORIES.map((category) => category.id),
-  siteLogCategories: LOG_CATEGORIES.map((category) => category.id)
+  siteLogCategories: LOG_CATEGORIES.map((category) => category.id),
+  globalLogConfig: {
+    transcriptChannelId: null,
+    logViewRoleId: null,
+    transcriptViewRoleId: null,
+    transcriptRequired: true,
+    transcriptWebsiteEnabled: true,
+    transcriptTextEnabled: true,
+    transcriptExpirationDays: 30,
+    panelBannerUrl: null,
+    panelFooterText: "Logs do sistema - acesso restrito",
+    panelColor: "#2563eb",
+    moduleEmoji: "📁",
+    moduleName: null,
+    showAnonymousAuthorToRoleIds: []
+  }
 };
 
 const AUTOMATED_CHANNEL_LABELS: Record<keyof AutomatedLogSettings["enabledChannels"], string> = {
@@ -97,7 +116,8 @@ export function LogsSettingsPanel({
       siteLogsEnabled: settings.siteLogsEnabled,
       logChannelId: settings.logChannelId,
       discordLogCategories: settings.discordLogCategories,
-      siteLogCategories: settings.siteLogCategories
+      siteLogCategories: settings.siteLogCategories,
+      globalLogConfig: settings.globalLogConfig
     } : DEFAULT_DRAFT);
   }, [settings]);
 
@@ -149,6 +169,13 @@ export function LogsSettingsPanel({
       : [...current, category];
 
     updateDraft(key, next);
+  }
+
+  function updateGlobalLogConfig<K extends keyof GuildSettings["globalLogConfig"]>(key: K, value: GuildSettings["globalLogConfig"][K]) {
+    updateDraft("globalLogConfig", {
+      ...draft.globalLogConfig,
+      [key]: value
+    });
   }
 
   async function save() {
@@ -263,6 +290,49 @@ export function LogsSettingsPanel({
           title="Logs no site"
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuração de Logs</CardTitle>
+          <CardDescription>Modelo global usado por módulos atuais e futuros para logs e transcripts protegidos.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          <label className="grid gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium text-zinc-200"><Hash className="h-4 w-4 text-zinc-400" />Canal de transcripts</span>
+            <select className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60" disabled={disabled} value={draft.globalLogConfig.transcriptChannelId ?? ""} onChange={(event) => updateGlobalLogConfig("transcriptChannelId", event.target.value || null)}>
+              <option value="">Usar canal de logs</option>
+              {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium text-zinc-200"><Shield className="h-4 w-4 text-zinc-400" />Cargo que visualiza logs</span>
+            <select className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60" disabled={disabled} value={draft.globalLogConfig.logViewRoleId ?? ""} onChange={(event) => updateGlobalLogConfig("logViewRoleId", event.target.value || null)}>
+              <option value="">Sem cargo específico</option>
+              {roles.map((role) => <option key={role.id} value={role.id}>@{role.name}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium text-zinc-200"><KeyRound className="h-4 w-4 text-zinc-400" />Cargo que abre transcripts</span>
+            <select className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60" disabled={disabled} value={draft.globalLogConfig.transcriptViewRoleId ?? ""} onChange={(event) => updateGlobalLogConfig("transcriptViewRoleId", event.target.value || null)}>
+              <option value="">Sem cargo específico</option>
+              {roles.map((role) => <option key={role.id} value={role.id}>@{role.name}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium text-zinc-200"><Palette className="h-4 w-4 text-zinc-400" />Cor do painel</span>
+            <input className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60" disabled={disabled} type="color" value={draft.globalLogConfig.panelColor} onChange={(event) => updateGlobalLogConfig("panelColor", event.target.value)} />
+          </label>
+          <label className="grid gap-2 text-sm lg:col-span-2">
+            <span className="flex items-center gap-2 font-medium text-zinc-200"><Image className="h-4 w-4 text-zinc-400" />Banner do painel de log</span>
+            <input className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60" disabled={disabled} placeholder="https://..." value={draft.globalLogConfig.panelBannerUrl ?? ""} onChange={(event) => updateGlobalLogConfig("panelBannerUrl", event.target.value || null)} />
+          </label>
+          <div className="grid gap-2 rounded-lg border border-zinc-800 p-3 sm:grid-cols-3 lg:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-zinc-300"><input checked={draft.globalLogConfig.transcriptRequired} disabled={disabled} type="checkbox" onChange={(event) => updateGlobalLogConfig("transcriptRequired", event.target.checked)} />Transcript obrigatório</label>
+            <label className="flex items-center gap-2 text-sm text-zinc-300"><input checked={draft.globalLogConfig.transcriptWebsiteEnabled} disabled={disabled} type="checkbox" onChange={(event) => updateGlobalLogConfig("transcriptWebsiteEnabled", event.target.checked)} />Transcript em site</label>
+            <label className="flex items-center gap-2 text-sm text-zinc-300"><input checked={draft.globalLogConfig.transcriptTextEnabled} disabled={disabled} type="checkbox" onChange={(event) => updateGlobalLogConfig("transcriptTextEnabled", event.target.checked)} />Resumo no painel</label>
+          </div>
+        </CardContent>
+      </Card>
 
       {automated && botId ? (
         <Card>

@@ -16,6 +16,14 @@ import { resolveRequestBotId } from "../services/requestBotScopeService";
 const logSchema = z.object({
   guildId: z.string().min(1),
   userId: z.string().optional().nullable(),
+  executorId: z.string().optional().nullable(),
+  channelId: z.string().optional().nullable(),
+  logChannelId: z.string().optional().nullable(),
+  module: z.string().max(100).optional().nullable(),
+  action: z.string().max(140).optional().nullable(),
+  caseId: z.string().max(120).optional().nullable(),
+  status: z.string().max(60).optional().nullable(),
+  transcriptId: z.string().max(120).optional().nullable(),
   type: z.string().min(1),
   message: z.string().min(1),
   metadata: z.unknown().optional()
@@ -30,7 +38,7 @@ logsRouter.get("/", async (req, res) => {
   const botId = await resolveRequestBotId(req);
 
   if (isBotRequest(req)) {
-    const logs = await listLogs(guildId, botId);
+    const logs = filterLogs(await listLogs(guildId, botId), req.query);
     return res.json({
       logs
     });
@@ -44,13 +52,45 @@ logsRouter.get("/", async (req, res) => {
     });
   }
 
-  const logs = await listLogs(guildId, botId);
+  const logs = filterLogs(await listLogs(guildId, botId), req.query);
   const allowedGuildIds = getAccessibleGuildIds(user);
 
   return res.json({
     logs: guildId ? logs : logs.filter((log) => allowedGuildIds.has(log.guildId))
   });
 });
+
+function filterLogs(logs: Awaited<ReturnType<typeof listLogs>>, query: Request["query"]) {
+  const moduleFilter = textQuery(query.module);
+  const userFilter = textQuery(query.userId);
+  const actionFilter = textQuery(query.action);
+  const statusFilter = textQuery(query.status);
+  const caseFilter = textQuery(query.caseId);
+  const from = dateQuery(query.dateFrom);
+  const to = dateQuery(query.dateTo);
+
+  return logs.filter((log) => {
+    const createdAt = new Date(log.createdAt).getTime();
+    if (moduleFilter && log.module !== moduleFilter && !log.type.startsWith(`${moduleFilter}.`)) return false;
+    if (userFilter && log.userId !== userFilter && log.executorId !== userFilter) return false;
+    if (actionFilter && log.action !== actionFilter && !log.type.includes(actionFilter)) return false;
+    if (statusFilter && log.status !== statusFilter) return false;
+    if (caseFilter && log.caseId !== caseFilter && !String(log.metadata ?? "").includes(caseFilter)) return false;
+    if (from && createdAt < from.getTime()) return false;
+    if (to && createdAt > to.getTime()) return false;
+    return true;
+  });
+}
+
+function textQuery(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function dateQuery(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 logsRouter.post("/", async (req, res, next) => {
   try {

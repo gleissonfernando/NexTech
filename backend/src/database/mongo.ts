@@ -83,6 +83,21 @@ export type MongoGuildSettings = {
   siteLogsEnabled?: boolean;
   discordLogCategories?: Array<"members" | "messages" | "roles" | "moderation" | "dashboard" | "automation">;
   siteLogCategories?: Array<"members" | "messages" | "roles" | "moderation" | "dashboard" | "automation">;
+  globalLogConfig?: {
+    transcriptChannelId: string | null;
+    logViewRoleId: string | null;
+    transcriptViewRoleId: string | null;
+    transcriptRequired: boolean;
+    transcriptWebsiteEnabled: boolean;
+    transcriptTextEnabled: boolean;
+    transcriptExpirationDays: number | null;
+    panelBannerUrl: string | null;
+    panelFooterText: string | null;
+    panelColor: string;
+    moduleEmoji: string | null;
+    moduleName: string | null;
+    showAnonymousAuthorToRoleIds: string[];
+  };
   moderationEnabled: boolean;
   accountAgeSecurityEnabled?: boolean;
   accountAgeMinDays?: number;
@@ -160,6 +175,8 @@ export type MongoTranscriptMessage = {
   createdAt: Date;
   editedAt?: Date | null;
   system?: boolean;
+  anonymous?: boolean;
+  botRelayed?: boolean;
 };
 
 export type MongoTranscript = {
@@ -175,7 +192,10 @@ export type MongoTranscript = {
   categoryName: string | null;
   htmlPath: string;
   pdfPath: string | null;
+  txtPath?: string | null;
   htmlContent: string;
+  textContent?: string;
+  websiteUrl?: string | null;
   status: "Finalizado" | "Incompleto";
   createdAt: Date;
   closedAt: Date | null;
@@ -187,12 +207,16 @@ export type MongoTranscript = {
   responsibleUserId: string | null;
   closedById: string | null;
   closeReason: string | null;
+  openReason?: string | null;
   finalResult: string | null;
   internalNotes: string | null;
+  rolesInvolved?: string[];
+  metadata?: Record<string, unknown>;
   participants: Array<{ id: string | null; name: string; role: string | null }>;
   messages: MongoTranscriptMessage[];
   attachments: Array<{ contentType: string | null; id: string; name: string; size: number; url: string }>;
   events: Array<{ authorId: string | null; content: string; eventType: string; metadata?: Record<string, unknown>; createdAt: Date }>;
+  deletedAt?: Date | null;
 };
 
 export type MongoTranscriptPassword = {
@@ -1075,6 +1099,14 @@ export type MongoLogEntry = {
   botId?: string | null;
   guildId: string;
   userId: string | null;
+  executorId?: string | null;
+  channelId?: string | null;
+  logChannelId?: string | null;
+  module?: string | null;
+  action?: string | null;
+  caseId?: string | null;
+  status?: "success" | "warning" | "error" | "denied" | "info" | string;
+  transcriptId?: string | null;
   type: string;
   message: string;
   metadata?: unknown;
@@ -3275,6 +3307,13 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoServiceHeartbeat>("service_heartbeats").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection<MongoServiceHeartbeat>("service_heartbeats").createIndex({ service: 1, updatedAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
+    db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, module: 1, action: 1, createdAt: -1 }),
+    db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, caseId: 1, createdAt: -1 }),
+    db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, ticketId: 1 }),
+    db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, type: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoTranscriptPassword>("transcript_passwords").createIndex({ transcriptId: 1, type: 1, createdAt: -1 }),
+    db.collection<MongoTranscriptAccessLog>("transcript_access_logs").createIndex({ transcriptId: 1, createdAt: -1 }),
     db.collection<MongoPanelImageSettings>("panel_image_settings").createIndex(
       { botId: 1, guildId: 1, panelId: 1 },
       { unique: true }
