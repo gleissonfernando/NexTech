@@ -198,6 +198,8 @@ const examSettingsSchema = z.object({
   finalMessage: z.string().max(1200).optional(),
   initialMessage: z.string().max(1200).optional(),
   logChannelId: optionalSnowflake,
+  resultChannelId: optionalSnowflake,
+  temporaryCategoryId: optionalSnowflake,
   maxTimeMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   minScore: z.number().min(0).max(1000).optional(),
   rejectionMessage: z.string().max(1200).optional()
@@ -225,7 +227,7 @@ const answerSchema = z.object({
   selectedAlternativeId: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
   writtenAnswer: z.string().max(3000).nullable().optional()
 });
-const reviewSchema = z.object({ actorId: snowflake, rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
+const reviewSchema = z.object({ actorId: snowflake, manualScore: z.number().min(0).max(1000).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
 const correctionMessageSchema = z.object({ messageId: snowflake });
 
 coursesRouter.use(requireAuthOrBot);
@@ -462,7 +464,7 @@ coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/review", requireBot, 
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const parsed = reviewSchema.parse(req.body ?? {});
-    const attempt = await reviewCourseExamAttempt(botId, guildId, routeParam(req, "attemptId"), parsed.actorId, parsed.status, parsed.rejectionReason);
+    const attempt = await reviewCourseExamAttempt(botId, guildId, routeParam(req, "attemptId"), parsed.actorId, parsed.status, parsed.rejectionReason, parsed.manualScore);
     if (!attempt) return res.status(404).json({ message: "Tentativa nao encontrada." });
     return res.json({ attempt });
   } catch (error) { return next(error); }

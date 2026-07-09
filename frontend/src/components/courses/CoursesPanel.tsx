@@ -122,7 +122,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
   const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? [];
-  const categories = (liveOptions?.channels as Array<{ id: string; name: string; type?: string }> | undefined)?.filter((channel) => channel.type === "category") ?? [];
+  const categories = liveOptions?.categories ?? [];
   const roles = liveOptions?.roles ?? [];
 
   useEffect(() => {
@@ -395,6 +395,10 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   <InputField disabled={!canManage || saving} label="Nota máxima pergunta 9" onChange={(value) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualQuestionMaxScore: Number(value) || 0 }).then((settings) => setExam({ ...exam, settings }))} value={String(exam.settings.manualQuestionMaxScore ?? 10)} />
                   <ToggleField disabled={!canManage || saving} label="Aprovação sempre manual" onChange={(manualApproval) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualApproval }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualApproval ?? true} />
                   <ToggleField disabled={!canManage || saving} label="Prova ativa" onChange={(enabled) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { enabled }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.enabled} />
+                  <SelectField disabled={!canManage || saving} label="Categoria dos canais da prova" onChange={(temporaryCategoryId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { temporaryCategoryId }).then((settings) => setExam({ ...exam, settings }))} options={categories} value={exam.settings.temporaryCategoryId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de correção manual" onChange={(correctionChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { correctionChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de resultado da prova" onChange={(resultChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { resultChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.resultChannelId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { logChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.logChannelId ?? ""} />
                 </div>
                 <ProofCompleteness questions={exam.questions} />
                 <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">

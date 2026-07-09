@@ -45,6 +45,8 @@ export async function getCourseExamSettings(botId: string | null, guildId: strin
     minScore: 7,
     maxTimeMinutes: null,
     correctionChannelId: null,
+    resultChannelId: null,
+    temporaryCategoryId: null,
     logChannelId: null,
     deleteWrittenAnswers: false,
     allowCurrentQuestionReview: true,
@@ -65,10 +67,10 @@ export async function getCourseExamSettings(botId: string | null, guildId: strin
 export async function saveCourseExamSettings(botId: string | null, guildId: string, courseId: string, input: Partial<Omit<CourseExamSettingsDto, "id" | "botId" | "guildId" | "courseId" | "updatedAt">>, actorId: string | null) {
   const { courseExamSettings } = await getMongoCollections();
   const now = new Date();
+  await getCourseExamSettings(botId, guildId, courseId);
   await courseExamSettings.updateOne({ ...scope(botId, guildId), courseId }, {
-    $set: { ...cleanSettings(input), updatedAt: now, updatedBy: actorId },
-    $setOnInsert: { _id: randomUUID(), botId, guildId, courseId }
-  }, { upsert: true });
+    $set: { ...cleanSettings(input), updatedAt: now, updatedBy: actorId }
+  });
   await logCourseAction(botId, guildId, "course.exam_settings_saved", actorId, courseId, null, input);
   return getCourseExamSettings(botId, guildId, courseId);
 }
@@ -253,11 +255,17 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   return updated ? { answers: answers.map(mapAnswer), attempt: mapAttempt(updated), questions: relevantQuestions.map(mapQuestion) } : null;
 }
 
-export async function reviewCourseExamAttempt(botId: string | null, guildId: string, attemptId: string, reviewerId: string, status: "approved" | "rejected", rejectionReason?: string | null) {
+export async function reviewCourseExamAttempt(botId: string | null, guildId: string, attemptId: string, reviewerId: string, status: "approved" | "rejected", rejectionReason?: string | null, manualScoreInput?: number | null) {
   const { courseExamAttempts } = await getMongoCollections();
   const now = new Date();
+  const existing = await courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: { $in: ["finished", "awaiting_review", "manual_reviewed"] } });
+  if (!existing) return null;
+  const automaticScore = Number(existing.automaticScore ?? existing.score ?? 0) || 0;
+  const manualScore = Math.max(0, Number(manualScoreInput ?? existing.manualScore ?? 0) || 0);
+  const finalScore = automaticScore + manualScore;
+  const percent = existing.maxScore > 0 ? Math.round((finalScore / existing.maxScore) * 10000) / 100 : 0;
   await courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: { $in: ["finished", "awaiting_review", "manual_reviewed"] } }, {
-    $set: { correctedAt: now, correctedBy: reviewerId, rejectionReason: rejectionReason || null, result: status, status, updatedAt: now }
+    $set: { automaticScore, correctedAt: now, correctedBy: reviewerId, finalScore, manualScore, percent, rejectionReason: rejectionReason || null, result: status, score: finalScore, status, updatedAt: now }
   });
   const attempt = await courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
   if (!attempt) return null;
@@ -280,6 +288,8 @@ function mapSettings(settings: MongoCourseExamSettings) {
     minScore: settings.minScore,
     maxTimeMinutes: settings.maxTimeMinutes,
     correctionChannelId: settings.correctionChannelId,
+    resultChannelId: settings.resultChannelId ?? null,
+    temporaryCategoryId: settings.temporaryCategoryId ?? null,
     logChannelId: settings.logChannelId,
     deleteWrittenAnswers: settings.deleteWrittenAnswers,
     allowCurrentQuestionReview: settings.allowCurrentQuestionReview,
@@ -371,16 +381,17 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
 }
 
 function cleanSettings(input: Partial<CourseExamSettingsDto>) {
-  return {
-    ...input,
-    correctionChannelId: input.correctionChannelId || null,
-    logChannelId: input.logChannelId || null,
-    maxTimeMinutes: input.maxTimeMinutes ? Math.max(1, Number(input.maxTimeMinutes)) : null,
-    minScore: Math.max(0, Number(input.minScore ?? 7)),
-    manualQuestionMaxScore: Math.max(0, Number(input.manualQuestionMaxScore ?? 10)),
-    manualApproval: input.manualApproval ?? true,
-    automaticApproval: input.automaticApproval ?? false
-  };
+  const patch: Partial<CourseExamSettingsDto> = { ...input };
+  if ("correctionChannelId" in input) patch.correctionChannelId = input.correctionChannelId || null;
+  if ("resultChannelId" in input) patch.resultChannelId = input.resultChannelId || null;
+  if ("temporaryCategoryId" in input) patch.temporaryCategoryId = input.temporaryCategoryId || null;
+  if ("logChannelId" in input) patch.logChannelId = input.logChannelId || null;
+  if ("maxTimeMinutes" in input) patch.maxTimeMinutes = input.maxTimeMinutes ? Math.max(1, Number(input.maxTimeMinutes)) : null;
+  if ("minScore" in input) patch.minScore = Math.max(0, Number(input.minScore ?? 7));
+  if ("manualQuestionMaxScore" in input) patch.manualQuestionMaxScore = Math.max(0, Number(input.manualQuestionMaxScore ?? 10));
+  if ("manualApproval" in input) patch.manualApproval = input.manualApproval ?? true;
+  if ("automaticApproval" in input) patch.automaticApproval = input.automaticApproval ?? false;
+  return patch;
 }
 
 function normalizeAlternatives(value: unknown, type: "selection" | "written") {

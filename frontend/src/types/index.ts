@@ -960,6 +960,8 @@ export type CourseExamSettings = {
   minScore: number;
   maxTimeMinutes: number | null;
   correctionChannelId: string | null;
+  resultChannelId: string | null;
+  temporaryCategoryId: string | null;
   logChannelId: string | null;
   deleteWrittenAnswers: boolean;
   allowCurrentQuestionReview: boolean;
