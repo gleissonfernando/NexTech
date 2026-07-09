@@ -661,14 +661,17 @@ function panelLabelForId(panelId: string) {
 }
 
 function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLayoutMode): SavePanelImageSettingsPayload {
+  const imageUrl = settings.imageUrl.trim();
+  const imageEnabled = settings.imageEnabled && settings.imagePosition !== "none" && Boolean(imageUrl);
+
   return {
     customHeight: settings.imageSize === "custom" ? settings.customHeight : null,
     customWidth: settings.imageSize === "custom" ? settings.customWidth : null,
     blocks: settings.blocks ?? [],
-    imageEnabled: settings.imageEnabled,
-    imagePosition: settings.imageEnabled ? settings.imagePosition : "none",
+    imageEnabled,
+    imagePosition: imageEnabled ? settings.imagePosition : "none",
     imageSize: settings.imageSize,
-    imageUrl: settings.imageEnabled ? settings.imageUrl : "",
+    imageUrl: imageEnabled ? imageUrl : "",
     layoutMode,
     useGlobalDefault: settings.useGlobalDefault
   };

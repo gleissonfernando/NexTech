@@ -186,7 +186,8 @@ function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
     "fivem-finance": "fivem:finance:panel_publish",
     "fivem-general": "fivem:fac:panel_publish",
     "manual-registration": "manual-registration:panel_publish",
-    "mission-tools": "mission-tools:panel_publish"
+    "mission-tools": "mission-tools:panel_publish",
+    courses: "courses:panel_publish"
   };
   if (panelId === "global-default") {
     for (const event of new Set(Object.values(events))) {

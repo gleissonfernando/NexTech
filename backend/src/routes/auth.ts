@@ -69,7 +69,7 @@ async function createOAuthState(req: Request, input: {
   botId?: string;
   botSlug?: string;
   returnTo: string;
-  type: "dev" | "bot";
+  type: "dev" | "bot" | "dashboard";
 }) {
   const payload = {
     ...input,
@@ -102,7 +102,7 @@ type SignedOAuthState = {
   expiresAt: number;
   nonce: string;
   returnTo: string;
-  type: "dev" | "bot";
+  type: "dev" | "bot" | "dashboard";
   ua: string;
 };
 
@@ -134,7 +134,7 @@ function verifyOAuthState(state: string): SignedOAuthState | null {
       typeof parsed.expiresAt !== "number" ||
       typeof parsed.nonce !== "string" ||
       typeof parsed.returnTo !== "string" ||
-      (parsed.type !== "dev" && parsed.type !== "bot") ||
+      (parsed.type !== "dev" && parsed.type !== "bot" && parsed.type !== "dashboard") ||
       typeof parsed.ua !== "string"
     ) {
       return null;
@@ -148,6 +148,10 @@ function verifyOAuthState(state: string): SignedOAuthState | null {
 
 function isAllowedReturnTo(returnTo: string, botSlug?: string | null) {
   if (returnTo === "/dev") {
+    return true;
+  }
+
+  if (returnTo === "/dashboard") {
     return true;
   }
 
@@ -256,6 +260,32 @@ authRouter.get("/discord/dev", async (req, res, next) => {
   }
 });
 
+authRouter.get("/discord/dashboard", async (req, res, next) => {
+  if (isApiAuthMount(req)) {
+    const queryIndex = req.originalUrl.indexOf("?");
+    const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : "";
+
+    return res.redirect(canonicalAuthUrl("/discord/dashboard", query));
+  }
+
+  if (!ensureOAuthConfigured(res)) {
+    return;
+  }
+
+  try {
+    const state = await createOAuthState(req, {
+      type: "dashboard",
+      returnTo: "/dashboard"
+    });
+    const diagnostics = getDiscordOAuthDiagnostics();
+    console.info(`[auth] login Discord iniciado: type=dashboard returnTo=/dashboard client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
+
+    return res.redirect(buildDiscordAuthUrl(state));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 authRouter.get("/discord/bot/:slug", async (req, res, next) => {
   if (isApiAuthMount(req)) {
     const queryIndex = req.originalUrl.indexOf("?");
@@ -315,7 +345,7 @@ authRouter.get("/discord", async (req, res) => {
     return res.redirect(`/auth/discord/bot/${encodeURIComponent(botSlug)}`);
   }
 
-  return res.redirect("/auth/discord/dev");
+  return res.redirect("/auth/discord/dashboard");
 });
 
 authRouter.get("/discord/callback", async (req, res, next) => {

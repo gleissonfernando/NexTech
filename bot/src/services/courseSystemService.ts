@@ -27,7 +27,7 @@ import {
   type ChannelSelectMenuInteraction
 } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
-import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { Course, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseScheduleRequest, CourseSettings } from "./apiClient";
 import { openReportSystemAdmin } from "./reportSystemService";
 
@@ -194,14 +194,17 @@ export async function handleCourseSystemInteraction(interaction: Interaction, co
 
 async function openCourseConfig(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
-  const settings = await context.api.getCourseSettings(interaction.guild.id);
+  const [settings, panelVisual] = await Promise.all([
+    context.api.getCourseSettings(interaction.guild.id),
+    getCoursePanelVisual(context, interaction.guild.id)
+  ]);
   if (!(await canOpenCourseConfig(interaction, settings))) {
     const payload = accessDeniedPanel(settings, interaction.guild);
     if (interaction.isButton()) await interaction.reply(ephemeral(payload));
     else await interaction.reply(ephemeral(payload));
     return;
   }
-  const payload = courseConfigPanel(settings);
+  const payload = courseConfigPanel(settings, panelVisual);
   if (interaction.isButton()) {
     await interaction.update(payload).catch(async () => interaction.reply(ephemeral(payload)));
   } else {
@@ -365,7 +368,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     return;
   }
   if (interaction.customId === IDS.sync) {
-    await interaction.update(courseConfigPanel(await context.api.getCourseSettings(interaction.guildId!)));
+    await openCourseConfig(interaction, context);
     return;
   }
   if (interaction.customId === IDS.publicPublish) {
@@ -1028,15 +1031,16 @@ async function refreshPublicationMessageByRecord(interaction: { guild: ChatInput
 }
 
 async function publishPublicCoursesPanel(client: Client, context: BotContext, guildId: string) {
-  const [settings, courses] = await Promise.all([
+  const [settings, courses, panelVisual] = await Promise.all([
     context.api.getCourseSettings(guildId),
-    context.api.getManageableCourses(guildId, { isAdministrator: true, roleIds: [], userId: client.user?.id ?? "00000" })
+    context.api.getManageableCourses(guildId, { isAdministrator: true, roleIds: [], userId: client.user?.id ?? "00000" }),
+    getCoursePanelVisual(context, guildId)
   ]);
   if (!settings.publishChannelId) throw new Error("Course publish channel is not configured.");
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
   const channel = await guild?.channels.fetch(settings.publishChannelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Course publish channel is invalid or missing send permission.");
-  const payload = publicCoursesPanel(settings, courses);
+  const payload = publicCoursesPanel(settings, courses, panelVisual);
   const message = settings.panelMessageId && "messages" in channel
     ? await channel.messages.fetch(settings.panelMessageId).catch(() => null)
     : null;
@@ -1053,6 +1057,17 @@ async function manageableCourses(interaction: ChatInputCommandInteraction | Butt
     roleIds: member?.roles.cache.map((role) => role.id) ?? [],
     userId: interaction.user.id
   });
+}
+
+async function getCoursePanelVisual(context: BotContext, guildId: string): Promise<PanelVisualConfig | null> {
+  const visual = await context.api.getPanelVisualSettings(guildId, "courses").catch(() => null);
+  if (!visual?.imageEnabled && !visual?.blocks?.length) return null;
+  return {
+    blocks: visual.blocks ?? [],
+    imageEnabled: visual.imageEnabled,
+    imagePosition: visual.imagePosition,
+    imageUrl: visual.imageUrl
+  };
 }
 
 async function canOpenCourseConfig(interaction: ChatInputCommandInteraction | ButtonInteraction, settings: CourseSettings) {
@@ -1101,7 +1116,7 @@ async function canReviewExam(interaction: CourseActionInteraction, context: BotC
     || await canManageCourse(interaction, context, attempt.courseId);
 }
 
-function courseConfigPanel(settings: CourseSettings) {
+function courseConfigPanel(settings: CourseSettings, panelVisual: PanelVisualConfig | null = null) {
   return renderComponentsV2Panel({
     accentColor: 0x2563eb,
     actions: [
@@ -1120,12 +1135,13 @@ function courseConfigPanel(settings: CourseSettings) {
       `Avaliação: ${settings.evaluationChannelId ? `<#${settings.evaluationChannelId}>` : "não configurado"}`,
       `Resultados: ${settings.resultChannelId ? `<#${settings.resultChannelId}>` : "não configurado"}`
     ],
+    image: panelVisual,
     moduleId: "courses",
     title: "🎓 Sistema de Cursos"
   });
 }
 
-function publicCoursesPanel(settings: CourseSettings, courses: Course[]) {
+function publicCoursesPanel(settings: CourseSettings, courses: Course[], panelVisual: PanelVisualConfig | null = null) {
   const activeCourses = courses.filter((course) => course.active);
   return renderComponentsV2Panel({
     accentColor: 0x2563eb,
@@ -1141,7 +1157,7 @@ function publicCoursesPanel(settings: CourseSettings, courses: Course[]) {
       `**Cursos ativos:** ${activeCourses.length}`,
       activeCourses.slice(0, 12).map((course) => `${course.emoji ?? "📚"} ${course.name}`).join("\n") || "Nenhum curso ativo cadastrado."
     ],
-    image: resolveCourseImage(settings, "module") || (settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null),
+    image: panelVisual || resolveCourseImage(settings, "module") || (settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null),
     moduleId: "courses",
     title: "🎓 Sistema de Cursos"
   });

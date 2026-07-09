@@ -10,6 +10,7 @@ import {
   Link2,
   Lock,
   LogIn,
+  Menu,
   MonitorCog,
   Network,
   PanelTop,
@@ -18,7 +19,8 @@ import {
   Settings2,
   ShieldCheck,
   Terminal,
-  Wrench
+  Wrench,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "../components/ui/avatar";
@@ -48,16 +50,16 @@ const reveal = {
 };
 
 const terminalLines = [
-  "POST /api/v1/bots/create",
+  "GET /auth/discord/dashboard",
+  "302 Discord OAuth2",
+  "GET /dashboard/session",
   "{",
-  '  "name": "Orvitek Manager",',
-  '  "modules": ["moderation", "logs", "tickets"]',
+  '  "user": "discord:authorized",',
+  '  "access": "verified",',
+  '  "modules": ["logs", "tickets", "courses"]',
   "}",
-  "201 Created",
-  'bot_id: "orv_94A7"',
-  'status: "online"',
-  'token: "••••••••••••••••"',
-  'dashboard_link: "/dashboard/orvitek-manager"'
+  'dashboard: "online"',
+  'redirect: "/dashboard"'
 ];
 
 const solutionCards = [
@@ -130,7 +132,7 @@ export function Login({
   const { scrollYProgress } = useScroll({ target: stepsRef, offset: ["start 80%", "end 45%"] });
   const progressWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const currentYear = new Date().getFullYear();
-  const startLabel = auth ? (verifying ? "Verificando..." : "Entrar no Dashboard") : "Começar Agora";
+  const startLabel = auth ? (verifying ? "Verificando..." : "Verificar Dashboard") : "Entrar na Dashboard";
 
   function handleStart() {
     if (auth) {
@@ -155,18 +157,18 @@ export function Login({
 
       <section id="inicio" className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center justify-center px-4 pb-16 pt-32 text-center sm:px-6 lg:px-8">
         <Reveal className="inline-flex items-center rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-medium text-[#FFEA70] shadow-[0_0_24px_rgba(255,213,0,0.16)]">
-          ✨ A plataforma #1 de gerenciamento de bots
+          A plataforma #1 de automação para Discord
         </Reveal>
 
         <Reveal delay={0.08} className="mt-8 max-w-5xl">
           <h1 className="text-5xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
-            Automatize seus bots{" "}
+            Automatize seu servidor{" "}
             <span className="inline-block animate-pulse-glow rounded-lg px-2 text-[#FFD500] drop-shadow-[0_0_28px_rgba(255,213,0,0.45)]">
               do seu jeito
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#B3B3B3] sm:text-lg">
-            Crie, configure e monitore bots com um painel rápido, seguro e conectado ao Discord.
+            Entre pela Dashboard com OAuth2 do Discord, configure seus bots e controle módulos, permissões, canais e logs em tempo real.
           </p>
         </Reveal>
 
@@ -300,6 +302,7 @@ export function Login({
 
 function Header({ onNavigate, onStart }: { onNavigate: (id: string) => void; onStart: () => void }) {
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -327,16 +330,42 @@ function Header({ onNavigate, onStart }: { onNavigate: (id: string) => void; onS
 
         <nav className="hidden items-center gap-1 rounded-full border border-[#FFD500]/15 bg-black/35 p-1 md:flex">
           {nav.map(([label, id]) => (
-            <button className="rounded-full px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={id} onClick={() => onNavigate(id)} type="button">
+            <button className="rounded-full px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={id} onClick={() => { setMenuOpen(false); onNavigate(id); }} type="button">
               {label}
             </button>
           ))}
         </nav>
 
-        <Button className="h-10 px-4" onClick={onStart}>
+        <Button className="hidden h-10 px-4 sm:inline-flex" onClick={onStart}>
           Dashboard
         </Button>
+        <button
+          aria-label={menuOpen ? "Fechar menu" : "Abrir menu"}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#FFD500]/25 bg-black/35 px-3 text-sm font-semibold text-[#FFEA70] md:hidden"
+          onClick={() => setMenuOpen((current) => !current)}
+          type="button"
+        >
+          {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          Menu
+        </button>
       </div>
+      {menuOpen ? (
+        <motion.div
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto mt-3 grid max-w-7xl gap-2 rounded-lg border border-[#FFD500]/20 bg-[#0A0A0A]/95 p-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl md:hidden"
+          initial={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+        >
+          {nav.map(([label, id]) => (
+            <button className="rounded-lg px-3 py-3 text-left text-sm font-semibold text-zinc-200 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={`mobile-${id}`} onClick={() => { setMenuOpen(false); onNavigate(id); }} type="button">
+              {label}
+            </button>
+          ))}
+          <Button className="h-11 w-full" onClick={() => { setMenuOpen(false); onStart(); }}>
+            Dashboard
+          </Button>
+        </motion.div>
+      ) : null}
     </header>
   );
 }

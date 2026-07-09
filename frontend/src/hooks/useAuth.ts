@@ -95,7 +95,7 @@ export function useAuth() {
       ? "/auth/discord/dev"
       : botSlug
         ? `/auth/discord/bot/${encodeURIComponent(botSlug)}`
-        : "/auth/discord/dev";
+        : "/auth/discord/dashboard";
     window.location.href = appUrl(path);
   }, []);
 

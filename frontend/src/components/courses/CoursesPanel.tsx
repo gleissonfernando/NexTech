@@ -26,6 +26,10 @@ type CoursesPanelProps = {
 };
 
 type TabId = "images" | "channels" | "courses" | "proofs" | "admins" | "logs";
+type CourseChannelDraft = Pick<
+  CoursesDashboard["settings"],
+  "adminLogChannelId" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "scheduleLogChannelId" | "tempProofCategoryId"
+>;
 
 const tabs: Array<{ id: TabId; icon: typeof Image; label: string }> = [
   { id: "images", icon: Image, label: "Banners e Imagens" },
@@ -114,6 +118,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [exam, setExam] = useState<CourseExamDashboard | null>(null);
   const [questionDraft, setQuestionDraft] = useState<SaveCourseExamQuestionPayload>(emptyQuestion);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [channelDraft, setChannelDraft] = useState<CourseChannelDraft | null>(null);
   const [imageDraft, setImageDraft] = useState({ name: "", type: "main_banner", url: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -121,6 +126,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [saving, setSaving] = useState(false);
 
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
+  const channelSettingsChanged = useMemo(() => Boolean(dashboard && channelDraft && JSON.stringify(channelDraft) !== JSON.stringify(toChannelDraft(dashboard.settings))), [channelDraft, dashboard]);
   const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? [];
   const categories = liveOptions?.categories ?? [];
   const roles = liveOptions?.roles ?? [];
@@ -128,6 +134,10 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   useEffect(() => {
     void load();
   }, [botId, guildId]);
+
+  useEffect(() => {
+    setChannelDraft(dashboard ? toChannelDraft(dashboard.settings) : null);
+  }, [dashboard?.settings]);
 
   useEffect(() => {
     if (!selectedCourse) {
@@ -170,6 +180,15 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveChannelSettings() {
+    if (!channelDraft) return;
+    await saveSettings(channelDraft);
+  }
+
+  function updateChannelDraft(patch: Partial<CourseChannelDraft>) {
+    setChannelDraft((current) => current ? { ...current, ...patch } : current);
   }
 
   async function saveCourse() {
@@ -325,16 +344,26 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       {activeTab === "channels" ? (
         <Card>
           <CardHeader><CardTitle>Configuração de Canais</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <SelectField disabled={!canManage || saving} label="Canal global de publicação" onChange={(publishChannelId) => void saveSettings({ publishChannelId })} options={textChannels} value={dashboard.settings.publishChannelId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Logs de agendamento" onChange={(scheduleLogChannelId) => void saveSettings({ scheduleLogChannelId })} options={textChannels} value={dashboard.settings.scheduleLogChannelId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Logs de provas" onChange={(proofLogChannelId) => void saveSettings({ proofLogChannelId })} options={textChannels} value={dashboard.settings.proofLogChannelId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Resultados aprovado/reprovado" onChange={(resultChannelId) => void saveSettings({ resultChannelId })} options={textChannels} value={dashboard.settings.resultChannelId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Avaliação das provas" onChange={(evaluationChannelId) => void saveSettings({ evaluationChannelId })} options={textChannels} value={dashboard.settings.evaluationChannelId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => void saveSettings({ tempProofCategoryId })} options={categories} value={dashboard.settings.tempProofCategoryId ?? ""} />
-            <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => void saveSettings({ adminLogChannelId })} options={textChannels} value={dashboard.settings.adminLogChannelId ?? ""} />
-            <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar avaliadores" onChange={(evaluatorMentionRoleId) => void saveSettings({ evaluatorMentionRoleId })} options={roles} value={dashboard.settings.evaluatorMentionRoleId ?? ""} />
-            <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar resultados" onChange={(resultMentionRoleId) => void saveSettings({ resultMentionRoleId })} options={roles} value={dashboard.settings.resultMentionRoleId ?? ""} />
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <SelectField disabled={!canManage || saving} label="Canal global de publicação" onChange={(publishChannelId) => updateChannelDraft({ publishChannelId })} options={textChannels} value={channelDraft?.publishChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Logs de agendamento" onChange={(scheduleLogChannelId) => updateChannelDraft({ scheduleLogChannelId })} options={textChannels} value={channelDraft?.scheduleLogChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Logs de provas" onChange={(proofLogChannelId) => updateChannelDraft({ proofLogChannelId })} options={textChannels} value={channelDraft?.proofLogChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Resultados aprovado/reprovado" onChange={(resultChannelId) => updateChannelDraft({ resultChannelId })} options={textChannels} value={channelDraft?.resultChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Avaliação das provas" onChange={(evaluationChannelId) => updateChannelDraft({ evaluationChannelId })} options={textChannels} value={channelDraft?.evaluationChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => updateChannelDraft({ tempProofCategoryId })} options={categories} value={channelDraft?.tempProofCategoryId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => updateChannelDraft({ adminLogChannelId })} options={textChannels} value={channelDraft?.adminLogChannelId ?? ""} />
+              <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar avaliadores" onChange={(evaluatorMentionRoleId) => updateChannelDraft({ evaluatorMentionRoleId })} options={roles} value={channelDraft?.evaluatorMentionRoleId ?? ""} />
+              <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar resultados" onChange={(resultMentionRoleId) => updateChannelDraft({ resultMentionRoleId })} options={roles} value={channelDraft?.resultMentionRoleId ?? ""} />
+            </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-zinc-900 pt-4">
+              <Button disabled={!canManage || saving || !channelDraft || !channelSettingsChanged} onClick={() => void saveChannelSettings()} type="button">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Salvar canais
+              </Button>
+              <Button disabled={!channelSettingsChanged || saving || !dashboard} onClick={() => setChannelDraft(toChannelDraft(dashboard.settings))} type="button" variant="ghost">Descartar alterações</Button>
+              {channelSettingsChanged ? <span className="text-xs text-amber-300">Alterações pendentes.</span> : <span className="text-xs text-zinc-500">Nenhuma alteração pendente.</span>}
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -541,6 +570,20 @@ function sortQuestion(a: CourseExamQuestion, b: CourseExamQuestion) {
 
 function csv(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function toChannelDraft(settings: CoursesDashboard["settings"]): CourseChannelDraft {
+  return {
+    adminLogChannelId: settings.adminLogChannelId ?? null,
+    evaluationChannelId: settings.evaluationChannelId ?? null,
+    evaluatorMentionRoleId: settings.evaluatorMentionRoleId ?? null,
+    proofLogChannelId: settings.proofLogChannelId ?? null,
+    publishChannelId: settings.publishChannelId ?? null,
+    resultChannelId: settings.resultChannelId ?? null,
+    resultMentionRoleId: settings.resultMentionRoleId ?? null,
+    scheduleLogChannelId: settings.scheduleLogChannelId ?? null,
+    tempProofCategoryId: settings.tempProofCategoryId ?? null
+  };
 }
 
 function InputField({ disabled, label, onChange, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; value: string }) {
