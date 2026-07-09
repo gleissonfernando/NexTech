@@ -56,11 +56,13 @@ import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
 import { PolicePatrolReportsPanel } from "../components/fivem/PolicePatrolReportsPanel";
 import { PoliceHiddenChannelPanel } from "../components/fivem/PoliceHiddenChannelPanel";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
+import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotificationsPanel";
 import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
+import { TranscriptSettingsCard } from "../components/TranscriptSettingsCard";
 import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
@@ -535,6 +537,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-dm"
   },
   {
+    id: "police-open-duty",
+    title: "Ponto Aberto",
+    description: "Notificacoes privadas para ponto aberto, contador de avisos verbais e alertas administrativos.",
+    icon: Bell,
+    view: "police-open-duty"
+  },
+  {
     id: "courses",
     title: "Cursos",
     description: "Cursos, instrutores, agendamentos, publicações e relatórios de instrução.",
@@ -665,6 +674,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-patrol-reports": "police-patrol-reports",
   "police-hidden-channel": "police-hidden-channel",
   "police-dm": "police-dm",
+  "police-open-duty": "police-open-duty",
   "police-subpoenas": "police-subpoenas",
   "rh-admin": "rh-admin",
   "police-iab": "police-iab",
@@ -707,6 +717,17 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
 };
 
 const settingsModuleIds = new Set(["tickets", "avisos", "network", "server-generator"]);
+const policeTranscriptViews = new Set<ViewId>([
+  "police-absence",
+  "police-actions",
+  "police-patrol-reports",
+  "police-hidden-channel",
+  "police-dm",
+  "police-open-duty",
+  "rh-admin",
+  "police-iab",
+  "police-subpoenas"
+]);
 const moduleReleaseAliases: Record<string, string[]> = {
   courses: ["police-courses"],
   "police-courses": ["courses"],
@@ -1435,6 +1456,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
           />
         ) : null}
+        {activeView === "police-open-duty" ? (
+          <OpenDutyNotificationsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police-open-duty", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
         {activeView === "rh-admin" && selectedGuild && activeBotId ? (
           <RhAdminPanel
             botId={activeBotId}
@@ -1446,6 +1474,16 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PoliceIabPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, activeView === "police-subpoenas" ? "police-subpoenas" : "police-iab", canManageDashboard)}
+            guild={selectedGuild}
+            loading={settingsLoading}
+            onSettingsChange={setSettings}
+            settings={settings}
+          />
+        ) : null}
+        {policeTranscriptViews.has(activeView) ? (
+          <TranscriptSettingsCard
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "logs", canManageDashboard)}
             guild={selectedGuild}
             loading={settingsLoading}
             onSettingsChange={setSettings}
@@ -3795,6 +3833,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "police-patrol-reports",
       "police-hidden-channel",
       "police-dm",
+      "police-open-duty",
       "fivem-fac"
     ].includes(moduleId);
   }

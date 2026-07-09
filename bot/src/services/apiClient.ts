@@ -1218,6 +1218,30 @@ export type FivemFacAbsence = {
   updatedAt: string;
 };
 
+export type OpenDutySettings = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  enabled: boolean;
+  logChannelId: string | null;
+  alertChannelId: string | null;
+  allowedRoleIds: string[];
+  allowedUserIds: string[];
+  defaultMessage: string;
+  alertMessage: string;
+  dmBannerUrl: string | null;
+  panelBannerUrl: string | null;
+  footerImageUrl: string | null;
+  footerText: string | null;
+  footerIconUrl: string | null;
+  imagePosition: "top" | "middle" | "bottom" | "footer";
+  panelColor: string;
+  buttonEmojis: { cancel: string; config: string; edit: string; logs: string; reset: string; save: string; search: string; send: string };
+  counterMode: "accumulate" | "reset_after_3" | "cycles";
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
 export type MissionToolsFeatureId =
   | "mission"
   | "clear"
@@ -2599,6 +2623,16 @@ export class ApiClient {
   async createPoliceHiddenChannelLog(input: { attachmentUrls?: string[]; authorId: string; authorTag: string; channelId: string; content: string; embedCount?: number; errorMessage?: string | null; guildId: string; logChannelId?: string | null; originalMessageId: string; relayedMessageId?: string | null; status: "relayed" | "failed"; stickerIds?: string[] }) { await this.http.post("/police-hidden-channel/bot/logs", input); }
   async getDmBarConfig(guildId: string) { const { data } = await this.http.get<{ config: DmBarConfig }>(`/dm-bar/bot/${guildId}/config`); return data.config; }
   async createDmBarLog(guildId: string, input: { errorReason?: string | null; message: string; senderId: string; status: "sent" | "failed" | "denied" | "cancelled" | "test"; targetId?: string | null; title: string }) { await this.http.post(`/dm-bar/bot/${guildId}/logs`, input); }
+
+  async getOpenDutySettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: OpenDutySettings }>(`/open-duty-notifications/bot/${guildId}/config`);
+    return data.settings;
+  }
+
+  async recordOpenDutyDelivery(guildId: string, input: { edited: boolean; errorReason?: string | null; executorId: string; message: string; status: "sent" | "failed" | "cancelled" | "denied"; targetId: string }) {
+    const { data } = await this.http.post<{ alertTriggered: boolean; counterTotal: number; settings: OpenDutySettings }>("/open-duty-notifications/bot/" + guildId + "/deliveries", input);
+    return data;
+  }
 
   async getFivemActionDashboard(guildId: string, architecture: FivemActionArchitecture) {
     const { data } = await this.http.get<{ settings: FivemActionSettings; actions: FivemActionDefinition[] }>(`/fivem-actions/bot/${guildId}/${architecture}`);

@@ -379,6 +379,66 @@ export type MongoCourseLog = {
   createdAt: Date;
 };
 
+export type MongoOpenDutyCounterMode = "accumulate" | "reset_after_3" | "cycles";
+
+export type MongoOpenDutySettings = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  enabled: boolean;
+  logChannelId: string | null;
+  alertChannelId: string | null;
+  allowedRoleIds: string[];
+  allowedUserIds: string[];
+  defaultMessage: string;
+  alertMessage: string;
+  dmBannerUrl: string | null;
+  panelBannerUrl: string | null;
+  footerImageUrl: string | null;
+  footerText: string | null;
+  footerIconUrl: string | null;
+  imagePosition: "top" | "middle" | "bottom" | "footer";
+  panelColor: string;
+  buttonEmojis: {
+    send: string;
+    edit: string;
+    cancel: string;
+    config: string;
+    logs: string;
+    reset: string;
+    search: string;
+    save: string;
+  };
+  counterMode: MongoOpenDutyCounterMode;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoOpenDutyWarningCounter = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  userId: string;
+  total: number;
+  lastNotifiedAt: Date | null;
+  updatedAt: Date;
+};
+
+export type MongoOpenDutyNotification = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  executorId: string;
+  targetId: string;
+  message: string;
+  edited: boolean;
+  status: "sent" | "failed" | "cancelled" | "denied";
+  errorReason: string | null;
+  counterTotal: number;
+  alertTriggered: boolean;
+  createdAt: Date;
+};
+
 export type MongoRhAdminSettings = {
   _id: string;
   botId: string | null;
@@ -3072,6 +3132,9 @@ export async function getMongoCollections() {
     courseScheduleRequests: db.collection<MongoCourseScheduleRequest>("course_schedule_requests"),
     courseReports: db.collection<MongoCourseReport>("course_reports"),
     courseLogs: db.collection<MongoCourseLog>("course_logs"),
+    openDutySettings: db.collection<MongoOpenDutySettings>("open_duty_settings"),
+    openDutyCounters: db.collection<MongoOpenDutyWarningCounter>("open_duty_counters"),
+    openDutyNotifications: db.collection<MongoOpenDutyNotification>("open_duty_notifications"),
     rhAdminSettings: db.collection<MongoRhAdminSettings>("rh_admin_settings"),
     rhAdminAbsences: db.collection<MongoRhAdminAbsence>("rh_admin_absences"),
     rhAdminAdornments: db.collection<MongoRhAdminAdornment>("rh_admin_adornments"),
@@ -3250,6 +3313,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoCourseScheduleRequest>("course_schedule_requests").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoCourseReport>("course_reports").createIndex({ botId: 1, guildId: 1, courseId: 1, createdAt: -1 }),
     db.collection<MongoCourseLog>("course_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoOpenDutySettings>("open_duty_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoOpenDutyWarningCounter>("open_duty_counters").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    db.collection<MongoOpenDutyNotification>("open_duty_notifications").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoOpenDutyNotification>("open_duty_notifications").createIndex({ botId: 1, guildId: 1, targetId: 1, createdAt: -1 }),
     db.collection<MongoRhAdminSettings>("rh_admin_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoRhAdminAbsence>("rh_admin_absences").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoRhAdminAbsence>("rh_admin_absences").createIndex({ botId: 1, status: 1, returnAt: 1, autoRemoved: 1 }),

@@ -79,6 +79,7 @@ import type {
   OrvitechSalesDashboard,
   OrvitechSalesPlan,
   OrvitechSalesSettings,
+  OpenDutyDashboard,
   PanelImageSettings,
   PriceTable,
   PriceTablesDashboard,
@@ -99,6 +100,7 @@ import type {
   SaveOrvitechSalePayload,
   SaveOrvitechSalesPlanPayload,
   SaveOrvitechSalesSettingsPayload,
+  SaveOpenDutySettingsPayload,
   SavePanelImageSettingsPayload,
   SavePriceTablePayload,
   SaveRhAdminSettingsPayload,
@@ -1457,6 +1459,9 @@ export async function saveDmBarConfig(guildId: string, botId: string, payload: P
 export async function resetDmBarConfig(guildId: string, botId: string) { const { data } = await api.post<{ config: import("../types").DmBarConfig }>(`/dm-bar/${guildId}/reset`, undefined, { params: botParams(botId) }); return data.config; }
 export async function uploadDmBarImage(guildId: string, botId: string, imageType: "main" | "footer", file: File) { const form = new FormData(); form.append("file", file); const { data } = await api.post<{ config: import("../types").DmBarConfig; image: unknown }>(`/dm-bar/${guildId}/images/${imageType}`, form, { params: botParams(botId), timeout: 60000 }); return data.config; }
 export async function removeDmBarImage(guildId: string, botId: string, imageType: "main" | "footer") { const { data } = await api.delete<{ config: import("../types").DmBarConfig }>(`/dm-bar/${guildId}/images/${imageType}`, { params: botParams(botId) }); return data.config; }
+export async function getOpenDutyDashboard(guildId: string, botId: string) { const { data } = await api.get<OpenDutyDashboard>(`/open-duty-notifications/${guildId}`, { params: botParams(botId) }); return data; }
+export async function saveOpenDutySettings(guildId: string, botId: string, payload: SaveOpenDutySettingsPayload) { const { data } = await api.patch<{ settings: import("../types").OpenDutySettings }>(`/open-duty-notifications/${guildId}/config`, payload, { params: botParams(botId) }); return data.settings; }
+export async function resetOpenDutyCounter(guildId: string, botId: string, userId: string) { const { data } = await api.post<{ counter: { total: number; userId: string } }>(`/open-duty-notifications/${guildId}/reset-counter`, { userId }, { params: botParams(botId) }); return data.counter; }
 
 export async function getGlobalBlacklistDashboard(guildId: string, botId?: string | null) {
   const { data } = await api.get<GlobalBlacklistDashboard>(`/global-blacklist/${guildId}`, {

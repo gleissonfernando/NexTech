@@ -27,6 +27,8 @@ import { handleManualPaymentInteraction } from "../services/manualPaymentService
 import { handlePriceTableInteraction } from "../services/priceTableService";
 import { handleCourseSystemInteraction } from "../services/courseSystemService";
 import { handleRhAdminInteraction } from "../services/rhAdminService";
+import { handleRemoverInteraction } from "../commands/remover";
+import { handleOpenDutyNotificationInteraction } from "../commands/notificar";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
   try {
@@ -64,6 +66,14 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   }
 
   if (await handleFivemFacInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleRemoverInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleOpenDutyNotificationInteraction(interaction, context)) {
     return;
   }
 

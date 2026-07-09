@@ -11,6 +11,7 @@ import { hierarchyCommand } from "../services/fivemHierarchyService";
 import { legacyManualRegistrationCommand, manualRegistrationCommand } from "./manualRegistration";
 import { missionPanelCommand } from "./missionPanel";
 import { musicCommands } from "./music";
+import { notificarCommand } from "./notificar";
 import { pingCommand } from "./ping";
 import { serverClonerCommand } from "./serverCloner";
 import { serverGeneratorCommand } from "./serverGenerator";
@@ -22,6 +23,7 @@ import { dmBarCommand } from "../services/dmBarService";
 import { policeSubpoenaCommand } from "../services/policeSubpoenaService";
 import { configCourseCommand, courseCommand } from "../services/courseSystemService";
 import { rhAdminCommand } from "../services/rhAdminService";
+import { removerCommand } from "./remover";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -42,6 +44,7 @@ export function createCommandCollection() {
     legacyManualRegistrationCommand,
     missionPanelCommand,
     ...musicCommands,
+    notificarCommand,
     ticketCommand,
     policePatrolReportCommand,
     viewPolicePatrolReportCommand,
@@ -51,6 +54,7 @@ export function createCommandCollection() {
     configCourseCommand,
     courseCommand,
     rhAdminCommand,
+    removerCommand,
     sistemaCommand,
     iabCommand,
     serverClonerCommand,
