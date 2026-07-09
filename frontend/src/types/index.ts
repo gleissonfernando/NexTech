@@ -820,6 +820,7 @@ export type CourseSettings = {
   adminRoleIds: string[];
   managerUserIds: string[];
   managerRoleIds: string[];
+  generalInstructorRoleIds: string[];
   defaultExpirationHours: number | null;
   noPermissionMessage: string;
   cancelledMessage: string;
@@ -828,7 +829,7 @@ export type CourseSettings = {
   reportImageUrl: string | null;
   panelMessageId: string | null;
   lastPanelRequestedAt: string | null;
-  buttonEmojis: { cancel: string; enter: string; leave: string; start: string };
+  buttonEmojis: { cancel: string; enter: string; leave: string; start: string } & Record<string, string | undefined>;
   updatedAt: string;
 };
 
@@ -837,6 +838,7 @@ export type Course = {
   botId: string | null;
   guildId: string;
   name: string;
+  code: string | null;
   description: string | null;
   emoji: string | null;
   color: string;
@@ -850,6 +852,8 @@ export type Course = {
   buttonLabels: { cancel: string; enter: string; leave: string; start: string };
   instructorUserIds: string[];
   instructorRoleIds: string[];
+  allowGeneralInstructorRoles: boolean;
+  publishChannelId: string | null;
   active: boolean;
   createdBy: string | null;
   createdAt: string;
@@ -909,12 +913,23 @@ export type CourseReport = {
   createdAt: string;
 };
 
+export type CourseLog = {
+  id: string;
+  action: string;
+  actorId: string | null;
+  courseId: string | null;
+  publicationId: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type CoursesDashboard = {
   courses: Course[];
   publications: CoursePublication[];
   reports: CourseReport[];
   scheduleRequests: CourseScheduleRequest[];
   settings: CourseSettings;
+  logs: CourseLog[];
 };
 
 export type SaveCourseSettingsPayload = Partial<Omit<CourseSettings, "id" | "botId" | "guildId" | "updatedAt">>;

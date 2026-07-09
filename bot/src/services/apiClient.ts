@@ -78,6 +78,7 @@ export type CourseSettings = {
   adminRoleIds: string[];
   managerUserIds: string[];
   managerRoleIds: string[];
+  generalInstructorRoleIds: string[];
   defaultExpirationHours: number | null;
   noPermissionMessage: string;
   cancelledMessage: string;
@@ -86,7 +87,7 @@ export type CourseSettings = {
   reportImageUrl: string | null;
   panelMessageId: string | null;
   lastPanelRequestedAt: string | null;
-  buttonEmojis: { cancel: string; enter: string; leave: string; start: string };
+  buttonEmojis: { cancel: string; enter: string; leave: string; start: string } & Record<string, string | undefined>;
   updatedAt: string;
 };
 
@@ -95,6 +96,7 @@ export type Course = {
   botId: string | null;
   guildId: string;
   name: string;
+  code: string | null;
   description: string | null;
   emoji: string | null;
   color: string;
@@ -108,6 +110,8 @@ export type Course = {
   buttonLabels: { cancel: string; enter: string; leave: string; start: string };
   instructorUserIds: string[];
   instructorRoleIds: string[];
+  allowGeneralInstructorRoles: boolean;
+  publishChannelId: string | null;
   active: boolean;
   createdBy: string | null;
   createdAt: string;
@@ -1801,8 +1805,8 @@ export class ApiClient {
   }
 
   async leaveCoursePublication(guildId: string, publicationId: string, userId: string) {
-    const { data } = await this.http.post<{ publication: CoursePublication }>(`/courses/bot/${guildId}/publications/${publicationId}/leave`, { userId });
-    return data.publication;
+    const { data } = await this.http.post<{ error?: "not_found" | "not_joined"; publication?: CoursePublication }>(`/courses/bot/${guildId}/publications/${publicationId}/leave`, { userId });
+    return data;
   }
 
   async setCoursePublicationStatus(guildId: string, publicationId: string, status: "started" | "cancelled" | "closed", actorId: string) {

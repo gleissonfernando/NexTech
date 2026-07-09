@@ -44,13 +44,16 @@ const courseSchema = z.object({
   }).optional(),
   cancelledText: z.string().max(900).nullable().optional().or(z.literal("")),
   color: z.string().max(24).optional(),
+  code: z.string().max(40).nullable().optional().or(z.literal("")),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   emoji: z.string().max(80).nullable().optional().or(z.literal("")),
   footerImageUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   imagePosition: z.enum(["top", "bottom", "side", "footer"]).optional(),
   instructorRoleIds: z.array(snowflake).optional(),
   instructorUserIds: z.array(snowflake).optional(),
+  allowGeneralInstructorRoles: z.boolean().optional(),
   name: z.string().min(1).max(120),
+  publishChannelId: optionalSnowflake,
   publishText: z.string().max(1200).nullable().optional().or(z.literal("")),
   startedText: z.string().max(900).nullable().optional().or(z.literal("")),
   thumbnailUrl: z.string().max(2048).nullable().optional().or(z.literal(""))
@@ -59,14 +62,27 @@ const settingsSchema = z.object({
   adminRoleIds: z.array(snowflake).optional(),
   adminUserIds: z.array(snowflake).optional(),
   buttonEmojis: z.object({
-    cancel: z.string().max(20),
-    enter: z.string().max(20),
-    leave: z.string().max(20),
-    start: z.string().max(20)
+    cancel: z.string().max(80),
+    course: z.string().max(80).optional(),
+    enter: z.string().max(80),
+    error: z.string().max(80).optional(),
+    full: z.string().max(80).optional(),
+    instructor: z.string().max(80).optional(),
+    leave: z.string().max(80),
+    location: z.string().max(80).optional(),
+    logs: z.string().max(80).optional(),
+    participants: z.string().max(80).optional(),
+    save: z.string().max(80).optional(),
+    start: z.string().max(80),
+    status: z.string().max(80).optional(),
+    success: z.string().max(80).optional(),
+    time: z.string().max(80).optional(),
+    vacancies: z.string().max(80).optional()
   }).optional(),
   cancelledMessage: z.string().max(900).optional(),
   defaultExpirationHours: z.number().int().min(1).max(720).nullable().optional(),
   globalBannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
+  generalInstructorRoleIds: z.array(snowflake).optional(),
   logChannelId: optionalSnowflake,
   managerRoleIds: z.array(snowflake).optional(),
   managerUserIds: z.array(snowflake).optional(),
@@ -339,9 +355,9 @@ coursesRouter.post("/bot/:guildId/publications/:publicationId/leave", requireBot
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
-    const publication = await leaveCoursePublication(botId, guildId, routeParam(req, "publicationId"), joinSchema.parse(req.body ?? {}).userId);
-    if (!publication) return res.status(404).json({ message: "Publicacao nao encontrada." });
-    return res.json({ publication });
+    const result = await leaveCoursePublication(botId, guildId, routeParam(req, "publicationId"), joinSchema.parse(req.body ?? {}).userId);
+    if (result.error === "not_found") return res.status(404).json({ message: "Publicacao nao encontrada." });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }
@@ -462,9 +478,11 @@ function sanitizeCourse(input: Partial<z.infer<typeof courseSchema>>) {
     ...input,
     bannerUrl: input.bannerUrl || null,
     cancelledText: input.cancelledText || null,
+    code: input.code || null,
     description: input.description || null,
     emoji: input.emoji || null,
     footerImageUrl: input.footerImageUrl || null,
+    publishChannelId: input.publishChannelId || null,
     publishText: input.publishText || null,
     startedText: input.startedText || null,
     thumbnailUrl: input.thumbnailUrl || null

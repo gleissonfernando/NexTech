@@ -267,6 +267,7 @@ export type MongoCourseSettings = {
   adminRoleIds: string[];
   managerUserIds: string[];
   managerRoleIds: string[];
+  generalInstructorRoleIds?: string[];
   defaultExpirationHours: number | null;
   noPermissionMessage: string;
   cancelledMessage: string;
@@ -277,9 +278,21 @@ export type MongoCourseSettings = {
   lastPanelRequestedAt?: Date | null;
   buttonEmojis: {
     cancel: string;
+    course?: string;
+    error?: string;
+    full?: string;
     enter: string;
+    instructor?: string;
     leave: string;
+    location?: string;
+    logs?: string;
+    participants?: string;
+    save?: string;
     start: string;
+    status?: string;
+    success?: string;
+    time?: string;
+    vacancies?: string;
   };
   updatedAt: Date;
   updatedBy: string | null;
@@ -290,6 +303,7 @@ export type MongoCourse = {
   botId: string | null;
   guildId: string;
   name: string;
+  code?: string | null;
   description: string | null;
   emoji: string | null;
   color: string;
@@ -308,6 +322,8 @@ export type MongoCourse = {
   };
   instructorUserIds: string[];
   instructorRoleIds: string[];
+  allowGeneralInstructorRoles?: boolean;
+  publishChannelId?: string | null;
   active: boolean;
   createdBy: string | null;
   createdAt: Date;

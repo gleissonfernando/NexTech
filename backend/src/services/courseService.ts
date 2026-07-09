@@ -10,6 +10,7 @@ export type CourseDashboard = {
   reports: CourseReportDto[];
   scheduleRequests: CourseScheduleRequestDto[];
   settings: CourseSettingsDto;
+  logs: CourseLogDto[];
 };
 
 export type CourseSettingsDto = ReturnType<typeof mapSettings>;
@@ -17,15 +18,17 @@ export type CourseDto = ReturnType<typeof mapCourse>;
 export type CoursePublicationDto = ReturnType<typeof mapPublication>;
 export type CourseScheduleRequestDto = ReturnType<typeof mapScheduleRequest>;
 export type CourseReportDto = ReturnType<typeof mapReport>;
+export type CourseLogDto = ReturnType<typeof mapLog>;
 
 export async function getCoursesDashboard(botId: string | null, guildId: string): Promise<CourseDashboard> {
   const collections = await getMongoCollections();
   const settings = await getCourseSettings(botId, guildId);
-  const [courses, publications, scheduleRequests, reports] = await Promise.all([
+  const [courses, publications, scheduleRequests, reports, logs] = await Promise.all([
     collections.courses.find(scope(botId, guildId)).sort({ updatedAt: -1 }).toArray(),
     collections.coursePublications.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
     collections.courseScheduleRequests.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
-    collections.courseReports.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray()
+    collections.courseReports.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
+    collections.courseLogs.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(25).toArray()
   ]);
 
   return {
@@ -33,7 +36,8 @@ export async function getCoursesDashboard(botId: string | null, guildId: string)
     publications: publications.map(mapPublication),
     reports: reports.map(mapReport),
     scheduleRequests: scheduleRequests.map(mapScheduleRequest),
-    settings
+    settings,
+    logs: logs.map(mapLog)
   };
 }
 
@@ -56,6 +60,7 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     adminRoleIds: [],
     managerUserIds: [],
     managerRoleIds: [],
+    generalInstructorRoleIds: [],
     defaultExpirationHours: null,
     noPermissionMessage: "Você não pode gerenciar este curso. Entre em contato com os gestores da unidade para solicitar seu cadastro no sistema.",
     cancelledMessage: "Curso cancelado.",
@@ -136,6 +141,7 @@ export async function createCourse(botId: string | null, guildId: string, input:
     botId,
     guildId,
     name: input.name.trim(),
+    code: input.code?.trim() || null,
     description: input.description?.trim() || null,
     emoji: input.emoji?.trim() || null,
     color: input.color || "#2563eb",
@@ -154,6 +160,8 @@ export async function createCourse(botId: string | null, guildId: string, input:
     },
     instructorUserIds: input.instructorUserIds ?? [],
     instructorRoleIds: input.instructorRoleIds ?? [],
+    allowGeneralInstructorRoles: input.allowGeneralInstructorRoles ?? true,
+    publishChannelId: input.publishChannelId || null,
     active: input.active ?? true,
     createdBy: actorId,
     createdAt: now,
@@ -199,7 +207,9 @@ export async function getManageableCourses(botId: string | null, guildId: string
   }
 
   return all
-    .filter((course) => course.instructorUserIds.includes(userId) || course.instructorRoleIds.some((roleId) => roleIds.includes(roleId)))
+    .filter((course) => course.instructorUserIds.includes(userId)
+      || course.instructorRoleIds.some((roleId) => roleIds.includes(roleId))
+      || (course.allowGeneralInstructorRoles !== false && (settings.generalInstructorRoleIds ?? []).some((roleId) => roleIds.includes(roleId))))
     .map(mapCourse);
 }
 
@@ -286,12 +296,13 @@ export async function joinCoursePublication(botId: string | null, guildId: strin
 export async function leaveCoursePublication(botId: string | null, guildId: string, publicationId: string, userId: string) {
   const { coursePublications } = await getMongoCollections();
   const publication = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
-  if (!publication) return null;
+  if (!publication) return { error: "not_found" as const };
+  if (!publication.students.includes(userId)) return { error: "not_joined" as const, publication: mapPublication(publication) };
   await coursePublications.updateOne({ _id: publicationId, ...scope(botId, guildId) }, { $pull: { students: userId }, $set: { updatedAt: new Date() } });
   const updated = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
   await logCourseAction(botId, guildId, "course.student_left", userId, publication.courseId, publicationId, { userId });
   emitRealtime("courses:publication", { botId, guildId, publicationId });
-  return mapPublication(updated ?? publication);
+  return { publication: mapPublication(updated ?? publication) };
 }
 
 export async function setCoursePublicationStatus(botId: string | null, guildId: string, publicationId: string, status: "started" | "cancelled" | "closed", actorId: string) {
@@ -429,6 +440,7 @@ function mapSettings(settings: MongoCourseSettings) {
     adminRoleIds: settings.adminRoleIds ?? [],
     managerUserIds: settings.managerUserIds ?? [],
     managerRoleIds: settings.managerRoleIds ?? [],
+    generalInstructorRoleIds: settings.generalInstructorRoleIds ?? [],
     defaultExpirationHours: settings.defaultExpirationHours ?? null,
     noPermissionMessage: settings.noPermissionMessage,
     cancelledMessage: settings.cancelledMessage,
@@ -448,6 +460,7 @@ function mapCourse(course: MongoCourse) {
     botId: course.botId,
     guildId: course.guildId,
     name: course.name,
+    code: course.code ?? null,
     description: course.description,
     emoji: course.emoji,
     color: course.color,
@@ -461,6 +474,8 @@ function mapCourse(course: MongoCourse) {
     buttonLabels: course.buttonLabels,
     instructorUserIds: course.instructorUserIds,
     instructorRoleIds: course.instructorRoleIds,
+    allowGeneralInstructorRoles: course.allowGeneralInstructorRoles ?? true,
+    publishChannelId: course.publishChannelId ?? null,
     active: course.active,
     createdBy: course.createdBy,
     createdAt: course.createdAt.toISOString(),
@@ -527,6 +542,18 @@ function mapReport(report: MongoCourseReport) {
   };
 }
 
+function mapLog(log: { _id: string; action: string; actorId: string | null; courseId: string | null; publicationId: string | null; data: Record<string, unknown>; createdAt: Date }) {
+  return {
+    id: log._id,
+    action: log.action,
+    actorId: log.actorId,
+    courseId: log.courseId,
+    publicationId: log.publicationId,
+    data: log.data,
+    createdAt: log.createdAt.toISOString()
+  };
+}
+
 function cleanSettings(input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "guildId" | "updatedAt">>) {
   const cleaned: Record<string, unknown> = { ...input };
   cleaned.publishChannelId = input.publishChannelId || null;
@@ -546,13 +573,16 @@ function cleanCourse(input: Partial<CourseDto>) {
     "buttonLabels",
     "cancelledText",
     "color",
+    "code",
     "description",
     "emoji",
     "footerImageUrl",
     "imagePosition",
     "instructorRoleIds",
     "instructorUserIds",
+    "allowGeneralInstructorRoles",
     "name",
+    "publishChannelId",
     "publishText",
     "startedText",
     "thumbnailUrl"

@@ -23,6 +23,7 @@ type CoursesPanelProps = {
 
 const emptyCourse: SaveCoursePayload = {
   active: true,
+  allowGeneralInstructorRoles: true,
   bannerUrl: null,
   buttonLabels: {
     cancel: "Cancelar Curso",
@@ -39,6 +40,8 @@ const emptyCourse: SaveCoursePayload = {
   instructorRoleIds: [],
   instructorUserIds: [],
   name: "",
+  code: null,
+  publishChannelId: null,
   publishText: null,
   startedText: null,
   thumbnailUrl: null
@@ -178,6 +181,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <SelectField disabled={!canManage || saving} label="Canal de relatórios" onChange={(reportChannelId) => void saveSettings({ reportChannelId })} options={textChannels} value={dashboard.settings.reportChannelId ?? ""} />
           <SelectField disabled={!canManage || saving} label="Canal de logs" onChange={(logChannelId) => void saveSettings({ logChannelId })} options={textChannels} value={dashboard.settings.logChannelId ?? ""} />
           <MultiRoleField disabled={!canManage || saving} label="Cargos gestores" onChange={(managerRoleIds) => void saveSettings({ managerRoleIds })} options={liveOptions?.roles ?? []} value={dashboard.settings.managerRoleIds} />
+          <MultiRoleField disabled={!canManage || saving} label="Cargo geral dos instrutores" onChange={(generalInstructorRoleIds) => void saveSettings({ generalInstructorRoleIds })} options={liveOptions?.roles ?? []} value={dashboard.settings.generalInstructorRoleIds} />
           <InputField disabled={!canManage || saving} label="Gestores por ID de usuário" onChange={(value) => void saveSettings({ managerUserIds: csv(value) })} value={dashboard.settings.managerUserIds.join(",")} />
           <InputField disabled={!canManage || saving} label="Banner global" onChange={(globalBannerUrl) => void saveSettings({ globalBannerUrl })} value={dashboard.settings.globalBannerUrl ?? ""} />
           <InputField disabled={!canManage || saving} label="Imagem de relatório" onChange={(reportImageUrl) => void saveSettings({ reportImageUrl })} value={dashboard.settings.reportImageUrl ?? ""} />
@@ -198,6 +202,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   <Badge variant={course.active ? "success" : "muted"}>{course.active ? "Ativo" : "Inativo"}</Badge>
                 </div>
                 <p className="mt-1 truncate text-xs text-zinc-500">{course.instructorUserIds.length} usuários, {course.instructorRoleIds.length} cargos instrutores</p>
+                {course.code ? <p className="mt-1 truncate text-xs text-zinc-600">Código: {course.code}</p> : null}
               </button>
             ))}
             {!dashboard.courses.length ? <p className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">Nenhum curso cadastrado.</p> : null}
@@ -211,17 +216,23 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <InputField disabled={!canManage} label="Nome" onChange={(name) => setDraft({ ...draft, name })} value={draft.name} />
+              <InputField disabled={!canManage} label="Código" onChange={(code) => setDraft({ ...draft, code })} value={draft.code ?? ""} />
               <InputField disabled={!canManage} label="Emoji" onChange={(emoji) => setDraft({ ...draft, emoji })} value={draft.emoji ?? ""} />
               <InputField disabled={!canManage} label="Cor do painel" onChange={(color) => setDraft({ ...draft, color })} value={draft.color ?? "#2563eb"} />
               <SelectValueField disabled={!canManage} label="Posição da imagem" onChange={(imagePosition) => setDraft({ ...draft, imagePosition: imagePosition as SaveCoursePayload["imagePosition"] })} options={[["top", "Topo"], ["bottom", "Baixo"], ["side", "Lateral"], ["footer", "Rodapé"]]} value={draft.imagePosition ?? "top"} />
               <InputField disabled={!canManage} label="Banner principal" onChange={(bannerUrl) => setDraft({ ...draft, bannerUrl })} value={draft.bannerUrl ?? ""} />
               <InputField disabled={!canManage} label="Thumbnail" onChange={(thumbnailUrl) => setDraft({ ...draft, thumbnailUrl })} value={draft.thumbnailUrl ?? ""} />
               <InputField disabled={!canManage} label="Imagem de rodapé" onChange={(footerImageUrl) => setDraft({ ...draft, footerImageUrl })} value={draft.footerImageUrl ?? ""} />
+              <SelectField disabled={!canManage} label="Canal próprio do curso" onChange={(publishChannelId) => setDraft({ ...draft, publishChannelId })} options={textChannels} value={draft.publishChannelId ?? ""} />
               <InputField disabled={!canManage} label="Instrutores por ID de usuário" onChange={(value) => setDraft({ ...draft, instructorUserIds: csv(value) })} value={(draft.instructorUserIds ?? []).join(",")} />
               <MultiRoleField disabled={!canManage} label="Cargos instrutores" onChange={(instructorRoleIds) => setDraft({ ...draft, instructorRoleIds })} options={liveOptions?.roles ?? []} value={draft.instructorRoleIds ?? []} />
               <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
                 Curso ativo
                 <input checked={draft.active ?? true} disabled={!canManage} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} type="checkbox" />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
+                Usar cargo geral de instrutor
+                <input checked={draft.allowGeneralInstructorRoles ?? true} disabled={!canManage} onChange={(event) => setDraft({ ...draft, allowGeneralInstructorRoles: event.target.checked })} type="checkbox" />
               </label>
             </div>
             <TextAreaField disabled={!canManage} label="Descrição" onChange={(description) => setDraft({ ...draft, description })} value={draft.description ?? ""} />
@@ -242,6 +253,22 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <Metric label="Relatórios" value={dashboard.reports.length} />
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Logs recentes</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {dashboard.logs.map((log) => (
+            <div className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2 text-sm text-zinc-300" key={log.id}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-white">{log.action}</span>
+                <span className="text-xs text-zinc-500">{new Date(log.createdAt).toLocaleString("pt-BR")}</span>
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">Usuário: {log.actorId ?? "-"} • Curso: {log.courseId ?? "-"} • Publicação: {log.publicationId ?? "-"}</p>
+            </div>
+          ))}
+          {!dashboard.logs.length ? <p className="text-sm text-zinc-500">Nenhuma log registrada ainda.</p> : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -249,6 +276,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 function toPayload(course: Course): SaveCoursePayload {
   return {
     active: course.active,
+    allowGeneralInstructorRoles: course.allowGeneralInstructorRoles,
     bannerUrl: course.bannerUrl,
     buttonLabels: course.buttonLabels,
     cancelledText: course.cancelledText,
@@ -260,6 +288,8 @@ function toPayload(course: Course): SaveCoursePayload {
     instructorRoleIds: course.instructorRoleIds,
     instructorUserIds: course.instructorUserIds,
     name: course.name,
+    code: course.code,
+    publishChannelId: course.publishChannelId,
     publishText: course.publishText,
     startedText: course.startedText,
     thumbnailUrl: course.thumbnailUrl

@@ -50,9 +50,14 @@ const IDS = {
   channelSchedule: "course_channel_schedule",
   channelReport: "course_channel_report",
   channelLogs: "course_channel_logs",
+  courseInstructorUsers: "course_instructor_users",
+  courseInstructorRoles: "course_instructor_roles",
+  coursePublishChannel: "course_course_publish_channel",
+  generalInstructorRoles: "course_general_instructor_roles",
   publicPublish: "course_public_publish",
   publicSchedule: "course_public_schedule",
   publicReport: "course_public_report",
+  sync: "course_config_sync",
   startSelect: "course_start_select"
 } as const;
 
@@ -112,6 +117,26 @@ export const courseCommand: BotCommand = {
   }
 };
 
+export const configCursoCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("configcurso")
+    .setDescription("Abre a configuração do Sistema de Cursos."),
+  moduleId: "courses",
+  async execute(interaction, context) {
+    await openCourseConfig(interaction, context);
+  }
+};
+
+export const publicarCursoCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("publicarcurso")
+    .setDescription("Publica um curso disponível."),
+  moduleId: "courses",
+  async execute(interaction, context) {
+    await startPublishFlow(interaction, context);
+  }
+};
+
 export const startCourseCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("iniciar")
@@ -157,6 +182,12 @@ export async function handleCourseSystemInteraction(interaction: Interaction, co
 async function openCourseConfig(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
   const settings = await context.api.getCourseSettings(interaction.guild.id);
+  if (!(await canOpenCourseConfig(interaction, settings))) {
+    const payload = accessDeniedPanel(settings, interaction.guild);
+    if (interaction.isButton()) await interaction.reply(ephemeral(payload));
+    else await interaction.reply(ephemeral(payload));
+    return;
+  }
   const payload = courseConfigPanel(settings);
   if (interaction.isButton()) {
     await interaction.update(payload).catch(async () => interaction.reply(ephemeral(payload)));
@@ -261,7 +292,8 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
       .addComponents(
         inputRow("name", "Nome do curso", TextInputStyle.Short, true, 120),
         inputRow("description", "Descrição do curso", TextInputStyle.Paragraph, false, 900),
-        inputRow("emoji", "Emoji do curso", TextInputStyle.Short, false, 40),
+        inputRow("code", "Código do curso", TextInputStyle.Short, false, 40),
+        inputRow("bannerUrl", "Imagem/banner do curso (URL)", TextInputStyle.Short, false, 300),
         inputRow("active", "Status inicial: ativo? Sim/Não", TextInputStyle.Short, true, 3, "Sim")
       ));
     return;
@@ -272,6 +304,10 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
   }
   if (interaction.customId === IDS.channels) {
     await interaction.update(channelsPanel(await context.api.getCourseSettings(interaction.guildId!)));
+    return;
+  }
+  if (interaction.customId === IDS.sync) {
+    await interaction.update(courseConfigPanel(await context.api.getCourseSettings(interaction.guildId!)));
     return;
   }
   if (interaction.customId === IDS.publicPublish) {
@@ -346,6 +382,10 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
 }
 
 async function handleUserSelect(interaction: UserSelectMenuInteraction, context: BotContext) {
+  if (interaction.customId.startsWith(`${IDS.courseInstructorUsers}:`)) {
+    await handleCourseUserSelect(interaction, context);
+    return;
+  }
   if (interaction.customId === IDS.managerUsers) {
     const settings = await context.api.saveCourseSettings(interaction.guildId!, { managerUserIds: interaction.values }, interaction.user.id);
     await interaction.update(managersPanel(settings, "Gestores da unidade atualizados com sucesso."));
@@ -371,10 +411,27 @@ async function handleRoleSelect(interaction: RoleSelectMenuInteraction, context:
   if (interaction.customId === IDS.managerRoles) {
     const settings = await context.api.saveCourseSettings(interaction.guildId!, { managerRoleIds: interaction.values }, interaction.user.id);
     await interaction.update(managersPanel(settings, "Gestores da unidade atualizados com sucesso."));
+    return;
+  }
+  if (interaction.customId === IDS.generalInstructorRoles) {
+    const settings = await context.api.saveCourseSettings(interaction.guildId!, { generalInstructorRoleIds: interaction.values }, interaction.user.id);
+    await interaction.update(channelsPanel(settings, "Cargos gerais de instrutor atualizados com sucesso."));
+    return;
+  }
+  if (interaction.customId.startsWith(`${IDS.courseInstructorRoles}:`)) {
+    const courseId = idFromCustomId(interaction.customId);
+    const course = await context.api.updateCourse(interaction.guildId!, courseId, { instructorRoleIds: interaction.values }, interaction.user.id);
+    await interaction.update(courseEditPanel(course, "Cargos autorizados atualizados."));
   }
 }
 
 async function handleChannelSelect(interaction: ChannelSelectMenuInteraction, context: BotContext) {
+  if (interaction.customId.startsWith(`${IDS.coursePublishChannel}:`)) {
+    const courseId = idFromCustomId(interaction.customId);
+    const course = await context.api.updateCourse(interaction.guildId!, courseId, { publishChannelId: interaction.values[0] ?? null }, interaction.user.id);
+    await interaction.update(courseEditPanel(course, "Canal de publicação do curso atualizado."));
+    return;
+  }
   const patch: Partial<CourseSettings> = {};
   const value = interaction.values[0] ?? null;
   if (interaction.customId === IDS.channelPublish) patch.publishChannelId = value;
@@ -383,17 +440,25 @@ async function handleChannelSelect(interaction: ChannelSelectMenuInteraction, co
   if (interaction.customId === IDS.channelLogs) patch.logChannelId = value;
   const settings = await context.api.saveCourseSettings(interaction.guildId!, patch, interaction.user.id);
   await interaction.update(channelsPanel(settings, "Configuração de publicação salva com sucesso."));
+  return;
+}
+
+async function handleCourseUserSelect(interaction: UserSelectMenuInteraction, context: BotContext) {
+  const courseId = idFromCustomId(interaction.customId);
+  const course = await context.api.updateCourse(interaction.guildId!, courseId, { instructorUserIds: interaction.values }, interaction.user.id);
+  await interaction.update(courseEditPanel(course, "Instrutores responsáveis atualizados."));
 }
 
 async function handleModal(interaction: ModalSubmitInteraction, context: BotContext) {
   if (interaction.customId === "course_modal_create") {
     const course = await context.api.createCourse(interaction.guildId!, {
       active: /^s/i.test(interaction.fields.getTextInputValue("active")),
+      bannerUrl: interaction.fields.getTextInputValue("bannerUrl") || null,
+      code: interaction.fields.getTextInputValue("code") || null,
       description: interaction.fields.getTextInputValue("description") || null,
-      emoji: interaction.fields.getTextInputValue("emoji") || null,
       name: interaction.fields.getTextInputValue("name")
     }, interaction.user.id);
-    await interaction.reply(ephemeral(responsiblesPanel(course, "Curso cadastrado com sucesso.")));
+    await interaction.reply(ephemeral(courseEditPanel(course, "Curso cadastrado com sucesso. Selecione os instrutores e cargos que podem publicar este curso.")));
     return;
   }
   if (interaction.customId.startsWith("course_publish_modal:")) {
@@ -415,18 +480,19 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     context.api.getCourseSettings(interaction.guildId!),
     context.api.getCourse(interaction.guildId!, courseId)
   ]);
-  if (!settings.publishChannelId) {
+  const targetChannelId = course.publishChannelId || settings.publishChannelId;
+  if (!targetChannelId) {
     await interaction.editReply("Canal padrão de publicação dos cursos não configurado.");
     return;
   }
-  const channel = await interaction.guild!.channels.fetch(settings.publishChannelId).catch(() => null);
+  const channel = await interaction.guild!.channels.fetch(targetChannelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) {
     await interaction.editReply("Canal de publicação inválido ou sem permissão de envio.");
     return;
   }
   const publication = await context.api.createCoursePublication(interaction.guildId!, {
     capacity: Number(interaction.fields.getTextInputValue("capacity")) || 1,
-    channelId: settings.publishChannelId,
+    channelId: targetChannelId,
     courseId,
     instructorId: interaction.user.id,
     location: interaction.fields.getTextInputValue("location"),
@@ -435,6 +501,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
   });
   const message = await (channel as TextChannel).send(coursePublicationPanel(course, publication, settings, interaction.guild!));
   await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
+  await sendCourseLog(interaction, settings, `📚 Curso publicado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publication.scheduledFor}\nLocal: ${publication.location}\nVagas: ${publication.capacity}`);
   await interaction.editReply("Curso publicado com sucesso.");
 }
 
@@ -476,13 +543,17 @@ async function joinPublication(interaction: ButtonInteraction, context: BotConte
   if (result.error === "already") return interaction.editReply("Você já está inscrito neste curso.");
   if (!result.publication) return interaction.editReply("Curso não encontrado.");
   await refreshPublicationMessage(interaction, context, result.publication);
+  await sendPublicationLog(interaction, context, result.publication, `✅ Usuário entrou no curso\nUsuário: <@${interaction.user.id}>\nInscritos: ${result.publication.students.length}/${result.publication.capacity}`);
   await interaction.editReply("Você entrou no curso com sucesso.");
 }
 
 async function leavePublication(interaction: ButtonInteraction, context: BotContext, publicationId: string) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const publication = await context.api.leaveCoursePublication(interaction.guildId!, publicationId, interaction.user.id);
-  await refreshPublicationMessage(interaction, context, publication);
+  const result = await context.api.leaveCoursePublication(interaction.guildId!, publicationId, interaction.user.id);
+  if (result.error === "not_joined") return interaction.editReply("🚫 Você não está inscrito neste curso.");
+  if (!result.publication) return interaction.editReply("Curso não encontrado.");
+  await refreshPublicationMessage(interaction, context, result.publication);
+  await sendPublicationLog(interaction, context, result.publication, `🚪 Usuário saiu do curso\nUsuário: <@${interaction.user.id}>\nInscritos: ${result.publication.students.length}/${result.publication.capacity}`);
   await interaction.editReply("Você saiu do curso com sucesso.");
 }
 
@@ -496,6 +567,7 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
   }
   const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id);
   await refreshPublicationMessage(interaction, context, updated);
+  await sendPublicationLog(interaction, context, updated, `${status === "started" ? "▶️ Curso iniciado" : "❌ Curso cancelado"}\nResponsável: <@${interaction.user.id}>\nStatus: ${status}`);
   await interaction.editReply(status === "started" ? "Curso iniciado. Novas entradas foram bloqueadas." : "Curso cancelado.");
 }
 
@@ -635,6 +707,18 @@ async function manageableCourses(interaction: ChatInputCommandInteraction | Butt
   });
 }
 
+async function canOpenCourseConfig(interaction: ChatInputCommandInteraction | ButtonInteraction, settings: CourseSettings) {
+  if (!interaction.guild) return false;
+  if (interaction.guild.ownerId === interaction.user.id) return true;
+  const member = interaction.member as GuildMember | null;
+  if (member?.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  const roleIds = member?.roles.cache.map((role) => role.id) ?? [];
+  return settings.adminUserIds.includes(interaction.user.id)
+    || settings.managerUserIds.includes(interaction.user.id)
+    || settings.adminRoleIds.some((roleId) => roleIds.includes(roleId))
+    || settings.managerRoleIds.some((roleId) => roleIds.includes(roleId));
+}
+
 async function canManagePublication(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction, context: BotContext, publication: CoursePublication) {
   if (publication.instructorId === interaction.user.id) return true;
   return canManageCourse(interaction, context, publication.courseId);
@@ -655,13 +739,14 @@ function courseConfigPanel(settings: CourseSettings) {
     accentColor: 0x2563eb,
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(IDS.addCourse).setLabel("Cadastrar Curso").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(IDS.managers).setLabel("Configurar Gestores").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(IDS.channels).setLabel("Configurar Canais").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(IDS.close).setLabel("Fechar").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(IDS.channels).setLabel("⚙️ Configuração de Curso").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.addCourse).setLabel("➕ Criar Curso").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(IDS.managers).setLabel("🛡️ Configuração Geral").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.sync).setLabel("🔄 Sincronizar Dashboard").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(IDS.close).setLabel("❌ Fechar Painel").setStyle(ButtonStyle.Danger)
       )
     ],
-    description: "Gerencie os cursos, instrutores, gestores, canais de publicação, agendamentos e relatórios.",
+    description: "Este painel permite configurar todos os cursos disponíveis, definir instrutores, cargos autorizados, canais de publicação, gestores responsáveis e permissões de uso. Todas as alterações feitas aqui são salvas no mesmo banco da dashboard.",
     fields: [
       `Publicação: ${settings.publishChannelId ? `<#${settings.publishChannelId}>` : "não configurado"}`,
       `Agendamentos: ${settings.scheduleChannelId ? `<#${settings.scheduleChannelId}>` : "não configurado"}`,
@@ -669,7 +754,7 @@ function courseConfigPanel(settings: CourseSettings) {
       `Logs: ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`
     ],
     moduleId: "courses",
-    title: "Configuração do Sistema de Cursos"
+    title: "🎓 Sistema de Configuração de Cursos"
   });
 }
 
@@ -725,6 +810,7 @@ function channelsPanel(settings: CourseSettings, message?: string) {
       channelSelect(IDS.channelSchedule, "Canal de agendamentos"),
       channelSelect(IDS.channelReport, "Canal de relatórios"),
       channelSelect(IDS.channelLogs, "Canal de logs"),
+      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.generalInstructorRoles).setPlaceholder("Cargo geral dos instrutores").setMinValues(0).setMaxValues(10)),
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setLabel("Voltar").setStyle(ButtonStyle.Secondary))
     ],
     description: "Defina onde os cursos serão publicados, agendados, registrados e auditados.",
@@ -733,7 +819,8 @@ function channelsPanel(settings: CourseSettings, message?: string) {
       `Publicação: ${settings.publishChannelId ? `<#${settings.publishChannelId}>` : "não configurado"}`,
       `Agendamentos: ${settings.scheduleChannelId ? `<#${settings.scheduleChannelId}>` : "não configurado"}`,
       `Relatórios: ${settings.reportChannelId ? `<#${settings.reportChannelId}>` : "não configurado"}`,
-      `Logs: ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`
+      `Logs: ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`,
+      `Cargos gerais de instrutor: ${settings.generalInstructorRoleIds.map((id) => `<@&${id}>`).join(", ") || "nenhum"}`
     ].filter(Boolean),
     moduleId: "courses",
     title: "Publicação dos Cursos"
@@ -748,6 +835,38 @@ function responsiblesPanel(course: Course, message: string) {
     fields: [`**${message}**`, `Curso: ${course.emoji ?? "📚"} ${course.name}`],
     moduleId: "courses",
     title: "Responsáveis pelo curso"
+  });
+}
+
+function courseEditPanel(course: Course, message: string) {
+  const channelSelect = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+    new ChannelSelectMenuBuilder()
+      .setCustomId(`${IDS.coursePublishChannel}:${course.id}`)
+      .setPlaceholder("Canal de publicação específico do curso")
+      .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+      .setMinValues(0)
+      .setMaxValues(1)
+  );
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [
+      new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(`${IDS.courseInstructorUsers}:${course.id}`).setPlaceholder("Selecione instrutores responsáveis").setMinValues(0).setMaxValues(10)),
+      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${IDS.courseInstructorRoles}:${course.id}`).setPlaceholder("Selecione cargos autorizados").setMinValues(0).setMaxValues(10)),
+      channelSelect,
+      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setLabel("Voltar").setStyle(ButtonStyle.Secondary))
+    ],
+    description: "Configure quem pode publicar este curso. Usuários específicos e cargos autorizados funcionam ao mesmo tempo.",
+    fields: [
+      `**${message}**`,
+      `Curso: ${course.emoji ?? "🎓"} ${course.name}${course.code ? `\nCódigo: ${course.code}` : ""}`,
+      `Instrutores: ${course.instructorUserIds.map((id) => `<@${id}>`).join(", ") || "nenhum"}`,
+      `Cargos autorizados: ${course.instructorRoleIds.map((id) => `<@&${id}>`).join(", ") || "nenhum"}`,
+      `Cargo geral de instrutor: ${course.allowGeneralInstructorRoles ? "liberado" : "bloqueado"}`,
+      `Canal próprio: ${course.publishChannelId ? `<#${course.publishChannelId}>` : "usa o canal padrão"}`
+    ],
+    image: course.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: course.bannerUrl } : null,
+    moduleId: "courses",
+    title: "➕ Criar Novo Curso"
   });
 }
 
@@ -784,14 +903,15 @@ function selectCoursePanel(description: string, customId: string, courses: Cours
 
 function coursePublicationPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
   const students = publication.students.map((id, index) => `${index + 1}. <@${id}>`).join("\n") || "Nenhum aluno inscrito ainda.";
-  const statusText = publication.status === "open" ? "Aberto" : publication.status === "started" ? "Iniciado" : publication.status === "cancelled" ? "Cancelado" : "Encerrado";
+  const full = publication.students.length >= publication.capacity;
+  const statusText = publication.status === "open" && full ? "Lotado" : publication.status === "open" ? "Aberto" : publication.status === "started" ? "Iniciado" : publication.status === "cancelled" ? "Cancelado" : "Encerrado";
   const statusNotice = publication.status === "started" ? settings.startedMessage : publication.status === "cancelled" ? (course.cancelledText || settings.cancelledMessage) : "Clique em Entrar no Curso para participar.";
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setLabel(`${settings.buttonEmojis.enter} ${course.buttonLabels.enter}`).setStyle(ButtonStyle.Success).setDisabled(publication.status !== "open"),
-        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel(`${settings.buttonEmojis.leave} ${course.buttonLabels.leave}`).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setLabel(`${settings.buttonEmojis.enter} ${course.buttonLabels.enter}`).setStyle(ButtonStyle.Success).setDisabled(publication.status !== "open" || full),
+        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel(`${settings.buttonEmojis.leave} ${course.buttonLabels.leave}`).setStyle(ButtonStyle.Secondary).setDisabled(publication.status === "cancelled" || publication.status === "closed"),
         new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel(`${settings.buttonEmojis.start} ${course.buttonLabels.start}`).setStyle(ButtonStyle.Primary).setDisabled(publication.status !== "open"),
         new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel(`${settings.buttonEmojis.cancel} ${course.buttonLabels.cancel}`).setStyle(ButtonStyle.Danger).setDisabled(publication.status === "cancelled")
       )
@@ -862,6 +982,24 @@ function reportPanel(course: Course, report: { instructorId: string; reportDate:
     moduleId: "courses",
     title: "Relatório de Curso"
   });
+}
+
+async function sendPublicationLog(interaction: { guild: ChatInputCommandInteraction["guild"]; guildId: string | null }, context: BotContext, publication: CoursePublication, content: string) {
+  const settings = await context.api.getCourseSettings(interaction.guildId!);
+  await sendCourseLog(interaction, settings, `${content}\nPublicação: ${publication.id}\nCanal: <#${publication.channelId}>`);
+}
+
+async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["guild"] }, settings: CourseSettings, content: string) {
+  if (!settings.logChannelId) return;
+  const channel = await interaction.guild?.channels.fetch(settings.logChannelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) return;
+  await (channel as TextChannel).send(renderComponentsV2Panel({
+    accentColor: 0x2563eb,
+    description: content,
+    fields: [`Data: ${new Date().toLocaleString("pt-BR")}`],
+    moduleId: "courses",
+    title: "🧾 Log do Sistema de Cursos"
+  })).catch(() => null);
 }
 
 function publicationModal(courseId: string) {
