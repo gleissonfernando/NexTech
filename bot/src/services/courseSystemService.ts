@@ -514,7 +514,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     context.api.getCourseSettings(interaction.guildId!),
     context.api.getCourse(interaction.guildId!, courseId)
   ]);
-  const targetChannelId = course.publishChannelId || settings.publishChannelId;
+  const targetChannelId = settings.publishChannelId;
   if (!targetChannelId) {
     await interaction.editReply("Canal padrão de publicação dos cursos não configurado.");
     return;
@@ -525,7 +525,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     return;
   }
   const publication = await context.api.createCoursePublication(interaction.guildId!, {
-    capacity: Number(interaction.fields.getTextInputValue("capacity")) || 1,
+    capacity: Number(interaction.fields.getTextInputValue("capacity")) || course.maxStudents || 1,
     channelId: targetChannelId,
     courseId,
     instructorId: interaction.user.id,
@@ -596,7 +596,7 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
   const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId);
   const allowed = await canManagePublication(interaction, context, publication);
   if (!allowed) {
-    await interaction.editReply("Você não tem permissão para gerenciar este curso.");
+    await interaction.editReply("Você não possui permissão para usar este sistema.");
     return;
   }
   const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id);
@@ -610,7 +610,7 @@ async function startPublicationById(interaction: ChatInputCommandInteraction | B
   if (!publication) return "Publicação de curso não encontrada.";
   if (publication.status !== "open") return "Este curso não está aberto para iniciar.";
   if (!(await canManagePublication(interaction, context, publication))) {
-    return "Você não tem permissão para iniciar este curso.";
+    return "Você não possui permissão para usar este sistema.";
   }
   const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, "started", interaction.user.id);
   await refreshPublicationMessageByRecord(interaction, context, updated);
@@ -632,7 +632,7 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
     return;
   }
   if (!(await canManagePublication(interaction, context, publication))) {
-    await interaction.editReply("Você não tem permissão para iniciar a prova deste curso.");
+    await interaction.editReply("Você não possui permissão para usar este sistema.");
     return;
   }
   if (!publication.students.length) {
@@ -640,7 +640,21 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
     return;
   }
 
-  const course = await context.api.getCourse(interaction.guildId!, publication.courseId);
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, publication.courseId),
+    context.api.getCourseExamRuntime(interaction.guildId!, publication.courseId)
+  ]);
+  const proofReady = validateRuntimeProof(runtime.questions);
+  if (!runtime.settings.enabled || !proofReady.ok) {
+    await interaction.editReply(proofReady.message);
+    return;
+  }
+  if (!settings.tempProofCategoryId && !settings.temporaryCategoryId) {
+    await interaction.editReply("Configure a categoria dos canais temporários de prova.");
+    return;
+  }
+  const proofPublication = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, "proof", interaction.user.id);
+  await refreshPublicationMessage(interaction, context, proofPublication);
   const created: string[] = [];
   const reused: string[] = [];
   const failed: string[] = [];
@@ -652,17 +666,19 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
       const existing = interaction.guild!.channels.cache.find((channel) => channel.type === ChannelType.GuildText && channel.name === channelName);
       const channel = existing ?? await interaction.guild!.channels.create({
         name: channelName,
-        parent: settings.temporaryCategoryId ?? undefined,
+        parent: settings.tempProofCategoryId ?? settings.temporaryCategoryId ?? undefined,
         permissionOverwrites: [
           { deny: [PermissionFlagsBits.ViewChannel], id: interaction.guild!.roles.everyone.id },
           { allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory], id: studentId },
           { allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory], id: publication.instructorId },
+          ...settings.adminRoleIds.map((id) => ({ allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory], id })),
+          ...settings.evaluatorRoleIds.map((id) => ({ allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory], id })),
           { allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels], id: context.client.user!.id }
         ],
         reason: `Prova do curso ${course.name}`
       });
       if (channel.isTextBased() && "send" in channel && !existing) {
-        await (channel as TextChannel).send(studentExamWelcomePanel(course, publication, studentId));
+        await (channel as TextChannel).send(studentExamWelcomePanel(course, proofPublication, studentId));
       }
       (existing ? reused : created).push(`<#${channel.id}>`);
     } catch (error) {
@@ -670,7 +686,7 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
     }
   }
 
-  await sendPublicationLog(interaction, context, publication, `📝 Prova iniciada\nCurso: ${course.name}\nInstrutor: <@${interaction.user.id}>\nCanais criados: ${created.length}\nCanais reutilizados: ${reused.length}\nFalhas: ${failed.length}`);
+  await sendPublicationLog(interaction, context, proofPublication, `📝 Prova iniciada\nCurso: ${course.name}\nInstrutor: <@${interaction.user.id}>\nCanais criados: ${created.length}\nCanais reutilizados: ${reused.length}\nFalhas: ${failed.length}`);
   await interaction.editReply([
     `Prova iniciada para ${publication.students.length} aluno(s).`,
     created.length ? `Canais criados:\n${created.join("\n")}` : "",
@@ -944,8 +960,10 @@ async function canOpenCourseConfig(interaction: ChatInputCommandInteraction | Bu
   const roleIds = member?.roles.cache.map((role) => role.id) ?? [];
   return settings.adminUserIds.includes(interaction.user.id)
     || settings.managerUserIds.includes(interaction.user.id)
+    || settings.configUserIds.includes(interaction.user.id)
     || settings.adminRoleIds.some((roleId) => roleIds.includes(roleId))
-    || settings.managerRoleIds.some((roleId) => roleIds.includes(roleId));
+    || settings.managerRoleIds.some((roleId) => roleIds.includes(roleId))
+    || settings.configRoleIds.some((roleId) => roleIds.includes(roleId));
 }
 
 async function canManagePublication(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction, context: BotContext, publication: CoursePublication) {
@@ -968,22 +986,22 @@ function courseConfigPanel(settings: CourseSettings) {
     accentColor: 0x2563eb,
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(IDS.channels).setLabel("⚙️ Configuração de Curso").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(IDS.addCourse).setLabel("➕ Criar Curso").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(IDS.managers).setLabel("🛡️ Configuração Geral").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(IDS.sync).setLabel("🔄 Sincronizar Dashboard").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(IDS.close).setLabel("❌ Fechar Painel").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(IDS.addCourse).setLabel("Config Cadastro Curso").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(IDS.channels).setLabel("Configuração de Canais").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.sync).setLabel("Configuração de Provas").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.managers).setLabel("Administradores").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.close).setLabel("Fechar").setStyle(ButtonStyle.Danger)
       )
     ],
-    description: "Este painel permite configurar todos os cursos disponíveis, definir instrutores, cargos autorizados, canais de publicação, gestores responsáveis e permissões de uso. Todas as alterações feitas aqui são salvas no mesmo banco da dashboard.",
+    description: "Configurações salvas aqui são sincronizadas com a dashboard e usam o mesmo banco de dados.",
     fields: [
       `Publicação: ${settings.publishChannelId ? `<#${settings.publishChannelId}>` : "não configurado"}`,
-      `Agendamentos: ${settings.scheduleChannelId ? `<#${settings.scheduleChannelId}>` : "não configurado"}`,
-      `Relatórios: ${settings.reportChannelId ? `<#${settings.reportChannelId}>` : "não configurado"}`,
-      `Logs: ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`
+      `Logs de prova: ${settings.proofLogChannelId ? `<#${settings.proofLogChannelId}>` : "não configurado"}`,
+      `Avaliação: ${settings.evaluationChannelId ? `<#${settings.evaluationChannelId}>` : "não configurado"}`,
+      `Resultados: ${settings.resultChannelId ? `<#${settings.resultChannelId}>` : "não configurado"}`
     ],
     moduleId: "courses",
-    title: "🎓 Sistema de Configuração de Cursos"
+    title: "Sistema de Curso"
   });
 }
 
@@ -1003,7 +1021,7 @@ function publicCoursesPanel(settings: CourseSettings, courses: Course[]) {
       `Cursos ativos: ${activeCourses.length}`,
       activeCourses.slice(0, 12).map((course) => `${course.emoji ?? "📚"} ${course.name}`).join("\n") || "Nenhum curso ativo cadastrado."
     ],
-    image: settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null,
+    image: resolveCourseImage(settings, "module") || (settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null),
     moduleId: "courses",
     title: "Sistema de Cursos"
   });
@@ -1046,9 +1064,11 @@ function channelsPanel(settings: CourseSettings, message?: string) {
     fields: [
       message ? `**${message}**` : "",
       `Publicação: ${settings.publishChannelId ? `<#${settings.publishChannelId}>` : "não configurado"}`,
-      `Agendamentos: ${settings.scheduleChannelId ? `<#${settings.scheduleChannelId}>` : "não configurado"}`,
-      `Relatórios: ${settings.reportChannelId ? `<#${settings.reportChannelId}>` : "não configurado"}`,
-      `Logs: ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`,
+      `Agendamentos: ${settings.scheduleLogChannelId ? `<#${settings.scheduleLogChannelId}>` : "não configurado"}`,
+      `Provas: ${settings.proofLogChannelId ? `<#${settings.proofLogChannelId}>` : "não configurado"}`,
+      `Avaliação: ${settings.evaluationChannelId ? `<#${settings.evaluationChannelId}>` : "não configurado"}`,
+      `Resultados: ${settings.resultChannelId ? `<#${settings.resultChannelId}>` : "não configurado"}`,
+      `Logs: ${settings.adminLogChannelId ? `<#${settings.adminLogChannelId}>` : "não configurado"}`,
       `Cargos gerais de instrutor: ${settings.generalInstructorRoleIds.map((id) => `<@&${id}>`).join(", ") || "nenhum"}`
     ].filter(Boolean),
     moduleId: "courses",
@@ -1101,12 +1121,14 @@ function courseEditPanel(course: Course, message: string) {
 
 function accessDeniedPanel(settings: CourseSettings, guild: { roles: { cache: Map<string, unknown> } }) {
   const managers = [
-    ...settings.managerUserIds.map((id) => `<@${id}>`),
-    ...settings.managerRoleIds.map((id) => `<@&${id}>`)
+    ...settings.adminUserIds.map((id) => `<@${id}>`),
+    ...settings.configUserIds.map((id) => `<@${id}>`),
+    ...settings.adminRoleIds.map((id) => `<@&${id}>`),
+    ...settings.configRoleIds.map((id) => `<@&${id}>`)
   ].join(", ") || "nenhum gestor configurado";
   return renderComponentsV2Panel({
     accentColor: 0xdc2626,
-    description: settings.noPermissionMessage,
+    description: "Você não possui permissão para usar este sistema.",
     fields: [`Gestores disponíveis: ${managers}`],
     moduleId: "courses",
     title: "Acesso negado"
@@ -1133,17 +1155,17 @@ function selectCoursePanel(description: string, customId: string, courses: Cours
 function coursePublicationPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
   const students = publication.students.map((id, index) => `${index + 1}. <@${id}>`).join("\n") || "Nenhum aluno inscrito ainda.";
   const full = publication.students.length >= publication.capacity;
-  const statusText = publication.status === "open" && full ? "Lotado" : publication.status === "open" ? "Aberto" : publication.status === "started" ? "Iniciado" : publication.status === "cancelled" ? "Cancelado" : "Encerrado";
-  const statusNotice = publication.status === "started" ? settings.startedMessage : publication.status === "cancelled" ? (course.cancelledText || settings.cancelledMessage) : "Clique em Entrar no Curso para participar.";
+  const statusText = publication.status === "open" && full ? "Lotado" : publication.status === "open" ? "Ativo" : publication.status === "started" ? "Curso Iniciado" : publication.status === "proof" ? "Prova" : publication.status === "finished" || publication.status === "closed" ? "Finalizado" : "Cancelado";
+  const statusNotice = publication.status === "started" ? settings.startedMessage : publication.status === "proof" ? "Curso em prova. Canais individuais foram criados para os alunos." : publication.status === "cancelled" ? (course.cancelledText || settings.cancelledMessage) : "Clique em Entrar no Curso para participar.";
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setLabel(`${settings.buttonEmojis.enter} ${course.buttonLabels.enter}`).setStyle(ButtonStyle.Success).setDisabled(publication.status !== "open" || full),
-        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel(`${settings.buttonEmojis.leave} ${course.buttonLabels.leave}`).setStyle(ButtonStyle.Secondary).setDisabled(publication.status === "cancelled" || publication.status === "closed"),
+        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel(`${settings.buttonEmojis.leave} ${course.buttonLabels.leave}`).setStyle(ButtonStyle.Secondary).setDisabled(publication.status !== "open" && publication.status !== "started"),
         new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel(`${settings.buttonEmojis.start} ${course.buttonLabels.start}`).setStyle(ButtonStyle.Primary).setDisabled(publication.status !== "open"),
         new ButtonBuilder().setCustomId(`course_exam_start:${publication.id}`).setLabel("Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(publication.status !== "started"),
-        new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel(`${settings.buttonEmojis.cancel} ${course.buttonLabels.cancel}`).setStyle(ButtonStyle.Danger).setDisabled(publication.status === "cancelled")
+        new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel(`${settings.buttonEmojis.cancel} ${course.buttonLabels.cancel}`).setStyle(ButtonStyle.Danger).setDisabled(publication.status === "cancelled" || publication.status === "proof" || publication.status === "finished" || publication.status === "closed")
       )
     ],
     description: course.publishText || course.description || "Curso disponível para inscrição.",
@@ -1166,13 +1188,13 @@ function studentExamWelcomePanel(course: Course, publication: CoursePublication,
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`course_exam_begin:${publication.id}:${studentId}`).setLabel("Iniciar Prova").setStyle(ButtonStyle.Success)
     )],
-    description: "Bem-vindo à prova do curso. Quando estiver preparado, clique em Iniciar Prova.",
+    description: course.proofInstructionText || "Bem-vindo à prova do curso. Quando estiver preparado, clique em Iniciar Prova.",
     fields: [
       `Curso:\n${course.name}`,
       `Aluno:\n<@${studentId}>`,
       `Instrutor:\n<@${publication.instructorId}>`
     ],
-    image: course.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: course.bannerUrl } : null,
+    image: (course.proofBannerUrl || course.bannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: course.proofBannerUrl || course.bannerUrl! } : null,
     moduleId: "courses",
     title: "Prova do Curso"
   });
@@ -1183,7 +1205,7 @@ function examIntroPanel(course: Course, settings: CourseExamSettings) {
     accentColor: parseColor(course.color),
     description: settings.initialMessage,
     fields: [`Curso: ${course.name}`],
-    image: course.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: course.bannerUrl } : null,
+    image: (course.proofBannerUrl || course.bannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: course.proofBannerUrl || course.bannerUrl! } : null,
     moduleId: "courses",
     title: "Início da Prova"
   });
@@ -1223,7 +1245,7 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
     fields: [
       `Pergunta ${index}/${total}\nValor: ${question.points}`,
       `**${question.prompt}**`,
-      question.alternatives.map((alternative) => `(${alternative.id}) ${alternative.text}`).join("\n")
+      question.alternatives.map((alternative) => `○ ${alternative.text}`).join("\n")
     ],
     moduleId: "courses",
     title: "Questão Objetiva"
@@ -1236,7 +1258,7 @@ function writtenQuestionPanel(course: Course, attempt: CourseExamAttempt, questi
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`course_exam_written_continue:${attempt.id}`).setLabel("Continuar").setStyle(ButtonStyle.Success)
     )],
-    description: "Agora responda escrevendo sua resposta neste canal. Após enviar sua mensagem clique em Continuar.",
+    description: "Clique em Continuar após enviar sua resposta em texto neste canal. Em ambientes com suporte a modal, a pergunta final pode ser migrada para modal sem alterar o banco.",
     fields: [
       `Pergunta ${index}/${total}\nValor: ${question.points}`,
       `**${question.prompt}**`,
@@ -1294,7 +1316,8 @@ function examFinishPanel(course: Course, settings: CourseExamSettings, attempt: 
 
 async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
   const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId);
-  const channelId = runtime.settings.correctionChannelId || runtime.settings.logChannelId || (await context.api.getCourseSettings(interaction.guildId!)).reportChannelId;
+  const courseSettings = await context.api.getCourseSettings(interaction.guildId!);
+  const channelId = courseSettings.evaluationChannelId || runtime.settings.correctionChannelId || runtime.settings.logChannelId || courseSettings.reportChannelId;
   if (!channelId) return;
   const channel = await interaction.guild!.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) return;
@@ -1316,7 +1339,7 @@ async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: 
       new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setLabel("✅ Aprovar").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setLabel("❌ Reprovar").setStyle(ButtonStyle.Danger)
     )],
-    description: "Painel de correção automática e manual da prova.",
+    description: `${courseSettings.evaluatorMentionRoleId ? `<@&${courseSettings.evaluatorMentionRoleId}>\n` : ""}Painel de avaliação manual da prova.`,
     fields,
     moduleId: "courses",
     title: "Correção de Prova"
@@ -1384,8 +1407,9 @@ async function sendPublicationLog(interaction: { guild: ChatInputCommandInteract
 }
 
 async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["guild"] }, settings: CourseSettings, content: string) {
-  if (!settings.logChannelId) return;
-  const channel = await interaction.guild?.channels.fetch(settings.logChannelId).catch(() => null);
+  const channelId = settings.proofLogChannelId || settings.adminLogChannelId || settings.logChannelId;
+  if (!channelId) return;
+  const channel = await interaction.guild?.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) return;
   await (channel as TextChannel).send(renderComponentsV2Panel({
     accentColor: 0x2563eb,
@@ -1428,6 +1452,27 @@ function inputRow(customId: string, label: string, style: TextInputStyle, requir
 
 function examChannelName(studentName: string, courseName: string) {
   return `prova-${slugPart(studentName)}-${slugPart(courseName)}`.slice(0, 100);
+}
+
+function validateRuntimeProof(questions: CourseExamQuestion[]) {
+  const ordered = [...questions].sort((a, b) => (a.questionNumber ?? a.order + 1) - (b.questionNumber ?? b.order + 1));
+  if (ordered.length !== 9) return { ok: false, message: "A prova só pode ser iniciada com exatamente 9 perguntas configuradas." };
+  for (let index = 0; index < 8; index += 1) {
+    const question = ordered[index];
+    if (!question || question.type !== "selection") return { ok: false, message: `A pergunta ${index + 1} precisa ser objetiva.` };
+    if (question.alternatives.length < 2) return { ok: false, message: `A pergunta ${index + 1} precisa ter pelo menos 2 alternativas.` };
+    if (!question.points || question.points <= 0) return { ok: false, message: `A pergunta ${index + 1} precisa ter nota máxima configurada.` };
+  }
+  const finalQuestion = ordered[8];
+  if (!finalQuestion || finalQuestion.type !== "written" || !finalQuestion.prompt.trim()) {
+    return { ok: false, message: "A pergunta 9 precisa ser discursiva e ter texto configurado." };
+  }
+  return { ok: true, message: "Prova completa." };
+}
+
+function resolveCourseImage(settings: CourseSettings, type: string) {
+  const image = settings.images.find((item) => item.type === type && item.active && item.default) ?? settings.images.find((item) => item.type === type && item.active);
+  return image ? { imageEnabled: true, imagePosition: "top" as const, imageUrl: image.url } : null;
 }
 
 function slugPart(value: string) {

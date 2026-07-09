@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CheckCircle2, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
+import { BookOpen, FileQuestion, Image, ListChecks, Loader2, Save, ShieldCheck, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -9,15 +9,13 @@ import {
   createCourseExamQuestionApi,
   deleteCourseApi,
   deleteCourseExamQuestionApi,
-  duplicateCourseExamQuestionApi,
   getCourseExamDashboard,
   getCoursesDashboard,
   getGuildLiveOptions,
-  publishCoursePanel,
   saveCourseExamSettings,
   saveCourseSettings,
-  updateCourseExamQuestionApi,
-  updateCourseApi
+  updateCourseApi,
+  updateCourseExamQuestionApi
 } from "../../lib/api";
 import type { Course, CourseExamDashboard, CourseExamQuestion, CoursesDashboard, GuildLiveOptions, SaveCourseExamQuestionPayload, SaveCoursePayload } from "../../types";
 
@@ -27,26 +25,62 @@ type CoursesPanelProps = {
   guildId: string;
 };
 
+type TabId = "images" | "channels" | "courses" | "proofs" | "admins" | "logs";
+
+const tabs: Array<{ id: TabId; icon: typeof Image; label: string }> = [
+  { id: "images", icon: Image, label: "Banners e Imagens" },
+  { id: "channels", icon: SlidersHorizontal, label: "Configuração de Canais" },
+  { id: "courses", icon: BookOpen, label: "Cursos Cadastrados" },
+  { id: "proofs", icon: FileQuestion, label: "Configuração de Provas" },
+  { id: "admins", icon: ShieldCheck, label: "Administradores" },
+  { id: "logs", icon: ListChecks, label: "Logs do Sistema" }
+];
+
+const imageTypes = [
+  ["main_banner", "Banner principal do curso"],
+  ["proof_banner", "Banner do painel de prova"],
+  ["logs_banner", "Banner dos logs"],
+  ["approved_result", "Resultado aprovado"],
+  ["rejected_result", "Resultado reprovado"],
+  ["module", "Imagem geral do módulo"]
+] as const;
+
+const permissionKeys = [
+  "configure_channels",
+  "create_course",
+  "edit_course",
+  "delete_course",
+  "configure_proof",
+  "publish_course",
+  "start_course",
+  "cancel_course",
+  "start_proof",
+  "evaluate_proof",
+  "approve_proof",
+  "reject_proof",
+  "view_logs"
+];
+
 const emptyCourse: SaveCoursePayload = {
   active: true,
   allowGeneralInstructorRoles: true,
   bannerUrl: null,
-  buttonLabels: {
-    cancel: "Cancelar Curso",
-    enter: "Entrar no Curso",
-    leave: "Sair do Curso",
-    start: "Iniciar Curso"
-  },
+  proofBannerUrl: null,
+  buttonLabels: { cancel: "Cancelar Curso", enter: "Entrar no Curso", leave: "Sair do Curso", start: "Iniciar Curso" },
   cancelledText: null,
   color: "#2563eb",
+  code: null,
+  defaultSchedule: null,
   description: null,
   emoji: "📚",
   footerImageUrl: null,
   imagePosition: "top",
   instructorRoleIds: [],
   instructorUserIds: [],
+  location: null,
+  maxStudents: 30,
   name: "",
-  code: null,
+  proofInstructionText: "Leia cada pergunta com atenção. A pergunta final será avaliada manualmente.",
   publishChannelId: null,
   publishText: null,
   startedText: null,
@@ -56,36 +90,40 @@ const emptyCourse: SaveCoursePayload = {
 const emptyQuestion: SaveCourseExamQuestionPayload = {
   active: true,
   alternatives: [
-    { id: "A", text: "" },
-    { id: "B", text: "" },
-    { id: "C", text: "" },
-    { id: "D", text: "" },
-    { id: "E", text: "" }
+    { id: "A", text: "", score: 0, isCorrect: false, order: 0 },
+    { id: "B", text: "", score: 0, isCorrect: false, order: 1 },
+    { id: "C", text: "", score: 10, isCorrect: true, order: 2 },
+    { id: "D", text: "", score: 0, isCorrect: false, order: 3 }
   ],
-  correctAlternativeId: "A",
+  correctAlternativeId: "C",
   description: null,
   order: 0,
-  placeholder: "Explique com suas palavras...",
-  points: 1,
+  questionNumber: 1,
+  placeholder: "Escreva sua resposta final...",
+  points: 10,
   prompt: "",
   type: "selection"
 };
 
 export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
+  const [activeTab, setActiveTab] = useState<TabId>("images");
   const [dashboard, setDashboard] = useState<CoursesDashboard | null>(null);
   const [liveOptions, setLiveOptions] = useState<GuildLiveOptions | null>(null);
-  const [draft, setDraft] = useState<SaveCoursePayload>(emptyCourse);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [courseDraft, setCourseDraft] = useState<SaveCoursePayload>(emptyCourse);
+  const [exam, setExam] = useState<CourseExamDashboard | null>(null);
+  const [questionDraft, setQuestionDraft] = useState<SaveCourseExamQuestionPayload>(emptyQuestion);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [imageDraft, setImageDraft] = useState({ name: "", type: "main_banner", url: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [exam, setExam] = useState<CourseExamDashboard | null>(null);
-  const [examDraft, setExamDraft] = useState<SaveCourseExamQuestionPayload>(emptyQuestion);
-  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
-  const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? liveOptions?.channels ?? [];
+  const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? [];
+  const categories = (liveOptions?.channels as Array<{ id: string; name: string; type?: string }> | undefined)?.filter((channel) => channel.type === "category") ?? [];
+  const roles = liveOptions?.roles ?? [];
 
   useEffect(() => {
     void load();
@@ -93,11 +131,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   useEffect(() => {
     if (!selectedCourse) {
-      setDraft(emptyCourse);
+      setCourseDraft(emptyCourse);
       setExam(null);
       return;
     }
-    setDraft(toPayload(selectedCourse));
+    setCourseDraft(toCoursePayload(selectedCourse));
     void loadExam(selectedCourse.id);
   }, [selectedCourse]);
 
@@ -105,10 +143,15 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     setLoading(true);
     setError("");
     try {
-      setDashboard(await getCoursesDashboard(botId, guildId));
-      setLiveOptions(await getGuildLiveOptions(guildId, botId).catch(() => ({ channels: [], roles: [], voiceChannels: [] })));
+      const [data, options] = await Promise.all([
+        getCoursesDashboard(botId, guildId),
+        getGuildLiveOptions(guildId, botId).catch(() => ({ channels: [], roles: [], voiceChannels: [] }))
+      ]);
+      setDashboard(data);
+      setLiveOptions(options);
+      setSelectedCourseId(data.courses[0]?.id ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Cursos.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Curso.");
     } finally {
       setLoading(false);
     }
@@ -123,29 +166,28 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setDashboard({ ...dashboard, settings });
       setMessage("Configurações salvas.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar configurações.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar as configurações.");
     } finally {
       setSaving(false);
     }
   }
 
   async function saveCourse() {
-    if (!draft.name.trim()) {
+    if (!dashboard || !courseDraft.name?.trim()) {
       setError("Informe o nome do curso.");
       return;
     }
     setSaving(true);
-    setError("");
     try {
-      const course = selectedCourse
-        ? await updateCourseApi(botId, guildId, selectedCourse.id, draft)
-        : await createCourseApi(botId, guildId, draft);
-      const courses = selectedCourse
-        ? (dashboard?.courses ?? []).map((item) => item.id === course.id ? course : item)
-        : [course, ...(dashboard?.courses ?? [])];
-      if (dashboard) setDashboard({ ...dashboard, courses });
-      setSelectedCourseId(course.id);
-      setMessage("Curso salvo.");
+      const saved = selectedCourse
+        ? await updateCourseApi(botId, guildId, selectedCourse.id, courseDraft)
+        : await createCourseApi(botId, guildId, courseDraft);
+      setDashboard({
+        ...dashboard,
+        courses: selectedCourse ? dashboard.courses.map((course) => course.id === saved.id ? saved : course) : [saved, ...dashboard.courses]
+      });
+      setSelectedCourseId(saved.id);
+      setMessage("Curso cadastrado com sucesso.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar o curso.");
     } finally {
@@ -154,7 +196,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   }
 
   async function removeCourse() {
-    if (!selectedCourse || !dashboard) return;
+    if (!dashboard || !selectedCourse) return;
     setSaving(true);
     try {
       await deleteCourseApi(botId, guildId, selectedCourse.id);
@@ -168,64 +210,32 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     }
   }
 
-  async function publishPanel() {
-    if (!dashboard) return;
-    if (!dashboard.settings.publishChannelId) {
-      setError("Configure o canal de publicação antes de publicar o painel.");
-      return;
-    }
-    setPublishing(true);
-    setError("");
-    try {
-      const settings = await publishCoursePanel(botId, guildId);
-      setDashboard({ ...dashboard, settings });
-      setMessage("Painel de cursos enviado para publicação.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível publicar o painel de cursos.");
-    } finally {
-      setPublishing(false);
-    }
-  }
-
   async function loadExam(courseId: string) {
     setExam(null);
     try {
-      setExam(await getCourseExamDashboard(botId, guildId, courseId));
+      const data = await getCourseExamDashboard(botId, guildId, courseId);
+      setExam(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Provas.");
-    }
-  }
-
-  async function saveExamSettings(patch: Partial<CourseExamDashboard["settings"]>) {
-    if (!selectedCourse || !exam) return;
-    setSaving(true);
-    try {
-      const settings = await saveCourseExamSettings(botId, guildId, selectedCourse.id, patch);
-      setExam({ ...exam, settings });
-      setMessage("Configuração da prova salva.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar a prova.");
-    } finally {
-      setSaving(false);
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a prova.");
     }
   }
 
   async function saveQuestion() {
-    if (!selectedCourse || !exam || !examDraft.prompt.trim()) return;
+    if (!selectedCourse || !exam || !questionDraft.prompt?.trim()) return;
+    const payload = normalizeQuestion(questionDraft);
     setSaving(true);
     try {
-      const payload = normalizeQuestionDraft(examDraft, exam.questions.length);
-      const question = editingQuestionId
+      const saved = editingQuestionId
         ? await updateCourseExamQuestionApi(botId, guildId, selectedCourse.id, editingQuestionId, payload)
         : await createCourseExamQuestionApi(botId, guildId, selectedCourse.id, payload);
       setExam({
         ...exam,
         questions: editingQuestionId
-          ? exam.questions.map((item) => item.id === question.id ? question : item).sort((a, b) => a.order - b.order)
-          : [...exam.questions, question].sort((a, b) => a.order - b.order)
+          ? exam.questions.map((question) => question.id === saved.id ? saved : question).sort(sortQuestion)
+          : [...exam.questions, saved].sort(sortQuestion)
       });
-      setExamDraft(emptyQuestion);
       setEditingQuestionId(null);
+      setQuestionDraft(emptyQuestion);
       setMessage("Pergunta salva.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar a pergunta.");
@@ -234,35 +244,29 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     }
   }
 
-  async function removeQuestion(question: CourseExamQuestion) {
-    if (!selectedCourse || !exam) return;
-    setSaving(true);
-    try {
-      await deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id);
-      setExam({ ...exam, questions: exam.questions.filter((item) => item.id !== question.id) });
-      setMessage("Pergunta excluída.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível excluir a pergunta.");
-    } finally {
-      setSaving(false);
+  async function saveImage() {
+    if (!dashboard || !imageDraft.name.trim() || !imageDraft.url.trim()) {
+      setError("Informe nome e URL da imagem.");
+      return;
     }
-  }
-
-  async function duplicateQuestion(question: CourseExamQuestion) {
-    if (!selectedCourse || !exam) return;
-    setSaving(true);
-    try {
-      const duplicated = await duplicateCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id);
-      setExam({ ...exam, questions: [...exam.questions, duplicated].sort((a, b) => a.order - b.order) });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível duplicar a pergunta.");
-    } finally {
-      setSaving(false);
-    }
+    const image = {
+      id: crypto.randomUUID(),
+      botId,
+      guildId,
+      name: imageDraft.name.trim(),
+      type: imageDraft.type as CoursesDashboard["settings"]["images"][number]["type"],
+      url: imageDraft.url.trim(),
+      createdAt: new Date().toISOString(),
+      createdBy: null,
+      active: true,
+      default: false
+    };
+    await saveSettings({ images: [image, ...(dashboard.settings.images ?? [])] });
+    setImageDraft({ name: "", type: "main_banner", url: "" });
   }
 
   if (loading || !dashboard) {
-    return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando cursos...</CardContent></Card>;
+    return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando Sistema de Curso...</CardContent></Card>;
   }
 
   return (
@@ -271,258 +275,264 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       {error ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div> : null}
 
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-blue-300" /> Sistema de Cursos</CardTitle>
-          <Button disabled={!canManage || publishing || !dashboard.settings.publishChannelId} onClick={() => void publishPanel()} size="sm" type="button">
-            {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Publicar painel
-          </Button>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-sky-300" />Sistema de Curso</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SelectField disabled={!canManage || saving} label="Canal de publicação" onChange={(publishChannelId) => void saveSettings({ publishChannelId })} options={textChannels} value={dashboard.settings.publishChannelId ?? ""} />
-          <SelectField disabled={!canManage || saving} label="Canal de agendamentos" onChange={(scheduleChannelId) => void saveSettings({ scheduleChannelId })} options={textChannels} value={dashboard.settings.scheduleChannelId ?? ""} />
-          <SelectField disabled={!canManage || saving} label="Canal de relatórios" onChange={(reportChannelId) => void saveSettings({ reportChannelId })} options={textChannels} value={dashboard.settings.reportChannelId ?? ""} />
-          <SelectField disabled={!canManage || saving} label="Canal de logs" onChange={(logChannelId) => void saveSettings({ logChannelId })} options={textChannels} value={dashboard.settings.logChannelId ?? ""} />
-          <MultiRoleField disabled={!canManage || saving} label="Cargos gestores" onChange={(managerRoleIds) => void saveSettings({ managerRoleIds })} options={liveOptions?.roles ?? []} value={dashboard.settings.managerRoleIds} />
-          <MultiRoleField disabled={!canManage || saving} label="Cargo geral dos instrutores" onChange={(generalInstructorRoleIds) => void saveSettings({ generalInstructorRoleIds })} options={liveOptions?.roles ?? []} value={dashboard.settings.generalInstructorRoleIds} />
-          <InputField disabled={!canManage || saving} label="Gestores por ID de usuário" onChange={(value) => void saveSettings({ managerUserIds: csv(value) })} value={dashboard.settings.managerUserIds.join(",")} />
-          <InputField disabled={!canManage || saving} label="Banner global" onChange={(globalBannerUrl) => void saveSettings({ globalBannerUrl })} value={dashboard.settings.globalBannerUrl ?? ""} />
-          <InputField disabled={!canManage || saving} label="Imagem de relatório" onChange={(reportImageUrl) => void saveSettings({ reportImageUrl })} value={dashboard.settings.reportImageUrl ?? ""} />
+        <CardContent className="flex flex-wrap gap-2">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <Button key={tab.id} onClick={() => setActiveTab(tab.id)} type="button" variant={activeTab === tab.id ? "default" : "outline"}>
+                <Icon className="h-4 w-4" />{tab.label}
+              </Button>
+            );
+          })}
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      {activeTab === "images" ? (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Cursos</CardTitle>
-            <Button disabled={!canManage} onClick={() => setSelectedCourseId(null)} size="sm" type="button"><Plus className="h-4 w-4" />Novo</Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {dashboard.courses.map((course) => (
-              <button className={`w-full rounded-lg border p-3 text-left ${selectedCourseId === course.id ? "border-blue-400/50 bg-blue-500/10" : "border-zinc-800 bg-black/30"}`} key={course.id} onClick={() => setSelectedCourseId(course.id)} type="button">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-white">{course.emoji} {course.name}</span>
-                  <Badge variant={course.active ? "success" : "muted"}>{course.active ? "Ativo" : "Inativo"}</Badge>
-                </div>
-                <p className="mt-1 truncate text-xs text-zinc-500">{course.instructorUserIds.length} usuários, {course.instructorRoleIds.length} cargos instrutores</p>
-                {course.code ? <p className="mt-1 truncate text-xs text-zinc-600">Código: {course.code}</p> : null}
-              </button>
-            ))}
-            {!dashboard.courses.length ? <p className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">Nenhum curso cadastrado.</p> : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{selectedCourse ? "Editar curso" : "Cadastrar curso"}</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Banners e Imagens</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <InputField disabled={!canManage} label="Nome" onChange={(name) => setDraft({ ...draft, name })} value={draft.name} />
-              <InputField disabled={!canManage} label="Código" onChange={(code) => setDraft({ ...draft, code })} value={draft.code ?? ""} />
-              <InputField disabled={!canManage} label="Emoji" onChange={(emoji) => setDraft({ ...draft, emoji })} value={draft.emoji ?? ""} />
-              <InputField disabled={!canManage} label="Cor do painel" onChange={(color) => setDraft({ ...draft, color })} value={draft.color ?? "#2563eb"} />
-              <SelectValueField disabled={!canManage} label="Posição da imagem" onChange={(imagePosition) => setDraft({ ...draft, imagePosition: imagePosition as SaveCoursePayload["imagePosition"] })} options={[["top", "Topo"], ["bottom", "Baixo"], ["side", "Lateral"], ["footer", "Rodapé"]]} value={draft.imagePosition ?? "top"} />
-              <InputField disabled={!canManage} label="Banner principal" onChange={(bannerUrl) => setDraft({ ...draft, bannerUrl })} value={draft.bannerUrl ?? ""} />
-              <InputField disabled={!canManage} label="Thumbnail" onChange={(thumbnailUrl) => setDraft({ ...draft, thumbnailUrl })} value={draft.thumbnailUrl ?? ""} />
-              <InputField disabled={!canManage} label="Imagem de rodapé" onChange={(footerImageUrl) => setDraft({ ...draft, footerImageUrl })} value={draft.footerImageUrl ?? ""} />
-              <SelectField disabled={!canManage} label="Canal próprio do curso" onChange={(publishChannelId) => setDraft({ ...draft, publishChannelId })} options={textChannels} value={draft.publishChannelId ?? ""} />
-              <InputField disabled={!canManage} label="Instrutores por ID de usuário" onChange={(value) => setDraft({ ...draft, instructorUserIds: csv(value) })} value={(draft.instructorUserIds ?? []).join(",")} />
-              <MultiRoleField disabled={!canManage} label="Cargos instrutores" onChange={(instructorRoleIds) => setDraft({ ...draft, instructorRoleIds })} options={liveOptions?.roles ?? []} value={draft.instructorRoleIds ?? []} />
-              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
-                Curso ativo
-                <input checked={draft.active ?? true} disabled={!canManage} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} type="checkbox" />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
-                Usar cargo geral de instrutor
-                <input checked={draft.allowGeneralInstructorRoles ?? true} disabled={!canManage} onChange={(event) => setDraft({ ...draft, allowGeneralInstructorRoles: event.target.checked })} type="checkbox" />
-              </label>
-            </div>
-            <TextAreaField disabled={!canManage} label="Descrição" onChange={(description) => setDraft({ ...draft, description })} value={draft.description ?? ""} />
-            <TextAreaField disabled={!canManage} label="Texto do painel de publicação" onChange={(publishText) => setDraft({ ...draft, publishText })} value={draft.publishText ?? ""} />
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={!canManage || saving} onClick={() => void saveCourse()} type="button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar</Button>
-              {selectedCourse ? <Button disabled={!canManage || saving} onClick={() => void removeCourse()} type="button" variant="destructive"><Trash2 className="h-4 w-4" />Excluir</Button> : null}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {selectedCourse && exam ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Sistema de Provas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
             <div className="grid gap-3 md:grid-cols-3">
-              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
-                Prova ativa
-                <input checked={exam.settings.enabled} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ enabled: event.target.checked })} type="checkbox" />
-              </label>
-              <InputField disabled={!canManage || saving} label="Nota mínima" onChange={(value) => void saveExamSettings({ minScore: Number(value) || 0 })} value={String(exam.settings.minScore)} />
-              <InputField disabled={!canManage || saving} label="Tempo máximo em minutos" onChange={(value) => void saveExamSettings({ maxTimeMinutes: value ? Number(value) : null })} value={exam.settings.maxTimeMinutes ? String(exam.settings.maxTimeMinutes) : ""} />
-              <SelectField disabled={!canManage || saving} label="Canal de correção" onChange={(correctionChannelId) => void saveExamSettings({ correctionChannelId })} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
-              <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveExamSettings({ logChannelId })} options={textChannels} value={exam.settings.logChannelId ?? ""} />
-              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
-                Apagar respostas escritas
-                <input checked={exam.settings.deleteWrittenAnswers} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ deleteWrittenAnswers: event.target.checked })} type="checkbox" />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/30 px-3 py-3 text-sm text-zinc-200">
-                Permitir revisar pergunta atual
-                <input checked={exam.settings.allowCurrentQuestionReview} disabled={!canManage || saving} onChange={(event) => void saveExamSettings({ allowCurrentQuestionReview: event.target.checked })} type="checkbox" />
-              </label>
+              <InputField disabled={!canManage || saving} label="Nome da imagem" onChange={(name) => setImageDraft({ ...imageDraft, name })} value={imageDraft.name} />
+              <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setImageDraft({ ...imageDraft, type })} options={imageTypes.map(([id, label]) => [id, label])} value={imageDraft.type} />
+              <InputField disabled={!canManage || saving} label="URL final da imagem" onChange={(url) => setImageDraft({ ...imageDraft, url })} value={imageDraft.url} />
             </div>
-
-            <div className="grid gap-3 lg:grid-cols-2">
-              <TextAreaField disabled={!canManage || saving} label="Mensagem inicial" onChange={(initialMessage) => void saveExamSettings({ initialMessage })} value={exam.settings.initialMessage} />
-              <TextAreaField disabled={!canManage || saving} label="Mensagem final" onChange={(finalMessage) => void saveExamSettings({ finalMessage })} value={exam.settings.finalMessage} />
-              <TextAreaField disabled={!canManage || saving} label="Mensagem de aprovação" onChange={(approvalMessage) => void saveExamSettings({ approvalMessage })} value={exam.settings.approvalMessage} />
-              <TextAreaField disabled={!canManage || saving} label="Mensagem de reprovação" onChange={(rejectionMessage) => void saveExamSettings({ rejectionMessage })} value={exam.settings.rejectionMessage} />
-            </div>
-
-            <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "+ Criar Pergunta"}</p>
-                {editingQuestionId ? <Button onClick={() => { setEditingQuestionId(null); setExamDraft(emptyQuestion); }} size="sm" type="button" variant="outline">Cancelar edição</Button> : null}
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <SelectValueField disabled={!canManage || saving} label="Tipo da pergunta" onChange={(type) => setExamDraft({ ...examDraft, type: type as "selection" | "written" })} options={[["selection", "Seleção"], ["written", "Escrita"]]} value={examDraft.type} />
-                <InputField disabled={!canManage || saving} label="Nota da questão" onChange={(value) => setExamDraft({ ...examDraft, points: Number(value) || 0 })} value={String(examDraft.points ?? 1)} />
-              </div>
-              <div className="mt-3 space-y-3">
-                <TextAreaField disabled={!canManage || saving} label="Pergunta" onChange={(prompt) => setExamDraft({ ...examDraft, prompt })} value={examDraft.prompt} />
-                <TextAreaField disabled={!canManage || saving} label={examDraft.type === "written" ? "Texto de apoio" : "Descrição"} onChange={(description) => setExamDraft({ ...examDraft, description })} value={examDraft.description ?? ""} />
-                {examDraft.type === "selection" ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {(examDraft.alternatives ?? []).slice(0, 5).map((alternative, index) => (
-                      <InputField
-                        disabled={!canManage || saving}
-                        key={alternative.id ?? index}
-                        label={`Alternativa ${["A", "B", "C", "D", "E"][index]}`}
-                        onChange={(text) => setExamDraft({ ...examDraft, alternatives: (examDraft.alternatives ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, id: ["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E", text } : item) })}
-                        value={alternative.text}
-                      />
-                    ))}
-                    <SelectValueField disabled={!canManage || saving} label="Resposta correta" onChange={(correctAlternativeId) => setExamDraft({ ...examDraft, correctAlternativeId: correctAlternativeId as "A" | "B" | "C" | "D" | "E" })} options={[["A", "Alternativa A"], ["B", "Alternativa B"], ["C", "Alternativa C"], ["D", "Alternativa D"], ["E", "Alternativa E"]]} value={examDraft.correctAlternativeId ?? "A"} />
+            <Button disabled={!canManage || saving} onClick={() => void saveImage()} type="button"><Save className="h-4 w-4" />Salvar imagem</Button>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {(dashboard.settings.images ?? []).map((image) => (
+                <div className="rounded-lg border border-zinc-800 bg-black/30 p-3" key={image.id}>
+                  <img alt={image.name} className="h-28 w-full rounded-md object-cover" src={image.url} />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{image.name}</p>
+                      <p className="text-xs text-zinc-500">{imageTypes.find(([id]) => id === image.type)?.[1] ?? image.type}</p>
+                    </div>
+                    <Badge variant={image.active ? "success" : "muted"}>{image.active ? "Ativa" : "Inativa"}</Badge>
                   </div>
-                ) : (
-                  <InputField disabled={!canManage || saving} label="Placeholder da resposta" onChange={(placeholder) => setExamDraft({ ...examDraft, placeholder })} value={examDraft.placeholder ?? ""} />
-                )}
-                <Button disabled={!canManage || saving || !examDraft.prompt.trim()} onClick={() => void saveQuestion()} type="button"><Save className="h-4 w-4" />Salvar pergunta</Button>
-              </div>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-2">
-              {exam.questions.map((question, index) => (
-                <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300" key={question.id}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-white">{index + 1}. {question.prompt}</p>
-                    <Badge variant={question.active ? "success" : "muted"}>{question.type === "selection" ? "Seleção" : "Escrita"}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-500">Nota: {question.points} • Status: {question.active ? "ativa" : "inativa"}</p>
-                  {question.type === "selection" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((item) => `${item.id}) ${item.text}`).join(" | ")}</p> : <p className="mt-2 text-xs text-zinc-400">{question.placeholder}</p>}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button disabled={!canManage || saving} onClick={() => { setEditingQuestionId(question.id); setExamDraft(toQuestionPayload(question)); }} size="sm" type="button" variant="outline">Editar</Button>
-                    <Button disabled={!canManage || saving} onClick={() => void duplicateQuestion(question)} size="sm" type="button" variant="outline">Duplicar</Button>
-                    <Button disabled={!canManage || saving} onClick={() => void removeQuestion(question)} size="sm" type="button" variant="destructive">Excluir</Button>
+                  <div className="mt-3 flex gap-2">
+                    <Button disabled={!canManage || saving} onClick={() => void saveSettings({ images: dashboard.settings.images.map((item) => item.id === image.id ? { ...item, default: !item.default } : item) })} size="sm" type="button" variant="outline">{image.default ? "Padrão" : "Definir padrão"}</Button>
+                    <Button disabled={!canManage || saving} onClick={() => void saveSettings({ images: dashboard.settings.images.filter((item) => item.id !== image.id) })} size="sm" type="button" variant="destructive"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
               ))}
-              {!exam.questions.length ? <p className="rounded-lg border border-dashed border-zinc-800 p-5 text-sm text-zinc-500">Nenhuma pergunta cadastrada para este curso.</p> : null}
-            </div>
-
-            <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
-              <p className="font-semibold text-white">Resultados recentes</p>
-              <div className="mt-3 grid gap-2">
-                {exam.attempts.slice(0, 8).map((attempt) => (
-                  <div className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300" key={attempt.id}>
-                    <span>Aluno: {attempt.studentId}</span> • <span>Status: {attempt.status}</span> • <span>Nota: {attempt.score}/{attempt.maxScore} ({attempt.percent}%)</span>
-                  </div>
-                ))}
-                {!exam.attempts.length ? <p className="text-sm text-zinc-500">Nenhuma prova realizada ainda.</p> : null}
-              </div>
             </div>
           </CardContent>
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-300" /> Monitoramento</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <Metric label="Publicações" value={dashboard.publications.length} />
-          <Metric label="Solicitações de horário" value={dashboard.scheduleRequests.length} />
-          <Metric label="Relatórios" value={dashboard.reports.length} />
-        </CardContent>
-      </Card>
+      {activeTab === "channels" ? (
+        <Card>
+          <CardHeader><CardTitle>Configuração de Canais</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <SelectField disabled={!canManage || saving} label="Canal global de publicação" onChange={(publishChannelId) => void saveSettings({ publishChannelId })} options={textChannels} value={dashboard.settings.publishChannelId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Logs de agendamento" onChange={(scheduleLogChannelId) => void saveSettings({ scheduleLogChannelId })} options={textChannels} value={dashboard.settings.scheduleLogChannelId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Logs de provas" onChange={(proofLogChannelId) => void saveSettings({ proofLogChannelId })} options={textChannels} value={dashboard.settings.proofLogChannelId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Resultados aprovado/reprovado" onChange={(resultChannelId) => void saveSettings({ resultChannelId })} options={textChannels} value={dashboard.settings.resultChannelId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Avaliação das provas" onChange={(evaluationChannelId) => void saveSettings({ evaluationChannelId })} options={textChannels} value={dashboard.settings.evaluationChannelId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => void saveSettings({ tempProofCategoryId })} options={categories} value={dashboard.settings.tempProofCategoryId ?? ""} />
+            <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => void saveSettings({ adminLogChannelId })} options={textChannels} value={dashboard.settings.adminLogChannelId ?? ""} />
+            <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar avaliadores" onChange={(evaluatorMentionRoleId) => void saveSettings({ evaluatorMentionRoleId })} options={roles} value={dashboard.settings.evaluatorMentionRoleId ?? ""} />
+            <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar resultados" onChange={(resultMentionRoleId) => void saveSettings({ resultMentionRoleId })} options={roles} value={dashboard.settings.resultMentionRoleId ?? ""} />
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <Card>
-        <CardHeader><CardTitle>Logs recentes</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          {dashboard.logs.map((log) => (
-            <div className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2 text-sm text-zinc-300" key={log.id}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold text-white">{log.action}</span>
-                <span className="text-xs text-zinc-500">{new Date(log.createdAt).toLocaleString("pt-BR")}</span>
+      {activeTab === "courses" ? (
+        <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <Card>
+            <CardHeader><CardTitle>Cursos Cadastrados</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <Button disabled={!canManage} onClick={() => { setSelectedCourseId(null); setCourseDraft(emptyCourse); }} type="button">Novo curso</Button>
+              {dashboard.courses.map((course) => (
+                <button className={`w-full rounded-lg border p-3 text-left ${selectedCourseId === course.id ? "border-sky-400/50 bg-sky-500/10" : "border-zinc-800 bg-black/30"}`} key={course.id} onClick={() => setSelectedCourseId(course.id)} type="button">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-white">{course.name}</span>
+                    <Badge variant={course.active ? "success" : "muted"}>{course.active ? "Ativo" : "Inativo"}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">Código: {course.code || "-"} • Vagas: {course.maxStudents ?? 30}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Instrutores: {course.instructorUserIds.length} usuários, {course.instructorRoleIds.length} cargos</p>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>{selectedCourse ? "Editar curso" : "Criar curso"}</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <InputField disabled={!canManage} label="Nome do curso" onChange={(name) => setCourseDraft({ ...courseDraft, name })} value={courseDraft.name ?? ""} />
+                <InputField disabled={!canManage} label="Código/número" onChange={(code) => setCourseDraft({ ...courseDraft, code })} value={courseDraft.code ?? ""} />
+                <InputField disabled={!canManage} label="Local" onChange={(location) => setCourseDraft({ ...courseDraft, location })} value={courseDraft.location ?? ""} />
+                <InputField disabled={!canManage} label="Horário padrão" onChange={(defaultSchedule) => setCourseDraft({ ...courseDraft, defaultSchedule })} value={courseDraft.defaultSchedule ?? ""} />
+                <InputField disabled={!canManage} label="Limite de alunos" onChange={(value) => setCourseDraft({ ...courseDraft, maxStudents: Number(value) || 1 })} value={String(courseDraft.maxStudents ?? 30)} />
+                <InputField disabled={!canManage} label="Banner do curso" onChange={(bannerUrl) => setCourseDraft({ ...courseDraft, bannerUrl })} value={courseDraft.bannerUrl ?? ""} />
+                <InputField disabled={!canManage} label="Banner da prova" onChange={(proofBannerUrl) => setCourseDraft({ ...courseDraft, proofBannerUrl })} value={courseDraft.proofBannerUrl ?? ""} />
+                <InputField disabled={!canManage} label="Instrutores por ID de usuário" onChange={(value) => setCourseDraft({ ...courseDraft, instructorUserIds: csv(value) })} value={(courseDraft.instructorUserIds ?? []).join(",")} />
+                <MultiRoleField disabled={!canManage} label="Cargos de instrutor" onChange={(instructorRoleIds) => setCourseDraft({ ...courseDraft, instructorRoleIds })} options={roles} value={courseDraft.instructorRoleIds ?? []} />
               </div>
-              <p className="mt-1 text-xs text-zinc-500">Usuário: {log.actorId ?? "-"} • Curso: {log.courseId ?? "-"} • Publicação: {log.publicationId ?? "-"}</p>
+              <TextAreaField disabled={!canManage} label="Descrição" onChange={(description) => setCourseDraft({ ...courseDraft, description })} value={courseDraft.description ?? ""} />
+              <TextAreaField disabled={!canManage} label="Texto do painel de publicação" onChange={(publishText) => setCourseDraft({ ...courseDraft, publishText })} value={courseDraft.publishText ?? ""} />
+              <TextAreaField disabled={!canManage} label="Texto de instrução da prova" onChange={(proofInstructionText) => setCourseDraft({ ...courseDraft, proofInstructionText })} value={courseDraft.proofInstructionText ?? ""} />
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={!canManage || saving} onClick={() => void saveCourse()} type="button"><Save className="h-4 w-4" />Salvar</Button>
+                {selectedCourse ? <Button disabled={!canManage || saving} onClick={() => void removeCourse()} type="button" variant="destructive"><Trash2 className="h-4 w-4" />Excluir</Button> : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === "proofs" ? (
+        <Card>
+          <CardHeader><CardTitle>Configuração de Provas</CardTitle></CardHeader>
+          <CardContent className="space-y-5">
+            <SelectValueField disabled={!canManage || saving} label="Curso" onChange={(courseId) => setSelectedCourseId(courseId)} options={dashboard.courses.map((course) => [course.id, course.name])} value={selectedCourseId ?? ""} />
+            {selectedCourse && exam ? (
+              <>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <InputField disabled={!canManage || saving} label="Nota mínima" onChange={(value) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { minScore: Number(value) || 0 }).then((settings) => setExam({ ...exam, settings }))} value={String(exam.settings.minScore)} />
+                  <InputField disabled={!canManage || saving} label="Nota máxima pergunta 9" onChange={(value) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualQuestionMaxScore: Number(value) || 0 }).then((settings) => setExam({ ...exam, settings }))} value={String(exam.settings.manualQuestionMaxScore ?? 10)} />
+                  <ToggleField disabled={!canManage || saving} label="Aprovação sempre manual" onChange={(manualApproval) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualApproval }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualApproval ?? true} />
+                  <ToggleField disabled={!canManage || saving} label="Prova ativa" onChange={(enabled) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { enabled }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.enabled} />
+                </div>
+                <ProofCompleteness questions={exam.questions} />
+                <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
+                  <p className="mb-3 font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "Criar pergunta"}</p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <InputField disabled={!canManage || saving} label="Número da pergunta" onChange={(value) => setQuestionDraft({ ...questionDraft, questionNumber: Number(value) || 1, order: Math.max(0, (Number(value) || 1) - 1), type: Number(value) === 9 ? "written" : "selection" })} value={String(questionDraft.questionNumber ?? 1)} />
+                    <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setQuestionDraft({ ...questionDraft, type: type as "selection" | "written" })} options={[["selection", "Objetiva"], ["written", "Discursiva"]]} value={questionDraft.type} />
+                    <InputField disabled={!canManage || saving} label="Nota máxima" onChange={(value) => setQuestionDraft({ ...questionDraft, points: Number(value) || 0 })} value={String(questionDraft.points ?? 10)} />
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    <TextAreaField disabled={!canManage || saving} label="Pergunta" onChange={(prompt) => setQuestionDraft({ ...questionDraft, prompt })} value={questionDraft.prompt} />
+                    <TextAreaField disabled={!canManage || saving} label="Descrição opcional" onChange={(description) => setQuestionDraft({ ...questionDraft, description })} value={questionDraft.description ?? ""} />
+                    {questionDraft.type === "selection" ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {(questionDraft.alternatives ?? []).map((option, index) => (
+                          <div className="rounded-lg border border-zinc-800 p-3" key={option.id ?? index}>
+                            <InputField disabled={!canManage || saving} label={`Resposta ${index + 1}`} onChange={(text) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { text }) })} value={option.text} />
+                            <InputField disabled={!canManage || saving} label="Pontuação" onChange={(value) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { score: Number(value) || 0 }) })} value={String(option.score ?? 0)} />
+                            <ToggleField disabled={!canManage || saving} label="Correta" onChange={(checked) => setQuestionDraft({ ...questionDraft, correctAlternativeId: checked ? option.id : questionDraft.correctAlternativeId, alternatives: (questionDraft.alternatives ?? []).map((item, itemIndex) => ({ ...item, isCorrect: itemIndex === index ? checked : false })) })} value={Boolean(option.isCorrect)} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : <InputField disabled={!canManage || saving} label="Placeholder do modal" onChange={(placeholder) => setQuestionDraft({ ...questionDraft, placeholder })} value={questionDraft.placeholder ?? ""} />}
+                    <Button disabled={!canManage || saving || !questionDraft.prompt?.trim()} onClick={() => void saveQuestion()} type="button"><Save className="h-4 w-4" />Salvar pergunta</Button>
+                  </div>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {exam.questions.sort(sortQuestion).map((question) => (
+                    <QuestionCard key={question.id} question={question} onDelete={() => void deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id).then(() => setExam({ ...exam, questions: exam.questions.filter((item) => item.id !== question.id) }))} onEdit={() => { setEditingQuestionId(question.id); setQuestionDraft(toQuestionPayload(question)); }} />
+                  ))}
+                </div>
+              </>
+            ) : <p className="text-sm text-zinc-500">Selecione um curso para configurar a prova.</p>}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "admins" ? (
+        <Card>
+          <CardHeader><CardTitle>Administradores</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <MultiRoleField disabled={!canManage || saving} label="Cargos administradores" onChange={(adminRoleIds) => void saveSettings({ adminRoleIds })} options={roles} value={dashboard.settings.adminRoleIds} />
+              <InputField disabled={!canManage || saving} label="Usuários administradores" onChange={(value) => void saveSettings({ adminUserIds: csv(value) })} value={dashboard.settings.adminUserIds.join(",")} />
+              <MultiRoleField disabled={!canManage || saving} label="Cargos instrutores globais" onChange={(globalInstructorRoleIds) => void saveSettings({ globalInstructorRoleIds, generalInstructorRoleIds: globalInstructorRoleIds })} options={roles} value={dashboard.settings.globalInstructorRoleIds ?? []} />
+              <InputField disabled={!canManage || saving} label="Usuários instrutores globais" onChange={(value) => void saveSettings({ globalInstructorUserIds: csv(value) })} value={(dashboard.settings.globalInstructorUserIds ?? []).join(",")} />
+              <MultiRoleField disabled={!canManage || saving} label="Cargos avaliadores de prova" onChange={(evaluatorRoleIds) => void saveSettings({ evaluatorRoleIds })} options={roles} value={dashboard.settings.evaluatorRoleIds ?? []} />
+              <InputField disabled={!canManage || saving} label="Usuários avaliadores de prova" onChange={(value) => void saveSettings({ evaluatorUserIds: csv(value) })} value={(dashboard.settings.evaluatorUserIds ?? []).join(",")} />
+              <MultiRoleField disabled={!canManage || saving} label="Cargos que podem usar /curso config" onChange={(configRoleIds) => void saveSettings({ configRoleIds })} options={roles} value={dashboard.settings.configRoleIds ?? []} />
+              <InputField disabled={!canManage || saving} label="Usuários que podem usar /curso config" onChange={(value) => void saveSettings({ configUserIds: csv(value) })} value={(dashboard.settings.configUserIds ?? []).join(",")} />
             </div>
-          ))}
-          {!dashboard.logs.length ? <p className="text-sm text-zinc-500">Nenhuma log registrada ainda.</p> : null}
-        </CardContent>
-      </Card>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {permissionKeys.map((key) => {
+                const rule = dashboard.settings.permissionMatrix?.[key] ?? { roleIds: [], userIds: [] };
+                return <InputField key={key} disabled={!canManage || saving} label={`${key} - usuários`} onChange={(value) => void saveSettings({ permissionMatrix: { ...(dashboard.settings.permissionMatrix ?? {}), [key]: { ...rule, userIds: csv(value) } } })} value={rule.userIds.join(",")} />;
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "logs" ? (
+        <Card>
+          <CardHeader><CardTitle>Logs do Sistema</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {dashboard.logs.map((log) => (
+              <div className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2 text-sm text-zinc-300" key={log.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-white">{log.type ?? log.action}</span>
+                  <span className="text-xs text-zinc-500">{new Date(log.createdAt).toLocaleString("pt-BR")}</span>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">Autor: {log.authorId ?? log.actorId ?? "-"} • Alvo: {log.targetId ?? "-"} • Curso: {log.courseId ?? "-"} • Status: {log.status ?? "-"}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
 
-function toPayload(course: Course): SaveCoursePayload {
+function ProofCompleteness({ questions }: { questions: CourseExamQuestion[] }) {
+  const objective = questions.filter((question) => question.type === "selection");
+  const written = questions.find((question) => (question.questionNumber ?? question.order + 1) === 9 && question.type === "written");
+  const complete = questions.length === 9 && objective.length >= 8 && Boolean(written) && objective.every((question) => question.alternatives.length >= 2 && question.points > 0);
+  return <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">Status da prova: <Badge variant={complete ? "success" : "warning"}>{complete ? "Completa" : "Incompleta"}</Badge> • Perguntas: {questions.length}/9 • Objetivas: {objective.length}/8 • Discursiva final: {written ? "configurada" : "pendente"}</div>;
+}
+
+function QuestionCard({ onDelete, onEdit, question }: { onDelete: () => void; onEdit: () => void; question: CourseExamQuestion }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-white">Pergunta {question.questionNumber ?? question.order + 1}: {question.prompt}</p>
+        <Badge variant={question.type === "written" ? "warning" : "success"}>{question.type === "written" ? "Discursiva" : "Radio/Seleção"}</Badge>
+      </div>
+      <p className="mt-1 text-xs text-zinc-500">Nota máxima: {question.points}</p>
+      {question.type === "selection" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text} - ${option.score ?? 0} pontos${option.isCorrect ? " - correta" : ""}`).join(" | ")}</p> : null}
+      <div className="mt-3 flex gap-2">
+        <Button onClick={onEdit} size="sm" type="button" variant="outline">Editar</Button>
+        <Button onClick={onDelete} size="sm" type="button" variant="destructive">Excluir</Button>
+      </div>
+    </div>
+  );
+}
+
+function toCoursePayload(course: Course): SaveCoursePayload {
   return {
-    active: course.active,
-    allowGeneralInstructorRoles: course.allowGeneralInstructorRoles,
-    bannerUrl: course.bannerUrl,
-    buttonLabels: course.buttonLabels,
-    cancelledText: course.cancelledText,
-    color: course.color,
-    description: course.description,
-    emoji: course.emoji,
-    footerImageUrl: course.footerImageUrl,
-    imagePosition: course.imagePosition,
-    instructorRoleIds: course.instructorRoleIds,
-    instructorUserIds: course.instructorUserIds,
-    name: course.name,
-    code: course.code,
-    publishChannelId: course.publishChannelId,
-    publishText: course.publishText,
-    startedText: course.startedText,
-    thumbnailUrl: course.thumbnailUrl
+    ...course,
+    proofBannerUrl: course.proofBannerUrl ?? null,
+    proofInstructionText: course.proofInstructionText ?? null,
+    maxStudents: course.maxStudents ?? 30,
+    location: course.location ?? null,
+    defaultSchedule: course.defaultSchedule ?? null
   };
 }
 
 function toQuestionPayload(question: CourseExamQuestion): SaveCourseExamQuestionPayload {
-  return {
-    active: question.active,
-    alternatives: question.alternatives.length ? question.alternatives : emptyQuestion.alternatives,
-    correctAlternativeId: question.correctAlternativeId,
-    description: question.description,
-    order: question.order,
-    placeholder: question.placeholder,
-    points: question.points,
-    prompt: question.prompt,
-    type: question.type
-  };
+  return { ...question, questionNumber: question.questionNumber ?? question.order + 1 };
 }
 
-function normalizeQuestionDraft(question: SaveCourseExamQuestionPayload, fallbackOrder: number): SaveCourseExamQuestionPayload {
-  const alternatives = (question.alternatives ?? [])
-    .slice(0, 5)
-    .map((item, index) => ({ id: ["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E", text: item.text.trim() }))
-    .filter((item) => item.text);
+function normalizeQuestion(question: SaveCourseExamQuestionPayload) {
+  const questionNumber = Math.max(1, Math.min(9, Number(question.questionNumber ?? 1)));
   return {
     ...question,
-    alternatives: question.type === "selection" ? alternatives : [],
-    correctAlternativeId: question.type === "selection" ? question.correctAlternativeId ?? "A" : null,
-    order: question.order ?? fallbackOrder,
-    points: Number(question.points) || 0
-  };
+    questionNumber,
+    order: questionNumber - 1,
+    type: questionNumber === 9 ? "written" : question.type,
+    alternatives: questionNumber === 9 ? [] : (question.alternatives ?? []).filter((option) => option.text?.trim()).map((option, index) => ({ ...option, id: option.id || String.fromCharCode(65 + index), order: index, value: option.value || option.id || String.fromCharCode(65 + index), score: Number(option.score ?? 0) || 0 })),
+    correctAlternativeId: question.correctAlternativeId ?? (question.alternatives ?? []).find((option) => option.isCorrect)?.id ?? null
+  } satisfies SaveCourseExamQuestionPayload;
+}
+
+function updateOption(options: SaveCourseExamQuestionPayload["alternatives"], index: number, patch: Record<string, unknown>) {
+  return (options ?? []).map((option, itemIndex) => itemIndex === index ? { ...option, ...patch } : option);
+}
+
+function sortQuestion(a: CourseExamQuestion, b: CourseExamQuestion) {
+  return (a.questionNumber ?? a.order + 1) - (b.questionNumber ?? b.order + 1);
 }
 
 function csv(value: string) {
@@ -537,8 +547,16 @@ function TextAreaField({ disabled, label, onChange, value }: { disabled?: boolea
   return <label className="grid gap-2 text-sm"><span className="font-semibold text-zinc-300">{label}</span><textarea className="min-h-24 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
 }
 
+function ToggleField({ disabled, label, onChange, value }: { disabled?: boolean; label: string; onChange: (value: boolean) => void; value: boolean }) {
+  return <label className="flex h-10 items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-200"><span>{label}</span><input checked={value} disabled={disabled} onChange={(event) => onChange(event.target.checked)} type="checkbox" /></label>;
+}
+
 function SelectField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string | null) => void; options: Array<{ id: string; name: string }>; value: string }) {
   return <FivemResourceSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} placeholder="Não configurado" prefix="#" value={value || null} />;
+}
+
+function RoleSelect({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string | null) => void; options: Array<{ id: string; name: string }>; value: string }) {
+  return <FivemResourceSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} placeholder="Não configurado" prefix="@" value={value || null} />;
 }
 
 function SelectValueField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; options: Array<[string, string]>; value: string }) {
@@ -546,9 +564,5 @@ function SelectValueField({ disabled, label, onChange, options, value }: { disab
 }
 
 function MultiRoleField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string[]) => void; options: Array<{ id: string; name: string }>; value: string[] }) {
-  return <div className="md:col-span-2"><FivemResourceMultiSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} prefix="@" values={value} /></div>;
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg border border-zinc-800 bg-black/30 p-4"><p className="text-xs font-semibold uppercase text-zinc-500">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p></div>;
+  return <div><FivemResourceMultiSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} prefix="@" values={value} /></div>;
 }

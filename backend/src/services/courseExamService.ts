@@ -52,6 +52,9 @@ export async function getCourseExamSettings(botId: string | null, guildId: strin
     finalMessage: DEFAULT_FINAL,
     approvalMessage: DEFAULT_APPROVAL,
     rejectionMessage: DEFAULT_REJECTION,
+    manualQuestionMaxScore: 10,
+    manualApproval: true,
+    automaticApproval: false,
     updatedAt: now,
     updatedBy: null
   };
@@ -80,8 +83,10 @@ export async function createCourseExamQuestion(botId: string | null, guildId: st
     guildId,
     courseId,
     order: Number.isFinite(input.order) ? Number(input.order) : total,
+    questionNumber: Number.isFinite(input.questionNumber) ? Number(input.questionNumber) : total + 1,
     type: input.type === "written" ? "written" : "selection",
     prompt: input.prompt?.trim() || "Nova pergunta",
+    title: input.title?.trim() || input.prompt?.trim() || "Nova pergunta",
     description: input.description?.trim() || null,
     points: Math.max(0, Number(input.points) || 1),
     alternatives: normalizeAlternatives(input.alternatives, input.type === "written" ? "written" : "selection"),
@@ -100,8 +105,10 @@ export async function createCourseExamQuestion(botId: string | null, guildId: st
 export async function updateCourseExamQuestion(botId: string | null, guildId: string, courseId: string, questionId: string, input: any, actorId: string | null) {
   const patch: Partial<MongoCourseExamQuestion> = {};
   if (input.order !== undefined) patch.order = Number(input.order) || 0;
+  if (input.questionNumber !== undefined) patch.questionNumber = Math.max(1, Math.min(9, Number(input.questionNumber) || 1));
   if (input.type !== undefined) patch.type = input.type === "written" ? "written" : "selection";
   if (input.prompt !== undefined) patch.prompt = input.prompt.trim() || "Pergunta";
+  if (input.title !== undefined) patch.title = input.title?.trim() || input.prompt?.trim() || "Pergunta";
   if (input.description !== undefined) patch.description = input.description?.trim() || null;
   if (input.points !== undefined) patch.points = Math.max(0, Number(input.points) || 0);
   if (input.alternatives !== undefined) patch.alternatives = normalizeAlternatives(input.alternatives, patch.type ?? input.type ?? "selection");
@@ -196,8 +203,9 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
   const attempt = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" });
   if (!attempt) return null;
   const selectedAlternativeId = question.type === "selection" ? normalizeCorrect(input.selectedAlternativeId) : null;
-  const correct = question.type === "selection" ? selectedAlternativeId === question.correctAlternativeId : null;
-  const pointsEarned = correct ? question.points : 0;
+  const selectedAlternative = question.alternatives.find((alternative) => alternative.id === selectedAlternativeId);
+  const correct = question.type === "selection" ? Boolean(selectedAlternative?.isCorrect ?? selectedAlternativeId === question.correctAlternativeId) : null;
+  const pointsEarned = question.type === "selection" ? Math.max(0, Number(selectedAlternative?.score ?? (correct ? question.points : 0)) || 0) : 0;
   const now = new Date();
   const doc: MongoCourseExamAnswer = {
     _id: randomUUID(),
@@ -212,6 +220,7 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
     writtenAnswer: question.type === "written" ? input.writtenAnswer?.trim().slice(0, 3000) || "" : null,
     correct,
     pointsEarned,
+    maxScore: question.points,
     answeredAt: now
   };
   await collections.courseExamAnswers.updateOne({ ...scope(botId, guildId), attemptId, questionId: question.id }, { $set: doc }, { upsert: true });
@@ -230,14 +239,14 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   if (!attempt) return null;
   const relevantQuestions = questions.filter((question) => question.courseId === attempt.courseId && question.active);
   const maxScore = relevantQuestions.reduce((total, question) => total + question.points, 0);
-  const score = answers.reduce((total, answer) => total + answer.pointsEarned, 0);
+  const score = answers.filter((answer) => answer.type === "selection").reduce((total, answer) => total + answer.pointsEarned, 0);
   const objectiveCorrect = answers.filter((answer) => answer.type === "selection" && answer.correct === true).length;
   const objectiveWrong = answers.filter((answer) => answer.type === "selection" && answer.correct === false).length;
   const writtenCount = answers.filter((answer) => answer.type === "written").length;
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
   const now = new Date();
   await collections.courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId) }, {
-    $set: { finishedAt: now, maxScore, objectiveCorrect, objectiveWrong, percent, score, status: "finished", updatedAt: now, writtenCount }
+    $set: { automaticScore: score, finishedAt: now, maxScore, objectiveCorrect, objectiveWrong, percent, score, status: "awaiting_review", updatedAt: now, writtenCount }
   });
   const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
   await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score });
@@ -247,8 +256,8 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
 export async function reviewCourseExamAttempt(botId: string | null, guildId: string, attemptId: string, reviewerId: string, status: "approved" | "rejected", rejectionReason?: string | null) {
   const { courseExamAttempts } = await getMongoCollections();
   const now = new Date();
-  await courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: "finished" }, {
-    $set: { correctedAt: now, correctedBy: reviewerId, rejectionReason: rejectionReason || null, status, updatedAt: now }
+  await courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: { $in: ["finished", "awaiting_review", "manual_reviewed"] } }, {
+    $set: { correctedAt: now, correctedBy: reviewerId, rejectionReason: rejectionReason || null, result: status, status, updatedAt: now }
   });
   const attempt = await courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
   if (!attempt) return null;
@@ -278,6 +287,9 @@ function mapSettings(settings: MongoCourseExamSettings) {
     finalMessage: settings.finalMessage,
     approvalMessage: settings.approvalMessage,
     rejectionMessage: settings.rejectionMessage,
+    manualQuestionMaxScore: settings.manualQuestionMaxScore ?? 10,
+    manualApproval: settings.manualApproval ?? true,
+    automaticApproval: settings.automaticApproval ?? false,
     updatedAt: settings.updatedAt.toISOString(),
     updatedBy: settings.updatedBy
   };
@@ -290,8 +302,10 @@ function mapQuestion(question: MongoCourseExamQuestion) {
     guildId: question.guildId,
     courseId: question.courseId,
     order: question.order,
+    questionNumber: question.questionNumber ?? question.order + 1,
     type: question.type,
     prompt: question.prompt,
+    title: question.title ?? question.prompt,
     description: question.description,
     points: question.points,
     alternatives: question.alternatives,
@@ -324,6 +338,11 @@ function mapAttempt(attempt: MongoCourseExamAttempt) {
     objectiveWrong: attempt.objectiveWrong,
     writtenCount: attempt.writtenCount,
     score: attempt.score,
+    automaticScore: attempt.automaticScore ?? attempt.score,
+    manualScore: attempt.manualScore ?? null,
+    finalScore: attempt.finalScore ?? null,
+    manualObservation: attempt.manualObservation ?? null,
+    result: attempt.result ?? null,
     maxScore: attempt.maxScore,
     percent: attempt.percent,
     correctionMessageId: attempt.correctionMessageId,
@@ -346,6 +365,7 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
     writtenAnswer: answer.writtenAnswer,
     correct: answer.correct,
     pointsEarned: answer.pointsEarned,
+    maxScore: answer.maxScore ?? answer.pointsEarned,
     answeredAt: answer.answeredAt.toISOString()
   };
 }
@@ -356,7 +376,10 @@ function cleanSettings(input: Partial<CourseExamSettingsDto>) {
     correctionChannelId: input.correctionChannelId || null,
     logChannelId: input.logChannelId || null,
     maxTimeMinutes: input.maxTimeMinutes ? Math.max(1, Number(input.maxTimeMinutes)) : null,
-    minScore: Math.max(0, Number(input.minScore ?? 7))
+    minScore: Math.max(0, Number(input.minScore ?? 7)),
+    manualQuestionMaxScore: Math.max(0, Number(input.manualQuestionMaxScore ?? 10)),
+    manualApproval: input.manualApproval ?? true,
+    automaticApproval: input.automaticApproval ?? false
   };
 }
 
@@ -364,13 +387,25 @@ function normalizeAlternatives(value: unknown, type: "selection" | "written") {
   if (type === "written") return [];
   const source = Array.isArray(value) ? value : [];
   return source
-    .slice(0, 5)
-    .map((item, index) => ({ id: ["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E", text: String((item as { text?: unknown })?.text ?? item ?? "").trim() }))
+    .slice(0, 10)
+    .map((item, index) => {
+      const option = item as { id?: unknown; text?: unknown; value?: unknown; score?: unknown; isCorrect?: unknown; order?: unknown };
+      const id = String(option.id ?? ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"][index] ?? randomUUID()).trim();
+      return {
+        id,
+        text: String(option.text ?? item ?? "").trim(),
+        value: String(option.value ?? id).trim(),
+        score: Math.max(0, Number(option.score ?? 0) || 0),
+        isCorrect: option.isCorrect === true,
+        order: Number.isFinite(option.order) ? Number(option.order) : index
+      };
+    })
     .filter((item) => item.text);
 }
 
-function normalizeCorrect(value: unknown): "A" | "B" | "C" | "D" | "E" | null {
-  return value === "A" || value === "B" || value === "C" || value === "D" || value === "E" ? value : null;
+function normalizeCorrect(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized.slice(0, 80) : null;
 }
 
 function scope(botId: string | null, guildId: string) {

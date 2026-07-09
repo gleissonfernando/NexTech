@@ -813,14 +813,30 @@ export type CourseSettings = {
   guildId: string;
   publishChannelId: string | null;
   scheduleChannelId: string | null;
+  scheduleLogChannelId: string | null;
+  proofLogChannelId: string | null;
+  resultChannelId: string | null;
+  evaluationChannelId: string | null;
   reportChannelId: string | null;
   logChannelId: string | null;
+  adminLogChannelId: string | null;
   temporaryCategoryId: string | null;
+  tempProofCategoryId: string | null;
+  evaluatorMentionRoleId: string | null;
+  resultMentionRoleId: string | null;
   adminUserIds: string[];
   adminRoleIds: string[];
   managerUserIds: string[];
   managerRoleIds: string[];
   generalInstructorRoleIds: string[];
+  globalInstructorUserIds: string[];
+  globalInstructorRoleIds: string[];
+  evaluatorUserIds: string[];
+  evaluatorRoleIds: string[];
+  configUserIds: string[];
+  configRoleIds: string[];
+  permissionMatrix: Record<string, { userIds: string[]; roleIds: string[] }>;
+  images: CourseImage[];
   defaultExpirationHours: number | null;
   noPermissionMessage: string;
   cancelledMessage: string;
@@ -833,6 +849,19 @@ export type CourseSettings = {
   updatedAt: string;
 };
 
+export type CourseImage = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  type: "main_banner" | "proof_banner" | "logs_banner" | "approved_result" | "rejected_result" | "module";
+  url: string;
+  createdAt: string;
+  createdBy: string | null;
+  active: boolean;
+  default: boolean;
+};
+
 export type Course = {
   id: string;
   botId: string | null;
@@ -843,10 +872,12 @@ export type Course = {
   emoji: string | null;
   color: string;
   bannerUrl: string | null;
+  proofBannerUrl: string | null;
   footerImageUrl: string | null;
   thumbnailUrl: string | null;
   imagePosition: "top" | "bottom" | "side" | "footer";
   publishText: string | null;
+  proofInstructionText: string | null;
   startedText: string | null;
   cancelledText: string | null;
   buttonLabels: { cancel: string; enter: string; leave: string; start: string };
@@ -854,8 +885,12 @@ export type Course = {
   instructorRoleIds: string[];
   allowGeneralInstructorRoles: boolean;
   publishChannelId: string | null;
+  maxStudents: number;
+  location: string | null;
+  defaultSchedule: string | null;
   active: boolean;
   createdBy: string | null;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -873,9 +908,12 @@ export type CoursePublication = {
   capacity: number;
   students: string[];
   notes: string | null;
-  status: "open" | "started" | "cancelled" | "closed";
+  status: "open" | "started" | "cancelled" | "closed" | "proof" | "finished";
   cancelledBy: string | null;
   cancelledAt: string | null;
+  startedAt: string | null;
+  proofStartedAt: string | null;
+  finishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -929,6 +967,9 @@ export type CourseExamSettings = {
   finalMessage: string;
   approvalMessage: string;
   rejectionMessage: string;
+  manualQuestionMaxScore: number;
+  manualApproval: boolean;
+  automaticApproval: boolean;
   updatedAt: string;
   updatedBy: string | null;
 };
@@ -939,12 +980,14 @@ export type CourseExamQuestion = {
   guildId: string;
   courseId: string;
   order: number;
+  questionNumber: number;
   type: "selection" | "written";
   prompt: string;
+  title: string;
   description: string | null;
   points: number;
-  alternatives: Array<{ id: "A" | "B" | "C" | "D" | "E"; text: string }>;
-  correctAlternativeId: "A" | "B" | "C" | "D" | "E" | null;
+  alternatives: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
+  correctAlternativeId: string | null;
   placeholder: string | null;
   active: boolean;
   createdAt: string;
@@ -961,7 +1004,7 @@ export type CourseExamAttempt = {
   channelId: string;
   studentId: string;
   instructorId: string;
-  status: "in_progress" | "finished" | "approved" | "rejected";
+  status: "in_progress" | "finished" | "approved" | "rejected" | "awaiting_review" | "manual_reviewed";
   startedAt: string;
   finishedAt: string | null;
   correctedAt: string | null;
@@ -971,6 +1014,11 @@ export type CourseExamAttempt = {
   objectiveWrong: number;
   writtenCount: number;
   score: number;
+  automaticScore: number;
+  manualScore: number | null;
+  finalScore: number | null;
+  manualObservation: string | null;
+  result: "approved" | "rejected" | null;
   maxScore: number;
   percent: number;
   correctionMessageId: string | null;
@@ -988,9 +1036,16 @@ export type CourseLog = {
   id: string;
   action: string;
   actorId: string | null;
+  type: string;
+  authorId: string | null;
+  targetId: string | null;
   courseId: string | null;
   publicationId: string | null;
+  sessionId: string | null;
+  channelId: string | null;
+  status: string | null;
   data: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   createdAt: string;
 };
 

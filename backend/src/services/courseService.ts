@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getMongoCollections, type MongoCourse, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
+import { getMongoCollections, type MongoCourse, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
@@ -19,6 +19,7 @@ export type CoursePublicationDto = ReturnType<typeof mapPublication>;
 export type CourseScheduleRequestDto = ReturnType<typeof mapScheduleRequest>;
 export type CourseReportDto = ReturnType<typeof mapReport>;
 export type CourseLogDto = ReturnType<typeof mapLog>;
+export type CourseImageDto = ReturnType<typeof mapImage>;
 
 export async function getCoursesDashboard(botId: string | null, guildId: string): Promise<CourseDashboard> {
   const collections = await getMongoCollections();
@@ -53,16 +54,32 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     guildId,
     publishChannelId: null,
     scheduleChannelId: null,
+    scheduleLogChannelId: null,
+    proofLogChannelId: null,
+    resultChannelId: null,
+    evaluationChannelId: null,
     reportChannelId: null,
     logChannelId: null,
+    adminLogChannelId: null,
     temporaryCategoryId: null,
+    tempProofCategoryId: null,
+    evaluatorMentionRoleId: null,
+    resultMentionRoleId: null,
     adminUserIds: [],
     adminRoleIds: [],
     managerUserIds: [],
     managerRoleIds: [],
     generalInstructorRoleIds: [],
+    globalInstructorUserIds: [],
+    globalInstructorRoleIds: [],
+    evaluatorUserIds: [],
+    evaluatorRoleIds: [],
+    configUserIds: [],
+    configRoleIds: [],
+    permissionMatrix: {},
+    images: [],
     defaultExpirationHours: null,
-    noPermissionMessage: "Você não pode gerenciar este curso. Entre em contato com os gestores da unidade para solicitar seu cadastro no sistema.",
+    noPermissionMessage: "Você não possui permissão para usar este sistema.",
     cancelledMessage: "Curso cancelado.",
     startedMessage: "O curso foi iniciado. Novas entradas estão bloqueadas.",
     globalBannerUrl: null,
@@ -146,10 +163,12 @@ export async function createCourse(botId: string | null, guildId: string, input:
     emoji: input.emoji?.trim() || null,
     color: input.color || "#2563eb",
     bannerUrl: input.bannerUrl || null,
+    proofBannerUrl: input.proofBannerUrl || null,
     footerImageUrl: input.footerImageUrl || null,
     thumbnailUrl: input.thumbnailUrl || null,
     imagePosition: input.imagePosition ?? "top",
     publishText: input.publishText || null,
+    proofInstructionText: input.proofInstructionText || null,
     startedText: input.startedText || null,
     cancelledText: input.cancelledText || null,
     buttonLabels: {
@@ -162,8 +181,12 @@ export async function createCourse(botId: string | null, guildId: string, input:
     instructorRoleIds: input.instructorRoleIds ?? [],
     allowGeneralInstructorRoles: input.allowGeneralInstructorRoles ?? true,
     publishChannelId: input.publishChannelId || null,
+    maxStudents: Math.max(1, Number(input.maxStudents ?? 30) || 30),
+    location: input.location || null,
+    defaultSchedule: input.defaultSchedule || null,
     active: input.active ?? true,
     createdBy: actorId,
+    updatedBy: actorId,
     createdAt: now,
     updatedAt: now
   };
@@ -178,6 +201,7 @@ export async function updateCourse(botId: string | null, guildId: string, course
   await courses.updateOne({ _id: courseId, ...scope(botId, guildId) }, {
     $set: {
       ...cleanCourse(input),
+      updatedBy: actorId,
       updatedAt: new Date()
     }
   });
@@ -246,6 +270,9 @@ export async function createCoursePublication(botId: string | null, guildId: str
     status: "open",
     cancelledBy: null,
     cancelledAt: null,
+    startedAt: null,
+    proofStartedAt: null,
+    finishedAt: null,
     createdAt: now,
     updatedAt: now
   };
@@ -305,7 +332,7 @@ export async function leaveCoursePublication(botId: string | null, guildId: stri
   return { publication: mapPublication(updated ?? publication) };
 }
 
-export async function setCoursePublicationStatus(botId: string | null, guildId: string, publicationId: string, status: "started" | "cancelled" | "closed", actorId: string) {
+export async function setCoursePublicationStatus(botId: string | null, guildId: string, publicationId: string, status: "started" | "cancelled" | "closed" | "proof" | "finished", actorId: string) {
   const { coursePublications } = await getMongoCollections();
   const publication = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
   if (!publication) return null;
@@ -314,6 +341,9 @@ export async function setCoursePublicationStatus(botId: string | null, guildId: 
     $set: {
       cancelledAt: status === "cancelled" ? now : publication.cancelledAt,
       cancelledBy: status === "cancelled" ? actorId : publication.cancelledBy,
+      startedAt: status === "started" ? now : publication.startedAt ?? null,
+      proofStartedAt: status === "proof" ? now : publication.proofStartedAt ?? null,
+      finishedAt: status === "finished" || status === "closed" ? now : publication.finishedAt ?? null,
       status,
       updatedAt: now
     }
@@ -407,8 +437,17 @@ export async function createCourseReport(botId: string | null, guildId: string, 
 export function isCourseManager(settings: CourseSettingsDto, userId: string, roleIds: string[]) {
   return settings.adminUserIds.includes(userId)
     || settings.managerUserIds.includes(userId)
+    || settings.configUserIds.includes(userId)
     || settings.adminRoleIds.some((roleId) => roleIds.includes(roleId))
-    || settings.managerRoleIds.some((roleId) => roleIds.includes(roleId));
+    || settings.managerRoleIds.some((roleId) => roleIds.includes(roleId))
+    || settings.configRoleIds.some((roleId) => roleIds.includes(roleId));
+}
+
+export function hasCourseModulePermission(settings: CourseSettingsDto, userId: string, roleIds: string[], permission: string) {
+  if (isCourseManager(settings, userId, roleIds)) return true;
+  const rule = settings.permissionMatrix?.[permission];
+  if (!rule) return false;
+  return rule.userIds.includes(userId) || rule.roleIds.some((roleId) => roleIds.includes(roleId));
 }
 
 export async function logCourseAction(botId: string | null, guildId: string, action: string, actorId: string | null, courseId: string | null, publicationId: string | null, data: Record<string, unknown>) {
@@ -427,20 +466,37 @@ export async function logCourseAction(botId: string | null, guildId: string, act
 }
 
 function mapSettings(settings: MongoCourseSettings) {
+  const images = settings.images ?? [];
   return {
     id: settings._id,
     botId: settings.botId,
     guildId: settings.guildId,
     publishChannelId: settings.publishChannelId,
     scheduleChannelId: settings.scheduleChannelId,
+    scheduleLogChannelId: settings.scheduleLogChannelId ?? settings.scheduleChannelId,
+    proofLogChannelId: settings.proofLogChannelId ?? settings.logChannelId,
+    resultChannelId: settings.resultChannelId ?? settings.reportChannelId,
+    evaluationChannelId: settings.evaluationChannelId ?? settings.reportChannelId,
     reportChannelId: settings.reportChannelId,
     logChannelId: settings.logChannelId,
+    adminLogChannelId: settings.adminLogChannelId ?? settings.logChannelId,
     temporaryCategoryId: settings.temporaryCategoryId,
+    tempProofCategoryId: settings.tempProofCategoryId ?? settings.temporaryCategoryId,
+    evaluatorMentionRoleId: settings.evaluatorMentionRoleId ?? null,
+    resultMentionRoleId: settings.resultMentionRoleId ?? null,
     adminUserIds: settings.adminUserIds ?? [],
     adminRoleIds: settings.adminRoleIds ?? [],
     managerUserIds: settings.managerUserIds ?? [],
     managerRoleIds: settings.managerRoleIds ?? [],
     generalInstructorRoleIds: settings.generalInstructorRoleIds ?? [],
+    globalInstructorUserIds: settings.globalInstructorUserIds ?? [],
+    globalInstructorRoleIds: settings.globalInstructorRoleIds ?? settings.generalInstructorRoleIds ?? [],
+    evaluatorUserIds: settings.evaluatorUserIds ?? [],
+    evaluatorRoleIds: settings.evaluatorRoleIds ?? [],
+    configUserIds: settings.configUserIds ?? [],
+    configRoleIds: settings.configRoleIds ?? [],
+    permissionMatrix: settings.permissionMatrix ?? {},
+    images: images.map(mapImage),
     defaultExpirationHours: settings.defaultExpirationHours ?? null,
     noPermissionMessage: settings.noPermissionMessage,
     cancelledMessage: settings.cancelledMessage,
@@ -465,10 +521,12 @@ function mapCourse(course: MongoCourse) {
     emoji: course.emoji,
     color: course.color,
     bannerUrl: course.bannerUrl,
+    proofBannerUrl: course.proofBannerUrl ?? null,
     footerImageUrl: course.footerImageUrl,
     thumbnailUrl: course.thumbnailUrl,
     imagePosition: course.imagePosition,
     publishText: course.publishText,
+    proofInstructionText: course.proofInstructionText ?? null,
     startedText: course.startedText,
     cancelledText: course.cancelledText,
     buttonLabels: course.buttonLabels,
@@ -476,8 +534,12 @@ function mapCourse(course: MongoCourse) {
     instructorRoleIds: course.instructorRoleIds,
     allowGeneralInstructorRoles: course.allowGeneralInstructorRoles ?? true,
     publishChannelId: course.publishChannelId ?? null,
+    maxStudents: course.maxStudents ?? 30,
+    location: course.location ?? null,
+    defaultSchedule: course.defaultSchedule ?? null,
     active: course.active,
     createdBy: course.createdBy,
+    updatedBy: course.updatedBy ?? null,
     createdAt: course.createdAt.toISOString(),
     updatedAt: course.updatedAt.toISOString()
   };
@@ -500,6 +562,9 @@ function mapPublication(publication: MongoCoursePublication) {
     status: publication.status,
     cancelledBy: publication.cancelledBy,
     cancelledAt: publication.cancelledAt?.toISOString() ?? null,
+    startedAt: publication.startedAt?.toISOString() ?? null,
+    proofStartedAt: publication.proofStartedAt?.toISOString() ?? null,
+    finishedAt: publication.finishedAt?.toISOString() ?? null,
     createdAt: publication.createdAt.toISOString(),
     updatedAt: publication.updatedAt.toISOString()
   };
@@ -546,11 +611,35 @@ function mapLog(log: { _id: string; action: string; actorId: string | null; cour
   return {
     id: log._id,
     action: log.action,
+    type: (log as { type?: string }).type ?? log.action,
     actorId: log.actorId,
+    authorId: (log as { authorId?: string | null }).authorId ?? log.actorId,
+    targetId: (log as { targetId?: string | null }).targetId ?? null,
     courseId: log.courseId,
     publicationId: log.publicationId,
+    sessionId: (log as { sessionId?: string | null }).sessionId ?? null,
+    channelId: (log as { channelId?: string | null }).channelId ?? null,
+    status: (log as { status?: string | null }).status ?? null,
     data: log.data,
+    metadata: (log as { metadata?: Record<string, unknown> }).metadata ?? log.data,
     createdAt: log.createdAt.toISOString()
+  };
+}
+
+function mapImage(image: MongoCourseImage) {
+  const raw = image as MongoCourseImage & { id?: string; createdAt?: Date | string };
+  const createdAt = raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ?? Date.now());
+  return {
+    id: image._id ?? raw.id,
+    botId: image.botId,
+    guildId: image.guildId,
+    name: image.name,
+    type: image.type,
+    url: image.url,
+    createdAt: createdAt.toISOString(),
+    createdBy: image.createdBy,
+    active: image.active,
+    default: image.default
   };
 }
 
@@ -558,9 +647,15 @@ function cleanSettings(input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "
   const cleaned: Record<string, unknown> = { ...input };
   cleaned.publishChannelId = input.publishChannelId || null;
   cleaned.scheduleChannelId = input.scheduleChannelId || null;
+  cleaned.scheduleLogChannelId = input.scheduleLogChannelId || null;
+  cleaned.proofLogChannelId = input.proofLogChannelId || null;
+  cleaned.resultChannelId = input.resultChannelId || null;
+  cleaned.evaluationChannelId = input.evaluationChannelId || null;
   cleaned.reportChannelId = input.reportChannelId || null;
   cleaned.logChannelId = input.logChannelId || null;
+  cleaned.adminLogChannelId = input.adminLogChannelId || null;
   cleaned.temporaryCategoryId = input.temporaryCategoryId || null;
+  cleaned.tempProofCategoryId = input.tempProofCategoryId || null;
   delete cleaned.lastPanelRequestedAt;
   return cleaned;
 }
@@ -570,6 +665,7 @@ function cleanCourse(input: Partial<CourseDto>) {
   for (const key of [
     "active",
     "bannerUrl",
+    "proofBannerUrl",
     "buttonLabels",
     "cancelledText",
     "color",
@@ -581,7 +677,11 @@ function cleanCourse(input: Partial<CourseDto>) {
     "instructorRoleIds",
     "instructorUserIds",
     "allowGeneralInstructorRoles",
+    "maxStudents",
+    "location",
     "name",
+    "defaultSchedule",
+    "proofInstructionText",
     "publishChannelId",
     "publishText",
     "startedText",

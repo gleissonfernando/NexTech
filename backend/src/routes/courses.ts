@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { isBotRequest, requireAuthOrBot, requireBot } from "../middleware/auth";
@@ -53,6 +54,7 @@ const optionalSnowflake = snowflake.nullable().optional().or(z.literal(""));
 const courseSchema = z.object({
   active: z.boolean().optional(),
   bannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
+  proofBannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   buttonLabels: z.object({
     cancel: z.string().min(1).max(40),
     enter: z.string().min(1).max(40),
@@ -69,9 +71,13 @@ const courseSchema = z.object({
   instructorRoleIds: z.array(snowflake).optional(),
   instructorUserIds: z.array(snowflake).optional(),
   allowGeneralInstructorRoles: z.boolean().optional(),
+  maxStudents: z.number().int().min(1).max(500).optional(),
+  location: z.string().max(120).nullable().optional().or(z.literal("")),
   name: z.string().min(1).max(120),
+  defaultSchedule: z.string().max(120).nullable().optional().or(z.literal("")),
   publishChannelId: optionalSnowflake,
   publishText: z.string().max(1200).nullable().optional().or(z.literal("")),
+  proofInstructionText: z.string().max(1200).nullable().optional().or(z.literal("")),
   startedText: z.string().max(900).nullable().optional().or(z.literal("")),
   thumbnailUrl: z.string().max(2048).nullable().optional().or(z.literal(""))
 });
@@ -97,9 +103,37 @@ const settingsSchema = z.object({
     vacancies: z.string().max(80).optional()
   }).optional(),
   cancelledMessage: z.string().max(900).optional(),
+  scheduleLogChannelId: optionalSnowflake,
+  proofLogChannelId: optionalSnowflake,
+  resultChannelId: optionalSnowflake,
+  evaluationChannelId: optionalSnowflake,
+  adminLogChannelId: optionalSnowflake,
+  tempProofCategoryId: optionalSnowflake,
+  evaluatorMentionRoleId: optionalSnowflake,
+  resultMentionRoleId: optionalSnowflake,
   defaultExpirationHours: z.number().int().min(1).max(720).nullable().optional(),
   globalBannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   generalInstructorRoleIds: z.array(snowflake).optional(),
+  globalInstructorUserIds: z.array(snowflake).optional(),
+  globalInstructorRoleIds: z.array(snowflake).optional(),
+  evaluatorUserIds: z.array(snowflake).optional(),
+  evaluatorRoleIds: z.array(snowflake).optional(),
+  configUserIds: z.array(snowflake).optional(),
+  configRoleIds: z.array(snowflake).optional(),
+  permissionMatrix: z.record(z.object({ userIds: z.array(snowflake).default([]), roleIds: z.array(snowflake).default([]) })).optional(),
+  images: z.array(z.object({
+    id: z.string().optional(),
+    _id: z.string().optional(),
+    botId: z.string().nullable().optional(),
+    guildId: z.string().optional(),
+    name: z.string().min(1).max(120),
+    type: z.enum(["main_banner", "proof_banner", "logs_banner", "approved_result", "rejected_result", "module"]),
+    url: z.string().min(1).max(2048),
+    createdAt: z.string().optional(),
+    createdBy: z.string().nullable().optional(),
+    active: z.boolean().optional(),
+    default: z.boolean().optional()
+  })).optional(),
   logChannelId: optionalSnowflake,
   managerRoleIds: z.array(snowflake).optional(),
   managerUserIds: z.array(snowflake).optional(),
@@ -126,8 +160,8 @@ const publicationSchema = z.object({
   scheduledFor: z.string().min(1).max(120)
 });
 const joinSchema = z.object({ userId: snowflake });
-const statusSchema = z.object({ actorId: snowflake, status: z.enum(["started", "cancelled", "closed"]) });
-const publicationListSchema = z.object({ status: z.enum(["open", "started", "cancelled", "closed"]).nullable().optional() });
+const statusSchema = z.object({ actorId: snowflake, status: z.enum(["started", "cancelled", "closed", "proof", "finished"]) });
+const publicationListSchema = z.object({ status: z.enum(["open", "started", "cancelled", "closed", "proof", "finished"]).nullable().optional() });
 const messageStateSchema = z.object({ messageId: optionalSnowflake });
 const scheduleSchema = z.object({
   channelId: optionalSnowflake,
@@ -167,16 +201,21 @@ const examSettingsSchema = z.object({
   maxTimeMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   minScore: z.number().min(0).max(1000).optional(),
   rejectionMessage: z.string().max(1200).optional()
+  , manualQuestionMaxScore: z.number().min(0).max(1000).optional()
+  , manualApproval: z.boolean().optional()
+  , automaticApproval: z.boolean().optional()
 });
 const examQuestionSchema = z.object({
   active: z.boolean().optional(),
-  alternatives: z.array(z.object({ id: z.enum(["A", "B", "C", "D", "E"]).optional(), text: z.string().max(500) })).max(5).optional(),
-  correctAlternativeId: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
+  alternatives: z.array(z.object({ id: z.string().max(80).optional(), text: z.string().max(500), value: z.string().max(120).optional(), score: z.number().min(0).max(1000).optional(), isCorrect: z.boolean().optional(), order: z.number().int().min(0).optional() })).max(10).optional(),
+  correctAlternativeId: z.string().max(80).nullable().optional(),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   order: z.number().int().min(0).optional(),
+  questionNumber: z.number().int().min(1).max(9).optional(),
   placeholder: z.string().max(300).nullable().optional().or(z.literal("")),
   points: z.number().min(0).max(1000).optional(),
   prompt: z.string().min(1).max(1200),
+  title: z.string().max(1200).optional(),
   type: z.enum(["selection", "written"])
 });
 const reorderExamQuestionsSchema = z.object({ questionIds: z.array(z.string().min(1)).max(500) });
@@ -390,14 +429,16 @@ coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/answers", requireBot,
     const answer = await saveCourseExamAnswer(botId, guildId, routeParam(req, "attemptId"), {
       ...parsed.question,
       active: parsed.question.active ?? true,
-      alternatives: (parsed.question.alternatives ?? []).map((item, index) => ({ id: item.id ?? (["A", "B", "C", "D", "E"][index] as "A" | "B" | "C" | "D" | "E"), text: item.text })),
+      alternatives: (parsed.question.alternatives ?? []).map((item, index) => ({ id: item.id ?? ["A", "B", "C", "D", "E"][index] ?? randomUUID(), text: item.text })),
       botId: parsed.question.botId ?? null,
       correctAlternativeId: parsed.question.correctAlternativeId ?? null,
       createdAt: parsed.question.createdAt ?? new Date().toISOString(),
       description: parsed.question.description ?? null,
       order: parsed.question.order ?? 0,
+      questionNumber: parsed.question.questionNumber ?? (parsed.question.order ?? 0) + 1,
       placeholder: parsed.question.placeholder ?? null,
       points: parsed.question.points ?? 0,
+      title: parsed.question.title ?? parsed.question.prompt,
       updatedAt: parsed.question.updatedAt ?? new Date().toISOString(),
       updatedBy: parsed.question.updatedBy ?? null
     }, parsed);
@@ -676,9 +717,29 @@ function sanitizeSettings(input: z.infer<typeof settingsSchema>) {
     ...input,
     globalBannerUrl: input.globalBannerUrl || null,
     logChannelId: input.logChannelId || null,
+    scheduleLogChannelId: input.scheduleLogChannelId || null,
+    proofLogChannelId: input.proofLogChannelId || null,
+    resultChannelId: input.resultChannelId || null,
+    evaluationChannelId: input.evaluationChannelId || null,
+    adminLogChannelId: input.adminLogChannelId || null,
+    tempProofCategoryId: input.tempProofCategoryId || null,
+    evaluatorMentionRoleId: input.evaluatorMentionRoleId || null,
+    resultMentionRoleId: input.resultMentionRoleId || null,
     publishChannelId: input.publishChannelId || null,
     reportChannelId: input.reportChannelId || null,
     reportImageUrl: input.reportImageUrl || null,
+    images: input.images?.map((image) => ({
+      id: image.id ?? image._id ?? randomUUID(),
+      botId: image.botId ?? null,
+      guildId: image.guildId ?? "",
+      name: image.name,
+      type: image.type,
+      url: image.url,
+      createdAt: image.createdAt ?? new Date().toISOString(),
+      createdBy: image.createdBy ?? null,
+      active: image.active ?? true,
+      default: image.default ?? false
+    })),
     scheduleChannelId: input.scheduleChannelId || null,
     temporaryCategoryId: input.temporaryCategoryId || null
   };
@@ -688,13 +749,17 @@ function sanitizeCourse(input: Partial<z.infer<typeof courseSchema>>) {
   return {
     ...input,
     bannerUrl: input.bannerUrl || null,
+    proofBannerUrl: input.proofBannerUrl || null,
     cancelledText: input.cancelledText || null,
     code: input.code || null,
     description: input.description || null,
     emoji: input.emoji || null,
     footerImageUrl: input.footerImageUrl || null,
+    location: input.location || null,
+    defaultSchedule: input.defaultSchedule || null,
     publishChannelId: input.publishChannelId || null,
     publishText: input.publishText || null,
+    proofInstructionText: input.proofInstructionText || null,
     startedText: input.startedText || null,
     thumbnailUrl: input.thumbnailUrl || null
   };
