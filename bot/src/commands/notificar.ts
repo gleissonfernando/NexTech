@@ -16,7 +16,7 @@ import {
   type User
 } from "discord.js";
 import type { OpenDutySettings } from "../services/apiClient";
-import { renderComponentsV2Panel, resolvePanelImageUrl } from "../services/panelVisualRenderer";
+import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "../services/panelVisualRenderer";
 import type { BotCommand, BotContext } from "../types";
 
 const MODULE_ID = "police-open-duty";
@@ -204,13 +204,16 @@ function dmPayload(settings: OpenDutySettings, target: User, message: string) {
   if (settings.imagePosition === "top") pushBanner();
   components.push({ type: 10, content: `# Notificacao de Ponto Aberto\n${message}`.slice(0, 3900) });
   if (settings.imagePosition === "middle") pushBanner();
-  if (settings.footerText || footerImage) {
-    components.push({ type: 14 });
-    if (footerImage) components.push({ type: 12, items: [{ media: { url: footerImage }, description: settings.footerText ?? "Rodape" }] });
-    if (settings.footerText) components.push({ type: 10, content: settings.footerText.slice(0, 500) });
-  }
-  if (settings.imagePosition === "bottom" || settings.imagePosition === "footer") pushBanner();
-  return { allowedMentions: { users: [target.id] }, components: [{ type: 17, accent_color: color(settings.panelColor), components }], flags: MessageFlags.IsComponentsV2 as const };
+  if (settings.imagePosition === "bottom") pushBanner();
+  return {
+    allowedMentions: { users: [target.id] },
+    components: [buildV2Container({
+      accentColor: color(settings.panelColor),
+      components,
+      footer: { image: footerImage ?? (settings.imagePosition === "footer" ? banner : null), text: settings.footerText ?? "OrviteK" }
+    })],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
 }
 
 async function sendLog(interaction: ButtonInteraction, settings: OpenDutySettings, target: User, draft: { edited: boolean; executorId: string; message: string }, status: string, error: string | null, counterTotal: number) {

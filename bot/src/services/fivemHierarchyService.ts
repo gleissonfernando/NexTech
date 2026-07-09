@@ -240,7 +240,7 @@ function createHierarchyPayload(guild: Guild, panel: FivemHierarchyPanel, visual
   const action = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`${PREFIX}:refresh:${panel.id}`).setLabel("Atualizar painel").setStyle(ButtonStyle.Secondary)
       );
-  return renderComponentsV2Panel({ accentColor: colorToInt(panel.color), actions: [action], description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.", extraImages, fields: [renderHierarchyText(guild, panel), ...(panel.footerEnabled && panel.footerText ? [`_${panel.footerText}_`] : [])], image: visual?.imageEnabled ? visual : fallbackVisual, moduleId: "fivem-hierarchy", title: panel.title });
+  return renderComponentsV2Panel({ accentColor: colorToInt(panel.color), actions: [action], description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.", extraImages, fields: [renderHierarchyText(guild, panel)], footer: panel.footerEnabled ? { text: panel.footerText ?? "OrviteK" } : { enabled: false }, image: visual?.imageEnabled ? visual : fallbackVisual, moduleId: "fivem-hierarchy", title: panel.title });
 }
 
 async function getPanelVisualSlots(context: BotContext, guildId: string, basePanelId: string) {

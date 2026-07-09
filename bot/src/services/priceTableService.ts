@@ -67,7 +67,8 @@ function createPanelPayload(table: PriceTable) {
     accentColor: parseColor(table.color),
     actions,
     description: table.description ?? "",
-    fields: [...rows, table.footerText ? `-# ${table.footerText}` : ""].filter(Boolean),
+    fields: rows,
+    footer: { text: table.footerText ?? "OrviteK" },
     image: table.imageUrl ? { imageEnabled: true, imagePosition: table.imagePosition === "thumbnail" ? "thumbnail" : table.imagePosition, imageUrl: table.imageUrl } : null,
     moduleId: "price-tables",
     title: table.title

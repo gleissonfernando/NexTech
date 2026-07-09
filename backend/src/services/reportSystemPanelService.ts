@@ -40,9 +40,8 @@ export async function publishReportSystemPanelToDiscord(settings: GuildSettingsD
 
   const payload = {
     components: [
-      {
-        type: 17,
-        accent_color: parseColor(report.panelColor),
+      buildV2Container({
+        accentColor: parseColor(report.panelColor),
         components: [
           { type: 10, content: `# ${report.panelEmoji ?? "🛡️"} ${report.panelTitle}\n${report.panelDescription}`.slice(0, 4000) },
           ...(report.infoMessage ? [{ type: 10, content: report.infoMessage.slice(0, 4000) }] : []),
@@ -59,9 +58,9 @@ export async function publishReportSystemPanelToDiscord(settings: GuildSettingsD
               }
             ]
           },
-          ...(report.footerText ? [{ type: 10, content: `-# ${report.footerText}`.slice(0, 4000) }] : [])
-        ]
-      }
+        ],
+        footer: { text: report.footerText ?? "OrviteK" }
+      })
     ],
     flags: COMPONENTS_V2_FLAG
   };
@@ -98,5 +97,31 @@ function parseEmoji(value: string) {
 
   return {
     name: value
+  };
+}
+
+function buildV2Container(input: { accentColor: number; components: unknown[]; footer?: { enabled?: boolean; image?: string | null; text?: string | null } }) {
+  const components = [...input.components];
+  const footer = createV2Footer(input.footer ?? { text: "OrviteK" });
+  if (footer) components.push({ type: 14, divider: true, spacing: 1 }, footer);
+  return {
+    type: 17,
+    accent_color: input.accentColor,
+    components
+  };
+}
+
+function createV2Footer(footer: { enabled?: boolean; image?: string | null; text?: string | null } | null | undefined) {
+  if (!footer || footer.enabled === false) return null;
+  const content = `-# ${footer.text ?? "OrviteK"}`.slice(0, 4000) || "-# ";
+  if (!footer.image) return { type: 10, content };
+  return {
+    type: 9,
+    components: [{ type: 10, content }],
+    accessory: {
+      type: 11,
+      media: { url: footer.image },
+      description: "Imagem de rodape"
+    }
   };
 }

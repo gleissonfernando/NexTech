@@ -2,6 +2,7 @@ import { MessageFlags, type GuildMember, type PartialGuildMember } from "discord
 import { env } from "../config/env";
 import type { BotContext, PanelImageSettings } from "../types";
 import { getCachedGuildSettings } from "./guildSettingsCache";
+import { buildV2Container } from "./panelVisualRenderer";
 
 type MemberPanelMode = "welcome" | "leave";
 
@@ -134,11 +135,7 @@ export function createMemberPanelPayload(
     contentBlocks.push([channelLabel, variables.channel].filter(Boolean).join(" "));
   }
 
-  if (footerText) {
-    contentBlocks.push(`-# ${footerText}`);
-  }
-
-  if (!imageUrl && !contentBlocks.length) {
+  if (!imageUrl && !contentBlocks.length && !footerText) {
     return null;
   }
 
@@ -165,7 +162,7 @@ export function createMemberPanelPayload(
 
   components.push(...contentBlocks.map(textDisplayComponent));
 
-  if (imageUrl && ["below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons", "footer"].includes(imagePosition)) {
+  if (imageUrl && ["below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons"].includes(imagePosition)) {
     components.push(mediaGalleryComponent(imageUrl, input.mode));
   }
 
@@ -177,11 +174,11 @@ export function createMemberPanelPayload(
     allowedMentions: {
       parse: [] as never[]
     },
-    components: [{
-      type: 17,
-      accent_color: parseColor(input.color),
-      components
-    }],
+    components: [buildV2Container({
+      accentColor: parseColor(input.color),
+      components,
+      footer: { image: imagePosition === "footer" ? imageUrl : null, text: footerText || "OrviteK" }
+    })],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }

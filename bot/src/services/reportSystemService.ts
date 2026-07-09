@@ -1470,7 +1470,8 @@ function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions
     accentColor: parseColor(report.panelColor),
     actions: [action],
     description: report.panelDescription,
-    fields: [report.infoMessage, report.footerText ? `-# ${report.footerText}` : ""].filter(Boolean),
+    fields: [report.infoMessage].filter(Boolean),
+    footer: { text: report.footerText ?? "OrviteK" },
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
     moduleId: "iab-panel",
     title: `${report.panelEmoji ?? ""} ${report.panelTitle}`.trim()

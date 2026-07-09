@@ -22,6 +22,7 @@ import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
+import { buildV2Container } from "./panelVisualRenderer";
 
 const PREFIX = "manual_registration";
 
@@ -453,7 +454,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
   const imagePosition = imageUrl ? settings.panelImage?.imagePosition ?? settings.bannerPosition : "none";
   const thumbnailUrl = resolveImageUrl(settings.thumbnailUrl ?? null);
   const availableSets = settings.setRoles.filter((item) => item.enabled && item.requestable).length;
-  const components: Array<Record<string, unknown>> = [];
+  const components: unknown[] = [];
   if (imageUrl && ["top", "banner"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   const heading = {
     type: 10,
@@ -496,17 +497,19 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
       settings.footerText ? `-# ${settings.footerText}` : "-# Preencha os dados corretamente para evitar atrasos na analise."
     ].join("\n")
   });
-  if (imageUrl && ["before_buttons", "above_buttons", "bottom", "footer"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
+  if (imageUrl && ["before_buttons", "above_buttons", "bottom"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:status`).setLabel("Meu Status").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
+  ));
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [
-      { type: 17, accent_color: parseColor(settings.color), components },
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status`).setLabel("Meu Status").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
-      )
-    ],
+    components: [buildV2Container({
+      accentColor: parseColor(settings.color),
+      components,
+      footer: imageUrl && imagePosition === "footer" ? { image: imageUrl, text: settings.footerText ?? "OrviteK" } : undefined
+    })],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }

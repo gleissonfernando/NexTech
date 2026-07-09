@@ -29,6 +29,7 @@
     "deploy:check": "npm run build && node scripts/deploy-check.mjs",
     "deploy:check:fast": "node scripts/deploy-check.mjs fast",
     "deploy:check:env": "npm run build && node scripts/deploy-check.mjs env",
+    "release:discloud": "node scripts/release-discloud.mjs",
     "load:test": "node scripts/load-test.mjs",
     "validate:anti-spam": "node scripts/validate-anti-spam.cjs",
     "validate:moderation-whitelist": "npm run build && node scripts/validate-moderation-whitelist.cjs"

@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { DmBarConfig } from "./apiClient";
-import { resolvePanelImageUrl } from "./panelVisualRenderer";
+import { buildV2Container, resolvePanelImageUrl } from "./panelVisualRenderer";
 import type { BotCommand, BotContext } from "../types";
 
 const MODULE_ID = "police-dm";
@@ -159,12 +159,14 @@ function dmPayload(config: DmBarConfig, author: User, target: User, title: strin
   if (mainImage && (config.imagePosition === "middle" || config.imagePosition === "gallery" || config.imagePosition === "thumbnail")) pushImage();
   if (observation) components.push({ type: 10, content: `**Observação:**\n${observation}` });
   if (mainImage && config.imagePosition === "bottom") pushImage();
-  if (config.footerEnabled) {
-    components.push({ type: 14 });
-    const footer = applyVars(stripSenderLines(config.footerText), vars);
-    components.push({ type: 10, content: `${config.emoji} ${footer}`.slice(0, 900) });
-  }
-  return { allowedMentions: config.allowMentions ? undefined : { parse: [] as never[] }, components: [{ type: 17, accent_color: color(config.accentColor), components }], flags: MessageFlags.IsComponentsV2 as const };
+  const footer = config.footerEnabled
+    ? { image: config.footerIconUrl, text: `${config.emoji} ${applyVars(stripSenderLines(config.footerText), vars)}`.trim() }
+    : { enabled: false };
+  return {
+    allowedMentions: config.allowMentions ? undefined : { parse: [] as never[] },
+    components: [buildV2Container({ accentColor: color(config.accentColor), components, footer })],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
 }
 
 function previewPayload(config: DmBarConfig, author: User, target: User | null, title: string, message: string, observation: string) {
