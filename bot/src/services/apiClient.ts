@@ -67,6 +67,8 @@ export type CourseSettings = {
   startedMessage: string;
   globalBannerUrl: string | null;
   reportImageUrl: string | null;
+  panelMessageId: string | null;
+  lastPanelRequestedAt: string | null;
   buttonEmojis: { cancel: string; enter: string; leave: string; start: string };
   updatedAt: string;
 };
@@ -188,6 +190,7 @@ export type RhAdminSettings = {
   buttonEmojis: { absence: string; adornment: string; approve: string; reject: string; back: string; save: string; publish: string; logs: string };
   mainPanelMessageId: string | null;
   mainPanelPublishedAt: string | null;
+  lastPanelRequestedAt: string | null;
   updatedAt: string;
   updatedBy: string | null;
 };
@@ -1682,6 +1685,11 @@ export class ApiClient {
     const { data } = await this.http.post<{ settings: CourseSettings }>(`/courses/bot/${guildId}/settings`, input, {
       headers: actorId ? { "x-actor-id": actorId } : undefined
     });
+    return data.settings;
+  }
+
+  async updateCoursePanelMessage(guildId: string, messageId: string | null) {
+    const { data } = await this.http.patch<{ settings: CourseSettings }>(`/courses/bot/${guildId}/panel-message`, { messageId });
     return data.settings;
   }
 

@@ -28,6 +28,7 @@ import { startManualPaymentService } from "../services/manualPaymentService";
 import { startPriceTableService } from "../services/priceTableService";
 import { startManualRegistrationService } from "../services/manualRegistrationService";
 import { startRhAdminService } from "../services/rhAdminService";
+import { startCourseSystemService } from "../services/courseSystemService";
 import {
   disableUnreleasedSafeBotChannels,
   ensureSafeBotSetup,
@@ -98,6 +99,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     if (isBotModuleEnabled("manual-payments")) startManualPaymentService(client, context);
     if (isBotModuleEnabled("price-tables")) startPriceTableService(client, context);
     if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
+    if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
     if (!wereLogsEnabled && isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
     if (!wasTagVerificationEnabled && isBotModuleEnabled("tag-verification")) void startTagVerificationService(client, context);
     if (wasTagVerificationEnabled && !isBotModuleEnabled("tag-verification")) stopTagVerificationService();
@@ -178,6 +180,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("manual-payments")) startManualPaymentService(client, context);
   if (isBotModuleEnabled("price-tables")) startPriceTableService(client, context);
   if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
+  if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
   if (isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }

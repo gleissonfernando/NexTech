@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getMongoCollections, type MongoCourse, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
-import { emitRealtime } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
 
@@ -62,6 +62,8 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     startedMessage: "O curso foi iniciado. Novas entradas estão bloqueadas.",
     globalBannerUrl: null,
     reportImageUrl: null,
+    panelMessageId: null,
+    lastPanelRequestedAt: null,
     buttonEmojis: {
       cancel: "❌",
       enter: "✅",
@@ -92,6 +94,37 @@ export async function saveCourseSettings(botId: string | null, guildId: string, 
   }, { upsert: true });
   await logCourseAction(botId, guildId, "course.settings_saved", actorId, null, null, input);
   emitRealtime("courses:settings", { botId, guildId });
+  return getCourseSettings(botId, guildId);
+}
+
+export async function requestCoursePanelPublish(botId: string, guildId: string, actorId: string | null) {
+  const settings = await getCourseSettings(botId, guildId);
+  if (!settings.publishChannelId) throw new Error("Configure o canal de publicação dos cursos.");
+
+  const { courseSettings } = await getMongoCollections();
+  const requestedAt = new Date();
+  await courseSettings.updateOne(scope(botId, guildId), {
+    $set: {
+      lastPanelRequestedAt: requestedAt,
+      updatedAt: requestedAt,
+      updatedBy: actorId
+    },
+    $setOnInsert: {
+      _id: randomUUID(),
+      botId,
+      guildId
+    }
+  }, { upsert: true });
+
+  const nextSettings = await getCourseSettings(botId, guildId);
+  emitRealtimeToRoom(devBotRealtimeRoom(botId), "courses:panel_publish", { botId, guildId, settings: nextSettings });
+  await logCourseAction(botId, guildId, "course.panel_publish_requested", actorId, null, null, { channelId: nextSettings.publishChannelId });
+  return nextSettings;
+}
+
+export async function updateCoursePanelMessage(botId: string | null, guildId: string, messageId: string | null) {
+  const { courseSettings } = await getMongoCollections();
+  await courseSettings.updateOne(scope(botId, guildId), { $set: { panelMessageId: messageId, updatedAt: new Date() } });
   return getCourseSettings(botId, guildId);
 }
 
@@ -392,6 +425,8 @@ function mapSettings(settings: MongoCourseSettings) {
     startedMessage: settings.startedMessage,
     globalBannerUrl: settings.globalBannerUrl ?? null,
     reportImageUrl: settings.reportImageUrl ?? null,
+    panelMessageId: settings.panelMessageId ?? null,
+    lastPanelRequestedAt: settings.lastPanelRequestedAt?.toISOString() ?? null,
     buttonEmojis: settings.buttonEmojis,
     updatedAt: settings.updatedAt.toISOString()
   };
@@ -483,14 +518,14 @@ function mapReport(report: MongoCourseReport) {
 }
 
 function cleanSettings(input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "guildId" | "updatedAt">>) {
-  return {
-    ...input,
-    publishChannelId: input.publishChannelId || null,
-    scheduleChannelId: input.scheduleChannelId || null,
-    reportChannelId: input.reportChannelId || null,
-    logChannelId: input.logChannelId || null,
-    temporaryCategoryId: input.temporaryCategoryId || null
-  };
+  const cleaned: Record<string, unknown> = { ...input };
+  cleaned.publishChannelId = input.publishChannelId || null;
+  cleaned.scheduleChannelId = input.scheduleChannelId || null;
+  cleaned.reportChannelId = input.reportChannelId || null;
+  cleaned.logChannelId = input.logChannelId || null;
+  cleaned.temporaryCategoryId = input.temporaryCategoryId || null;
+  delete cleaned.lastPanelRequestedAt;
+  return cleaned;
 }
 
 function cleanCourse(input: Partial<CourseDto>) {

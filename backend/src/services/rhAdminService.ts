@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getMongoCollections, type MongoRhAdminAbsence, type MongoRhAdminAdornment, type MongoRhAdminLog, type MongoRhAdminSettings } from "../database/mongo";
-import { emitRealtime } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const RH_ADMIN_MODULE_ID = "rh-admin";
 
@@ -97,6 +97,7 @@ export async function getRhAdminSettings(botId: string | null, guildId: string) 
     },
     mainPanelMessageId: null,
     mainPanelPublishedAt: null,
+    lastPanelRequestedAt: null,
     updatedAt: now,
     updatedBy: null
   };
@@ -121,6 +122,32 @@ export async function saveRhAdminSettings(botId: string | null, guildId: string,
   await logRhAdminAction(botId, guildId, "rh.settings_saved", actorId, actorId, "Configuração do RH Administrativo alterada.", "success", input);
   emitRealtime("rh-admin:settings", { botId, guildId });
   return getRhAdminSettings(botId, guildId);
+}
+
+export async function requestRhAdminPanelPublish(botId: string, guildId: string, actorId: string | null) {
+  const settings = await getRhAdminSettings(botId, guildId);
+  if (!settings.enabled) throw new Error("Ative o RH Administrativo antes de publicar o painel.");
+  if (!settings.panelChannelId) throw new Error("Configure o canal de publicação do painel RH.");
+
+  const { rhAdminSettings } = await getMongoCollections();
+  const requestedAt = new Date();
+  await rhAdminSettings.updateOne(scope(botId, guildId), {
+    $set: {
+      lastPanelRequestedAt: requestedAt,
+      updatedAt: requestedAt,
+      updatedBy: actorId
+    },
+    $setOnInsert: {
+      _id: randomUUID(),
+      botId,
+      guildId
+    }
+  }, { upsert: true });
+
+  const nextSettings = await getRhAdminSettings(botId, guildId);
+  emitRealtimeToRoom(devBotRealtimeRoom(botId), "rh-admin:panel_publish", { botId, guildId, settings: nextSettings });
+  await logRhAdminAction(botId, guildId, "rh.panel_publish_requested", null, actorId, "Publicação do painel RH solicitada pela dashboard.", "info", { channelId: nextSettings.panelChannelId });
+  return nextSettings;
 }
 
 export async function createRhAbsence(botId: string | null, guildId: string, input: {
@@ -325,6 +352,7 @@ function mapSettings(settings: MongoRhAdminSettings) {
     buttonEmojis: settings.buttonEmojis,
     mainPanelMessageId: settings.mainPanelMessageId,
     mainPanelPublishedAt: settings.mainPanelPublishedAt?.toISOString() ?? null,
+    lastPanelRequestedAt: settings.lastPanelRequestedAt?.toISOString() ?? null,
     updatedAt: settings.updatedAt.toISOString(),
     updatedBy: settings.updatedBy
   };

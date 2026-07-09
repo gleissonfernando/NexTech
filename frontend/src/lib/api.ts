@@ -2035,6 +2035,15 @@ export async function saveCourseSettings(botId: string, guildId: string, payload
   return data.settings;
 }
 
+export async function publishCoursePanel(botId: string, guildId: string) {
+  const { data } = await api.post<{ settings: CoursesDashboard["settings"] }>(
+    `/courses/${encodeURIComponent(guildId)}/panel`,
+    undefined,
+    { params: botParams(botId), timeout: 15000 }
+  );
+  return data.settings;
+}
+
 export async function createCourseApi(botId: string, guildId: string, payload: SaveCoursePayload) {
   const { data } = await api.post<{ course: Course }>(
     `/courses/${encodeURIComponent(guildId)}/courses`,
@@ -2073,6 +2082,15 @@ export async function saveRhAdminSettings(botId: string, guildId: string, payloa
     `/rh-admin/${encodeURIComponent(guildId)}/settings`,
     payload,
     { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function publishRhAdminPanel(botId: string, guildId: string) {
+  const { data } = await api.post<{ settings: RhAdminDashboard["settings"] }>(
+    `/rh-admin/${encodeURIComponent(guildId)}/panel`,
+    undefined,
+    { params: botParams(botId), timeout: 15000 }
   );
   return data.settings;
 }

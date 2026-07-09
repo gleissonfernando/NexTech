@@ -249,6 +249,8 @@ export type MongoCourseSettings = {
   startedMessage: string;
   globalBannerUrl: string | null;
   reportImageUrl: string | null;
+  panelMessageId?: string | null;
+  lastPanelRequestedAt?: Date | null;
   buttonEmojis: {
     cancel: string;
     enter: string;
@@ -402,6 +404,7 @@ export type MongoRhAdminSettings = {
   };
   mainPanelMessageId: string | null;
   mainPanelPublishedAt: Date | null;
+  lastPanelRequestedAt?: Date | null;
   updatedAt: Date;
   updatedBy: string | null;
 };

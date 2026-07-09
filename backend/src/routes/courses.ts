@@ -19,9 +19,11 @@ import {
   getScheduleRequest,
   joinCoursePublication,
   leaveCoursePublication,
+  requestCoursePanelPublish,
   saveCourseSettings,
   setCoursePublicationStatus,
   updateCourse,
+  updateCoursePanelMessage,
   updateCoursePublicationMessage,
   updateScheduleRequest
 } from "../services/courseService";
@@ -144,6 +146,18 @@ coursesRouter.patch("/:guildId/settings", async (req, res, next) => {
   }
 });
 
+coursesRouter.post("/:guildId/panel", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para publicar painel de cursos." });
+    const settings = await requestCoursePanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId);
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 coursesRouter.post("/:guildId/courses", async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
@@ -200,6 +214,17 @@ coursesRouter.post("/bot/:guildId/settings", requireBot, async (req, res, next) 
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const settings = await saveCourseSettings(botId, guildId, sanitizeSettings(settingsSchema.parse(req.body ?? {})), req.get("x-actor-id") ?? null);
     return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+coursesRouter.patch("/bot/:guildId/panel-message", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const { messageId } = messageStateSchema.parse(req.body ?? {});
+    return res.json({ settings: await updateCoursePanelMessage(botId, guildId, messageId || null) });
   } catch (error) {
     return next(error);
   }

@@ -73,6 +73,8 @@ export type FivemOrderPanelPublishEvent = { botId?: string | null; guildId: stri
 export type FivemOrderStatusUpdatedEvent = { actorId?: string | null; botId?: string | null; guildId: string; order: FivemOrder };
 export type PriceTablePanelPublishEvent = { botId?: string | null; guildId: string; tableId: string };
 export type ManualPaymentPanelPublishEvent = { botId?: string | null; guildId: string };
+export type CoursePanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
+export type RhAdminPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 
 export type ManualRegistrationPanelPublishEvent = {
   botId?: string | null;
@@ -242,6 +244,8 @@ export class BotSocketClient {
   private fivemOrderStatusUpdatedHandler: ((payload: FivemOrderStatusUpdatedEvent) => void) | null = null;
   private priceTablePanelPublishHandler: ((payload: PriceTablePanelPublishEvent) => void) | null = null;
   private manualPaymentPanelPublishHandler: ((payload: ManualPaymentPanelPublishEvent) => void) | null = null;
+  private coursePanelPublishHandler: ((payload: CoursePanelPublishEvent) => void) | null = null;
+  private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
   private databaseMaintenanceDeleteChannelsHandler: ((payload: DatabaseMaintenanceDeleteChannelsEvent) => void) | null = null;
@@ -346,6 +350,8 @@ export class BotSocketClient {
     if (this.fivemOrderStatusUpdatedHandler) this.socket.on("fivem:orders:status_updated", this.fivemOrderStatusUpdatedHandler);
     if (this.priceTablePanelPublishHandler) this.socket.on("price-tables:panel_publish", this.priceTablePanelPublishHandler);
     if (this.manualPaymentPanelPublishHandler) this.socket.on("manual-payments:panel_publish", this.manualPaymentPanelPublishHandler);
+    if (this.coursePanelPublishHandler) this.socket.on("courses:panel_publish", this.coursePanelPublishHandler);
+    if (this.rhAdminPanelPublishHandler) this.socket.on("rh-admin:panel_publish", this.rhAdminPanelPublishHandler);
 
     if (this.manualRegistrationPanelPublishHandler) {
       this.socket.on("manual-registration:panel_publish", this.manualRegistrationPanelPublishHandler);
@@ -542,6 +548,18 @@ export class BotSocketClient {
     this.manualPaymentPanelPublishHandler = handler;
     this.socket?.off("manual-payments:panel_publish");
     this.socket?.on("manual-payments:panel_publish", handler);
+  }
+
+  onCoursePanelPublish(handler: (payload: CoursePanelPublishEvent) => void) {
+    this.coursePanelPublishHandler = handler;
+    this.socket?.off("courses:panel_publish");
+    this.socket?.on("courses:panel_publish", handler);
+  }
+
+  onRhAdminPanelPublish(handler: (payload: RhAdminPanelPublishEvent) => void) {
+    this.rhAdminPanelPublishHandler = handler;
+    this.socket?.off("rh-admin:panel_publish");
+    this.socket?.on("rh-admin:panel_publish", handler);
   }
 
   onManualRegistrationPanelPublish(handler: (payload: ManualRegistrationPanelPublishEvent) => void) {

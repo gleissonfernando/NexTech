@@ -75,6 +75,11 @@ export const rhAdminCommand: BotCommand = {
 export function startRhAdminService(client: Client, context: BotContext) {
   if (serviceStarted) return;
   serviceStarted = true;
+  context.socket.onRhAdminPanelPublish((payload) => {
+    void publishDashboardMainPanel(client, context, payload.guildId).catch((error) => {
+      console.error(`[rh-admin] failed to publish panel in ${payload.guildId}:`, error instanceof Error ? error.message : error);
+    });
+  });
   void processDueAbsences(client, context);
   const interval = setInterval(() => void processDueAbsences(client, context), 30 * 60 * 1000);
   interval.unref();
@@ -235,6 +240,23 @@ async function publishMainPanel(interaction: ButtonInteraction, context: BotCont
   const message = await channel.send(mainPanel(settings));
   await context.api.saveRhAdminSettings(interaction.guildId!, { mainPanelMessageId: message.id }, interaction.user.id);
   await interaction.editReply("Painel RH Administrativo publicado com sucesso.");
+}
+
+async function publishDashboardMainPanel(client: Client, context: BotContext, guildId: string) {
+  const settings = await context.api.getRhAdminSettings(guildId);
+  if (!settings.enabled) throw new Error("RH Administrativo is disabled.");
+  if (!settings.panelChannelId) throw new Error("RH panel channel is not configured.");
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  const channel = await guild?.channels.fetch(settings.panelChannelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) throw new Error("RH panel channel is invalid or missing send permission.");
+  const payload = mainPanel(settings);
+  const message = settings.mainPanelMessageId && "messages" in channel
+    ? await channel.messages.fetch(settings.mainPanelMessageId).catch(() => null)
+    : null;
+  const nextMessage = message
+    ? await message.edit(payload)
+    : await (channel as SendableTextChannel).send(payload);
+  await context.api.saveRhAdminSettings(guildId, { mainPanelMessageId: nextMessage.id }, null);
 }
 
 async function submitAbsence(interaction: ModalSubmitInteraction, context: BotContext) {

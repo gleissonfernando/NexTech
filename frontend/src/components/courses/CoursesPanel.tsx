@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { BookOpen, CheckCircle2, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -9,6 +9,7 @@ import {
   deleteCourseApi,
   getCoursesDashboard,
   getGuildLiveOptions,
+  publishCoursePanel,
   saveCourseSettings,
   updateCourseApi
 } from "../../lib/api";
@@ -52,6 +53,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
   const textChannels = liveOptions?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? liveOptions?.channels ?? [];
 
@@ -134,6 +136,25 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     }
   }
 
+  async function publishPanel() {
+    if (!dashboard) return;
+    if (!dashboard.settings.publishChannelId) {
+      setError("Configure o canal de publicação antes de publicar o painel.");
+      return;
+    }
+    setPublishing(true);
+    setError("");
+    try {
+      const settings = await publishCoursePanel(botId, guildId);
+      setDashboard({ ...dashboard, settings });
+      setMessage("Painel de cursos enviado para publicação.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível publicar o painel de cursos.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   if (loading || !dashboard) {
     return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando cursos...</CardContent></Card>;
   }
@@ -144,8 +165,12 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       {error ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div> : null}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-blue-300" /> Sistema de Cursos</CardTitle>
+          <Button disabled={!canManage || publishing || !dashboard.settings.publishChannelId} onClick={() => void publishPanel()} size="sm" type="button">
+            {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Publicar painel
+          </Button>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SelectField disabled={!canManage || saving} label="Canal de publicação" onChange={(publishChannelId) => void saveSettings({ publishChannelId })} options={textChannels} value={dashboard.settings.publishChannelId ?? ""} />

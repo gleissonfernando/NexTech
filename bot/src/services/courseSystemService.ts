@@ -15,6 +15,7 @@ import {
   UserSelectMenuBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type Client,
   type GuildMember,
   type Interaction,
   type ModalSubmitInteraction,
@@ -47,10 +48,24 @@ const IDS = {
   channelPublish: "course_channel_publish",
   channelSchedule: "course_channel_schedule",
   channelReport: "course_channel_report",
-  channelLogs: "course_channel_logs"
+  channelLogs: "course_channel_logs",
+  publicPublish: "course_public_publish",
+  publicSchedule: "course_public_schedule",
+  publicReport: "course_public_report"
 } as const;
 
 const reportDrafts = new Map<string, { courseId: string; students: Array<{ note: string; observation: string | null; userId: string }> }>();
+let serviceStarted = false;
+
+export function startCourseSystemService(client: Client, context: BotContext) {
+  if (serviceStarted) return;
+  serviceStarted = true;
+  context.socket.onCoursePanelPublish((payload) => {
+    void publishPublicCoursesPanel(client, context, payload.guildId).catch((error) => {
+      console.error(`[courses] failed to publish panel in ${payload.guildId}:`, error instanceof Error ? error.message : error);
+    });
+  });
+}
 
 export const configCourseCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -124,7 +139,7 @@ async function openCourseConfig(interaction: ChatInputCommandInteraction | Butto
   }
 }
 
-async function startPublishFlow(interaction: ChatInputCommandInteraction, context: BotContext) {
+async function startPublishFlow(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   const courses = await manageableCourses(interaction, context);
   if (!courses.length) {
     await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
@@ -137,7 +152,7 @@ async function startPublishFlow(interaction: ChatInputCommandInteraction, contex
   await interaction.reply(ephemeral(selectCoursePanel("Selecione o curso que deseja publicar.", IDS.publishSelect, courses)));
 }
 
-async function startScheduleFlow(interaction: ChatInputCommandInteraction, context: BotContext) {
+async function startScheduleFlow(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   const courses = await manageableCourses(interaction, context);
   if (!courses.length) {
     await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
@@ -150,7 +165,7 @@ async function startScheduleFlow(interaction: ChatInputCommandInteraction, conte
   await interaction.reply(ephemeral(selectCoursePanel("Selecione o curso para solicitar horário.", IDS.scheduleSelect, courses)));
 }
 
-async function startReportFlow(interaction: ChatInputCommandInteraction, context: BotContext) {
+async function startReportFlow(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   const courses = await manageableCourses(interaction, context);
   if (!courses.length) {
     await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
@@ -186,6 +201,18 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
   }
   if (interaction.customId === IDS.channels) {
     await interaction.update(channelsPanel(await context.api.getCourseSettings(interaction.guildId!)));
+    return;
+  }
+  if (interaction.customId === IDS.publicPublish) {
+    await startPublishFlow(interaction, context);
+    return;
+  }
+  if (interaction.customId === IDS.publicSchedule) {
+    await startScheduleFlow(interaction, context);
+    return;
+  }
+  if (interaction.customId === IDS.publicReport) {
+    await startReportFlow(interaction, context);
     return;
   }
   if (interaction.customId.startsWith("course_join:")) {
@@ -484,7 +511,26 @@ async function refreshPublicationMessage(interaction: ButtonInteraction, context
   await interaction.message.edit(coursePublicationPanel(course, publication, settings, interaction.guild!)).catch(() => null);
 }
 
-async function manageableCourses(interaction: ChatInputCommandInteraction, context: BotContext) {
+async function publishPublicCoursesPanel(client: Client, context: BotContext, guildId: string) {
+  const [settings, courses] = await Promise.all([
+    context.api.getCourseSettings(guildId),
+    context.api.getManageableCourses(guildId, { isAdministrator: true, roleIds: [], userId: client.user?.id ?? "00000" })
+  ]);
+  if (!settings.publishChannelId) throw new Error("Course publish channel is not configured.");
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  const channel = await guild?.channels.fetch(settings.publishChannelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Course publish channel is invalid or missing send permission.");
+  const payload = publicCoursesPanel(settings, courses);
+  const message = settings.panelMessageId && "messages" in channel
+    ? await channel.messages.fetch(settings.panelMessageId).catch(() => null)
+    : null;
+  const nextMessage = message
+    ? await message.edit(payload)
+    : await (channel as TextChannel).send(payload);
+  await context.api.updateCoursePanelMessage(guildId, nextMessage.id);
+}
+
+async function manageableCourses(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext) {
   const member = interaction.member as GuildMember | null;
   return context.api.getManageableCourses(interaction.guildId!, {
     isAdministrator: Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)),
@@ -528,6 +574,28 @@ function courseConfigPanel(settings: CourseSettings) {
     ],
     moduleId: "courses",
     title: "Configuração do Sistema de Cursos"
+  });
+}
+
+function publicCoursesPanel(settings: CourseSettings, courses: Course[]) {
+  const activeCourses = courses.filter((course) => course.active);
+  return renderComponentsV2Panel({
+    accentColor: 0x2563eb,
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(IDS.publicPublish).setLabel(`${settings.buttonEmojis.enter} Publicar Curso`).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(IDS.publicSchedule).setLabel("Solicitar Horário").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.publicReport).setLabel("Lançar Relatório").setStyle(ButtonStyle.Success)
+      )
+    ],
+    description: "Use este painel para publicar cursos disponíveis, solicitar horários e lançar relatórios de aplicação.",
+    fields: [
+      `Cursos ativos: ${activeCourses.length}`,
+      activeCourses.slice(0, 12).map((course) => `${course.emoji ?? "📚"} ${course.name}`).join("\n") || "Nenhum curso ativo cadastrado."
+    ],
+    image: settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null,
+    moduleId: "courses",
+    title: "Sistema de Cursos"
   });
 }
 

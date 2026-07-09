@@ -16,6 +16,7 @@ import {
   listDueRhAbsences,
   logRhAdminAction,
   markRhAbsenceRoleAdded,
+  requestRhAdminPanelPublish,
   RH_ADMIN_MODULE_ID,
   saveRhAdminSettings,
   updateRhAbsenceMessage,
@@ -121,6 +122,18 @@ rhAdminRouter.patch("/:guildId/settings", async (req, res, next) => {
     const botId = await resolveRequestBotId(req);
     if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para configurar o RH Administrativo." });
     const settings = await saveRhAdminSettings(botId, guildId, sanitizeSettings(settingsSchema.parse(req.body ?? {})), res.locals.dashboardAuth.user.discordId);
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+rhAdminRouter.post("/:guildId/panel", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para publicar painel RH." });
+    const settings = await requestRhAdminPanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId);
     return res.json({ settings });
   } catch (error) {
     return next(error);

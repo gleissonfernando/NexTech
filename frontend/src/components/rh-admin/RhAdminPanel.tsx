@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { CalendarClock, ImageIcon, Loader2, ScrollText, ShieldCheck, Upload, Users } from "lucide-react";
-import { getGuildLiveOptions, getRhAdminDashboard, saveRhAdminSettings } from "../../lib/api";
+import { getGuildLiveOptions, getRhAdminDashboard, publishRhAdminPanel, saveRhAdminSettings } from "../../lib/api";
 import type { GuildLiveOptions, RhAdminDashboard, SaveRhAdminSettingsPayload } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -24,6 +24,7 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
   const textChannels = useMemo(() => options?.channels.filter((channel) => ["text", "announcement"].includes(channel.type)) ?? [], [options]);
 
   useEffect(() => {
@@ -59,6 +60,25 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
     }
   }
 
+  async function publishPanel() {
+    if (!dashboard) return;
+    if (!dashboard.settings.panelChannelId) {
+      setError("Configure o canal de publicação antes de publicar o painel RH.");
+      return;
+    }
+    setPublishing(true);
+    setError("");
+    try {
+      const settings = await publishRhAdminPanel(botId, guildId);
+      setDashboard({ ...dashboard, settings });
+      setMessage("Painel RH enviado para publicação.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível publicar o painel RH.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   if (loading || !dashboard) {
     return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando RH Administrativo...</CardContent></Card>;
   }
@@ -90,7 +110,13 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
 
       {activeTab === "Painel Principal" ? (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-sky-300" /> Painel Principal</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-sky-300" /> Painel Principal</CardTitle>
+            <Button disabled={!canManage || publishing || !settings.panelChannelId} onClick={() => void publishPanel()} size="sm" type="button">
+              {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Publicar painel
+            </Button>
+          </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Input disabled={!canManage} label="Nome visual" onChange={(systemName) => void save({ systemName })} value={settings.systemName} />
