@@ -73,15 +73,27 @@ run("discloud", ["app", "status", appId]);
 
 console.log("[release] Health check...");
 const healthUrl = "https://orvitek-bots.discloud.app/health";
-try {
-  const response = await fetch(healthUrl);
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`${response.status} ${body}`);
-  }
-  console.log(body);
-} catch (error) {
-  throw new Error(`Health check falhou em ${healthUrl}: ${error instanceof Error ? error.message : String(error)}`);
-}
+await waitForHealthyApp(healthUrl);
 
 console.log("[release] Concluido.");
+
+async function waitForHealthyApp(url) {
+  let lastBody = "";
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      lastBody = await response.text();
+      if (!response.ok) throw new Error(`${response.status} ${lastBody}`);
+      const payload = JSON.parse(lastBody);
+      if (payload?.status === "ok" && payload?.database?.ok && payload?.bot?.online) {
+        console.log(lastBody);
+        return;
+      }
+      console.log(`[release] Aguardando bot online (${attempt}/12)...`);
+    } catch (error) {
+      console.log(`[release] Health ainda indisponivel (${attempt}/12): ${error instanceof Error ? error.message : String(error)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(`Health check falhou em ${url}: ${lastBody || "sem resposta com bot online"}`);
+}
