@@ -5,7 +5,8 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   type Guild,
-  type GuildMember
+  type GuildMember,
+  type Message
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
@@ -293,6 +294,7 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
       return { error: `Falha ao editar a mensagem salva do painel. ${permissionHint(permissionReport)}`, ok: false, panelId: panel.id };
     }
 
+    void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, edited, panel);
     return { messageId: edited.id, ok: true, panelId: panel.id };
   }
 
@@ -304,10 +306,17 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
     if (panel.panelMessageId !== message.id) {
       await context.api.updateFivemHierarchyPanelState({ guildId: guild.id, messageId: message.id, panelId: panel.id }).catch(() => null);
     }
+    void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, message, panel);
     return { messageId: message.id, ok: true, panelId: panel.id };
   }
   return { error: `O Discord recusou o envio do painel no canal configurado. ${permissionHint(permissionReport)}`, ok: false, panelId: panel.id };
 }
+
+type DuplicateCleanupChannel = {
+  messages: {
+    fetch(input: { limit: number }): Promise<Map<string, Message>>;
+  };
+};
 
 type PublishPermissionChannel = {
   id: string;
@@ -577,6 +586,45 @@ function formatHierarchyMemberLine(member: HierarchyMemberSnapshot) {
 
 function escapeDiscordMarkdown(value: string) {
   return value.replace(/([\\`*_~|>])/g, "\\$1").replace(/@/g, "@\u200b");
+}
+
+async function pruneDuplicateHierarchyPanelMessages(channel: DuplicateCleanupChannel, currentMessage: Message, panel: FivemHierarchyPanel) {
+  const botId = currentMessage.client.user?.id;
+  if (!botId) return;
+  const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+  if (!messages) return;
+
+  const duplicateKeys = [panel.title, panel.description]
+    .map((value) => normalizeDuplicateLookupText(value))
+    .filter(Boolean);
+  if (!duplicateKeys.length) return;
+
+  for (const message of messages.values()) {
+    if (message.id === currentMessage.id || message.author.id !== botId) continue;
+    if (!messageLooksLikeHierarchyPanel(message, duplicateKeys)) continue;
+    await message.delete().catch((error) => {
+      console.warn(`[fivem-hierarchy] falha ao apagar painel duplicado ${message.id}: ${errorMessage(error)}`);
+    });
+  }
+}
+
+function messageLooksLikeHierarchyPanel(message: Message, duplicateKeys: string[]) {
+  const text = normalizeDuplicateLookupText([
+    message.content,
+    ...message.embeds.flatMap((embed) => [embed.title, embed.description, embed.footer?.text]),
+    JSON.stringify(message.components.map((component) => component.toJSON()))
+  ].filter(Boolean).join("\n"));
+
+  if (!text.includes("hierarquia")) return false;
+  return duplicateKeys.some((key) => key && text.includes(key));
+}
+
+function normalizeDuplicateLookupText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function sanitizeSingleHierarchyVisual(visual: PanelVisualConfig | null): PanelVisualConfig | null {
