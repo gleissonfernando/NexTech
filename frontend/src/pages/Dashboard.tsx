@@ -3042,7 +3042,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
     setError(null);
     setMessage(null);
     try {
-      const saved = await saveFivemHierarchyPanel(guild.id, draft, botId);
+      const saved = await saveFivemHierarchyPanel(guild.id, { ...draft, enabled: true }, botId);
       setPanels((current) => [saved, ...current.filter((panel) => panel.id !== saved.id && panel.id !== draft.id)]);
       setDraft(saved);
       await publishFivemHierarchyPanel(guild.id, saved.id, botId);

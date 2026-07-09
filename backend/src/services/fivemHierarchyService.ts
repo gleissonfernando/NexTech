@@ -113,9 +113,9 @@ export async function deleteFivemHierarchyPanel(guildId: string, botId: string |
 
 export async function requestFivemHierarchyPanelPublish(guildId: string, botId: string, panelId: string, actorId: string | null) {
   const panel = await getFivemHierarchyPanel(guildId, panelId, botId);
-  if (!panel) throw new Error("Painel de hierarquia nao encontrado.");
-  if (!panel.enabled) throw new Error("Ative o painel de hierarquia antes de publicar.");
-  if (!panel.panelChannelId) throw new Error("Configure o canal do painel de hierarquia.");
+  if (!panel) throw createPublishError("Painel de hierarquia nao encontrado.", 404);
+  if (!panel.enabled) throw createPublishError("Ative o painel de hierarquia antes de publicar.", 400);
+  if (!panel.panelChannelId) throw createPublishError("Configure o canal do painel de hierarquia.", 400);
   await writeFivemHierarchyLog({ action: "panel.publish_requested", botId, details: { channelId: panel.panelChannelId }, guildId, panelId, userId: actorId });
   emitRealtimeToRoom(devBotRealtimeRoom(botId), "fivem:hierarchy:panel_update", { action: "publish", botId, guildId, panelId });
   return panel;
@@ -238,4 +238,10 @@ function normalizeRoleIds(values: string[]) {
 function normalizeText(value: string | null | undefined, maxLength: number) {
   const normalized = value?.trim().slice(0, maxLength) ?? "";
   return normalized || null;
+}
+
+function createPublishError(message: string, statusCode: number) {
+  return Object.assign(new Error(message), {
+    statusCode
+  });
 }
