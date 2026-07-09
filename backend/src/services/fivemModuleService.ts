@@ -165,10 +165,10 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
-    description: "Ponto aberto, entrada e saida de servico, tempo ativo e auditoria de escala.",
+    description: "Sistema policial de notificacao de ponto aberto por DM, canal mencionado e auditoria.",
     id: "police-open-duty",
     permissions: "Admin Policia, Supervisor",
-    title: "Ponto Aberto"
+    title: "Notificar / Ponto Aberto"
   }
 ];
 

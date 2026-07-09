@@ -174,7 +174,7 @@ const navItems: NavItem[] = [
   { id: "police-patrol-reports", label: "Relatórios Policiais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
   { id: "police-hidden-channel", label: "Canal Oculto", icon: EyeOff, moduleId: "police-hidden-channel" },
   { id: "police-dm", label: "Barra DM", icon: UserPlus, moduleId: "police-dm" },
-  { id: "police-open-duty", label: "Ponto Aberto", icon: Bell, moduleId: "police-open-duty" },
+  { id: "police-open-duty", label: "Notificar / Ponto", icon: Bell, moduleId: "police-open-duty" },
   { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-families", label: "Famílias", icon: Users, moduleIds: ["fivem-orders", "fivem-drugs", "fivem-washing"] },
   { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },

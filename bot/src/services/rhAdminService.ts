@@ -284,7 +284,7 @@ async function submitAbsence(interaction: ModalSubmitInteraction, context: BotCo
   if (!channel) return interaction.editReply("Canal de análise de ausências inválido ou sem permissão.");
   const message = await channel.send(absenceReviewPanel(absence, settings));
   await context.api.updateRhAbsenceMessage(interaction.guildId!, absence.id, { reviewChannelId: channel.id, reviewMessageId: message.id });
-  await sendRhLog(interaction.guild!, context, settings, "Solicitação de ausência enviada.", interaction.user.id, interaction.user.id, "rh.absence_requested");
+  await sendRhLog(interaction.guild!, context, settings, `Solicitação de ausência enviada.\nDuração: ${formatAbsenceDuration(absence)}`, interaction.user.id, interaction.user.id, "rh.absence_requested");
   await interaction.editReply("Sua solicitação de ausência foi enviada para análise do RH.");
 }
 
@@ -325,7 +325,7 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
   await applyAbsenceRole(interaction, context, absence, settings);
   await interaction.message.edit(absenceReviewPanel(absence, settings)).catch(() => null);
   await dmAbsenceApproved(interaction, absence, settings);
-  await sendRhLog(interaction.guild!, context, settings, "Ausência aprovada.", absence.userId, interaction.user.id, "rh.absence_approved");
+  await sendRhLog(interaction.guild!, context, settings, `Ausência aprovada.\nDuração: ${formatAbsenceDuration(absence)}`, absence.userId, interaction.user.id, "rh.absence_approved");
   await interaction.editReply("Ausência aprovada.");
 }
 
@@ -369,7 +369,7 @@ async function processDueAbsences(client: Client, context: BotContext) {
       }
       const dmDelivered = member ? await member.send(dmFinishedPanel(absence, settings)).then(() => true).catch(() => false) : false;
       await context.api.finishRhAbsence(absence.guildId, absence.id, { dmDelivered, roleRemoved });
-      await sendRhLog(guild, context, settings, roleRemoved ? "Cargo de ausência removido automaticamente." : "Ausência finalizada sem remover cargo.", absence.userId, null, "rh.absence_finished", roleRemoved ? "success" : "warning");
+      await sendRhLog(guild, context, settings, `${roleRemoved ? "Cargo de ausência removido automaticamente." : "Ausência finalizada sem remover cargo."}\nDuração: ${formatAbsenceDuration(absence)}`, absence.userId, null, "rh.absence_finished", roleRemoved ? "success" : "warning");
     }
   } finally {
     dueCheckRunning = false;
@@ -479,7 +479,7 @@ function absenceReviewPanel(absence: RhAdminAbsence, settings: RhAdminSettings) 
     description: "Nova solicitação de ausência encaminhada para análise do RH.",
     fields: [
       `Solicitante: <@${absence.userId}>\nNome no servidor: ${absence.serverName}\nID do Discord: \`${absence.userId}\``,
-      `Data de início: \`${absence.startDate}\`\nData de retorno: \`${absence.returnDate}\`\nMotivo: ${absence.reason}`,
+      `Data de início: \`${absence.startDate}\`\nData de retorno: \`${absence.returnDate}\`\nDuração: **${formatAbsenceDuration(absence)}**\nMotivo: ${absence.reason}`,
       `Status: ${status}\nResponsável pela análise: ${absence.reviewerId ? `<@${absence.reviewerId}>` : "Nenhum"}\nData e horário: ${new Date(absence.createdAt).toLocaleString("pt-BR")}`,
       absence.rejectionReason ? `Motivo da recusa: \`${absence.rejectionReason}\`` : ""
     ].filter(Boolean),
@@ -507,7 +507,7 @@ function dmAbsenceApproved(interaction: ButtonInteraction, absence: RhAdminAbsen
   if (!settings.sendAbsenceDm) return Promise.resolve(null);
   return interaction.guild!.members.fetch(absence.userId).then((member) => member.send(renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
-    description: `Olá, **${absence.serverName}**.\n${settings.approvalDmText}\n\n**Período da ausência:**\nInício: \`${absence.startDate}\`\nRetorno: \`${absence.returnDate}\`\n\nDurante esse período, você recebeu o cargo de ausência configurado pela administração.\n\nAo final do período, o sistema removerá automaticamente o cargo de ausência.`,
+    description: `Olá, **${absence.serverName}**.\n${settings.approvalDmText}\n\n**Período da ausência:**\nInício: \`${absence.startDate}\`\nRetorno: \`${absence.returnDate}\`\nDuração: **${formatAbsenceDuration(absence)}**\n\nDurante esse período, você recebeu o cargo de ausência configurado pela administração.\n\nAo final do período, o sistema removerá automaticamente o cargo de ausência.`,
     fields: ["North Police Department • RH Administrativo"],
     image: (settings.approvalDmBannerUrl || settings.dmBannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.approvalDmBannerUrl || settings.dmBannerUrl! } : null,
     moduleId: MODULE_ID,
@@ -530,7 +530,7 @@ function dmAbsenceRejected(interaction: ModalSubmitInteraction, absence: RhAdmin
 function dmFinishedPanel(absence: RhAdminAbsence, settings: RhAdminSettings) {
   return renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
-    description: `Olá, **${absence.serverName}**.\n${settings.finishedDmText}\n\nO cargo de ausência foi removido automaticamente pelo sistema.\n\n**Data de retorno registrada:** \`${absence.returnDate}\``,
+    description: `Olá, **${absence.serverName}**.\n${settings.finishedDmText}\n\nO cargo de ausência foi removido automaticamente pelo sistema.\n\n**Data de retorno registrada:** \`${absence.returnDate}\`\n**Duração registrada:** ${formatAbsenceDuration(absence)}`,
     fields: ["North Police Department • RH Administrativo"],
     image: (settings.finishedDmBannerUrl || settings.dmBannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.finishedDmBannerUrl || settings.dmBannerUrl! } : null,
     moduleId: MODULE_ID,
@@ -574,6 +574,14 @@ function parseRhDate(value: string) {
   const date = new Date(year, month - 1, day, 12, 0, 0, 0);
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return { date, label: `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}` };
+}
+
+function formatAbsenceDuration(absence: Pick<RhAdminAbsence, "returnAt" | "startAt">) {
+  const start = Date.parse(absence.startAt);
+  const end = Date.parse(absence.returnAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return "não calculada";
+  const days = Math.max(1, Math.ceil((end - start) / 86_400_000));
+  return `${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
 function inputRow(customId: string, label: string, style: TextInputStyle, required: boolean, maxLength: number, value?: string, placeholder?: string) {

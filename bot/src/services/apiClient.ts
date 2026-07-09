@@ -54,7 +54,14 @@ export type TranscriptCreateResult = {
     htmlPath: string;
     publicUrl?: string | null;
     createdAt: string;
+    closedAt?: string | null;
     expiresAt: string | null;
+    channelId?: string | null;
+    channelName?: string | null;
+    categoryName?: string | null;
+    messageCount?: number;
+    attachmentCount?: number;
+    participantCount?: number;
   };
 };
 
@@ -1227,6 +1234,7 @@ export type OpenDutySettings = {
   enabled: boolean;
   logChannelId: string | null;
   alertChannelId: string | null;
+  mentionChannelId: string | null;
   allowedRoleIds: string[];
   allowedUserIds: string[];
   defaultMessage: string;

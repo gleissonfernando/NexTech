@@ -74,14 +74,14 @@ export function clearDmBarConfigCache(guildId?: string | null) {
 async function selectTarget(interaction: UserSelectMenuInteraction, context: BotContext) {
   const targetId = interaction.values[0]!;
   const config = await getConfig(context, interaction.guildId!);
-  await interaction.showModal(dmModal(targetId, config.titleTemplate, "", ""));
+  await interaction.showModal(dmModal(targetId, config.titleTemplate, ""));
   return true;
 }
 
 async function submitModal(interaction: ModalSubmitInteraction, context: BotContext, targetId: string) {
   const title = sanitize(interaction.fields.getTextInputValue("title"), 100);
   const message = sanitize(interaction.fields.getTextInputValue("message"), 1800);
-  const observation = sanitize(interaction.fields.getTextInputValue("observation") || "", 600);
+  const observation = "";
   const draftId = `${interaction.id}-${Date.now()}`;
   drafts.set(draftId, { guildId: interaction.guildId!, message, observation, targetId, title });
   const config = await getConfig(context, interaction.guildId!);
@@ -125,7 +125,7 @@ async function sendDraft(interaction: ButtonInteraction, context: BotContext, dr
 async function editDraft(interaction: ButtonInteraction, draftId: string) {
   const draft = drafts.get(draftId);
   if (!draft) return interaction.reply({ content: "Rascunho expirado. Use /dm novamente.", ephemeral: true });
-  await interaction.showModal(dmModal(draft.targetId, draft.title, draft.message, draft.observation));
+  await interaction.showModal(dmModal(draft.targetId, draft.title, draft.message));
   return true;
 }
 
@@ -140,11 +140,10 @@ async function cancelDraft(interaction: ButtonInteraction, context: BotContext, 
   return true;
 }
 
-function dmModal(targetId: string, title: string, message: string, observation: string) {
+function dmModal(targetId: string, title: string, message: string) {
   return new ModalBuilder().setCustomId(`${PREFIX}:modal:${targetId}`).setTitle("Enviar DM").addComponents(
     row("title", "Título da mensagem", "Ex: Comunicado Oficial", true, title, TextInputStyle.Short, 100),
-    row("message", "Mensagem", "Digite a mensagem que será enviada", true, message, TextInputStyle.Paragraph, 1800),
-    row("observation", "Observação opcional", "Informação extra interna/visual", false, observation, TextInputStyle.Paragraph, 600)
+    row("message", "Mensagem", "Digite a mensagem que será enviada", true, message, TextInputStyle.Paragraph, 1800)
   );
 }
 

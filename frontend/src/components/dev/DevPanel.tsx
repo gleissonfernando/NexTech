@@ -168,7 +168,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-patrol-reports", label: "Policia - Relatorios de Patrulhamento" },
   { id: "police-dm", label: "Policia - DM Policial" },
   { id: "police-subpoenas", label: "Policia - Intimacao" },
-  { id: "police-open-duty", label: "Policia - Ponto Aberto" },
+  { id: "police-open-duty", label: "Policia - Notificar / Ponto Aberto" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalização" }
 ];
@@ -589,8 +589,8 @@ const botMenuItems: BotMenuItem[] = [
       },
       {
         id: "police-open-duty",
-        label: "Ponto Aberto",
-        description: "Entrada, saida e tempo ativo de servico",
+        label: "Notificar / Ponto Aberto",
+        description: "DM policial, canal mencionado e contador de avisos",
         icon: CheckCircle2,
         moduleIds: ["police-open-duty"]
       }

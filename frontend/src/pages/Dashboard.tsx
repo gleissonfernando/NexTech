@@ -538,8 +538,8 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "police-open-duty",
-    title: "Ponto Aberto",
-    description: "Notificacoes privadas para ponto aberto, contador de avisos verbais e alertas administrativos.",
+    title: "Notificar / Ponto Aberto",
+    description: "Notificacoes policiais por DM, canal mencionado, contador de avisos verbais e alertas administrativos.",
     icon: Bell,
     view: "police-open-duty"
   },
@@ -5617,7 +5617,7 @@ function PoliceIabPanel({
             <FivemChannelSelect channels={channels} disabled={disabled} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Selecionar canal" value={draft.logChannelId} />
             <FivemChannelSelect channels={channels} disabled={disabled} label="Canal de transcripts" onChange={(value) => patch({ transcriptChannelId: value })} placeholder="Selecionar canal" value={draft.transcriptChannelId} />
             <FivemChannelSelect channels={channels} disabled={disabled} label="Canal de auditoria" onChange={(value) => patch({ auditChannelId: value })} placeholder="Selecionar canal" value={draft.auditChannelId} />
-            <FivemResourceSelect disabled={disabled} label="Categoria fixa de finalizados" onChange={(value) => patch({ finishedCategoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="📁" value={draft.finishedCategoryId} />
+            <FivemResourceSelect disabled={disabled} label="Categoria fixa de arquivamento" onChange={(value) => patch({ finishedCategoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="📁" value={draft.finishedCategoryId} />
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">

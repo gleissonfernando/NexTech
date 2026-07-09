@@ -406,32 +406,50 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
   if (!logChannel?.isTextBased() || !("send" in logChannel)) return;
 
   const url = resolveTranscriptUrl(transcript);
-  await (logChannel as TextChannel).send({
-    components: [
+  const createdAt = new Date(ticket.createdAt);
+  const closedAt = transcript.transcript.closedAt ? new Date(transcript.transcript.closedAt) : new Date();
+  await (logChannel as TextChannel).send(renderComponentsV2Panel({
+    accentColor: 0xf2b84b,
+    actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setLabel("Gerar Nova Senha Temporária").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setLabel("Revogar Senha Temporária").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)
       )
     ],
-    content: [
-      "## Transcript Gerado",
-      `Tipo: ${transcript.transcript.type}`,
-      `Categoria: ${ticket.categoryName ?? ticket.subject}`,
-      `ID do Ticket: #${transcript.transcript.ticketId}`,
-      `Aberto por: <@${ticket.openerId}>`,
-      `Finalizado por: <@${closedById}>`,
-      `Responsável: ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nenhum"}`,
-      `Status final: ${ticket.finalResult ?? "Finalizado"}`,
-      `Criado em: ${new Date(ticket.createdAt).toLocaleString("pt-BR")}`,
-      `Finalizado em: ${new Date().toLocaleString("pt-BR")}`,
-      "",
-      `Link do transcript: ${url}`,
-      `Senha temporária: \`${transcript.temporaryPassword ? "************" : "não gerada"}\``,
-      transcript.temporaryPassword ? `Senha privada do painel: ||${transcript.temporaryPassword}||` : ""
-    ].filter(Boolean).join("\n")
-  }).catch(() => null);
+    description: "O atendimento foi finalizado e o transcript foi salvo com seguranca. O acesso ao link e senha deve permanecer restrito ao canal de logs configurado.",
+    fields: [
+      `**Informacoes do Ticket**\n**Ticket:** #${transcript.transcript.ticketId ?? transcript.transcript.id}\n**Canal:** ${transcript.transcript.channelName ? `#${transcript.transcript.channelName}` : "-"}\n**Tipo:** ${transcript.transcript.type}\n**Status:** ${formatTranscriptStatus(ticket.finalResult ?? transcript.transcript.status)}`,
+      `**Envolvidos**\n**Aberto por:** <@${ticket.openerId}>\n**Finalizado por:** <@${closedById}>\n**Responsavel:** ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nao assumido"}\n**Categoria:** ${ticket.categoryName ?? ticket.subject}`,
+      `**Dados do Caso**\n**Criado em:** <t:${Math.floor(createdAt.getTime() / 1000)}:F>\n**Fechado em:** <t:${Math.floor(closedAt.getTime() / 1000)}:F>\n**Tempo total:** ${formatElapsed(createdAt, closedAt)}\n**Resumo:** ${transcript.transcript.messageCount ?? 0} mensagens, ${transcript.transcript.attachmentCount ?? 0} anexos, ${transcript.transcript.participantCount ?? 0} participantes`,
+      `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha temporaria:** ${transcript.temporaryPassword ? `||${transcript.temporaryPassword}||` : "nao gerada"}\n**Expira em:** ${transcript.temporaryPasswordExpiresAt ? `<t:${Math.floor(Date.parse(transcript.temporaryPasswordExpiresAt) / 1000)}:D>` : "configuracao padrao"}`
+    ],
+    image: null,
+    moduleId: "ticket-transcript",
+    title: "📁 Transcript Gerado"
+  })).catch(() => null);
+}
+
+function formatTranscriptStatus(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("final") || normalized.includes("resolv")) return `🟢 ${status}`;
+  if (normalized.includes("arquiv")) return `⚫ ${status}`;
+  if (normalized.includes("pend") || normalized.includes("aguard")) return `🟡 ${status}`;
+  if (normalized.includes("recus") || normalized.includes("neg")) return `🔴 ${status}`;
+  return `🔒 ${status}`;
+}
+
+function formatElapsed(start: Date, end: Date) {
+  const totalMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [
+    days ? `${days}d` : null,
+    hours ? `${hours}h` : null,
+    minutes ? `${minutes}min` : null
+  ].filter(Boolean).join(" ") || "menos de 1min";
 }
 
 function resolveTranscriptUrl(transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>) {

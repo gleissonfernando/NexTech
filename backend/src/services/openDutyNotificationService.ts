@@ -27,7 +27,7 @@ Verificamos que seu ponto de serviço permanece aberto mesmo sem estar em ativid
 
 Pedimos que, ao encerrar o serviço ou se ausentar, feche corretamente o ponto. Caso a situação continue ocorrendo, poderá haver aplicação de multa administrativa.
 
-Se você esqueceu o ponto aberto, por favor, justifique em North Police Department 📑│justificar-ponto.`;
+Se você esqueceu o ponto aberto, por favor, justifique em {canal}.`;
 
 export const DEFAULT_OPEN_DUTY_ALERT = "O usuário atingiu 3 avisos verbais por manter o ponto aberto sem estar em atividade. Verifique a possibilidade de multa administrativa conforme as diretrizes do departamento.";
 
@@ -58,6 +58,7 @@ export async function getOpenDutySettings(botId: string | null, guildId: string)
     enabled: true,
     logChannelId: null,
     alertChannelId: null,
+    mentionChannelId: null,
     allowedRoleIds: [],
     allowedUserIds: [],
     defaultMessage: DEFAULT_OPEN_DUTY_MESSAGE,
@@ -176,6 +177,7 @@ function mapSettings(settings: MongoOpenDutySettings) {
     enabled: settings.enabled,
     logChannelId: settings.logChannelId,
     alertChannelId: settings.alertChannelId,
+    mentionChannelId: settings.mentionChannelId ?? null,
     allowedRoleIds: settings.allowedRoleIds,
     allowedUserIds: settings.allowedUserIds,
     defaultMessage: settings.defaultMessage,
@@ -216,6 +218,7 @@ function cleanSettings(input: Partial<Omit<OpenDutySettingsDto, "id" | "botId" |
     ...input,
     logChannelId: normalizeNullable(input.logChannelId),
     alertChannelId: normalizeNullable(input.alertChannelId),
+    mentionChannelId: normalizeNullable(input.mentionChannelId),
     dmBannerUrl: normalizeNullable(input.dmBannerUrl),
     panelBannerUrl: normalizeNullable(input.panelBannerUrl),
     footerImageUrl: normalizeNullable(input.footerImageUrl),

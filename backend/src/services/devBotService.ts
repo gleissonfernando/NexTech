@@ -100,7 +100,7 @@ export const DEV_MODULES = [
   { id: "police-dm", label: "Policia - DM Policial" },
   { id: "rh-admin", label: "Policia - RH Administrativo" },
   { id: "police-subpoenas", label: "Policia - Intimacao" },
-  { id: "police-open-duty", label: "Policia - Ponto Aberto" },
+  { id: "police-open-duty", label: "Policia - Notificar / Ponto Aberto" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }
 ] as const;

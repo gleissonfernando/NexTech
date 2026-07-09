@@ -80,7 +80,7 @@ async function openNotificationPanel(interaction: ChatInputCommandInteraction, c
     return;
   }
 
-  const message = renderMessage(settings.defaultMessage, target);
+  const message = renderMessage(settings.defaultMessage, target, settings);
   const draftId = `${interaction.id}-${Date.now()}`;
   drafts.set(draftId, { edited: false, executorId: interaction.user.id, guildId: interaction.guild.id, message, targetId: target.id });
   await interaction.reply({
@@ -101,7 +101,7 @@ async function openConfigSummary(interaction: ChatInputCommandInteraction, conte
     ...panel(settings, {
       description: "Resumo da configuracao principal. Use a dashboard para editar todos os campos.",
       fields: [
-        `**Logs internas:** ${settings.logChannelId ? `<#${settings.logChannelId}>` : "nao configurado"}\n**Canal de multas:** ${settings.alertChannelId ? `<#${settings.alertChannelId}>` : "nao configurado"}`,
+        `**Logs internas:** ${settings.logChannelId ? `<#${settings.logChannelId}>` : "nao configurado"}\n**Canal de multas:** ${settings.alertChannelId ? `<#${settings.alertChannelId}>` : "nao configurado"}\n**Canal mencionado na DM:** ${settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "nao configurado"}`,
         `**Cargos autorizados:** ${settings.allowedRoleIds.length ? settings.allowedRoleIds.map((id) => `<@&${id}>`).join(", ") : "nenhum"}\n**Regra:** envia multa ao chegar em 3/3; zera e inicia uma nova contagem.`
       ],
       title: "Configurar Ponto Aberto"
@@ -275,8 +275,14 @@ function canUse(member: GuildMember, userId: string, settings: OpenDutySettings)
   return settings.allowedRoleIds.some((roleId) => member.roles.cache.has(roleId));
 }
 
-function renderMessage(template: string, target: User) {
-  return template.replaceAll("{usuario}", `<@${target.id}>`).replaceAll("<@usuário>", `<@${target.id}>`).replaceAll("<@usuario>", `<@${target.id}>`);
+function renderMessage(template: string, target: User, settings: OpenDutySettings) {
+  const channelMention = settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "";
+  return template
+    .replaceAll("{usuario}", `<@${target.id}>`)
+    .replaceAll("<@usuário>", `<@${target.id}>`)
+    .replaceAll("<@usuario>", `<@${target.id}>`)
+    .replaceAll("{canal}", channelMention)
+    .replaceAll("{channel}", channelMention);
 }
 
 function color(value: string) {

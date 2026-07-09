@@ -109,8 +109,8 @@ export function OpenDutyNotificationsPanel({ botId, canManage, guild }: Props) {
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5 text-blue-300" />Notificacoes / Ponto Aberto</CardTitle>
-            <CardDescription>Configura a DM anonima, logs, alertas de 3 avisos e permissao do comando /notificar.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5 text-blue-300" />Policia | Notificar / Ponto Aberto</CardTitle>
+            <CardDescription>Configura a DM policial, logs, canal mencionado, alertas de 3 avisos e permissao do comando /notificar.</CardDescription>
           </div>
           <Button disabled={disabled} onClick={() => void save()} size="sm" type="button">
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -124,9 +124,10 @@ export function OpenDutyNotificationsPanel({ botId, canManage, guild }: Props) {
           <div className="grid gap-4 md:grid-cols-2">
             <SelectField disabled={disabled} label="Canal de logs" onChange={(value) => patch("logChannelId", value || null)} options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))} value={settings.logChannelId ?? ""} />
             <SelectField disabled={disabled} label="Canal de multas (3/3)" onChange={(value) => patch("alertChannelId", value || null)} options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))} value={settings.alertChannelId ?? ""} />
+            <SelectField disabled={disabled} label="Canal mencionado na DM" onChange={(value) => patch("mentionChannelId", value || null)} options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))} value={settings.mentionChannelId ?? ""} />
             <div className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm text-zinc-300">
               <p className="font-medium text-zinc-100">Regra de contagem</p>
-              <p className="mt-1">As logs internas continuam em todos os envios. O canal de multas recebe mensagem somente em 3/3; depois disso, o contador zera e inicia uma nova contagem.</p>
+              <p className="mt-1">Use {"{canal}"} ou {"{channel}"} na mensagem padrao para inserir o canal configurado. O canal de multas recebe mensagem somente em 3/3.</p>
             </div>
             <label className="text-sm font-medium text-zinc-200">
               Cor do painel

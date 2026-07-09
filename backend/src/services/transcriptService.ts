@@ -289,15 +289,31 @@ export async function createNewTemporaryPassword(transcriptId: string, ttlHours 
 }
 
 export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: "Temporária" | "Mestre" | "Protegido", temporaryPasswordExpiresAt?: string | null) {
-  const messages = transcript.messages.map((message) => `
+  const duration = formatDuration(transcript.createdAt, transcript.closedAt);
+  const status = statusBadge(transcript.status);
+  const ticketId = transcript.ticketId ?? transcript._id;
+  const messages = transcript.messages.map((message) => {
+    const flags = [
+      message.system ? "Sistema" : null,
+      message.anonymous ? "Anonimo" : null,
+      message.botRelayed ? "Reenviado pelo bot" : null
+    ].filter(Boolean);
+    return `
     <article class="message">
-      <div class="meta">[${formatDate(message.createdAt)}] ${escapeHtml(message.authorName)}</div>
+      <div class="message-head">
+        <div>
+          <strong>${escapeHtml(message.authorName)}</strong>
+          ${flags.length ? `<span class="chips">${flags.map((flag) => `<span>${escapeHtml(String(flag))}</span>`).join("")}</span>` : ""}
+        </div>
+        <time>${formatDate(message.createdAt)}</time>
+      </div>
       <p>${escapeHtml(message.content || "(sem texto)")}</p>
-      ${message.attachments.map((attachment) => `<a class="attachment" href="${escapeAttribute(attachment.url)}" target="_blank" rel="noreferrer">${escapeHtml(attachment.name)}</a>`).join("")}
-    </article>`).join("");
-  const events = transcript.events.map((event) => `<li>${formatDate(event.createdAt)} - ${escapeHtml(event.content)}</li>`).join("");
-  const participants = transcript.participants.map((participant) => `<li>${escapeHtml(participant.name)}${participant.role ? ` - ${escapeHtml(participant.role)}` : ""}</li>`).join("");
-  const attachments = transcript.attachments.map((attachment) => `<li><a href="${escapeAttribute(attachment.url)}" target="_blank" rel="noreferrer">${escapeHtml(attachment.name)}</a></li>`).join("");
+      ${message.attachments.map((attachment) => renderAttachment(attachment)).join("")}
+    </article>`;
+  }).join("");
+  const events = transcript.events.map((event) => `<li><span>${formatDate(event.createdAt)}</span>${escapeHtml(event.content)}</li>`).join("");
+  const participants = transcript.participants.map((participant) => `<li><strong>${escapeHtml(participant.name)}</strong>${participant.role ? `<span>${escapeHtml(participant.role)}</span>` : ""}</li>`).join("");
+  const attachments = transcript.attachments.map((attachment) => `<li><a href="${escapeAttribute(attachment.url)}" target="_blank" rel="noreferrer">${escapeHtml(attachment.name)}</a><span>${formatBytes(attachment.size)}</span></li>`).join("");
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -305,44 +321,69 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
   <meta charset="utf-8" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Transcript ${escapeHtml(transcript._id)}</title>
+  <title>Transcript ${escapeHtml(ticketId)}</title>
   <style>
-    body{margin:0;background:#0f172a;color:#e5e7eb;font-family:Arial,sans-serif}
-    main{max-width:980px;margin:0 auto;padding:32px 18px}
-    section{border-top:1px solid #334155;padding:22px 0}
-    h1,h2{margin:0 0 14px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-    .box,.message{background:#111827;border:1px solid #334155;border-radius:8px;padding:14px}
-    .meta{color:#93c5fd;font-size:13px;margin-bottom:8px}
-    .warning{background:#451a03;border-color:#f59e0b}
-    a{color:#7dd3fc}.actions{display:flex;gap:10px;flex-wrap:wrap}.actions button,.actions a{background:#2563eb;color:white;border:0;border-radius:6px;padding:10px 12px;text-decoration:none}
+    :root{color-scheme:dark;--bg:#070707;--panel:#111113;--panel2:#18181b;--line:#2f2f35;--text:#f4f4f5;--muted:#a1a1aa;--gold:#f2b84b;--gold2:#8a6424;--danger:#ef4444}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1b1b20 0,#070707 42%);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}
+    main{max-width:1120px;margin:0 auto;padding:28px 18px 44px}
+    header{border:1px solid var(--line);border-left:5px solid var(--gold);border-radius:10px;background:linear-gradient(135deg,#141416,#0b0b0c);padding:24px;margin-bottom:18px}
+    .eyebrow{color:var(--gold);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+    h1{font-size:30px;margin:6px 0 8px}h2{font-size:18px;margin:0 0 14px}.lead{color:var(--muted);margin:0;max-width:760px}
+    section{border:1px solid var(--line);border-radius:10px;background:rgba(17,17,19,.88);padding:18px;margin-top:14px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:13px}
+    .box span,.list span,time{display:block;color:var(--muted);font-size:12px}.box strong{display:block;margin-top:3px;word-break:break-word}.status{color:var(--gold)}
+    .warning{background:#251806;border-color:var(--gold2)}.warning h2{color:var(--gold)}
+    .message{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:10px}.message-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.message p{white-space:pre-wrap;margin:10px 0 0}
+    .chips{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:8px}.chips span{display:inline-block;border:1px solid var(--gold2);color:var(--gold);border-radius:999px;padding:1px 7px;font-size:11px}
+    .attachment{display:block;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0d0d0f}.attachment img{display:block;max-width:100%;height:auto}.attachment a{display:block;padding:10px}
+    .list{list-style:none;padding:0;margin:0;display:grid;gap:8px}.list li{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}
+    a{color:#f7d98a}.actions{display:flex;gap:10px;flex-wrap:wrap}.actions button,.actions a{background:var(--gold);color:#171717;border:0;border-radius:7px;padding:10px 12px;text-decoration:none;font-weight:700;cursor:pointer}
+    @media(max-width:640px){main{padding:14px 10px 30px}header,section{border-radius:8px}.message-head,.list li{display:block}h1{font-size:24px}}
   </style>
 </head>
 <body>
 <main>
-  ${transcript.isPartial ? `<section class="box warning"><h2>Transcript Parcial</h2><p>Este transcript pode estar incompleto porque o ticket foi interrompido antes do encerramento normal.</p><p>Motivo: ${escapeHtml(transcript.partialReason ?? "indisponível")}</p></section>` : ""}
+  <header>
+    <div class="eyebrow">North Police Department - Sistema de Logs</div>
+    <h1>📁 Transcript Gerado</h1>
+    <p class="lead">O registro completo deste atendimento foi salvo com seguranca. O acesso e protegido por senha e todos os acessos sao registrados para auditoria.</p>
+  </header>
+  ${transcript.isPartial ? `<section class="warning"><h2>Transcript Parcial</h2><p>Este transcript pode estar incompleto porque o ticket foi interrompido antes do encerramento normal.</p><p>Motivo: ${escapeHtml(transcript.partialReason ?? "indisponivel")}</p></section>` : ""}
   <section>
-    <h1>Transcript do Atendimento</h1>
+    <h2>Informacoes do Ticket</h2>
     <div class="grid">
-      <div class="box">Tipo: ${escapeHtml(transcript.type)}</div>
-      <div class="box">Status: ${escapeHtml(transcript.status)}</div>
-      <div class="box">ID: ${escapeHtml(transcript._id)}</div>
-      <div class="box">Canal: ${escapeHtml(transcript.channelName ?? "-")}</div>
-      <div class="box">Servidor: ${escapeHtml(transcript.guildName ?? transcript.guildId)}</div>
-      <div class="box">Aberto por: ${escapeHtml(formatUser(transcript.openedById))}</div>
-      <div class="box">Responsável: ${escapeHtml(formatUser(transcript.responsibleUserId))}</div>
-      <div class="box">Criado em: ${formatDate(transcript.createdAt)}</div>
-      <div class="box">Finalizado em: ${transcript.closedAt ? formatDate(transcript.closedAt) : "-"}</div>
-      <div class="box">Motivo de abertura: ${escapeHtml(transcript.openReason ?? "-")}</div>
-      <div class="box">Motivo: ${escapeHtml(transcript.closeReason ?? "-")}</div>
-      <div class="box">Senha usada: ${passwordType}</div>
-      <div class="box">Validade temporária: ${temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : "-"}</div>
+      ${infoBox("Ticket", ticketId)}
+      ${infoBox("Canal", transcript.channelName ? `#${transcript.channelName}` : "-")}
+      ${infoBox("Tipo", transcript.type)}
+      ${infoBox("Status", status)}
+      ${infoBox("Servidor", transcript.guildName ?? transcript.guildId)}
+      ${infoBox("Categoria/Orgao", transcript.categoryName ?? "-")}
     </div>
   </section>
-  <section><h2>Participantes</h2><ul>${participants || "<li>Nenhum participante registrado.</li>"}</ul></section>
+  <section>
+    <h2>Dados do Caso</h2>
+    <div class="grid">
+      ${infoBox("Aberto por", formatUser(transcript.openedById))}
+      ${infoBox("Responsavel", formatUser(transcript.responsibleUserId))}
+      ${infoBox("Criado em", formatDate(transcript.createdAt))}
+      ${infoBox("Finalizado em", transcript.closedAt ? formatDate(transcript.closedAt) : "-")}
+      ${infoBox("Tempo total", duration)}
+      ${infoBox("Motivo/resultado", transcript.closeReason ?? transcript.finalResult ?? "-")}
+    </div>
+  </section>
+  <section>
+    <h2>Seguranca</h2>
+    <div class="grid">
+      ${infoBox("Protecao", "Senha obrigatoria")}
+      ${infoBox("Senha usada", passwordType)}
+      ${infoBox("Expira em", temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : transcript.expiresAt ? formatDate(transcript.expiresAt) : "-")}
+      ${infoBox("Acessos registrados", String(transcript.accessCount ?? 0))}
+    </div>
+  </section>
+  <section><h2>Participantes</h2><ul class="list">${participants || "<li>Nenhum participante registrado.</li>"}</ul></section>
   <section><h2>Conversa Completa</h2>${messages || "<p>Nenhuma mensagem registrada.</p>"}</section>
-  <section><h2>Anexos</h2><ul>${attachments || "<li>Nenhum anexo registrado.</li>"}</ul></section>
-  <section><h2>Ações Administrativas</h2><ul>${events || "<li>Nenhuma ação registrada.</li>"}</ul></section>
+  <section><h2>Anexos</h2><ul class="list">${attachments || "<li>Nenhum anexo registrado.</li>"}</ul></section>
+  <section><h2>Acoes Administrativas</h2><ul class="list">${events || "<li>Nenhuma acao registrada.</li>"}</ul></section>
   <section class="actions">
     <button onclick="navigator.clipboard.writeText('${escapeAttribute(transcript._id)}')">Copiar ID</button>
     <button onclick="navigator.clipboard.writeText(location.href)">Copiar link</button>
@@ -362,12 +403,17 @@ export function renderTranscriptText(transcript: MongoTranscript) {
     `Modulo: ${transcript.type}`,
     `Caso: ${transcript.ticketId ?? transcript._id}`,
     `Status: ${transcript.status}`,
+    `Canal: ${transcript.channelName ?? "-"}`,
+    `Categoria/Orgao: ${transcript.categoryName ?? "-"}`,
     `Aberto por: ${formatUser(transcript.openedById)}`,
     `Responsavel: ${formatUser(transcript.responsibleUserId)}`,
     `Aberto em: ${formatDate(transcript.createdAt)}`,
     `Finalizado em: ${transcript.closedAt ? formatDate(transcript.closedAt) : "-"}`,
+    `Tempo total: ${formatDuration(transcript.createdAt, transcript.closedAt)}`,
     `Mensagens registradas: ${transcript.messages.length}`,
     `Anexos registrados: ${transcript.attachments.length}`,
+    `Participantes registrados: ${transcript.participants.length}`,
+    `Motivo/resultado: ${transcript.closeReason ?? transcript.finalResult ?? "-"}`,
     ""
   ];
   const messages = transcript.messages.map((message) => {
@@ -376,6 +422,49 @@ export function renderTranscriptText(transcript: MongoTranscript) {
   });
   const events = transcript.events.map((event) => `[${formatDate(event.createdAt)}] ${event.eventType}: ${event.content}`);
   return [...header, "MENSAGENS", ...messages, "", "ACOES DO SISTEMA", ...events].join("\n");
+}
+
+function infoBox(label: string, value: string) {
+  return `<div class="box"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function statusBadge(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("final")) return `🟢 ${status}`;
+  if (normalized.includes("arquiv")) return `⚫ ${status}`;
+  if (normalized.includes("pend")) return `🟡 ${status}`;
+  if (normalized.includes("recus") || normalized.includes("neg")) return `🔴 ${status}`;
+  if (normalized.includes("incompleto")) return `🟠 ${status}`;
+  return `🔒 ${status}`;
+}
+
+function formatDuration(start: Date, end: Date | null) {
+  if (!end) return "-";
+  const diffMs = Math.max(0, end.getTime() - start.getTime());
+  const totalMinutes = Math.max(1, Math.round(diffMs / 60_000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [
+    days ? `${days}d` : null,
+    hours ? `${hours}h` : null,
+    minutes ? `${minutes}min` : null
+  ].filter(Boolean).join(" ") || "menos de 1min";
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderAttachment(attachment: MongoTranscript["attachments"][number]) {
+  const isImage = attachment.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(attachment.url);
+  return `<div class="attachment">
+    ${isImage ? `<img src="${escapeAttribute(attachment.url)}" alt="${escapeAttribute(attachment.name)}" loading="lazy" />` : ""}
+    <a href="${escapeAttribute(attachment.url)}" target="_blank" rel="noreferrer">${escapeHtml(attachment.name)}${attachment.size ? ` - ${formatBytes(attachment.size)}` : ""}</a>
+  </div>`;
 }
 
 function publicTranscriptSummary(transcript: MongoTranscript) {
@@ -390,7 +479,14 @@ function publicTranscriptSummary(transcript: MongoTranscript) {
     htmlPath: transcript.htmlPath,
     publicUrl: transcript.websiteUrl ?? buildTranscriptPublicUrl(transcript._id),
     createdAt: transcript.createdAt.toISOString(),
-    expiresAt: transcript.expiresAt?.toISOString() ?? null
+    closedAt: transcript.closedAt?.toISOString() ?? null,
+    expiresAt: transcript.expiresAt?.toISOString() ?? null,
+    channelId: transcript.channelId,
+    channelName: transcript.channelName,
+    categoryName: transcript.categoryName,
+    messageCount: transcript.messages.length,
+    attachmentCount: transcript.attachments.length,
+    participantCount: transcript.participants.length
   };
 }
 

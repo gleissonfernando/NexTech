@@ -40,6 +40,7 @@ const configSchema = z.object({
   footerText: z.string().max(300).nullable().optional().or(z.literal("")),
   imagePosition: z.enum(["top", "middle", "bottom", "footer"]).optional(),
   logChannelId: nullableSnowflake,
+  mentionChannelId: nullableSnowflake,
   panelBannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   panelColor: z.string().max(24).optional()
 });

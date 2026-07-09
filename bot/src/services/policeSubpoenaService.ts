@@ -36,7 +36,7 @@ type Draft = {
   finalCompetence: Competence;
   guildId: string;
   redirectReason: string | null;
-  responsibleId?: string;
+  responsibleId: string;
   selectedCompetence: Competence;
   targetDisplayName: string;
   targetId: string;
@@ -114,7 +114,6 @@ export async function handlePoliceSubpoenaInteraction(interaction: Interaction, 
 
   if (interaction.isStringSelectMenu() && action === "competence") return selectCompetence(interaction);
   if (interaction.isUserSelectMenu() && action === "target") return selectTarget(interaction, context, settings, parts[2] as Competence);
-  if (interaction.isStringSelectMenu() && action === "responsible") return selectResponsible(interaction, parts[2] ?? "");
   if (interaction.isModalSubmit() && action === "modal") return submitSubpoena(interaction, context, settings, parts[2] ?? "");
   if (interaction.isButton() && ["finish", "cancel", "remind", "note"].includes(action ?? "")) return handleCaseButton(interaction, context, settings, action ?? "", parts[2] ?? "");
   if (interaction.isModalSubmit() && action === "note-modal") return submitNote(interaction, context, settings, parts[2] ?? "");
@@ -124,7 +123,7 @@ export async function handlePoliceSubpoenaInteraction(interaction: Interaction, 
 
 async function selectCompetence(interaction: StringSelectMenuInteraction) {
   const competence = parseCompetence(interaction.values[0]) ?? "iab";
-  await interaction.update(panel(null, "Selecionar intimado", "Selecione o membro envolvido/intimado. A competência será reavaliada automaticamente pelos cargos do usuário.", [
+  await interaction.update(panel(null, "Selecionar intimado", "Selecione o membro que receberá a intimação.", [
     new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
       new UserSelectMenuBuilder().setCustomId(`${PREFIX}:target:${competence}`).setPlaceholder("Usuário intimado").setMinValues(1).setMaxValues(1)
     )
@@ -148,40 +147,12 @@ async function selectTarget(interaction: UserSelectMenuInteraction, _context: Bo
     finalCompetence: resolution.finalCompetence,
     guildId: interaction.guildId!,
     redirectReason: resolution.reason,
+    responsibleId: interaction.user.id,
     selectedCompetence,
     targetDisplayName: targetMember.displayName,
     targetId
   });
 
-  const members = await listResponsibleMembers(interaction.guild!, settings.reportSystem, resolution.finalCompetence);
-  if (!members.length) {
-    await interaction.update(panel(settings, "Sem responsável disponível", `Nenhum membro com cargo de ${COMPETENCE_LABEL[resolution.finalCompetence]} foi encontrado em cache. Configure cargos do órgão ou peça para um responsável ficar online e tente novamente.`, []));
-    return true;
-  }
-
-  await interaction.update(panel(settings, "Selecionar responsável", [
-    `Competência selecionada: **${COMPETENCE_LABEL[selectedCompetence]}**`,
-    `Competência final: **${COMPETENCE_LABEL[resolution.finalCompetence]}**`,
-    resolution.reason ? `Redirecionamento: **${resolution.reason}**` : "Sem redirecionamento automático."
-  ].join("\n"), [
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`${PREFIX}:responsible:${draftId}`)
-        .setPlaceholder(`Responsável - ${COMPETENCE_LABEL[resolution.finalCompetence]}`)
-        .addOptions(members.slice(0, 25).map((member) => new StringSelectMenuOptionBuilder().setLabel(member.displayName.slice(0, 100)).setValue(member.id)))
-    )
-  ]));
-  return true;
-}
-
-async function selectResponsible(interaction: StringSelectMenuInteraction, draftId: string) {
-  const draft = drafts.get(draftId);
-  if (!draft) {
-    await interaction.reply({ content: "Fluxo expirado. Use /intimacao novamente.", ephemeral: true });
-    return true;
-  }
-  draft.responsibleId = interaction.values[0]!;
-  drafts.set(draftId, draft);
   await interaction.showModal(subpoenaModal(draftId));
   return true;
 }
@@ -189,42 +160,37 @@ async function selectResponsible(interaction: StringSelectMenuInteraction, draft
 async function submitSubpoena(interaction: ModalSubmitInteraction, context: BotContext, settings: GuildSettings, draftId: string) {
   await interaction.deferReply({ ephemeral: true });
   const draft = drafts.get(draftId);
-  if (!draft || !draft.responsibleId) {
+  if (!draft) {
     await interaction.editReply("Fluxo expirado. Use /intimacao novamente.");
     return true;
   }
 
   const target = await interaction.guild!.members.fetch(draft.targetId).catch(() => null);
-  const responsible = await interaction.guild!.members.fetch(draft.responsibleId).catch(() => null);
-  if (!target || !responsible) {
-    await interaction.editReply("Intimado ou responsável não encontrado no servidor.");
-    return true;
-  }
-  if (!canManageCompetence(responsible, settings.reportSystem, draft.finalCompetence)) {
-    await interaction.editReply("O responsável selecionado não pertence ao órgão competente final.");
+  if (!target) {
+    await interaction.editReply("Intimado não encontrado no servidor.");
     return true;
   }
 
   const title = field(interaction, "title") || "Intimação";
-  const reason = field(interaction, "reason") || "Não informado";
   const description = field(interaction, "description") || "Não informado";
-  const deadline = field(interaction, "deadline") || settings.reportSystem.defaultDeadline;
-  const notes = field(interaction, "notes") || "Sem observações.";
-  const channel = await createSubpoenaChannel(interaction.guild!, settings, draft, target, responsible, title);
+  const channel = await createSubpoenaChannel(interaction.guild!, settings, draft, target, title);
   if (!channel) {
     await interaction.editReply("Não consegui criar o canal temporário. Verifique categoria e permissão de Gerenciar Canais.");
     return true;
   }
 
-  const caseState: CaseState = { ...draft, channelId: channel.id, createdAt: new Date().toISOString(), deadline, description: `${description}\n\n${notes}`, reason, status: "open", title };
+  const caseState: CaseState = { ...draft, channelId: channel.id, createdAt: new Date().toISOString(), deadline: settings.reportSystem.defaultDeadline, description, reason: title, status: "open", title };
   cases.set(channel.id, caseState);
 
   await channel.send(casePanel(settings, caseState));
   const dmSent = await sendTargetDm(target, settings, caseState, channel);
   await sendCompetenceLog(interaction.guild!, settings, caseState, interaction.user.id, [
     `Ação: **Intimação criada**`,
+    `Criada por: <@${interaction.user.id}> (${interaction.user.id})`,
+    `Órgão selecionado: **${COMPETENCE_LABEL[draft.selectedCompetence]}**`,
+    `Órgão final: **${COMPETENCE_LABEL[draft.finalCompetence]}**`,
     `Intimado: <@${target.id}> (${target.displayName})`,
-    `Responsável: <@${responsible.id}>`,
+    `Título: **${title}**`,
     `Canal: <#${channel.id}>`,
     `DM: **${dmSent ? "enviada" : "falhou"}**`,
     caseState.redirectReason ? `Redirecionamento: **${caseState.redirectReason}**` : null
@@ -242,8 +208,10 @@ export async function handlePoliceSubpoenaMessage(message: Message, context: Bot
   const channel = message.channel as TextChannel;
   const state = cases.get(channel.id) ?? recoverCaseFromTextChannel(channel);
   if (!state || state.status !== "open") return false;
-  const hiddenIssuerIds = new Set([state.createdById, state.responsibleId].filter((id): id is string => Boolean(id)));
-  if (!hiddenIssuerIds.has(message.author.id)) return false;
+
+  const settings = await getFreshGuildSettings(context, message.guild.id, message.client.user?.id);
+  const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+  if (message.author.id === state.targetId || !member || !canManageCompetence(member, settings.reportSystem, state.finalCompetence)) return false;
 
   const me = message.guild.members.me ?? await message.guild.members.fetchMe().catch(() => null);
   const permissions = me ? channel.permissionsFor(me) : null;
@@ -251,13 +219,12 @@ export async function handlePoliceSubpoenaMessage(message: Message, context: Bot
     return false;
   }
 
-  const payload = anonymousIssuerPayload(message);
+  const payload = anonymousIssuerPayload(message, staffDisplayName(settings.reportSystem, state.finalCompetence));
   if (!payload.content && !payload.files?.length && !payload.stickers?.length) {
     await message.delete().catch(() => null);
     return true;
   }
 
-  const settings = await getFreshGuildSettings(context, message.guild.id, message.client.user?.id);
   await message.delete().catch(() => null);
   const relayed = await channel.send(payload).catch(() => null);
 
@@ -320,18 +287,17 @@ function resolveCompetence(member: GuildMember, selected: Competence, report: Re
   return { finalCompetence: selected, reason: null };
 }
 
-async function createSubpoenaChannel(guild: Guild, settings: GuildSettings, state: Draft, target: GuildMember, responsible: GuildMember, title: string) {
+async function createSubpoenaChannel(guild: Guild, settings: GuildSettings, state: Draft, target: GuildMember, title: string) {
   if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) return null;
   const report = settings.reportSystem;
   const categoryId = categoryFor(report, state.finalCompetence);
   const roleIds = orgRoleIds(report, state.finalCompetence);
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+    { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
     ...allOrgRoleIds(report).filter((roleId) => !roleIds.includes(roleId)).map((id) => ({ id, deny: [PermissionFlagsBits.ViewChannel] })),
     ...roleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
-    { id: target.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
-    { id: responsible.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] }
+    { id: target.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }
   ];
   return guild.channels.create({
     name: `intimacao-${slug(target.displayName)}`.slice(0, 90),
@@ -355,10 +321,10 @@ function casePanel(settings: GuildSettings, state: CaseState) {
     actions: [actions],
     description: "Painel interno sigiloso da intimação. Apenas o órgão competente pode atuar neste caso.",
     fields: [
-      `**Usuário intimado:** <@${state.targetId}> (${state.targetDisplayName})\n**Órgão competente:** ${COMPETENCE_LABEL[state.finalCompetence]}\n**Responsável:** Atendimento sigiloso`,
-      `**Motivo:** ${state.reason}\n**Prazo:** ${state.deadline}\n**Status:** ${statusLabel(state.status)}`,
+      `**Usuário intimado:** <@${state.targetId}> (${state.targetDisplayName})\n**Órgão competente:** ${COMPETENCE_LABEL[state.finalCompetence]}`,
+      `**Status:** ${statusLabel(state.status)}`,
       `**Descrição**\n${state.description}`.slice(0, 1000),
-      `**Criado em:** <t:${Math.floor(new Date(state.createdAt).getTime() / 1000)}:F>\n${state.autoRedirected ? `**Redirecionamento automático:** ${state.redirectReason}` : "**Redirecionamento automático:** não"}`
+      `**Criado em:** <t:${Math.floor(new Date(state.createdAt).getTime() / 1000)}:F>`
     ],
     image: settings.reportSystem.subpoenaPanelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.subpoenaPanelBannerUrl } : null,
     moduleId: "police-subpoena",
@@ -374,8 +340,7 @@ async function sendTargetDm(target: GuildMember, settings: GuildSettings, state:
     description: settings.reportSystem.subpoenaDmText,
     fields: [
       `Olá, **${target.displayName}**.\nVocê recebeu uma intimação institucional.`,
-      `**Órgão responsável:** ${institutional}\n**Canal:** <#${channel.id}>\n**Prazo:** ${state.deadline}`,
-      `**Motivo:** ${state.reason}`
+      `**Órgão responsável:** ${institutional}\n**Canal:** <#${channel.id}>`
     ],
     image: settings.reportSystem.dmBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.dmBannerUrl } : null,
     moduleId: "police-subpoena-dm",
@@ -398,20 +363,11 @@ async function sendCompetenceLog(guild: Guild, settings: GuildSettings, state: C
   })).catch(() => null);
 }
 
-async function listResponsibleMembers(guild: Guild, report: ReportSystemSettings, competence: Competence) {
-  const roles = orgRoleIds(report, competence);
-  const members = await guild.members.fetch().catch(() => guild.members.cache);
-  return [...members.values()]
-    .filter((member) => !member.user.bot && canManageCompetence(member, report, competence))
-    .filter((member) => roles.length ? hasAnyRole(member, roles) : true)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName, "pt-BR"));
-}
-
 function panel(settings: GuildSettings | null, title: string, description: string, actions: unknown[]) {
   return renderComponentsV2Panel({ accentColor: color(settings?.reportSystem.panelColor), actions, description, fields: [], image: null, moduleId: "police-subpoena-flow", title });
 }
 
-function anonymousIssuerPayload(message: Message): MessageCreateOptions {
+function anonymousIssuerPayload(message: Message, displayName: string): MessageCreateOptions {
   const files = message.attachments.map((attachment) => ({
     attachment: attachment.url,
     name: attachment.name ?? `arquivo-${attachment.id}`
@@ -419,7 +375,8 @@ function anonymousIssuerPayload(message: Message): MessageCreateOptions {
   const stickers = message.stickers.map((sticker) => sticker.id).slice(0, 3);
   const options: MessageCreateOptions = { allowedMentions: { parse: [] } };
 
-  if (message.content) options.content = message.content.slice(0, 2000);
+  const body = message.content || (files.length || stickers.length ? "" : "(sem texto)");
+  options.content = `**${displayName}:**${body ? `\n${body}` : ""}`.slice(0, 2000);
   if (files.length) options.files = files;
   if (stickers.length) options.stickers = stickers;
 
@@ -428,11 +385,8 @@ function anonymousIssuerPayload(message: Message): MessageCreateOptions {
 
 function subpoenaModal(draftId: string) {
   return new ModalBuilder().setCustomId(`${PREFIX}:modal:${draftId}`).setTitle("Criar intimação").addComponents(
-    inputRow("title", "Título da intimação", "Intimação institucional", TextInputStyle.Short, 100),
-    inputRow("reason", "Motivo", "", TextInputStyle.Short, 180),
-    inputRow("description", "Descrição do ocorrido", "", TextInputStyle.Paragraph, 1200),
-    inputRow("deadline", "Prazo / horário", "", TextInputStyle.Short, 120, false),
-    inputRow("notes", "Observações / provas / links", "", TextInputStyle.Paragraph, 1000, false)
+    inputRow("title", "Título da intimação", "", TextInputStyle.Short, 100, true, "Exemplo: Intimação Administrativa"),
+    inputRow("description", "Descrição da intimação", "", TextInputStyle.Paragraph, 1200, true, "Descreva o motivo, orientações e informações da intimação")
   );
 }
 
@@ -451,12 +405,13 @@ function competenceSelect(customId: string, placeholder: string) {
 }
 
 function option(value: Competence, label: string) { return new StringSelectMenuOptionBuilder().setLabel(label).setValue(value); }
-function inputRow(id: string, label: string, value: string, style: TextInputStyle, max: number, required = true) { return new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setValue(value.slice(0, max)).setStyle(style).setMaxLength(max).setRequired(required)); }
+function inputRow(id: string, label: string, value: string, style: TextInputStyle, max: number, required = true, placeholder?: string) { const input = new TextInputBuilder().setCustomId(id).setLabel(label).setValue(value.slice(0, max)).setStyle(style).setMaxLength(max).setRequired(required); if (placeholder) input.setPlaceholder(placeholder.slice(0, 100)); return new ActionRowBuilder<TextInputBuilder>().addComponents(input); }
 function field(interaction: ModalSubmitInteraction, id: string) { return interaction.fields.getTextInputValue(id).trim(); }
 function parseCompetence(value: string | undefined): Competence | null { return value === "iab" || value === "conselho" || value === "hcmd" || value === "comissario" ? value : null; }
 function hasAnyRole(member: GuildMember, roleIds: string[]) { return roleIds.some((roleId) => member.roles.cache.has(roleId)); }
 function canUseCommand(member: GuildMember, report: ReportSystemSettings) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; const ids = [...report.competenceCommandRoleIds, ...report.permissionRoleIds, ...report.adminRoleIds, ...allOrgRoleIds(report)]; return !ids.length || hasAnyRole(member, ids); }
 function canManageCompetence(member: GuildMember, report: ReportSystemSettings, competence: Competence) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; return hasAnyRole(member, orgRoleIds(report, competence)); }
+function staffDisplayName(report: ReportSystemSettings, competence: Competence) { return competence === "iab" ? report.anonymousInvestigatorName || "Equipe IAB" : COMPETENCE_LABEL[competence] || "Equipe Responsável"; }
 function orgRoleIds(report: ReportSystemSettings, competence: Competence) { const fallback = competence === "iab" ? [...report.viewRoleIds, ...report.replyRoleIds, ...report.adminRoleIds] : []; return [...new Set((competence === "iab" ? report.iabRoleIds : competence === "conselho" ? report.conselhoRoleIds : competence === "hcmd" ? report.hcmdRoleIds : report.comissarioRoleIds).concat(fallback))]; }
 function allOrgRoleIds(report: ReportSystemSettings) { return [...new Set([...orgRoleIds(report, "iab"), ...orgRoleIds(report, "conselho"), ...orgRoleIds(report, "hcmd"), ...orgRoleIds(report, "comissario")])]; }
 function categoryFor(report: ReportSystemSettings, competence: Competence) { return competence === "iab" ? report.iabCategoryId ?? report.categoryId : competence === "conselho" ? report.conselhoCategoryId ?? report.categoryId : competence === "hcmd" ? report.hcmdCategoryId ?? report.categoryId : report.comissarioCategoryId ?? report.categoryId; }

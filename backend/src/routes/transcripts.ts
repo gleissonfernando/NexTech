@@ -261,19 +261,21 @@ function renderLoginPage(meta: Awaited<ReturnType<typeof getTranscriptPublicMeta
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Acesso ao Transcript</title>
   <style>
-    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;color:#e5e7eb;font-family:Arial,sans-serif}
-    main{width:min(440px,calc(100vw - 32px));background:#111827;border:1px solid #334155;border-radius:8px;padding:24px}
-    h1{font-size:24px;margin:0 0 14px}label{display:block;margin:18px 0 8px}
-    input{box-sizing:border-box;width:100%;padding:12px;border-radius:6px;border:1px solid #475569;background:#020617;color:#fff}
-    button{width:100%;margin-top:14px;padding:12px;border:0;border-radius:6px;background:#2563eb;color:#fff;font-weight:700}
-    .meta{border-top:1px solid #334155;margin-top:18px;padding-top:14px;color:#cbd5e1}.error{color:#fecaca;background:#7f1d1d;padding:10px;border-radius:6px}
+    :root{color-scheme:dark;--bg:#070707;--panel:#111113;--line:#2f2f35;--text:#f4f4f5;--muted:#a1a1aa;--gold:#f2b84b}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#1b1b20 0,#070707 45%);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;padding:18px}
+    main{width:min(480px,100%);background:linear-gradient(135deg,#151518,#0b0b0c);border:1px solid var(--line);border-left:5px solid var(--gold);border-radius:10px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    .eyebrow{color:var(--gold);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}h1{font-size:27px;margin:6px 0 12px}p{color:var(--muted);margin:8px 0}label{display:block;margin:18px 0 8px;font-weight:700}
+    input{width:100%;padding:13px;border-radius:7px;border:1px solid #3f3f46;background:#09090b;color:#fff;outline:none}input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(242,184,75,.16)}
+    button{width:100%;margin-top:14px;padding:13px;border:0;border-radius:7px;background:var(--gold);color:#171717;font-weight:800;cursor:pointer}
+    .meta{border-top:1px solid var(--line);margin-top:20px;padding-top:14px}.meta p{display:flex;justify-content:space-between;gap:12px}.error{color:#fecaca;background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:7px}
   </style>
 </head>
 <body>
   <main>
-    <h1>Acesso ao Transcript</h1>
-    <p>Este transcript é protegido por senha.</p>
-    <p>Digite a senha de acesso para visualizar o histórico completo deste atendimento.</p>
+    <div class="eyebrow">North Police Department - Logs</div>
+    <h1>🔐 Acesso ao Transcript</h1>
+    <p>Este registro e protegido por senha. Todas as tentativas de acesso sao registradas para auditoria.</p>
+    <p>Digite a senha autorizada para visualizar o historico completo deste atendimento.</p>
     ${statusMessage}
     <form method="post">
       <label for="password">Senha</label>
