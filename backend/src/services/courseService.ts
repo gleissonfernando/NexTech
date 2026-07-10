@@ -3,6 +3,7 @@ import { getMongoCollections, type MongoCourse, type MongoCourseImage, type Mong
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
+const DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS = 24;
 
 export type CourseDashboard = {
   courses: CourseDto[];
@@ -20,6 +21,9 @@ export type CourseScheduleRequestDto = ReturnType<typeof mapScheduleRequest>;
 export type CourseReportDto = ReturnType<typeof mapReport>;
 export type CourseLogDto = ReturnType<typeof mapLog>;
 export type CourseImageDto = ReturnType<typeof mapImage>;
+type CourseSettingsUpdate = Partial<Omit<CourseSettingsDto, "id" | "botId" | "guildId" | "updatedAt" | "defaultExpirationHours">> & {
+  defaultExpirationHours?: number | null;
+};
 
 export async function getCoursesDashboard(botId: string | null, guildId: string): Promise<CourseDashboard> {
   const collections = await getMongoCollections();
@@ -45,7 +49,16 @@ export async function getCoursesDashboard(botId: string | null, guildId: string)
 export async function getCourseSettings(botId: string | null, guildId: string) {
   const { courseSettings } = await getMongoCollections();
   const existing = await courseSettings.findOne(scope(botId, guildId));
-  if (existing) return mapSettings(existing);
+  if (existing) {
+    if (existing.defaultExpirationHours == null) {
+      existing.defaultExpirationHours = DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS;
+      await courseSettings.updateOne(
+        { _id: existing._id, ...scope(botId, guildId), defaultExpirationHours: null },
+        { $set: { defaultExpirationHours: DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS } }
+      );
+    }
+    return mapSettings(existing);
+  }
 
   const now = new Date();
   const doc: MongoCourseSettings = {
@@ -78,7 +91,7 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     configRoleIds: [],
     permissionMatrix: {},
     images: [],
-    defaultExpirationHours: null,
+    defaultExpirationHours: DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS,
     noPermissionMessage: "Você não possui permissão para usar este sistema.",
     cancelledMessage: "Curso cancelado.",
     startedMessage: "O curso foi iniciado. Novas entradas estão bloqueadas.",
@@ -99,7 +112,7 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
   return mapSettings(doc);
 }
 
-export async function saveCourseSettings(botId: string | null, guildId: string, input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "guildId" | "updatedAt">>, actorId: string | null) {
+export async function saveCourseSettings(botId: string | null, guildId: string, input: CourseSettingsUpdate, actorId: string | null) {
   const { courseSettings } = await getMongoCollections();
   const now = new Date();
   await courseSettings.updateOne(scope(botId, guildId), {
@@ -522,7 +535,7 @@ function mapSettings(settings: MongoCourseSettings) {
     configRoleIds: settings.configRoleIds ?? [],
     permissionMatrix: settings.permissionMatrix ?? {},
     images: images.map(mapImage),
-    defaultExpirationHours: settings.defaultExpirationHours ?? null,
+    defaultExpirationHours: settings.defaultExpirationHours ?? DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS,
     noPermissionMessage: settings.noPermissionMessage,
     cancelledMessage: settings.cancelledMessage,
     startedMessage: settings.startedMessage,
@@ -670,7 +683,7 @@ function mapImage(image: MongoCourseImage) {
   };
 }
 
-function cleanSettings(input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "guildId" | "updatedAt">>) {
+function cleanSettings(input: CourseSettingsUpdate) {
   const cleaned: Record<string, unknown> = { ...input };
   cleaned.publishChannelId = input.publishChannelId || null;
   cleaned.scheduleChannelId = input.scheduleChannelId || null;
@@ -683,6 +696,9 @@ function cleanSettings(input: Partial<Omit<CourseSettingsDto, "id" | "botId" | "
   cleaned.adminLogChannelId = input.adminLogChannelId || null;
   cleaned.temporaryCategoryId = input.temporaryCategoryId || null;
   cleaned.tempProofCategoryId = input.tempProofCategoryId || null;
+  if ("defaultExpirationHours" in input) {
+    cleaned.defaultExpirationHours = input.defaultExpirationHours ?? DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS;
+  }
   delete cleaned.lastPanelRequestedAt;
   return cleaned;
 }

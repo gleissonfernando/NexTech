@@ -28,7 +28,7 @@ type CoursesPanelProps = {
 type TabId = "images" | "channels" | "courses" | "proofs" | "admins" | "logs";
 type CourseChannelDraft = Pick<
   CoursesDashboard["settings"],
-  "adminLogChannelId" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "scheduleLogChannelId" | "tempProofCategoryId"
+  "adminLogChannelId" | "defaultExpirationHours" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "scheduleLogChannelId" | "tempProofCategoryId"
 >;
 type ExamLinkDraft = Pick<CourseExamDashboard["settings"], "externalLinkDescription" | "externalLinkEmoji" | "externalLinkEnabled" | "externalLinkText" | "externalLinkUrl">;
 
@@ -378,6 +378,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
               <SelectField disabled={!canManage || saving} label="Resultados aprovado/reprovado" onChange={(resultChannelId) => updateChannelDraft({ resultChannelId })} options={textChannels} value={channelDraft?.resultChannelId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Avaliação das provas" onChange={(evaluationChannelId) => updateChannelDraft({ evaluationChannelId })} options={textChannels} value={channelDraft?.evaluationChannelId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => updateChannelDraft({ tempProofCategoryId })} options={categories} value={channelDraft?.tempProofCategoryId ?? ""} />
+              <NumberInputField disabled={!canManage || saving} label="Expiração dos canais temporários (horas)" max={720} min={1} onChange={(defaultExpirationHours) => updateChannelDraft({ defaultExpirationHours })} value={channelDraft?.defaultExpirationHours ?? 24} />
               <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => updateChannelDraft({ adminLogChannelId })} options={textChannels} value={channelDraft?.adminLogChannelId ?? ""} />
               <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar avaliadores" onChange={(evaluatorMentionRoleId) => updateChannelDraft({ evaluatorMentionRoleId })} options={roles} value={channelDraft?.evaluatorMentionRoleId ?? ""} />
               <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar resultados" onChange={(resultMentionRoleId) => updateChannelDraft({ resultMentionRoleId })} options={roles} value={channelDraft?.resultMentionRoleId ?? ""} />
@@ -629,6 +630,7 @@ function csv(value: string) {
 function toChannelDraft(settings: CoursesDashboard["settings"]): CourseChannelDraft {
   return {
     adminLogChannelId: settings.adminLogChannelId ?? null,
+    defaultExpirationHours: settings.defaultExpirationHours ?? 24,
     evaluationChannelId: settings.evaluationChannelId ?? null,
     evaluatorMentionRoleId: settings.evaluatorMentionRoleId ?? null,
     proofLogChannelId: settings.proofLogChannelId ?? null,
@@ -642,6 +644,27 @@ function toChannelDraft(settings: CoursesDashboard["settings"]): CourseChannelDr
 
 function InputField({ disabled, label, onChange, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; value: string }) {
   return <label className="grid gap-2 text-sm"><span className="font-semibold text-zinc-300">{label}</span><input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
+}
+
+function NumberInputField({ disabled, label, max, min, onChange, value }: { disabled?: boolean; label: string; max: number; min: number; onChange: (value: number) => void; value: number }) {
+  return (
+    <label className="grid gap-2 text-sm">
+      <span className="font-semibold text-zinc-300">{label}</span>
+      <input
+        className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100"
+        disabled={disabled}
+        max={max}
+        min={min}
+        onChange={(event) => {
+          const next = event.currentTarget.valueAsNumber;
+          if (Number.isFinite(next)) onChange(Math.max(min, Math.min(max, Math.trunc(next))));
+        }}
+        step={1}
+        type="number"
+        value={value}
+      />
+    </label>
+  );
 }
 
 function DecimalInputField({ disabled, label, onCommit, value }: { disabled?: boolean; label: string; onCommit: (value: number) => void; value: number }) {

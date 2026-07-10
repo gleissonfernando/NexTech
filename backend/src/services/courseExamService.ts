@@ -219,7 +219,7 @@ export async function createOrResumeCourseExamAttempt(botId: string | null, guil
 
 export async function getCourseExamAttemptByChannel(botId: string | null, guildId: string, channelId: string) {
   const { courseExamAttempts } = await getMongoCollections();
-  const attempt = await courseExamAttempts.findOne({ ...scope(botId, guildId), channelId, status: "in_progress" });
+  const attempt = await courseExamAttempts.findOne({ ...scope(botId, guildId), channelId }, { sort: { updatedAt: -1 } });
   return attempt ? mapAttempt(attempt) : null;
 }
 

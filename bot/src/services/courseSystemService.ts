@@ -6,6 +6,7 @@ import {
   ChannelType,
   MessageFlags,
   ModalBuilder,
+  OverwriteType,
   PermissionFlagsBits,
   PermissionsBitField,
   RoleSelectMenuBuilder,
@@ -72,8 +73,18 @@ const IDS = {
 } as const;
 
 const DEACTIVATED_COURSE_PANEL_MESSAGE = "Este painel foi desativado. Utilize o novo sistema de cursos.";
+const COURSE_EXAM_CHANNEL_TOPIC_PREFIX = "orvitek-course-exam";
+const DEFAULT_EXAM_CHANNEL_EXPIRATION_HOURS = 24;
+const MAX_EXAM_CHANNEL_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
+const EXAM_CHANNEL_ACTIVE_RECHECK_DELAY = 15 * 60 * 1000;
+const EXAM_CHANNEL_DELETE_RETRY_DELAY = 5 * 60 * 1000;
+const EXAM_CHANNEL_STATE_RETRY_MAX_DELAY = 60 * 60 * 1000;
 
 let serviceStarted = false;
+const examProvisioning = new Map<string, Promise<string>>();
+const examChannelDeletionTimers = new Map<string, NodeJS.Timeout>();
+const examChannelDeletionGenerations = new Map<string, symbol>();
+const examChannelStateRetryTimers = new Map<string, NodeJS.Timeout>();
 
 export function startCourseSystemService(client: Client, context: BotContext) {
   if (serviceStarted) return;
@@ -86,6 +97,9 @@ export function startCourseSystemService(client: Client, context: BotContext) {
   const refreshExistingPanels = () => {
     void refreshActiveCoursePublicationPanels(client, context).catch((error) => {
       console.error("[courses] failed to refresh active publication panels:", error instanceof Error ? error.message : error);
+    });
+    void restoreTemporaryExamChannelCleanup(client, context).catch((error) => {
+      console.error("[courses] failed to restore temporary exam channel cleanup:", error instanceof Error ? error.message : error);
     });
   };
   if (client.isReady()) refreshExistingPanels();
@@ -551,18 +565,29 @@ async function startCourseExam(interaction: ButtonInteraction, context: BotConte
 }
 
 async function startCourseExamById(interaction: ButtonInteraction | ChatInputCommandInteraction | StringSelectMenuInteraction, context: BotContext, publicationId: string) {
-  const [publication, settings] = await Promise.all([
-    context.api.getCoursePublication(interaction.guildId!, publicationId).catch(() => null),
-    context.api.getCourseSettings(interaction.guildId!)
-  ]);
-  if (!publication) {
-    return "Publicação de curso não encontrada.";
-  }
-  if (publication.status !== "started") {
-    return "Inicie a aula antes de iniciar a prova.";
-  }
+  const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId).catch(() => null);
+  if (!publication) return "Publicação de curso não encontrada.";
   if (!(await canManagePublication(interaction, context, publication))) {
     return "Você não possui permissão para usar este sistema.";
+  }
+
+  const key = `${interaction.guildId}:${publicationId}`;
+  const pending = examProvisioning.get(key);
+  if (pending) return "A preparação dos canais desta prova já está em andamento. Aguarde a conclusão.";
+
+  const operation = provisionCourseExamChannels(interaction, context, publication);
+  examProvisioning.set(key, operation);
+  try {
+    return await operation;
+  } finally {
+    if (examProvisioning.get(key) === operation) examProvisioning.delete(key);
+  }
+}
+
+async function provisionCourseExamChannels(interaction: ButtonInteraction | ChatInputCommandInteraction | StringSelectMenuInteraction, context: BotContext, publication: CoursePublication) {
+  const settings = await context.api.getCourseSettings(interaction.guildId!);
+  if (publication.status !== "started" && publication.status !== "proof") {
+    return "Inicie a aula antes de iniciar a prova.";
   }
   if (!publication.students.length) {
     return "Não há alunos inscritos para criar canais de prova.";
@@ -580,38 +605,109 @@ async function startCourseExamById(interaction: ButtonInteraction | ChatInputCom
   if (!temporaryCategoryId) {
     return "Configure a categoria dos canais temporários de prova.";
   }
-  const proofPublication = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, "proof", interaction.user.id).catch(() => null);
-  if (!proofPublication) return "A prova já foi liberada ou o curso mudou de estado.";
-  await refreshPublicationMessageByRecord(interaction, context, proofPublication);
+  const guild = interaction.guild!;
+  const temporaryCategory = await guild.channels.fetch(temporaryCategoryId).catch(() => null);
+  if (!temporaryCategory || temporaryCategory.type !== ChannelType.GuildCategory) {
+    return "A categoria configurada para os canais temporários da prova não existe mais ou não é uma categoria válida.";
+  }
+  await guild.channels.fetch().catch(() => null);
   const created: string[] = [];
   const reused: string[] = [];
   const failed: string[] = [];
+  const readyChannels: TextChannel[] = [];
 
   for (const studentId of publication.students) {
     try {
-      const member = await interaction.guild!.members.fetch(studentId).catch(() => null);
-      const channelName = uniqueExamChannelName(interaction.guild!, examChannelName(member?.displayName ?? studentId, course.name), studentId);
-      const channel = await interaction.guild!.channels.create({
-        name: channelName,
-        parent: temporaryCategoryId,
-        permissionOverwrites: examPermissionOverwrites(interaction.guild!, context, publication, course, settings, studentId),
-        reason: `Prova do curso ${course.name}`
-      });
-      if (channel.isTextBased() && "send" in channel) {
-        await (channel as TextChannel).send(studentExamWelcomePanel(course, proofPublication, runtime.settings, studentId, runtime.questions));
+      const member = await guild.members.fetch(studentId).catch(() => null);
+      const marker = courseExamChannelTopic(publication.id, studentId);
+      const expectedName = examChannelName(member?.displayName ?? studentId, course.name);
+      const markedChannel = guild.channels.cache.find((channel): channel is TextChannel => (
+        channel.type === ChannelType.GuildText
+        && isCourseExamChannelFor(channel.topic, publication.id, studentId)
+      ));
+      const existing = markedChannel ?? findLegacyExamChannel(guild, publication, temporaryCategoryId, studentId, expectedName);
+      const isLegacyChannel = Boolean(existing && !markedChannel);
+      const existingMarker = parseCourseExamChannelTopic(existing?.topic);
+      let existingAttempt: CourseExamAttempt | null = null;
+      if (existing) {
+        try {
+          existingAttempt = await context.api.getCourseExamAttemptByChannel(guild.id, existing.id);
+        } catch (error) {
+          throw new Error(`não foi possível verificar a tentativa vinculada ao canal: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
-      created.push(`<#${channel.id}>`);
+      const studentOverwrite = existing?.permissionOverwrites.cache.get(studentId);
+      const studentIsLocked = Boolean(studentOverwrite?.deny.has(PermissionFlagsBits.SendMessages));
+      const attemptIsFinished = Boolean(existingAttempt && existingAttempt.status !== "in_progress");
+      if (existing && (existingMarker?.state === "finished" || studentIsLocked || attemptIsFinished)) {
+        const deleteAt = existingMarker?.deleteAt ?? examChannelAttemptDeleteAt(existing, settings, existingAttempt);
+        await persistFinishedExamChannelState(existing, studentId, `${marker}:finished:${Math.floor(deleteAt / 1000)}`);
+        scheduleExamChannelDeletion(existing, deleteAt, context);
+        readyChannels.push(existing);
+        reused.push(`<#${existing.id}>`);
+        continue;
+      }
+      const channelName = existing?.name
+        ?? uniqueExamChannelName(guild, expectedName, studentId);
+      const overwrites = examPermissionOverwrites(guild, context, publication, course, settings, studentId);
+      const alreadyReady = isLegacyChannel || existingMarker?.state === "ready";
+      const channel = existing
+        ? await existing.edit({
+          name: channelName,
+          parent: temporaryCategoryId,
+          permissionOverwrites: overwrites,
+          reason: `Reconciliando canal da prova do curso ${course.name}`,
+          topic: alreadyReady ? `${marker}:ready` : marker
+        })
+        : await guild.channels.create({
+          name: channelName,
+          parent: temporaryCategoryId,
+          permissionOverwrites: overwrites,
+          reason: `Prova do curso ${course.name}`,
+          topic: marker,
+          type: ChannelType.GuildText
+        });
+      if (channel.type !== ChannelType.GuildText) {
+        throw new Error("o canal criado não é um canal de texto");
+      }
+      if (!alreadyReady) {
+        await channel.send(studentExamWelcomePanel(course, publication, runtime.settings, studentId, runtime.questions));
+        await channel.setTopic(`${marker}:ready`, `Canal individual da prova do curso ${course.name}`);
+      }
+      scheduleExamChannelDeletion(channel, examChannelFallbackDeleteAt(channel, settings), context);
+      readyChannels.push(channel);
+      (existing ? reused : created).push(`<#${channel.id}>`);
     } catch (error) {
       failed.push(`<@${studentId}>: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  await sendPublicationLog(interaction, context, proofPublication, `📝 Prova iniciada\nCurso: ${course.name}\nInstrutor: <@${interaction.user.id}>\nCanais criados: ${created.length}\nCanais reutilizados: ${reused.length}\nFalhas: ${failed.length}`);
+  if (failed.length) {
+    await sendPublicationLog(interaction, context, publication, `⚠️ Preparação da prova incompleta\nCurso: ${course.name}\nInstrutor: <@${interaction.user.id}>\nCanais criados: ${created.length}\nCanais reutilizados: ${reused.length}\nFalhas: ${failed.length}`);
+    return [
+      publication.status === "proof"
+        ? "A prova está liberada, mas ainda faltam canais individuais. Corrija as falhas e clique em **Verificar Canais** novamente."
+        : "Não foi possível preparar o canal de todos os alunos. A prova ainda não foi liberada; corrija as falhas e clique em **Iniciar Prova** novamente.",
+      created.length ? `Canais criados:\n${created.join("\n")}` : "",
+      reused.length ? `Canais já preparados:\n${reused.join("\n")}` : "",
+      `Falhas:\n${failed.join("\n")}`
+    ].filter(Boolean).join("\n\n").slice(0, 1900);
+  }
+
+  const proofPublication = publication.status === "proof"
+    ? publication
+    : await context.api.setCoursePublicationStatus(interaction.guildId!, publication.id, "proof", interaction.user.id).catch(() => null);
+  if (!proofPublication) {
+    return "Os canais individuais foram preparados, mas o curso mudou de estado antes da liberação. Atualize o painel e tente novamente.";
+  }
+  await refreshPublicationMessageByRecord(interaction, context, proofPublication);
+  await sendPublicationLog(interaction, context, proofPublication, `${publication.status === "proof" ? "🔧 Canais da prova verificados" : "📝 Prova iniciada"}\nCurso: ${course.name}\nInstrutor: <@${interaction.user.id}>\nCanais criados: ${created.length}\nCanais reutilizados: ${reused.length}\nFalhas: ${failed.length}`);
   return [
-    `Prova iniciada para ${publication.students.length} aluno(s).`,
+    publication.status === "proof"
+      ? `Canais verificados para ${readyChannels.length} aluno(s). Cada participante possui um canal individual e temporário.`
+      : `Prova iniciada para ${readyChannels.length} aluno(s). Cada participante recebeu um canal individual e temporário.`,
     created.length ? `Canais criados:\n${created.join("\n")}` : "",
     reused.length ? `Canais já existentes:\n${reused.join("\n")}` : "",
-    failed.length ? `Falhas:\n${failed.join("\n")}` : ""
   ].filter(Boolean).join("\n\n").slice(0, 1900);
 }
 
@@ -789,7 +885,7 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
   await interaction.followUp({ content: "Prova finalizada e enviada para correção.", flags: MessageFlags.Ephemeral });
   await sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers);
   await sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers);
-  await lockAndScheduleExamChannel(interaction, settings, result.attempt.studentId);
+  await lockAndScheduleExamChannel(interaction, context, settings, result.attempt.publicationId, result.attempt.studentId);
 }
 
 async function getStudentExamAttempt(interaction: ButtonInteraction, context: BotContext, attemptId: string) {
@@ -903,6 +999,21 @@ async function refreshActiveCoursePublicationPanels(client: Client, context: Bot
     ]);
     for (const publication of publications.flat()) {
       await refreshPublicationMessageByRecord({ guild, guildId: guild.id }, context, publication);
+    }
+  }
+}
+
+async function restoreTemporaryExamChannelCleanup(client: Client, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    const settings = await context.api.getCourseSettings(guild.id).catch(() => null);
+    if (!settings) continue;
+    await guild.channels.fetch().catch(() => null);
+    for (const channel of guild.channels.cache.values()) {
+      if (channel.type !== ChannelType.GuildText) continue;
+      const marker = parseCourseExamChannelTopic(channel.topic);
+      if (!marker) continue;
+      const deleteAt = marker.deleteAt ?? examChannelFallbackDeleteAt(channel, settings);
+      scheduleExamChannelDeletion(channel, deleteAt, context);
     }
   }
 }
@@ -1174,7 +1285,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
   const canStartClass = publication.status === "open";
-  const canStartExam = publication.status === "started";
+  const canStartExam = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
@@ -1185,7 +1296,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel(`${settings.buttonEmojis.start ?? "▶️"} Iniciar curso`).setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
-        new ButtonBuilder().setCustomId(`course_exam_start:${publication.id}`).setLabel("📝 Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
+        new ButtonBuilder().setCustomId(`course_exam_start:${publication.id}`).setLabel(publication.status === "proof" ? "🔧 Verificar Canais" : "📝 Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
         new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel(`${settings.buttonEmojis.cancel ?? "❌"} ${course.buttonLabels.cancel || "Cancelar Curso"}`).setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
       )
     ],
@@ -1591,17 +1702,46 @@ async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["
   })).catch(() => null);
 }
 
-async function lockAndScheduleExamChannel(interaction: ButtonInteraction, settings: CourseSettings, studentId: string) {
+async function lockAndScheduleExamChannel(interaction: ButtonInteraction, context: BotContext, settings: CourseSettings, publicationId: string, studentId: string) {
   if (!interaction.channel || !interaction.channel.isTextBased() || !("permissionOverwrites" in interaction.channel)) return;
   const channel = interaction.channel as TextChannel;
-  await channel.permissionOverwrites.edit(studentId, { SendMessages: false, ViewChannel: true }).catch(() => null);
-  const hours = Math.max(0, Number(settings.defaultExpirationHours ?? 0) || 0);
-  if (!hours) return;
-  const delay = Math.min(hours * 60 * 60 * 1000, 7 * 24 * 60 * 60 * 1000);
-  await channel.send(`Canal bloqueado. Exclusão programada em ${hours} hora(s).`).catch(() => null);
-  setTimeout(() => {
-    void channel.delete("Prova finalizada e logs administrativos enviados.").catch(() => null);
+  const deleteAt = Date.now() + examChannelExpirationMs(settings);
+  const deleteAtSeconds = Math.floor(deleteAt / 1000);
+  const topic = `${courseExamChannelTopic(publicationId, studentId)}:finished:${deleteAtSeconds}`;
+  const statePersisted = await persistFinishedExamChannelState(channel, studentId, topic);
+  await channel.send(statePersisted
+    ? `Canal bloqueado. Exclusão automática programada para <t:${deleteAtSeconds}:F>.`
+    : `Prova finalizada. A exclusão está programada para <t:${deleteAtSeconds}:F>, mas houve uma falha ao bloquear ou registrar o prazo; o bot continuará tentando automaticamente.`).catch(() => null);
+  scheduleExamChannelDeletion(channel, deleteAt, context);
+}
+
+async function persistFinishedExamChannelState(channel: TextChannel, studentId: string, topic: string, attempt = 0): Promise<boolean> {
+  const results = await Promise.allSettled([
+    channel.permissionOverwrites.edit(studentId, { SendMessages: false, ViewChannel: true }),
+    channel.setTopic(topic, "Prova finalizada; canal temporário aguardando exclusão.")
+  ]);
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (!failures.length) {
+    const current = examChannelStateRetryTimers.get(channel.id);
+    if (current) clearTimeout(current);
+    examChannelStateRetryTimers.delete(channel.id);
+    return true;
+  }
+  if (failures.some((failure) => isUnknownChannelError(failure.reason))) {
+    examChannelStateRetryTimers.delete(channel.id);
+    return true;
+  }
+
+  console.error(`[courses] failed to persist finished state for exam channel ${channel.id}; retrying:`, failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join("; "));
+  const current = examChannelStateRetryTimers.get(channel.id);
+  if (current) clearTimeout(current);
+  const delay = Math.min(EXAM_CHANNEL_DELETE_RETRY_DELAY * (2 ** Math.min(attempt, 4)), EXAM_CHANNEL_STATE_RETRY_MAX_DELAY);
+  const timer = setTimeout(() => {
+    void persistFinishedExamChannelState(channel, studentId, topic, attempt + 1);
   }, delay);
+  timer.unref();
+  examChannelStateRetryTimers.set(channel.id, timer);
+  return false;
 }
 
 function publicationModal(course: Course) {
@@ -1636,6 +1776,118 @@ function inputRow(customId: string, label: string, style: TextInputStyle, requir
   return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
 }
 
+export function courseExamChannelTopic(publicationId: string, studentId: string) {
+  return `${COURSE_EXAM_CHANNEL_TOPIC_PREFIX}:${publicationId}:${studentId}`;
+}
+
+export function parseCourseExamChannelTopic(topic: string | null | undefined) {
+  if (!topic) return null;
+  const [prefix, publicationId, studentId, state, deleteAtRaw] = topic.split(":");
+  if (prefix !== COURSE_EXAM_CHANNEL_TOPIC_PREFIX || !publicationId || !studentId) return null;
+  const deleteAtSeconds = state === "finished" ? Number(deleteAtRaw) : Number.NaN;
+  return {
+    deleteAt: Number.isSafeInteger(deleteAtSeconds) && deleteAtSeconds > 0 ? deleteAtSeconds * 1000 : null,
+    publicationId,
+    state: state === "ready" || state === "finished" ? state : "preparing",
+    studentId
+  } as const;
+}
+
+export function isCourseExamChannelFor(topic: string | null | undefined, publicationId: string, studentId: string) {
+  const marker = parseCourseExamChannelTopic(topic);
+  return marker?.publicationId === publicationId && marker.studentId === studentId;
+}
+
+export function shouldDeferExamChannelDeletion(topic: string | null | undefined, hasActiveAttempt: boolean) {
+  return hasActiveAttempt && parseCourseExamChannelTopic(topic)?.state !== "finished";
+}
+
+function examChannelExpirationMs(settings: CourseSettings) {
+  const configured = Number(settings.defaultExpirationHours ?? DEFAULT_EXAM_CHANNEL_EXPIRATION_HOURS);
+  const hours = Number.isFinite(configured) && configured >= 1
+    ? Math.min(configured, 720)
+    : DEFAULT_EXAM_CHANNEL_EXPIRATION_HOURS;
+  return hours * 60 * 60 * 1000;
+}
+
+function examChannelFallbackDeleteAt(channel: TextChannel, settings: CourseSettings) {
+  return channel.createdTimestamp + examChannelExpirationMs(settings);
+}
+
+function examChannelAttemptDeleteAt(channel: TextChannel, settings: CourseSettings, attempt: CourseExamAttempt | null) {
+  const referenceTime = attempt ? Date.parse(attempt.finishedAt ?? attempt.updatedAt) : Number.NaN;
+  return Number.isFinite(referenceTime)
+    ? referenceTime + examChannelExpirationMs(settings)
+    : examChannelFallbackDeleteAt(channel, settings);
+}
+
+function scheduleExamChannelDeletion(channel: TextChannel, deleteAt: number, context: BotContext) {
+  const current = examChannelDeletionTimers.get(channel.id);
+  if (current) clearTimeout(current);
+  const generation = Symbol(channel.id);
+  examChannelDeletionGenerations.set(channel.id, generation);
+
+  const isCurrent = () => examChannelDeletionGenerations.get(channel.id) === generation;
+  const scheduleNext = (targetAt: number) => {
+    if (!isCurrent()) return;
+    const remaining = targetAt - Date.now();
+    if (remaining <= 0) {
+      examChannelDeletionTimers.delete(channel.id);
+      void deleteExamChannelWhenEligible();
+      return;
+    }
+    const timer = setTimeout(() => scheduleNext(targetAt), Math.min(remaining, MAX_EXAM_CHANNEL_TIMER_DELAY));
+    timer.unref();
+    examChannelDeletionTimers.set(channel.id, timer);
+  };
+
+  const retry = (delay: number) => scheduleNext(Date.now() + delay);
+  const deleteExamChannelWhenEligible = async () => {
+    if (!isCurrent()) return;
+    const marker = parseCourseExamChannelTopic(channel.topic);
+    if (marker?.state !== "finished") {
+      let activeAttempt: CourseExamAttempt | null;
+      try {
+        activeAttempt = await context.api.getCourseExamAttemptByChannel(channel.guildId, channel.id);
+      } catch (error) {
+        console.error(`[courses] failed to check active exam attempt for channel ${channel.id}; retrying cleanup:`, error instanceof Error ? error.message : error);
+        retry(EXAM_CHANNEL_DELETE_RETRY_DELAY);
+        return;
+      }
+      if (!isCurrent()) return;
+      if (shouldDeferExamChannelDeletion(channel.topic, activeAttempt?.status === "in_progress")) {
+        retry(EXAM_CHANNEL_ACTIVE_RECHECK_DELAY);
+        return;
+      }
+    }
+
+    try {
+      await channel.delete("Prazo do canal temporário de prova encerrado.");
+      if (isCurrent()) {
+        examChannelDeletionGenerations.delete(channel.id);
+        examChannelDeletionTimers.delete(channel.id);
+      }
+    } catch (error) {
+      if (isUnknownChannelError(error)) {
+        if (isCurrent()) {
+          examChannelDeletionGenerations.delete(channel.id);
+          examChannelDeletionTimers.delete(channel.id);
+        }
+        return;
+      }
+      console.error(`[courses] failed to delete temporary exam channel ${channel.id}; retrying:`, error instanceof Error ? error.message : error);
+      retry(EXAM_CHANNEL_DELETE_RETRY_DELAY);
+    }
+  };
+
+  scheduleNext(deleteAt);
+}
+
+function isUnknownChannelError(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return Number((error as { code: number | string }).code) === 10003;
+}
+
 function examChannelName(studentName: string, courseName: string) {
   return `prova-${slugPart(studentName)}-${slugPart(courseName)}`.slice(0, 100);
 }
@@ -1652,25 +1904,51 @@ function uniqueExamChannelName(guild: NonNullable<ButtonInteraction["guild"]>, b
   return `${withUser}-${Date.now().toString(36).slice(-4)}`.slice(0, 100);
 }
 
-function examPermissionOverwrites(guild: NonNullable<ButtonInteraction["guild"]>, context: BotContext, publication: CoursePublication, course: Course, settings: CourseSettings, studentId: string) {
-  const overwrites = new Map<string, { allow?: bigint[]; deny?: bigint[]; id: string }>();
+function findLegacyExamChannel(guild: NonNullable<ButtonInteraction["guild"]>, publication: CoursePublication, categoryId: string, studentId: string, expectedName: string) {
+  if (publication.status !== "proof" || !publication.proofStartedAt) return undefined;
+  const proofStartedAt = Date.parse(publication.proofStartedAt);
+  if (!Number.isFinite(proofStartedAt)) return undefined;
+  const earliestCreatedAt = proofStartedAt - 60_000;
+  const latestCreatedAt = proofStartedAt + 6 * 60 * 60 * 1000;
+  const normalizedName = expectedName.slice(0, 86);
+  const userSuffix = studentId.slice(-4);
+  return guild.channels.cache.find((channel): channel is TextChannel => {
+    if (channel.type !== ChannelType.GuildText || channel.topic || channel.parentId !== categoryId) return false;
+    if (channel.createdTimestamp < earliestCreatedAt || channel.createdTimestamp > latestCreatedAt) return false;
+    if (channel.name !== normalizedName && !channel.name.startsWith(`${normalizedName}-${userSuffix}`)) return false;
+    return Boolean(channel.permissionOverwrites.cache.get(studentId)?.allow.has(PermissionFlagsBits.ViewChannel));
+  });
+}
+
+export function examPermissionOverwrites(guild: NonNullable<ButtonInteraction["guild"]>, context: BotContext, publication: CoursePublication, course: Course, settings: CourseSettings, studentId: string) {
+  const overwrites = new Map<string, { allow?: bigint[]; deny?: bigint[]; id: string; type: OverwriteType }>();
   const viewSend = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
-  overwrites.set(guild.roles.everyone.id, { deny: [PermissionFlagsBits.ViewChannel], id: guild.roles.everyone.id });
+  overwrites.set(guild.roles.everyone.id, { deny: [PermissionFlagsBits.ViewChannel], id: guild.roles.everyone.id, type: OverwriteType.Role });
   for (const id of [
     studentId,
     publication.instructorId,
     ...course.instructorUserIds,
+    ...settings.adminUserIds,
+    ...settings.managerUserIds,
+    ...settings.evaluatorUserIds,
+    ...settings.globalInstructorUserIds
+  ].filter(Boolean)) {
+    overwrites.set(id, { allow: viewSend, id, type: OverwriteType.Member });
+  }
+  for (const id of [
     ...course.instructorRoleIds,
     ...settings.adminRoleIds,
+    ...settings.managerRoleIds,
     ...settings.evaluatorRoleIds,
     ...settings.globalInstructorRoleIds,
-    ...settings.generalInstructorRoleIds
+    ...(course.allowGeneralInstructorRoles !== false ? settings.generalInstructorRoleIds : [])
   ].filter(Boolean)) {
-    overwrites.set(id, { allow: viewSend, id });
+    overwrites.set(id, { allow: viewSend, id, type: OverwriteType.Role });
   }
   overwrites.set(context.client.user!.id, {
     allow: [...viewSend, PermissionFlagsBits.ManageChannels],
-    id: context.client.user!.id
+    id: context.client.user!.id,
+    type: OverwriteType.Member
   });
   return [...overwrites.values()];
 }
