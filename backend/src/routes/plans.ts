@@ -483,7 +483,7 @@ devPlansRouter.get("/clients", async (_req, res, next) => {
   }
 });
 
-devPlansRouter.get("/bots", async (_req, res, next) => {
+devPlansRouter.get("/plan-bots", async (_req, res, next) => {
   try {
     const { botCredentials } = await getMongoCollections();
     const bots = await botCredentials.find({}, { projection: { tokenCiphertext: 0, encryptedDataKey: 0, iv: 0, authTag: 0 } }).sort({ createdAt: -1 }).limit(200).toArray();

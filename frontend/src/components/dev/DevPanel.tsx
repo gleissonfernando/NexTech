@@ -640,6 +640,8 @@ export function DevPanel({
   const [activeBotMenuId, setActiveBotMenuId] = useState<BotMenuId>("overview");
   const [form, setForm] = useState<CreateDevBotPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [tokenVisible, setTokenVisible] = useState(false);
   const [bulkPowerAction, setBulkPowerAction] = useState<"start" | "stop" | null>(null);
@@ -719,6 +721,9 @@ export function DevPanel({
   useEffect(() => {
     let mounted = true;
 
+    setLoading(true);
+    setLoadError(null);
+
     Promise.all([
       getDevModules().catch(() => fallbackModules),
       getDevBots()
@@ -730,7 +735,7 @@ export function DevPanel({
         setInternalSelectedBotId((current) => current ?? controlledSelectedBotId ?? botData[0]?.id ?? null);
       })
       .catch(() => {
-        if (mounted) setMessage("Não foi possível carregar a área de bots.");
+        if (mounted) setLoadError("Não foi possível carregar os bots cadastrados. Nenhum dado foi alterado.");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -739,7 +744,7 @@ export function DevPanel({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -1000,6 +1005,17 @@ export function DevPanel({
       <Card>
         <CardContent className="flex min-h-48 items-center justify-center p-6">
           <Loader2 className="h-7 w-7 animate-spin text-zinc-400" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Card className="border-red-500/25 bg-red-500/[0.06]">
+        <CardContent className="flex min-h-48 flex-col items-center justify-center gap-4 p-6 text-center">
+          <p className="text-sm font-semibold text-red-100">{loadError}</p>
+          <Button onClick={() => setReloadKey((current) => current + 1)} variant="outline">Tentar novamente</Button>
         </CardContent>
       </Card>
     );

@@ -517,8 +517,19 @@ devRouter.get("/bots", async (_req, res, next) => {
       await startDevBotProcess(primaryBot.bot.id);
     }
 
+    const bots = await listDevBots();
+    const summary = {
+      registered: bots.length,
+      online: bots.filter((bot) => bot.status === "online").length,
+      offline: bots.filter((bot) => bot.status === "offline").length,
+      error: bots.filter((bot) => bot.status === "error" || bot.status === "invalid_token").length
+    };
+    console.info(`[dev-bot] listagem DEV: collection=Bot user=${auth.user.discordId} bots=${bots.length} ids=${bots.map((bot) => bot.id).join(",") || "none"}`);
+
     return res.json({
-      bots: await listDevBots()
+      success: true,
+      bots,
+      summary
     });
   } catch (error) {
     return next(error);

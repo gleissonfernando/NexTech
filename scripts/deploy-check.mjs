@@ -123,6 +123,19 @@ check("contrato de token interno do bot", () => {
   }
 });
 
+check("rotas de bots DEV sem colisao", () => {
+  const devRoutes = readProjectFile("backend/src/routes/dev.ts");
+  const planRoutes = readProjectFile("backend/src/routes/plans.ts");
+
+  if (!devRoutes.includes('devRouter.get("/bots"')) {
+    fail("rota principal GET /api/dev/bots nao encontrada.");
+  }
+
+  if (planRoutes.includes('devPlansRouter.get("/bots"')) {
+    fail("rota de Planos nao pode interceptar GET /api/dev/bots.");
+  }
+});
+
 check("arquivos dist", () => {
   const requiredFiles = [
     "backend/dist/server.js",
