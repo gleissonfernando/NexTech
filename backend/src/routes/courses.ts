@@ -189,6 +189,13 @@ const reportSchema = z.object({
     userId: snowflake
   })).min(1).max(50)
 });
+const decimalNumber = (schema: z.ZodNumber) => z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : value;
+}, schema);
 const examSettingsSchema = z.object({
   allowCurrentQuestionReview: z.boolean().optional(),
   approvalMessage: z.string().max(1200).optional(),
@@ -201,21 +208,21 @@ const examSettingsSchema = z.object({
   resultChannelId: optionalSnowflake,
   temporaryCategoryId: optionalSnowflake,
   maxTimeMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-  minScore: z.number().min(0).max(1000).optional(),
+  minScore: decimalNumber(z.number().min(0).max(1000)).optional(),
   rejectionMessage: z.string().max(1200).optional()
-  , manualQuestionMaxScore: z.number().min(0).max(1000).optional()
+  , manualQuestionMaxScore: decimalNumber(z.number().min(0).max(1000)).optional()
   , manualApproval: z.boolean().optional()
   , automaticApproval: z.boolean().optional()
 });
 const examQuestionSchema = z.object({
   active: z.boolean().optional(),
-  alternatives: z.array(z.object({ id: z.string().max(80).optional(), text: z.string().max(500), value: z.string().max(120).optional(), score: z.number().min(0).max(1000).optional(), isCorrect: z.boolean().optional(), order: z.number().int().min(0).optional() })).max(10).optional(),
+  alternatives: z.array(z.object({ id: z.string().max(80).optional(), text: z.string().max(500), value: z.string().max(120).optional(), score: decimalNumber(z.number().min(0).max(1000)).optional(), isCorrect: z.boolean().optional(), order: z.number().int().min(0).optional() })).max(10).optional(),
   correctAlternativeId: z.string().max(80).nullable().optional(),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   order: z.number().int().min(0).optional(),
   questionNumber: z.number().int().min(1).max(9).optional(),
   placeholder: z.string().max(300).nullable().optional().or(z.literal("")),
-  points: z.number().min(0).max(1000).optional(),
+  points: decimalNumber(z.number().min(0).max(1000)).optional(),
   prompt: z.string().min(1).max(1200),
   title: z.string().max(1200).optional(),
   type: z.enum(["selection", "written"])
@@ -224,10 +231,10 @@ const reorderExamQuestionsSchema = z.object({ questionIds: z.array(z.string().mi
 const attemptSchema = z.object({ channelId: snowflake, courseId: z.string().min(1), instructorId: snowflake, publicationId: z.string().min(1), studentId: snowflake });
 const answerSchema = z.object({
   question: examQuestionSchema.extend({ id: z.string().min(1), botId: z.string().nullable().optional(), guildId: z.string(), courseId: z.string(), createdAt: z.string().optional(), updatedAt: z.string().optional(), updatedBy: z.string().nullable().optional() }),
-  selectedAlternativeId: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
+  selectedAlternativeId: z.string().min(1).max(80).nullable().optional(),
   writtenAnswer: z.string().max(3000).nullable().optional()
 });
-const reviewSchema = z.object({ actorId: snowflake, manualScore: z.number().min(0).max(1000).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
+const reviewSchema = z.object({ actorId: snowflake, manualScore: decimalNumber(z.number().min(0).max(1000)).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
 const correctionMessageSchema = z.object({ messageId: snowflake });
 
 coursesRouter.use(requireAuthOrBot);
@@ -431,7 +438,17 @@ coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/answers", requireBot,
     const answer = await saveCourseExamAnswer(botId, guildId, routeParam(req, "attemptId"), {
       ...parsed.question,
       active: parsed.question.active ?? true,
-      alternatives: (parsed.question.alternatives ?? []).map((item, index) => ({ id: item.id ?? ["A", "B", "C", "D", "E"][index] ?? randomUUID(), text: item.text })),
+      alternatives: (parsed.question.alternatives ?? []).map((item, index) => {
+        const id = item.id ?? ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"][index] ?? randomUUID();
+        return {
+          id,
+          text: item.text,
+          value: item.value ?? id,
+          score: item.score,
+          isCorrect: item.isCorrect,
+          order: item.order ?? index
+        };
+      }),
       botId: parsed.question.botId ?? null,
       correctAlternativeId: parsed.question.correctAlternativeId ?? null,
       createdAt: parsed.question.createdAt ?? new Date().toISOString(),

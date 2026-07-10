@@ -420,8 +420,8 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
             {selectedCourse && exam ? (
               <>
                 <div className="grid gap-3 md:grid-cols-4">
-                  <InputField disabled={!canManage || saving} label="Nota mínima" onChange={(value) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { minScore: Number(value) || 0 }).then((settings) => setExam({ ...exam, settings }))} value={String(exam.settings.minScore)} />
-                  <InputField disabled={!canManage || saving} label="Nota máxima pergunta 9" onChange={(value) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualQuestionMaxScore: Number(value) || 0 }).then((settings) => setExam({ ...exam, settings }))} value={String(exam.settings.manualQuestionMaxScore ?? 10)} />
+                  <DecimalInputField disabled={!canManage || saving} label="Nota mínima" onCommit={(minScore) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { minScore }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.minScore} />
+                  <DecimalInputField disabled={!canManage || saving} label="Nota máxima pergunta 9" onCommit={(manualQuestionMaxScore) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualQuestionMaxScore }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualQuestionMaxScore ?? 10} />
                   <ToggleField disabled={!canManage || saving} label="Aprovação sempre manual" onChange={(manualApproval) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualApproval }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualApproval ?? true} />
                   <ToggleField disabled={!canManage || saving} label="Prova ativa" onChange={(enabled) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { enabled }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.enabled} />
                   <SelectField disabled={!canManage || saving} label="Categoria dos canais da prova" onChange={(temporaryCategoryId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { temporaryCategoryId }).then((settings) => setExam({ ...exam, settings }))} options={categories} value={exam.settings.temporaryCategoryId ?? ""} />
@@ -435,7 +435,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   <div className="grid gap-3 md:grid-cols-3">
                     <InputField disabled={!canManage || saving} label="Número da pergunta" onChange={(value) => setQuestionDraft({ ...questionDraft, questionNumber: Number(value) || 1, order: Math.max(0, (Number(value) || 1) - 1), type: Number(value) === 9 ? "written" : "selection" })} value={String(questionDraft.questionNumber ?? 1)} />
                     <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setQuestionDraft({ ...questionDraft, type: type as "selection" | "written" })} options={[["selection", "Objetiva"], ["written", "Discursiva"]]} value={questionDraft.type} />
-                    <InputField disabled={!canManage || saving} label="Nota máxima" onChange={(value) => setQuestionDraft({ ...questionDraft, points: Number(value) || 0 })} value={String(questionDraft.points ?? 10)} />
+                    <DecimalInputField disabled={!canManage || saving} label="Nota máxima" onCommit={(points) => setQuestionDraft({ ...questionDraft, points })} value={questionDraft.points ?? 10} />
                   </div>
                   <div className="mt-3 space-y-3">
                     <TextAreaField disabled={!canManage || saving} label="Pergunta" onChange={(prompt) => setQuestionDraft({ ...questionDraft, prompt })} value={questionDraft.prompt} />
@@ -445,7 +445,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                         {(questionDraft.alternatives ?? []).map((option, index) => (
                           <div className="rounded-lg border border-zinc-800 p-3" key={option.id ?? index}>
                             <InputField disabled={!canManage || saving} label={`Resposta ${index + 1}`} onChange={(text) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { text }) })} value={option.text} />
-                            <InputField disabled={!canManage || saving} label="Pontuação" onChange={(value) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { score: Number(value) || 0 }) })} value={String(option.score ?? 0)} />
+                            <DecimalInputField disabled={!canManage || saving} label="Pontuação" onCommit={(score) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { score }) })} value={option.score ?? 0} />
                             <ToggleField disabled={!canManage || saving} label="Correta" onChange={(checked) => setQuestionDraft({ ...questionDraft, correctAlternativeId: checked ? option.id : questionDraft.correctAlternativeId, alternatives: (questionDraft.alternatives ?? []).map((item, itemIndex) => ({ ...item, isCorrect: itemIndex === index ? checked : false })) })} value={Boolean(option.isCorrect)} />
                           </div>
                         ))}
@@ -512,7 +512,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 function ProofCompleteness({ questions }: { questions: CourseExamQuestion[] }) {
   const objective = questions.filter((question) => question.type === "selection");
   const written = questions.find((question) => (question.questionNumber ?? question.order + 1) === 9 && question.type === "written");
-  const complete = questions.length === 9 && objective.length >= 8 && Boolean(written) && objective.every((question) => question.alternatives.length >= 2 && question.points > 0);
+  const complete = questions.length === 9 && objective.length >= 8 && Boolean(written) && objective.every((question) => question.alternatives.length >= 2 && question.points > 0 && question.alternatives.some((option) => option.isCorrect || option.id === question.correctAlternativeId));
   return <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">Status da prova: <Badge variant={complete ? "success" : "warning"}>{complete ? "Completa" : "Incompleta"}</Badge> • Perguntas: {questions.length}/9 • Objetivas: {objective.length}/8 • Discursiva final: {written ? "configurada" : "pendente"}</div>;
 }
 
@@ -555,7 +555,7 @@ function normalizeQuestion(question: SaveCourseExamQuestionPayload) {
     questionNumber,
     order: questionNumber - 1,
     type: questionNumber === 9 ? "written" : question.type,
-    alternatives: questionNumber === 9 ? [] : (question.alternatives ?? []).filter((option) => option.text?.trim()).map((option, index) => ({ ...option, id: option.id || String.fromCharCode(65 + index), order: index, value: option.value || option.id || String.fromCharCode(65 + index), score: Number(option.score ?? 0) || 0 })),
+    alternatives: questionNumber === 9 ? [] : (question.alternatives ?? []).filter((option) => option.text?.trim()).map((option, index) => ({ ...option, id: option.id || String.fromCharCode(65 + index), order: index, value: option.value || option.id || String.fromCharCode(65 + index), score: parseDecimalNumber(option.score, 0) })),
     correctAlternativeId: question.correctAlternativeId ?? (question.alternatives ?? []).find((option) => option.isCorrect)?.id ?? null
   } satisfies SaveCourseExamQuestionPayload;
 }
@@ -590,6 +590,37 @@ function InputField({ disabled, label, onChange, value }: { disabled?: boolean; 
   return <label className="grid gap-2 text-sm"><span className="font-semibold text-zinc-300">{label}</span><input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
 }
 
+function DecimalInputField({ disabled, label, onCommit, value }: { disabled?: boolean; label: string; onCommit: (value: number) => void; value: number }) {
+  const [draft, setDraft] = useState(formatDecimalInput(value));
+
+  useEffect(() => {
+    setDraft(formatDecimalInput(value));
+  }, [value]);
+
+  function commit() {
+    const parsed = parseDecimalNumber(draft, value);
+    onCommit(parsed);
+    setDraft(formatDecimalInput(parsed));
+  }
+
+  return (
+    <label className="grid gap-2 text-sm">
+      <span className="font-semibold text-zinc-300">{label}</span>
+      <input
+        className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100"
+        disabled={disabled}
+        inputMode="decimal"
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+        value={draft}
+      />
+    </label>
+  );
+}
+
 function TextAreaField({ disabled, label, onChange, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; value: string }) {
   return <label className="grid gap-2 text-sm"><span className="font-semibold text-zinc-300">{label}</span><textarea className="min-h-24 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
 }
@@ -612,4 +643,16 @@ function SelectValueField({ disabled, label, onChange, options, value }: { disab
 
 function MultiRoleField({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string[]) => void; options: Array<{ id: string; name: string }>; value: string[] }) {
   return <div><FivemResourceMultiSelect disabled={Boolean(disabled)} label={label} onChange={onChange} options={options.map((option) => ({ id: option.id, name: option.name }))} prefix="@" values={value} /></div>;
+}
+
+function parseDecimalNumber(value: unknown, fallback: number) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!normalized) return fallback;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatDecimalInput(value: number) {
+  return String(value).replace(".", ",");
 }

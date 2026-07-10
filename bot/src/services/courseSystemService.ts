@@ -904,8 +904,9 @@ async function selectExamAnswer(interaction: StringSelectMenuInteraction, contex
 async function retryExamQuestion(interaction: ButtonInteraction, context: BotContext) {
   await interaction.deferUpdate();
   const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await getStudentExamAttempt(interaction, context, attemptId);
+  if (!bundle) return;
   pendingExamAnswers.delete(examPendingKey(attemptId));
-  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
   const [course, runtime] = await Promise.all([
     context.api.getCourse(interaction.guildId!, bundle.attempt.courseId),
     context.api.getCourseExamRuntime(interaction.guildId!, bundle.attempt.courseId)
@@ -917,6 +918,8 @@ async function retryExamQuestion(interaction: ButtonInteraction, context: BotCon
 async function commitExamAnswer(interaction: ButtonInteraction, context: BotContext) {
   await interaction.deferUpdate();
   const attemptId = idFromCustomId(interaction.customId);
+  const currentBundle = await getStudentExamAttempt(interaction, context, attemptId);
+  if (!currentBundle) return;
   const pending = pendingExamAnswers.get(examPendingKey(attemptId));
   if (!pending) {
     await interaction.followUp({ content: "Responda a pergunta antes de continuar.", flags: MessageFlags.Ephemeral });
@@ -937,6 +940,8 @@ async function commitExamAnswer(interaction: ButtonInteraction, context: BotCont
 async function finishExam(interaction: ButtonInteraction, context: BotContext) {
   await interaction.deferUpdate();
   const attemptId = idFromCustomId(interaction.customId);
+  const currentBundle = await getStudentExamAttempt(interaction, context, attemptId);
+  if (!currentBundle) return;
   const result = await context.api.finalizeCourseExamAttempt(interaction.guildId!, attemptId);
   const [course, settings] = await Promise.all([
     context.api.getCourse(interaction.guildId!, result.attempt.courseId),
@@ -946,6 +951,15 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
   await interaction.followUp({ content: "Prova finalizada e enviada para correção.", flags: MessageFlags.Ephemeral });
   await sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers);
   await sendCourseLog(interaction, settings, `✅ Prova finalizada\nTentativa: ${attemptId}\nAluno: <@${result.attempt.studentId}>\nNota: ${result.attempt.score}/${result.attempt.maxScore} (${result.attempt.percent}%)`);
+}
+
+async function getStudentExamAttempt(interaction: ButtonInteraction, context: BotContext, attemptId: string) {
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id || bundle.attempt.status !== "in_progress") {
+    await interaction.followUp({ content: "Tentativa de prova inválida para este usuário.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+  return bundle;
 }
 
 async function reviewExam(interaction: ButtonInteraction, context: BotContext) {
@@ -1389,9 +1403,6 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const canStartClass = publication.status === "open";
   const canStartExam = publication.status === "started";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
-  const primaryAction = canStartExam
-    ? new ButtonBuilder().setCustomId(`course_exam_start:${publication.id}`).setLabel("📝 Iniciar Prova").setStyle(ButtonStyle.Success)
-    : new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel(`${settings.buttonEmojis.start ?? "▶️"} Iniciar Aula`).setStyle(ButtonStyle.Primary).setDisabled(!canStartClass);
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [
@@ -1400,7 +1411,8 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
         new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel(`${settings.buttonEmojis.leave ?? "🚪"} ${course.buttonLabels.leave || "Sair do Curso"}`).setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        primaryAction,
+        new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel(`${settings.buttonEmojis.start ?? "▶️"} Iniciar Aula`).setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+        new ButtonBuilder().setCustomId(`course_exam_start:${publication.id}`).setLabel("📝 Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
         new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel(`${settings.buttonEmojis.cancel ?? "❌"} ${course.buttonLabels.cancel || "Cancelar Curso"}`).setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
       )
     ],
@@ -1511,7 +1523,7 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
           .setPlaceholder("Marque uma alternativa")
           .setMinValues(1)
           .setMaxValues(1)
-          .addOptions(question.alternatives.slice(0, 5).map((alternative) => ({
+          .addOptions(question.alternatives.slice(0, 10).map((alternative) => ({
             label: `Alternativa ${alternative.id}`.slice(0, 100),
             value: alternative.id,
             description: alternative.text.slice(0, 100)
@@ -1838,6 +1850,7 @@ function validateRuntimeProof(questions: CourseExamQuestion[]) {
     const question = ordered[index];
     if (!question || question.type !== "selection") return { ok: false, message: `A pergunta ${index + 1} precisa ser objetiva.` };
     if (question.alternatives.length < 2) return { ok: false, message: `A pergunta ${index + 1} precisa ter pelo menos 2 alternativas.` };
+    if (!question.alternatives.some((alternative) => alternative.isCorrect || alternative.id === question.correctAlternativeId)) return { ok: false, message: `A pergunta ${index + 1} precisa ter uma alternativa correta definida.` };
     if (!question.points || question.points <= 0) return { ok: false, message: `A pergunta ${index + 1} precisa ter nota máxima configurada.` };
   }
   const finalQuestion = ordered[8];
