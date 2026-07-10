@@ -39,30 +39,30 @@ export function ComoFunciona() {
           Como Funciona
         </h2>
         <p className="mt-3 text-sm leading-6 text-gray-400 sm:text-base">
-          Configure sua operação em poucos passos e mantenha tudo sob controle.
+          Em 3 passos simples você já está com tudo funcionando.
         </p>
       </header>
 
-      <div className="mx-auto mt-10 flex max-w-5xl flex-col items-center justify-center gap-8 md:flex-row md:items-start md:gap-4">
-        {steps.map(({ description, icon: Icon, number, title }, index) => (
-          <div className="contents" key={number}>
-            <article className="flex w-full flex-col items-center text-center md:w-auto md:flex-1">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-yellow-500/30 bg-black shadow-[0_0_24px_rgba(234,179,8,0.08)]">
-                <Icon aria-hidden="true" className="h-7 w-7 text-yellow-400" />
-              </div>
-              <p className="mt-4 text-xs font-bold tracking-[0.18em] text-yellow-400">{number}</p>
-              <h3 className="mt-2 text-base font-semibold text-white">{title}</h3>
-              <p className="mt-2 max-w-[220px] text-sm leading-6 text-gray-400">{description}</p>
-            </article>
+      <div className="relative mx-auto mt-12 max-w-5xl">
+        <div
+          aria-hidden="true"
+          className="absolute left-[16.666%] right-[16.666%] top-8 hidden h-px bg-gradient-to-r from-yellow-500/15 via-yellow-400/60 to-yellow-500/15 md:block"
+        />
 
-            {index < steps.length - 1 ? (
-              <div
-                aria-hidden="true"
-                className="mt-8 hidden h-px max-w-[100px] flex-1 bg-yellow-500/30 md:block"
-              />
-            ) : null}
-          </div>
-        ))}
+        <div className="grid gap-10 md:grid-cols-3 md:gap-8">
+          {steps.map(({ description, icon: Icon, number, title }) => (
+            <article className="relative flex flex-col items-center text-center" key={number}>
+              <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-2xl border border-yellow-500/40 bg-[#111108] shadow-[0_0_30px_rgba(234,179,8,0.10)]">
+                <Icon aria-hidden="true" className="h-7 w-7 text-yellow-400" strokeWidth={2.2} />
+                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-[#050509] bg-yellow-400 px-1 text-[10px] font-extrabold leading-none text-black">
+                  {number}
+                </span>
+              </div>
+              <h3 className="mt-6 text-xl font-semibold tracking-tight text-white">{title}</h3>
+              <p className="mt-2 max-w-[260px] text-sm leading-6 text-gray-400">{description}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

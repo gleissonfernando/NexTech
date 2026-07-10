@@ -22,6 +22,7 @@ type DashboardHomeProps = {
   botOnline: boolean;
   channelCount: number;
   guildName: string;
+  guilds: Array<{ iconUrl: string | null; memberCount: number; name: string }>;
   memberCount: number;
   modules: HomeModule[];
   totalModules: number;
@@ -74,6 +75,8 @@ export function DashboardHome(props: DashboardHomeProps) {
           <PlatformPreview {...props} />
         </div>
       </section>
+
+      <ServerMarquee guilds={props.guilds} />
 
       <Reveal className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <TrustItem icon={Radio} title="Operação conectada" text={props.botOnline ? "Bot selecionado online" : "Status acompanhado pelo painel"} />
@@ -144,6 +147,42 @@ export function DashboardHome(props: DashboardHomeProps) {
 }
 
 function GlowBackground() { return <div aria-hidden className="pointer-events-none absolute inset-0"><div className="absolute -left-32 -top-40 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl"/><div className="absolute -right-28 top-10 h-80 w-80 rounded-full bg-blue-600/15 blur-3xl"/><div className="orvitek-grid absolute inset-0 opacity-30"/></div> }
+
+function ServerMarquee({ guilds }: { guilds: DashboardHomeProps["guilds"] }) {
+  if (!guilds.length) return null;
+  const repeatCount = Math.max(1, Math.ceil(8 / guilds.length));
+  const items = Array.from({ length: repeatCount }, () => guilds).flat();
+
+  return (
+    <section aria-label="Servidores cadastrados" className="relative mt-8 overflow-hidden border-y border-[#FFD500]/15 bg-black/35 py-7">
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#050509] to-transparent sm:w-36" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#050509] to-transparent sm:w-36" />
+      <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[.22em] text-[#FFD500]">
+        {guilds.length} {guilds.length === 1 ? "servidor conectado" : "servidores conectados à Orvitek"}
+      </p>
+      <div className="server-marquee-track flex w-max hover:[animation-play-state:paused]">
+        <ServerMarqueeGroup guilds={items} />
+        <ServerMarqueeGroup ariaHidden guilds={items} />
+      </div>
+    </section>
+  );
+}
+
+function ServerMarqueeGroup({ ariaHidden = false, guilds }: { ariaHidden?: boolean; guilds: DashboardHomeProps["guilds"] }) {
+  return (
+    <div aria-hidden={ariaHidden || undefined} className="flex shrink-0 items-center gap-12 pr-12 sm:gap-16 sm:pr-16">
+      {guilds.map((guild, index) => (
+        <div className="flex w-32 shrink-0 flex-col items-center text-center" key={`${guild.name}-${index}`}>
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/35 bg-[#141414] shadow-[0_0_22px_rgba(255,213,0,.12)]">
+            {guild.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={guild.iconUrl} /> : <Server aria-hidden="true" className="h-6 w-6 text-[#FFD500]" />}
+          </div>
+          <p className="mt-3 w-full truncate text-sm font-semibold text-zinc-200" title={guild.name}>{guild.name}</p>
+          <p className="mt-1 text-xs font-medium text-[#FFD500]">{guild.memberCount.toLocaleString("pt-BR")} membros</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function PlatformPreview(props: DashboardHomeProps) { return <motion.div className="relative" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .7, delay: .15 }}><div className="absolute -inset-4 rounded-[2rem] bg-violet-500/10 blur-2xl"/><div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#090913]/95 shadow-2xl"><div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-3"><i className="h-2.5 w-2.5 rounded-full bg-rose-400/70"/><i className="h-2.5 w-2.5 rounded-full bg-amber-300/70"/><i className="h-2.5 w-2.5 rounded-full bg-emerald-400/70"/><span className="ml-2 text-[10px] text-slate-600">orvitek / operação</span></div><div className="grid grid-cols-[62px_1fr] sm:grid-cols-[88px_1fr]"><div className="border-r border-white/[.06] p-3"><div className="mx-auto h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500"/><div className="mt-6 space-y-3">{[1,2,3,4,5].map(i=><div className={`mx-auto h-7 rounded-md ${i===1 ? "bg-violet-400/15" : "bg-white/[.04]"}`} key={i}/>)}</div></div><div className="min-w-0 p-4 sm:p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-slate-500">Servidor atual</p><p className="mt-1 max-w-40 truncate text-sm font-semibold text-white">{props.guildName}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${props.botOnline ? "bg-emerald-400/10 text-emerald-300" : "bg-slate-400/10 text-slate-400"}`}>{props.botOnline ? "Online" : "Offline"}</span></div><div className="mt-5 grid grid-cols-2 gap-2"><MiniMetric label="Membros" value={compact(props.memberCount)}/><MiniMetric label="Módulos" value={`${props.activeModules}/${props.totalModules}`}/></div><div className="mt-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"><div className="flex items-end gap-1.5">{[32,48,40,68,54,78,62,88,72,92,84,96].map((height,i)=><motion.i className="flex-1 rounded-t bg-gradient-to-t from-violet-600/30 to-violet-400/80" initial={{height:4}} animate={{height}} transition={{duration:.5,delay:.25+i*.035}} key={i}/>)}</div><div className="mt-3 flex justify-between text-[9px] text-slate-600"><span>Atividade</span><span>Tempo real</span></div></div><div className="mt-3 space-y-2">{["Serviços sincronizados","Permissões verificadas"].map((item,i)=><div className="flex items-center gap-2 rounded-lg bg-white/[.025] px-3 py-2 text-[10px] text-slate-400" key={item}><span className={`h-1.5 w-1.5 rounded-full ${i ? "bg-blue-400" : "bg-emerald-400"}`}/>{item}</div>)}</div></div></div></div></motion.div> }
 function MiniMetric({label,value}:{label:string;value:string}) { return <div className="rounded-xl border border-white/[.06] bg-white/[.025] p-3"><p className="text-[9px] text-slate-600">{label}</p><p className="mt-1 text-lg font-semibold text-white">{value}</p></div> }

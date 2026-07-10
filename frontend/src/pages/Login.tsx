@@ -1,4 +1,4 @@
-import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
   Check,
@@ -22,7 +22,7 @@ import {
   Wrench,
   X
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "../components/ui/button";
 import type { AuthResponse } from "../types";
 
@@ -145,9 +145,6 @@ export function Login({
   onVerify,
   verifying
 }: LoginProps) {
-  const stepsRef = useRef<HTMLElement | null>(null);
-  const { scrollYProgress } = useScroll({ target: stepsRef, offset: ["start 80%", "end 45%"] });
-  const progressWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const currentYear = new Date().getFullYear();
   const startLabel = verifying ? "Entrando..." : "Entrar na Dashboard";
 
@@ -161,6 +158,10 @@ export function Login({
   }
 
   function scrollTo(id: string) {
+    if (id === "docs") {
+      window.location.assign("/docs");
+      return;
+    }
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -220,7 +221,7 @@ export function Login({
           ))}
         </div>
 
-        <Reveal className="mt-10 grid gap-3 rounded-lg border border-[#FFD500]/20 bg-[#141414]/90 p-4 shadow-glow sm:grid-cols-2 lg:grid-cols-4">
+        <Reveal className="mt-24 grid gap-10 py-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-14">
           {stats.map((stat, index) => (
             <StatCounter delay={index * 120} key={stat.label} {...stat} />
           ))}
@@ -248,24 +249,25 @@ export function Login({
         </div>
       </section>
 
-      <section id="como-funciona" ref={stepsRef} className="mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+      <section id="como-funciona" className="mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
         <SectionHeading
           subtitle="Em 3 passos simples você já está com tudo funcionando."
           title="Como Funciona"
         />
 
-        <div className="relative mt-14">
-          <div className="absolute left-0 right-0 top-9 hidden border-t border-dashed border-[#FFD500]/20 lg:block" />
-          <motion.div className="absolute left-0 top-9 hidden border-t-2 border-[#FFD500] lg:block" style={{ width: progressWidth }} />
-          <div className="grid gap-5 lg:grid-cols-3">
+        <div className="relative mx-auto mt-14 max-w-5xl">
+          <div className="absolute left-[16.666%] right-[16.666%] top-8 hidden h-px bg-gradient-to-r from-[#FFD500]/20 via-[#FFD500]/70 to-[#FFD500]/20 lg:block" />
+          <div className="grid gap-12 lg:grid-cols-3 lg:gap-8">
             {steps.map((step, index) => (
-              <Reveal className="relative rounded-lg border border-[#FFD500]/20 bg-[#141414]/95 p-6 text-center shadow-[0_18px_50px_rgba(0,0,0,0.35)]" delay={index * 0.08} key={step.title}>
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border border-[#FFD500]/35 bg-black text-[#FFD500] shadow-[0_0_22px_rgba(255,213,0,0.12)]">
+              <Reveal className="relative flex flex-col items-center text-center" delay={index * 0.08} key={step.title}>
+                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#FFD500]/40 bg-[#111108] text-[#FFD500] shadow-[0_0_26px_rgba(255,213,0,0.12)]">
                   <step.icon className="h-7 w-7" />
+                  <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-[#050505] bg-[#FFD500] px-1 text-[10px] font-black leading-none text-black">
+                    0{index + 1}
+                  </span>
                 </div>
-                <p className="mt-5 font-mono text-sm font-bold text-[#FFD500]">0{index + 1}</p>
-                <h3 className="mt-2 text-xl font-bold text-white">{step.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">{step.description}</p>
+                <h3 className="mt-6 text-xl font-bold text-white">{step.title}</h3>
+                <p className="mt-3 max-w-[280px] text-sm leading-6 text-[#B3B3B3]">{step.description}</p>
               </Reveal>
             ))}
           </div>
@@ -394,6 +396,8 @@ function SectionHeading({ badge, subtitle, title }: { badge?: string; subtitle: 
 }
 
 function TerminalMockup() {
+  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const reducedMotion = useReducedMotion();
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [typedCommand, setTypedCommand] = useState("");
   const [visibleResponseCount, setVisibleResponseCount] = useState(0);
@@ -442,8 +446,29 @@ function TerminalMockup() {
 
   const visibleResponse = sequence.response.slice(0, visibleResponseCount);
 
+  function handleTerminalPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (reducedMotion || event.pointerType !== "mouse") return;
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const bounds = terminal.getBoundingClientRect();
+    const horizontal = (event.clientX - bounds.left) / bounds.width - 0.5;
+    const vertical = (event.clientY - bounds.top) / bounds.height - 0.5;
+    terminal.style.transform = `perspective(1000px) rotateX(${-vertical * 8}deg) rotateY(${horizontal * 12}deg) scale3d(1.012, 1.012, 1.012)`;
+  }
+
+  function resetTerminalTilt() {
+    const terminal = terminalRef.current;
+    if (terminal) terminal.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+  }
+
   return (
-    <div className="overflow-hidden rounded-lg border border-[#FFD500]/25 bg-[#0b0b0b] text-left shadow-[0_28px_90px_rgba(0,0,0,0.7),0_0_40px_8px_rgba(255,213,0,0.15)]">
+    <div
+      className="transform-gpu overflow-hidden rounded-lg border border-[#FFD500]/25 bg-[#0b0b0b] text-left shadow-[0_28px_90px_rgba(0,0,0,0.7),0_0_40px_8px_rgba(255,213,0,0.15)] transition-transform duration-200 ease-out"
+      onPointerCancel={resetTerminalTilt}
+      onPointerLeave={resetTerminalTilt}
+      onPointerMove={handleTerminalPointerMove}
+      ref={terminalRef}
+    >
       <div className="flex items-center gap-3 border-b border-[#FFD500]/15 bg-[#141414] px-4 py-3">
         <div className="flex shrink-0 items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#FFD900]" />
@@ -597,8 +622,8 @@ function StatCounter({ delay = 0, label, prefix = "", suffix = "", value }: { de
   }, [delay, reducedMotion, value, visible]);
 
   return (
-    <div ref={ref} className="rounded-lg border border-[#FFD500]/15 bg-black/35 p-5 text-center">
-      <p className="text-3xl font-black text-[#FFD500]">{prefix}{displayValue}{suffix}</p>
+    <div ref={ref} className="text-center">
+      <p className="text-4xl font-black tracking-tight text-[#FFD500] drop-shadow-[0_0_12px_rgba(255,213,0,0.45)] sm:text-5xl">{prefix}{displayValue}{suffix}</p>
       <p className="mt-2 text-sm text-[#B3B3B3]">{label}</p>
     </div>
   );

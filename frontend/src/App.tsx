@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { Dashboard } from "./pages/Dashboard";
 import { DevDashboard } from "./pages/DevDashboard";
+import { DocsPage } from "./pages/Docs";
 import { GiveawayRoulettePage } from "./pages/GiveawayRoulette";
 import { Login } from "./pages/Login";
 import { OrvitechProductPage } from "./pages/OrvitechProductPage";
@@ -20,6 +21,7 @@ export function App() {
     verifying
   } = useAuth();
   const path = window.location.pathname;
+  const docsPath = path === "/docs" || path.startsWith("/docs/");
   const rouletteToken = rouletteTokenFromPath(path);
   const productRoute = orvitechProductRouteFromPath(path);
   const routeError = readAuthError();
@@ -29,17 +31,17 @@ export function App() {
   const protectedPanelPath = dashboardPath || devPanelPath;
 
   useEffect(() => {
-    if (rouletteToken || productRoute) {
+    if (rouletteToken || productRoute || docsPath) {
       return;
     }
 
     if (auth?.access.verified && !protectedPanelPath) {
       window.location.replace(dashboardUrl());
     }
-  }, [auth, productRoute, protectedPanelPath, rouletteToken]);
+  }, [auth, docsPath, productRoute, protectedPanelPath, rouletteToken]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute) {
+    if (rouletteToken || productRoute || docsPath) {
       return;
     }
 
@@ -48,10 +50,10 @@ export function App() {
     }
 
     loginDiscord();
-  }, [auth, protectedPanelPath, error, loading, loginDiscord, productRoute, routeError, rouletteToken]);
+  }, [auth, protectedPanelPath, docsPath, error, loading, loginDiscord, productRoute, routeError, rouletteToken]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute) {
+    if (rouletteToken || productRoute || docsPath) {
       return;
     }
 
@@ -60,7 +62,11 @@ export function App() {
     }
 
     verify();
-  }, [auth, authCallbackLanding, productRoute, rouletteToken, verify, verifying]);
+  }, [auth, authCallbackLanding, docsPath, productRoute, rouletteToken, verify, verifying]);
+
+  if (docsPath) {
+    return <DocsPage />;
+  }
 
   if (rouletteToken) {
     return <GiveawayRoulettePage token={rouletteToken} />;

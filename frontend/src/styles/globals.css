@@ -176,9 +176,19 @@
 
 @keyframes orvitek-gradient { to { background-position: 220% center; } }
 
+@keyframes server-marquee {
+  to { transform: translateX(-50%); }
+}
+
+.server-marquee-track {
+  animation: server-marquee 34s linear infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .orvitek-gradient-text, .terminal-cursor, .terminal-response-line { animation: none !important; }
+  .server-marquee-track { animation: none !important; }
   .orvitek-home *, .orvitek-home *::before, .orvitek-home *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
