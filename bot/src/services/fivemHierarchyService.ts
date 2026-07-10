@@ -278,24 +278,29 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
   const visuals = await getPanelVisualSlots(context, guild.id, "fivem-hierarchy");
   const payload = createHierarchyPayload(guild, panel, cache, visuals[0] ?? null);
   if (panel.panelMessageId) {
-    const message = await channel.messages.fetch(panel.panelMessageId).catch(async (error) => {
-      await logPublishFailure(context, guild.id, panel, `Mensagem salva do painel nao foi encontrada para edicao: ${discordErrorMessage(error)}.`, permissionReport);
+    let fetchError: unknown = null;
+    const message = await channel.messages.fetch(panel.panelMessageId).catch((error) => {
+      fetchError = error;
       return null;
     });
     if (!message) {
-      return { error: "Mensagem salva do painel nao encontrada. O bot nao enviou outra mensagem para evitar duplicidade.", ok: false, panelId: panel.id };
-    }
+      if (!isDiscordUnknownMessageError(fetchError)) {
+        await logPublishFailure(context, guild.id, panel, `Mensagem salva do painel nao foi encontrada para edicao: ${discordErrorMessage(fetchError)}.`, permissionReport);
+        return { error: "Nao foi possivel validar a mensagem salva do painel. O bot nao enviou outra mensagem para evitar duplicidade.", ok: false, panelId: panel.id };
+      }
+      await logStaleHierarchyPanelMessage(context, guild.id, panel, panel.panelMessageId, permissionReport);
+    } else {
+      const edited = await message.edit(payload).catch(async (error) => {
+        await logPublishFailure(context, guild.id, panel, `Falha ao editar painel existente: ${discordErrorMessage(error)}. ${permissionHint(permissionReport)}`, permissionReport);
+        return null;
+      });
+      if (!edited) {
+        return { error: `Falha ao editar a mensagem salva do painel. ${permissionHint(permissionReport)}`, ok: false, panelId: panel.id };
+      }
 
-    const edited = await message.edit(payload).catch(async (error) => {
-      await logPublishFailure(context, guild.id, panel, `Falha ao editar painel existente: ${discordErrorMessage(error)}. ${permissionHint(permissionReport)}`, permissionReport);
-      return null;
-    });
-    if (!edited) {
-      return { error: `Falha ao editar a mensagem salva do painel. ${permissionHint(permissionReport)}`, ok: false, panelId: panel.id };
+      void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, edited, panel);
+      return { messageId: edited.id, ok: true, panelId: panel.id };
     }
-
-    void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, edited, panel);
-    return { messageId: edited.id, ok: true, panelId: panel.id };
   }
 
   const message = await channel.send(payload).catch(async (error) => {
@@ -385,6 +390,18 @@ async function logPublishFailure(context: BotContext, guildId: string, panel: Fi
   }).catch(() => null);
 }
 
+async function logStaleHierarchyPanelMessage(context: BotContext, guildId: string, panel: FivemHierarchyPanel, staleMessageId: string, permissionReport: ReturnType<typeof inspectPublishPermissions>) {
+  await context.api.postLog({
+    guildId,
+    channelId: panel.panelChannelId,
+    module: "fivem-hierarchy",
+    action: "panel.stale_message",
+    type: "fivem_hierarchy.stale_message",
+    message: `Mensagem salva do painel de hierarquia nao existe mais. Publicando um novo painel e atualizando o ID salvo.`,
+    metadata: { channelId: panel.panelChannelId, panelId: panel.id, permissionReport, staleMessageId }
+  }).catch(() => null);
+}
+
 function permissionHint(permissionReport: ReturnType<typeof inspectPublishPermissions>) {
   return permissionReport.blockingMissing.length
     ? `Permissoes faltando: ${permissionReport.blockingMissing.join(", ")}.`
@@ -400,6 +417,11 @@ function discordErrorMessage(error: unknown) {
     return `${error.message} (${error.code})`;
   }
   return errorMessage(error);
+}
+
+function isDiscordUnknownMessageError(error: unknown) {
+  if (!(error instanceof DiscordAPIError)) return false;
+  return Number(error.code) === 10008 || Number((error as { status?: unknown }).status) === 404;
 }
 
 async function getPanelVisualSlots(context: BotContext, guildId: string, basePanelId: string) {
@@ -661,6 +683,7 @@ function normalizeDuplicateLookupText(value: string | null | undefined) {
 function sanitizeSingleHierarchyVisual(visual: PanelVisualConfig | null): PanelVisualConfig | null {
   if (!visual?.imageEnabled || !visual.imageUrl) return null;
   return {
+    blocks: [],
     imageEnabled: true,
     imagePosition: visual.imagePosition === "thumbnail" ? "top" : visual.imagePosition,
     imageUrl: visual.imageUrl
