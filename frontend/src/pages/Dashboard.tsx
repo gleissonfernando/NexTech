@@ -3215,6 +3215,7 @@ function createEmptyHierarchyPanel(guildId: string, botId?: string | null): Five
     allowedRoleIds: [],
     botId: botId ?? null,
     color: "#22c55e",
+    contentHash: null,
     createdAt: now,
     description: "Hierarquia atualizada automaticamente pelos cargos do servidor.",
     enabled: true,
@@ -3231,6 +3232,7 @@ function createEmptyHierarchyPanel(guildId: string, botId?: string | null): Five
     name: "Hierarquia FAQ",
     panelChannelId: null,
     panelMessageId: null,
+    panelVersion: 2,
     title: "Hierarquia Policial",
     updatedAt: now
   };

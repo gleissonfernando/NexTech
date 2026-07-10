@@ -1159,6 +1159,7 @@ export type MongoFivemHierarchyPanel = {
   allowedRoleIds: string[];
   botId: string | null;
   color: string;
+  contentHash?: string | null;
   createdAt: Date;
   description: string | null;
   enabled: boolean;
@@ -1174,7 +1175,12 @@ export type MongoFivemHierarchyPanel = {
   name: string;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  panelVersion?: number;
   title: string;
+  updateLock?: {
+    expiresAt: Date;
+    instanceId: string;
+  } | null;
   updatedAt: Date;
   updatedBy?: string | null;
 };

@@ -655,6 +655,7 @@ export type FivemHierarchyEntry = {
 
 export type FivemHierarchyPanel = {
   color: string;
+  contentHash: string | null;
   description: string | null;
   enabled: boolean;
   footerEnabled: boolean;
@@ -668,6 +669,7 @@ export type FivemHierarchyPanel = {
   logChannelId: string | null;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  panelVersion: number;
   title: string;
 };
 
@@ -2375,9 +2377,18 @@ export class ApiClient {
     return data.panels;
   }
 
-  async updateFivemHierarchyPanelState(input: { guildId: string; messageId?: string | null; panelId: string }) {
+  async updateFivemHierarchyPanelState(input: { contentHash?: string | null; guildId: string; messageId?: string | null; panelId: string; panelVersion?: number }) {
     const { data } = await this.http.post<{ panel: FivemHierarchyPanel | null }>("/fivem/bot/hierarchy/panel-state", input);
     return data.panel;
+  }
+
+  async acquireFivemHierarchyPanelLock(input: { guildId: string; instanceId: string; panelId: string; ttlMs?: number }) {
+    const { data } = await this.http.post<{ acquired: boolean }>("/fivem/bot/hierarchy/panel-lock", { ...input, action: "acquire" });
+    return data.acquired;
+  }
+
+  async releaseFivemHierarchyPanelLock(input: { guildId: string; instanceId: string; panelId: string }) {
+    await this.http.post("/fivem/bot/hierarchy/panel-lock", { ...input, action: "release" });
   }
 
   async syncSelfBotRole(input: { guildId: string; roleId: string; roleName?: string | null }) {

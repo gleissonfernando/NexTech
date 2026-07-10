@@ -99,10 +99,12 @@ export type DatabaseMaintenanceDeleteChannelsEvent = {
 };
 
 export type FivemHierarchyPanelUpdateEvent = {
-  action: "publish" | "update";
+  action?: "delete" | "publish" | "update";
   botId?: string | null;
   guildId: string;
-  panelId: string;
+  oldPanelChannelId?: string | null;
+  oldPanelMessageId?: string | null;
+  panelId?: string | null;
 };
 export type FivemHierarchyPanelUpdateAck = (response: { error?: string; messageId?: string | null; ok: boolean; panelId?: string }) => void;
 

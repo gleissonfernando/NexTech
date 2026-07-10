@@ -27,10 +27,12 @@ import {
 } from "../services/fivemFacService";
 import { listFivemModules } from "../services/fivemModuleService";
 import {
+  acquireFivemHierarchyPanelLock,
   deleteFivemHierarchyPanel,
   FIVEM_HIERARCHY_MODULE_ID,
   getFivemHierarchyDashboard,
   listActiveFivemHierarchyPanels,
+  releaseFivemHierarchyPanelLock,
   requestFivemHierarchyPanelPublish,
   saveFivemHierarchyPanel,
   updateFivemHierarchyPanelState
@@ -507,14 +509,41 @@ fivemRouter.get("/bot/hierarchy/configs", requireBot, async (req, res, next) => 
 fivemRouter.post("/bot/hierarchy/panel-state", requireBot, async (req, res, next) => {
   try {
     const input = z.object({
+      contentHash: z.string().regex(/^[a-f0-9]{64}$/i).nullable().optional(),
       guildId: guildIdSchema,
       messageId: optionalSnowflakeSchema,
-      panelId: z.string().min(1).max(80)
+      panelId: z.string().min(1).max(80),
+      panelVersion: z.literal(2).optional()
     }).parse(req.body);
     const botId = await readRequiredBotId(req);
     await assertBotFivemHierarchyLicense(botId);
-    const panel = await updateFivemHierarchyPanelState(input.guildId, botId, input.panelId, input.messageId ?? null);
+    const panel = await updateFivemHierarchyPanelState(input.guildId, botId, input.panelId, {
+      contentHash: input.contentHash ?? null,
+      messageId: input.messageId ?? null,
+      panelVersion: input.panelVersion ?? 2
+    });
     return res.json({ panel });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/hierarchy/panel-lock", requireBot, async (req, res, next) => {
+  try {
+    const input = z.object({
+      action: z.enum(["acquire", "release"]),
+      guildId: guildIdSchema,
+      instanceId: z.string().min(1).max(120),
+      panelId: z.string().min(1).max(80),
+      ttlMs: z.coerce.number().int().min(5_000).max(120_000).optional()
+    }).parse(req.body);
+    const botId = await readRequiredBotId(req);
+    await assertBotFivemHierarchyLicense(botId);
+    if (input.action === "release") {
+      await releaseFivemHierarchyPanelLock(input.guildId, botId, input.panelId, input.instanceId);
+      return res.json({ acquired: false, released: true });
+    }
+    return res.json({ acquired: await acquireFivemHierarchyPanelLock(input.guildId, botId, input.panelId, input.instanceId, input.ttlMs ?? 30_000) });
   } catch (error) {
     return next(error);
   }

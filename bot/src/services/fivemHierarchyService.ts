@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import {
   DiscordAPIError,
   PermissionFlagsBits,
@@ -43,8 +44,19 @@ type HierarchyPanelCache = {
   signature: string;
 };
 
+type HierarchyPublishResult = {
+  error?: string;
+  messageId?: string | null;
+  ok: boolean;
+  panelId: string;
+};
+
+const HIERARCHY_PANEL_VERSION = 2;
+const HIERARCHY_INSTANCE_ID = `hierarchy:${process.pid}:${randomUUID()}`;
 const scheduledGuilds = new Map<string, ScheduledRefresh>();
 const hierarchyPanelCaches = new Map<string, HierarchyPanelCache>();
+const hierarchyPanelLocks = new Map<string, Promise<HierarchyPublishResult>>();
+let hierarchyServiceStarted = false;
 
 export const hierarchyCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -64,23 +76,47 @@ export const hierarchyCommand: BotCommand = {
 };
 
 export function startFivemHierarchyService(client: Client<true>, context: BotContext) {
+  if (hierarchyServiceStarted) {
+    console.info("[HIERARCHY] Serviço V2 já estava iniciado; chamada duplicada ignorada.");
+    return;
+  }
+  hierarchyServiceStarted = true;
+  console.info("[HIERARCHY] Serviço V2 iniciado.");
+  console.info("[HIERARCHY] Serviço legado desativado.");
+
   context.socket.onFivemHierarchyPanelUpdate((payload, ack?: FivemHierarchyPanelUpdateAck) => {
+    const ackPanelId = payload.panelId ?? undefined;
     const guild = client.guilds.cache.get(payload.guildId);
     if (!guild) {
-      ack?.({ error: "O bot nao esta conectado ao servidor selecionado.", ok: false, panelId: payload.panelId });
+      ack?.({ error: "O bot nao esta conectado ao servidor selecionado.", ok: false, panelId: ackPanelId });
+      return;
+    }
+    if (payload.action === "delete") {
+      if (!payload.panelId) {
+        ack?.({ error: "Painel de hierarquia nao informado para exclusao.", ok: false });
+        return;
+      }
+      const panelId = payload.panelId;
+      hierarchyPanelCaches.delete(panelCacheKey(payload.guildId, panelId));
+      void deleteOfficialHierarchyPanelMessage(guild, payload.oldPanelChannelId ?? null, payload.oldPanelMessageId ?? null, panelId)
+        .then(() => ack?.({ ok: true, panelId }))
+        .catch((error) => ack?.({ error: `Falha ao remover painel de hierarquia antigo: ${errorMessage(error)}`, ok: false, panelId }));
       return;
     }
     void refreshHierarchyPanelsForGuild(guild, context, payload.panelId)
       .then((results) => {
+        if (payload.oldPanelChannelId && payload.oldPanelMessageId) {
+          void deleteOfficialHierarchyPanelMessage(guild, payload.oldPanelChannelId, payload.oldPanelMessageId, payload.panelId ?? "unknown");
+        }
         const success = results.find((result) => result.ok);
         if (success) {
           ack?.(success);
           return;
         }
-        ack?.(results[0] ?? { error: "Nenhum painel de hierarquia ativo foi encontrado para publicar.", ok: false, panelId: payload.panelId });
+        ack?.(results[0] ?? { error: "Nenhum painel de hierarquia ativo foi encontrado para publicar.", ok: false, panelId: ackPanelId });
       })
       .catch((error) => {
-        ack?.({ error: `Falha inesperada ao publicar hierarquia: ${errorMessage(error)}`, ok: false, panelId: payload.panelId });
+        ack?.({ error: `Falha inesperada ao publicar hierarquia: ${errorMessage(error)}`, ok: false, panelId: ackPanelId });
       });
   });
 
@@ -259,6 +295,49 @@ async function refreshHierarchyPanelsIncrementally(guild: Guild, context: BotCon
 }
 
 async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: FivemHierarchyPanel, cache: HierarchyPanelCache) {
+  const lockKey = panelCacheKey(guild.id, panel.id);
+  const running = hierarchyPanelLocks.get(lockKey);
+  if (running) {
+    console.info(`[HIERARCHY] Atualização duplicada bloqueada. Guild: ${guild.id}. Hierarquia: ${panel.id}.`);
+    return running;
+  }
+
+  const task = publishHierarchyPanelWithLocks(guild, context, panel, cache)
+    .finally(() => {
+      hierarchyPanelLocks.delete(lockKey);
+    });
+  hierarchyPanelLocks.set(lockKey, task);
+  return task;
+}
+
+async function publishHierarchyPanelWithLocks(guild: Guild, context: BotContext, panel: FivemHierarchyPanel, cache: HierarchyPanelCache): Promise<HierarchyPublishResult> {
+  const acquired = await context.api.acquireFivemHierarchyPanelLock({
+    guildId: guild.id,
+    instanceId: HIERARCHY_INSTANCE_ID,
+    panelId: panel.id,
+    ttlMs: 30_000
+  }).catch((error) => {
+    console.warn(`[HIERARCHY] Falha ao adquirir lock distribuido para ${guild.id}:${panel.id}: ${errorMessage(error)}`);
+    return true;
+  });
+
+  if (!acquired) {
+    console.info(`[HIERARCHY] Atualização duplicada bloqueada pelo lock distribuido. Guild: ${guild.id}. Hierarquia: ${panel.id}.`);
+    return { messageId: panel.panelMessageId ?? null, ok: true, panelId: panel.id };
+  }
+
+  try {
+    return await publishHierarchyPanelUnlocked(guild, context, panel, cache);
+  } finally {
+    await context.api.releaseFivemHierarchyPanelLock({
+      guildId: guild.id,
+      instanceId: HIERARCHY_INSTANCE_ID,
+      panelId: panel.id
+    }).catch(() => null);
+  }
+}
+
+async function publishHierarchyPanelUnlocked(guild: Guild, context: BotContext, panel: FivemHierarchyPanel, cache: HierarchyPanelCache): Promise<HierarchyPublishResult> {
   if (!panel.enabled) return { error: "O painel de hierarquia esta desativado.", ok: false, panelId: panel.id };
   if (!panel.panelChannelId) return { error: "Canal do painel de hierarquia nao configurado.", ok: false, panelId: panel.id };
   const channel = await guild.channels.fetch(panel.panelChannelId).catch(() => null);
@@ -276,7 +355,9 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
   }
   await logMissingHierarchyRoles(context, guild, panel);
   const visuals = await getHierarchyPanelVisualSlots(context, guild.id, panel);
-  const payload = createHierarchyPayload(guild, panel, cache, visuals[0] ?? null);
+  const payload = buildHierarchyPanel(guild, panel, cache, visuals[0] ?? null);
+  const contentHash = generatePanelHash(payload);
+  console.info(`[HIERARCHY] Atualização solicitada. Guild: ${guild.id}. Hierarquia: ${panel.id}. MessageId encontrado: ${panel.panelMessageId ?? "nenhum"}.`);
   if (panel.panelMessageId) {
     let fetchError: unknown = null;
     const message = await channel.messages.fetch(panel.panelMessageId).catch((error) => {
@@ -290,6 +371,11 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
       }
       await logStaleHierarchyPanelMessage(context, guild.id, panel, panel.panelMessageId, permissionReport);
     } else {
+      if (panel.panelVersion === HIERARCHY_PANEL_VERSION && panel.contentHash === contentHash) {
+        console.info(`[HIERARCHY] Conteúdo sem alterações. Atualização ignorada. Guild: ${guild.id}. Hierarquia: ${panel.id}.`);
+        void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, message, panel);
+        return { messageId: message.id, ok: true, panelId: panel.id };
+      }
       const edited = await message.edit(payload).catch(async (error) => {
         await logPublishFailure(context, guild.id, panel, `Falha ao editar painel existente: ${discordErrorMessage(error)}. ${permissionHint(permissionReport)}`, permissionReport);
         return null;
@@ -298,6 +384,8 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
         return { error: `Falha ao editar a mensagem salva do painel. ${permissionHint(permissionReport)}`, ok: false, panelId: panel.id };
       }
 
+      await context.api.updateFivemHierarchyPanelState({ contentHash, guildId: guild.id, messageId: edited.id, panelId: panel.id, panelVersion: HIERARCHY_PANEL_VERSION }).catch(() => null);
+      console.info(`[HIERARCHY] Mensagem oficial editada. Guild: ${guild.id}. Hierarquia: ${panel.id}. MessageId: ${edited.id}.`);
       void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, edited, panel);
       return { messageId: edited.id, ok: true, panelId: panel.id };
     }
@@ -309,8 +397,9 @@ async function publishHierarchyPanel(guild: Guild, context: BotContext, panel: F
   });
   if (message) {
     if (panel.panelMessageId !== message.id) {
-      await context.api.updateFivemHierarchyPanelState({ guildId: guild.id, messageId: message.id, panelId: panel.id }).catch(() => null);
+      await context.api.updateFivemHierarchyPanelState({ contentHash, guildId: guild.id, messageId: message.id, panelId: panel.id, panelVersion: HIERARCHY_PANEL_VERSION }).catch(() => null);
     }
+    console.info(`[HIERARCHY] Nova mensagem criada porque a anterior não existe. Guild: ${guild.id}. Hierarquia: ${panel.id}. MessageId: ${message.id}.`);
     void pruneDuplicateHierarchyPanelMessages(channel as DuplicateCleanupChannel, message, panel);
     return { messageId: message.id, ok: true, panelId: panel.id };
   }
@@ -463,9 +552,22 @@ function fivemHierarchyVisualPanelId(panelId: string) {
   return `fivem-hierarchy-${normalized || "panel"}`;
 }
 
-function createHierarchyPayload(guild: Guild, panel: FivemHierarchyPanel, cache: HierarchyPanelCache, visual: PanelVisualConfig | null) {
+function buildHierarchyPanel(guild: Guild, panel: FivemHierarchyPanel, cache: HierarchyPanelCache, visual: PanelVisualConfig | null) {
   const singleVisual = sanitizeSingleHierarchyVisual(visual?.imageEnabled ? visual : null);
   return renderComponentsV2Panel({ accentColor: colorToInt(panel.color), actions: [], description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.", fields: renderHierarchyFields(guild, panel, cache), footer: panel.footerEnabled ? { text: panel.footerText ?? "OrviteK" } : { enabled: false }, image: singleVisual, moduleId: "fivem-hierarchy", title: panel.title });
+}
+
+function generatePanelHash(payload: unknown) {
+  return createHash("sha256").update(stableStringify(payload)).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function renderHierarchyFields(guild: Guild, panel: FivemHierarchyPanel, cache: HierarchyPanelCache) {
@@ -682,10 +784,27 @@ async function pruneDuplicateHierarchyPanelMessages(channel: DuplicateCleanupCha
   for (const message of messages.values()) {
     if (message.id === currentMessage.id || message.author.id !== botId) continue;
     if (!messageLooksLikeHierarchyPanel(message, duplicateKeys)) continue;
-    await message.delete().catch((error) => {
+    await message.delete().then(() => {
+      console.info(`[HIERARCHY] Painel legado excluído. MessageId: ${message.id}.`);
+    }).catch((error) => {
       console.warn(`[fivem-hierarchy] falha ao apagar painel duplicado ${message.id}: ${errorMessage(error)}`);
     });
   }
+}
+
+async function deleteOfficialHierarchyPanelMessage(guild: Guild, channelId: string | null, messageId: string | null, panelId: string) {
+  if (!channelId || !messageId) return;
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || !("messages" in channel)) return;
+  const message = await channel.messages.fetch(messageId).catch(() => null);
+  if (!message) return;
+  if (message.author.id !== guild.client.user?.id) return;
+  if (!messageLooksLikeAnyHierarchyPanel(message)) return;
+  await message.delete().then(() => {
+    console.info(`[HIERARCHY] Painel legado/oficial antigo excluído. Guild: ${guild.id}. Hierarquia: ${panelId}. MessageId: ${messageId}.`);
+  }).catch((error) => {
+    console.warn(`[fivem-hierarchy] falha ao apagar painel oficial antigo ${messageId}: ${errorMessage(error)}`);
+  });
 }
 
 function messageLooksLikeHierarchyPanel(message: Message, duplicateKeys: string[]) {
@@ -697,6 +816,16 @@ function messageLooksLikeHierarchyPanel(message: Message, duplicateKeys: string[
 
   if (!text.includes("hierarquia")) return false;
   return duplicateKeys.some((key) => key && text.includes(key));
+}
+
+function messageLooksLikeAnyHierarchyPanel(message: Message) {
+  const text = normalizeDuplicateLookupText([
+    message.content,
+    ...message.embeds.flatMap((embed) => [embed.title, embed.description, embed.footer?.text]),
+    JSON.stringify(message.components.map((component) => component.toJSON()))
+  ].filter(Boolean).join("\n"));
+
+  return text.includes("fivem-hierarchy") || text.includes("hierarquia");
 }
 
 function normalizeDuplicateLookupText(value: string | null | undefined) {

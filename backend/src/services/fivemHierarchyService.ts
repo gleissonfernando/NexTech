@@ -20,6 +20,7 @@ export type FivemHierarchyPanelDto = {
   allowedRoleIds: string[];
   botId: string | null;
   color: string;
+  contentHash: string | null;
   createdAt: string;
   description: string | null;
   enabled: boolean;
@@ -36,6 +37,7 @@ export type FivemHierarchyPanelDto = {
   name: string;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  panelVersion: number;
   title: string;
   updatedAt: string;
   updatedBy?: string | null;
@@ -68,12 +70,14 @@ export async function getFivemHierarchyDashboard(guildId: string, botId?: string
 
 export async function listFivemHierarchyPanels(guildId: string, botId?: string | null) {
   const { fivemHierarchyPanels } = await getMongoCollections();
+  await migrateFivemHierarchyPanelState(guildId, normalizeBotId(botId));
   const rows = await fivemHierarchyPanels.find(scopeQuery(guildId, normalizeBotId(botId))).sort({ createdAt: -1 }).limit(50).toArray();
   return rows.map(toPanelDto);
 }
 
 export async function listActiveFivemHierarchyPanels(botId: string) {
   const { fivemHierarchyPanels } = await getMongoCollections();
+  await migrateFivemHierarchyPanelState(null, botId);
   const rows = await fivemHierarchyPanels.find({ botId, enabled: true }).sort({ updatedAt: -1 }).toArray();
   return rows.map(toPanelDto);
 }
@@ -90,13 +94,18 @@ export async function saveFivemHierarchyPanel(guildId: string, botId: string | n
   const current = input.id ? await getRawPanel(guildId, input.id, normalizedBotId) : null;
   const panelId = current?._id ?? randomUUID();
   const mergedInput = current ? { ...toPanelDto(current), ...input } : input;
+  const nextPanelChannelId = normalizeSnowflake(input.panelChannelId ?? current?.panelChannelId);
+  const channelChanged = Boolean(current && input.panelChannelId !== undefined && (current.panelChannelId ?? null) !== nextPanelChannelId);
   const next: MongoFivemHierarchyPanel = {
     ...normalizePanelInput(mergedInput, guildId, normalizedBotId),
     _id: panelId,
     botId: normalizedBotId,
+    contentHash: channelChanged ? null : current?.contentHash ?? null,
     createdAt: current?.createdAt ?? now,
     guildId,
-    panelMessageId: normalizeSnowflake(input.panelMessageId ?? current?.panelMessageId),
+    panelMessageId: channelChanged ? null : normalizeSnowflake(input.panelMessageId ?? current?.panelMessageId),
+    panelVersion: 2,
+    updateLock: null,
     updatedAt: now,
     updatedBy: actorId
   };
@@ -107,7 +116,14 @@ export async function saveFivemHierarchyPanel(guildId: string, botId: string | n
   const dto = toPanelDto(next);
   emitFivemHierarchyPanelUpdated(guildId, normalizedBotId, current ? "panel.updated" : "panel.created", dto);
   if (normalizedBotId) {
-    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "fivem:hierarchy:panel_update", { action: "update", botId: normalizedBotId, guildId, panelId });
+    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "fivem:hierarchy:panel_update", {
+      action: "update",
+      botId: normalizedBotId,
+      guildId,
+      oldPanelChannelId: channelChanged ? current?.panelChannelId ?? null : null,
+      oldPanelMessageId: channelChanged ? current?.panelMessageId ?? null : null,
+      panelId
+    });
   }
   return dto;
 }
@@ -121,6 +137,16 @@ export async function deleteFivemHierarchyPanel(guildId: string, botId: string |
   await writeFivemHierarchyLog({ action: "panel.deleted", botId: normalizedBotId, details: { title: current.title }, guildId, panelId, userId: actorId });
   const dto = toPanelDto(current);
   emitFivemHierarchyPanelUpdated(guildId, normalizedBotId, "panel.deleted", dto);
+  if (normalizedBotId) {
+    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "fivem:hierarchy:panel_update", {
+      action: "delete",
+      botId: normalizedBotId,
+      guildId,
+      oldPanelChannelId: current.panelChannelId ?? null,
+      oldPanelMessageId: current.panelMessageId ?? null,
+      panelId
+    });
+  }
   return dto;
 }
 
@@ -144,24 +170,57 @@ export async function requestFivemHierarchyPanelPublish(guildId: string, botId: 
   throw createPublishError(error ?? "O bot nao respondeu a solicitacao de publicacao. Confira se o bot DEV esta online e conectado ao backend.", 409);
 }
 
-export async function updateFivemHierarchyPanelState(guildId: string, botId: string | null, panelId: string, messageId: string | null) {
+export async function updateFivemHierarchyPanelState(guildId: string, botId: string | null, panelId: string, input: { contentHash?: string | null; messageId?: string | null; panelVersion?: number }) {
   const { fivemHierarchyPanels } = await getMongoCollections();
   const normalizedBotId = normalizeBotId(botId);
-  const normalizedMessageId = normalizeSnowflake(messageId);
+  const normalizedMessageId = normalizeSnowflake(input.messageId);
+  const normalizedHash = normalizeContentHash(input.contentHash);
+  const panelVersion = input.panelVersion === 2 ? 2 : 2;
   const current = await fivemHierarchyPanels.findOne({ _id: panelId, ...scopeQuery(guildId, normalizedBotId) });
   if (!current) return null;
-  if ((current.panelMessageId ?? null) === normalizedMessageId) {
+  if ((current.panelMessageId ?? null) === normalizedMessageId
+    && (current.contentHash ?? null) === normalizedHash
+    && (current.panelVersion ?? 1) === panelVersion) {
     return toPanelDto(current);
   }
   const row = await fivemHierarchyPanels.findOneAndUpdate(
     { _id: panelId, ...scopeQuery(guildId, normalizedBotId) },
-    { $set: { panelMessageId: normalizedMessageId, updatedAt: new Date() } },
+    { $set: { contentHash: normalizedHash, panelMessageId: normalizedMessageId, panelVersion, updatedAt: new Date() } },
     { returnDocument: "after" }
   );
   if (!row) return null;
   const dto = toPanelDto(row);
   emitFivemHierarchyPanelUpdated(guildId, normalizedBotId, "panel.state_updated", dto);
   return dto;
+}
+
+export async function acquireFivemHierarchyPanelLock(guildId: string, botId: string | null, panelId: string, instanceId: string, ttlMs: number) {
+  const { fivemHierarchyPanels } = await getMongoCollections();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + Math.max(5_000, Math.min(ttlMs, 120_000)));
+  const row = await fivemHierarchyPanels.findOneAndUpdate(
+    {
+      _id: panelId,
+      ...scopeQuery(guildId, normalizeBotId(botId)),
+      $or: [
+        { updateLock: null },
+        { updateLock: { $exists: false } },
+        { "updateLock.expiresAt": { $lte: now } },
+        { "updateLock.instanceId": instanceId }
+      ]
+    },
+    { $set: { updateLock: { expiresAt, instanceId } } },
+    { returnDocument: "after" }
+  );
+  return Boolean(row);
+}
+
+export async function releaseFivemHierarchyPanelLock(guildId: string, botId: string | null, panelId: string, instanceId: string) {
+  const { fivemHierarchyPanels } = await getMongoCollections();
+  await fivemHierarchyPanels.updateOne(
+    { _id: panelId, ...scopeQuery(guildId, normalizeBotId(botId)), "updateLock.instanceId": instanceId },
+    { $set: { updateLock: null } }
+  );
 }
 
 export async function listFivemHierarchyLogs(guildId: string, botId?: string | null, panelId?: string | null) {
@@ -175,7 +234,7 @@ async function getRawPanel(guildId: string, panelId: string, botId: string | nul
   return fivemHierarchyPanels.findOne({ _id: panelId, ...scopeQuery(guildId, botId) });
 }
 
-function normalizePanelInput(input: Partial<FivemHierarchyPanelDto>, guildId: string, botId: string | null): Omit<MongoFivemHierarchyPanel, "_id" | "createdAt" | "guildId" | "panelMessageId" | "updatedAt" | "updatedBy"> {
+function normalizePanelInput(input: Partial<FivemHierarchyPanelDto>, guildId: string, botId: string | null): Omit<MongoFivemHierarchyPanel, "_id" | "contentHash" | "createdAt" | "guildId" | "panelMessageId" | "panelVersion" | "updateLock" | "updatedAt" | "updatedBy"> {
   return {
     allowedRoleIds: normalizeRoleIds(input.allowedRoleIds ?? []),
     botId,
@@ -225,6 +284,7 @@ function toPanelDto(row: MongoFivemHierarchyPanel): FivemHierarchyPanelDto {
     allowedRoleIds: row.allowedRoleIds ?? [],
     botId: normalizeBotId(row.botId),
     color: row.color,
+    contentHash: row.contentHash ?? null,
     createdAt: row.createdAt.toISOString(),
     description: row.description ?? null,
     enabled: row.enabled === true,
@@ -241,6 +301,7 @@ function toPanelDto(row: MongoFivemHierarchyPanel): FivemHierarchyPanelDto {
     name: row.name,
     panelChannelId: row.panelChannelId ?? null,
     panelMessageId: row.panelMessageId ?? null,
+    panelVersion: row.panelVersion === 2 ? 2 : 1,
     title: row.title,
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy ?? null
@@ -275,8 +336,31 @@ function normalizeSnowflake(value: string | null | undefined) {
   return /^\d{5,32}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeContentHash(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  return /^[a-f0-9]{64}$/i.test(normalized) ? normalized.toLowerCase() : null;
+}
+
 function normalizeRoleIds(values: string[]) {
   return [...new Set((Array.isArray(values) ? values : []).map(normalizeSnowflake).filter((value): value is string => Boolean(value)))].slice(0, 100);
+}
+
+async function migrateFivemHierarchyPanelState(guildId: string | null, botId: string | null) {
+  const { fivemHierarchyPanels } = await getMongoCollections();
+  await fivemHierarchyPanels.updateMany(
+    {
+      ...(guildId ? { guildId } : {}),
+      ...(botId ? { botId } : {}),
+      $or: [
+        { panelVersion: { $ne: 2 } },
+        { contentHash: { $exists: false } },
+        { updateLock: { $exists: false } }
+      ]
+    },
+    {
+      $set: { contentHash: null, panelVersion: 2, updateLock: null }
+    }
+  );
 }
 
 function normalizeText(value: string | null | undefined, maxLength: number) {

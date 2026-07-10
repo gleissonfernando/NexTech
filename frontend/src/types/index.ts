@@ -1555,6 +1555,7 @@ export type FivemHierarchyPanel = {
   allowedRoleIds: string[];
   botId: string | null;
   color: string;
+  contentHash: string | null;
   createdAt: string;
   description: string | null;
   enabled: boolean;
@@ -1571,6 +1572,7 @@ export type FivemHierarchyPanel = {
   name: string;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  panelVersion: number;
   title: string;
   updatedAt: string;
   updatedBy?: string | null;
