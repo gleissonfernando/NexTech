@@ -94,7 +94,13 @@ let hierarchyServiceStarted = false;
 export const hierarchyCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("hierarquia")
-    .setDescription("Gerencia ou atualiza o painel de Hierarquia FAQ FiveM."),
+    .setDescription("Gerencia ou atualiza os painéis de Hierarquia V2.")
+    .addSubcommand((subcommand) => subcommand
+      .setName("config")
+      .setDescription("Abre a configuração da Hierarquia V2 na dashboard."))
+    .addSubcommand((subcommand) => subcommand
+      .setName("atualizar")
+      .setDescription("Atualiza agora os painéis de Hierarquia V2.")),
   moduleId: "fivem-hierarchy",
   async execute(interaction: ChatInputCommandInteraction, context: BotContext) {
     if (!interaction.guild) return;
@@ -102,9 +108,24 @@ export const hierarchyCommand: BotCommand = {
       await interaction.reply({ content: "Voce precisa de permissao para gerenciar o servidor.", ephemeral: true });
       return;
     }
+
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === "config") {
+      const origin = (env.FRONTEND_URL || "https://orvitek-bots.discloud.app").replace(/\/+$/, "");
+      await interaction.reply({
+        content: `Configure os painéis de Hierarquia V2 pela dashboard:\n${origin}/dashboard/hierarquia`,
+        ephemeral: true
+      });
+      return;
+    }
+
     await interaction.deferReply({ ephemeral: true });
-    await refreshHierarchyPanelsForGuild(interaction.guild, context);
-    await interaction.editReply("Painel de Hierarquia FAQ atualizado.");
+    const results = await refreshHierarchyPanelsForGuild(interaction.guild, context);
+    const updated = results.filter((result) => result.ok).length;
+    const failed = results.length - updated;
+    await interaction.editReply(failed
+      ? `Hierarquia V2 processada: ${updated} painel(is) atualizado(s) e ${failed} com falha.`
+      : `Hierarquia V2 atualizada: ${updated} painel(is) processado(s).`);
   }
 };
 
