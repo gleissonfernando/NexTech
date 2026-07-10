@@ -2084,7 +2084,7 @@ export class ApiClient {
     return data.absence;
   }
 
-  async decideRhAbsence(guildId: string, absenceId: string, input: { actorId: string; rejectionReason?: string | null; roleIds: string[]; status: "approved" | "rejected" }) {
+  async decideRhAbsence(guildId: string, absenceId: string, input: { actorId: string; isAdministrator?: boolean; rejectionReason?: string | null; roleIds: string[]; status: "approved" | "rejected" }) {
     const { data } = await this.http.post<{ absence: RhAdminAbsence }>(`/rh-admin/bot/${guildId}/absences/${absenceId}/decision`, input);
     return data.absence;
   }

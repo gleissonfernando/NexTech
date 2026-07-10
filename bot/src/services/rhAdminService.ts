@@ -316,12 +316,13 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
   const settings = await context.api.getRhAdminSettings(interaction.guildId!);
   const member = interaction.member as GuildMember | null;
   const roleIds = member?.roles.cache.map((role) => role.id) ?? [];
-  const allowed = await context.api.canApproveRhAbsence(interaction.guildId!, { isAdministrator: Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)), roleIds, userId: interaction.user.id });
+  const isAdministrator = Boolean(member?.permissions.has(PermissionFlagsBits.Administrator));
+  const allowed = await context.api.canApproveRhAbsence(interaction.guildId!, { isAdministrator, roleIds, userId: interaction.user.id });
   if (!allowed) {
     await sendRhLog(interaction.guild!, context, settings, "Tentativa de aprovação sem permissão.", interaction.user.id, interaction.user.id, "rh.absence_denied", "denied");
     return interaction.editReply("Você não tem permissão para analisar solicitações de ausência.");
   }
-  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, roleIds, status: "approved" });
+  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, roleIds, status: "approved" });
   await applyAbsenceRole(interaction, context, absence, settings);
   await interaction.message.edit(absenceReviewPanel(absence, settings)).catch(() => null);
   await dmAbsenceApproved(interaction, absence, settings);
@@ -334,9 +335,10 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
   const settings = await context.api.getRhAdminSettings(interaction.guildId!);
   const member = interaction.member as GuildMember | null;
   const roleIds = member?.roles.cache.map((role) => role.id) ?? [];
-  const allowed = await context.api.canApproveRhAbsence(interaction.guildId!, { isAdministrator: Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)), roleIds, userId: interaction.user.id });
+  const isAdministrator = Boolean(member?.permissions.has(PermissionFlagsBits.Administrator));
+  const allowed = await context.api.canApproveRhAbsence(interaction.guildId!, { isAdministrator, roleIds, userId: interaction.user.id });
   if (!allowed) return interaction.editReply("Você não tem permissão para analisar solicitações de ausência.");
-  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, rejectionReason: interaction.fields.getTextInputValue("reason"), roleIds, status: "rejected" });
+  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, rejectionReason: interaction.fields.getTextInputValue("reason"), roleIds, status: "rejected" });
   await interaction.message?.edit(absenceReviewPanel(absence, settings)).catch(() => null);
   await dmAbsenceRejected(interaction, absence, settings);
   await sendRhLog(interaction.guild!, context, settings, "Ausência recusada.", absence.userId, interaction.user.id, "rh.absence_rejected");

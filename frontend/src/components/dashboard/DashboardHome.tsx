@@ -5,6 +5,7 @@ import {
   Database, Gauge, GitBranch, Globe2, KeyRound, LockKeyhole, Radio,
   Server, ShieldCheck, Sparkles, Webhook, Workflow, Zap
 } from "lucide-react";
+import { ComoFunciona } from "./ComoFunciona";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -39,13 +40,6 @@ const integrations = [
   { icon: Bot, label: "Bots" }, { icon: Webhook, label: "Webhooks" },
   { icon: Braces, label: "API REST" }, { icon: Database, label: "Dados" },
   { icon: GitBranch, label: "Código" }, { icon: Cloud, label: "Nuvem" }
-];
-
-const steps = [
-  ["01", "Escolha seu bot", "Selecione a aplicação que deseja administrar."],
-  ["02", "Defina o servidor", "Trabalhe sempre no contexto correto da sua comunidade."],
-  ["03", "Ative os módulos", "Libere apenas as ferramentas necessárias para a operação."],
-  ["04", "Acompanhe tudo", "Monitore configurações, atividades e integrações pelo painel."]
 ];
 
 export function DashboardHome(props: DashboardHomeProps) {
@@ -113,18 +107,7 @@ export function DashboardHome(props: DashboardHomeProps) {
         </div>
       </Reveal>
 
-      <section className="home-section">
-        <SectionHeading eyebrow="Primeiros passos" title="Como começar com a Orvitek" text="Seu ambiente já está pronto; avance pela operação em quatro passos simples." />
-        <div className="relative mt-10 grid gap-4 lg:grid-cols-4">
-          <div className="absolute left-[12%] right-[12%] top-7 hidden h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent lg:block" />
-          {steps.map(([number, title, text]) => (
-            <Reveal className="relative rounded-2xl border border-white/[.07] bg-[#0b0b17]/90 p-5" key={number}>
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-400/25 bg-violet-500/10 font-mono text-sm text-violet-300">{number}</span>
-              <h3 className="mt-5 font-semibold text-white">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
-            </Reveal>
-          ))}
-        </div>
-      </section>
+      <ComoFunciona />
 
       <section className="home-section grid items-center gap-10 xl:grid-cols-2">
         <div>

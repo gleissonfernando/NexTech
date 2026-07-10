@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Rubik+Distressed&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -73,6 +75,11 @@
 
   .home-section {
     padding-block: clamp(4.5rem, 8vw, 7.5rem);
+  }
+
+  .como-funciona-title {
+    font-family: "Rubik Distressed", Inter, sans-serif;
+    text-shadow: 2px 2px 0 rgba(255, 200, 0, 0.15);
   }
 
   .orvitek-grid {

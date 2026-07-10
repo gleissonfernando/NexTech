@@ -90,7 +90,7 @@ const adornmentSchema = z.object({
   userId: snowflake
 });
 const messageSchema = z.object({ channelId: optionalSnowflake, messageId: optionalSnowflake, reviewChannelId: optionalSnowflake, reviewMessageId: optionalSnowflake });
-const decisionSchema = z.object({ actorId: snowflake, rejectionReason: z.string().max(900).nullable().optional(), roleIds: z.array(snowflake).default([]), status: z.enum(["approved", "rejected"]) });
+const decisionSchema = z.object({ actorId: snowflake, isAdministrator: z.boolean().optional(), rejectionReason: z.string().max(900).nullable().optional(), roleIds: z.array(snowflake).default([]), status: z.enum(["approved", "rejected"]) });
 const roleStateSchema = z.object({ dmDelivered: z.boolean().nullable().optional(), roleAdded: z.boolean().optional(), roleRemoved: z.boolean().optional() });
 const permissionSchema = z.object({ isAdministrator: z.boolean().optional(), roleIds: z.array(snowflake).default([]), userId: snowflake });
 const logSchema = z.object({
@@ -212,7 +212,7 @@ rhAdminRouter.post("/bot/:guildId/absences/:absenceId/decision", requireBot, asy
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const input = decisionSchema.parse(req.body ?? {});
     const settings = await getRhAdminSettings(botId, guildId);
-    if (!isRhApprover(settings, input.actorId, input.roleIds)) return res.status(403).json({ message: "Você não tem permissão para analisar solicitações de ausência." });
+    if (!isRhApprover(settings, input.actorId, input.roleIds, input.isAdministrator)) return res.status(403).json({ message: "Você não tem permissão para analisar solicitações de ausência." });
     const absence = await decideRhAbsence(botId, guildId, routeParam(req, "absenceId"), input);
     if (!absence) return res.status(404).json({ message: "Solicitação de ausência não encontrada." });
     return res.json({ absence });
