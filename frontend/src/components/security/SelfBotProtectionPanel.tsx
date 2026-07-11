@@ -413,46 +413,47 @@ export function SelfBotProtectionPanel({
     }));
   }
 
-  async function handleSave() {
+  async function handleSave(overrides: Partial<SelfBotProtectionSettings> = {}) {
     if (!botId || !guild) return;
 
+    const nextSettings = { ...settings, ...overrides };
     setSaving(true);
     setMessage(null);
 
     try {
       const result = await saveSelfBotProtectionSettings(guild.id, botId, {
-        addRoleId: settings.addRoleId,
-        blockedTerms: settings.blockedTerms,
-        capsMinLength: settings.capsMinLength,
-        capsPercentage: settings.capsPercentage,
-        embedColor: settings.embedColor,
-        emojiLimit: settings.emojiLimit,
-        enabled: settings.enabled,
-        floodLimit: settings.floodLimit,
-        floodWindowSeconds: settings.floodWindowSeconds,
-        ignoredChannelIds: settings.ignoredChannelIds,
-        imageLimit: settings.imageLimit,
-        imageWindowSeconds: settings.imageWindowSeconds,
-        linkChannelIds: settings.linkChannelIds,
-        logChannelId: settings.logChannelId,
-        punishmentLogChannelId: settings.punishmentLogChannelId,
-        logWebhookUrl: settings.logWebhookUrl,
-        mediaChannelIds: settings.mediaChannelIds,
-        mentionLimit: settings.mentionLimit,
-        moduleToggles: settings.moduleToggles,
-        multiChannelLimit: settings.multiChannelLimit,
-        multiChannelWindowSeconds: settings.multiChannelWindowSeconds,
-        newAccountMaxAgeHours: settings.newAccountMaxAgeHours,
-        protectedChannelIds: settings.protectedChannelIds,
-        punishmentSequence: settings.punishmentSequence,
-        punishmentSteps: settings.punishmentSteps,
-        raidJoinLimit: settings.raidJoinLimit,
-        raidWindowSeconds: settings.raidWindowSeconds,
-        removeRoleId: settings.removeRoleId,
-        repeatedTextLimit: settings.repeatedTextLimit,
-        repeatedTextWindowSeconds: settings.repeatedTextWindowSeconds,
-        suspiciousDomains: settings.suspiciousDomains,
-        timeoutSeconds: settings.timeoutSeconds
+        addRoleId: nextSettings.addRoleId,
+        blockedTerms: nextSettings.blockedTerms,
+        capsMinLength: nextSettings.capsMinLength,
+        capsPercentage: nextSettings.capsPercentage,
+        embedColor: nextSettings.embedColor,
+        emojiLimit: nextSettings.emojiLimit,
+        enabled: nextSettings.enabled,
+        floodLimit: nextSettings.floodLimit,
+        floodWindowSeconds: nextSettings.floodWindowSeconds,
+        ignoredChannelIds: nextSettings.ignoredChannelIds,
+        imageLimit: nextSettings.imageLimit,
+        imageWindowSeconds: nextSettings.imageWindowSeconds,
+        linkChannelIds: nextSettings.linkChannelIds,
+        logChannelId: nextSettings.logChannelId,
+        punishmentLogChannelId: nextSettings.punishmentLogChannelId,
+        logWebhookUrl: nextSettings.logWebhookUrl,
+        mediaChannelIds: nextSettings.mediaChannelIds,
+        mentionLimit: nextSettings.mentionLimit,
+        moduleToggles: nextSettings.moduleToggles,
+        multiChannelLimit: nextSettings.multiChannelLimit,
+        multiChannelWindowSeconds: nextSettings.multiChannelWindowSeconds,
+        newAccountMaxAgeHours: nextSettings.newAccountMaxAgeHours,
+        protectedChannelIds: nextSettings.protectedChannelIds,
+        punishmentSequence: nextSettings.punishmentSequence,
+        punishmentSteps: nextSettings.punishmentSteps,
+        raidJoinLimit: nextSettings.raidJoinLimit,
+        raidWindowSeconds: nextSettings.raidWindowSeconds,
+        removeRoleId: nextSettings.removeRoleId,
+        repeatedTextLimit: nextSettings.repeatedTextLimit,
+        repeatedTextWindowSeconds: nextSettings.repeatedTextWindowSeconds,
+        suspiciousDomains: nextSettings.suspiciousDomains,
+        timeoutSeconds: nextSettings.timeoutSeconds
       });
 
       setSettings(result.settings);
@@ -516,7 +517,10 @@ export function SelfBotProtectionPanel({
               <Switch
                 checked={settings.enabled}
                 disabled={disabled}
-                onCheckedChange={(checked) => updateSetting("enabled", checked)}
+                onCheckedChange={(checked) => {
+                  updateSetting("enabled", checked);
+                  void handleSave({ enabled: checked });
+                }}
               />
             </div>
           </div>
