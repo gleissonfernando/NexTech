@@ -169,22 +169,16 @@ function applyBrowserVerification(req: Request, auth: DashboardAuth): DashboardA
 }
 
 function normalizeAuthUser(user: AuthSessionUser): AuthSessionUser {
-  const authorized = isDashboardDevUserId(user.discordId);
-  const hadLegacyAuthorization = user.authorized && !authorized;
-  const normalizedGuilds = hadLegacyAuthorization
-    ? user.guilds.map((guild) => ({
-        ...guild,
-        botEnabled: false,
-        isAdmin: false,
-        owner: false
-      }))
-    : user.guilds;
-  const guilds = authorized ? mergeAuthorizedBotGuilds(normalizedGuilds) : normalizedGuilds;
+  // `user.authorized` is only written after the server validates the account
+  // against the persisted DEV permissions. Keep that signed authorization in
+  // the session token instead of downgrading every non-owner DEV to viewer.
+  // Access is still revalidated by the auth middleware and DEV routes, so a
+  // removed permission is revoked on the next request/recheck.
+  const authorized = isDashboardDevUserId(user.discordId) || user.authorized === true;
+  const guilds = authorized ? mergeAuthorizedBotGuilds(user.guilds) : user.guilds;
   const accessLevel = authorized
     ? "admin"
-    : hadLegacyAuthorization
-      ? "viewer"
-      : normalizeSessionAccessLevel(user.accessLevel);
+    : normalizeSessionAccessLevel(user.accessLevel);
   const selectedGuildId =
     user.selectedGuildId && guilds.some((guild) => guild.id === user.selectedGuildId)
       ? user.selectedGuildId
