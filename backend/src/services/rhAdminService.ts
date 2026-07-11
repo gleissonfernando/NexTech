@@ -20,6 +20,10 @@ export type RhAdminSettingsDto = ReturnType<typeof mapSettings>;
 export type RhAdminAbsenceDto = ReturnType<typeof mapAbsence>;
 export type RhAdminAdornmentDto = ReturnType<typeof mapAdornment>;
 export type RhAdminLogDto = ReturnType<typeof mapLog>;
+export type RhAdminAbsenceActionResult = {
+  absence: RhAdminAbsenceDto;
+  changed: boolean;
+};
 
 export async function getRhAdminDashboard(botId: string | null, guildId: string): Promise<RhAdminDashboard> {
   const collections = await getMongoCollections();
@@ -205,12 +209,18 @@ export async function getRhAbsence(botId: string | null, guildId: string, absenc
   return absence ? mapAbsence(absence) : null;
 }
 
-export async function decideRhAbsence(botId: string | null, guildId: string, absenceId: string, input: { actorId: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
+export async function decideRhAbsence(botId: string | null, guildId: string, absenceId: string, input: { actorId: string; rejectionReason?: string | null; status: "approved" | "rejected" }): Promise<RhAdminAbsenceActionResult | null> {
   const { rhAdminAbsences } = await getMongoCollections();
   const absence = await rhAdminAbsences.findOne({ _id: absenceId, ...scope(botId, guildId) });
-  if (!absence || absence.status !== "pending") return absence ? mapAbsence(absence) : null;
+  if (!absence) return null;
+  if (absence.status !== "pending") {
+    return {
+      absence: mapAbsence(absence),
+      changed: false
+    };
+  }
   const now = new Date();
-  await rhAdminAbsences.updateOne({ _id: absenceId, ...scope(botId, guildId) }, {
+  const result = await rhAdminAbsences.updateOne({ _id: absenceId, ...scope(botId, guildId), status: "pending" }, {
     $set: {
       reviewerId: input.actorId,
       reviewedAt: now,
@@ -220,9 +230,20 @@ export async function decideRhAbsence(botId: string | null, guildId: string, abs
     }
   });
   const updated = await rhAdminAbsences.findOne({ _id: absenceId, ...scope(botId, guildId) });
+  if (!updated) return null;
+  const mapped = mapAbsence(updated);
+  if (!result.modifiedCount) {
+    return {
+      absence: mapped,
+      changed: false
+    };
+  }
   await logRhAdminAction(botId, guildId, `rh.absence_${input.status}`, absence.userId, input.actorId, input.status === "approved" ? "Ausência aprovada." : "Ausência recusada.", "success", { absenceId });
   emitRealtime("rh-admin:absence", { botId, guildId, absenceId });
-  return updated ? mapAbsence(updated) : null;
+  return {
+    absence: mapped,
+    changed: true
+  };
 }
 
 export async function markRhAbsenceRoleAdded(botId: string | null, guildId: string, absenceId: string, roleAdded: boolean) {
@@ -231,9 +252,17 @@ export async function markRhAbsenceRoleAdded(botId: string | null, guildId: stri
   return getRhAbsence(botId, guildId, absenceId);
 }
 
-export async function finishRhAbsence(botId: string | null, guildId: string, absenceId: string, roleRemoved: boolean, dmDelivered: boolean | null) {
+export async function finishRhAbsence(botId: string | null, guildId: string, absenceId: string, roleRemoved: boolean, dmDelivered: boolean | null): Promise<RhAdminAbsenceActionResult | null> {
   const { rhAdminAbsences } = await getMongoCollections();
-  await rhAdminAbsences.updateOne({ _id: absenceId, ...scope(botId, guildId) }, {
+  const current = await rhAdminAbsences.findOne({ _id: absenceId, ...scope(botId, guildId) });
+  if (!current) return null;
+  if (current.status !== "approved") {
+    return {
+      absence: mapAbsence(current),
+      changed: false
+    };
+  }
+  const result = await rhAdminAbsences.updateOne({ _id: absenceId, ...scope(botId, guildId), status: "approved" }, {
     $set: {
       autoRemoved: roleRemoved,
       dmDelivered,
@@ -243,16 +272,24 @@ export async function finishRhAbsence(botId: string | null, guildId: string, abs
     }
   });
   const absence = await getRhAbsence(botId, guildId, absenceId);
-  if (absence) {
-    await logRhAdminAction(botId, guildId, "rh.absence_finished", absence.userId, null, "Ausência finalizada automaticamente.", roleRemoved ? "success" : "warning", { absenceId, roleRemoved });
+  if (!absence) return null;
+  if (!result.modifiedCount) {
+    return {
+      absence,
+      changed: false
+    };
   }
+  await logRhAdminAction(botId, guildId, "rh.absence_finished", absence.userId, null, "Ausência finalizada automaticamente.", roleRemoved ? "success" : "warning", { absenceId, roleRemoved });
   emitRealtime("rh-admin:absence", { botId, guildId, absenceId });
-  return absence;
+  return {
+    absence,
+    changed: true
+  };
 }
 
 export async function listDueRhAbsences(botId: string | null, now = new Date()) {
   const { rhAdminAbsences } = await getMongoCollections();
-  const query = botId ? { botId, status: "approved" as const, returnAt: { $lte: now }, autoRemoved: false } : { status: "approved" as const, returnAt: { $lte: now }, autoRemoved: false };
+  const query = botId ? { botId, status: "approved" as const, returnAt: { $lte: now } } : { status: "approved" as const, returnAt: { $lte: now } };
   return (await rhAdminAbsences.find(query).sort({ returnAt: 1 }).limit(100).toArray()).map(mapAbsence);
 }
 

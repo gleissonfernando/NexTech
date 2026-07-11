@@ -322,7 +322,13 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
     await sendRhLog(interaction.guild!, context, settings, "Tentativa de aprovação sem permissão.", interaction.user.id, interaction.user.id, "rh.absence_denied", "denied");
     return interaction.editReply("Você não tem permissão para analisar solicitações de ausência.");
   }
-  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, roleIds, status: "approved" });
+  const result = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, roleIds, status: "approved" });
+  const absence = result.absence;
+  if (!result.changed) {
+    await interaction.message.edit(absenceReviewPanel(absence, settings)).catch(() => null);
+    await interaction.editReply("Esta ausência já foi analisada. Nenhuma nova DM foi enviada.");
+    return;
+  }
   await applyAbsenceRole(interaction, context, absence, settings);
   await interaction.message.edit(absenceReviewPanel(absence, settings)).catch(() => null);
   await dmAbsenceApproved(interaction, absence, settings);
@@ -338,7 +344,13 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
   const isAdministrator = Boolean(member?.permissions.has(PermissionFlagsBits.Administrator));
   const allowed = await context.api.canApproveRhAbsence(interaction.guildId!, { isAdministrator, roleIds, userId: interaction.user.id });
   if (!allowed) return interaction.editReply("Você não tem permissão para analisar solicitações de ausência.");
-  const absence = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, rejectionReason: interaction.fields.getTextInputValue("reason"), roleIds, status: "rejected" });
+  const result = await context.api.decideRhAbsence(interaction.guildId!, absenceId, { actorId: interaction.user.id, isAdministrator, rejectionReason: interaction.fields.getTextInputValue("reason"), roleIds, status: "rejected" });
+  const absence = result.absence;
+  if (!result.changed) {
+    await interaction.message?.edit(absenceReviewPanel(absence, settings)).catch(() => null);
+    await interaction.editReply("Esta ausência já foi analisada. Nenhuma nova DM foi enviada.");
+    return;
+  }
   await interaction.message?.edit(absenceReviewPanel(absence, settings)).catch(() => null);
   await dmAbsenceRejected(interaction, absence, settings);
   await sendRhLog(interaction.guild!, context, settings, "Ausência recusada.", absence.userId, interaction.user.id, "rh.absence_rejected");
@@ -369,9 +381,15 @@ async function processDueAbsences(client: Client, context: BotContext) {
       if (member && absence.absenceRoleId) {
         roleRemoved = await member.roles.remove(absence.absenceRoleId, "Ausência finalizada automaticamente").then(() => true).catch(() => false);
       }
-      const dmDelivered = member ? await member.send(dmFinishedPanel(absence, settings)).then(() => true).catch(() => false) : false;
-      await context.api.finishRhAbsence(absence.guildId, absence.id, { dmDelivered, roleRemoved });
-      await sendRhLog(guild, context, settings, `${roleRemoved ? "Cargo de ausência removido automaticamente." : "Ausência finalizada sem remover cargo."}\nDuração: ${formatAbsenceDuration(absence)}`, absence.userId, null, "rh.absence_finished", roleRemoved ? "success" : "warning");
+      const result = await context.api.finishRhAbsence(absence.guildId, absence.id, { dmDelivered: null, roleRemoved });
+      if (!result.changed) continue;
+      const dmDelivered = member && settings.sendAbsenceDm
+        ? await member.send(dmFinishedPanel(result.absence, settings)).then(() => true).catch(() => false)
+        : false;
+      if (dmDelivered) {
+        await context.api.finishRhAbsence(absence.guildId, absence.id, { dmDelivered, roleRemoved }).catch(() => null);
+      }
+      await sendRhLog(guild, context, settings, `${roleRemoved ? "Cargo de ausência removido automaticamente." : "Ausência finalizada sem remover cargo."}\nDuração: ${formatAbsenceDuration(result.absence)}`, result.absence.userId, null, "rh.absence_finished", roleRemoved ? "success" : "warning");
     }
   } finally {
     dueCheckRunning = false;

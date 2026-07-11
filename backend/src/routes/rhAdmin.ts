@@ -213,9 +213,9 @@ rhAdminRouter.post("/bot/:guildId/absences/:absenceId/decision", requireBot, asy
     const input = decisionSchema.parse(req.body ?? {});
     const settings = await getRhAdminSettings(botId, guildId);
     if (!isRhApprover(settings, input.actorId, input.roleIds, input.isAdministrator)) return res.status(403).json({ message: "Você não tem permissão para analisar solicitações de ausência." });
-    const absence = await decideRhAbsence(botId, guildId, routeParam(req, "absenceId"), input);
-    if (!absence) return res.status(404).json({ message: "Solicitação de ausência não encontrada." });
-    return res.json({ absence });
+    const result = await decideRhAbsence(botId, guildId, routeParam(req, "absenceId"), input);
+    if (!result) return res.status(404).json({ message: "Solicitação de ausência não encontrada." });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }
@@ -237,7 +237,9 @@ rhAdminRouter.post("/bot/:guildId/absences/:absenceId/finish", requireBot, async
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const input = roleStateSchema.parse(req.body ?? {});
-    return res.json({ absence: await finishRhAbsence(botId, guildId, routeParam(req, "absenceId"), input.roleRemoved ?? true, input.dmDelivered ?? null) });
+    const result = await finishRhAbsence(botId, guildId, routeParam(req, "absenceId"), input.roleRemoved ?? true, input.dmDelivered ?? null);
+    if (!result) return res.status(404).json({ message: "Solicitação de ausência não encontrada." });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }

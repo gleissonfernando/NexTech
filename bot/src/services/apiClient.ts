@@ -405,6 +405,11 @@ export type RhAdminAbsence = {
   updatedAt: string;
 };
 
+export type RhAdminAbsenceActionResult = {
+  absence: RhAdminAbsence;
+  changed: boolean;
+};
+
 export type RhAdminAdornment = {
   id: string;
   botId: string | null;
@@ -2211,8 +2216,8 @@ export class ApiClient {
   }
 
   async decideRhAbsence(guildId: string, absenceId: string, input: { actorId: string; isAdministrator?: boolean; rejectionReason?: string | null; roleIds: string[]; status: "approved" | "rejected" }) {
-    const { data } = await this.http.post<{ absence: RhAdminAbsence }>(`/rh-admin/bot/${guildId}/absences/${absenceId}/decision`, input);
-    return data.absence;
+    const { data } = await this.http.post<RhAdminAbsenceActionResult>(`/rh-admin/bot/${guildId}/absences/${absenceId}/decision`, input);
+    return data;
   }
 
   async markRhAbsenceRoleAdded(guildId: string, absenceId: string, roleAdded = true) {
@@ -2221,8 +2226,8 @@ export class ApiClient {
   }
 
   async finishRhAbsence(guildId: string, absenceId: string, input: { dmDelivered?: boolean | null; roleRemoved?: boolean }) {
-    const { data } = await this.http.post<{ absence: RhAdminAbsence }>(`/rh-admin/bot/${guildId}/absences/${absenceId}/finish`, input);
-    return data.absence;
+    const { data } = await this.http.post<RhAdminAbsenceActionResult>(`/rh-admin/bot/${guildId}/absences/${absenceId}/finish`, input);
+    return data;
   }
 
   async getDueRhAbsences() {
