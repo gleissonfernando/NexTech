@@ -47,6 +47,7 @@ const DEV_BOT_SUPERVISOR_START_ATTEMPTS = 7;
 const DEV_BOT_SUPERVISOR_INSTANCE_ID = `dev-bot-supervisor:${process.pid}:${randomUUID()}`;
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
+const moduleRestartTimers = new Map<string, NodeJS.Timeout>();
 let supervisorLeaseTimer: NodeJS.Timeout | null = null;
 let supervisorLeaseHeld = false;
 let supervisorLeaseErrors = 0;
@@ -128,14 +129,34 @@ export async function restartDevBotProcess(botId: string) {
   return startDevBotProcess(botId);
 }
 
+export function scheduleDevBotModuleRestart(botId: string, delayMs = 2_000) {
+  const pending = moduleRestartTimers.get(botId);
+  if (pending) clearTimeout(pending);
+
+  const timer = setTimeout(() => {
+    moduleRestartTimers.delete(botId);
+    void restartDevBotProcess(botId).catch((error) => {
+      console.warn(`[dev-bot:${botId}] falha ao aplicar modulos apos debounce:`, error instanceof Error ? error.message : error);
+    });
+  }, delayMs);
+
+  timer.unref();
+  moduleRestartTimers.set(botId, timer);
+}
+
 export async function stopDevBotProcess(botId: string, options: StopDevBotOptions = {}) {
   const timer = restartTimers.get(botId);
+  const moduleTimer = moduleRestartTimers.get(botId);
   const statusMessage = options.message ?? "Bot desligado pelo painel DEV.";
   const notifyBot = options.notifyBot === true;
 
   if (timer) {
     clearTimeout(timer);
     restartTimers.delete(botId);
+  }
+  if (moduleTimer) {
+    clearTimeout(moduleTimer);
+    moduleRestartTimers.delete(botId);
   }
 
   const runtime = runningBots.get(botId);

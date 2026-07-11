@@ -27,6 +27,7 @@ import {
 } from "../services/devBotService";
 import {
   restartDevBotProcess,
+  scheduleDevBotModuleRestart,
   startAllDevBotProcesses,
   startDevBotProcess,
   stopDevBotProcess,
@@ -970,7 +971,9 @@ devRouter.patch("/bots/:botId/modules", async (req, res, next) => {
       });
     }
 
-    if (updatedBot.desiredOnline) await restartDevBotProcess(updatedBot.id);
+    // Apply rapid menu changes in one restart. Restarting synchronously for
+    // every switch produced overlapping SIGTERMs and kept the bot offline.
+    if (updatedBot.desiredOnline) scheduleDevBotModuleRestart(updatedBot.id);
     const bot = await getDevBot(updatedBot.id) ?? updatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "modules", `Modulos do bot ${bot.name} atualizados.`, {
       enabledModules: bot.enabledModules
