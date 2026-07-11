@@ -19,9 +19,6 @@ frontend/node_modules
 frontend/.vite
 frontend/tsconfig.node.tsbuildinfo
 backend/uploads/*
-!backend/uploads/brand/
-backend/uploads/brand/*
-!backend/uploads/brand/pagseguro-logo.png
 !backend/uploads/welcome/
 backend/uploads/welcome/*
 !backend/uploads/welcome/.gitkeep

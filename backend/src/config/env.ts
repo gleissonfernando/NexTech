@@ -187,8 +187,6 @@ const envSchema = z
     BOT_API_TOKEN: internalBotToken(),
     PAYMENTS_ENABLED: envBoolean(false),
     PAYMENT_PROVIDER: z.enum(["disabled", "mercadopago", "asaas", "efi", "custom"]).default("disabled"),
-    PAGBANK_CONNECT_PUBLIC_KEY: z.string().optional().default(""),
-    PAGBANK_INTEGRATION_KEY: z.string().optional().default(""),
     PLAN_TOKEN_ENCRYPTION_KEY: z.string().optional().default(""),
     PLAN_TOKEN_FINGERPRINT_KEY: z.string().optional().default(""),
     PLAN_TOKEN_KEY_VERSION: z.string().optional().default("v1"),
