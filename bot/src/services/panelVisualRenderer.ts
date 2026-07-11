@@ -42,7 +42,7 @@ export function renderComponentsV2Panel(input: {
   footer?: ComponentsV2FooterConfig;
   footerImage?: string | null;
   image?: PanelVisualConfig | null;
-  moduleId: string;
+  moduleId?: string;
   title: string;
 }) {
   const requestedImageUrl = input.image?.imageEnabled ? resolvePanelImageUrl(input.image.imageUrl ?? null) : null;

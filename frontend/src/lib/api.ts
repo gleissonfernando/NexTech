@@ -86,6 +86,8 @@ import type {
   OrvitechSalesSettings,
   OpenDutyDashboard,
   PanelImageSettings,
+  Pd7Dashboard,
+  Pd7Settings,
   PriceTable,
   PriceTablesDashboard,
   PublicOrvitechProduct,
@@ -1496,6 +1498,10 @@ export async function getFivemModules() {
   const { data } = await api.get<{ modules: FivemModuleDefinition[] }>("/fivem/modules");
   return data.modules;
 }
+export async function listPd7Factions(guildId:string,botId:string){const{data}=await api.get<{factions:Pd7Settings[]}>(`/fivem-pd7/${guildId}`,{params:botParams(botId)});return data.factions;}
+export async function getPd7Dashboard(guildId:string,factionId:string,botId:string){const{data}=await api.get<Pd7Dashboard>(`/fivem-pd7/${guildId}/factions/${encodeURIComponent(factionId)}`,{params:botParams(botId)});return data;}
+export async function savePd7Settings(guildId:string,factionId:string,botId:string,payload:Partial<Pd7Settings>){const{data}=await api.patch<{settings:Pd7Settings}>(`/fivem-pd7/${guildId}/factions/${encodeURIComponent(factionId)}`,payload,{params:botParams(botId)});return data.settings;}
+export async function publishPd7Panel(guildId:string,factionId:string,botId:string){const{data}=await api.post<{settings:Pd7Settings}>(`/fivem-pd7/${guildId}/factions/${encodeURIComponent(factionId)}/publish`,undefined,{params:botParams(botId)});return data.settings;}
 
 export async function getFivemActions(guildId: string, architecture: import("../types").FivemActionArchitecture, botId: string) {
   const { data } = await api.get<import("../types").FivemActionDashboard>(`/fivem-actions/${guildId}/${architecture}`, { params: botParams(botId) }); return data;

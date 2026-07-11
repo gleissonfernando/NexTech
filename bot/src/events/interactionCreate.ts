@@ -29,6 +29,7 @@ import { handleRhAdminInteraction } from "../services/rhAdminService";
 import { handleRemoverInteraction } from "../commands/remover";
 import { handleOpenDutyNotificationInteraction } from "../commands/notificar";
 import { handleFivemHierarchyConfigInteraction } from "../services/fivemHierarchyConfigService";
+import { handleFivemPd7Interaction } from "../services/fivemPd7Service";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
   try {
@@ -68,6 +69,7 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   if (await handleFivemFacInteraction(interaction, context)) {
     return;
   }
+  if (await handleFivemPd7Interaction(interaction, context)) return;
 
   if (await handleFivemHierarchyConfigInteraction(interaction, context)) return;
 

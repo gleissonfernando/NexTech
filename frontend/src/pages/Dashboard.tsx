@@ -60,6 +60,7 @@ import { DmBarPanel } from "../components/fivem/DmBarPanel";
 import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotificationsPanel";
 import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
+import { Pd7Panel } from "../components/fivem/Pd7Panel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
@@ -1402,7 +1403,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "fivem" ? (
           <FivemView
             botId={activeBotId}
-            canManage={canManageModule(selectedBot, "fivem", canManageDashboard)}
+            canManage={canManageModule(selectedBot, "fivem", canManageDashboard) || canManageModule(selectedBot, "fivem-factions", canManageDashboard)}
             enabledModules={enabledModules}
             fivemModules={fivemModules}
             guild={selectedGuild}
@@ -2954,6 +2955,7 @@ function FivemView({
       </div>
       {mode === "goals" && goalsEnabled ? <FivemGoalsPanel botId={botId} canManage={canManage} guild={guild} /> : null}
       {mode === "orders" && ordersEnabled ? <FivemOrdersManager botId={botId} canManage={canManage} guild={guild} /> : null}
+      {mode === "general" && enabledModules.includes("fivem-factions") ? <Pd7Panel botId={botId} canManage={canManage} guild={guild} /> : null}
     </div>
   );
 }

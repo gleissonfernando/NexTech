@@ -18,6 +18,8 @@ export type CreateLogInput = {
   message: string;
   metadata?: unknown;
 };
+export type Pd7Config = { _id:string; botId:string; guildId:string; factionId:string; factionName:string; enabled:boolean; categoryPD7:string|null; panelChannelPD7:string|null; logChannelPD7:string|null; allowedRolesPD7:string[]; responsibleUsersPD7:string[]; approvedRolePD7:string|null; rejectedRolePD7:string|null; fields:Array<{id:string;label:string;placeholder:string|null;required:boolean;style:"short"|"paragraph";order:number}>; autoDeleteMinutes:number|null; panelMessageId:string|null; publishRequestedAt:string|null };
+export type Pd7Request = { _id:string; botId:string; guildId:string; factionId:string; userId:string; username:string; fields:Array<{id:string;label:string;value:string}>; status:"pending"|"approved"|"rejected"|"closed"; channelId:string|null; panelMessageId:string|null; handledBy:string|null; rejectionReason:string|null; createdAt:string; resolvedAt:string|null };
 
 export type TicketRecord = {
   id: string;
@@ -3032,6 +3034,12 @@ export class ApiClient {
     const { data } = await this.http.get<{ settings: FivemFacSettings }>(`/fivem/bot/fac/${guildId}`);
     return data.settings;
   }
+
+  async getPd7Configs() { const {data}=await this.http.get<{configs:Pd7Config[]}>("/fivem-pd7/bot/configs"); return data.configs; }
+  async createPd7Request(input:{guildId:string;factionId:string;userId:string;username:string;fields:Array<{id:string;label:string;value:string}>}) { const {data}=await this.http.post<{request:Pd7Request}>("/fivem-pd7/bot/requests",input); return data.request; }
+  async getPd7Request(id:string) { const {data}=await this.http.get<{request:Pd7Request}>(`/fivem-pd7/bot/requests/${id}`); return data.request; }
+  async updatePd7Request(id:string,patch:Partial<Pd7Request>) { const {data}=await this.http.patch<{request:Pd7Request}>(`/fivem-pd7/bot/requests/${id}`,patch); return data.request; }
+  async updatePd7PanelState(input:{guildId:string;factionId:string;panelMessageId:string|null}) { const {data}=await this.http.post<{settings:Pd7Config}>("/fivem-pd7/bot/panel-state",input); return data.settings; }
 
   async updateFivemFacPanelState(input: { guildId: string; messageId?: string | null }) {
     const { data } = await this.http.post<{ settings: FivemFacSettings }>("/fivem/bot/fac/panel-state", input);

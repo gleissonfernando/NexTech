@@ -15,6 +15,7 @@ import { startFivemFinanceService } from "../services/fivemFinanceService";
 import { startFivemOrderService } from "../services/fivemOrderService";
 import { startFivemHierarchyService } from "../services/fivemHierarchyService";
 import { startFivemActionService } from "../services/fivemActionService";
+import { startFivemPd7Service } from "../services/fivemPd7Service";
 import { startPolicePatrolReportService } from "../services/policePatrolReportService";
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
 import { clearDmBarConfigCache } from "../services/dmBarService";
@@ -181,6 +182,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("fivem-fac")) {
     startFivemFacService(client, context);
   }
+  if (isBotModuleEnabled("fivem-factions")) startFivemPd7Service(client, context);
   if (isBotModuleEnabled("fivem-goals")) {
     startFivemGoalService(client, context);
   }

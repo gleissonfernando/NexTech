@@ -1744,6 +1744,10 @@ export type GuildLiveOptions = {
   roles: GuildRoleOption[];
   voiceChannels?: GuildVoiceChannelOption[];
 };
+export type Pd7Field={id:string;label:string;placeholder:string|null;required:boolean;style:"short"|"paragraph";order:number};
+export type Pd7Settings={_id:string;botId:string;guildId:string;factionId:string;factionName:string;enabled:boolean;categoryPD7:string|null;panelChannelPD7:string|null;logChannelPD7:string|null;allowedRolesPD7:string[];responsibleUsersPD7:string[];approvedRolePD7:string|null;rejectedRolePD7:string|null;fields:Pd7Field[];autoDeleteMinutes:number|null;panelMessageId:string|null;publishRequestedAt:string|null;createdAt:string;updatedAt:string};
+export type Pd7Request={_id:string;userId:string;username:string;fields:Array<{id:string;label:string;value:string}>;status:"pending"|"approved"|"rejected"|"closed";handledBy:string|null;createdAt:string;resolvedAt:string|null};
+export type Pd7Dashboard={settings:Pd7Settings;requests:Pd7Request[];stats:{total:number;pending:number;approved:number;rejected:number;averageAnalysisMinutes:number;activeResponsible:Array<{userId:string;total:number}>}};
 
 export type VoiceRecorderSettings = {
   id: string;
