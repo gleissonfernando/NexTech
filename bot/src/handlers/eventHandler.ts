@@ -194,7 +194,7 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (managedRuntimeBot || isBotModuleEnabled("music") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("image-anti-spam") || isLinkAntiSpamEnabled() || isSelfBotModuleEnabled()) {
+  if (managedRuntimeBot || shouldHandleMessageCreateEvents()) {
     client.on(Events.MessageCreate, (message) => runEvent("messageCreate", () => handleMessageCreate(message, context)));
   }
 
@@ -347,6 +347,22 @@ function runEvent(name: string, handler: () => Promise<unknown>) {
     console.warn(`[event:${name}] descartado para proteger o processo contra sobrecarga.`);
   }
   return accepted;
+}
+
+function shouldHandleMessageCreateEvents() {
+  return [
+    "courses",
+    "fivem-goals",
+    "manual-payments",
+    "music",
+    "police-hidden-channel",
+    "police-iab",
+    "police-subpoenas",
+    "temporary-voice"
+  ].some(isBotModuleEnabled)
+    || isBotModuleEnabled("image-anti-spam")
+    || isLinkAntiSpamEnabled()
+    || isSelfBotModuleEnabled();
 }
 
 async function resolveMember(member: GuildMember | PartialGuildMember) {
