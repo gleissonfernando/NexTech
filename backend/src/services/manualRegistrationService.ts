@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ensureGuild, getMongoCollections, type MongoManualRegistrationLog, type MongoManualRegistrationSettings, type MongoManualRegistrationSubmission } from "../database/mongo";
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
-import { deleteUserLinks } from "./databaseMaintenanceService";
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
 export type ManualRegistrationFieldDto = {
@@ -33,6 +32,9 @@ export type ManualRegistrationSettingsDto = {
   allowResubmit: boolean;
   approvalMessage: string;
   approverRoleIds: string[];
+  approvedRoleId: string | null;
+  manualRegistrationRoleIds: string[];
+  requestCategoryId: string | null;
   automaticApproval: boolean;
   autoRoleIds: string[];
   bannerPosition: "top" | "bottom" | "none";
@@ -70,13 +72,19 @@ export type ManualRegistrationSubmissionDto = {
   createdAt: string;
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
+  channelId: string | null;
+  requestedName: string;
+  registrationType: "request" | "manual";
+  removedAt: string | null;
+  removedBy: string | null;
+  removalReason: string | null;
   id: string;
   messageId: string | null;
   rejectedAt: string | null;
   rejectedBy: string | null;
   rejectionReason: string | null;
   requestedRoleId: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "removed";
   updatedAt: string;
   userAvatar: string | null;
   userId: string;
@@ -112,6 +120,9 @@ export function defaultManualRegistrationSettings(guildId: string, botId: string
     allowResubmit: true,
     approvalMessage: "Seu pedido de set foi aprovado.",
     approverRoleIds: [],
+    approvedRoleId: null,
+    manualRegistrationRoleIds: [],
+    requestCategoryId: null,
     automaticApproval: false,
     autoRoleIds: [],
     bannerPosition: "top",
@@ -213,7 +224,10 @@ export async function saveManualRegistrationSettings(
 export async function requestManualRegistrationPanelPublish(guildId: string, botId: string, actorId: string | null) {
   const settings = await getManualRegistrationSettings(guildId, botId);
   if (!settings.enabled) throw Object.assign(new Error("Ative o Pedido de Set antes de publicar o painel."), { statusCode: 400 });
-  if (!settings.panelChannelId && !settings.panelCategoryId) throw Object.assign(new Error("Configure o canal ou a categoria do painel de Pedido de Set."), { statusCode: 400 });
+  if (!settings.panelChannelId) throw Object.assign(new Error("Configure o canal do painel de Set."), { statusCode: 400 });
+  if (!settings.requestCategoryId) throw Object.assign(new Error("Configure a categoria dos pedidos privados."), { statusCode: 400 });
+  if (!settings.approvedRoleId) throw Object.assign(new Error("Configure o cargo atribuido ao aprovar."), { statusCode: 400 });
+  if (!settings.approverRoleIds.length) throw Object.assign(new Error("Configure ao menos um cargo de aprovacao e recusa."), { statusCode: 400 });
   await writeManualRegistrationLog({ action: "panel.publish_requested", botId, data: { categoryId: settings.panelCategoryId, channelId: settings.panelChannelId }, executorId: actorId, guildId, submissionId: null, targetUserId: null });
   emitRealtimeToRoom(devBotRealtimeRoom(botId), "manual-registration:panel_publish", { botId, guildId });
   return settings;
@@ -224,6 +238,7 @@ export async function createManualRegistrationSubmission(input: {
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
   messageId?: string | null;
+  registrationType?: "request" | "manual";
   requestedRoleId?: string | null;
   userAvatar?: string | null;
   userId: string;
@@ -237,8 +252,9 @@ export async function createManualRegistrationSubmission(input: {
     { ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId },
     { sort: { createdAt: -1 } }
   );
-  if (latest?.status === "pending") throw conflict("Voce ja possui um pedido de set pendente.");
-  if (settings.allowOnlyOneRequest && latest?.status === "approved") throw conflict("Voce ja recebeu um set neste servidor.");
+  const active = await manualRegistrationSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId, status: { $in: ["pending", "approved"] } });
+  if (active?.status === "pending") throw conflict("Voce ja possui um pedido de set pendente.");
+  if (active?.status === "approved") throw conflict("Voce ja possui um cadastro de set ativo.");
   if (!settings.allowResubmit && latest?.status === "rejected") throw conflict("Um novo pedido nao esta liberado apos uma recusa.");
   if (latest && settings.cooldownMinutes > 0 && now.getTime() - latest.createdAt.getTime() < settings.cooldownMinutes * 60_000) {
     const availableAt = new Date(latest.createdAt.getTime() + settings.cooldownMinutes * 60_000);
@@ -260,11 +276,18 @@ export async function createManualRegistrationSubmission(input: {
       value: field.value.slice(0, 1500)
     })),
     guildId: input.guildId,
+    channelId: null,
+    requestedName: input.fields.find((field) => ["nome_personagem", "requested_name", "nome"].includes(field.id))?.value ?? input.fields[0]?.value ?? input.username,
+    registrationType: input.registrationType ?? "request",
+    registrationVersion: 2,
+    removedAt: null,
+    removedBy: null,
+    removalReason: null,
     messageId: input.messageId ?? null,
     rejectedAt: null,
     rejectedBy: null,
     rejectionReason: null,
-    requestedRoleId: requestedRoleId ?? settings.setRoles.find((item) => item.enabled && item.requestable)?.roleId ?? settings.autoRoleIds[0] ?? null,
+    requestedRoleId: requestedRoleId ?? settings.approvedRoleId ?? settings.setRoles.find((item) => item.enabled && item.requestable)?.roleId ?? settings.autoRoleIds[0] ?? null,
     status: "pending",
     updatedAt: now,
     userAvatar: input.userAvatar ?? null,
@@ -273,7 +296,7 @@ export async function createManualRegistrationSubmission(input: {
   };
 
   await ensureGuild(input.guildId);
-  await manualRegistrationSubmissions.insertOne(submission);
+  try { await manualRegistrationSubmissions.insertOne(submission); } catch (error) { if (typeof error === "object" && error && "code" in error && error.code === 11000) throw conflict("Voce ja possui um pedido ou cadastro ativo."); throw error; }
   await writeManualRegistrationLog({ action: "submission.created", botId: normalizedBotId, data: { requestedRoleId: submission.requestedRoleId }, executorId: input.userId, guildId: input.guildId, submissionId: submission._id, targetUserId: input.userId });
   emitManualRegistrationUpdated(input.guildId, normalizedBotId);
   return toSubmissionDto(submission);
@@ -299,6 +322,7 @@ export async function createManualRegistrationDashboardSubmission(input: {
       { id: "id_fivem", label: "ID in-game", value: input.gameId }
     ],
     guildId: input.guildId, messageId: null, rejectedAt: null, rejectedBy: null, rejectionReason: null,
+    channelId: null, requestedName: input.characterName, registrationType: "manual", registrationVersion: 2, removedAt: null, removedBy: null, removalReason: null,
     requestedRoleId: input.requestedRoleId, status: "pending", updatedAt: now,
     userAvatar: input.userAvatar ?? null, userId: input.userId, username: input.username
   };
@@ -322,6 +346,14 @@ export async function updateManualRegistrationSubmissionMessage(id: string, botI
   );
 }
 
+export async function updateManualRegistrationSubmissionChannel(id: string, botId: string | null, channelId: string | null, messageId: string | null) {
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const saved = await manualRegistrationSubmissions.findOneAndUpdate({ _id: id, botId: normalizeBotId(botId), status: "pending", $or: [{ channelId: null }, { channelId: { $exists: false } }, { channelId }] }, { $set: { channelId, messageId, updatedAt: new Date() } }, { returnDocument: "after" });
+  if (!saved) throw conflict("Este pedido ja possui outro canal ativo ou foi processado.");
+  emitManualRegistrationUpdated(saved.guildId, normalizeBotId(botId));
+  return toSubmissionDto(saved);
+}
+
 export async function updateManualRegistrationSubmissionRole(input: { actorId: string; botId?: string | null; guildId: string; id: string; requestedRoleId: string }) {
   const botId = normalizeBotId(input.botId);
   const settings = await getManualRegistrationSettings(input.guildId, botId);
@@ -340,11 +372,18 @@ export async function updateManualRegistrationSubmissionRole(input: { actorId: s
 
 export async function updateManualRegistrationSubmissionStatus(input: {
   actorId: string;
+  actorRoleIds?: string[];
+  actorIsAdministrator?: boolean;
   botId?: string | null;
   id: string;
   rejectionReason?: string | null;
   status: "approved" | "rejected";
 }) {
+  const pendingSubmission = await (await getMongoCollections()).manualRegistrationSubmissions.findOne({ _id: input.id, botId: normalizeBotId(input.botId), status: "pending" });
+  if (!pendingSubmission) throw Object.assign(new Error("Pedido ja processado ou inexistente."), { statusCode: 409 });
+  const settings = await getManualRegistrationSettings(pendingSubmission.guildId, input.botId);
+  const authorizedRoles = pendingSubmission.registrationType === "manual" ? settings.manualRegistrationRoleIds : settings.approverRoleIds;
+  if (!input.actorIsAdministrator && !input.actorRoleIds?.some((roleId) => authorizedRoles.includes(roleId))) throw Object.assign(new Error("O responsavel nao possui um cargo autorizado."), { statusCode: 403 });
   const now = new Date();
   const { manualRegistrationSubmissions } = await getMongoCollections();
   const update = input.status === "approved"
@@ -376,13 +415,13 @@ export async function listManualRegistrationSubmissions(guildId: string, botId?:
   return rows.map(toSubmissionDto);
 }
 
-export async function deleteManualRegistrationSubmission(guildId: string, botId: string | null, id: string, actorId: string | null) {
+export async function deleteManualRegistrationSubmission(guildId: string, botId: string | null, id: string, actorId: string | null, reason = "Removido pela dashboard") {
   const normalizedBotId = normalizeBotId(botId);
   const { manualRegistrationSubmissions } = await getMongoCollections();
-  const deleted = await manualRegistrationSubmissions.findOneAndDelete({ _id: id, ...scopeQuery(guildId, normalizedBotId) });
-  if (!deleted) throw Object.assign(new Error("Cadastro nao encontrado."), { statusCode: 404 });
-  await writeManualRegistrationLog({ action: "submission.deleted", botId: normalizedBotId, data: { status: deleted.status }, executorId: actorId, guildId, submissionId: id, targetUserId: deleted.userId });
-  await deleteUserLinks({ actorId, botId: normalizedBotId, guildId, reason: "registration_cleanup", userId: deleted.userId });
+  const now = new Date(); const deleted = await manualRegistrationSubmissions.findOneAndUpdate({ _id: id, ...scopeQuery(guildId, normalizedBotId), status: "approved" }, { $set: { status: "removed", removedAt: now, removedBy: actorId, removalReason: normalizeText(reason, 800), updatedAt: now } }, { returnDocument: "after" });
+  if (!deleted) throw Object.assign(new Error("Cadastro ativo nao encontrado."), { statusCode: 404 });
+  await writeManualRegistrationLog({ action: "registration.removed", botId: normalizedBotId, data: { approvedRoleId: deleted.requestedRoleId, reason }, executorId: actorId, guildId, submissionId: id, targetUserId: deleted.userId });
+  if (normalizedBotId) emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "manual-registration:remove", { botId: normalizedBotId, guildId, roleId: deleted.requestedRoleId, submissionId: id, userId: deleted.userId });
   emitManualRegistrationUpdated(guildId, normalizedBotId);
 }
 
@@ -406,7 +445,10 @@ function normalizeSettings(settings: ManualRegistrationSettingsDto): ManualRegis
     allowResubmit: settings.allowResubmit !== false,
     approvalMessage: normalizeText(settings.approvalMessage, 500) || "Seu pedido de set foi aprovado.",
     approverRoleIds: normalizeSnowflakes(settings.approverRoleIds).slice(0, 20),
-    automaticApproval: settings.automaticApproval === true,
+    approvedRoleId: normalizeSnowflake(settings.approvedRoleId),
+    manualRegistrationRoleIds: normalizeSnowflakes(settings.manualRegistrationRoleIds).slice(0, 20),
+    requestCategoryId: normalizeSnowflake(settings.requestCategoryId),
+    automaticApproval: false,
     autoRoleIds: normalizeSnowflakes(settings.autoRoleIds).slice(0, 20),
     bannerPosition: ["top", "bottom", "none"].includes(settings.bannerPosition) ? settings.bannerPosition : "top",
     color: /^#[0-9a-f]{6}$/i.test(settings.color) ? settings.color : "#7c3aed",
@@ -474,6 +516,9 @@ function toSettingsDto(settings: MongoManualRegistrationSettings): ManualRegistr
     allowResubmit: settings.allowResubmit !== false,
     approvalMessage: settings.approvalMessage ?? "Seu pedido de set foi aprovado.",
     approverRoleIds: settings.approverRoleIds ?? [],
+    approvedRoleId: settings.approvedRoleId ?? settings.autoRoleIds?.[0] ?? null,
+    manualRegistrationRoleIds: settings.manualRegistrationRoleIds ?? settings.staffRoleIds ?? [],
+    requestCategoryId: settings.requestCategoryId ?? settings.panelCategoryId ?? null,
     automaticApproval: settings.automaticApproval === true,
     autoRoleIds: settings.autoRoleIds ?? [],
     bannerPosition: settings.bannerPosition ?? "top",
@@ -522,6 +567,12 @@ function toSubmissionDto(submission: MongoManualRegistrationSubmission): ManualR
     createdAt: submission.createdAt.toISOString(),
     fields: submission.fields,
     guildId: submission.guildId,
+    channelId: submission.channelId ?? null,
+    requestedName: submission.requestedName ?? submission.fields.find((field) => field.id === "nome_personagem")?.value ?? submission.username,
+    registrationType: submission.registrationType ?? "request",
+    removedAt: submission.removedAt?.toISOString() ?? null,
+    removedBy: submission.removedBy ?? null,
+    removalReason: submission.removalReason ?? null,
     id: submission._id,
     messageId: submission.messageId ?? null,
     rejectedAt: submission.rejectedAt?.toISOString() ?? null,

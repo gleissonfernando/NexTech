@@ -57,12 +57,13 @@ const productSchema = z.object({
   }).optional(),
   cost: z.coerce.number().min(0).max(1_000_000_000_000).optional(), description: z.string().max(500).nullable().optional(), emoji: z.string().max(80).nullable().optional(),
   defaultQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), factionPercentage: z.coerce.number().min(0).max(100).optional(), featured: z.boolean().optional(), maximumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(), minimumQuantity: z.coerce.number().int().min(1).max(1_000_000).optional(),
-  washingPercentages: z.array(z.coerce.number().min(0).max(100)).max(25).optional(),
+  washingPercentages: z.array(z.coerce.number().min(0.01).max(100)).max(25).optional(),
   name: z.string().min(1).max(100).optional(), order: z.coerce.number().int().min(0).max(10000).optional(), price: z.coerce.number().min(0).max(1_000_000_000_000).optional(),
   sellerPercentage: z.coerce.number().min(0).max(100).optional(), type: z.enum(["standard", "washing", "ammo", "drug", "weapon", "custom"]).optional()
 });
 const familySchema = z.object({
   active: z.boolean().optional(),
+  leaderName: z.string().max(100).nullable().optional(),
   logChannelId: optionalSnowflake,
   name: z.string().min(1).max(100),
   notes: z.string().max(1000).nullable().optional(),
@@ -75,7 +76,7 @@ const createOrderSchema = z.object({
   clientName: z.string().min(1).max(120), expectedDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), grossValue: z.coerce.number().min(0).max(1_000_000_000_000).nullable().optional(),
   familyId: z.string().min(1).max(80), guildId: snowflake, notes: z.string().max(1000).nullable().optional(), productId: z.string().min(1).max(80), proofUrl: z.string().max(2048).nullable().optional(),
   quantity: z.coerce.number().min(1).max(1_000_000), sourceId: z.string().max(120).nullable().optional(), userId: snowflake,
-  washingPercentage: z.coerce.number().min(0).max(100).nullable().optional()
+  washingPercentage: z.coerce.number().min(0.01).max(100).nullable().optional()
 });
 const updateStatusSchema = z.object({ actorId: snowflake, guildId: snowflake, note: z.string().max(500).nullable().optional(), status: statusSchema });
 
@@ -162,6 +163,15 @@ fivemOrdersRouter.post("/bot/orders", requireBot, async (req, res, next) => {
 });
 fivemOrdersRouter.post("/bot/:guildId/products", requireBot, async (req, res, next) => {
   try { const guildId = snowflake.parse(req.params.guildId); const input = productSchema.parse(req.body); const actorId = snowflake.parse(req.body.actorId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); return res.status(201).json({ product: await createFivemOrderProduct(guildId, botId, input, actorId) }); } catch (error) { return next(error); }
+});
+fivemOrdersRouter.post("/bot/:guildId/families", requireBot, async (req, res, next) => {
+  try { const guildId = snowflake.parse(req.params.guildId); const input = familySchema.parse(req.body); const actorId = snowflake.parse(req.body.actorId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); return res.status(201).json({ family: await createFivemOrderFamily(guildId, botId, input, actorId) }); } catch (error) { return next(error); }
+});
+fivemOrdersRouter.patch("/bot/:guildId/families/:familyId", requireBot, async (req, res, next) => {
+  try { const guildId = snowflake.parse(req.params.guildId); const familyId = z.string().min(1).max(80).parse(req.params.familyId); const input = familySchema.partial().parse(req.body); const actorId = snowflake.parse(req.body.actorId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); const family = await updateFivemOrderFamily(guildId, botId, familyId, input, actorId); if (!family) return res.status(404).json({ message: "Familia nao encontrada." }); return res.json({ family }); } catch (error) { return next(error); }
+});
+fivemOrdersRouter.delete("/bot/:guildId/families/:familyId", requireBot, async (req, res, next) => {
+  try { const guildId = snowflake.parse(req.params.guildId); const familyId = z.string().min(1).max(80).parse(req.params.familyId); const actorId = snowflake.parse(req.query.actorId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); const family = await deleteFivemOrderFamily(guildId, botId, familyId, actorId); if (!family) return res.status(404).json({ message: "Familia nao encontrada." }); return res.json({ family }); } catch (error) { return next(error); }
 });
 fivemOrdersRouter.patch("/bot/:guildId/products/:productId", requireBot, async (req, res, next) => {
   try { const guildId = snowflake.parse(req.params.guildId); const productId = z.string().min(1).max(80).parse(req.params.productId); const input = productSchema.partial().parse(req.body); const actorId = snowflake.parse(req.body.actorId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); const product = await updateFivemOrderProduct(guildId, botId, productId, input, actorId); if (!product) return res.status(404).json({ message: "Produto nao encontrado." }); return res.json({ product }); } catch (error) { return next(error); }

@@ -351,6 +351,9 @@ export type RhAdminSettings = {
   configRoleIds: string[];
   approverUserIds: string[];
   approverRoleIds: string[];
+  approvedRoleId: string | null;
+  manualRegistrationRoleIds: string[];
+  requestCategoryId: string | null;
   viewerUserIds: string[];
   viewerRoleIds: string[];
   panelBannerUrl: string | null;
@@ -496,6 +499,7 @@ export type ManualRegistrationSettings = {
   allowOnlyOneRequest: boolean;
   allowResubmit: boolean;
   approvalMessage: string;
+  approvedRoleId: string | null;
   approverRoleIds: string[];
   automaticApproval: boolean;
   autoRoleIds: string[];
@@ -511,10 +515,12 @@ export type ManualRegistrationSettings = {
   footerText: string | null;
   guildId: string;
   logChannelId: string | null;
+  manualRegistrationRoleIds: string[];
   name: string;
   panelCategoryId: string | null;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  requestCategoryId: string | null;
   panelImage: {
     blocks?: import("./panelVisualRenderer").PanelBlock[];
     imageEnabled: boolean;
@@ -539,7 +545,13 @@ export type ManualRegistrationSubmission = {
   guildId: string;
   userId: string;
   username: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "removed";
+  channelId: string | null;
+  requestedName: string;
+  registrationType: "request" | "manual";
+  removedAt: string | null;
+  removedBy: string | null;
+  removalReason: string | null;
   fields: Array<{ id: string; label: string; value: string }>;
   messageId: string | null;
   rejectionReason: string | null;
@@ -613,7 +625,7 @@ export type FivemOrderSettings = {
   orderDeliveredMessage: string; panelChannelId: string | null; panelDescription: string; panelMessageId: string | null; panelTitle: string;
   panelImage: { blocks?: import("./panelVisualRenderer").PanelBlock[]; imageEnabled: boolean; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault?: boolean } | null;
 };
-export type FivemOrderFamily = { active: boolean; id: string; logChannelId: string | null; name: string; notes: string | null; orderModules: Array<"washing" | "ammo" | "drug" | "weapon" | "custom">; responsibleId: string; roleId: string; type?: "pista" | "produto" | "sem_produto" };
+export type FivemOrderFamily = { active: boolean; id: string; leaderName?: string | null; logChannelId: string | null; name: string; notes: string | null; orderModules: Array<"washing" | "ammo" | "drug" | "weapon" | "custom">; responsibleId: string; roleId: string; type?: "pista" | "produto" | "sem_produto" };
 export type FivemOrderProduct = {
   active: boolean; allowCustomQuantity: boolean; allowNotes: boolean; category: string; cost: number; description: string | null; emoji: string | null;
   config?: {
@@ -647,6 +659,12 @@ export type FivemFinanceSettings = {
   adminRoleIds: string[];
   allowBalanceQuery: boolean;
   allowNegativeBalance: boolean;
+  confirmAdd: boolean;
+  confirmRemove: boolean;
+  historyEnabled: boolean;
+  historyPageSize: number;
+  maxTransactionAmount: number;
+  requireReason: boolean;
   autoCloseMinutes: number;
   bannerMode: "above" | "inside" | "below" | "none";
   color: string;
@@ -667,6 +685,7 @@ export type FivemFinanceTransaction = {
   amount: number; createdAt: string; id: string; logChannelId: string | null; logMessageId: string | null; newBalance: number; oldBalance: number;
   proofImageUrl: string; proofMessageId: string | null; status: "completed" | "reviewed" | "cancelled" | "corrected"; tempChannelId: string | null; transactionId: string;
   type: "add" | "remove"; updatedAt: string; userAvatar: string | null; userId: string; username: string;
+  managerId?: string; managerName?: string; personName?: string; reason?: string; targetUserId?: string; notes?: string | null;
 };
 
 export type FivemGoalUserChannel = {
@@ -2249,6 +2268,7 @@ export class ApiClient {
     userAvatar?: string | null;
     userId: string;
     username: string;
+    registrationType?: "request" | "manual";
   }) {
     const { data } = await this.http.post<{ submission: ManualRegistrationSubmission }>("/manual-registration/bot/submissions", input);
     return data.submission;
@@ -2262,8 +2282,9 @@ export class ApiClient {
   async updateManualRegistrationSubmissionMessage(id: string, messageId: string | null) {
     await this.http.patch(`/manual-registration/bot/submissions/${id}/message`, { messageId });
   }
+  async updateManualRegistrationSubmissionChannel(id: string, channelId: string, messageId: string | null) { const {data}=await this.http.patch<{submission:ManualRegistrationSubmission}>(`/manual-registration/bot/submissions/${id}/message`,{channelId,messageId}); return data.submission; }
 
-  async reviewManualRegistrationSubmission(input: { actorId: string; guildId: string; id: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
+  async reviewManualRegistrationSubmission(input: { actorId: string; actorRoleIds?: string[]; actorIsAdministrator?: boolean; guildId: string; id: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
     const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/status`, input);
     return data.submission;
   }
@@ -2342,6 +2363,21 @@ export class ApiClient {
   async createFivemOrderProduct(guildId: string, input: Partial<FivemOrderProduct> & { actorId: string }) {
     const { data } = await this.http.post<{ product: FivemOrderProduct }>(`/fivem-orders/bot/${guildId}/products`, input);
     return data.product;
+  }
+
+  async createFivemOrderFamily(guildId: string, input: Partial<FivemOrderFamily> & { actorId: string }) {
+    const { data } = await this.http.post<{ family: FivemOrderFamily }>(`/fivem-orders/bot/${guildId}/families`, input);
+    return data.family;
+  }
+
+  async updateFivemOrderFamily(guildId: string, familyId: string, input: Partial<FivemOrderFamily> & { actorId: string }) {
+    const { data } = await this.http.patch<{ family: FivemOrderFamily }>(`/fivem-orders/bot/${guildId}/families/${familyId}`, input);
+    return data.family;
+  }
+
+  async deleteFivemOrderFamily(guildId: string, familyId: string, actorId: string) {
+    const { data } = await this.http.delete<{ family: FivemOrderFamily }>(`/fivem-orders/bot/${guildId}/families/${familyId}`, { params: { actorId } });
+    return data.family;
   }
 
   async updateFivemOrderProduct(guildId: string, productId: string, input: Partial<FivemOrderProduct> & { actorId: string }) {
@@ -2425,7 +2461,7 @@ export class ApiClient {
     return data;
   }
 
-  async createFivemFinanceTransaction(guildId: string, input: { amount: number; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl: string; proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove"; userAvatar?: string | null; userId: string; username: string }) {
+  async createFivemFinanceTransaction(guildId: string, input: { amount: number; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl?: string; proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove"; userAvatar?: string | null; userId: string; username: string; managerId?:string;managerName?:string;personName?:string;reason?:string;targetUserId?:string }) {
     const { data } = await this.http.post<{ transaction: FivemFinanceTransaction }>(`/fivem-finance/bot/${guildId}/transactions`, input);
     return data.transaction;
   }

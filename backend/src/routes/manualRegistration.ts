@@ -16,6 +16,7 @@ import {
   requestManualRegistrationPanelPublish,
   saveManualRegistrationSettings,
   updateManualRegistrationSubmissionMessage,
+  updateManualRegistrationSubmissionChannel,
   updateManualRegistrationSubmissionRole,
   updateManualRegistrationSubmissionStatus
 } from "../services/manualRegistrationService";
@@ -42,6 +43,9 @@ const settingsSchema = z.object({
   allowResubmit: z.boolean().optional(),
   approvalMessage: z.string().max(500).optional(),
   approverRoleIds: z.array(snowflakeSchema).max(20).optional(),
+  approvedRoleId: optionalSnowflakeSchema,
+  manualRegistrationRoleIds: z.array(snowflakeSchema).max(20).optional(),
+  requestCategoryId: optionalSnowflakeSchema,
   automaticApproval: z.boolean().optional(),
   autoRoleIds: z.array(snowflakeSchema).max(20).optional(),
   bannerPosition: z.enum(["top", "bottom", "none"]).optional(),
@@ -89,14 +93,18 @@ const submissionSchema = z.object({
   userAvatar: z.string().max(2048).nullable().optional(),
   userId: snowflakeSchema,
   username: z.string().max(120)
+  ,registrationType: z.enum(["request", "manual"]).optional()
 });
 
 const messageSchema = z.object({
-  messageId: optionalSnowflakeSchema
+  messageId: optionalSnowflakeSchema,
+  channelId: optionalSnowflakeSchema
 });
 
 const statusSchema = z.object({
   actorId: snowflakeSchema,
+  actorRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  actorIsAdministrator: z.boolean().default(false),
   guildId: snowflakeSchema,
   rejectionReason: z.string().max(800).nullable().optional(),
   status: z.enum(["approved", "rejected"])
@@ -174,7 +182,7 @@ manualRegistrationRouter.delete("/:guildId/submissions/:id", async (req, res, ne
     if (isBotRequest(req) || !(await canManageScopedGuild(req, guildId, botId))) {
       return res.status(403).json({ message: "Sem permissao para excluir este cadastro." });
     }
-    await deleteManualRegistrationSubmission(guildId, botId, id, res.locals.dashboardAuth.user.discordId);
+    const reason = z.string().trim().min(3).max(800).parse(req.body?.reason); await deleteManualRegistrationSubmission(guildId, botId, id, res.locals.dashboardAuth.user.discordId, reason);
     return res.json({ ok: true });
   } catch (error) {
     return next(error);
@@ -233,8 +241,8 @@ manualRegistrationRouter.patch("/bot/submissions/:id/message", requireBot, async
     const id = z.string().min(1).parse(req.params.id);
     const input = messageSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
-    await updateManualRegistrationSubmissionMessage(id, botId, input.messageId ?? null);
-    return res.json({ ok: true });
+    if (input.channelId !== undefined) return res.json({ submission: await updateManualRegistrationSubmissionChannel(id, botId, input.channelId ?? null, input.messageId ?? null) });
+    await updateManualRegistrationSubmissionMessage(id, botId, input.messageId ?? null); return res.json({ ok: true });
   } catch (error) {
     return next(error);
   }

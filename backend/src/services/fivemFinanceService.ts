@@ -11,6 +11,7 @@ import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
 export const FIVEM_FINANCE_MODULE_ID = "fivem-finance";
+const transactionQueues = new Map<string, Promise<unknown>>();
 
 export type FivemFinanceSettingsDto = Omit<MongoFivemFinanceSettings, "_id" | "updatedAt"> & { panelImage: PanelImageSettingsDto | null; updatedAt: string | null };
 export type FivemFinanceTransactionDto = Omit<MongoFivemFinanceTransaction, "_id" | "createdAt" | "updatedAt"> & { createdAt: string; id: string; updatedAt: string };
@@ -21,6 +22,12 @@ export function defaultFivemFinanceSettings(guildId: string, botId: string | nul
     adminRoleIds: [],
     allowBalanceQuery: true,
     allowNegativeBalance: false,
+    confirmAdd: false,
+    confirmRemove: true,
+    historyEnabled: true,
+    historyPageSize: 10,
+    maxTransactionAmount: 1_000_000_000,
+    requireReason: true,
     autoCloseMinutes: 10,
     bannerMode: "inside",
     botId,
@@ -43,7 +50,7 @@ export function defaultFivemFinanceSettings(guildId: string, botId: string | nul
 
 export async function getFivemFinanceDashboard(guildId: string, botId?: string | null) {
   const settings = await getFivemFinanceSettings(guildId, botId);
-  const transactions = await listFivemFinanceTransactions(guildId, botId, 300);
+  const transactions = await listFivemFinanceTransactions(guildId, botId, 1000);
   return { report: buildReport(transactions), settings, transactions };
 }
 
@@ -65,6 +72,7 @@ export async function saveFivemFinanceSettings(guildId: string, botId: string | 
   await writeLog({ action: current.updatedAt ? "settings.updated" : "settings.created", actorId, botId: normalizedBotId, data: { enabled: next.enabled }, guildId, transactionId: null });
   if (current.enabled !== next.enabled) await writeLog({ action: next.enabled ? "system.enabled" : "system.disabled", actorId, botId: normalizedBotId, data: {}, guildId, transactionId: null });
   emitUpdated(guildId, normalizedBotId);
+  if (normalizedBotId && Object.keys(input).some((key) => key !== "panelMessageId")) emitPanelRefresh(guildId, normalizedBotId);
   return getFivemFinanceSettings(guildId, normalizedBotId);
 }
 
@@ -96,15 +104,37 @@ export async function createFivemFinanceTransaction(input: {
   userAvatar?: string | null;
   userId: string;
   username: string;
+  managerId?: string;
+  managerName?: string;
+  metadata?: Record<string, unknown>;
+  personName?: string;
+  reason?: string;
+  targetUserId?: string;
+}, botId?: string | null) {
+  const key = `${normalizeBotId(botId) ?? "legacy"}:${input.guildId}`;
+  return enqueueTransaction(key, () => createFivemFinanceTransactionLocked(input, botId));
+}
+
+async function createFivemFinanceTransactionLocked(input: {
+  amount: number; guildId: string; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl: string;
+  proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove"; userAvatar?: string | null;
+  userId: string; username: string; managerId?: string; managerName?: string; metadata?: Record<string, unknown>; personName?: string; reason?: string; targetUserId?: string;
 }, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const settings = await getFivemFinanceSettings(input.guildId, normalizedBotId);
   if (!settings.enabled) throw financeError("Sistema financeiro desativado.", 409);
   const amount = money(input.amount);
   if (amount <= 0) throw financeError("Valor invalido.", 400);
-  if (!normalizeUrl(input.proofImageUrl)) throw financeError("Comprovante por imagem e obrigatorio.", 400);
+  if (amount > settings.maxTransactionAmount) throw financeError("Valor acima do limite configurado.", 409);
+  const reason = normalizeText(input.reason, 1000);
+  if (settings.requireReason && !reason) throw financeError("O motivo e obrigatorio.", 400);
   const { fivemFinanceTransactions } = await getMongoCollections();
   if (input.tempChannelId && await fivemFinanceTransactions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), tempChannelId: input.tempChannelId, status: { $ne: "cancelled" } })) throw financeError("Este canal ja possui movimentacao registrada.", 409);
+  const laundryOrderId = typeof input.metadata?.laundryOrderId === "string" ? input.metadata.laundryOrderId : null;
+  if (laundryOrderId) {
+    const duplicate = await fivemFinanceTransactions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), "metadata.laundryOrderId": laundryOrderId, status: { $ne: "cancelled" } });
+    if (duplicate) return toTransactionDto(duplicate);
+  }
   const currentBalance = await getBalance(input.guildId, normalizedBotId);
   const newBalance = money(input.type === "add" ? currentBalance + amount : currentBalance - amount);
   if (input.type === "remove" && !settings.allowNegativeBalance && newBalance < 0) throw financeError("Saldo insuficiente.", 409);
@@ -118,9 +148,15 @@ export async function createFivemFinanceTransaction(input: {
     logChannelId: normalizeSnowflake(input.logChannelId ?? settings.logChannelId),
     logMessageId: normalizeSnowflake(input.logMessageId),
     newBalance,
-    notes: null,
+    notes: reason,
+    managerId: normalizeSnowflake(input.managerId) ?? input.userId,
+    managerName: normalizeText(input.managerName, 120) ?? input.username,
+    metadata: input.metadata ?? {},
+    personName: normalizeText(input.personName, 120) ?? input.username,
+    reason: reason ?? "Sem motivo informado",
+    targetUserId: normalizeSnowflake(input.targetUserId) ?? input.userId,
     oldBalance: money(currentBalance),
-    proofImageUrl: input.proofImageUrl.trim(),
+    proofImageUrl: normalizeUrl(input.proofImageUrl) ?? "",
     proofMessageId: normalizeSnowflake(input.proofMessageId),
     status: "completed",
     tempChannelId: normalizeSnowflake(input.tempChannelId),
@@ -134,6 +170,7 @@ export async function createFivemFinanceTransaction(input: {
   await fivemFinanceTransactions.insertOne(doc);
   await writeLog({ action: "transaction.created", actorId: input.userId, botId: normalizedBotId, data: { amount, newBalance, type: input.type }, guildId: input.guildId, transactionId: doc.transactionId });
   emitUpdated(input.guildId, normalizedBotId);
+  if (normalizedBotId) emitPanelRefresh(input.guildId, normalizedBotId);
   return toTransactionDto(doc);
 }
 
@@ -155,6 +192,7 @@ export async function updateFivemFinanceTransaction(guildId: string, botId: stri
   await fivemFinanceTransactions.updateOne({ _id: id, ...scopeQuery(guildId, normalizedBotId) }, { $set: next });
   await writeLog({ action: "transaction.corrected", actorId, botId: normalizedBotId, data: { amount: { from: current.amount, to: amount }, status: { from: current.status, to: next.status } }, guildId, transactionId: current.transactionId });
   emitUpdated(guildId, normalizedBotId);
+  if (normalizedBotId) emitPanelRefresh(guildId, normalizedBotId);
   return toTransactionDto({ ...current, ...next });
 }
 
@@ -195,12 +233,13 @@ function topUsers(transactions: FivemFinanceTransactionDto[], type: "add" | "rem
   return [...map.values()].sort((a, b) => b.amount - a.amount).slice(0, 5).map((item) => ({ ...item, amount: money(item.amount) }));
 }
 
-function toSettingsDto(row: MongoFivemFinanceSettings): FivemFinanceSettingsDto { const { _id, updatedAt, ...rest } = row; return { ...rest, updatedAt: updatedAt?.toISOString() ?? null, panelImage: null }; }
+function toSettingsDto(row: MongoFivemFinanceSettings): FivemFinanceSettingsDto { const { _id, updatedAt, ...rest } = row; return { ...defaultFivemFinanceSettings(row.guildId, row.botId), ...rest, updatedAt: updatedAt?.toISOString() ?? null, panelImage: null }; }
 function toTransactionDto(row: MongoFivemFinanceTransaction): FivemFinanceTransactionDto { const { _id, createdAt, updatedAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), id: _id, updatedAt: updatedAt.toISOString() }; }
-function normalizeSettings(value: Partial<FivemFinanceSettingsDto>): Omit<MongoFivemFinanceSettings, "_id" | "updatedAt"> { return { adminRoleIds: normalizeSnowflakes(value.adminRoleIds), allowBalanceQuery: value.allowBalanceQuery !== false, allowNegativeBalance: value.allowNegativeBalance === true, autoCloseMinutes: clamp(value.autoCloseMinutes, 1, 1440, 10), bannerMode: ["above", "inside", "below", "none"].includes(value.bannerMode ?? "") ? value.bannerMode as MongoFivemFinanceSettings["bannerMode"] : "inside", botId: normalizeBotId(value.botId), color: /^#[0-9a-f]{6}$/i.test(value.color ?? "") ? value.color! : "#22c55e", enabled: value.enabled === true, footerImageUrl: normalizeUrl(value.footerImageUrl), footerText: normalizeText(value.footerText, 200), guildId: value.guildId ?? "", logChannelId: normalizeSnowflake(value.logChannelId), panelChannelId: normalizeSnowflake(value.panelChannelId), panelDescription: normalizeText(value.panelDescription, 1500) || defaultFivemFinanceSettings(value.guildId ?? "", normalizeBotId(value.botId)).panelDescription, panelMessageId: normalizeSnowflake(value.panelMessageId), panelTitle: normalizeText(value.panelTitle, 120) || "Controle Financeiro da FAC", tempCategoryId: normalizeSnowflake(value.tempCategoryId), useRoleIds: normalizeSnowflakes(value.useRoleIds), updatedBy: value.updatedBy ?? null }; }
+function normalizeSettings(value: Partial<FivemFinanceSettingsDto>): Omit<MongoFivemFinanceSettings, "_id" | "updatedAt"> { return { adminRoleIds: normalizeSnowflakes(value.adminRoleIds), allowBalanceQuery: value.allowBalanceQuery !== false, allowNegativeBalance: value.allowNegativeBalance === true, confirmAdd: value.confirmAdd === true, confirmRemove: value.confirmRemove !== false, historyEnabled: value.historyEnabled !== false, historyPageSize: clamp(value.historyPageSize, 5, 25, 10), maxTransactionAmount: clamp(value.maxTransactionAmount, 1, 1_000_000_000_000, 1_000_000_000), requireReason: value.requireReason !== false, autoCloseMinutes: clamp(value.autoCloseMinutes, 1, 1440, 10), bannerMode: ["above", "inside", "below", "none"].includes(value.bannerMode ?? "") ? value.bannerMode as MongoFivemFinanceSettings["bannerMode"] : "inside", botId: normalizeBotId(value.botId), color: /^#[0-9a-f]{6}$/i.test(value.color ?? "") ? value.color! : "#22c55e", enabled: value.enabled === true, footerImageUrl: normalizeUrl(value.footerImageUrl), footerText: normalizeText(value.footerText, 200), guildId: value.guildId ?? "", logChannelId: normalizeSnowflake(value.logChannelId), panelChannelId: normalizeSnowflake(value.panelChannelId), panelDescription: normalizeText(value.panelDescription, 1500) || defaultFivemFinanceSettings(value.guildId ?? "", normalizeBotId(value.botId)).panelDescription, panelMessageId: normalizeSnowflake(value.panelMessageId), panelTitle: normalizeText(value.panelTitle, 120) || "💰 Sistema Financeiro", tempCategoryId: normalizeSnowflake(value.tempCategoryId), useRoleIds: normalizeSnowflakes(value.useRoleIds), updatedBy: value.updatedBy ?? null }; }
 async function withPanelImage(settings: FivemFinanceSettingsDto) { if (!settings.botId) return settings; const image = await getPanelImageSettings(settings.guildId, settings.botId, "fivem-finance").catch(() => null); return { ...settings, panelImage: image?.imageEnabled ? image : null }; }
 async function writeLog(input: Omit<MongoFivemFinanceLog, "_id" | "createdAt">) { const { fivemFinanceLogs } = await getMongoCollections(); await fivemFinanceLogs.insertOne({ _id: randomUUID(), createdAt: new Date(), ...input, botId: normalizeBotId(input.botId) }); }
 function emitUpdated(guildId: string, botId: string | null) { emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "fivem:finance:updated", { botId, guildId }); }
+function emitPanelRefresh(guildId: string, botId: string) { emitRealtimeToRoom(devBotRealtimeRoom(botId), "fivem:finance:panel_publish", { botId, guildId }); }
 function scopeQuery(guildId: string, botId: string | null) { return botId ? { botId, guildId } : { guildId, $or: [{ botId: null }, { botId: { $exists: false } }] }; }
 function normalizeBotId(value: string | null | undefined) { return value?.trim() || null; }
 function normalizeSnowflake(value: string | null | undefined) { return /^\d{5,32}$/.test(value?.trim() ?? "") ? value!.trim() : null; }
@@ -210,3 +249,4 @@ function normalizeUrl(value: string | null | undefined) { const text = normalize
 function clamp(value: number | null | undefined, min: number, max: number, fallback: number) { return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback; }
 function money(value: number) { return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100; }
 function financeError(message: string, status = 400) { const error = new Error(message) as Error & { status?: number }; error.status = status; return error; }
+async function enqueueTransaction<T>(key: string, task: () => Promise<T>): Promise<T> { const previous = transactionQueues.get(key) ?? Promise.resolve(); const current = previous.catch(() => undefined).then(task); transactionQueues.set(key, current); try { return await current; } finally { if (transactionQueues.get(key) === current) transactionQueues.delete(key); } }

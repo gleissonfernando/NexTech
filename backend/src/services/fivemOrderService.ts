@@ -10,6 +10,7 @@ import {
   type MongoFivemOrderStatus
 } from "../database/mongo";
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import { createFivemFinanceTransaction } from "./fivemFinanceService";
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
 export const FIVEM_ORDERS_MODULE_ID = "fivem-orders";
@@ -67,14 +68,30 @@ export function defaultFivemOrderSettings(guildId: string, botId: string | null 
 
 export async function listFivemOrderFamilies(guildId: string, botId?: string | null, activeOnly = false) {
   const { fivemOrderFamilies } = await getMongoCollections();
-  const rows = await fivemOrderFamilies.find({ ...scopeQuery(guildId, normalizeBotId(botId)), ...(activeOnly ? { active: true } : {}) }).sort({ active: -1, name: 1 }).limit(250).toArray();
+  const rows = await fivemOrderFamilies.find({ ...scopeQuery(guildId, normalizeBotId(botId)), ...(activeOnly ? activeFamilyQuery() : {}) }).sort({ active: -1, name: 1 }).limit(250).toArray();
   return rows.map(toFamilyDto);
 }
 
 export async function createFivemOrderFamily(guildId: string, botId: string | null, input: FivemOrderFamilyInput, actorId: string | null) {
   const now = new Date();
-  const doc: MongoFivemOrderFamily = { _id: randomUUID(), ...normalizeFamily(input, guildId, normalizeBotId(botId)), createdAt: now, updatedAt: now };
+  const normalizedBotId = normalizeBotId(botId);
+  const normalized = normalizeFamily(input, guildId, normalizedBotId);
   const { fivemOrderFamilies } = await getMongoCollections();
+  await assertFamilyNameAvailable(guildId, normalizedBotId, normalized.name);
+  const inactive = await fivemOrderFamilies.findOne({ ...scopeQuery(guildId, normalizedBotId), active: false, name: normalized.name });
+  if (inactive) {
+    const restored = await fivemOrderFamilies.findOneAndUpdate(
+      { _id: inactive._id, ...scopeQuery(guildId, normalizedBotId) },
+      { $set: { ...normalized, active: true, deletedAt: null, deletedBy: null, updatedAt: now, updatedBy: actorId } },
+      { returnDocument: "after" }
+    );
+    if (restored) {
+      await writeLog({ action: "family.restored", actorId, botId: normalizedBotId, data: { familyId: restored._id, name: restored.name }, guildId, orderId: null, productId: null });
+      emitUpdated(guildId, normalizedBotId);
+      return toFamilyDto(restored);
+    }
+  }
+  const doc: MongoFivemOrderFamily = { _id: randomUUID(), ...normalized, createdAt: now, createdBy: actorId, updatedAt: now, updatedBy: actorId };
   await fivemOrderFamilies.insertOne(doc);
   await writeLog({ action: "family.created", actorId, botId: doc.botId, data: { familyId: doc._id, name: doc.name }, guildId, orderId: null, productId: null });
   emitUpdated(guildId, doc.botId);
@@ -86,9 +103,10 @@ export async function updateFivemOrderFamily(guildId: string, botId: string | nu
   const { fivemOrderFamilies } = await getMongoCollections();
   const current = await fivemOrderFamilies.findOne({ _id: familyId, ...scopeQuery(guildId, normalizedBotId) });
   if (!current) return null;
-  const next = { ...normalizeFamily({ ...toFamilyDto(current), ...input }, guildId, normalizedBotId), updatedAt: new Date() };
+  const next = { ...normalizeFamily({ ...toFamilyDto(current), ...input }, guildId, normalizedBotId), deletedAt: input.active === false ? current.deletedAt : null, deletedBy: input.active === false ? current.deletedBy : null, updatedAt: new Date(), updatedBy: actorId };
+  if (next.name !== current.name) await assertFamilyNameAvailable(guildId, normalizedBotId, next.name, familyId);
   await fivemOrderFamilies.updateOne({ _id: familyId, ...scopeQuery(guildId, normalizedBotId) }, { $set: next });
-  await writeLog({ action: "family.updated", actorId, botId: normalizedBotId, data: { familyId, name: next.name }, guildId, orderId: null, productId: null });
+  await writeLog({ action: "family.updated", actorId, botId: normalizedBotId, data: { familyId, name: next.name, previousName: current.name, previousResponsibleId: current.responsibleId, responsibleId: next.responsibleId }, guildId, orderId: null, productId: null });
   emitUpdated(guildId, normalizedBotId);
   return toFamilyDto({ ...current, ...next });
 }
@@ -96,8 +114,12 @@ export async function updateFivemOrderFamily(guildId: string, botId: string | nu
 export async function deleteFivemOrderFamily(guildId: string, botId: string | null, familyId: string, actorId: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const { fivemOrderFamilies, fivemOrders } = await getMongoCollections();
-  if (await fivemOrders.findOne({ ...scopeQuery(guildId, normalizedBotId), familyId })) throw orderError("A familia possui encomendas e deve ser desativada em vez de excluida.", 409);
-  const row = await fivemOrderFamilies.findOneAndDelete({ _id: familyId, ...scopeQuery(guildId, normalizedBotId) });
+  if (await fivemOrders.findOne({ ...scopeQuery(guildId, normalizedBotId), familyId, status: { $in: ["open", "pending_approval", "approved", "in_production", "ready"] } })) throw orderError("A familia possui lavagem/encomenda em andamento e nao pode ser excluida agora.", 409);
+  const row = await fivemOrderFamilies.findOneAndUpdate(
+    { _id: familyId, ...scopeQuery(guildId, normalizedBotId) },
+    { $set: { active: false, deletedAt: new Date(), deletedBy: actorId, updatedAt: new Date(), updatedBy: actorId } },
+    { returnDocument: "after" }
+  );
   if (!row) return null;
   await writeLog({ action: "family.deleted", actorId, botId: normalizedBotId, data: { familyId, name: row.name }, guildId, orderId: null, productId: null });
   emitUpdated(guildId, normalizedBotId);
@@ -194,7 +216,7 @@ export async function createFivemOrder(input: {
     if (matchingRule) product = matchingRule;
   }
   const moduleId = product.type === "standard" ? "custom" : product.type;
-  const family = await fivemOrderFamilies.findOne({ _id: input.familyId, ...scopeQuery(input.guildId, botId), active: true });
+  const family = await fivemOrderFamilies.findOne({ _id: input.familyId, ...scopeQuery(input.guildId, botId), ...activeFamilyQuery() });
   if (!family) throw orderError("Selecione uma familia ativa para criar a encomenda.", 400);
   const familyModules = normalizeOrderModules(family.orderModules ?? []);
   if (familyModules.length && !familyModules.includes(moduleId as "washing" | "ammo" | "drug" | "weapon" | "custom")) throw orderError("Esta familia nao atende este tipo de encomenda.", 403);
@@ -249,11 +271,55 @@ export async function updateFivemOrderStatus(guildId: string, botId: string | nu
   if (!updated) throw orderError("A encomenda foi atualizada por outra pessoa. Tente novamente.", 409);
   await writeLog({ action: `order.${status}`, actorId, botId: normalizedBotId, data: { familyId: current.familyId, familyName: current.familyName, from: current.status, note: normalizeText(note, 500), orderNumber: current.orderNumber, orderType: current.category, to: status, totalValue: current.finalValue }, guildId, orderId, productId: current.productId });
   emitUpdated(guildId, normalizedBotId);
-  const dto = toOrderDto(updated);
+  let finalRow = updated;
+  if (status === "delivered") {
+    finalRow = await completeLaundryFinanceIfNeeded(guildId, normalizedBotId, updated, actorId) ?? updated;
+  }
+  const dto = toOrderDto(finalRow);
   if (normalizedBotId) {
     emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "fivem:orders:status_updated", { actorId, botId: normalizedBotId, guildId, order: dto });
   }
   return dto;
+}
+
+async function completeLaundryFinanceIfNeeded(guildId: string, botId: string | null, order: MongoFivemOrder, actorId: string | null) {
+  const { fivemOrderProducts, fivemOrders } = await getMongoCollections();
+  if (order.financialTransactionId) return order;
+  const product = await fivemOrderProducts.findOne({ _id: order.productId, ...scopeQuery(guildId, botId) });
+  if (product?.type !== "washing") return order;
+  const amount = money(order.profit);
+  if (amount <= 0) return order;
+  const tx = await createFivemFinanceTransaction({
+    amount,
+    guildId,
+    managerId: actorId ?? order.userId,
+    managerName: actorId ?? order.userId,
+    metadata: {
+      familyAmount: order.finalValue,
+      familyId: order.familyId,
+      familyName: order.familyName,
+      familyPercentage: order.washingPercentage ?? product.factionPercentage,
+      factoryAmount: amount,
+      grossAmount: order.grossValue,
+      laundryOrderId: order._id,
+      orderNumber: order.orderNumber,
+      productId: order.productId
+    },
+    personName: order.familyName,
+    proofImageUrl: "",
+    reason: `Lavagem ENC-${String(order.orderNumber).padStart(4, "0")} - valor retido pela fabrica`,
+    targetUserId: order.userId,
+    type: "add",
+    userId: actorId ?? order.userId,
+    username: actorId ?? order.userId
+  }, botId);
+  const refreshed = await fivemOrders.findOneAndUpdate(
+    { _id: order._id, ...scopeQuery(guildId, botId), financialTransactionId: null },
+    { $set: { financialTransactionId: tx.transactionId, updatedAt: new Date() } },
+    { returnDocument: "after" }
+  );
+  await writeLog({ action: "laundry.finance.completed", actorId, botId, data: { amount, familyId: order.familyId, financialTransactionId: tx.transactionId, grossValue: order.grossValue, orderNumber: order.orderNumber }, guildId, orderId: order._id, productId: order.productId });
+  return refreshed ?? { ...order, financialTransactionId: tx.transactionId };
 }
 
 export async function listFivemOrderLogs(guildId: string, botId?: string | null) {
@@ -303,8 +369,9 @@ export async function requestFivemOrderPanelPublish(guildId: string, botId: stri
 function calculateTotals(product: MongoFivemOrderProduct, quantity: number, grossValue?: number | null, washingPercentage?: number | null) {
   if (product.type === "washing") {
     const gross = clampNumber(grossValue, 0, 1_000_000_000_000, 0);
-    const discount = roundMoney(gross * (washingPercentage ?? product.factionPercentage) / 100);
-    return { costTotal: roundMoney(gross - discount), finalValue: roundMoney(gross - discount), grossValue: gross, profit: discount, unitPrice: gross };
+    const familyAmount = roundMoney(gross * (washingPercentage ?? product.factionPercentage) / 100);
+    const factoryAmount = roundMoney(gross - familyAmount);
+    return { costTotal: factoryAmount, finalValue: familyAmount, grossValue: gross, profit: factoryAmount, unitPrice: gross };
   }
   const gross = roundMoney(product.price * quantity);
   const costTotal = roundMoney(product.cost * quantity);
@@ -337,7 +404,7 @@ function normalizeProduct(value: Partial<FivemOrderProductDto>, guildId: string,
     active: value.active !== false, allowCustomQuantity: value.allowCustomQuantity !== false, allowNotes: value.allowNotes !== false, botId,
     category: normalizeText(value.category, 80) || (type === "washing" ? "Lavagem" : type === "ammo" ? "Municao" : type === "weapon" ? "Armas" : "Outros"),
     config: normalizeProductConfig(value.config),
-    cost: money(value.cost), description: normalizeText(value.description, 500), emoji: normalizeText(value.emoji, 80), factionPercentage: clampNumber(value.factionPercentage, 0, 100, type === "washing" ? 20 : 0),
+    cost: money(value.cost), description: normalizeText(value.description, 500), emoji: normalizeText(value.emoji, 80), factionPercentage: type === "washing" ? clampNumber(value.factionPercentage, 0.01, 100, 20) : clampNumber(value.factionPercentage, 0, 100, 0),
     defaultQuantity: clampNumber(value.defaultQuantity, 1, 1_000_000, 1), featured: value.featured === true, guildId, maximumQuantity: clampNumber(value.maximumQuantity, 1, 1_000_000, 1_000_000), minimumQuantity: clampNumber(value.minimumQuantity, 1, 1_000_000, 1), name: normalizeText(value.name, 100) || "Novo produto",
     order: clampNumber(value.order, 0, 10000, 0), price: money(value.price), sellerPercentage: clampNumber(value.sellerPercentage, 0, 100, 0),
     type,
@@ -399,9 +466,19 @@ function toProductDto(row: MongoFivemOrderProduct): FivemOrderProductDto { const
 function toOrderDto(row: MongoFivemOrder): FivemOrderDto { const { _id, createdAt, history, updatedAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), history: history.map((item) => ({ ...item, at: item.at.toISOString() })), id: _id, updatedAt: updatedAt.toISOString() }; }
 function toLogDto(row: MongoFivemOrderLog): FivemOrderLogDto { const { _id, createdAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), id: _id }; }
 async function writeLog(input: Omit<MongoFivemOrderLog, "_id" | "createdAt">) { const { fivemOrderLogs } = await getMongoCollections(); await fivemOrderLogs.insertOne({ _id: randomUUID(), createdAt: new Date(), ...input, botId: normalizeBotId(input.botId) }); }
-function emitUpdated(guildId: string, botId: string | null) { emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "fivem:orders:updated", { botId, guildId }); }
+function emitUpdated(guildId: string, botId: string | null) {
+  emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "fivem:orders:updated", { botId, guildId });
+  emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "lavagem:config_updated", { botId, guildId });
+  if (botId) emitRealtimeToRoom(devBotRealtimeRoom(botId), "lavagem:config_updated", { botId, guildId });
+}
 async function nextOrderNumber(guildId: string, botId: string | null) { const { fivemOrders } = await getMongoCollections(); const last = await fivemOrders.find(scopeQuery(guildId, botId)).sort({ orderNumber: -1 }).limit(1).next(); return (last?.orderNumber ?? 0) + 1; }
 function assertTransition(from: MongoFivemOrderStatus, to: MongoFivemOrderStatus) { const allowed: Record<MongoFivemOrderStatus, MongoFivemOrderStatus[]> = { open: ["approved", "in_production", "delivered", "cancelled", "rejected"], pending_approval: ["approved", "in_production", "delivered", "cancelled", "rejected"], approved: ["in_production", "delivered", "cancelled"], in_production: ["ready", "delivered", "cancelled"], ready: ["delivered", "cancelled"], delivered: [], cancelled: [], rejected: [] }; if (!allowed[from].includes(to)) throw orderError(`Nao e permitido alterar de ${from} para ${to}.`, 409); }
+function activeFamilyQuery() { return { active: true, deletedAt: null }; }
+async function assertFamilyNameAvailable(guildId: string, botId: string | null, name: string, exceptId?: string) {
+  const { fivemOrderFamilies } = await getMongoCollections();
+  const duplicate = await fivemOrderFamilies.findOne({ ...scopeQuery(guildId, botId), ...activeFamilyQuery(), ...(exceptId ? { _id: { $ne: exceptId } } : {}), name });
+  if (duplicate) throw orderError("Ja existe uma familia ativa com este nome neste servidor.", 409);
+}
 function scopeQuery(guildId: string, botId: string | null) { return botId ? { botId, guildId } : { guildId, $or: [{ botId: null }, { botId: { $exists: false } }] }; }
 function normalizeBotId(value: string | null | undefined) { return value?.trim() || null; }
 function normalizeSnowflake(value: string | null | undefined) { return /^\d{5,32}$/.test(value?.trim() ?? "") ? value!.trim() : null; }
@@ -409,11 +486,11 @@ function normalizeSnowflakes(values: string[] | undefined) { return [...new Set(
 function normalizeText(value: string | null | undefined, max: number) { return value?.trim().slice(0, max) || null; }
 function normalizeUrl(value: string | null | undefined) { const text = normalizeText(value, 2048); if (!text) return null; try { const url = new URL(text); return ["http:", "https:"].includes(url.protocol) ? text : null; } catch { return null; } }
 function normalizeDate(value: string | null | undefined) { return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value! : null; }
-function normalizeFamily(value: FivemOrderFamilyInput, guildId: string, botId: string | null): Omit<MongoFivemOrderFamily, "_id" | "createdAt" | "updatedAt"> { return { active: value.active !== false, botId, guildId, logChannelId: normalizeSnowflake(value.logChannelId), name: normalizeText(value.name, 100) || "Nova familia", notes: normalizeText(value.notes, 1000), orderModules: normalizeOrderModules(value.orderModules ?? []), responsibleId: normalizeSnowflake(value.responsibleId) ?? "", roleId: normalizeSnowflake(value.roleId) ?? "", type: ["pista", "produto", "sem_produto"].includes(value.type ?? "") ? value.type as MongoFivemOrderFamily["type"] : "produto" }; }
+function normalizeFamily(value: FivemOrderFamilyInput, guildId: string, botId: string | null): Omit<MongoFivemOrderFamily, "_id" | "createdAt" | "updatedAt"> { return { active: value.active !== false, botId, guildId, leaderName: normalizeText(value.leaderName, 100), logChannelId: normalizeSnowflake(value.logChannelId), name: normalizeText(value.name, 100) || "Nova familia", notes: normalizeText(value.notes, 1000), orderModules: normalizeOrderModules(value.orderModules ?? []), responsibleId: normalizeSnowflake(value.responsibleId) ?? "", roleId: normalizeSnowflake(value.roleId) ?? "", type: ["pista", "produto", "sem_produto"].includes(value.type ?? "") ? value.type as MongoFivemOrderFamily["type"] : "produto" }; }
 function normalizeOrderModules(values: FivemOrderSettingsDto["enabledOrderModules"] | undefined) { const allowed = new Set(["washing", "ammo", "drug", "weapon", "custom"]); const result = [...new Set(values ?? ["washing", "ammo", "drug", "weapon", "custom"])].filter((value): value is "washing" | "ammo" | "drug" | "weapon" | "custom" => allowed.has(value)); return result; }
 function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number) { return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback; }
 function money(value: number | null | undefined) { return roundMoney(clampNumber(value, 0, 1_000_000_000_000, 0)); }
 function roundMoney(value: number) { return Math.round(value * 100) / 100; }
-function normalizePercentages(values: number[] | undefined, fallback: number | undefined, type: MongoFivemOrderProduct["type"]) { if (type !== "washing") return []; const normalized = [...new Set([...(values ?? []), clampNumber(fallback, 0, 100, 20)].map((item) => clampNumber(item, 0, 100, 0)))].sort((a, b) => a - b).slice(0, 25); return normalized.length ? normalized : [20]; }
+function normalizePercentages(values: number[] | undefined, fallback: number | undefined, type: MongoFivemOrderProduct["type"]) { if (type !== "washing") return []; const normalized = [...new Set([...(values ?? []), clampNumber(fallback, 0.01, 100, 20)].map((item) => clampNumber(item, 0.01, 100, 20)))].sort((a, b) => a - b).slice(0, 25); return normalized.length ? normalized : [20]; }
 function resolveWashingPercentage(product: MongoFivemOrderProduct, requested: number | null | undefined) { const allowed = normalizePercentages(product.washingPercentages, product.factionPercentage, "washing"); const selected = requested ?? product.factionPercentage ?? allowed[0] ?? 20; if (!allowed.includes(selected)) throw orderError("Percentual de lavagem nao permitido.", 400); return selected; }
 function orderError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

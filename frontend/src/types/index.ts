@@ -1146,6 +1146,9 @@ export type RhAdminSettings = {
   configRoleIds: string[];
   approverUserIds: string[];
   approverRoleIds: string[];
+  approvedRoleId: string | null;
+  manualRegistrationRoleIds: string[];
+  requestCategoryId: string | null;
   viewerUserIds: string[];
   viewerRoleIds: string[];
   panelBannerUrl: string | null;
@@ -1262,6 +1265,7 @@ export type ManualRegistrationSettings = {
   allowOnlyOneRequest: boolean;
   allowResubmit: boolean;
   approvalMessage: string;
+  approvedRoleId: string | null;
   approverRoleIds: string[];
   automaticApproval: boolean;
   autoRoleIds: string[];
@@ -1277,10 +1281,12 @@ export type ManualRegistrationSettings = {
   footerText: string | null;
   guildId: string;
   logChannelId: string | null;
+  manualRegistrationRoleIds: string[];
   name: string;
   panelCategoryId: string | null;
   panelChannelId: string | null;
   panelMessageId: string | null;
+  requestCategoryId: string | null;
   panelImage: PanelImageSettings | null;
   rejectionMessage: string;
   removeRoleIds: string[];
@@ -1306,7 +1312,13 @@ export type ManualRegistrationSubmission = {
   rejectedBy: string | null;
   rejectionReason: string | null;
   requestedRoleId: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "removed";
+  channelId: string | null;
+  requestedName: string;
+  registrationType: "request" | "manual";
+  removedAt: string | null;
+  removedBy: string | null;
+  removalReason: string | null;
   updatedAt: string;
   userAvatar: string | null;
   userId: string;
@@ -1489,7 +1501,7 @@ export type FivemOrderSettings = {
   orderCreatedMessage: string; orderDeliveredMessage: string; panelChannelId: string | null; panelDescription: string; panelImage: PanelImageSettings | null;
   panelMessageId: string | null; panelTitle: string; updatedAt: string | null;
 };
-export type FivemOrderFamily = { active: boolean; botId: string | null; createdAt: string; guildId: string; id: string; logChannelId: string | null; name: string; notes: string | null; orderModules: Array<"washing" | "ammo" | "drug" | "weapon" | "custom">; responsibleId: string; roleId: string; type?: "pista" | "produto" | "sem_produto"; updatedAt: string };
+export type FivemOrderFamily = { active: boolean; botId: string | null; createdAt: string; guildId: string; id: string; leaderName?: string | null; logChannelId: string | null; name: string; notes: string | null; orderModules: Array<"washing" | "ammo" | "drug" | "weapon" | "custom">; responsibleId: string; roleId: string; type?: "pista" | "produto" | "sem_produto"; updatedAt: string };
 export type FivemOrderProduct = {
   active: boolean; allowCustomQuantity: boolean; allowNotes: boolean; botId: string | null; category: string; cost: number; createdAt: string;
   config?: {
@@ -1519,6 +1531,12 @@ export type FivemFinanceSettings = {
   adminRoleIds: string[];
   allowBalanceQuery: boolean;
   allowNegativeBalance: boolean;
+  confirmAdd: boolean;
+  confirmRemove: boolean;
+  historyEnabled: boolean;
+  historyPageSize: number;
+  maxTransactionAmount: number;
+  requireReason: boolean;
   autoCloseMinutes: number;
   bannerMode: "above" | "inside" | "below" | "none";
   botId: string | null;
@@ -1558,6 +1576,11 @@ export type FivemFinanceTransaction = {
   userAvatar: string | null;
   userId: string;
   username: string;
+  managerId?: string;
+  managerName?: string;
+  personName?: string;
+  reason?: string;
+  targetUserId?: string;
 };
 export type FivemFinanceDashboard = {
   report: {

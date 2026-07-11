@@ -88,6 +88,7 @@ export type FivemGoalConfigDto = {
   currentValue: number;
   deleteRoleIds: string[];
   description: string | null;
+  deletedAt?: string | null;
   editRoleIds: string[];
   fields: FivemGoalFieldDto[];
   guildId: string;
@@ -95,6 +96,7 @@ export type FivemGoalConfigDto = {
   logChannelId: string | null;
   managerRoleIds: string[];
   name: string;
+  order: number;
   panelChannelId: string | null;
   panelMessageId: string | null;
   participantRoleIds: string[];
@@ -111,6 +113,7 @@ export type FivemGoalConfigDto = {
   targetValue: number;
   totalParticipants: number;
   type: string;
+  unit: string;
   updatedAt: string;
   updatedBy?: string | null;
   viewerRoleIds: string[];
@@ -375,7 +378,7 @@ export async function listFivemGoalConfigs(guildId: string, botId?: string | nul
   }
   const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
   const [rows, progress] = await Promise.all([
-    fivemGoalConfigs.find(scopeQuery(guildId, normalizedBotId)).sort({ createdAt: -1 }).limit(100).toArray(),
+    fivemGoalConfigs.find({ ...scopeQuery(guildId, normalizedBotId), deletedAt: null }).sort({ order: 1, createdAt: 1 }).limit(100).toArray(),
     fivemGoalSubmissions.aggregate<{ _id: string; currentValue: number; totalParticipants: number }>([
       { $match: { ...scopeQuery(guildId, normalizedBotId), status: "approved" } },
       { $group: { _id: "$metaId", currentValue: { $sum: "$value" }, participants: { $addToSet: "$userId" } } },
@@ -435,11 +438,16 @@ export async function deleteFivemGoalConfig(guildId: string, botId: string | nul
   const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
   const current = await fivemGoalConfigs.findOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
   if (!current) return null;
-  await fivemGoalConfigs.deleteOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
-  if (deleteHistory) {
-    await fivemGoalSubmissions.deleteMany({ ...scopeQuery(guildId, normalizedBotId), metaId });
+  const historyCount = await fivemGoalSubmissions.countDocuments({ ...scopeQuery(guildId, normalizedBotId), metaId });
+  if (deleteHistory && historyCount > 0) {
+    throw new Error("Metas com historico nao podem ser apagadas fisicamente. Desative ou arquive a meta.");
   }
-  await writeFivemGoalLog({ action: deleteHistory ? "meta.deleted_with_history" : "meta.deleted", botId: normalizedBotId, details: { name: current.name }, guildId, metaId, userId: actorId });
+  if (deleteHistory) await fivemGoalConfigs.deleteOne({ _id: metaId, ...scopeQuery(guildId, normalizedBotId) });
+  else await fivemGoalConfigs.updateOne(
+    { _id: metaId, ...scopeQuery(guildId, normalizedBotId) },
+    { $set: { deletedAt: new Date(), deletedBy: actorId, status: "finished", updatedAt: new Date(), updatedBy: actorId } }
+  );
+  await writeFivemGoalLog({ action: deleteHistory ? "meta.deleted_empty" : "meta.soft_deleted", botId: normalizedBotId, details: { historyCount, name: current.name }, guildId, metaId, userId: actorId });
   return toConfigDto(current);
 }
 
@@ -532,12 +540,21 @@ export async function createFivemGoalSubmission(input: {
   roleIdsSnapshot?: string[];
   userId: string;
   value: number;
+  idempotencyKey?: string | null;
 }) {
   const normalizedBotId = normalizeBotId(input.botId);
   const configs = await listFivemGoalConfigs(input.guildId, normalizedBotId, true);
   const meta = input.metaId ? configs.find((config) => config.id === input.metaId) : configs.find((config) => config.status === "active") ?? configs[0];
   if (!meta) return null;
+  if (!Number.isFinite(input.value) || input.value <= 0) throw new Error("O valor da meta deve ser maior que zero.");
   const now = new Date();
+  const idempotencyKey = normalizeText(input.idempotencyKey, 200)
+    ?? (input.proofUrl ? `${input.userId}:${meta.id}:${input.proofUrl}`.slice(0, 200) : null);
+  const { fivemGoalSubmissions } = await getMongoCollections();
+  if (idempotencyKey) {
+    const existing = await fivemGoalSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), idempotencyKey });
+    if (existing) return toSubmissionDto(existing);
+  }
   const status = meta.requiresApproval ? "pending" as const : "approved" as const;
   const doc: MongoFivemGoalSubmission = {
     _id: randomUUID(),
@@ -548,6 +565,7 @@ export async function createFivemGoalSubmission(input: {
     description: normalizeText(input.description, 1000),
     fields: (input.fields ?? []).map((field) => ({ id: normalizeText(field.id, 80) || "campo", label: normalizeText(field.label, 100) || "Campo", value: normalizeText(field.value, 1500) || "" })).slice(0, 10),
     guildId: input.guildId,
+    idempotencyKey,
     metaId: meta.id,
     proofUrl: normalizeText(input.proofUrl, 2048),
     refusedAt: null,
@@ -557,9 +575,8 @@ export async function createFivemGoalSubmission(input: {
     status,
     updatedAt: now,
     userId: input.userId,
-    value: Number.isFinite(input.value) ? Math.max(0, input.value) : 0
+    value: input.value
   };
-  const { fivemGoalSubmissions } = await getMongoCollections();
   await fivemGoalSubmissions.insertOne(doc);
   await writeFivemGoalLog({ action: status === "approved" ? "submission.auto_approved" : "submission.created", botId: normalizedBotId, details: { proofUrl: doc.proofUrl, value: doc.value }, guildId: input.guildId, metaId: meta.id, userId: input.userId });
   emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", {
@@ -605,7 +622,7 @@ export async function moderateFivemGoalSubmission(guildId: string, botId: string
     ? { approvedAt: now, approvedBy: actorId, refusedAt: null, refusedBy: null, refusalReason: null, status, updatedAt: now }
     : { refusedAt: now, refusedBy: actorId, refusalReason: normalizeText(refusalReason, 800), status, updatedAt: now };
   const row = await fivemGoalSubmissions.findOneAndUpdate(
-    { _id: submissionId, ...scopeQuery(guildId, normalizedBotId) },
+    { _id: submissionId, ...scopeQuery(guildId, normalizedBotId), status: "pending" },
     { $set: update },
     { returnDocument: "after" }
   );
@@ -748,6 +765,7 @@ function toConfigDto(row: MongoFivemGoalConfig, progress?: { currentValue: numbe
     currentValue: progress?.currentValue ?? 0,
     deleteRoleIds: row.deleteRoleIds ?? [],
     description: row.description ?? null,
+    deletedAt: row.deletedAt?.toISOString() ?? null,
     editRoleIds: row.editRoleIds ?? [],
     fields: normalizeFields(row.fields as FivemGoalFieldDto[]),
     guildId: row.guildId,
@@ -755,6 +773,7 @@ function toConfigDto(row: MongoFivemGoalConfig, progress?: { currentValue: numbe
     logChannelId: row.logChannelId ?? null,
     managerRoleIds: row.managerRoleIds ?? [],
     name: row.name,
+    order: Number.isFinite(row.order) ? row.order! : 0,
     panelChannelId: row.panelChannelId ?? null,
     panelMessageId: row.panelMessageId ?? null,
     participantRoleIds: row.participantRoleIds ?? [],
@@ -767,6 +786,7 @@ function toConfigDto(row: MongoFivemGoalConfig, progress?: { currentValue: numbe
     targetValue: Number.isFinite(row.targetValue) ? row.targetValue : 1,
     totalParticipants: progress?.totalParticipants ?? 0,
     type: normalizeText(row.type, 80) || "personalizada",
+    unit: normalizeText(row.unit, 40) || "Unidades",
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy ?? null,
     viewerRoleIds: row.viewerRoleIds ?? []
@@ -820,6 +840,7 @@ function normalizeConfigInput(input: Partial<FivemGoalConfigDto>, guildId: strin
     logChannelId: normalizeSnowflake(input.logChannelId),
     managerRoleIds: normalizeRoleIds(input.managerRoleIds ?? []),
     name: normalizeText(input.name, 100) || "Nova Meta",
+    order: Number.isFinite(input.order) ? Math.max(0, Math.trunc(input.order!)) : 0,
     panelChannelId: normalizeSnowflake(input.panelChannelId),
     participantRoleIds: normalizeRoleIds(input.participantRoleIds ?? []),
     period: normalizePeriod(input.period),
@@ -830,6 +851,7 @@ function normalizeConfigInput(input: Partial<FivemGoalConfigDto>, guildId: strin
     status: normalizeStatus(input.status),
     targetValue: normalizeTargetValue(input.targetValue),
     type: normalizeText(input.type, 80) || "personalizada",
+    unit: normalizeText(input.unit, 40) || "Unidades",
     viewerRoleIds: normalizeRoleIds(input.viewerRoleIds ?? [])
   };
 }

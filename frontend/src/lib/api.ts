@@ -916,8 +916,9 @@ export async function publishManualRegistrationPanel(guildId: string, botId?: st
   return data.settings;
 }
 
-export async function deleteManualRegistrationSubmission(guildId: string, submissionId: string, botId?: string | null) {
+export async function deleteManualRegistrationSubmission(guildId: string, submissionId: string, reason: string, botId?: string | null) {
   await api.delete(`/manual-registration/${guildId}/submissions/${submissionId}`, {
+    data: { reason },
     params: botId ? { botId } : undefined
   });
 }

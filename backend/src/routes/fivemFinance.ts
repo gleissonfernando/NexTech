@@ -23,6 +23,12 @@ const settingsSchema = z.object({
   adminRoleIds: z.array(snowflake).max(100).optional(),
   allowBalanceQuery: z.boolean().optional(),
   allowNegativeBalance: z.boolean().optional(),
+  confirmAdd: z.boolean().optional(),
+  confirmRemove: z.boolean().optional(),
+  historyEnabled: z.boolean().optional(),
+  historyPageSize: z.coerce.number().int().min(5).max(25).optional(),
+  maxTransactionAmount: z.coerce.number().positive().max(1_000_000_000_000).optional(),
+  requireReason: z.boolean().optional(),
   autoCloseMinutes: z.coerce.number().int().min(1).max(1440).optional(),
   bannerMode: z.enum(["above", "inside", "below", "none"]).optional(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
@@ -41,13 +47,14 @@ const transactionSchema = z.object({
   amount: z.coerce.number().positive().max(1_000_000_000_000),
   logChannelId: optionalSnowflake,
   logMessageId: optionalSnowflake,
-  proofImageUrl: z.string().url().max(2048),
+  proofImageUrl: z.union([z.string().url().max(2048), z.literal("")]).default(""),
   proofMessageId: optionalSnowflake,
   tempChannelId: optionalSnowflake,
   type: z.enum(["add", "remove"]),
   userAvatar: z.string().url().max(2048).nullable().optional(),
   userId: snowflake,
   username: z.string().min(1).max(120)
+  ,managerId: snowflake.optional(), managerName: z.string().min(1).max(120).optional(), personName: z.string().min(1).max(120).optional(), reason: z.string().max(1000).optional(), targetUserId: snowflake.optional()
 });
 const correctionSchema = z.object({ amount: z.coerce.number().positive().max(1_000_000_000_000).optional(), notes: z.string().max(1000).nullable().optional(), status: z.enum(["completed", "reviewed", "cancelled", "corrected"]).optional() });
 
@@ -89,7 +96,7 @@ fivemFinanceRouter.patch("/:guildId/transactions/:id", async (req, res, next) =>
 });
 
 fivemFinanceRouter.get("/bot/:guildId/runtime", requireBot, async (req, res, next) => {
-  try { const guildId = snowflake.parse(req.params.guildId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); return res.json({ settings: await getFivemFinanceSettings(guildId, botId), transactions: await listFivemFinanceTransactions(guildId, botId, 50) }); } catch (error) { return next(error); }
+  try { const guildId = snowflake.parse(req.params.guildId); const botId = await resolveRequestBotId(req); await assertRuntime(botId, guildId); return res.json({ settings: await getFivemFinanceSettings(guildId, botId), transactions: await listFivemFinanceTransactions(guildId, botId, 1000) }); } catch (error) { return next(error); }
 });
 
 fivemFinanceRouter.post("/bot/:guildId/transactions", requireBot, async (req, res, next) => {

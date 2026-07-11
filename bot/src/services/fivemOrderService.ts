@@ -78,6 +78,16 @@ export async function showFivemOrderReport(interaction: ChatInputCommandInteract
   await interaction.reply({ content: `**Relatorio rapido de encomendas**\n${products}`, ephemeral: true });
 }
 
+export async function showFivemLaundryConfig(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) {
+    await interaction.reply({ content: "Voce nao possui permissao para configurar o sistema de lavagem.", ephemeral: true });
+    return;
+  }
+  await interaction.reply({ ...laundryConfigPanel(runtime), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+}
+
 export async function handleFivemOrderInteraction(interaction: Interaction, context: BotContext) {
   if (!("customId" in interaction)) return false;
   if (interaction.customId.startsWith(`${CLIENT_ACTION_PREFIX}_`)) {
@@ -98,9 +108,119 @@ export async function handleFivemOrderInteraction(interaction: Interaction, cont
   if (interaction.isButton() && interaction.customId === `${PREFIX}:status`) { await showStatusModal(interaction); return true; }
   if (interaction.isButton() && interaction.customId === `${PREFIX}:families`) { await showFamilies(interaction, context); return true; }
   if (interaction.isButton() && interaction.customId === `${PREFIX}:help`) { await showOrderHelp(interaction); return true; }
+  if (interaction.isButton() && interaction.customId === `${PREFIX}:config:home`) { await showLaundryConfigHome(interaction, context); return true; }
+  if (interaction.isButton() && interaction.customId === `${PREFIX}:config:families`) { await showLaundryFamiliesConfig(interaction, context); return true; }
+  if (interaction.isButton() && interaction.customId === `${PREFIX}:config:add_family`) { await showLaundryFamilyModal(interaction, null); return true; }
+  if (interaction.isStringSelectMenu() && interaction.customId === `${PREFIX}:config:edit_family`) { await showLaundryFamilyModal(interaction, interaction.values[0] ?? null); return true; }
+  if (interaction.isStringSelectMenu() && interaction.customId === `${PREFIX}:config:delete_family`) { await confirmLaundryFamilyDelete(interaction, context); return true; }
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:config:confirm_delete_family:`)) { await deleteLaundryFamily(interaction, context); return true; }
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:config:family_modal:`)) { await submitLaundryFamilyModal(interaction, context); return true; }
   if (interaction.isModalSubmit() && interaction.customId === `${PREFIX}:status_modal`) { await submitStatusLookup(interaction, context); return true; }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:action:`)) { await updateOrderFromButton(interaction, context); return true; }
   return false;
+}
+
+function laundryConfigPanel(runtime: Awaited<ReturnType<BotContext["api"]["getFivemOrderRuntime"]>>) {
+  const washingProducts = runtime.products.filter((product) => product.type === "washing" && product.active);
+  return renderComponentsV2Panel({
+    accentColor: parseColor(runtime.settings.color),
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`${PREFIX}:config:families`).setLabel("Gerenciar Familias").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:config:publish_panel`).setLabel("Publicar Painel").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`${PREFIX}:config:home`).setLabel("Atualizar").setStyle(ButtonStyle.Secondary)
+      )
+    ],
+    description: `Status: **${runtime.settings.enabled ? "Ativo" : "Inativo"}**\nFamilias ativas: **${runtime.families.length}**\nRegras de lavagem: **${washingProducts.length}**`,
+    fields: [
+      `Canal do painel: ${runtime.settings.panelChannelId ? `<#${runtime.settings.panelChannelId}>` : "nao configurado"}`,
+      `Canal de logs: ${runtime.settings.logChannelId ? `<#${runtime.settings.logChannelId}>` : "nao configurado"}`
+    ],
+    moduleId: "fivem-washing",
+    title: "Sistema de Lavagem"
+  });
+}
+
+async function showLaundryConfigHome(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) return interaction.reply({ content: "Sem permissao.", ephemeral: true });
+  await interaction.update(laundryConfigPanel(runtime));
+}
+
+async function showLaundryFamiliesConfig(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) return interaction.reply({ content: "Sem permissao.", ephemeral: true });
+  const families = runtime.families.filter((family) => family.orderModules.includes("washing") || !family.orderModules.length).slice(0, 25);
+  const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PREFIX}:config:add_family`).setLabel("Cadastrar Familia").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PREFIX}:config:home`).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    )
+  ];
+  if (families.length) {
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(`${PREFIX}:config:edit_family`).setPlaceholder("Editar familia").addOptions(families.map((family) => ({ label: family.name.slice(0, 100), value: family.id, description: (family.leaderName ? `Lider: ${family.leaderName}` : "Familia ativa").slice(0, 100) })))));
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(`${PREFIX}:config:delete_family`).setPlaceholder("Excluir familia").addOptions(families.map((family) => ({ label: family.name.slice(0, 100), value: family.id, description: (family.leaderName ? `Lider: ${family.leaderName}` : "Familia ativa").slice(0, 100) })))));
+  }
+  await interaction.update(renderComponentsV2Panel({
+    accentColor: parseColor(runtime.settings.color),
+    actions: rows,
+    description: families.length ? families.map((family) => `**${family.name}**${family.leaderName ? `\nLider: ${family.leaderName}` : ""}`).join("\n\n").slice(0, 1800) : "Nenhuma familia ativa cadastrada para lavagem.",
+    moduleId: "fivem-washing",
+    title: "Gerenciamento de Familias"
+  }));
+}
+
+async function showLaundryFamilyModal(interaction: ButtonInteraction | StringSelectMenuInteraction, familyId: string | null) {
+  const modal = new ModalBuilder().setCustomId(`${PREFIX}:config:family_modal:${familyId ?? "new"}`).setTitle(familyId ? "Editar Familia" : "Cadastrar Familia");
+  modal.addComponents(inputRow("name", "Nome da familia", "Ex: Familia Norte", true));
+  modal.addComponents(inputRow("leaderName", "Nome do lider", "Ex: Carlos Silva", true));
+  await interaction.showModal(modal);
+}
+
+async function submitLaundryFamilyModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  await interaction.deferReply({ ephemeral: true });
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) return interaction.editReply("Sem permissao.");
+  const familyId = interaction.customId.split(":")[3] ?? "new";
+  const name = interaction.fields.getTextInputValue("name").trim();
+  const leaderName = interaction.fields.getTextInputValue("leaderName").trim();
+  if (!name || !leaderName) return interaction.editReply("Preencha nome da familia e nome do lider.");
+  const payload = { active: true, actorId: interaction.user.id, leaderName, name, orderModules: ["washing" as const] };
+  const family = familyId === "new"
+    ? await context.api.createFivemOrderFamily(interaction.guild.id, payload)
+    : await context.api.updateFivemOrderFamily(interaction.guild.id, familyId, payload);
+  await interaction.editReply(`Familia **${family.name}** salva com sucesso.`);
+}
+
+async function confirmLaundryFamilyDelete(interaction: StringSelectMenuInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) return interaction.reply({ content: "Sem permissao.", ephemeral: true });
+  const family = runtime.families.find((item) => item.id === interaction.values[0]);
+  if (!family) return interaction.reply({ content: "Familia nao encontrada.", ephemeral: true });
+  await interaction.update(renderComponentsV2Panel({
+    accentColor: 0xef4444,
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PREFIX}:config:confirm_delete_family:${family.id}`).setLabel("Excluir").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`${PREFIX}:config:families`).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    )],
+    description: `Familia: **${family.name}**\nLider: **${family.leaderName ?? "nao informado"}**\nA exclusao sera logica e o historico antigo sera preservado.`,
+    moduleId: "fivem-washing",
+    title: "Confirmar Exclusao"
+  }));
+}
+
+async function deleteLaundryFamily(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  await interaction.deferReply({ ephemeral: true });
+  const runtime = await context.api.getFivemOrderRuntime(interaction.guild.id);
+  if (!(await canConfigure(interaction.guild, interaction.user.id, runtime.settings))) return interaction.editReply("Sem permissao.");
+  const familyId = interaction.customId.split(":")[3] ?? "";
+  const family = await context.api.deleteFivemOrderFamily(interaction.guild.id, familyId, interaction.user.id);
+  await interaction.editReply(`Familia **${family.name}** excluida da lista ativa.`);
 }
 
 async function publishConfiguredOrderPanel(guild: Guild, context: BotContext, fallbackChannelId?: string | null) {
@@ -711,6 +831,10 @@ async function canManage(guild: Guild, userId: string, settings: FivemOrderSetti
   if (guild.ownerId === userId || member.permissions.has(PermissionFlagsBits.Administrator) || member.roles.cache.some((role) => settings.adminRoleIds.includes(role.id))) return true;
   const roles = status === "cancelled" || status === "rejected" ? settings.cancelRoleIds : settings.finishRoleIds;
   return member.roles.cache.some((role) => roles.includes(role.id));
+}
+async function canConfigure(guild: Guild, userId: string, settings: FivemOrderSettings) {
+  const member = await guild.members.fetch(userId).catch(() => null); if (!member) return false;
+  return guild.ownerId === userId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild) || member.roles.cache.some((role) => settings.adminRoleIds.includes(role.id));
 }
 function inputRow(id: string, label: string, placeholder: string, required: boolean, paragraph = false) { return new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setPlaceholder(placeholder).setRequired(required).setStyle(paragraph ? TextInputStyle.Paragraph : TextInputStyle.Short)); }
 function orderSummary(order: FivemOrder) { return `**Encomenda ENC-${String(order.orderNumber).padStart(4, "0")}**\nFamilia: ${order.familyName}\nProduto: ${order.productName}${order.washingPercentage !== null && order.washingPercentage !== undefined ? `\nValor entregue: ${formatMoney(order.grossValue)}\nPercentual: ${order.washingPercentage}%\nValor para familia: ${formatMoney(order.finalValue)}` : `\nValor: ${formatMoney(order.finalValue)}`}\nStatus: ${statusLabel(order.status)}\nCriada: <t:${Math.floor(new Date(order.createdAt).getTime() / 1000)}:F>`; }

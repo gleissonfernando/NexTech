@@ -89,6 +89,7 @@ export type ManualRegistrationExecuteEvent = {
   userId: string;
   username: string;
 };
+export type ManualRegistrationRemoveEvent = { botId: string; guildId: string; roleId: string | null; submissionId: string; userId: string };
 
 export type DatabaseMaintenanceDeleteChannelsEvent = {
   botId?: string | null;
@@ -253,6 +254,7 @@ export class BotSocketClient {
   private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
+  private manualRegistrationRemoveHandler: ((payload: ManualRegistrationRemoveEvent) => void) | null = null;
   private databaseMaintenanceDeleteChannelsHandler: ((payload: DatabaseMaintenanceDeleteChannelsEvent) => void) | null = null;
   private fivemHierarchyPanelUpdateHandler: ((payload: FivemHierarchyPanelUpdateEvent, ack?: FivemHierarchyPanelUpdateAck) => void) | null = null;
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
@@ -362,6 +364,7 @@ export class BotSocketClient {
       this.socket.on("manual-registration:panel_publish", this.manualRegistrationPanelPublishHandler);
     }
     if (this.manualRegistrationExecuteHandler) this.socket.on("manual-registration:execute", this.manualRegistrationExecuteHandler);
+    if (this.manualRegistrationRemoveHandler) this.socket.on("manual-registration:remove", this.manualRegistrationRemoveHandler);
     if (this.databaseMaintenanceDeleteChannelsHandler) this.socket.on("database-maintenance:delete_channels", this.databaseMaintenanceDeleteChannelsHandler);
 
     if (this.fivemHierarchyPanelUpdateHandler) {
@@ -578,6 +581,7 @@ export class BotSocketClient {
     this.socket?.off("manual-registration:execute");
     this.socket?.on("manual-registration:execute", handler);
   }
+  onManualRegistrationRemove(handler: (payload: ManualRegistrationRemoveEvent) => void) { this.manualRegistrationRemoveHandler = handler; this.socket?.off("manual-registration:remove"); this.socket?.on("manual-registration:remove", handler); }
 
   onDatabaseMaintenanceDeleteChannels(handler: (payload: DatabaseMaintenanceDeleteChannelsEvent) => void) {
     this.databaseMaintenanceDeleteChannelsHandler = handler;

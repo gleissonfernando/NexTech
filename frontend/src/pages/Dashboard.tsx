@@ -5163,14 +5163,15 @@ function ManualRegistrationPanel({
   }
 
   async function removeSubmission(submission: ManualRegistrationSubmission) {
-    if (!guild || !canManage || !window.confirm(`Excluir o cadastro de ${submission.username}?`)) return;
+    if (!guild || !canManage || submission.status !== "approved") return;
+    const reason = window.prompt(`Motivo para remover o cadastro de ${submission.requestedName}?`);
+    if (!reason?.trim()) return;
     setSaving(true);
     setMessage(null);
     setError(null);
     try {
-      await deleteManualRegistrationSubmission(guild.id, submission.id, botId);
-      setSubmissions((current) => current.filter((item) => item.id !== submission.id));
-      setMessage("Cadastro excluido.");
+      await deleteManualRegistrationSubmission(guild.id, submission.id, reason.trim(), botId);
+      setMessage("Remocao solicitada ao bot. O resultado sera sincronizado em tempo real.");
     } catch {
       setError("Nao foi possivel excluir o cadastro.");
     } finally {
@@ -5213,7 +5214,7 @@ function ManualRegistrationPanel({
             <CardDescription>Painel, sets solicitaveis, modal, aprovacao, cargos e logs em Components V2.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManage || !settings?.enabled || (!settings.panelChannelId && !settings.panelCategoryId) || saving || loading} onClick={() => void publishSetPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Enviar painel</Button>
+            <Button disabled={!canManage || !settings?.enabled || !settings.panelChannelId || !settings.requestCategoryId || !settings.approvedRoleId || !settings.approverRoleIds.length || saving || loading} onClick={() => void publishSetPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Enviar painel</Button>
             <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               Salvar
@@ -5274,9 +5275,9 @@ function ManualRegistrationPanel({
                   {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
                 </select>
               </label>
-              <label className="block text-xs font-medium text-zinc-400">Categoria do Pedido de Set
-                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ panelCategoryId: event.target.value || null })} value={settings.panelCategoryId ?? ""}>
-                  <option value="">Sem criacao automatica</option>
+              <label className="block text-xs font-medium text-zinc-400">Categoria dos canais privados
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ requestCategoryId: event.target.value || null })} value={settings.requestCategoryId ?? ""}>
+                  <option value="">Selecionar categoria</option>
                   {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                 </select>
               </label>
@@ -5306,10 +5307,10 @@ function ManualRegistrationPanel({
             <TicketField disabled={!canManage} label="Rodape" onChange={(value) => patchSettings({ footerText: value })} value={settings.footerText ?? ""} />
 
             <div className="grid gap-3 md:grid-cols-2">
-              <MultiRoleSelect disabled={!canManage} label="Cargos ao aprovar" onChange={(values) => patchSettings({ autoRoleIds: values })} roles={roles} values={settings.autoRoleIds} />
+              <RoleSelect disabled={!canManage} label="Cargo atribuido ao aprovar" onChange={(approvedRoleId) => patchSettings({ approvedRoleId })} roles={roles.filter((role) => role.assignable)} value={settings.approvedRoleId ?? ""} />
               <MultiRoleSelect disabled={!canManage} label="Cargos para remover" onChange={(values) => patchSettings({ removeRoleIds: values })} roles={roles} values={settings.removeRoleIds} />
-              <MultiRoleSelect disabled={!canManage} label="Cargos da staff" onChange={(values) => patchSettings({ staffRoleIds: values })} roles={roles} values={settings.staffRoleIds} />
               <MultiRoleSelect disabled={!canManage} label="Cargos aprovadores" onChange={(values) => patchSettings({ approverRoleIds: values })} roles={roles} values={settings.approverRoleIds} />
+              <MultiRoleSelect disabled={!canManage} label="Cargos para cadastro manual" onChange={(values) => patchSettings({ manualRegistrationRoleIds: values })} roles={roles} values={settings.manualRegistrationRoleIds} />
             </div>
 
             <div className="grid gap-2 md:grid-cols-4">

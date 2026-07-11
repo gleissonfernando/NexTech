@@ -1,186 +1,41 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ChannelType,
-  EmbedBuilder,
-  MessageFlags,
-  ModalBuilder,
-  PermissionFlagsBits,
-  TextChannel,
-  TextInputBuilder,
-  TextInputStyle,
-  type ButtonInteraction,
-  type ChatInputCommandInteraction,
-  type Client,
-  type Guild,
-  type Interaction,
-  type Message,
-  type ModalSubmitInteraction
-} from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, PermissionFlagsBits, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Guild, type Interaction, type ModalSubmitInteraction } from "discord.js";
 import type { BotContext } from "../types";
-import type { FivemFinanceSettings } from "./apiClient";
+import type { FivemFinanceSettings, FivemFinanceTransaction } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
-const PREFIX = "fivem_finance";
-const sessions = new Map<string, { amount: number | null; openerId: string; proofMessageId: string | null; proofUrl: string | null; type: "add" | "remove" }>();
+const PREFIX="fivem_finance";
+const pending=new Map<string,{guildId:string;input:Parameters<BotContext["api"]["createFivemFinanceTransaction"]>[1];expires:number}>();
+const historySearches=new Map<string,string>();
 
-export function startFivemFinanceService(client: Client<true>, context: BotContext) {
-  context.socket.onFivemFinancePanelPublish((payload) => {
-    const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) void publishConfiguredFinancePanel(guild, context);
-  });
-  client.on("messageCreate", (message) => void captureProof(message));
-}
+export function startFivemFinanceService(client:Client<true>,context:BotContext){context.socket.onFivemFinancePanelPublish(p=>{const g=client.guilds.cache.get(p.guildId);if(g)void publishConfiguredFinancePanel(g,context)});const timer=setInterval(()=>{for(const[k,v]of pending)if(v.expires<Date.now())pending.delete(k)},60000);timer.unref();}
+export async function publishFivemFinancePanel(interaction:ChatInputCommandInteraction,context:BotContext){if(!interaction.guild)return void await interaction.reply({content:"Use este comando em um servidor.",flags:MessageFlags.Ephemeral});const id=await publishConfiguredFinancePanel(interaction.guild,context,interaction.channelId);await interaction.reply({content:id?`Painel financeiro publicado em <#${id}>.`:"Configure e ative o financeiro antes de publicar.",flags:MessageFlags.Ephemeral});}
+export async function showFivemFinanceBalance(interaction:ChatInputCommandInteraction,context:BotContext){if(!interaction.guild)return;const runtime=await context.api.getFivemFinanceRuntime(interaction.guild.id);await interaction.reply(v2Ephemeral("Saldo financeiro",summary(runtime.transactions)));}
 
-export async function publishFivemFinancePanel(interaction: ChatInputCommandInteraction, context: BotContext) {
-  if (!interaction.guild) return interaction.reply({ content: "Use este comando em um servidor.", ephemeral: true });
-  const result = await publishConfiguredFinancePanel(interaction.guild, context, interaction.channelId);
-  await interaction.reply({ content: result ? `Painel financeiro publicado em <#${result}>.` : "Configure e ative o financeiro antes de publicar.", ephemeral: true });
-}
+export async function handleFivemFinanceInteraction(interaction:Interaction,context:BotContext){if(!("customId"in interaction)||!interaction.customId.startsWith(`${PREFIX}:`))return false;const[,action,arg]=interaction.customId.split(":");
+  if(!interaction.guild)return true;const runtime=await context.api.getFivemFinanceRuntime(interaction.guild.id);const allowed=await canUse(interaction.guild,interaction.user.id,runtime.settings);if(!allowed){await denied(interaction,context);return true;}
+  if(interaction.isButton()&&(action==="add"||action==="remove")){await showTransactionModal(interaction,action,runtime.settings);return true;}
+  if(interaction.isModalSubmit()&&(action==="add_modal"||action==="remove_modal")){await submitModal(interaction,context,runtime.settings,action==="add_modal"?"add":"remove");return true;}
+  if(interaction.isButton()&&action==="confirm"){await confirmPending(interaction,context,arg??"");return true;}
+  if(interaction.isButton()&&action==="cancel_pending"){pending.delete(arg??"");await interaction.update(v2Ephemeral("Operação cancelada","Nenhuma movimentação foi registrada."));return true;}
+  if(interaction.isButton()&&action==="history"){await showHistory(interaction,runtime.transactions,runtime.settings,0,"all","all");return true;}
+  if(interaction.isButton()&&action==="history_search"){await interaction.showModal(new ModalBuilder().setCustomId(`${PREFIX}:history_search_modal`).setTitle("Pesquisar histórico").addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("query").setLabel("Gerente, ID, valor ou motivo").setRequired(false).setStyle(TextInputStyle.Short).setMaxLength(100))));return true;}
+  if(interaction.isModalSubmit()&&action==="history_search_modal"){historySearches.set(`${interaction.guildId}:${interaction.user.id}`,interaction.fields.getTextInputValue("query").trim().toLowerCase());await showHistory(interaction,runtime.transactions,runtime.settings,0,"all","all");return true;}
+  if(interaction.isStringSelectMenu()&&action==="history_filter"){const[type="all",period="all"]=(interaction.values[0]??"all_all").split("_");await showHistory(interaction,runtime.transactions,runtime.settings,0,type,period,true);return true;}
+  if(interaction.isButton()&&action==="history_page"){const[page="0",type="all",period="all"]=(arg??"0-all-all").split("-");await showHistory(interaction,runtime.transactions,runtime.settings,Number(page),type,period,true);return true;}
+  if(interaction.isButton()&&action==="managers"){await showManagers(interaction,runtime.transactions);return true;}
+  if(interaction.isButton()&&action==="refresh"){await publishConfiguredFinancePanel(interaction.guild,context);await interaction.reply(v2Ephemeral("Painel atualizado","Os dados financeiros foram sincronizados."));return true;}return false;}
 
-export async function showFivemFinanceBalance(interaction: ChatInputCommandInteraction, context: BotContext) {
-  if (!interaction.guild) return;
-  const runtime = await context.api.getFivemFinanceRuntime(interaction.guild.id);
-  if (!runtime.settings.enabled || !runtime.settings.allowBalanceQuery) return interaction.reply({ content: "Consulta de saldo indisponivel.", ephemeral: true });
-  const report = buildReport(runtime.transactions);
-  await interaction.reply({ content: `**Saldo atual:** ${money(report.balance)}\n**Entradas:** ${money(report.totalIn)}\n**Saidas:** ${money(report.totalOut)}\n**Ultima movimentacao:** ${runtime.transactions[0]?.createdAt ? new Date(runtime.transactions[0].createdAt).toLocaleString("pt-BR") : "nenhuma"}`, ephemeral: true });
-}
-
-export async function handleFivemFinanceInteraction(interaction: Interaction, context: BotContext) {
-  if (!("customId" in interaction) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:add`) { await startTransaction(interaction, context, "add"); return true; }
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:remove`) { await startTransaction(interaction, context, "remove"); return true; }
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:balance`) { await showBalanceButton(interaction, context); return true; }
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:amount`) { await showAmountModal(interaction); return true; }
-  if (interaction.isModalSubmit() && interaction.customId === `${PREFIX}:amount_modal`) { await saveAmount(interaction); return true; }
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:finish`) { await finishTransaction(interaction, context); return true; }
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:close`) { await interaction.channel?.delete("Canal financeiro fechado").catch(() => null); return true; }
-  return false;
-}
-
-async function publishConfiguredFinancePanel(guild: Guild, context: BotContext, fallbackChannelId?: string | null) {
-  const { settings } = await context.api.getFivemFinanceRuntime(guild.id);
-  if (!settings.enabled) return null;
-  const channelId = settings.panelChannelId ?? fallbackChannelId ?? null;
-  if (!channelId) return null;
-  const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isSendable()) return null;
-  const payload = createMainPanel(settings, buildReport((await context.api.getFivemFinanceRuntime(guild.id)).transactions).balance);
-  if (settings.panelMessageId && "messages" in channel) {
-    const message = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
-    if (!message) return null;
-    await message.edit(payload);
-    return channel.id;
-  }
-  const message = await channel.send(payload);
-  await context.api.updateFivemFinancePanelState(guild.id, message.id);
-  return channel.id;
-}
-
-function createMainPanel(settings: FivemFinanceSettings, balance: number) {
-  const rows = [new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar dinheiro").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Retirar dinheiro").setStyle(ButtonStyle.Danger),
-    ...(settings.allowBalanceQuery ? [new ButtonBuilder().setCustomId(`${PREFIX}:balance`).setLabel("Consultar saldo").setStyle(ButtonStyle.Secondary)] : [])
-  )];
-  return renderComponentsV2Panel({ accentColor: parseColor(settings.color), actions: rows, description: settings.panelDescription, fields: [`**Saldo atual:** ${money(balance)}`, "**Regras obrigatorias**\n- Envie sempre uma imagem do comprovante.\n- Informe o valor correto.\n- Todas as movimentacoes sao registradas automaticamente."], image: settings.bannerMode === "none" ? null : settings.panelImage, moduleId: "fivem-finance", title: settings.panelTitle });
-}
-
-async function startTransaction(interaction: ButtonInteraction, context: BotContext, type: "add" | "remove") {
-  if (!interaction.guild) return;
-  const runtime = await context.api.getFivemFinanceRuntime(interaction.guild.id);
-  if (!runtime.settings.enabled) return interaction.reply({ content: "Sistema financeiro desativado.", ephemeral: true });
-  if (!(await canUse(interaction.guild, interaction.user.id, runtime.settings))) return interaction.reply({ content: "Voce nao possui permissao para usar o financeiro.", ephemeral: true });
-  const channel = await createTempChannel(interaction.guild, interaction.user.id, runtime.settings, type);
-  sessions.set(channel.id, { amount: null, openerId: interaction.user.id, proofMessageId: null, proofUrl: null, type });
-  await channel.send(tempPanel(type, interaction.user.id));
-  setTimeout(() => { if (sessions.has(channel.id)) void channel.delete("Financeiro expirado").catch(() => null); sessions.delete(channel.id); }, Math.max(1, runtime.settings.autoCloseMinutes) * 60_000).unref();
-  await interaction.reply({ content: `Canal financeiro criado: <#${channel.id}>`, ephemeral: true });
-}
-
-async function createTempChannel(guild: Guild, userId: string, settings: FivemFinanceSettings, type: "add" | "remove") {
-  const member = await guild.members.fetch(userId);
-  const overwrites = [
-    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
-    { id: guild.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
-    ...settings.adminRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
-  ];
-  return guild.channels.create({ name: `financeiro-${type === "add" ? "add" : "retirar"}-${slug(member.displayName)}`.slice(0, 90), parent: settings.tempCategoryId ?? undefined, permissionOverwrites: overwrites, type: ChannelType.GuildText });
-}
-
-function tempPanel(type: "add" | "remove", userId: string) {
-  const action = type === "add" ? "entrada/adicionar dinheiro" : "saida/retirar dinheiro";
-  return { components: [{ type: 17, accent_color: type === "add" ? 0x22c55e : 0xef4444, components: [{ type: 10, content: `# Registro financeiro\n**Tipo:** ${action}\n**Usuario:** <@${userId}>\n\nInforme o valor pelo botao abaixo e envie uma imagem do comprovante neste canal. O registro so finaliza quando houver valor e imagem.` }, new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:amount`).setLabel("Informar valor").setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`${PREFIX}:finish`).setLabel("Finalizar registro").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:close`).setLabel("Fechar canal").setStyle(ButtonStyle.Secondary))] }], flags: MessageFlags.IsComponentsV2 as const };
-}
-
-async function showAmountModal(interaction: ButtonInteraction) {
-  const modal = new ModalBuilder().setCustomId(`${PREFIX}:amount_modal`).setTitle("Valor da movimentacao");
-  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("amount").setLabel("Valor").setPlaceholder("Ex: 150000").setRequired(true).setStyle(TextInputStyle.Short)));
-  await interaction.showModal(modal);
-}
-
-async function saveAmount(interaction: ModalSubmitInteraction) {
-  const session = interaction.channelId ? sessions.get(interaction.channelId) : null;
-  if (!session) return interaction.reply({ content: "Sessao financeira nao encontrada.", ephemeral: true });
-  if (interaction.user.id !== session.openerId) return interaction.reply({ content: "Apenas quem abriu o registro pode informar o valor.", ephemeral: true });
-  const amount = parseMoney(interaction.fields.getTextInputValue("amount"));
-  if (!amount || amount <= 0) return interaction.reply({ content: "Informe um valor numerico valido.", ephemeral: true });
-  session.amount = amount;
-  await interaction.reply({ content: `Valor registrado: ${money(amount)}. Agora envie a imagem do comprovante e finalize.`, ephemeral: true });
-}
-
-async function captureProof(message: Message) {
-  if (!message.guild || message.author.bot) return;
-  const session = sessions.get(message.channelId);
-  if (!session || message.author.id !== session.openerId) return;
-  const attachment = message.attachments.find((item) => item.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(item.url));
-  if (!attachment) return;
-  session.proofUrl = attachment.url;
-  session.proofMessageId = message.id;
-  await message.react("✅").catch(() => null);
-}
-
-async function finishTransaction(interaction: ButtonInteraction, context: BotContext) {
-  if (!interaction.guild || !interaction.channelId) return;
-  const session = sessions.get(interaction.channelId);
-  if (!session) return interaction.reply({ content: "Sessao financeira nao encontrada.", ephemeral: true });
-  const runtime = await context.api.getFivemFinanceRuntime(interaction.guild.id);
-  const admin = await canAdmin(interaction.guild, interaction.user.id, runtime.settings);
-  if (interaction.user.id !== session.openerId && !admin) return interaction.reply({ content: "Voce nao pode finalizar o registro de outro usuario.", ephemeral: true });
-  if (!session.amount || session.amount <= 0) return interaction.reply({ content: "Informe o valor antes de finalizar este registro.", ephemeral: true });
-  if (!session.proofUrl) return interaction.reply({ content: "Voce precisa enviar uma imagem de comprovante antes de finalizar este registro.", ephemeral: true });
-  await interaction.deferReply({ ephemeral: true });
-  const transaction = await context.api.createFivemFinanceTransaction(interaction.guild.id, { amount: session.amount, proofImageUrl: session.proofUrl, proofMessageId: session.proofMessageId, tempChannelId: interaction.channelId, type: session.type, userAvatar: interaction.user.displayAvatarURL({ size: 256 }), userId: session.openerId, username: interaction.user.username });
-  const logMessage = await sendFinanceLog(interaction.guild, runtime.settings, transaction);
-  if (logMessage) await context.api.updateFivemFinanceTransactionLog(interaction.guild.id, transaction.id, { logChannelId: logMessage.channelId, logMessageId: logMessage.id }).catch(() => null);
-  sessions.delete(interaction.channelId);
-  await interaction.editReply({ content: `Movimentacao registrada: ${transaction.transactionId}` });
-  setTimeout(() => void interaction.channel?.delete("Financeiro finalizado").catch(() => null), 5000).unref();
-}
-
-async function sendFinanceLog(guild: Guild, settings: FivemFinanceSettings, transaction: Awaited<ReturnType<BotContext["api"]["createFivemFinanceTransaction"]>>) {
-  if (!settings.logChannelId) return null;
-  const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
-  if (!(channel instanceof TextChannel)) return null;
-  const embed = new EmbedBuilder().setColor(transaction.type === "add" ? 0x22c55e : 0xef4444).setTitle(transaction.type === "add" ? "Entrada financeira" : "Saida financeira").setDescription(`Movimentacao **${transaction.transactionId}** registrada.`).addFields({ name: "Usuario", value: `<@${transaction.userId}>\n${transaction.userId}`, inline: true }, { name: "Valor", value: money(transaction.amount), inline: true }, { name: "Saldo", value: `${money(transaction.oldBalance)} -> ${money(transaction.newBalance)}`, inline: true }, { name: "Status", value: transaction.status, inline: true }, { name: "Comprovante", value: `[Abrir imagem](${transaction.proofImageUrl})`, inline: true }).setImage(transaction.proofImageUrl).setTimestamp(new Date(transaction.createdAt));
-  return channel.send({ embeds: [embed] });
-}
-
-async function showBalanceButton(interaction: ButtonInteraction, context: BotContext) {
-  if (!interaction.guild) return;
-  const runtime = await context.api.getFivemFinanceRuntime(interaction.guild.id);
-  if (!runtime.settings.allowBalanceQuery) return interaction.reply({ content: "Consulta de saldo desativada.", ephemeral: true });
-  if (!(await canUse(interaction.guild, interaction.user.id, runtime.settings))) return interaction.reply({ content: "Voce nao possui permissao.", ephemeral: true });
-  const report = buildReport(runtime.transactions);
-  await interaction.reply({ content: `**Saldo atual:** ${money(report.balance)}\n**Entradas:** ${money(report.totalIn)}\n**Saidas:** ${money(report.totalOut)}`, ephemeral: true });
-}
-
-async function canUse(guild: Guild, userId: string, settings: FivemFinanceSettings) { if (!settings.useRoleIds.length) return true; const member = await guild.members.fetch(userId).catch(() => null); return Boolean(member?.roles.cache.some((role) => settings.useRoleIds.includes(role.id)) || member?.permissions.has(PermissionFlagsBits.Administrator)); }
-async function canAdmin(guild: Guild, userId: string, settings: FivemFinanceSettings) { const member = await guild.members.fetch(userId).catch(() => null); return Boolean(member?.roles.cache.some((role) => settings.adminRoleIds.includes(role.id)) || member?.permissions.has(PermissionFlagsBits.Administrator)); }
-function buildReport(transactions: Array<{ amount: number; status: string; type: "add" | "remove" }>) { const active = transactions.filter((item) => item.status !== "cancelled"); const totalIn = active.filter((item) => item.type === "add").reduce((sum, item) => sum + item.amount, 0); const totalOut = active.filter((item) => item.type === "remove").reduce((sum, item) => sum + item.amount, 0); return { balance: totalIn - totalOut, totalIn, totalOut }; }
-function parseColor(value: string) { return Number.parseInt(value.replace("#", ""), 16) || 0x22c55e; }
-function parseMoney(value: string) { const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, ""); return Number(normalized); }
-function money(value: number) { return value.toLocaleString("pt-BR", { currency: "BRL", style: "currency" }); }
-function slug(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "usuario"; }
+async function publishConfiguredFinancePanel(guild:Guild,context:BotContext,fallback?:string|null){const runtime=await context.api.getFivemFinanceRuntime(guild.id);const s=runtime.settings;if(!s.enabled)return null;const id=s.panelChannelId??fallback;if(!id)return null;const ch=await guild.channels.fetch(id).catch(()=>null);if(!ch?.isSendable())return null;const payload=mainPanel(s,runtime.transactions);let msg=s.panelMessageId&&"messages"in ch?await ch.messages.fetch(s.panelMessageId).catch(()=>null):null;if(msg)await msg.edit(payload);else{msg=await ch.send(payload);await context.api.updateFivemFinancePanelState(guild.id,msg.id)}return ch.id;}
+function mainPanel(s:FivemFinanceSettings,tx:FivemFinanceTransaction[]){const active=tx.filter(x=>x.status!=="cancelled"),lastAdd=active.find(x=>x.type==="add"),lastRemove=active.find(x=>x.type==="remove"),last=active[0];return renderComponentsV2Panel({moduleId:"fivem-finance",accentColor:color(s.color),title:"💰 Sistema Financeiro",description:s.panelDescription,fields:[`## 💰 Caixa Atual\n**Saldo total:** ${money(balance(active))}\n**Última atualização:** ${last?date(last.createdAt):"Nenhuma"}`,`**➕ Última adição:** ${lastAdd?`${lastAdd.managerName??lastAdd.username} • ${money(lastAdd.amount)}`:"Nenhuma"}\n**➖ Última retirada:** ${lastRemove?`${lastRemove.managerName??lastRemove.username} • ${money(lastRemove.amount)}`:"Nenhuma"}\n**👤 Último gerente:** ${last?.managerName??last?.username??"Nenhum"}\n**📊 Movimentações:** ${active.length}`],image:s.bannerMode==="none"?null:s.panelImage,actions:[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar Dinheiro").setEmoji("➕").setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover Dinheiro").setEmoji("➖").setStyle(ButtonStyle.Danger)),new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:history`).setLabel("Ver Histórico").setEmoji("📜").setStyle(ButtonStyle.Secondary).setDisabled(!s.historyEnabled),new ButtonBuilder().setCustomId(`${PREFIX}:managers`).setLabel("Ver Gerentes").setEmoji("👤").setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar Painel").setEmoji("🔄").setStyle(ButtonStyle.Primary))]});}
+async function showTransactionModal(i:ButtonInteraction,type:"add"|"remove",settings:FivemFinanceSettings){const modal=new ModalBuilder().setCustomId(`${PREFIX}:${type}_modal`).setTitle(type==="add"?"Adicionar dinheiro":"Remover dinheiro");for(const input of [["person","Nome da pessoa","Ex: João Silva"],["target","ID do usuário","ID do Discord"],["amount","Valor","Ex: 1500,00"],["reason","Motivo","Descreva a movimentação"]]as const)modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(input[0]).setLabel(input[1]).setPlaceholder(input[2]).setRequired(input[0]!=="reason"||settings.requireReason).setStyle(input[0]==="reason"?TextInputStyle.Paragraph:TextInputStyle.Short).setMaxLength(input[0]==="reason"?1000:120)));await i.showModal(modal);}
+async function submitModal(i:ModalSubmitInteraction,context:BotContext,s:FivemFinanceSettings,type:"add"|"remove"){const amount=parseMoney(i.fields.getTextInputValue("amount"));const target=i.fields.getTextInputValue("target").trim(),person=i.fields.getTextInputValue("person").trim(),reason=i.fields.getTextInputValue("reason").trim();if(!amount||amount<=0||amount>s.maxTransactionAmount)return void await i.reply(v2Ephemeral("Valor inválido",`O valor deve ser positivo e não pode ultrapassar ${money(s.maxTransactionAmount)}.`));if(!/^\d{5,32}$/.test(target))return void await i.reply(v2Ephemeral("ID inválido","Informe um ID válido do Discord."));const member=await i.guild!.members.fetch(i.user.id);const input={amount,proofImageUrl:"",type,userId:i.user.id,username:member.displayName,managerId:i.user.id,managerName:member.displayName,personName:person,targetUserId:target,reason,userAvatar:i.user.displayAvatarURL({size:256})};if(type==="remove"&&!s.allowNegativeBalance&&balance((await context.api.getFivemFinanceRuntime(i.guildId!)).transactions)-amount<0)return void await i.reply(v2Ephemeral("Saldo insuficiente","A retirada deixaria o caixa negativo."));if((type==="add"&&s.confirmAdd)||(type==="remove"&&s.confirmRemove)){const token=Math.random().toString(36).slice(2,10);pending.set(token,{guildId:i.guildId!,input,expires:Date.now()+300000});await i.reply({...v2Ephemeral("Confirmar movimentação",`${type==="add"?"Adicionar":"Remover"} **${money(amount)}** ${type==="add"?"ao":"do"} caixa?\n**Pessoa:** ${person}\n**Motivo:** ${reason}`),components:[{type:17,accent_color:type==="add"?0x22c55e:0xef4444,components:[{type:10,content:`## Confirmar movimentação\n${type==="add"?"Adicionar":"Remover"} **${money(amount)}**?`},new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${token}`).setLabel("Confirmar").setStyle(type==="add"?ButtonStyle.Success:ButtonStyle.Danger),new ButtonBuilder().setCustomId(`${PREFIX}:cancel_pending:${token}`).setLabel("Cancelar").setStyle(ButtonStyle.Secondary))]}]});return;}await execute(i,context,input);}
+async function confirmPending(i:ButtonInteraction,context:BotContext,token:string){const row=pending.get(token);if(!row||row.expires<Date.now())return void await i.reply(v2Ephemeral("Confirmação expirada","Abra o modal novamente."));pending.delete(token);await execute(i,context,row.input);}
+async function execute(i:ButtonInteraction|ModalSubmitInteraction,context:BotContext,input:any){await i.deferReply({flags:MessageFlags.Ephemeral});const tx=await context.api.createFivemFinanceTransaction(i.guildId!,input);const runtime=await context.api.getFivemFinanceRuntime(i.guildId!);await sendLog(i.guild!,runtime.settings,tx);await publishConfiguredFinancePanel(i.guild!,context);await i.editReply(renderComponentsV2Panel({moduleId:"fivem-finance",accentColor:tx.type==="add"?0x22c55e:0xef4444,title:"Movimentação concluída",description:`**${tx.transactionId}**\n${money(tx.oldBalance)} → ${money(tx.newBalance)}\nPainel, histórico e estatísticas atualizados.`}));}
+async function sendLog(g:Guild,s:FivemFinanceSettings,t:FivemFinanceTransaction){if(!s.logChannelId)return;const ch=await g.channels.fetch(s.logChannelId).catch(()=>null);if(!ch?.isSendable())return;await ch.send(renderComponentsV2Panel({moduleId:"fivem-finance",accentColor:t.type==="add"?0x22c55e:0xef4444,title:t.type==="add"?"💰 Dinheiro Adicionado":"💸 Dinheiro Removido",description:`**Gerente:** <@${t.managerId??t.userId}> (${t.managerName??t.username})\n**Pessoa:** ${t.personName??"—"} • <@${t.targetUserId??t.userId}>\n**Valor:** ${money(t.amount)}\n**Motivo:** ${t.reason??t.notes??"—"}\n**Saldo antes:** ${money(t.oldBalance)}\n**Saldo depois:** ${money(t.newBalance)}\n**Data e hora:** ${date(t.createdAt)}`}));}
+async function showHistory(i:any,all:FivemFinanceTransaction[],s:FivemFinanceSettings,page:number,type:string,period:string,update=false){const query=historySearches.get(`${i.guildId}:${i.user.id}`)??"";let rows=all.filter(x=>x.status!=="cancelled"&&(type==="all"||x.type===type));if(query)rows=rows.filter(x=>`${x.managerName??x.username} ${x.managerId??x.userId} ${x.targetUserId??""} ${x.amount} ${x.reason??x.notes??""}`.toLowerCase().includes(query));const days=period==="24h"?1:period==="7d"?7:period==="30d"?30:0;if(days)rows=rows.filter(x=>Date.now()-new Date(x.createdAt).getTime()<=days*86400000);const size=s.historyPageSize,pages=Math.max(1,Math.ceil(rows.length/size)),safe=Math.min(Math.max(page,0),pages-1),slice=rows.slice(safe*size,(safe+1)*size);const filter=new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(`${PREFIX}:history_filter`).setPlaceholder("Filtrar histórico").addOptions([{label:"Todos",value:"all_all"},{label:"Apenas adições",value:"add_all"},{label:"Apenas retiradas",value:"remove_all"},{label:"Últimas 24 horas",value:"all_24h"},{label:"Últimos 7 dias",value:"all_7d"},{label:"Últimos 30 dias",value:"all_30d"}]));const nav=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:history_page:${safe-1}-${type}-${period}`).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(safe===0),new ButtonBuilder().setCustomId(`${PREFIX}:history_search`).setLabel(query?`Busca: ${query.slice(0,20)}`:"Pesquisar").setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId(`${PREFIX}:history_page:${safe+1}-${type}-${period}`).setLabel("Próxima").setStyle(ButtonStyle.Secondary).setDisabled(safe>=pages-1));const payload=renderComponentsV2Panel({moduleId:"fivem-finance",accentColor:0x22c55e,title:`📜 Histórico • ${safe+1}/${pages}`,description:slice.length?slice.map(t=>`${t.type==="add"?"➕ Adição":"➖ Retirada"} • **${money(t.amount)}**\nGerente: ${t.managerName??t.username} (${t.managerId??t.userId})\nMotivo: ${t.reason??t.notes??"—"}\nSaldo: ${money(t.oldBalance)} → ${money(t.newBalance)}\n${date(t.createdAt)}`).join("\n\n"):"Nenhuma movimentação encontrada.",actions:[filter,nav]});const out={...payload,flags:Number(payload.flags)|MessageFlags.Ephemeral};update?await i.update(out):await i.reply(out);}
+async function showManagers(i:any,all:FivemFinanceTransaction[]){const map=new Map<string,{name:string;add:number;remove:number;count:number;last:string}>();for(const t of all.filter(x=>x.status!=="cancelled")){const id=t.managerId??t.userId,v=map.get(id)??{name:t.managerName??t.username,add:0,remove:0,count:0,last:t.createdAt};v[t.type]+=t.amount;v.count++;if(t.createdAt>v.last)v.last=t.createdAt;map.set(id,v)}const rows=[...map].sort((a,b)=>(b[1].add+b[1].remove)-(a[1].add+a[1].remove));await i.reply(v2Ephemeral("👤 Gerentes",rows.length?rows.map(([id,v],n)=>`**${n+1}. ${v.name}** • ${id}\nAdicionado: ${money(v.add)} • Retirado: ${money(v.remove)}\nOperações: ${v.count} • Total: ${money(v.add+v.remove)}\nÚltima: ${date(v.last)}`).join("\n\n"):"Nenhuma movimentação registrada."));}
+async function canUse(g:Guild,id:string,s:FivemFinanceSettings){const m=await g.members.fetch(id).catch(()=>null);return Boolean(m?.permissions.has(PermissionFlagsBits.Administrator)||m?.roles.cache.some(r=>s.useRoleIds.includes(r.id)||s.adminRoleIds.includes(r.id)));}
+async function denied(i:any,context:BotContext){await context.api.postLog({guildId:i.guildId,userId:i.user.id,executorId:i.user.id,module:"fivem-finance",action:"access.denied",type:"security",message:"Tentativa sem permissão no sistema financeiro"}).catch(()=>null);await i.reply(v2Ephemeral("Acesso negado","Seu cargo não possui permissão para usar o Financeiro."));}
+function summary(t:FivemFinanceTransaction[]){const active=t.filter(x=>x.status!=="cancelled");return `**Saldo:** ${money(balance(active))}\n**Entradas:** ${money(active.filter(x=>x.type==="add").reduce((n,x)=>n+x.amount,0))}\n**Saídas:** ${money(active.filter(x=>x.type==="remove").reduce((n,x)=>n+x.amount,0))}`;}
+function v2Ephemeral(title:string,description:string){return {...renderComponentsV2Panel({moduleId:"fivem-finance",accentColor:0x22c55e,title,description}),flags:MessageFlags.IsComponentsV2|MessageFlags.Ephemeral};}
+function balance(t:FivemFinanceTransaction[]){return t.reduce((n,x)=>n+(x.type==="add"?x.amount:-x.amount),0)}function money(n:number){return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}function date(v:string){return new Date(v).toLocaleString("pt-BR")}function color(v:string){return Number.parseInt(v.replace("#",""),16)||0x22c55e}function parseMoney(v:string){return Number(v.replace(/\./g,"").replace(",",".").replace(/[^\d.]/g,""))}

@@ -782,6 +782,9 @@ export type MongoManualRegistrationSettings = {
   allowResubmit?: boolean;
   approvalMessage?: string | null;
   approverRoleIds?: string[];
+  approvedRoleId?: string | null;
+  manualRegistrationRoleIds?: string[];
+  requestCategoryId?: string | null;
   automaticApproval?: boolean;
   autoRoleIds: string[];
   bannerPosition: "top" | "bottom" | "none";
@@ -820,12 +823,19 @@ export type MongoManualRegistrationSubmission = {
   createdAt: Date;
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
+  channelId?: string | null;
+  requestedName?: string | null;
+  registrationType?: "request" | "manual";
+  registrationVersion?: number;
+  removedAt?: Date | null;
+  removedBy?: string | null;
+  removalReason?: string | null;
   messageId?: string | null;
   rejectedAt?: Date | null;
   rejectedBy?: string | null;
   rejectionReason?: string | null;
   requestedRoleId?: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "removed";
   updatedAt: Date;
   userAvatar?: string | null;
   userId: string;
@@ -926,6 +936,8 @@ export type MongoFivemGoalConfig = {
   createdAt: Date;
   createdBy: string | null;
   description: string | null;
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
   editRoleIds: string[];
   approverRoleIds: string[];
   deleteRoleIds: string[];
@@ -934,6 +946,7 @@ export type MongoFivemGoalConfig = {
   logChannelId: string | null;
   managerRoleIds: string[];
   name: string;
+  order?: number;
   panelChannelId: string | null;
   panelMessageId: string | null;
   participantRoleIds: string[];
@@ -945,6 +958,7 @@ export type MongoFivemGoalConfig = {
   status: MongoFivemGoalConfigStatus;
   targetValue: number;
   type: string;
+  unit?: string;
   updatedAt: Date;
   updatedBy?: string | null;
   viewerRoleIds: string[];
@@ -959,6 +973,7 @@ export type MongoFivemGoalSubmission = {
   description: string | null;
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
+  idempotencyKey?: string | null;
   metaId: string;
   proofUrl: string | null;
   refusedAt?: Date | null;
@@ -1020,8 +1035,12 @@ export type MongoFivemOrderFamily = {
   _id: string;
   active: boolean;
   botId: string | null;
+  createdBy?: string | null;
   createdAt: Date;
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
   guildId: string;
+  leaderName?: string | null;
   logChannelId: string | null;
   name: string;
   notes: string | null;
@@ -1030,6 +1049,7 @@ export type MongoFivemOrderFamily = {
   roleId: string;
   type?: "pista" | "produto" | "sem_produto";
   updatedAt: Date;
+  updatedBy?: string | null;
 };
 
 export type MongoFivemOrderProduct = {
@@ -1101,6 +1121,7 @@ export type MongoFivemOrder = {
   proofUrl: string | null;
   quantity: number;
   responsibleId: string | null;
+  financialTransactionId?: string | null;
   sourceId: string | null;
   status: MongoFivemOrderStatus;
   unitPrice: number;
@@ -1125,6 +1146,12 @@ export type MongoFivemFinanceSettings = {
   adminRoleIds: string[];
   allowBalanceQuery: boolean;
   allowNegativeBalance: boolean;
+  confirmAdd: boolean;
+  confirmRemove: boolean;
+  historyEnabled: boolean;
+  historyPageSize: number;
+  maxTransactionAmount: number;
+  requireReason: boolean;
   autoCloseMinutes: number;
   bannerMode: "above" | "inside" | "below" | "none";
   botId: string | null;
@@ -1156,6 +1183,12 @@ export type MongoFivemFinanceTransaction = {
   logMessageId: string | null;
   newBalance: number;
   notes: string | null;
+  managerId?: string;
+  managerName?: string;
+  metadata?: Record<string, unknown>;
+  personName?: string;
+  reason?: string;
+  targetUserId?: string;
   oldBalance: number;
   proofImageUrl: string;
   proofMessageId: string | null;
@@ -3830,6 +3863,12 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
       { botId: 1, guildId: 1, userId: 1, status: 1, createdAt: -1 }
     ),
+    db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
+      { botId: 1, guildId: 1, userId: 1 }, { name: "manual_registration_pending_user_unique", unique: true, partialFilterExpression: { status: "pending", registrationVersion: 2 } }
+    ),
+    db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
+      { botId: 1, guildId: 1, userId: 1 }, { name: "manual_registration_active_user_unique", unique: true, partialFilterExpression: { status: "approved", registrationVersion: 2 } }
+    ),
     db.collection<MongoManualRegistrationLog>("manual_registration_logs").createIndex(
       { botId: 1, guildId: 1, createdAt: -1 }
     ),
@@ -3844,15 +3883,25 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoFivemGoalLog>("fivem_goal_logs").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
     db.collection<MongoFivemOrderSettings>("fivem_order_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
-    db.collection<MongoFivemOrderFamily>("fivem_order_families").createIndex({ botId: 1, guildId: 1, name: 1 }, { unique: true }),
+    db.collection<MongoFivemOrderFamily>("fivem_order_families").createIndex(
+      { botId: 1, guildId: 1, name: 1, active: 1 },
+      { partialFilterExpression: { active: true }, unique: true }
+    ),
+    db.collection<MongoFivemOrderFamily>("fivem_order_families").createIndex({ botId: 1, guildId: 1, active: 1, updatedAt: -1 }),
     db.collection<MongoFivemOrderProduct>("fivem_order_products").createIndex({ botId: 1, guildId: 1, order: 1 }),
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, orderNumber: -1 }, { unique: true }),
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, familyId: 1, status: 1 }),
+    db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, financialTransactionId: 1 }),
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemOrderLog>("fivem_order_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceSettings>("fivem_finance_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, transactionId: 1 }, { unique: true }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex(
+      { botId: 1, guildId: 1, "metadata.laundryOrderId": 1 },
+      { partialFilterExpression: { "metadata.laundryOrderId": { $type: "string" } }, unique: true }
+    ),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceLog>("fivem_finance_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
