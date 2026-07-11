@@ -14,6 +14,7 @@ build
 .nex-tech-runtime-env.json
 .orvitek-runtime-env.json
 *-runtime-env.json
+.discloud-package/
 coverage
 dev-logs
 logs
