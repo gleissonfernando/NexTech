@@ -4556,7 +4556,17 @@ function readRequestMessage(error: unknown) {
   }
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
-  return typeof response?.data?.message === "string" ? response.data.message : null;
+  return typeof response?.data?.message === "string" ? sanitizeRequestMessage(response.data.message) : null;
+}
+
+function sanitizeRequestMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("over your space quota") || normalized.includes("writes are blocked on your cluster")) {
+    return "Banco no limite de armazenamento. Limpe dados antigos ou aumente o plano do MongoDB Atlas para salvar banners.";
+  }
+
+  return message.length > 220 ? `${message.slice(0, 217)}...` : message;
 }
 
 async function copyToClipboard(value: string) {
