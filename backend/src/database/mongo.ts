@@ -3244,6 +3244,7 @@ export type MongoDevBot = {
   name: string;
   slug?: string | null;
   clientId: string;
+  databaseName?: string | null;
   tokenEncrypted: string;
   tokenPrefix?: string | null;
   tokenLast4?: string | null;
@@ -3615,6 +3616,17 @@ function databaseNameFromUri(uri: string) {
   return legacyNames[dbName] || dbName || defaultName;
 }
 
+export function botDatabaseName(botId: string) {
+  const prefix = (process.env.BOT_DATABASE_PREFIX || "orvitek_bot").trim() || "orvitek_bot";
+  const normalizedBotId = botId.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+
+  if (!normalizedBotId) {
+    throw new Error("botId invalido para banco de dados do bot.");
+  }
+
+  return `${prefix}_${normalizedBotId}`.slice(0, 63);
+}
+
 function getMongoClient() {
   if (!env.MONGODB_URI) {
     throw new Error("MONGODB_URI nao configurada.");
@@ -3631,6 +3643,24 @@ export async function getMongoDb() {
   const client = getMongoClient();
   await client.connect();
   return client.db(databaseNameFromUri(env.MONGODB_URI));
+}
+
+export async function getBotMongoDb(botId: string) {
+  const client = getMongoClient();
+  await client.connect();
+  return client.db(botDatabaseName(botId));
+}
+
+export async function getBotMongoCollections(botId: string) {
+  const db = await getBotMongoDb(botId);
+
+  return {
+    db,
+    metadata: db.collection("bot_metadata"),
+    runtimeState: db.collection("runtime_state"),
+    moduleState: db.collection("module_state"),
+    logs: db.collection("logs")
+  };
 }
 
 export async function getMongoCollections() {

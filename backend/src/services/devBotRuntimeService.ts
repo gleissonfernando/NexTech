@@ -377,6 +377,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       NODE_ENV: env.NODE_ENV,
       DISCORD_BOT_TOKEN: bot.token,
       DASHBOARD_BOT_ID: bot.id,
+      BOT_DATABASE_NAME: bot.databaseName,
       BOT_MAIN_GUILD_ID: bot.mainGuildId,
       BOT_COMMAND_GUILD_IDS: bot.guildIds.join(","),
       BOT_ENABLED_MODULES: bot.enabledModules.join(","),

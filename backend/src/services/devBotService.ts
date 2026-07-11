@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 import axios from "axios";
 import { env } from "../config/env";
 import {
+  botDatabaseName,
   getMongoCollections,
   type MongoBotGuildConfig,
   type MongoBotGuildModuleConfig,
@@ -289,6 +290,7 @@ export type DevBotDto = {
   slug: string;
   dashboardUrl: string;
   clientId: string;
+  databaseName: string;
   tokenMasked: string;
   secretConfigured: boolean;
   avatarUrl: string | null;
@@ -319,6 +321,7 @@ export type DashboardBotDto = Pick<
   | "slug"
   | "dashboardUrl"
   | "clientId"
+  | "databaseName"
   | "avatarUrl"
   | "ownerId"
   | "mainGuildId"
@@ -341,6 +344,7 @@ export type DevBotRuntimeConfig = {
   id: string;
   clientId: string;
   name: string;
+  databaseName: string;
   token: string;
   mainGuildId: string;
   guildIds: string[];
@@ -797,6 +801,7 @@ export async function createDevBot(input: CreateDevBotInput) {
     name: botName,
     slug: await generateUniqueDevBotSlug(botName),
     clientId,
+    databaseName: botDatabaseName(clientId),
     tokenEncrypted: encryptSecret(token),
     tokenPrefix: tokenPrefix(token),
     tokenLast4: tokenLast4(token),
@@ -2624,6 +2629,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     slug,
     dashboardUrl: buildDashboardUrl(slug),
     clientId: bot.clientId,
+    databaseName: bot.databaseName || botDatabaseName(bot.clientId || bot._id),
     tokenMasked: bot.tokenEncrypted ? maskedToken(bot) : "",
     secretConfigured: Boolean(bot.secretEncrypted),
     avatarUrl: bot.avatarUrl ?? null,
@@ -2740,6 +2746,7 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
     id: bot._id,
     clientId: bot.clientId,
     name: bot.name,
+    databaseName: bot.databaseName || botDatabaseName(bot.clientId || bot._id),
     token: decryptSecret(bot.tokenEncrypted),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),
@@ -2755,6 +2762,7 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     slug: bot.slug,
     dashboardUrl: bot.dashboardUrl,
     clientId: bot.clientId,
+    databaseName: bot.databaseName,
     avatarUrl: bot.avatarUrl,
     ownerId: bot.ownerId,
     mainGuildId: bot.mainGuildId,

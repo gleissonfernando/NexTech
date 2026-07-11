@@ -612,6 +612,7 @@ function devBotPlaceholder(appId: string, app: unknown): DevBotDto {
     slug: appId,
     dashboardUrl: "",
     clientId: appId,
+    databaseName: "",
     tokenMasked: "",
     secretConfigured: false,
     avatarUrl: readString(appObject.avatarURL),

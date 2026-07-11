@@ -30,6 +30,8 @@
     "deploy:check:fast": "node scripts/deploy-check.mjs fast",
     "deploy:check:env": "npm run build && node scripts/deploy-check.mjs env",
     "audit:dev-bots": "npm run build --workspace backend && node scripts/audit-dev-bots.mjs",
+    "bots:ensure-databases": "node scripts/ensure-bot-databases.mjs",
+    "db:reset-bot-system": "node scripts/reset-bot-system-database.mjs",
     "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",
     "release:discloud": "node scripts/release-discloud.mjs",
     "load:test": "node scripts/load-test.mjs",

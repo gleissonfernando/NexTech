@@ -3305,6 +3305,7 @@ export type DashboardBot = {
   slug: string;
   dashboardUrl: string;
   clientId: string;
+  databaseName: string;
   avatarUrl: string | null;
   ownerId: string;
   mainGuildId: string;
@@ -3329,6 +3330,7 @@ export type DevBot = {
   slug: string;
   dashboardUrl: string;
   clientId: string;
+  databaseName: string;
   tokenMasked: string;
   secretConfigured: boolean;
   avatarUrl: string | null;
