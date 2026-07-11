@@ -132,6 +132,7 @@ const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
   "police-hr": ["rh-admin"]
 };
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
+const RUNTIME_CONNECTED_BOT_STATUSES = new Set<MongoDevBotStatus>(["online", "syncing_config", "ready", "degraded"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);
 const RUNTIME_EXPIRED_LICENSE_STATUSES = new Set(["expired", "expirado", "expirada"]);
 const RUNTIME_BLOCKED_LICENSE_STATUSES = new Set([
@@ -1407,7 +1408,7 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
     }
   );
 
-  if (status === "online" && current?.desiredOnline === false) {
+  if (RUNTIME_CONNECTED_BOT_STATUSES.has(status) && current?.desiredOnline === false) {
     return getDevBot(botId);
   }
 

@@ -2718,7 +2718,7 @@ export type DevModuleDefinition = {
   label: string;
 };
 
-export type NexTechPaymentProviderType = "manual" | "pix" | "mercadopago" | "stripe" | "paypal" | "custom";
+export type NexTechPaymentProviderType = "mercadopago";
 export type NexTechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
 
 export type NexTechSalesPaymentProvider = {
@@ -3266,7 +3266,17 @@ export type AntiBanLog = {
   createdAt: string;
 };
 
-export type DevBotStatus = "online" | "offline" | "invalid_token" | "error";
+export type DevBotStatus =
+  | "online"
+  | "offline"
+  | "starting"
+  | "authenticating"
+  | "syncing_config"
+  | "ready"
+  | "degraded"
+  | "stopping"
+  | "invalid_token"
+  | "error";
 
 export type FivemActionArchitecture = "fac" | "police";
 export type FivemActionSettings = { id: string; botId: string; guildId: string; architecture: FivemActionArchitecture; enabled: boolean; categoryId: string | null; panelChannelId: string | null; actionChannelId: string | null; reportChannelId: string | null; panelMessageId: string | null; panelTitle: string; panelDescription: string; color: string; imageUrl: string | null; imagePosition: "top" | "center" | "bottom" | "none"; lastPanelRequestedAt: string | null; createdAt: string; updatedAt: string };
@@ -3444,7 +3454,7 @@ export type CreateDevBotPayload = {
 };
 
 export type PlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "annual" | "lifetime" | "custom";
-export type PaymentProvider = "disabled" | "mercadopago" | "asaas" | "efi" | "custom";
+export type PaymentProvider = "disabled" | "mercadopago";
 export type PlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type PlanWorkspaceStatus = "active" | "suspended" | "cancelled";
 export type PaymentOrderStatus = "interest_registered" | "pending" | "paid" | "cancelled" | "expired" | "failed";

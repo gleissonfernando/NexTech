@@ -89,7 +89,7 @@ const manualActivationSchema = z.object({
 
 const paymentSettingsSchema = z.object({
   enabled: z.boolean().optional(),
-  provider: z.enum(["disabled", "mercadopago", "asaas", "efi", "custom"]).optional(),
+  provider: z.enum(["disabled", "mercadopago"]).optional(),
   publicKey: z.string().max(512).nullable().optional().or(z.literal("")),
   secret: z.string().max(2048).nullable().optional().or(z.literal("")),
   webhookSecret: z.string().max(2048).nullable().optional().or(z.literal(""))

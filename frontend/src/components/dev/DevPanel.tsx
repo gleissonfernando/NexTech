@@ -656,9 +656,9 @@ export function DevPanel({
   const stats = useMemo(
     () => ({
       total: bots.length,
-      online: bots.filter((bot) => bot.status === "online").length,
+      online: bots.filter((bot) => isBotRunningStatus(bot.status)).length,
       offline: bots.filter((bot) => bot.status === "offline").length,
-      errors: bots.filter((bot) => bot.status === "error" || bot.status === "invalid_token").length
+      errors: bots.filter((bot) => isBotErrorStatus(bot.status)).length
     }),
     [bots]
   );
@@ -672,7 +672,7 @@ export function DevPanel({
         },
         {
           icon: CheckCircle2,
-          iconClassName: selectedBot.status === "online"
+          iconClassName: isBotReadyStatus(selectedBot.status)
             ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
             : "border-zinc-700 bg-zinc-900 text-zinc-300",
           label: "Status",
@@ -862,7 +862,7 @@ export function DevPanel({
   }
 
   async function handlePower(bot: DevBot) {
-    const shouldStop = bot.status === "online";
+    const shouldStop = isBotRunningStatus(bot.status);
 
     setPoweringBotId(bot.id);
     setMessage(null);
@@ -872,7 +872,7 @@ export function DevPanel({
         item.id === bot.id
           ? {
               ...item,
-              status: "offline",
+              status: "stopping",
               statusMessage: "Desligando bot pelo painel DEV."
             }
           : item
@@ -1272,10 +1272,10 @@ export function DevPanel({
                             disabled={poweringBotId === bot.id}
                             onClick={() => void handlePower(bot)}
                             size="icon"
-                            title={bot.status === "online" ? "Desligar bot" : "Ligar bot"}
-                            variant={bot.status === "online" ? "destructive" : "outline"}
+                            title={isBotRunningStatus(bot.status) ? "Desligar bot" : "Ligar bot"}
+                            variant={isBotRunningStatus(bot.status) ? "destructive" : "outline"}
                           >
-                            {poweringBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : bot.status === "online" ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                            {poweringBotId === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : isBotRunningStatus(bot.status) ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                           </Button>
                           <Button
                             disabled={deletingBotId === bot.id}
@@ -1533,10 +1533,12 @@ function ConnectedBotPanel({
 
         {bot.statusMessage ? (
           <div className={`rounded-lg border px-3 py-2 text-sm ${
-            bot.status === "online"
+            isBotReadyStatus(bot.status)
               ? "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-200"
-              : bot.status === "error" || bot.status === "invalid_token"
+              : isBotErrorStatus(bot.status)
                 ? "border-red-500/25 bg-red-500/[0.07] text-red-200"
+                : bot.status === "degraded"
+                  ? "border-amber-500/25 bg-amber-500/[0.07] text-amber-100"
                 : "border-zinc-700 bg-black/35 text-zinc-200"
           }`}>
             {bot.statusMessage}
@@ -1610,10 +1612,10 @@ function ConnectedBotPanel({
             disabled={powering}
             onClick={onPower}
             size="icon"
-            title={bot.status === "online" ? "Desligar bot" : "Ligar bot"}
-            variant={bot.status === "online" ? "destructive" : "outline"}
+            title={isBotRunningStatus(bot.status) ? "Desligar bot" : "Ligar bot"}
+            variant={isBotRunningStatus(bot.status) ? "destructive" : "outline"}
           >
-            {powering ? <Loader2 className="h-4 w-4 animate-spin" /> : bot.status === "online" ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+            {powering ? <Loader2 className="h-4 w-4 animate-spin" /> : isBotRunningStatus(bot.status) ? <Unplug className="h-4 w-4" /> : <Power className="h-4 w-4" />}
           </Button>
           <Button disabled={deleting} onClick={onDelete} size="icon" title="Desconectar bot" variant="destructive">
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
@@ -1973,7 +1975,7 @@ function BotGlobalSelect({
                       <span className="block truncate text-xs font-medium text-zinc-300">{bot.mainGuildName || bot.mainGuildId}</span>
                       <span className="block truncate font-mono text-[11px] text-zinc-400">ID: {bot.clientId}</span>
                     </span>
-                    <Badge variant={bot.status === "online" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : "muted"}>
+                    <Badge variant={isBotReadyStatus(bot.status) ? "success" : isBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
                       {statusLabel(bot.status)}
                     </Badge>
                   </button>
@@ -2073,7 +2075,7 @@ function BotModuleWorkspace({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">Bot Menu</Badge>
-              <Badge variant={bot.status === "online" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : "muted"}>
+              <Badge variant={isBotReadyStatus(bot.status) ? "success" : isBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
                 {statusLabel(bot.status)}
               </Badge>
             </div>
@@ -2094,7 +2096,7 @@ function BotModuleWorkspace({
             </label>
             <div className="grid grid-cols-2 gap-2 text-xs font-medium text-zinc-400">
               <span className="truncate rounded-lg border border-zinc-800 bg-black/35 px-3 py-2">Servidor: {bot.mainGuildName || bot.mainGuildId}</span>
-              <span className="truncate rounded-lg border border-zinc-800 bg-black/35 px-3 py-2">Bot: {bot.status === "online" ? "Online" : statusLabel(bot.status)}</span>
+              <span className="truncate rounded-lg border border-zinc-800 bg-black/35 px-3 py-2">Bot: {statusLabel(bot.status)}</span>
             </div>
           </div>
         </div>
@@ -2107,7 +2109,7 @@ function BotModuleWorkspace({
           <BotMenuStatCard icon={CheckCircle2} label="Módulos ativos" tone="success" value={`${activeModules.length}/${modules.length}`} />
           <BotMenuStatCard icon={ShieldCheck} label="Protecoes ativas" tone="purple" value={String(activeSecurityCount)} />
           <BotMenuStatCard icon={SlidersHorizontal} label="Precisam configuração" tone="warning" value={String(inactiveCount)} />
-          <BotMenuStatCard icon={Power} label="Bot online" tone={bot.status === "online" ? "success" : "muted"} value={bot.status === "online" ? "100%" : "0%"} />
+          <BotMenuStatCard icon={Power} label="Bot online" tone={isBotRunningStatus(bot.status) ? "success" : "muted"} value={isBotRunningStatus(bot.status) ? "100%" : "0%"} />
         </section>
 
         <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -2679,8 +2681,8 @@ const defaultSalesSettingsForm: SaveNexTechSalesSettingsPayload = {
 const defaultProviderForm: SaveNexTechPaymentProviderPayload = {
   enabled: true,
   instructions: "",
-  label: "Pagamento manual",
-  provider: "manual",
+  label: "Mercado Pago",
+  provider: "mercadopago",
   publicKey: "",
   secret: "",
   webhookSecret: "",
@@ -3192,12 +3194,7 @@ function NexTechSalesWorkspace({
                     onChange={(event) => setProviderForm((current) => ({ ...current, provider: event.target.value as SaveNexTechPaymentProviderPayload["provider"] }))}
                     value={providerForm.provider}
                   >
-                    <option value="manual">Manual</option>
-                    <option value="pix">Pix</option>
                     <option value="mercadopago">Mercado Pago</option>
-                    <option value="stripe">Stripe</option>
-                    <option value="paypal">PayPal</option>
-                    <option value="custom">Custom</option>
                   </select>
                   <DevInput label={providerForm.provider === "mercadopago" ? "Public Key" : "Chave publica"} onChange={(value) => setProviderForm((current) => ({ ...current, publicKey: value }))} value={providerForm.publicKey ?? ""} />
                   <DevInput label={providerForm.provider === "mercadopago" ? "Access Token" : "Segredo/API token"} onChange={(value) => setProviderForm((current) => ({ ...current, secret: value }))} value={providerForm.secret ?? ""} />
@@ -4342,7 +4339,7 @@ function moduleDescription(moduleId: string) {
 }
 
 function moduleCardStatus(enabled: boolean, botStatus: DevBotStatus) {
-  if ((botStatus === "error" || botStatus === "invalid_token") && enabled) {
+  if (isBotErrorStatus(botStatus) && enabled) {
     return {
       className: "text-red-300",
       dotClassName: "bg-red-400 shadow-[0_0_14px_rgba(248,113,113,0.55)]",
@@ -4518,10 +4515,10 @@ function isPoliceReleaseModule(moduleId: string) {
 }
 
 function StatusBadge({ status }: { status: DevBotStatus }) {
-  const connected = status === "online";
+  const connected = isBotReadyStatus(status);
 
   return (
-    <Badge variant={connected ? "success" : status === "invalid_token" || status === "error" ? "danger" : "muted"}>
+    <Badge variant={connected ? "success" : isBotErrorStatus(status) ? "danger" : status === "degraded" ? "warning" : "muted"}>
       {connected ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <Circle className="h-3.5 w-3.5" />}
       {statusLabel(status)}
     </Badge>
@@ -4532,7 +4529,15 @@ function StatusDot({ status }: { status: DevBotStatus }) {
   return (
     <span
       className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-        status === "online" ? "bg-emerald-400" : status === "offline" ? "bg-zinc-500" : "bg-red-400"
+        isBotReadyStatus(status)
+          ? "bg-emerald-400"
+          : status === "offline"
+            ? "bg-zinc-500"
+            : isBotErrorStatus(status)
+              ? "bg-red-400"
+              : status === "degraded"
+                ? "bg-amber-400"
+                : "bg-sky-400"
       }`}
       title={statusLabel(status)}
     />
@@ -4543,11 +4548,29 @@ function statusLabel(status: DevBotStatus) {
   const labels: Record<DevBotStatus, string> = {
     online: "Online",
     offline: "Offline",
+    starting: "Iniciando",
+    authenticating: "Autenticando",
+    syncing_config: "Sincronizando",
+    ready: "Pronto",
+    degraded: "Degradado",
+    stopping: "Desligando",
     invalid_token: "Token invalido",
     error: "Erro"
   };
 
   return labels[status];
+}
+
+function isBotRunningStatus(status: DevBotStatus) {
+  return ["online", "starting", "authenticating", "syncing_config", "ready", "degraded", "stopping"].includes(status);
+}
+
+function isBotReadyStatus(status: DevBotStatus) {
+  return status === "online" || status === "ready";
+}
+
+function isBotErrorStatus(status: DevBotStatus) {
+  return status === "error" || status === "invalid_token";
 }
 
 function readRequestMessage(error: unknown) {

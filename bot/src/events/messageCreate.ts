@@ -19,7 +19,7 @@ import { handleCourseExamMessage } from "../services/courseSystemService";
 const MUSIC_PREFIX_COMMANDS = new Set(["music", "play", "artist", "pause", "resume", "skip", "stop", "queue", "clearqueue", "nowplaying", "volume", "loop", "shuffle"]);
 
 export async function handleMessageCreate(message: Message, context: BotContext) {
-  if (await blockMessageIfMaintenance(message)) {
+  if (await blockMessageIfMaintenance(message, context)) {
     return;
   }
   await capturePolicePatrolMessage(message, context).catch((error) => {

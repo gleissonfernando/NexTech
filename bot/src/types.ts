@@ -112,6 +112,8 @@ export type GuildSettings = {
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
+  dashboardRolePermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
+  dashboardUserPermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
 };
 
 export type TicketPanelOption = {

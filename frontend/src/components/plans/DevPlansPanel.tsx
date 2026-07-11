@@ -537,7 +537,7 @@ function PaymentSettingsForm({ busy, form, onChange, onSubmit, settings }: { bus
           <label className="grid gap-1 text-sm">
             <span className="text-zinc-300">Provider</span>
             <select className="h-11 rounded-lg border border-zinc-800 bg-black px-3 text-white outline-none focus:border-[#FFD500]/50" onChange={(event) => onChange({ ...form, provider: event.target.value as PaymentProvider })} value={form.provider}>
-              {["disabled", "mercadopago", "asaas", "efi", "custom"].map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+              {["disabled", "mercadopago"].map((provider) => <option key={provider} value={provider}>{provider}</option>)}
             </select>
           </label>
           <TextField label="Public key" value={form.publicKey} onChange={(publicKey) => onChange({ ...form, publicKey })} />

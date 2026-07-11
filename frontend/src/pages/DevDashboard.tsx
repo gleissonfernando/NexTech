@@ -65,7 +65,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState } from "../types";
+import type { AuthResponse, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -886,6 +886,7 @@ function MaintenancePanel() {
   const [alerting, setAlerting] = useState(false);
   const [bots, setBots] = useState<DevBot[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [message, setMessage] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -925,9 +926,33 @@ function MaintenancePanel() {
   }, []);
 
   async function handleToggle(active: boolean) {
+    if (saving) return;
+    const previous = maintenance;
+
+    setMaintenance((current) => current ? {
+      ...current,
+      active,
+      activatedAt: active ? current.activatedAt ?? new Date().toISOString() : current.activatedAt,
+      deactivatedAt: active ? null : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    } : current);
+    setMessage({
+      tone: "warning",
+      text: active ? "Ativando manutenção global..." : "Desativando manutenção global..."
+    });
     setSaving(true);
     try {
       setMaintenance(await setMaintenanceMode(active));
+      setMessage({
+        tone: "success",
+        text: active ? "Manutenção global ativada." : "Manutenção global desativada."
+      });
+    } catch (error) {
+      setMaintenance(previous);
+      setMessage({
+        tone: "danger",
+        text: readRequestMessage(error) ?? "Não foi possível alterar o modo de manutenção."
+      });
     } finally {
       setSaving(false);
     }
@@ -937,6 +962,9 @@ function MaintenancePanel() {
     setAlerting(true);
     try {
       setMaintenance(await sendMaintenanceAlert());
+      setMessage({ tone: "success", text: "Alerta manual enviado para os bots." });
+    } catch (error) {
+      setMessage({ tone: "danger", text: readRequestMessage(error) ?? "Não foi possível enviar o alerta manual." });
     } finally {
       setAlerting(false);
     }
@@ -968,17 +996,30 @@ function MaintenancePanel() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Badge className={active ? "border-red-400/30 bg-red-500/15 text-red-100" : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"} variant="muted">
-                {active ? "🔴 Em manutenção" : "🟢 Online"}
+                {saving ? "Processando" : active ? "🔴 Em manutenção" : "🟢 Online"}
               </Badge>
               <Switch checked={active} disabled={loading || saving} onCheckedChange={(checked) => void handleToggle(checked)} />
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="space-y-3 p-5">
+          {message ? (
+            <div className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+              message.tone === "success"
+                ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-100"
+                : message.tone === "danger"
+                  ? "border-red-500/25 bg-red-500/[0.08] text-red-100"
+                  : "border-amber-500/25 bg-amber-500/[0.08] text-amber-100"
+            }`}>
+              {message.text}
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MaintenanceMetric label="Status do sistema" value={active ? "Ativo" : "Inativo"} />
           <MaintenanceMetric label="Bots afetados" value={String(maintenance?.affectedBots ?? 0)} />
           <MaintenanceMetric label="Tempo em manutenção" value={elapsed} />
           <MaintenanceMetric label="Última ativação" value={maintenance?.activatedAt ? formatDate(maintenance.activatedAt) : "Nunca"} />
+          </div>
         </CardContent>
       </Card>
 
@@ -1041,8 +1082,8 @@ function MaintenancePanel() {
                     <p className="truncate text-sm font-bold text-white">{bot.name}</p>
                     <p className="truncate text-xs font-medium text-zinc-300">{bot.mainGuildName || bot.mainGuildId}</p>
                   </div>
-                  <Badge variant={bot.status === "online" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : "muted"}>
-                    {bot.status === "online" ? "Online" : bot.status === "offline" ? "Offline" : "Erro"}
+                  <Badge variant={isDevBotReadyStatus(bot.status) ? "success" : isDevBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
+                    {devBotStatusLabel(bot.status)}
                   </Badge>
                 </div>
               ))}
@@ -1065,6 +1106,31 @@ function MaintenanceMetric({ label, value }: { label: string; value: string }) {
       <p className="mt-2 truncate text-lg font-bold text-white">{value}</p>
     </div>
   );
+}
+
+function devBotStatusLabel(status: DevBotStatus) {
+  const labels: Record<DevBotStatus, string> = {
+    online: "Online",
+    offline: "Offline",
+    starting: "Iniciando",
+    authenticating: "Autenticando",
+    syncing_config: "Sincronizando",
+    ready: "Pronto",
+    degraded: "Degradado",
+    stopping: "Desligando",
+    invalid_token: "Token invalido",
+    error: "Erro"
+  };
+
+  return labels[status];
+}
+
+function isDevBotReadyStatus(status: DevBotStatus) {
+  return status === "online" || status === "ready";
+}
+
+function isDevBotErrorStatus(status: DevBotStatus) {
+  return status === "error" || status === "invalid_token";
 }
 
 function formatDuration(ms: number) {

@@ -3227,7 +3227,17 @@ export type MongoSecurityFeatureAccess = {
   updatedAt: Date;
 };
 
-export type MongoDevBotStatus = "online" | "offline" | "invalid_token" | "error";
+export type MongoDevBotStatus =
+  | "online"
+  | "offline"
+  | "starting"
+  | "authenticating"
+  | "syncing_config"
+  | "ready"
+  | "degraded"
+  | "stopping"
+  | "invalid_token"
+  | "error";
 
 export type MongoDevBot = {
   _id: string;

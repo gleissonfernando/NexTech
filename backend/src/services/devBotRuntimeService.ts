@@ -161,7 +161,7 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
   }
 
   const runtime = runningBots.get(botId);
-  const status = await updateDevBotRuntimeStatus(botId, "offline", statusMessage);
+  const status = await updateDevBotRuntimeStatus(botId, runtime ? "stopping" : "offline", statusMessage);
 
   if (notifyBot) {
     emitRealtimeToRoom(devBotRealtimeRoom(botId), "bot:shutdown", {
@@ -190,7 +190,7 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
     }
   });
 
-  return status;
+  return await updateDevBotRuntimeStatus(botId, "offline", statusMessage);
 }
 
 export async function stopAllDevBotProcesses() {
@@ -343,7 +343,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     return;
   }
   if (bot.token === env.DISCORD_BOT_TOKEN) {
-    await updateDevBotRuntimeStatus(bot.id, "online", "Executado pelo processo principal.");
+    await updateDevBotRuntimeStatus(bot.id, "ready", "Executado pelo processo principal.");
     return;
   }
 
@@ -354,7 +354,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     return;
   }
 
-  await updateDevBotRuntimeStatus(bot.id, "offline", "Iniciando processo do bot.");
+  await updateDevBotRuntimeStatus(bot.id, "starting", "Iniciando processo do bot.");
   const messageContentEnabled = await canUseMessageContentIntent(bot);
 
   if (!messageContentEnabled) {
@@ -369,6 +369,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
   const memberEventsEnabled = await canUseGuildMemberIntent(bot);
   const backendRuntimeUrl = `http://127.0.0.1:${env.PORT}`;
 
+  await updateDevBotRuntimeStatus(bot.id, "authenticating", "Processo iniciado; autenticando no Discord.");
   const child = spawn(process.execPath, [entry], {
     cwd: path.resolve(__dirname, "../../.."),
     env: {
@@ -397,7 +398,11 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     const message = writeBotLog(bot.id, chunk);
 
     if (message.includes("[bot] conectado como")) {
-      void updateDevBotRuntimeStatus(bot.id, "online", "Bot conectado ao Discord.");
+      void updateDevBotRuntimeStatus(bot.id, "syncing_config", "Bot conectado ao Discord; sincronizando comandos e configuracoes.");
+    } else if (/comandos sincronizados/i.test(message)) {
+      void updateDevBotRuntimeStatus(bot.id, "ready", "Bot pronto; comandos sincronizados no Discord.");
+    } else if (/MongoDB bloqueou|over your space quota|writes are blocked/i.test(message)) {
+      void updateDevBotRuntimeStatus(bot.id, "degraded", "Bot online, mas o banco esta bloqueando escritas por limite de armazenamento.");
     }
   });
   child.stderr.on("data", (chunk) => {

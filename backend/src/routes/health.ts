@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { env } from "../config/env";
 import { getMongoDb } from "../database/mongo";
 import { getRedisClient } from "../database/redis";
 import { metricsSnapshot } from "../services/monitoringService";
@@ -15,6 +16,8 @@ healthRouter.get("/", async (_req, res) => {
     backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) }))
   ]);
   const bot = getBotStatus();
+  const mail = mailHealth();
+  const payments = paymentsHealth();
   const healthy = database.ok && (!redis.configured || redis.ok);
 
   return res.json({
@@ -22,6 +25,8 @@ healthRouter.get("/", async (_req, res) => {
     database,
     redis,
     jobs,
+    mail,
+    payments,
     bot,
     timestamp: new Date().toISOString()
   });
@@ -43,6 +48,47 @@ healthRouter.get("/bots", (_req, res) => {
     bot: getBotStatus(),
     timestamp: new Date().toISOString()
   });
+});
+
+healthRouter.get("/bots/:botId", async (req, res, next) => {
+  try {
+    const bots = await listDevBots();
+    const bot = bots.find((item) => item.id === req.params.botId || item.clientId === req.params.botId);
+
+    if (!bot) {
+      return res.status(404).json({
+        status: "not_found",
+        message: "Bot nao encontrado.",
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return res.json({
+      status: bot.status === "error" || bot.status === "invalid_token" ? "degraded" : "ok",
+      bot: {
+        id: bot.id,
+        clientId: bot.clientId,
+        name: bot.name,
+        status: bot.status,
+        statusMessage: bot.statusMessage,
+        desiredOnline: bot.desiredOnline,
+        updatedAt: bot.updatedAt
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+healthRouter.get("/mail", (_req, res) => {
+  const mail = mailHealth();
+  return res.status(mail.ok || !mail.configured ? 200 : 503).json(mail);
+});
+
+healthRouter.get("/payments", (_req, res) => {
+  const payments = paymentsHealth();
+  return res.status(payments.ok || !payments.enabled ? 200 : 503).json(payments);
 });
 
 healthRouter.get("/servers", async (_req, res, next) => {
@@ -125,4 +171,27 @@ async function redisHealth() {
       message: error instanceof Error ? error.message : "Redis indisponivel"
     };
   }
+}
+
+function mailHealth() {
+  const configured = Boolean(process.env.SMTP_HOST || process.env.MAIL_HOST || process.env.RESEND_API_KEY);
+
+  return {
+    configured,
+    ok: configured,
+    status: configured ? "configured" : "not_configured",
+    provider: process.env.RESEND_API_KEY ? "resend" : process.env.SMTP_HOST || process.env.MAIL_HOST ? "smtp" : null
+  };
+}
+
+function paymentsHealth() {
+  const enabled = env.PAYMENTS_ENABLED && env.PAYMENT_PROVIDER !== "disabled";
+  const supported = env.PAYMENT_PROVIDER === "disabled" || env.PAYMENT_PROVIDER === "mercadopago";
+
+  return {
+    enabled,
+    ok: !enabled || supported,
+    provider: env.PAYMENT_PROVIDER,
+    status: !enabled ? "disabled" : supported ? "configured" : "unsupported_provider"
+  };
 }

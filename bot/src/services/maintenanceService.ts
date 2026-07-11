@@ -5,6 +5,7 @@ import {
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
   MessageFlags,
+  PermissionFlagsBits,
   TextDisplayBuilder,
   type Interaction,
   type Message
@@ -37,6 +38,7 @@ const MAINTENANCE_PANEL_DESCRIPTION = [
 const MAINTENANCE_PRESENCE_NAME = "Sistema em manutenção";
 const MAINTENANCE_GIF_FILE_NAME = "nft-coding.gif";
 const MAINTENANCE_GIF_PATH = resolveAssetPath(`maintenance/${MAINTENANCE_GIF_FILE_NAME}`);
+const MAINTENANCE_BYPASS_COMMANDS = new Set(["ping"]);
 
 let maintenanceState: MaintenanceState = {
   active: false,
@@ -88,8 +90,12 @@ export function startMaintenanceService(context: BotContext) {
   interval.unref();
 }
 
-export async function blockInteractionIfMaintenance(interaction: Interaction) {
+export async function blockInteractionIfMaintenance(interaction: Interaction, context: BotContext) {
   if (!maintenanceState.active) {
+    return false;
+  }
+
+  if (await canBypassMaintenanceInteraction(interaction, context)) {
     return false;
   }
 
@@ -97,10 +103,7 @@ export async function blockInteractionIfMaintenance(interaction: Interaction) {
     return true;
   }
 
-  const payload = {
-    content: MAINTENANCE_INTERACTION_MESSAGE,
-    ephemeral: true
-  };
+  const payload = maintenanceInteractionPayload();
 
   if (interaction.replied || interaction.deferred) {
     await interaction.followUp(payload).catch(() => undefined);
@@ -111,7 +114,7 @@ export async function blockInteractionIfMaintenance(interaction: Interaction) {
   return true;
 }
 
-export async function blockMessageIfMaintenance(message: Message) {
+export async function blockMessageIfMaintenance(message: Message, context: BotContext) {
   if (!maintenanceState.active) {
     return false;
   }
@@ -124,7 +127,11 @@ export async function blockMessageIfMaintenance(message: Message) {
   const looksLikeCommand = message.content.trim().startsWith("/") || message.content.trim().startsWith("!");
 
   if (mentioned || looksLikeCommand) {
-    await message.reply(MAINTENANCE_INTERACTION_MESSAGE).catch(() => undefined);
+    if (await canBypassMaintenanceMessage(message, context)) {
+      return false;
+    }
+
+    await message.reply(maintenanceMessageReplyPayload()).catch(() => undefined);
   }
 
   return true;
@@ -271,10 +278,30 @@ function maintenancePanelPayload(message: string) {
   };
 }
 
-function maintenancePanelComponent(message: string) {
+function maintenanceInteractionPayload() {
+  return {
+    allowedMentions: {
+      parse: [] as never[]
+    },
+    components: [maintenancePanelComponent(MAINTENANCE_INTERACTION_MESSAGE, false)],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  };
+}
+
+function maintenanceMessageReplyPayload() {
+  return {
+    allowedMentions: {
+      parse: [] as never[]
+    },
+    components: [maintenancePanelComponent(MAINTENANCE_INTERACTION_MESSAGE, false)],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function maintenancePanelComponent(message: string, includeMedia = true) {
   const container = new ContainerBuilder().setAccentColor(0xf59e0b);
 
-  if (existsSync(MAINTENANCE_GIF_PATH)) {
+  if (includeMedia && existsSync(MAINTENANCE_GIF_PATH)) {
     container.addMediaGalleryComponents(
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder()
@@ -289,6 +316,64 @@ function maintenancePanelComponent(message: string) {
     new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
     new TextDisplayBuilder().setContent(message)
   );
+}
+
+async function canBypassMaintenanceInteraction(interaction: Interaction, context: BotContext) {
+  if (interaction.isChatInputCommand() && MAINTENANCE_BYPASS_COMMANDS.has(interaction.commandName)) {
+    return true;
+  }
+
+  if (!interaction.guildId) {
+    return false;
+  }
+
+  if ("memberPermissions" in interaction && interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  return canBypassMaintenanceBySettings(context, interaction.guildId, interaction.user.id, readInteractionRoleIds(interaction));
+}
+
+async function canBypassMaintenanceMessage(message: Message, context: BotContext) {
+  if (!message.guildId) {
+    return false;
+  }
+
+  if (message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  return canBypassMaintenanceBySettings(context, message.guildId, message.author.id, [...(message.member?.roles.cache.keys() ?? [])]);
+}
+
+async function canBypassMaintenanceBySettings(context: BotContext, guildId: string, userId: string, roleIds: string[]) {
+  const settings = await getCachedGuildSettings(context, guildId, context.client.user?.id).catch(() => null);
+
+  if (!settings) {
+    return false;
+  }
+
+  if (settings.dashboardUserPermissions?.[userId]) {
+    return true;
+  }
+
+  return roleIds.some((roleId) => Boolean(settings.dashboardRolePermissions?.[roleId]));
+}
+
+function readInteractionRoleIds(interaction: Interaction) {
+  const roles = interaction.member && typeof interaction.member === "object" && "roles" in interaction.member
+    ? interaction.member.roles
+    : null;
+
+  if (Array.isArray(roles)) {
+    return roles;
+  }
+
+  if (roles && typeof roles === "object" && "cache" in roles && roles.cache && typeof roles.cache === "object" && "keys" in roles.cache) {
+    return [...roles.cache.keys()] as string[];
+  }
+
+  return [];
 }
 
 function maintenancePanelFiles() {

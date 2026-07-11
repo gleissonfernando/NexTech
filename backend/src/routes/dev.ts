@@ -153,7 +153,7 @@ const nexTechPaymentProviderSchema = z.object({
   id: z.string().min(1).max(120).nullable().optional(),
   instructions: z.string().max(1200).nullable().optional().or(z.literal("")),
   label: z.string().min(2).max(80),
-  provider: z.enum(["manual", "pix", "mercadopago", "stripe", "paypal", "custom"]),
+  provider: z.enum(["mercadopago"]),
   publicKey: z.string().max(512).nullable().optional().or(z.literal("")),
   secret: z.string().max(2048).nullable().optional().or(z.literal("")),
   webhookSecret: z.string().max(2048).nullable().optional().or(z.literal("")),

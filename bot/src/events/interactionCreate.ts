@@ -55,7 +55,7 @@ export async function handleInteractionCreate(interaction: Interaction, context:
 }
 
 async function dispatchInteractionCreate(interaction: Interaction, context: BotContext) {
-  if (await blockInteractionIfMaintenance(interaction)) {
+  if (await blockInteractionIfMaintenance(interaction, context)) {
     return;
   }
 
