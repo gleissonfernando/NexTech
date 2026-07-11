@@ -22,6 +22,7 @@ import {
 } from "./dashboardPermissionService";
 import { getDiscordAvatarUrl, getGuildIconUrl } from "./discordAssetService";
 import { fetchDiscordCurrentUserGuildMember, refreshDiscordTokens } from "./discordOAuthService";
+import { ensureSafeBotDiscordResources } from "./discordOptionsService";
 import { getGuildSettings, getPersistedDashboardAccess, updateGuildSettings } from "./settingsService";
 import { getImageAntiSpamSettings } from "./imageAntiSpamService";
 import { saveSelfBotProtectionSettings } from "./selfBotProtectionService";
@@ -2503,14 +2504,24 @@ async function enableSelfBotDefaults(bot: DevBotDto) {
   const runtime = await getDevBotRuntimeConfig(bot.id);
   const guildIds = [...new Set([bot.mainGuildId, ...(runtime?.guildIds ?? [])].filter(Boolean))];
   const updates = await Promise.all(guildIds.map(async (guildId) => {
-    const [settings, protection] = await Promise.all([
-      updateGuildSettings(guildId, {
-        safeBotEnabled: true
-      }, bot.id),
-      saveSelfBotProtectionSettings(guildId, bot.id, {
-        enabled: true
-      }, null)
-    ]);
+    const token = runtime?.token ?? await getDevBotToken(bot.id);
+    let settings = await updateGuildSettings(guildId, { safeBotEnabled: true }, bot.id);
+    const protection = await saveSelfBotProtectionSettings(guildId, bot.id, { enabled: true }, null);
+
+    if (token) {
+      try {
+        const resources = await ensureSafeBotDiscordResources(guildId, token);
+        settings = await updateGuildSettings(guildId, {
+          safeBotChannelId: resources.filterChannelId,
+          safeBotEnabled: true,
+          safeBotLogChannelId: resources.logChannelId,
+          safeBotRoleId: resources.roleId
+        }, bot.id);
+      } catch (error) {
+        console.warn(`[safe-bot] criacao automatica falhou ao liberar o modulo em ${guildId}:`, error instanceof Error ? error.message : error);
+      }
+    }
+
     return { protection, settings };
   }));
 
