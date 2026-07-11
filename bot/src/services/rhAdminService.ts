@@ -80,8 +80,8 @@ export function startRhAdminService(client: Client, context: BotContext) {
       console.error(`[rh-admin] failed to publish panel in ${payload.guildId}:`, error instanceof Error ? error.message : error);
     });
   });
-  void processDueAbsences(client, context);
-  const interval = setInterval(() => void processDueAbsences(client, context), 30 * 60 * 1000);
+  void processDueAbsences(client, context).catch(logDueAbsenceError);
+  const interval = setInterval(() => void processDueAbsences(client, context).catch(logDueAbsenceError), 30 * 60 * 1000);
   interval.unref();
 }
 
@@ -394,6 +394,10 @@ async function processDueAbsences(client: Client, context: BotContext) {
   } finally {
     dueCheckRunning = false;
   }
+}
+
+function logDueAbsenceError(error: unknown) {
+  console.warn("[rh-admin] falha ao processar ausencias vencidas:", error instanceof Error ? error.message : error);
 }
 
 function mainPanel(settings: RhAdminSettings) {
