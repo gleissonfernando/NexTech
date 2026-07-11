@@ -623,7 +623,7 @@ async function realizeCourseExam(interaction: ButtonInteraction, context: BotCon
     channel = existing ?? await interaction.guild!.channels.create({
       name: uniqueExamChannelName(interaction.guild!, expectedName, interaction.user.id),
       parent: temporaryCategoryId,
-      permissionOverwrites: examPermissionOverwrites(interaction.guild!, context, publication, course, settings, interaction.user.id),
+      permissionOverwrites: examPermissionOverwrites(interaction.guild!, context, publication, interaction.user.id),
       reason: `Avaliativo individual do curso ${course.name}`,
       topic: marker,
       type: ChannelType.GuildText
@@ -760,7 +760,7 @@ async function provisionCourseExamChannels(interaction: ButtonInteraction | Chat
       }
       const channelName = existing?.name
         ?? uniqueExamChannelName(guild, expectedName, studentId);
-      const overwrites = examPermissionOverwrites(guild, context, publication, course, settings, studentId);
+      const overwrites = examPermissionOverwrites(guild, context, publication, studentId);
       const alreadyReady = isLegacyChannel || existingMarker?.state === "ready";
       const channel = existing
         ? await existing.edit({
@@ -1019,11 +1019,16 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
   ]);
   await interaction.message.edit({ components: [] }).catch(() => null);
   await interaction.followUp({ content: "Prova finalizada e enviada para correção.", flags: MessageFlags.Ephemeral });
-  await sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers);
-  await sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers);
-  const publication = await context.api.getCoursePublication(interaction.guildId!, result.attempt.publicationId).catch(() => null);
-  if (publication) await refreshPublicationMessageByRecord(interaction, context, publication);
-  await lockAndScheduleExamChannel(interaction, context, settings, result.attempt.publicationId, result.attempt.studentId);
+  const postFinalizeResults = await Promise.allSettled([
+    sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers),
+    sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers),
+    context.api.getCoursePublication(interaction.guildId!, result.attempt.publicationId)
+      .then((publication) => refreshPublicationMessageByRecord(interaction, context, publication))
+  ]);
+  for (const failed of postFinalizeResults.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected")) {
+    console.error("[courses] failed to complete a post-finalization action:", failed.reason instanceof Error ? failed.reason.message : failed.reason);
+  }
+  await deleteFinishedExamChannel(interaction, context);
 }
 
 async function getStudentExamAttempt(interaction: ButtonInteraction, context: BotContext, attemptId: string) {
@@ -1855,17 +1860,23 @@ async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["
   })).catch(() => null);
 }
 
-async function lockAndScheduleExamChannel(interaction: ButtonInteraction, context: BotContext, settings: CourseSettings, publicationId: string, studentId: string) {
+async function deleteFinishedExamChannel(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.channel || !interaction.channel.isTextBased() || !("permissionOverwrites" in interaction.channel)) return;
   const channel = interaction.channel as TextChannel;
-  const deleteAt = Date.now() + examChannelExpirationMs(settings);
-  const deleteAtSeconds = Math.floor(deleteAt / 1000);
-  const topic = `${courseExamChannelTopic(publicationId, studentId)}:finished:${deleteAtSeconds}`;
-  const statePersisted = await persistFinishedExamChannelState(channel, studentId, topic);
-  await channel.send(statePersisted
-    ? `Canal bloqueado. Exclusão automática programada para <t:${deleteAtSeconds}:F>.`
-    : `Prova finalizada. A exclusão está programada para <t:${deleteAtSeconds}:F>, mas houve uma falha ao bloquear ou registrar o prazo; o bot continuará tentando automaticamente.`).catch(() => null);
-  scheduleExamChannelDeletion(channel, deleteAt, context);
+  const deletionTimer = examChannelDeletionTimers.get(channel.id);
+  if (deletionTimer) clearTimeout(deletionTimer);
+  examChannelDeletionTimers.delete(channel.id);
+  examChannelDeletionGenerations.delete(channel.id);
+  const stateRetryTimer = examChannelStateRetryTimers.get(channel.id);
+  if (stateRetryTimer) clearTimeout(stateRetryTimer);
+  examChannelStateRetryTimers.delete(channel.id);
+  try {
+    await channel.delete("Prova finalizada pelo aluno.");
+  } catch (error) {
+    if (isUnknownChannelError(error)) return;
+    console.error(`[courses] failed to delete finalized exam channel ${channel.id}; scheduling retry:`, error instanceof Error ? error.message : error);
+    scheduleExamChannelDeletion(channel, Date.now(), context);
+  }
 }
 
 async function persistFinishedExamChannelState(channel: TextChannel, studentId: string, topic: string, attempt = 0): Promise<boolean> {
@@ -2073,30 +2084,12 @@ function findLegacyExamChannel(guild: NonNullable<ButtonInteraction["guild"]>, p
   });
 }
 
-export function examPermissionOverwrites(guild: NonNullable<ButtonInteraction["guild"]>, context: BotContext, publication: CoursePublication, course: Course, settings: CourseSettings, studentId: string) {
+export function examPermissionOverwrites(guild: NonNullable<ButtonInteraction["guild"]>, context: BotContext, publication: CoursePublication, studentId: string) {
   const overwrites = new Map<string, { allow?: bigint[]; deny?: bigint[]; id: string; type: OverwriteType }>();
   const viewSend = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
   overwrites.set(guild.roles.everyone.id, { deny: [PermissionFlagsBits.ViewChannel], id: guild.roles.everyone.id, type: OverwriteType.Role });
-  for (const id of [
-    studentId,
-    publication.instructorId,
-    ...course.instructorUserIds,
-    ...settings.adminUserIds,
-    ...settings.managerUserIds,
-    ...settings.evaluatorUserIds,
-    ...settings.globalInstructorUserIds
-  ].filter(Boolean)) {
+  for (const id of [studentId, publication.instructorId].filter(Boolean)) {
     overwrites.set(id, { allow: viewSend, id, type: OverwriteType.Member });
-  }
-  for (const id of [
-    ...course.instructorRoleIds,
-    ...settings.adminRoleIds,
-    ...settings.managerRoleIds,
-    ...settings.evaluatorRoleIds,
-    ...settings.globalInstructorRoleIds,
-    ...(course.allowGeneralInstructorRoles !== false ? settings.generalInstructorRoleIds : [])
-  ].filter(Boolean)) {
-    overwrites.set(id, { allow: viewSend, id, type: OverwriteType.Role });
   }
   overwrites.set(context.client.user!.id, {
     allow: [...viewSend, PermissionFlagsBits.ManageChannels],

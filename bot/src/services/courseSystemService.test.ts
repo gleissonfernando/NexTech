@@ -54,7 +54,7 @@ test("limpeza aguarda uma tentativa ativa, mas não adia canal já finalizado", 
   assert.equal(shouldDeferExamChannelDeletion(`${topic}:finished:1800000000`, true), false);
 });
 
-test("overwrites isolam o aluno e tipam usuários, cargos e bot corretamente", () => {
+test("overwrites deixam o canal visível somente para aluno, instrutor responsável e bot", () => {
   type ExamPermissionParameters = Parameters<typeof examPermissionOverwrites>;
 
   const guild = {
@@ -66,23 +66,7 @@ test("overwrites isolam o aluno e tipam usuários, cargos e bot corretamente", (
   const publication = {
     instructorId: "instructor-1"
   } as unknown as ExamPermissionParameters[2];
-  const course = {
-    instructorRoleIds: ["role-course-instructor"],
-    instructorUserIds: ["user-course-instructor"]
-  } as unknown as ExamPermissionParameters[3];
-  const settings = {
-    adminRoleIds: ["role-admin"],
-    adminUserIds: ["user-admin"],
-    evaluatorRoleIds: ["role-evaluator"],
-    evaluatorUserIds: ["user-evaluator"],
-    generalInstructorRoleIds: ["role-general-instructor"],
-    globalInstructorRoleIds: ["role-global-instructor"],
-    globalInstructorUserIds: ["user-global-instructor"],
-    managerRoleIds: ["role-manager"],
-    managerUserIds: ["user-manager"]
-  } as unknown as ExamPermissionParameters[4];
-
-  const overwrites = examPermissionOverwrites(guild, context, publication, course, settings, "student-1");
+  const overwrites = examPermissionOverwrites(guild, context, publication, "student-1");
   const byId = new Map(overwrites.map((overwrite) => [overwrite.id, overwrite]));
   const everyone = byId.get("role-everyone");
 
@@ -90,21 +74,18 @@ test("overwrites isolam o aluno e tipam usuários, cargos e bot corretamente", (
   assert.equal(everyone?.deny?.includes(PermissionFlagsBits.ViewChannel), true);
   assert.equal(byId.has("student-2"), false);
 
-  for (const id of [
-    "student-1",
-    "instructor-1",
-    "user-course-instructor",
-    "user-admin",
-    "user-manager",
-    "user-evaluator",
-    "user-global-instructor"
-  ]) {
+  for (const id of ["student-1", "instructor-1"]) {
     const overwrite = byId.get(id);
     assert.equal(overwrite?.type, OverwriteType.Member, `${id} deve ser Member`);
     assert.equal(overwrite?.allow?.includes(PermissionFlagsBits.ViewChannel), true, `${id} deve visualizar o canal`);
   }
 
   for (const id of [
+    "user-course-instructor",
+    "user-admin",
+    "user-manager",
+    "user-evaluator",
+    "user-global-instructor",
     "role-course-instructor",
     "role-admin",
     "role-manager",
@@ -112,9 +93,7 @@ test("overwrites isolam o aluno e tipam usuários, cargos e bot corretamente", (
     "role-global-instructor",
     "role-general-instructor"
   ]) {
-    const overwrite = byId.get(id);
-    assert.equal(overwrite?.type, OverwriteType.Role, `${id} deve ser Role`);
-    assert.equal(overwrite?.allow?.includes(PermissionFlagsBits.ViewChannel), true, `${id} deve visualizar o canal`);
+    assert.equal(byId.has(id), false, `${id} não deve receber acesso ao canal`);
   }
 
   const bot = byId.get("bot-1");
