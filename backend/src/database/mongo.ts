@@ -807,6 +807,7 @@ export type MongoManualRegistrationSettings = {
   successMessage?: string | null;
   thumbnailUrl: string | null;
   title: string;
+  tutorial?: string | null;
   updatedAt: Date;
   updatedBy?: string | null;
 };
@@ -3189,6 +3190,7 @@ export type MongoDevBot = {
   status: MongoDevBotStatus;
   statusMessage?: string | null;
   enabledModules: string[];
+  desiredOnline?: boolean;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

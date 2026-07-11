@@ -579,6 +579,24 @@ export async function listFivemGoalSubmissions(guildId: string, botId?: string |
   return rows.map(toSubmissionDto);
 }
 
+export async function getFivemGoalUserRuntime(guildId: string, userId: string, botId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const [configs, submissions] = await Promise.all([
+    listFivemGoalConfigs(guildId, normalizedBotId, true),
+    listFivemGoalSubmissions(guildId, normalizedBotId)
+  ]);
+  const approved = submissions.filter((item) => item.status === "approved");
+  const totals = new Map<string, number>();
+  for (const item of approved) totals.set(item.userId, (totals.get(item.userId) ?? 0) + item.value);
+  const ranking = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 100).map(([rankedUserId, total], index) => ({ rank: index + 1, total, userId: rankedUserId }));
+  return {
+    configs,
+    ranking,
+    submissions: submissions.filter((item) => item.userId === userId),
+    userId
+  };
+}
+
 export async function moderateFivemGoalSubmission(guildId: string, botId: string | null, submissionId: string, actorId: string | null, status: "approved" | "refused", refusalReason?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const now = new Date();

@@ -9,7 +9,7 @@ import { gravarCommand } from "./gravar";
 import { fivemOrdersCommand } from "./fivemOrders";
 import { fivemFinanceCommand } from "./fivemFinance";
 import { hierarchyCommand } from "../services/fivemHierarchyService";
-import { legacyManualRegistrationCommand, manualRegistrationCommand } from "./manualRegistration";
+import { configSetCommand, legacyManualRegistrationCommand, manualRegistrationCommand } from "./manualRegistration";
 import { missionPanelCommand } from "./missionPanel";
 import { musicCommands } from "./music";
 import { notificarCommand } from "./notificar";
@@ -43,6 +43,7 @@ export function createCommandCollection() {
     fivemOrdersCommand,
     hierarchyCommand,
     manualRegistrationCommand,
+    configSetCommand,
     legacyManualRegistrationCommand,
     missionPanelCommand,
     ...musicCommands,

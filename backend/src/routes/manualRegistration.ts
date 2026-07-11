@@ -51,7 +51,7 @@ const settingsSchema = z.object({
   dmNotifications: z.boolean().optional(),
   enabled: z.boolean().optional(),
   emoji: z.string().max(80).nullable().optional(),
-  fields: z.array(fieldSchema).max(25).optional(),
+  fields: z.array(fieldSchema).max(100).optional(),
   footerText: z.string().max(180).nullable().optional(),
   logChannelId: optionalSnowflakeSchema,
   name: z.string().max(80).optional(),
@@ -73,7 +73,8 @@ const settingsSchema = z.object({
   staffRoleIds: z.array(snowflakeSchema).max(20).optional(),
   successMessage: z.string().max(500).optional(),
   thumbnailUrl: z.string().max(2048).nullable().optional(),
-  title: z.string().max(120).optional()
+  title: z.string().max(120).optional(),
+  tutorial: z.string().max(1500).optional()
 });
 
 const submissionSchema = z.object({
@@ -81,7 +82,7 @@ const submissionSchema = z.object({
     id: z.string().max(80),
     label: z.string().max(100),
     value: z.string().max(1500)
-  })).max(25),
+  })).max(100),
   guildId: snowflakeSchema,
   messageId: optionalSnowflakeSchema,
   requestedRoleId: optionalSnowflakeSchema,

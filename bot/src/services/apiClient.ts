@@ -527,6 +527,7 @@ export type ManualRegistrationSettings = {
   successMessage: string;
   thumbnailUrl: string | null;
   title: string;
+  tutorial: string;
   updatedAt: string | null;
 };
 
@@ -599,6 +600,8 @@ export type FivemGoalConfig = {
   type: string;
   viewerRoleIds: string[];
 };
+export type FivemGoalSubmission = { createdAt: string; description: string | null; id: string; metaId: string; proofUrl: string | null; status: "pending" | "approved" | "refused"; userId: string; value: number };
+export type FivemGoalUserRuntime = { configs: FivemGoalConfig[]; ranking: Array<{ rank: number; total: number; userId: string }>; submissions: FivemGoalSubmission[]; userId: string };
 
 export type FivemOrderStatus = "open" | "pending_approval" | "approved" | "in_production" | "ready" | "delivered" | "cancelled" | "rejected";
 export type FivemOrderSettings = {
@@ -2418,6 +2421,11 @@ export class ApiClient {
   async getFivemGoalChannelByUser(guildId: string, userId: string) {
     const { data } = await this.http.get<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/${guildId}/users/${userId}/channel`);
     return data.channel;
+  }
+
+  async getFivemGoalUserRuntime(guildId: string, userId: string) {
+    const { data } = await this.http.get<FivemGoalUserRuntime>(`/fivem/bot/goals/${guildId}/users/${userId}/runtime`);
+    return data;
   }
 
   async saveFivemGoalChannel(input: { channelId: string; guildId: string; userId: string }) {

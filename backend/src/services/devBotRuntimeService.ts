@@ -63,8 +63,10 @@ export async function startRegisteredDevBots() {
   });
 
   console.log(`[dev-bot] iniciando ${bots.length} bot(s) cadastrado(s) automaticamente.`);
-  await startDevBotRuntimeBatch(bots);
-  return bots.length;
+  const enabledBots = bots.filter((bot) => bot.desiredOnline);
+  console.log(`[dev-bot] ${bots.length - enabledBots.length} bot(s) permanecerao desligados por bloqueio persistente.`);
+  await startDevBotRuntimeBatch(enabledBots);
+  return enabledBots.length;
 }
 
 async function waitForDevBotSupervisorLease() {
@@ -85,7 +87,7 @@ export async function startAllDevBotProcesses(botIds: string[]) {
   }
 
   const bots = (await Promise.all(botIds.map((botId) => getDevBotRuntimeConfig(botId))))
-    .filter((bot): bot is DevBotRuntimeConfig => Boolean(bot));
+    .filter((bot): bot is DevBotRuntimeConfig => Boolean(bot?.desiredOnline));
 
   await startDevBotRuntimeBatch(bots);
 }
@@ -106,6 +108,11 @@ export async function startDevBotProcess(botId: string) {
   const bot = await getDevBotRuntimeConfig(botId);
 
   if (!bot) {
+    return null;
+  }
+
+  if (!bot.desiredOnline) {
+    await updateDevBotRuntimeStatus(botId, "offline", "Bot mantido desligado pelo controle persistente DEV.");
     return null;
   }
 
@@ -292,6 +299,10 @@ function readRuntimeError(error: unknown) {
 }
 
 async function startRuntime(bot: DevBotRuntimeConfig) {
+  if (!bot.desiredOnline) {
+    await updateDevBotRuntimeStatus(bot.id, "offline", "Bot mantido desligado pelo controle persistente DEV.");
+    return;
+  }
   if (bot.token === env.DISCORD_BOT_TOKEN) {
     await updateDevBotRuntimeStatus(bot.id, "online", "Executado pelo processo principal.");
     return;

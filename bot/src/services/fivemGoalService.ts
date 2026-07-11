@@ -6,6 +6,7 @@ import {
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
   type Attachment,
@@ -14,7 +15,8 @@ import {
   type Guild,
   type Interaction,
   type Message,
-  type ModalSubmitInteraction
+  type ModalSubmitInteraction,
+  type StringSelectMenuInteraction
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { FivemGoalSettings } from "./apiClient";
@@ -23,7 +25,7 @@ const PREFIX = "fivem_goal";
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const pendingImages = new Map<string, { channelId: string; expiresAt: number; imageUrl: string; userId: string }>();
+const pendingImages = new Map<string, { channelId: string; expiresAt: number; imageUrl: string; metaId: string | null; userId: string }>();
 
 export function startFivemGoalService(client: Client<true>, context: BotContext) {
   context.socket.onFivemGoalPanelPublish((payload) => {
@@ -37,7 +39,15 @@ export async function ensureFivemGoalChannelForUser(context: BotContext, guild: 
   if (!settings?.enabled) return null;
 
   const existing = await context.api.getFivemGoalChannelByUser(guild.id, userId).catch(() => null);
-  if (existing?.channelId) return existing.channelId;
+  if (existing?.channelId) {
+    const existingChannel = await guild.channels.fetch(existing.channelId).catch(() => null);
+    if (existingChannel?.isTextBased() && !existingChannel.isDMBased() && "messages" in existingChannel) {
+      const recent = await existingChannel.messages.fetch({ limit: 30 }).catch(() => null);
+      const hasPanel = recent?.some((message) => message.author.id === guild.client.user.id && JSON.stringify(message.components.map((component) => component.toJSON())).includes(`${PREFIX}:user:refresh:${userId}`));
+      if (!hasPanel) await existingChannel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
+    }
+    return existing.channelId;
+  }
 
   if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) return null;
   const member = await guild.members.fetch(userId).catch(() => null);
@@ -57,10 +67,7 @@ export async function ensureFivemGoalChannelForUser(context: BotContext, guild: 
   });
 
   await context.api.saveFivemGoalChannel({ channelId: channel.id, guildId: guild.id, userId });
-  await channel.send({
-    allowedMentions: { users: [userId] },
-    content: `<@${userId}> envie suas fotos de meta neste canal. Abaixo de cada imagem vai aparecer o botao para registrar.`
-  }).catch(() => null);
+  await channel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
 
   return channel.id;
 }
@@ -109,7 +116,7 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
     return true;
   }
 
-  await message.reply(createImageReviewPayload(message.author.id, message.channel.id, image.url));
+  await message.reply(createImageReviewPayload(message.author.id, message.channel.id, image.url, settings));
   await context.api.postLog({
     guildId: message.guild.id,
     message: "Foto de meta recebida no canal individual.",
@@ -136,7 +143,20 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:user:`)) {
+    await handleUserGoalPanelAction(interaction, context);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:register:`)) {
+    await showGoalModal(interaction, context);
+    return true;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:choose:`)) {
+    const token = interaction.customId.split(":")[2] ?? "";
+    const pending = pendingImages.get(token);
+    if (pending) pending.metaId = interaction.values[0] ?? null;
     await showGoalModal(interaction, context);
     return true;
   }
@@ -205,7 +225,7 @@ function createGoalRequestPanelPayload(title: string, description: string) {
   };
 }
 
-async function showGoalModal(interaction: ButtonInteraction, context: BotContext) {
+async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
   if (!interaction.guild) return;
   const [, , imageToken] = interaction.customId.split(":");
   const pending = pendingImages.get(imageToken ?? "");
@@ -222,7 +242,8 @@ async function showGoalModal(interaction: ButtonInteraction, context: BotContext
   }
 
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
-  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  pending.metaId = activeConfig?.id ?? null;
   const fieldsToRender = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:${encodeURIComponent(imageToken ?? "")}`)
@@ -262,7 +283,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
 
   const imageUrl = pending.imageUrl;
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
-  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
   const fieldsToRead = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   const fields = fieldsToRead.map((field) => ({
@@ -298,11 +319,90 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   }).catch(() => null);
 
   await interaction.editReply("Meta registrada com sucesso.");
+  await refreshUserGoalPanel(context, interaction.guild.id, interaction.channelId ?? "", interaction.user.id).catch(() => null);
 }
 
-function createImageReviewPayload(userId: string, channelId: string, imageUrl: string) {
+async function handleUserGoalPanelAction(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const action = interaction.customId.split(":")[2] ?? "";
+  const ownerId = interaction.customId.split(":")[3] ?? "";
+  if (interaction.user.id !== ownerId && action !== "ranking") {
+    await interaction.reply({ content: "Este painel pertence a outro membro.", ephemeral: true });
+    return;
+  }
+  if (action === "add") {
+    await interaction.reply({ content: "Envie a imagem do comprovante neste canal. Assim que ela chegar, o bot mostrara o botao **Registrar Meta**.", ephemeral: true });
+    return;
+  }
+  const runtime = await context.api.getFivemGoalUserRuntime(interaction.guild.id, ownerId);
+  if (action === "history") {
+    const configs = new Map(runtime.configs.map((item) => [item.id, item.name]));
+    const lines = runtime.submissions.slice(0, 20).map((item) => `• **${configs.get(item.metaId) ?? "Meta"}** — ${formatGoalValue(item.value)} — ${goalStatus(item.status)} — <t:${Math.floor(Date.parse(item.createdAt) / 1000)}:d>`);
+    await interaction.reply({ content: lines.join("\n") || "Nenhum registro encontrado.", ephemeral: true });
+    return;
+  }
+  if (action === "ranking") {
+    const lines = runtime.ranking.slice(0, 25).map((item) => `${item.rank <= 3 ? ["🥇", "🥈", "🥉"][item.rank - 1] : `**${item.rank}.**`} <@${item.userId}> — ${formatGoalValue(item.total)}`);
+    await interaction.reply({ content: `## Ranking de Metas\n${lines.join("\n") || "Ainda nao existem valores aprovados."}`, ephemeral: true });
+    return;
+  }
+  if (action === "review") {
+    await context.api.postLog({ guildId: interaction.guild.id, message: "Revisao de meta solicitada pelo membro.", metadata: { channelId: interaction.channelId }, type: "fivem.goals.review_requested", userId: ownerId }).catch(() => null);
+    await interaction.reply({ content: "Revisao solicitada. A equipe responsavel foi registrada nos logs.", ephemeral: true });
+    return;
+  }
+  if (action === "refresh") {
+    await interaction.update(await createUserGoalPanel(context, interaction.guild.id, ownerId, interaction.user.username));
+  }
+}
+
+async function createUserGoalPanel(context: BotContext, guildId: string, userId: string, username: string) {
+  const runtime = await context.api.getFivemGoalUserRuntime(guildId, userId);
+  const active = runtime.configs.find((item) => item.status === "active") ?? runtime.configs[0] ?? null;
+  const approved = runtime.submissions.filter((item) => item.status === "approved" && (!active || item.metaId === active.id));
+  const current = approved.reduce((total, item) => total + item.value, 0);
+  const target = Math.max(1, active?.targetValue ?? 1);
+  const percent = Math.min(100, Math.floor(current / target * 100));
+  const filled = Math.round(percent / 10);
+  const rank = runtime.ranking.find((item) => item.userId === userId)?.rank ?? null;
+  const content = [
+    `# 📊 Painel Individual de Metas`,
+    `👤 **Responsavel:** <@${userId}> (${username})`,
+    `🏷️ **Meta atual:** ${active?.name ?? "Nenhuma meta ativa"}`,
+    `📅 **Criado:** <t:${Math.floor(Date.now() / 1000)}:d>`,
+    `📈 **Progresso:** ${formatGoalValue(current)} / ${formatGoalValue(target)}`,
+    `\`${"█".repeat(filled)}${"░".repeat(10 - filled)}\` **${percent}%**`,
+    `🏆 **Ranking geral:** ${rank ? `#${rank}` : "Ainda sem posicao"}`,
+    `🟢 **Status:** ${percent >= 100 ? "Meta concluida" : "Em andamento"}`
+  ].join("\n");
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{ type: 17, accent_color: percent >= 100 ? 0x22c55e : 0x3b82f6, components: [{ type: 10, content }] }, new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:add:${userId}`).setLabel("Adicionar Meta").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:history:${userId}`).setLabel("Historico").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:ranking:${userId}`).setLabel("Ranking").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:refresh:${userId}`).setLabel("Atualizar").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:review:${userId}`).setLabel("Solicitar Revisao").setStyle(ButtonStyle.Secondary)
+    )],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+async function refreshUserGoalPanel(context: BotContext, guildId: string, channelId: string, userId: string) {
+  const channel = await context.client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return;
+  const messages = await channel.messages.fetch({ limit: 30 });
+  const panel = messages.find((message) => message.author.id === context.client.user?.id && message.components.some((row) => JSON.stringify(row.toJSON()).includes(`${PREFIX}:user:refresh:${userId}`)));
+  if (panel) await panel.edit(await createUserGoalPanel(context, guildId, userId, userId));
+}
+
+function formatGoalValue(value: number) { return new Intl.NumberFormat("pt-BR").format(Math.max(0, value)); }
+function goalStatus(status: "pending" | "approved" | "refused") { return status === "approved" ? "Aprovado" : status === "refused" ? "Recusado" : "Pendente"; }
+
+function createImageReviewPayload(userId: string, channelId: string, imageUrl: string, settings: FivemGoalSettings) {
   const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  pendingImages.set(token, { channelId, expiresAt: Date.now() + 60 * 60 * 1000, imageUrl, userId });
+  const configs = (settings.configs ?? []).filter((item) => item.status === "active");
+  pendingImages.set(token, { channelId, expiresAt: Date.now() + 60 * 60 * 1000, imageUrl, metaId: configs.length === 1 ? configs[0]?.id ?? null : null, userId });
   cleanupPendingImages();
 
   return {
@@ -316,9 +416,11 @@ function createImageReviewPayload(userId: string, channelId: string, imageUrl: s
           { type: 10, content: `## Foto de meta enviada\nUsuario: <@${userId}>\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }
         ]
       },
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...(configs.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(`${PREFIX}:choose:${token}`).setPlaceholder("Selecione o tipo de meta").addOptions(configs.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, label: item.name.slice(0, 100), value: item.id })))
+      )] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`${PREFIX}:register:${token}`).setLabel("Registrar Meta").setStyle(ButtonStyle.Success)
-      )
+      )])
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };

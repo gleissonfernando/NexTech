@@ -59,6 +59,7 @@ export type ManualRegistrationSettingsDto = {
   successMessage: string;
   thumbnailUrl: string | null;
   title: string;
+  tutorial: string;
   updatedAt: string | null;
 };
 
@@ -137,6 +138,7 @@ export function defaultManualRegistrationSettings(guildId: string, botId: string
     successMessage: "Seu pedido de set foi enviado para analise.",
     thumbnailUrl: null,
     title: "Pedido de Set",
+    tutorial: "**Como funciona**\n• Clique em Solicitar Set.\n• Escolha o set desejado.\n• Preencha corretamente todas as informacoes.\n• Aguarde a analise da equipe.",
     updatedAt: null
   };
 }
@@ -201,6 +203,9 @@ export async function saveManualRegistrationSettings(
     if (!nextSets.has(item.id)) await writeManualRegistrationLog({ action: "set.removed", botId: normalizedBotId, data: { before: item }, executorId: actorId, guildId, submissionId: null, targetUserId: null });
   }
   emitManualRegistrationUpdated(guildId, normalizedBotId);
+  if (normalizedBotId && next.enabled && next.panelMessageId) {
+    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "manual-registration:panel_publish", { botId: normalizedBotId, guildId });
+  }
 
   return getManualRegistrationSettings(guildId, normalizedBotId);
 }
@@ -423,7 +428,8 @@ function normalizeSettings(settings: ManualRegistrationSettingsDto): ManualRegis
     staffRoleIds: normalizeSnowflakes(settings.staffRoleIds).slice(0, 20),
     successMessage: normalizeText(settings.successMessage, 500) || "Seu pedido de set foi enviado para analise.",
     thumbnailUrl: normalizeUrl(settings.thumbnailUrl),
-    title: normalizeText(settings.title, 120) || "Pedido de Set"
+    title: normalizeText(settings.title, 120) || "Pedido de Set",
+    tutorial: normalizeText(settings.tutorial, 1500) || defaultManualRegistrationSettings(settings.guildId, settings.botId).tutorial
   };
 }
 
@@ -456,7 +462,7 @@ function normalizeFields(fields: ManualRegistrationFieldDto[]) {
       required: field.required !== false,
       style: field.style === "paragraph" ? "paragraph" as const : "short" as const
     };
-  }).filter((field) => field.label).slice(0, 25);
+  }).filter((field) => field.label).slice(0, 100);
 
   return normalized.length ? normalized : DEFAULT_FIELDS.map((field) => ({ ...field }));
 }
@@ -494,6 +500,7 @@ function toSettingsDto(settings: MongoManualRegistrationSettings): ManualRegistr
     successMessage: settings.successMessage ?? "Seu pedido de set foi enviado para analise.",
     thumbnailUrl: settings.thumbnailUrl,
     title: settings.title,
+    tutorial: settings.tutorial ?? defaultManualRegistrationSettings(settings.guildId, normalizeBotId(settings.botId)).tutorial,
     updatedAt: settings.updatedAt?.toISOString() ?? null
   });
 }

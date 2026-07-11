@@ -18,6 +18,7 @@ import {
   registerPrimaryDevBot,
   testDiscordBotToken,
   setSecurityProtectionAccess,
+  setDevBotDesiredOnline,
   syncSecurityProtectionAccessFromModules,
   updateBotGuildConfig,
   updateDevBot,
@@ -632,6 +633,7 @@ devRouter.post("/bots/start-all", async (_req, res, next) => {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const bots = await listManageableDevBots(auth);
 
+    await Promise.all(bots.map((bot) => setDevBotDesiredOnline(bot.id, true)));
     await startAllDevBotProcesses(bots.map((bot) => bot.id));
     const updatedBots = await listAccessibleDevBots(auth.user);
 
@@ -660,6 +662,7 @@ devRouter.post("/bots/stop-all", async (_req, res, next) => {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const bots = await listManageableDevBots(auth);
 
+    await Promise.all(bots.map((bot) => setDevBotDesiredOnline(bot.id, false)));
     await stopSelectedDevBotProcesses(bots.map((bot) => bot.id), {
       message: "Bots desligados pelo controle geral DEV.",
       notifyBot: true
@@ -798,7 +801,7 @@ devRouter.patch("/bots/:botId", async (req, res, next) => {
       await syncSecurityProtectionAccessFromModules(updatedBot.id, updatedBot.enabledModules, auth.user.discordId);
     }
 
-    await restartDevBotProcess(updatedBot.id);
+    if (updatedBot.desiredOnline) await restartDevBotProcess(updatedBot.id);
     const bot = await getDevBot(updatedBot.id) ?? updatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "update", `Bot ${bot.name} atualizado no painel.`, {
       clientId: bot.clientId
@@ -863,11 +866,12 @@ devRouter.post("/bots/:botId/stop", async (req, res, next) => {
       });
     }
 
-    const stoppedBot = await stopDevBotProcess(req.params.botId, {
+    await setDevBotDesiredOnline(req.params.botId, false);
+    await stopDevBotProcess(req.params.botId, {
       message: "Bot desligado pelo painel DEV.",
       notifyBot: true
     });
-    const bot = stoppedBot ?? (await getDevBot(req.params.botId)) ?? currentBot;
+    const bot = (await getDevBot(req.params.botId)) ?? currentBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "stop", `Bot ${bot.name} desligado pelo painel.`, {
       status: bot.status
     });
@@ -904,6 +908,7 @@ devRouter.post("/bots/:botId/restart", async (req, res, next) => {
       });
     }
 
+    await setDevBotDesiredOnline(req.params.botId, true);
     await restartDevBotProcess(req.params.botId);
     const bot = await getDevBot(req.params.botId) ?? validatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "restart", `Bot ${bot.name} reiniciado/sincronizado.`, {
@@ -965,7 +970,7 @@ devRouter.patch("/bots/:botId/modules", async (req, res, next) => {
       });
     }
 
-    await restartDevBotProcess(updatedBot.id);
+    if (updatedBot.desiredOnline) await restartDevBotProcess(updatedBot.id);
     const bot = await getDevBot(updatedBot.id) ?? updatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "modules", `Modulos do bot ${bot.name} atualizados.`, {
       enabledModules: bot.enabledModules

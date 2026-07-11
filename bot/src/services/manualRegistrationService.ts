@@ -18,6 +18,7 @@ import {
   type StringSelectMenuInteraction
 } from "discord.js";
 import axios from "axios";
+import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import type { BotContext } from "../types";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
@@ -26,6 +27,7 @@ import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 import { buildV2Container, renderPanelBlocks } from "./panelVisualRenderer";
 
 const PREFIX = "manual_registration";
+const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
 
 export function startManualRegistrationService(client: Client<true>, context: BotContext) {
   context.socket.onManualRegistrationPanelPublish((payload) => {
@@ -91,9 +93,10 @@ async function publishConfiguredPanel(guild: Guild, context: BotContext) {
   if (!channel?.isSendable()) return;
   if (settings.panelMessageId && "messages" in channel) {
     const message = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
-    if (!message) return;
-    await message.edit(createPanelPayload(settings));
-    return;
+    if (message) {
+      await message.edit(createPanelPayload(settings));
+      return;
+    }
   }
   const message = await channel.send(createPanelPayload(settings));
   await context.api.saveManualRegistrationSettings(guild.id, { panelChannelId: channel.id, panelMessageId: message.id });
@@ -165,6 +168,10 @@ export async function handleManualRegistrationInteraction(interaction: Interacti
   }
   if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:modal:`)) {
     await handleRegistrationSubmit(interaction, context);
+    return true;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:form_next:`)) {
+    await continueRegistrationForm(interaction, context);
     return true;
   }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:approve:`)) {
@@ -297,14 +304,21 @@ async function startSetRequest(interaction: ButtonInteraction, context: BotConte
 async function showRegistrationModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, requestedRoleId: string | null) {
   if (!interaction.guildId) return;
   const settings = await context.api.getManualRegistrationSettings(interaction.guildId);
-  const fields = settings.fields.filter((field) => field.enabled !== false).slice(0, 5);
+  const fields = settings.fields.filter((field) => field.enabled !== false);
   if (!fields.length) {
     await interaction.reply({ content: "Nenhum campo foi configurado para o pedido.", ephemeral: true });
     return;
   }
+  const token = randomUUID().replaceAll("-", "").slice(0, 20);
+  formSessions.set(token, { answers: [], expiresAt: Date.now() + 15 * 60_000, guildId: interaction.guildId, page: 0, requestedRoleId, userId: interaction.user.id });
+  await showRegistrationModalPage(interaction, settings, token, 0);
+}
+
+async function showRegistrationModalPage(interaction: ButtonInteraction | StringSelectMenuInteraction, settings: ManualRegistrationSettings, token: string, page: number) {
+  const fields = settings.fields.filter((field) => field.enabled !== false).slice(page * 5, page * 5 + 5);
   const modal = new ModalBuilder()
-    .setCustomId(`${PREFIX}:modal:${requestedRoleId ?? "default"}`)
-    .setTitle((settings.name || "Pedido de Set").slice(0, 45));
+    .setCustomId(`${PREFIX}:modal:${token}:${page}`)
+    .setTitle(`${settings.name || "Pedido de Set"} ${page + 1}/${Math.ceil(settings.fields.filter((field) => field.enabled !== false).length / 5)}`.slice(0, 45));
   for (const field of fields) {
     const input = new TextInputBuilder()
       .setCustomId(field.id)
@@ -319,12 +333,45 @@ async function showRegistrationModal(interaction: ButtonInteraction | StringSele
   await interaction.showModal(modal);
 }
 
+async function continueRegistrationForm(interaction: ButtonInteraction, context: BotContext) {
+  const token = interaction.customId.split(":")[2] ?? "";
+  const session = formSessions.get(token);
+  if (!session || session.expiresAt < Date.now() || session.userId !== interaction.user.id || session.guildId !== interaction.guildId) {
+    formSessions.delete(token);
+    await interaction.reply({ content: "Este formulario expirou. Inicie um novo pedido.", ephemeral: true });
+    return;
+  }
+  const settings = await context.api.getManualRegistrationSettings(session.guildId);
+  await showRegistrationModalPage(interaction, settings, token, session.page);
+}
+
 async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, context: BotContext) {
   if (!interaction.guild) return;
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
-  const requestedRoleId = interaction.customId.split(":")[2] === "default" ? null : interaction.customId.split(":")[2] ?? null;
-  const fields = settings.fields.filter((field) => field.enabled !== false).slice(0, 5).map((field) => ({ id: field.id, label: field.label, value: interaction.fields.getTextInputValue(field.id) || "-" }));
+  const token = interaction.customId.split(":")[2] ?? "";
+  const page = Number(interaction.customId.split(":")[3] ?? 0);
+  const session = formSessions.get(token);
+  if (!session || session.expiresAt < Date.now() || session.userId !== interaction.user.id || session.guildId !== interaction.guild.id || session.page !== page) {
+    formSessions.delete(token);
+    await interaction.editReply("Este formulario expirou. Inicie um novo pedido.");
+    return;
+  }
+  const activeFields = settings.fields.filter((field) => field.enabled !== false);
+  const pageFields = activeFields.slice(page * 5, page * 5 + 5);
+  session.answers.push(...pageFields.map((field) => ({ id: field.id, label: field.label, value: interaction.fields.getTextInputValue(field.id) || "-" })));
+  session.page += 1;
+  if (session.page * 5 < activeFields.length) {
+    formSessions.set(token, session);
+    await interaction.editReply({
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:form_next:${token}`).setLabel(`Continuar para etapa ${session.page + 1}`).setStyle(ButtonStyle.Primary))],
+      content: `Etapa ${page + 1} salva. Continue para preencher as proximas perguntas.`
+    });
+    return;
+  }
+  formSessions.delete(token);
+  const requestedRoleId = session.requestedRoleId;
+  const fields = session.answers;
   let submission: ManualRegistrationSubmission;
   try {
     submission = await context.api.createManualRegistrationSubmission({ fields, guildId: interaction.guild.id, requestedRoleId, userAvatar: interaction.user.displayAvatarURL(), userId: interaction.user.id, username: interaction.user.tag });
@@ -509,6 +556,8 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     type: 10,
     content: [
       "### Informacoes importantes",
+      settings.tutorial,
+      "",
       `> **Sets disponiveis:** ${availableSets || "definido pela equipe"}`,
       "> **Analise:** realizada pela equipe responsavel",
       settings.cooldownMinutes > 0 ? `> **Novo pedido:** liberado apos ${settings.cooldownMinutes} minuto(s)` : "> **Novo pedido:** sem tempo de espera",

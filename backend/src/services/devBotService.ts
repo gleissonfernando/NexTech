@@ -292,6 +292,7 @@ export type DevBotDto = {
   status: MongoDevBotStatus;
   statusMessage: string | null;
   enabledModules: string[];
+  desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;
@@ -318,6 +319,7 @@ export type DashboardBotDto = Pick<
   | "status"
   | "statusMessage"
   | "enabledModules"
+  | "desiredOnline"
   | "accessLevel"
   | "permissions"
   | "createdBy"
@@ -331,6 +333,7 @@ export type DevBotRuntimeConfig = {
   mainGuildId: string;
   guildIds: string[];
   enabledModules: string[];
+  desiredOnline: boolean;
 };
 
 export type BotRuntimeModuleAuthorization = {
@@ -798,6 +801,7 @@ export async function createDevBot(input: CreateDevBotInput) {
     status: "offline",
     statusMessage: "Token validado. Aguardando inicializacao.",
     enabledModules: sanitizeModules(input.enabledModules ?? ["live"]),
+    desiredOnline: true,
     createdBy: input.createdBy,
     createdAt: now,
     updatedAt: now
@@ -1354,6 +1358,20 @@ export async function getDevBotRuntimeConfig(botId: string) {
   return bot ? toDevBotRuntimeConfig(bot, configs.map((config) => config.guildId)) : null;
 }
 
+export async function setDevBotDesiredOnline(botId: string, desiredOnline: boolean) {
+  const { devBots } = await getMongoCollections();
+  const now = new Date();
+  const updated = await devBots.findOneAndUpdate(
+    { _id: botId },
+    { $set: { desiredOnline, updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  if (!updated) return null;
+  const dto = toDevBotDto(updated);
+  emitRealtime("dev:bot_updated", toDashboardBotDto(dto));
+  return dto;
+}
+
 export async function getDevBotToken(botId: string | null | undefined) {
   if (!botId) {
     return null;
@@ -1763,6 +1781,7 @@ export async function getBotApiPermissions(botId: string) {
   return {
     botId: bot.id,
     enabledModules: sanitizeModules(bot.enabledModules),
+    desiredOnline: bot.desiredOnline !== false,
     status: bot.status
   };
 }
@@ -2557,6 +2576,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     status: bot.status,
     statusMessage: bot.statusMessage ? maskSensitiveText(bot.statusMessage) : null,
     enabledModules: sanitizeModules(bot.enabledModules),
+    desiredOnline: bot.desiredOnline !== false,
     accessLevel,
     permissions,
     createdBy: bot.createdBy,
@@ -2660,7 +2680,8 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
     token: decryptSecret(bot.tokenEncrypted),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),
-    enabledModules: sanitizeModules(bot.enabledModules)
+    enabledModules: sanitizeModules(bot.enabledModules),
+    desiredOnline: bot.desiredOnline !== false
   };
 }
 
@@ -2683,6 +2704,7 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     status: bot.status,
     statusMessage: bot.statusMessage,
     enabledModules: bot.enabledModules,
+    desiredOnline: bot.desiredOnline,
     accessLevel: bot.accessLevel,
     permissions: bot.permissions,
     createdBy: bot.createdBy

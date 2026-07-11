@@ -1264,6 +1264,7 @@ export type ManualRegistrationSettings = {
   successMessage: string;
   thumbnailUrl: string | null;
   title: string;
+  tutorial: string;
   updatedAt: string | null;
 };
 
@@ -3252,6 +3253,7 @@ export type DashboardBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   enabledModules: string[];
+  desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;
@@ -3278,6 +3280,7 @@ export type DevBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   enabledModules: string[];
+  desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;

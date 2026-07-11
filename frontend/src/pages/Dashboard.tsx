@@ -5300,6 +5300,7 @@ function ManualRegistrationPanel({
               </label>
             </div>
             <TicketArea disabled={!canManage} label="Descricao" onChange={(value) => patchSettings({ description: value })} value={settings.description ?? ""} />
+            <TicketArea disabled={!canManage} label="Tutorial - Como funciona" onChange={(value) => patchSettings({ tutorial: value })} value={settings.tutorial} />
             <TicketField disabled={!canManage} label="Rodape" onChange={(value) => patchSettings({ footerText: value })} value={settings.footerText ?? ""} />
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -5346,9 +5347,9 @@ function ManualRegistrationPanel({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">Campos do modal</p>
-                  <p className="text-xs text-zinc-500">O Discord exibe ate 5 campos por modal; deixe os principais no topo.</p>
+                  <p className="text-xs text-zinc-500">O sistema divide automaticamente as perguntas em etapas de ate 5 campos por modal.</p>
                 </div>
-                <Button disabled={!canManage || settings.fields.length >= 25} onClick={addField} size="sm" type="button" variant="outline">Adicionar campo</Button>
+                <Button disabled={!canManage || settings.fields.length >= 100} onClick={addField} size="sm" type="button" variant="outline">Adicionar campo</Button>
               </div>
               {settings.fields.map((field, index) => (
                 <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_120px_180px_auto]" key={`${field.id}-${index}`}>

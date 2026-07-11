@@ -53,6 +53,7 @@ import {
   deleteFivemGoalConfig,
   getFivemGoalDashboard,
   getFivemGoalSettings,
+  getFivemGoalUserRuntime,
   getFivemGoalUserChannelByChannel,
   getFivemGoalUserChannelByUser,
   listFivemGoalConfigs,
@@ -689,6 +690,17 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/channel", requireBot, async (
     const userId = snowflakeSchema.parse(req.params.userId);
     const botId = await resolveRequestBotId(req);
     return res.json({ channel: await getFivemGoalUserChannelByUser(guildId, userId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId/users/:userId/runtime", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await resolveRequestBotId(req);
+    return res.json(await getFivemGoalUserRuntime(guildId, userId, botId));
   } catch (error) {
     return next(error);
   }

@@ -54,3 +54,18 @@ export const legacyManualRegistrationCommand: BotCommand = {
     await publishManualRegistrationPanel(interaction, context);
   }
 };
+
+export const configSetCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("config-set")
+    .setDescription("Configura rapidamente os canais e cargos do Pedido de Set da FAC.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  moduleId: "manual-registration",
+  async execute(interaction) {
+    if (!interaction.guild) {
+      await interaction.reply({ content: "Use este comando em um servidor.", ephemeral: true });
+      return;
+    }
+    await showManualRegistrationQuickConfig(interaction);
+  }
+};

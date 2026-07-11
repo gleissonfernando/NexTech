@@ -627,6 +627,7 @@ function devBotPlaceholder(appId: string, app: unknown): DevBotDto {
     status: "offline",
     statusMessage: null,
     enabledModules: [],
+    desiredOnline: true,
     accessLevel: "admin",
     permissions: {
       canAccessDashboard: true,
