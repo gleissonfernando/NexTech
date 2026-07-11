@@ -164,7 +164,6 @@ function scheduleReconnect(reason: string) {
       scheduleReconnect("falha ao reconectar");
     });
   }, delay);
-  reconnectTimer.unref();
 }
 
 async function startBot() {
@@ -244,5 +243,18 @@ memoryMonitor.unref();
 
 startBot().catch((error) => {
   console.error("[bot] falha ao conectar:", error);
+  if (isInvalidTokenError(error)) {
+    console.error("[bot] token invalido; encerrando sem reconexao automatica.");
+    process.exit(0);
+  }
   scheduleReconnect("falha inicial de login");
 });
+
+function isInvalidTokenError(error: unknown) {
+  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : "";
+
+  return /tokeninvalid|invalid token|token was provided/i.test(`${code} ${message}`);
+}

@@ -20,7 +20,7 @@ export type DevBotUnexpectedExitLogInput = {
   clientId: string;
   detail: string;
   message: string;
-  status: "offline" | "error";
+  status: "offline" | "error" | "invalid_token";
 };
 
 export async function sendDevBotUnexpectedExitLog(input: DevBotUnexpectedExitLogInput) {

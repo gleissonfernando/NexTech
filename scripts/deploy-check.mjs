@@ -123,6 +123,19 @@ check("contrato de token interno do bot", () => {
   }
 });
 
+check("scripts de start multiplataforma", () => {
+  const pkg = JSON.parse(readProjectFile("package.json"));
+  const startDiscloud = String(pkg.scripts?.["start:discloud"] ?? "");
+
+  if (!startDiscloud || !startDiscloud.includes("node scripts/start-production.mjs")) {
+    fail("package.json precisa iniciar a Discloud por scripts/start-production.mjs.");
+  }
+
+  if (/^[A-Z0-9_]+=/.test(startDiscloud)) {
+    fail("package.json start:discloud nao pode usar variavel inline; isso quebra em Windows.");
+  }
+});
+
 check("rotas de bots DEV sem colisao", () => {
   const devRoutes = readProjectFile("backend/src/routes/dev.ts");
   const planRoutes = readProjectFile("backend/src/routes/plans.ts");

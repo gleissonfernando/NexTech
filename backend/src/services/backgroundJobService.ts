@@ -26,6 +26,7 @@ let lastPollAt: string | null = null;
 let lastError: string | null = null;
 let completedSinceStart = 0;
 let failedSinceStart = 0;
+let writeBlockedWarningEmitted = false;
 
 export function registerBackgroundJobHandler(type: string, handler: BackgroundJobHandler) {
   handlers.set(type, handler);
@@ -140,6 +141,10 @@ async function poll() {
     for (let index = 0; index < capacity; index += 1) {
       const job = await claimNextJob().catch((error) => {
         lastError = readError(error);
+        if (isMongoWriteBlockedError(error)) {
+          pauseWorkerForWriteBlock(lastError);
+          return null;
+        }
         console.error("[background-jobs] falha ao buscar job:", lastError);
         return null;
       });
@@ -263,4 +268,23 @@ function createJobId(type: string, idempotencyKey: string) {
 
 function readError(error: unknown) {
   return error instanceof Error ? error.stack ?? error.message : String(error);
+}
+
+function isMongoWriteBlockedError(error: unknown) {
+  const message = readError(error).toLowerCase();
+  return message.includes("over your space quota") || message.includes("writes are blocked");
+}
+
+function pauseWorkerForWriteBlock(message: string) {
+  if (pollTimer) clearInterval(pollTimer);
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  pollTimer = null;
+  heartbeatTimer = null;
+  stopping = true;
+
+  if (!writeBlockedWarningEmitted) {
+    writeBlockedWarningEmitted = true;
+    console.warn("[background-jobs] MongoDB bloqueou escritas por quota; worker pausado ate liberar espaco no Atlas.");
+    console.warn(`[background-jobs] ultimo erro: ${message.split("\n")[0] ?? message}`);
+  }
 }

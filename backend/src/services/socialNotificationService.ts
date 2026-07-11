@@ -69,6 +69,7 @@ const MAX_PAGE_SIZE = 100;
 const DEFAULT_EMBED_COLOR = "#9146FF";
 const LIVE_PANEL_BRAND = "vortex lives";
 const memoryNotifications = new Map<string, SocialNotificationDto>();
+let legacyTwitchClaimWarningEmitted = false;
 
 export async function previewTwitchChannel(input: string) {
   const twitchChannelName = normalizeAndValidateChannel(input);
@@ -818,7 +819,7 @@ async function claimLegacyTwitchNotifications(guildId: string, botId: string | n
       }
     );
   } catch (error) {
-    console.warn("[social-notifications] nao foi possivel vincular lives antigas ao bot:", error instanceof Error ? error.message : error);
+    warnLegacyTwitchClaimFailure(error);
   }
 }
 
@@ -1107,4 +1108,27 @@ function formatDateTime(value: Date) {
 
 function livePanelFooter(value: Date) {
   return `${LIVE_PANEL_BRAND} - Hoje \u00e0s ${formatTime(value)} - ${formatDateTime(value)}`;
+}
+
+function warnLegacyTwitchClaimFailure(error: unknown) {
+  const message = readErrorMessage(error);
+
+  if (isMongoWriteBlockedMessage(message)) {
+    if (!legacyTwitchClaimWarningEmitted) {
+      legacyTwitchClaimWarningEmitted = true;
+      console.warn("[social-notifications] MongoDB bloqueou escritas por quota; vinculo legado de lives sera retomado quando o Atlas liberar escrita.");
+    }
+    return;
+  }
+
+  console.warn("[social-notifications] nao foi possivel vincular lives antigas ao bot:", message);
+}
+
+function readErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMongoWriteBlockedMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("over your space quota") || normalized.includes("writes are blocked");
 }

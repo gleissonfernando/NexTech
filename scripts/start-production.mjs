@@ -162,7 +162,7 @@ function isBuildStale(buildFiles, sourcePaths) {
 }
 
 function startProcess(name, command, args, options = {}) {
-  const { critical = false, once = false, restartDelayMs = 10_000 } = options;
+  const { critical = false, once = false, restartDelayMs = 10_000, restartOnCleanExit = true } = options;
   const child = spawn(command, args, {
     env: {
       ...process.env,
@@ -183,6 +183,10 @@ function startProcess(name, command, args, options = {}) {
 
     const detail = signal ? `signal ${signal}` : `code ${code ?? 0}`;
     console.error(`[${name}] saiu com ${detail}.`);
+
+    if (!signal && code === 0 && !restartOnCleanExit) {
+      return;
+    }
 
     if (critical || once) {
       if (!signal && code === 0 && once) {
@@ -221,4 +225,4 @@ process.on("SIGTERM", () => shutdown(0));
 
 ensureBuild();
 startProcess("backend", "node", ["backend/dist/server.js"], { restartDelayMs: 5_000 });
-startProcess("bot", "node", [process.env.BOT_SHARDING_ENABLED === "true" ? "bot/dist/shard.js" : "bot/dist/index.js"]);
+startProcess("bot", "node", [process.env.BOT_SHARDING_ENABLED === "true" ? "bot/dist/shard.js" : "bot/dist/index.js"], { restartOnCleanExit: false });

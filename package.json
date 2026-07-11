@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "start": "node scripts/start-production.mjs",
-    "start:discloud": "START_REGISTERED_DEV_BOTS=true node scripts/start-production.mjs",
+    "start:discloud": "node scripts/start-production.mjs",
     "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
     "restart": "npm run stop && npm run dev",

@@ -426,7 +426,8 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
 
     const detail = signal ? `sinal ${signal}` : `codigo ${code ?? 0}`;
     const exitMessage = runtime.lastError ?? `Processo encerrado com ${detail}.`;
-    const status = code === 0 ? "offline" : "error";
+    const invalidToken = /token inv.lido|discord recusou o token/i.test(exitMessage);
+    const status = invalidToken ? "invalid_token" : code === 0 ? "offline" : "error";
     void updateDevBotRuntimeStatus(bot.id, status, exitMessage);
     void sendDevBotUnexpectedExitLog({
       botId: bot.id,
@@ -436,6 +437,10 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       message: exitMessage,
       status
     });
+
+    if (invalidToken) {
+      return;
+    }
 
     const timer = setTimeout(() => {
       restartTimers.delete(bot.id);
