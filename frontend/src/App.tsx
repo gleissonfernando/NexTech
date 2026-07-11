@@ -6,7 +6,7 @@ import { DevDashboard } from "./pages/DevDashboard";
 import { DocsPage } from "./pages/Docs";
 import { GiveawayRoulettePage } from "./pages/GiveawayRoulette";
 import { Login } from "./pages/Login";
-import { OrvitechProductPage } from "./pages/OrvitechProductPage";
+import { NexTechProductPage } from "./pages/NexTechProductPage";
 import { PublicPlansPage } from "./pages/Plans";
 import { useAuth } from "./hooks/useAuth";
 import { dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "./lib/urls";
@@ -26,7 +26,7 @@ export function App() {
   const docsPath = path === "/docs" || path.startsWith("/docs/");
   const plansPath = path === "/planos" || path.startsWith("/planos/");
   const rouletteToken = rouletteTokenFromPath(path);
-  const productRoute = orvitechProductRouteFromPath(path);
+  const productRoute = nexTechProductRouteFromPath(path);
   const routeError = readAuthError();
   const authCallbackLanding = isAuthCallbackLanding();
   const dashboardPath = isDashboardRoutePath(path);
@@ -80,7 +80,7 @@ export function App() {
   }
 
   if (productRoute) {
-    return <OrvitechProductPage slug={productRoute.slug} storeId={productRoute.storeId} />;
+    return <NexTechProductPage slug={productRoute.slug} status={productRoute.status} storeId={productRoute.storeId} />;
   }
 
   if (loading) {
@@ -165,12 +165,12 @@ function rouletteTokenFromPath(path: string) {
   }
 }
 
-function orvitechProductRouteFromPath(path: string) {
-  if (!path.startsWith("/orvitech/")) {
+function nexTechProductRouteFromPath(path: string) {
+  if (!path.startsWith("/nex-tech/")) {
     return null;
   }
 
-  const [, , storeId, slug] = path.split("/");
+  const [, , storeId, slug, status] = path.split("/");
 
   if (!storeId || !slug) {
     return null;
@@ -178,6 +178,7 @@ function orvitechProductRouteFromPath(path: string) {
 
   return {
     slug,
+    status: status === "sucesso" ? "success" as const : null,
     storeId
   };
 }
@@ -195,7 +196,7 @@ function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "clo
     return "cloning";
   }
 
-  if (path.startsWith("/dev/vendas-orvitech")) {
+  if (path.startsWith("/dev/vendas-nex-tech")) {
     return "sales";
   }
 

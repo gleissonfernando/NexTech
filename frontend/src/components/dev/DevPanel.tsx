@@ -38,28 +38,28 @@ import {
 import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import {
     createDevBot,
-    createOrvitechProduct,
-    createOrvitechSale,
+    createNexTechProduct,
+    createNexTechSale,
     cleanupLegacyDatabaseMaintenance,
-    createOrvitechSalesPlan,
+    createNexTechSalesPlan,
     deleteDevBot,
     deleteDatabaseMaintenanceUserLinks,
-    deleteOrvitechProduct,
-    deleteOrvitechPaymentProvider,
-    deleteOrvitechSalesPlan,
+    deleteNexTechProduct,
+    deleteNexTechPaymentProvider,
+    deleteNexTechSalesPlan,
     getBotGuildConfig,
     getDatabaseMaintenanceModules,
     getDatabaseMaintenanceUserLinks,
     getDevBots,
     getDevModules,
     getGuildLiveOptions,
-    getOrvitechSalesDashboard,
+    getNexTechSalesDashboard,
     resetDatabaseMaintenanceModule,
     resetDatabaseMaintenanceServer,
-    duplicateOrvitechProduct,
+    duplicateNexTechProduct,
     restartDevBot,
-    saveOrvitechPaymentProvider,
-    saveOrvitechSalesSettings,
+    saveNexTechPaymentProvider,
+    saveNexTechSalesSettings,
     searchDatabaseMaintenanceUsers,
     startAllDevBots,
     stopAllDevBots,
@@ -67,10 +67,10 @@ import {
     updateBotGuildConfig,
     updateDevBotModules,
     updateDevBotToken,
-    updateOrvitechProduct,
-    updateOrvitechSaleStatus,
-    updateOrvitechSalesPlan,
-    uploadOrvitechProductBanner
+    updateNexTechProduct,
+    updateNexTechSaleStatus,
+    updateNexTechSalesPlan,
+    uploadNexTechProductBanner
 } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
 import { dashboardUrl } from "../../lib/urls";
@@ -88,17 +88,17 @@ import type {
     DevModuleDefinition,
     GuildChannelOption,
     GuildVoiceChannelOption,
-    OrvitechSaleStatus,
-    OrvitechProduct,
-    OrvitechProductFeatureKey,
-    OrvitechSalesDashboard,
-    OrvitechSalesPaymentProvider,
-    OrvitechSalesPlan,
-    SaveOrvitechPaymentProviderPayload,
-    SaveOrvitechProductPayload,
-    SaveOrvitechSalePayload,
-    SaveOrvitechSalesPlanPayload,
-    SaveOrvitechSalesSettingsPayload
+    NexTechSaleStatus,
+    NexTechProduct,
+    NexTechProductFeatureKey,
+    NexTechSalesDashboard,
+    NexTechSalesPaymentProvider,
+    NexTechSalesPlan,
+    SaveNexTechPaymentProviderPayload,
+    SaveNexTechProductPayload,
+    SaveNexTechSalePayload,
+    SaveNexTechSalesPlanPayload,
+    SaveNexTechSalesSettingsPayload
 } from "../../types";
 import { Avatar } from "../ui/avatar";
 import { Badge } from "../ui/badge";
@@ -112,7 +112,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
-  { id: "orvitech-sales", label: "OrviTech - Sistema de Vendas" },
+  { id: "nex-tech-sales", label: "Nex Tech - Sistema de Vendas" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },
@@ -419,10 +419,10 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "sales",
-    label: "Vendas OrviTech",
-    description: "Planos, pagamentos e liberacoes do bot OrviTech",
+    label: "Vendas Nex Tech",
+    description: "Planos, pagamentos e liberacoes do bot Nex Tech",
     icon: CreditCard,
-    moduleIds: ["orvitech-sales"]
+    moduleIds: ["nex-tech-sales"]
   },
   {
     id: "discord",
@@ -1087,16 +1087,16 @@ export function DevPanel({
           </div>
         ) : null}
         {selectedBot ? (
-          <OrvitechSalesWorkspace
+          <NexTechSalesWorkspace
             bot={selectedBot}
-            enabled={selectedBot.enabledModules.includes("orvitech-sales")}
+            enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
             guilds={guilds}
-            onEnable={() => void handleToggleModule(selectedBot, "orvitech-sales", true)}
+            onEnable={() => void handleToggleModule(selectedBot, "nex-tech-sales", true)}
           />
         ) : (
           <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)]">
             <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
-              Selecione um bot para abrir as vendas OrviTech.
+              Selecione um bot para abrir as vendas Nex Tech.
             </CardContent>
           </Card>
         )}
@@ -1298,11 +1298,11 @@ export function DevPanel({
               </CardContent>
             </Card>
           ) : activeDashboardSection === "sales" && selectedBot ? (
-            <OrvitechSalesWorkspace
+            <NexTechSalesWorkspace
               bot={selectedBot}
-              enabled={selectedBot.enabledModules.includes("orvitech-sales")}
+              enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
               guilds={guilds}
-              onEnable={() => void handleToggleModule(selectedBot, "orvitech-sales", true)}
+              onEnable={() => void handleToggleModule(selectedBot, "nex-tech-sales", true)}
             />
           ) : selectedBot ? (
             <BotModuleWorkspace
@@ -2660,23 +2660,23 @@ const clonePartOptions = [
   { id: "voice", label: "Canais de voz" }
 ];
 
-const defaultSalesSettingsForm: SaveOrvitechSalesSettingsPayload = {
+const defaultSalesSettingsForm: SaveNexTechSalesSettingsPayload = {
   currency: "BRL",
   customerRoleId: null,
   enabled: false,
   logChannelId: null,
   panelColor: "#FFD500",
-  panelDescription: "Planos, liberacoes e pagamentos do bot OrviTech.",
+  panelDescription: "Planos, liberacoes e pagamentos do bot Nex Tech.",
   panelImageUrl: null,
-  panelTitle: "OrviTech Bot",
-  publicUrl: "/orvitech/1492325134550302952",
+  panelTitle: "Nex Tech Bot",
+  publicUrl: "/nex-tech/1492325134550302952",
   saleChannelId: null,
   supportRoleIds: [],
   termsUrl: null,
   thumbnailUrl: null
 };
 
-const defaultProviderForm: SaveOrvitechPaymentProviderPayload = {
+const defaultProviderForm: SaveNexTechPaymentProviderPayload = {
   enabled: true,
   instructions: "",
   label: "Pagamento manual",
@@ -2687,18 +2687,18 @@ const defaultProviderForm: SaveOrvitechPaymentProviderPayload = {
   webhookUrl: ""
 };
 
-const defaultPlanForm: SaveOrvitechSalesPlanPayload = {
+const defaultPlanForm: SaveNexTechSalesPlanPayload = {
   checkoutMessage: "",
   description: "",
   durationDays: 30,
   enabled: true,
   imageUrl: "",
-  moduleIds: ["orvitech-sales"],
-  name: "Plano mensal OrviTech",
+  moduleIds: ["nex-tech-sales"],
+  name: "Plano mensal Nex Tech",
   priceCents: 0
 };
 
-const defaultSaleForm: SaveOrvitechSalePayload = {
+const defaultSaleForm: SaveNexTechSalePayload = {
   amountCents: null,
   buyerId: "",
   buyerName: "",
@@ -2709,7 +2709,7 @@ const defaultSaleForm: SaveOrvitechSalePayload = {
   status: "pending"
 };
 
-const productFeatureLabels: Record<OrvitechProductFeatureKey, string> = {
+const productFeatureLabels: Record<NexTechProductFeatureKey, string> = {
   activationKey: "Chave de ativacao",
   automaticContract: "Contrato automatico",
   automaticLogin: "Login automatico",
@@ -2723,7 +2723,7 @@ const productFeatureLabels: Record<OrvitechProductFeatureKey, string> = {
   updates: "Atualizacoes"
 };
 
-const defaultProductForm: SaveOrvitechProductPayload = {
+const defaultProductForm: SaveNexTechProductPayload = {
   active: true,
   additionalInfo: "",
   bannerUrl: "",
@@ -2783,7 +2783,7 @@ const defaultProductForm: SaveOrvitechProductPayload = {
   warnings: ""
 };
 
-function OrvitechSalesWorkspace({
+function NexTechSalesWorkspace({
   bot,
   enabled,
   guilds,
@@ -2796,12 +2796,12 @@ function OrvitechSalesWorkspace({
 }) {
   const guildOptions = useMemo(() => buildBotGuildOptions(bot, guilds), [bot, guilds]);
   const [guildId, setGuildId] = useState(bot.mainGuildId || guildOptions[0]?.id || "");
-  const [dashboard, setDashboard] = useState<OrvitechSalesDashboard | null>(null);
-  const [settingsForm, setSettingsForm] = useState<SaveOrvitechSalesSettingsPayload>(defaultSalesSettingsForm);
-  const [providerForm, setProviderForm] = useState<SaveOrvitechPaymentProviderPayload>(defaultProviderForm);
-  const [planForm, setPlanForm] = useState<SaveOrvitechSalesPlanPayload>(defaultPlanForm);
-  const [productForm, setProductForm] = useState<SaveOrvitechProductPayload>(defaultProductForm);
-  const [saleForm, setSaleForm] = useState<SaveOrvitechSalePayload>(defaultSaleForm);
+  const [dashboard, setDashboard] = useState<NexTechSalesDashboard | null>(null);
+  const [settingsForm, setSettingsForm] = useState<SaveNexTechSalesSettingsPayload>(defaultSalesSettingsForm);
+  const [providerForm, setProviderForm] = useState<SaveNexTechPaymentProviderPayload>(defaultProviderForm);
+  const [planForm, setPlanForm] = useState<SaveNexTechSalesPlanPayload>(defaultPlanForm);
+  const [productForm, setProductForm] = useState<SaveNexTechProductPayload>(defaultProductForm);
+  const [saleForm, setSaleForm] = useState<SaveNexTechSalePayload>(defaultSaleForm);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -2823,7 +2823,7 @@ function OrvitechSalesWorkspace({
     setLoading(true);
     setMessage(null);
 
-    getOrvitechSalesDashboard(bot.id, guildId)
+    getNexTechSalesDashboard(bot.id, guildId)
       .then((data) => {
         if (cancelled) return;
         setDashboard(data);
@@ -2848,7 +2848,7 @@ function OrvitechSalesWorkspace({
 
   async function refreshDashboard() {
     if (!guildId) return;
-    const data = await getOrvitechSalesDashboard(bot.id, guildId);
+    const data = await getNexTechSalesDashboard(bot.id, guildId);
     setDashboard(data);
     setSettingsForm(settingsToForm(data.settings));
   }
@@ -2858,7 +2858,7 @@ function OrvitechSalesWorkspace({
     setSaving("settings");
     setMessage(null);
     try {
-      const settings = await saveOrvitechSalesSettings(bot.id, guildId, sanitizeSalesSettingsForm(settingsForm));
+      const settings = await saveNexTechSalesSettings(bot.id, guildId, sanitizeSalesSettingsForm(settingsForm));
       setDashboard((current) => current ? { ...current, settings } : current);
       setSettingsForm(settingsToForm(settings));
       setMessage("Configuracao de vendas salva.");
@@ -2874,7 +2874,7 @@ function OrvitechSalesWorkspace({
     setSaving("provider");
     setMessage(null);
     try {
-      const settings = await saveOrvitechPaymentProvider(bot.id, guildId, providerForm);
+      const settings = await saveNexTechPaymentProvider(bot.id, guildId, providerForm);
       setDashboard((current) => current ? { ...current, settings } : current);
       setProviderForm(defaultProviderForm);
       setMessage("Forma de pagamento salva.");
@@ -2885,11 +2885,11 @@ function OrvitechSalesWorkspace({
     }
   }
 
-  async function handleDeleteProvider(provider: OrvitechSalesPaymentProvider) {
+  async function handleDeleteProvider(provider: NexTechSalesPaymentProvider) {
     if (!guildId || !window.confirm(`Remover ${provider.label}?`)) return;
     setSaving(provider.id);
     try {
-      const settings = await deleteOrvitechPaymentProvider(bot.id, guildId, provider.id);
+      const settings = await deleteNexTechPaymentProvider(bot.id, guildId, provider.id);
       setDashboard((current) => current ? { ...current, settings } : current);
     } finally {
       setSaving(null);
@@ -2903,9 +2903,9 @@ function OrvitechSalesWorkspace({
     setMessage(null);
     try {
       if (editingProductId) {
-        await updateOrvitechProduct(bot.id, guildId, editingProductId, productForm);
+        await updateNexTechProduct(bot.id, guildId, editingProductId, productForm);
       } else {
-        await createOrvitechProduct(bot.id, guildId, productForm);
+        await createNexTechProduct(bot.id, guildId, productForm);
       }
       setProductForm(defaultProductForm);
       setEditingProductId(null);
@@ -2918,11 +2918,11 @@ function OrvitechSalesWorkspace({
     }
   }
 
-  async function handleDuplicateProduct(product: OrvitechProduct) {
+  async function handleDuplicateProduct(product: NexTechProduct) {
     if (!guildId) return;
     setSaving(product.id);
     try {
-      await duplicateOrvitechProduct(bot.id, guildId, product.id);
+      await duplicateNexTechProduct(bot.id, guildId, product.id);
       await refreshDashboard();
       setMessage("Produto duplicado.");
     } catch (error) {
@@ -2932,11 +2932,11 @@ function OrvitechSalesWorkspace({
     }
   }
 
-  async function handleDeleteProduct(product: OrvitechProduct) {
+  async function handleDeleteProduct(product: NexTechProduct) {
     if (!guildId || !window.confirm(`Excluir ${product.name}?`)) return;
     setSaving(product.id);
     try {
-      await deleteOrvitechProduct(bot.id, guildId, product.id);
+      await deleteNexTechProduct(bot.id, guildId, product.id);
       if (editingProductId === product.id) {
         setEditingProductId(null);
         setProductForm(defaultProductForm);
@@ -2956,7 +2956,7 @@ function OrvitechSalesWorkspace({
     setSaving("product-banner");
     setMessage(null);
     try {
-      const product = await uploadOrvitechProductBanner(bot.id, guildId, editingProductId, file);
+      const product = await uploadNexTechProductBanner(bot.id, guildId, editingProductId, file);
       setProductForm(productToForm(product));
       await refreshDashboard();
       setMessage("Banner do produto atualizado.");
@@ -2973,9 +2973,9 @@ function OrvitechSalesWorkspace({
     setMessage(null);
     try {
       if (editingPlanId) {
-        await updateOrvitechSalesPlan(bot.id, guildId, editingPlanId, planForm);
+        await updateNexTechSalesPlan(bot.id, guildId, editingPlanId, planForm);
       } else {
-        await createOrvitechSalesPlan(bot.id, guildId, planForm);
+        await createNexTechSalesPlan(bot.id, guildId, planForm);
       }
       setPlanForm(defaultPlanForm);
       setEditingPlanId(null);
@@ -2988,11 +2988,11 @@ function OrvitechSalesWorkspace({
     }
   }
 
-  async function handleDeletePlan(plan: OrvitechSalesPlan) {
+  async function handleDeletePlan(plan: NexTechSalesPlan) {
     if (!guildId || !window.confirm(`Remover o plano ${plan.name}?`)) return;
     setSaving(plan.id);
     try {
-      await deleteOrvitechSalesPlan(bot.id, guildId, plan.id);
+      await deleteNexTechSalesPlan(bot.id, guildId, plan.id);
       await refreshDashboard();
     } finally {
       setSaving(null);
@@ -3008,7 +3008,7 @@ function OrvitechSalesWorkspace({
     setSaving("sale");
     setMessage(null);
     try {
-      await createOrvitechSale(bot.id, guildId, saleForm);
+      await createNexTechSale(bot.id, guildId, saleForm);
       setSaleForm({
         ...defaultSaleForm,
         paymentProviderId: dashboard?.settings.paymentProviders[0]?.id ?? null,
@@ -3023,18 +3023,18 @@ function OrvitechSalesWorkspace({
     }
   }
 
-  async function handleSaleStatus(saleId: string, status: OrvitechSaleStatus) {
+  async function handleSaleStatus(saleId: string, status: NexTechSaleStatus) {
     if (!guildId) return;
     setSaving(saleId);
     try {
-      await updateOrvitechSaleStatus(bot.id, guildId, saleId, status);
+      await updateNexTechSaleStatus(bot.id, guildId, saleId, status);
       await refreshDashboard();
     } finally {
       setSaving(null);
     }
   }
 
-  function editPlan(plan: OrvitechSalesPlan) {
+  function editPlan(plan: NexTechSalesPlan) {
     setEditingPlanId(plan.id);
     setPlanForm({
       checkoutMessage: plan.checkoutMessage ?? "",
@@ -3042,13 +3042,13 @@ function OrvitechSalesWorkspace({
       durationDays: plan.durationDays,
       enabled: plan.enabled,
       imageUrl: plan.imageUrl ?? "",
-      moduleIds: plan.moduleIds.length ? plan.moduleIds : ["orvitech-sales"],
+      moduleIds: plan.moduleIds.length ? plan.moduleIds : ["nex-tech-sales"],
       name: plan.name,
       priceCents: plan.priceCents
     });
   }
 
-  function editProduct(product: OrvitechProduct) {
+  function editProduct(product: NexTechProduct) {
     setEditingProductId(product.id);
     setProductForm(productToForm(product));
   }
@@ -3063,7 +3063,7 @@ function OrvitechSalesWorkspace({
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2 text-white">
                 <CreditCard className="h-5 w-5 text-[#FFEA70]" />
-                Vendas OrviTech
+                Vendas Nex Tech
               </CardTitle>
               <CardDescription className="mt-2 font-medium text-zinc-300">
                 Bot principal: 1492325134550302952. Planos, pagamentos, imagens e vendas por servidor.
@@ -3113,7 +3113,7 @@ function OrvitechSalesWorkspace({
             <div>
               <p className="text-base font-bold text-white">Sistema de vendas bloqueado neste bot</p>
               <p className="mt-1 max-w-xl text-sm font-medium text-zinc-300">
-                Libere o modulo OrviTech - Sistema de Vendas para o bot selecionado antes de configurar planos, pagamentos e vendas.
+                Libere o modulo Nex Tech - Sistema de Vendas para o bot selecionado antes de configurar planos, pagamentos e vendas.
               </p>
             </div>
             <Button onClick={onEnable}>
@@ -3189,7 +3189,7 @@ function OrvitechSalesWorkspace({
                   <DevInput label="Nome" onChange={(value) => setProviderForm((current) => ({ ...current, label: value }))} value={providerForm.label} />
                   <select
                     className="h-11 rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none"
-                    onChange={(event) => setProviderForm((current) => ({ ...current, provider: event.target.value as SaveOrvitechPaymentProviderPayload["provider"] }))}
+                    onChange={(event) => setProviderForm((current) => ({ ...current, provider: event.target.value as SaveNexTechPaymentProviderPayload["provider"] }))}
                     value={providerForm.provider}
                   >
                     <option value="manual">Manual</option>
@@ -3286,7 +3286,7 @@ function OrvitechSalesWorkspace({
                 <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
                   <p className="text-sm font-bold text-white">Recursos extras</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {(Object.keys(productFeatureLabels) as OrvitechProductFeatureKey[]).map((key) => (
+                    {(Object.keys(productFeatureLabels) as NexTechProductFeatureKey[]).map((key) => (
                       <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 p-2 text-xs font-semibold text-zinc-200" key={key}>
                         <Switch
                           checked={Boolean(productForm.toggles[key])}
@@ -3366,7 +3366,7 @@ function OrvitechSalesWorkspace({
           <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
             <CardHeader>
               <CardTitle className="text-white">Planos de venda</CardTitle>
-              <CardDescription>Produtos vendidos pelo bot principal OrviTech.</CardDescription>
+              <CardDescription>Produtos vendidos pelo bot principal Nex Tech.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3488,9 +3488,9 @@ function ProductPlanEditor({
   title
 }: {
   currency: "BRL" | "USD" | "EUR";
-  onChange: (plan: SaveOrvitechProductPayload["plans"]["monthly"]) => void;
-  paymentProviders: OrvitechSalesPaymentProvider[];
-  plan: SaveOrvitechProductPayload["plans"]["monthly"];
+  onChange: (plan: SaveNexTechProductPayload["plans"]["monthly"]) => void;
+  paymentProviders: NexTechSalesPaymentProvider[];
+  plan: SaveNexTechProductPayload["plans"]["monthly"];
   title: string;
 }) {
   function updatePlan<K extends keyof typeof plan>(key: K, value: (typeof plan)[K]) {
@@ -3527,7 +3527,7 @@ function ProductPlanEditor({
   );
 }
 
-function settingsToForm(settings: OrvitechSalesDashboard["settings"]): SaveOrvitechSalesSettingsPayload {
+function settingsToForm(settings: NexTechSalesDashboard["settings"]): SaveNexTechSalesSettingsPayload {
   return {
     currency: settings.currency,
     customerRoleId: settings.customerRoleId,
@@ -3545,7 +3545,7 @@ function settingsToForm(settings: OrvitechSalesDashboard["settings"]): SaveOrvit
   };
 }
 
-function productToForm(product: OrvitechProduct): SaveOrvitechProductPayload {
+function productToForm(product: NexTechProduct): SaveNexTechProductPayload {
   return {
     active: product.active,
     additionalInfo: product.additionalInfo,
@@ -3565,7 +3565,7 @@ function productToForm(product: OrvitechProduct): SaveOrvitechProductPayload {
   };
 }
 
-function sanitizeSalesSettingsForm(form: SaveOrvitechSalesSettingsPayload): SaveOrvitechSalesSettingsPayload {
+function sanitizeSalesSettingsForm(form: SaveNexTechSalesSettingsPayload): SaveNexTechSalesSettingsPayload {
   return {
     ...form,
     customerRoleId: form.customerRoleId || null,
@@ -3584,8 +3584,8 @@ function formatMoney(cents: number, currency: "BRL" | "USD" | "EUR") {
   }).format(cents / 100);
 }
 
-function saleStatusLabel(status: OrvitechSaleStatus) {
-  const labels: Record<OrvitechSaleStatus, string> = {
+function saleStatusLabel(status: NexTechSaleStatus) {
+  const labels: Record<NexTechSaleStatus, string> = {
     cancelled: "Cancelada",
     paid: "Paga",
     pending: "Pendente",

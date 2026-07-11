@@ -37,9 +37,9 @@ function quoteShellArg(value) {
 
 function readDiscloudAppId() {
   const configPath = path.join(root, "discloud.config");
-  if (!existsSync(configPath)) return "orvitek-bots";
+  if (!existsSync(configPath)) return "nextech";
   const idLine = readFileSync(configPath, "utf8").split(/\r?\n/).find((line) => line.trim().startsWith("ID="));
-  return idLine?.split("=").slice(1).join("=").trim() || "orvitek-bots";
+  return idLine?.split("=").slice(1).join("=").trim() || "nextech";
 }
 
 function currentBranch() {
@@ -72,7 +72,7 @@ console.log("[release] Status Discloud...");
 run("discloud", ["app", "status", appId]);
 
 console.log("[release] Health check...");
-const healthUrl = "https://orvitek-bots.discloud.app/health";
+const healthUrl = "https://nextech.discloud.app/health";
 await waitForHealthyApp(healthUrl);
 
 console.log("[release] Concluido.");

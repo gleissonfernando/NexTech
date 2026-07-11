@@ -2,11 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   createProductCheckout,
-  getPublicOrvitechProduct,
-  processOrvitechPaymentWebhook
-} from "../services/orvitechSalesService";
+  getPublicNexTechProduct,
+  processNexTechPaymentWebhook
+} from "../services/nexTechSalesService";
 
-export const orvitechSalesRouter = Router();
+export const nexTechSalesRouter = Router();
 
 const webhookParamsSchema = z.object({
   gatewayId: z.string().min(8).max(120),
@@ -26,10 +26,10 @@ const checkoutSchema = z.object({
   planType: z.enum(["monthly", "lifetime"])
 });
 
-orvitechSalesRouter.get("/stores/:storeId/products/:slug", async (req, res, next) => {
+nexTechSalesRouter.get("/stores/:storeId/products/:slug", async (req, res, next) => {
   try {
     const params = productParamsSchema.parse(req.params);
-    const product = await getPublicOrvitechProduct(params.storeId, params.slug);
+    const product = await getPublicNexTechProduct(params.storeId, params.slug);
 
     if (!product) {
       return res.status(404).json({
@@ -43,7 +43,7 @@ orvitechSalesRouter.get("/stores/:storeId/products/:slug", async (req, res, next
   }
 });
 
-orvitechSalesRouter.post("/stores/:storeId/products/:slug/checkout", async (req, res, next) => {
+nexTechSalesRouter.post("/stores/:storeId/products/:slug/checkout", async (req, res, next) => {
   try {
     const params = productParamsSchema.parse(req.params);
     const input = checkoutSchema.parse(req.body ?? {});
@@ -66,16 +66,16 @@ orvitechSalesRouter.post("/stores/:storeId/products/:slug/checkout", async (req,
   }
 });
 
-orvitechSalesRouter.post("/webhooks/:storeId/:gatewayId", async (req, res, next) => {
+nexTechSalesRouter.post("/webhooks/:storeId/:gatewayId", async (req, res, next) => {
   try {
     const params = webhookParamsSchema.parse(req.params);
     const rawBody = ((req as typeof req & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}))).toString("utf8");
-    const signature = req.header("x-orvitech-signature")
+    const signature = req.header("x-nex-tech-signature")
       ?? req.header("x-hub-signature-256")
       ?? req.header("x-signature")
       ?? null;
 
-    const result = await processOrvitechPaymentWebhook(params.storeId, params.gatewayId, {
+    const result = await processNexTechPaymentWebhook(params.storeId, params.gatewayId, {
       eventId: readString(req.body?.id) ?? readString(req.body?.eventId) ?? readString(req.body?.data?.id),
       eventType: readString(req.body?.type) ?? readString(req.body?.eventType) ?? readString(req.body?.action),
       payload: req.body,

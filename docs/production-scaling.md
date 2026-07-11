@@ -22,7 +22,7 @@ The API-only entrypoint always disables the embedded worker and schedulers. Queu
 - `BOT_MEMORY_RESTART_MB`: RSS threshold sustained for three samples before a safe restart, default `450`.
 - `BOT_SHARDING_ENABLED=true`: makes the combined production supervisor use the shard manager.
 - `BOT_TOTAL_SHARDS=auto`: lets Discord determine shard count; set a positive integer to pin it.
-- `ORVITEK_NODE_MAX_OLD_SPACE_MB`: heap limit used by the combined supervisor, default `512`.
+- `NEX_TECH_NODE_MAX_OLD_SPACE_MB`: heap limit used by the combined supervisor, default `512`.
 
 Keep `MONGODB_URI`, `BOT_API_TOKEN`, and the bot/backend realtime configuration identical across replicas. Redis remains optional for sessions; persistent jobs and distributed leases use MongoDB.
 

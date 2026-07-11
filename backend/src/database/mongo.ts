@@ -2356,7 +2356,7 @@ export type MongoApplicationEmojiSettings = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechSalesPaymentProvider = {
+export type MongoNexTechSalesPaymentProvider = {
   id: string;
   gatewayId: string;
   ownerUserId: string;
@@ -2372,7 +2372,7 @@ export type MongoOrvitechSalesPaymentProvider = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechSalesSettings = {
+export type MongoNexTechSalesSettings = {
   _id: string;
   botId: string;
   guildId: string;
@@ -2391,7 +2391,7 @@ export type MongoOrvitechSalesSettings = {
   panelImageUrl: string | null;
   thumbnailUrl: string | null;
   termsUrl: string | null;
-  paymentProviders: MongoOrvitechSalesPaymentProvider[];
+  paymentProviders: MongoNexTechSalesPaymentProvider[];
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -2604,7 +2604,7 @@ export type MongoManualPaymentOrderLog = {
   userId: string;
 };
 
-export type MongoOrvitechSalesPlan = {
+export type MongoNexTechSalesPlan = {
   _id: string;
   botId: string;
   guildId: string;
@@ -2624,7 +2624,7 @@ export type MongoOrvitechSalesPlan = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechProductFeatureKey =
+export type MongoNexTechProductFeatureKey =
   | "hosting"
   | "updates"
   | "support"
@@ -2637,7 +2637,7 @@ export type MongoOrvitechProductFeatureKey =
   | "automaticLogin"
   | "activationKey";
 
-export type MongoOrvitechProductPlanConfig = {
+export type MongoNexTechProductPlanConfig = {
   benefits: string[];
   buttonColor: string;
   buttonText: string;
@@ -2649,7 +2649,7 @@ export type MongoOrvitechProductPlanConfig = {
   priceText: string;
 };
 
-export type MongoOrvitechProduct = {
+export type MongoNexTechProduct = {
   _id: string;
   active: boolean;
   additionalInfo: string;
@@ -2670,8 +2670,8 @@ export type MongoOrvitechProduct = {
   observations: string;
   ownerUserId: string;
   plans: {
-    lifetime: MongoOrvitechProductPlanConfig;
-    monthly: MongoOrvitechProductPlanConfig;
+    lifetime: MongoNexTechProductPlanConfig;
+    monthly: MongoNexTechProductPlanConfig;
   };
   seo: {
     description: string | null;
@@ -2680,16 +2680,16 @@ export type MongoOrvitechProduct = {
   shortDescription: string;
   slug: string;
   storeId: string;
-  toggles: Record<MongoOrvitechProductFeatureKey, boolean>;
+  toggles: Record<MongoNexTechProductFeatureKey, boolean>;
   updatedAt: Date;
   updatedBy: string | null;
   warnings: string;
 };
 
-export type MongoOrvitechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
-export type MongoOrvitechSalePlanType = "monthly" | "lifetime" | "manual";
+export type MongoNexTechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
+export type MongoNexTechSalePlanType = "monthly" | "lifetime" | "manual";
 
-export type MongoOrvitechSale = {
+export type MongoNexTechSale = {
   _id: string;
   botId: string;
   guildId: string;
@@ -2705,12 +2705,14 @@ export type MongoOrvitechSale = {
   paymentGatewayId: string | null;
   paymentProviderId: string | null;
   paymentProviderLabel: string | null;
+  checkoutUrl?: string | null;
+  successUrl?: string | null;
   productId?: string | null;
   productName?: string | null;
   productSlug?: string | null;
-  productPlanType?: MongoOrvitechSalePlanType;
+  productPlanType?: MongoNexTechSalePlanType;
   externalReference: string | null;
-  status: MongoOrvitechSaleStatus;
+  status: MongoNexTechSaleStatus;
   notes: string | null;
   paidAt: Date | null;
   expiresAt: Date | null;
@@ -2720,7 +2722,7 @@ export type MongoOrvitechSale = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechCustomer = {
+export type MongoNexTechCustomer = {
   _id: string;
   botId: string;
   guildId: string;
@@ -2733,7 +2735,7 @@ export type MongoOrvitechCustomer = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechSubscription = {
+export type MongoNexTechSubscription = {
   _id: string;
   botId: string;
   guildId: string;
@@ -2749,7 +2751,7 @@ export type MongoOrvitechSubscription = {
   updatedAt: Date;
 };
 
-export type MongoOrvitechWebhookLog = {
+export type MongoNexTechWebhookLog = {
   _id: string;
   botId: string;
   guildId: string;
@@ -3594,9 +3596,9 @@ function databaseNameFromUri(uri: string) {
   try {
     const url = new URL(uri);
     const dbName = decodeURIComponent(url.pathname.replace(/^\/+/, "").split("/")[0] ?? "");
-    return dbName || "orvitek";
+    return dbName || "nex-tech";
   } catch {
-    return "orvitek";
+    return "nex-tech";
   }
 }
 
@@ -3721,13 +3723,13 @@ export async function getMongoCollections() {
     applicationEmojiItems: db.collection<MongoApplicationEmojiItem>("application_emojis"),
     applicationEmojiJobs: db.collection<MongoApplicationEmojiJob>("application_emoji_jobs"),
     applicationEmojiSettings: db.collection<MongoApplicationEmojiSettings>("application_emoji_settings"),
-    orvitechSalesSettings: db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings"),
-    orvitechSalesPlans: db.collection<MongoOrvitechSalesPlan>("orvitech_sales_plans"),
-    orvitechProducts: db.collection<MongoOrvitechProduct>("orvitech_products"),
-    orvitechSales: db.collection<MongoOrvitechSale>("orvitech_sales"),
-    orvitechCustomers: db.collection<MongoOrvitechCustomer>("orvitech_customers"),
-    orvitechSubscriptions: db.collection<MongoOrvitechSubscription>("orvitech_subscriptions"),
-    orvitechWebhookLogs: db.collection<MongoOrvitechWebhookLog>("orvitech_webhook_logs"),
+    nexTechSalesSettings: db.collection<MongoNexTechSalesSettings>("nexTech_sales_settings"),
+    nexTechSalesPlans: db.collection<MongoNexTechSalesPlan>("nexTech_sales_plans"),
+    nexTechProducts: db.collection<MongoNexTechProduct>("nexTech_products"),
+    nexTechSales: db.collection<MongoNexTechSale>("nexTech_sales"),
+    nexTechCustomers: db.collection<MongoNexTechCustomer>("nexTech_customers"),
+    nexTechSubscriptions: db.collection<MongoNexTechSubscription>("nexTech_subscriptions"),
+    nexTechWebhookLogs: db.collection<MongoNexTechWebhookLog>("nexTech_webhook_logs"),
     priceTables: db.collection<MongoPriceTable>("price_tables"),
     priceTableRequests: db.collection<MongoPriceTableRequest>("price_table_requests"),
     priceTableLogs: db.collection<MongoPriceTableLog>("price_table_logs"),
@@ -3953,7 +3955,7 @@ async function createMongoIndexes(db: Db) {
     ensureImageAntiSpamIndexes(db),
     ensureVoiceRecorderIndexes(db),
     ensureEmojiCloneIndexes(db),
-    ensureOrvitechSalesIndexes(db),
+    ensureNexTechSalesIndexes(db),
     ensurePriceTableIndexes(db),
     ensureManualPaymentIndexes(db),
     ensureMissionToolsIndexes(db),
@@ -4502,24 +4504,24 @@ async function ensureMissionToolsIndexes(db: Db) {
   ]);
 }
 
-async function ensureOrvitechSalesIndexes(db: Db) {
+async function ensureNexTechSalesIndexes(db: Db) {
   await Promise.all([
-    db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings").createIndex(
+    db.collection<MongoNexTechSalesSettings>("nexTech_sales_settings").createIndex(
       { ownerUserId: 1, botId: 1, guildId: 1 },
       { unique: true }
     ),
-    db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings").createIndex({ storeId: 1 }, { unique: true }),
-    db.collection<MongoOrvitechSalesSettings>("orvitech_sales_settings").createIndex({ ownerUserId: 1, enabled: 1, updatedAt: -1 }),
-    db.collection<MongoOrvitechSalesPlan>("orvitech_sales_plans").createIndex({ ownerUserId: 1, storeId: 1, enabled: 1, updatedAt: -1 }),
-    db.collection<MongoOrvitechProduct>("orvitech_products").createIndex({ ownerUserId: 1, storeId: 1, updatedAt: -1 }),
-    db.collection<MongoOrvitechProduct>("orvitech_products").createIndex({ storeId: 1, slug: 1 }, { unique: true }),
-    db.collection<MongoOrvitechProduct>("orvitech_products").createIndex({ storeId: 1, active: 1, updatedAt: -1 }),
-    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 }),
-    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ ownerUserId: 1, storeId: 1, status: 1, createdAt: -1 }),
-    db.collection<MongoOrvitechSale>("orvitech_sales").createIndex({ ownerUserId: 1, storeId: 1, buyerId: 1, createdAt: -1 }),
-    db.collection<MongoOrvitechCustomer>("orvitech_customers").createIndex({ ownerUserId: 1, storeId: 1, discordId: 1 }),
-    db.collection<MongoOrvitechSubscription>("orvitech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, customerId: 1, status: 1 }),
-    db.collection<MongoOrvitechWebhookLog>("orvitech_webhook_logs").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 })
+    db.collection<MongoNexTechSalesSettings>("nexTech_sales_settings").createIndex({ storeId: 1 }, { unique: true }),
+    db.collection<MongoNexTechSalesSettings>("nexTech_sales_settings").createIndex({ ownerUserId: 1, enabled: 1, updatedAt: -1 }),
+    db.collection<MongoNexTechSalesPlan>("nexTech_sales_plans").createIndex({ ownerUserId: 1, storeId: 1, enabled: 1, updatedAt: -1 }),
+    db.collection<MongoNexTechProduct>("nexTech_products").createIndex({ ownerUserId: 1, storeId: 1, updatedAt: -1 }),
+    db.collection<MongoNexTechProduct>("nexTech_products").createIndex({ storeId: 1, slug: 1 }, { unique: true }),
+    db.collection<MongoNexTechProduct>("nexTech_products").createIndex({ storeId: 1, active: 1, updatedAt: -1 }),
+    db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 }),
+    db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, buyerId: 1, createdAt: -1 }),
+    db.collection<MongoNexTechCustomer>("nexTech_customers").createIndex({ ownerUserId: 1, storeId: 1, discordId: 1 }),
+    db.collection<MongoNexTechSubscription>("nexTech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, customerId: 1, status: 1 }),
+    db.collection<MongoNexTechWebhookLog>("nexTech_webhook_logs").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 })
   ]);
 }
 

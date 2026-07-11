@@ -78,19 +78,19 @@ import type {
   BotCredential,
   CustomerPlansDashboard,
   DevPlansDashboard,
-  OrvitechSale,
-  OrvitechSaleStatus,
-  OrvitechProduct,
-  OrvitechSalesDashboard,
-  OrvitechSalesPlan,
-  OrvitechSalesSettings,
+  NexTechSale,
+  NexTechSaleStatus,
+  NexTechProduct,
+  NexTechSalesDashboard,
+  NexTechSalesPlan,
+  NexTechSalesSettings,
   OpenDutyDashboard,
   PanelImageSettings,
   Pd7Dashboard,
   Pd7Settings,
   PriceTable,
   PriceTablesDashboard,
-  PublicOrvitechProduct,
+  PublicNexTechProduct,
   PublicKickClips,
   RhAdminDashboard,
   SaveClipsConfigPayload,
@@ -107,11 +107,11 @@ import type {
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
   SaveMissionToolsSettingsPayload,
-  SaveOrvitechPaymentProviderPayload,
-  SaveOrvitechProductPayload,
-  SaveOrvitechSalePayload,
-  SaveOrvitechSalesPlanPayload,
-  SaveOrvitechSalesSettingsPayload,
+  SaveNexTechPaymentProviderPayload,
+  SaveNexTechProductPayload,
+  SaveNexTechSalePayload,
+  SaveNexTechSalesPlanPayload,
+  SaveNexTechSalesSettingsPayload,
   SaveOpenDutySettingsPayload,
   SavePanelImageSettingsPayload,
   SavePriceTablePayload,
@@ -2023,67 +2023,67 @@ export async function updateBotGuildConfig(botId: string, guildId: string, paylo
   return data.config;
 }
 
-export async function getOrvitechSalesDashboard(botId: string, guildId: string) {
-  const { data } = await api.get<OrvitechSalesDashboard>(`/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales`);
+export async function getNexTechSalesDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<NexTechSalesDashboard>(`/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales`);
   return data;
 }
 
-export async function saveOrvitechSalesSettings(botId: string, guildId: string, payload: SaveOrvitechSalesSettingsPayload) {
-  const { data } = await api.patch<{ settings: OrvitechSalesSettings }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/settings`,
+export async function saveNexTechSalesSettings(botId: string, guildId: string, payload: SaveNexTechSalesSettingsPayload) {
+  const { data } = await api.patch<{ settings: NexTechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/settings`,
     payload
   );
   return data.settings;
 }
 
-export async function saveOrvitechPaymentProvider(botId: string, guildId: string, payload: SaveOrvitechPaymentProviderPayload) {
-  const { data } = await api.post<{ settings: OrvitechSalesSettings }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/providers`,
+export async function saveNexTechPaymentProvider(botId: string, guildId: string, payload: SaveNexTechPaymentProviderPayload) {
+  const { data } = await api.post<{ settings: NexTechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/providers`,
     payload
   );
   return data.settings;
 }
 
-export async function deleteOrvitechPaymentProvider(botId: string, guildId: string, providerId: string) {
-  const { data } = await api.delete<{ settings: OrvitechSalesSettings }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/providers/${encodeURIComponent(providerId)}`
+export async function deleteNexTechPaymentProvider(botId: string, guildId: string, providerId: string) {
+  const { data } = await api.delete<{ settings: NexTechSalesSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/providers/${encodeURIComponent(providerId)}`
   );
   return data.settings;
 }
 
-export async function createOrvitechProduct(botId: string, guildId: string, payload: SaveOrvitechProductPayload) {
-  const { data } = await api.post<{ product: OrvitechProduct }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/products`,
+export async function createNexTechProduct(botId: string, guildId: string, payload: SaveNexTechProductPayload) {
+  const { data } = await api.post<{ product: NexTechProduct }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products`,
     payload
   );
   return data.product;
 }
 
-export async function updateOrvitechProduct(botId: string, guildId: string, productId: string, payload: SaveOrvitechProductPayload) {
-  const { data } = await api.patch<{ product: OrvitechProduct }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/products/${encodeURIComponent(productId)}`,
+export async function updateNexTechProduct(botId: string, guildId: string, productId: string, payload: SaveNexTechProductPayload) {
+  const { data } = await api.patch<{ product: NexTechProduct }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products/${encodeURIComponent(productId)}`,
     payload
   );
   return data.product;
 }
 
-export async function duplicateOrvitechProduct(botId: string, guildId: string, productId: string) {
-  const { data } = await api.post<{ product: OrvitechProduct }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/products/${encodeURIComponent(productId)}/duplicate`
+export async function duplicateNexTechProduct(botId: string, guildId: string, productId: string) {
+  const { data } = await api.post<{ product: NexTechProduct }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products/${encodeURIComponent(productId)}/duplicate`
   );
   return data.product;
 }
 
-export async function deleteOrvitechProduct(botId: string, guildId: string, productId: string) {
-  const { data } = await api.delete<{ product: OrvitechProduct }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/products/${encodeURIComponent(productId)}`
+export async function deleteNexTechProduct(botId: string, guildId: string, productId: string) {
+  const { data } = await api.delete<{ product: NexTechProduct }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products/${encodeURIComponent(productId)}`
   );
   return data.product;
 }
 
-export async function uploadOrvitechProductBanner(botId: string, guildId: string, productId: string, file: File) {
-  const { data } = await api.put<{ product: OrvitechProduct }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/products/${encodeURIComponent(productId)}/banner`,
+export async function uploadNexTechProductBanner(botId: string, guildId: string, productId: string, file: File) {
+  const { data } = await api.put<{ product: NexTechProduct }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products/${encodeURIComponent(productId)}/banner`,
     file,
     {
       headers: {
@@ -2095,53 +2095,53 @@ export async function uploadOrvitechProductBanner(botId: string, guildId: string
   return data.product;
 }
 
-export async function createOrvitechSalesPlan(botId: string, guildId: string, payload: SaveOrvitechSalesPlanPayload) {
-  const { data } = await api.post<{ plan: OrvitechSalesPlan }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans`,
+export async function createNexTechSalesPlan(botId: string, guildId: string, payload: SaveNexTechSalesPlanPayload) {
+  const { data } = await api.post<{ plan: NexTechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/plans`,
     payload
   );
   return data.plan;
 }
 
-export async function updateOrvitechSalesPlan(botId: string, guildId: string, planId: string, payload: SaveOrvitechSalesPlanPayload) {
-  const { data } = await api.patch<{ plan: OrvitechSalesPlan }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans/${encodeURIComponent(planId)}`,
+export async function updateNexTechSalesPlan(botId: string, guildId: string, planId: string, payload: SaveNexTechSalesPlanPayload) {
+  const { data } = await api.patch<{ plan: NexTechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/plans/${encodeURIComponent(planId)}`,
     payload
   );
   return data.plan;
 }
 
-export async function deleteOrvitechSalesPlan(botId: string, guildId: string, planId: string) {
-  const { data } = await api.delete<{ plan: OrvitechSalesPlan }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/plans/${encodeURIComponent(planId)}`
+export async function deleteNexTechSalesPlan(botId: string, guildId: string, planId: string) {
+  const { data } = await api.delete<{ plan: NexTechSalesPlan }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/plans/${encodeURIComponent(planId)}`
   );
   return data.plan;
 }
 
-export async function createOrvitechSale(botId: string, guildId: string, payload: SaveOrvitechSalePayload) {
-  const { data } = await api.post<{ sale: OrvitechSale }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/sales`,
+export async function createNexTechSale(botId: string, guildId: string, payload: SaveNexTechSalePayload) {
+  const { data } = await api.post<{ sale: NexTechSale }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/sales`,
     payload
   );
   return data.sale;
 }
 
-export async function updateOrvitechSaleStatus(botId: string, guildId: string, saleId: string, status: OrvitechSaleStatus) {
-  const { data } = await api.patch<{ sale: OrvitechSale }>(
-    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/orvitech-sales/sales/${encodeURIComponent(saleId)}/status`,
+export async function updateNexTechSaleStatus(botId: string, guildId: string, saleId: string, status: NexTechSaleStatus) {
+  const { data } = await api.patch<{ sale: NexTechSale }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/sales/${encodeURIComponent(saleId)}/status`,
     { status }
   );
   return data.sale;
 }
 
-export async function getPublicOrvitechProduct(storeId: string, slug: string) {
-  const { data } = await api.get<PublicOrvitechProduct>(
-    `/orvitech-sales/stores/${encodeURIComponent(storeId)}/products/${encodeURIComponent(slug)}`
+export async function getPublicNexTechProduct(storeId: string, slug: string) {
+  const { data } = await api.get<PublicNexTechProduct>(
+    `/nex-tech-sales/stores/${encodeURIComponent(storeId)}/products/${encodeURIComponent(slug)}`
   );
   return data;
 }
 
-export async function checkoutOrvitechProduct(
+export async function checkoutNexTechProduct(
   storeId: string,
   slug: string,
   payload: {
@@ -2153,13 +2153,15 @@ export async function checkoutOrvitechProduct(
   }
 ) {
   const { data } = await api.post<{
+    checkoutUrl: string | null;
     gatewayId: string;
     instructions: string | null;
     provider: string;
     publicKey: string | null;
-    sale: OrvitechSale;
+    sale: NexTechSale;
+    successUrl: string;
   }>(
-    `/orvitech-sales/stores/${encodeURIComponent(storeId)}/products/${encodeURIComponent(slug)}/checkout`,
+    `/nex-tech-sales/stores/${encodeURIComponent(storeId)}/products/${encodeURIComponent(slug)}/checkout`,
     payload
   );
   return data;

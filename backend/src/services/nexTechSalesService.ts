@@ -2,50 +2,51 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type {
-  MongoOrvitechProduct,
-  MongoOrvitechProductFeatureKey,
-  MongoOrvitechProductPlanConfig,
-  MongoOrvitechSale,
-  MongoOrvitechSalePlanType,
-  MongoOrvitechSalesPaymentProvider,
-  MongoOrvitechSalesPlan,
-  MongoOrvitechSalesSettings,
-  MongoOrvitechSaleStatus
+  MongoNexTechProduct,
+  MongoNexTechProductFeatureKey,
+  MongoNexTechProductPlanConfig,
+  MongoNexTechSale,
+  MongoNexTechSalePlanType,
+  MongoNexTechSalesPaymentProvider,
+  MongoNexTechSalesPlan,
+  MongoNexTechSalesSettings,
+  MongoNexTechSaleStatus
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
+import { env } from "../config/env";
 import { decryptSecret, encryptSecret } from "./secretCryptoService";
 
-export const ORVITECH_SALES_MODULE_ID = "orvitech-sales";
-export const ORVITECH_PRIMARY_CLIENT_ID = "1492325134550302952";
+export const NEX_TECH_SALES_MODULE_ID = "nex-tech-sales";
+export const NEX_TECH_PRIMARY_CLIENT_ID = "1492325134550302952";
 
-export type OrvitechSalesSettingsDto = Omit<MongoOrvitechSalesSettings, "_id" | "createdAt" | "updatedAt" | "paymentProviders"> & {
+export type NexTechSalesSettingsDto = Omit<MongoNexTechSalesSettings, "_id" | "createdAt" | "updatedAt" | "paymentProviders"> & {
   id: string;
   createdAt: string;
   updatedAt: string;
-  paymentProviders: OrvitechSalesPaymentProviderDto[];
+  paymentProviders: NexTechSalesPaymentProviderDto[];
 };
 
-export type OrvitechSalesPaymentProviderDto = Omit<MongoOrvitechSalesPaymentProvider, "secretEncrypted" | "webhookSecretEncrypted" | "updatedAt"> & {
+export type NexTechSalesPaymentProviderDto = Omit<MongoNexTechSalesPaymentProvider, "secretEncrypted" | "webhookSecretEncrypted" | "updatedAt"> & {
   secretConfigured: boolean;
   secretMasked: string | null;
   webhookSecretConfigured: boolean;
   updatedAt: string;
 };
 
-export type OrvitechSalesPlanDto = Omit<MongoOrvitechSalesPlan, "_id" | "createdAt" | "updatedAt"> & {
+export type NexTechSalesPlanDto = Omit<MongoNexTechSalesPlan, "_id" | "createdAt" | "updatedAt"> & {
   id: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export type OrvitechProductDto = Omit<MongoOrvitechProduct, "_id" | "createdAt" | "updatedAt"> & {
+export type NexTechProductDto = Omit<MongoNexTechProduct, "_id" | "createdAt" | "updatedAt"> & {
   id: string;
   publicUrl: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export type OrvitechSaleDto = Omit<MongoOrvitechSale, "_id" | "createdAt" | "updatedAt" | "paidAt" | "expiresAt"> & {
+export type NexTechSaleDto = Omit<MongoNexTechSale, "_id" | "createdAt" | "updatedAt" | "paidAt" | "expiresAt"> & {
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -53,11 +54,11 @@ export type OrvitechSaleDto = Omit<MongoOrvitechSale, "_id" | "createdAt" | "upd
   expiresAt: string | null;
 };
 
-export type OrvitechSalesDashboardDto = {
-  plans: OrvitechSalesPlanDto[];
-  products: OrvitechProductDto[];
-  sales: OrvitechSaleDto[];
-  settings: OrvitechSalesSettingsDto;
+export type NexTechSalesDashboardDto = {
+  plans: NexTechSalesPlanDto[];
+  products: NexTechProductDto[];
+  sales: NexTechSaleDto[];
+  settings: NexTechSalesSettingsDto;
   stats: {
     activePlans: number;
     customers: number;
@@ -70,13 +71,13 @@ export type OrvitechSalesDashboardDto = {
   };
 };
 
-export type PublicOrvitechProductDto = {
-  paymentProviders: Array<Pick<OrvitechSalesPaymentProviderDto, "gatewayId" | "id" | "label" | "provider">>;
-  product: OrvitechProductDto;
-  settings: Pick<OrvitechSalesSettingsDto, "currency" | "enabled" | "panelColor" | "storeId" | "termsUrl">;
+export type PublicNexTechProductDto = {
+  paymentProviders: Array<Pick<NexTechSalesPaymentProviderDto, "gatewayId" | "id" | "label" | "provider">>;
+  product: NexTechProductDto;
+  settings: Pick<NexTechSalesSettingsDto, "currency" | "enabled" | "panelColor" | "storeId" | "termsUrl">;
 };
 
-export type SaveOrvitechSalesSettingsInput = Partial<{
+export type SaveNexTechSalesSettingsInput = Partial<{
   currency: "BRL" | "USD" | "EUR";
   customerRoleId: string | null;
   enabled: boolean;
@@ -97,7 +98,7 @@ export type SavePaymentProviderInput = {
   id?: string | null;
   instructions?: string | null;
   label: string;
-  provider: MongoOrvitechSalesPaymentProvider["provider"];
+  provider: MongoNexTechSalesPaymentProvider["provider"];
   publicKey?: string | null;
   secret?: string | null;
   webhookSecret?: string | null;
@@ -122,17 +123,17 @@ export type SaveProductInput = {
   category: string;
   fullDescription?: string | null;
   howItWorks?: string | null;
-  layout?: Partial<MongoOrvitechProduct["layout"]>;
+  layout?: Partial<MongoNexTechProduct["layout"]>;
   name: string;
   observations?: string | null;
   plans: {
-    lifetime: Partial<MongoOrvitechProductPlanConfig> & Pick<MongoOrvitechProductPlanConfig, "enabled" | "name" | "priceCents">;
-    monthly: Partial<MongoOrvitechProductPlanConfig> & Pick<MongoOrvitechProductPlanConfig, "enabled" | "name" | "priceCents">;
+    lifetime: Partial<MongoNexTechProductPlanConfig> & Pick<MongoNexTechProductPlanConfig, "enabled" | "name" | "priceCents">;
+    monthly: Partial<MongoNexTechProductPlanConfig> & Pick<MongoNexTechProductPlanConfig, "enabled" | "name" | "priceCents">;
   };
-  seo?: Partial<MongoOrvitechProduct["seo"]>;
+  seo?: Partial<MongoNexTechProduct["seo"]>;
   shortDescription?: string | null;
   slug?: string | null;
-  toggles?: Partial<Record<MongoOrvitechProductFeatureKey, boolean>>;
+  toggles?: Partial<Record<MongoNexTechProductFeatureKey, boolean>>;
   warnings?: string | null;
 };
 
@@ -144,7 +145,7 @@ export type SaveSaleInput = {
   notes?: string | null;
   paymentProviderId?: string | null;
   planId?: string | null;
-  status: MongoOrvitechSaleStatus;
+  status: MongoNexTechSaleStatus;
 };
 
 export type ProductCheckoutInput = {
@@ -152,10 +153,20 @@ export type ProductCheckoutInput = {
   buyerId?: string | null;
   buyerName?: string | null;
   paymentProviderId?: string | null;
-  planType: Exclude<MongoOrvitechSalePlanType, "manual">;
+  planType: Exclude<MongoNexTechSalePlanType, "manual">;
 };
 
-const PRODUCT_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/orvitech-products");
+export type ProductCheckoutDto = {
+  checkoutUrl: string | null;
+  gatewayId: string;
+  instructions: string | null;
+  provider: MongoNexTechSalesPaymentProvider["provider"];
+  publicKey: string | null;
+  sale: NexTechSaleDto;
+  successUrl: string;
+};
+
+const PRODUCT_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/nex-tech-products");
 const PRODUCT_IMAGE_EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
   "image/jpeg": "jpg",
@@ -171,24 +182,24 @@ export type ProcessWebhookInput = {
   signature?: string | null;
 };
 
-export async function getOrvitechSalesDashboard(botId: string, guildId: string, ownerUserId: string) {
-  const { orvitechCustomers, orvitechProducts, orvitechSales, orvitechSalesPlans, orvitechSubscriptions } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, ownerUserId);
+export async function getNexTechSalesDashboard(botId: string, guildId: string, ownerUserId: string) {
+  const { nexTechCustomers, nexTechProducts, nexTechSales, nexTechSalesPlans, nexTechSubscriptions } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, ownerUserId);
   const scope = tenantScope(botId, guildId, ownerUserId, settings.storeId);
   const [plans, products, sales, customers, subscriptions] = await Promise.all([
-    orvitechSalesPlans.find(scope).sort({ createdAt: -1 }).toArray(),
-    orvitechProducts.find(scope).sort({ updatedAt: -1 }).toArray(),
-    orvitechSales.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
-    orvitechCustomers.countDocuments(scope),
-    orvitechSubscriptions.countDocuments({ ...scope, status: "active" })
+    nexTechSalesPlans.find(scope).sort({ createdAt: -1 }).toArray(),
+    nexTechProducts.find(scope).sort({ updatedAt: -1 }).toArray(),
+    nexTechSales.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
+    nexTechCustomers.countDocuments(scope),
+    nexTechSubscriptions.countDocuments({ ...scope, status: "active" })
   ]);
 
   return toDashboardDto(settings, plans, products, sales, customers, subscriptions);
 }
 
-export async function ensureOrvitechSalesSettings(botId: string, guildId: string, ownerUserId: string) {
-  const { orvitechSalesSettings } = await getMongoCollections();
-  const existing = await orvitechSalesSettings.findOne({ botId, guildId, ownerUserId });
+export async function ensureNexTechSalesSettings(botId: string, guildId: string, ownerUserId: string) {
+  const { nexTechSalesSettings } = await getMongoCollections();
+  const existing = await nexTechSalesSettings.findOne({ botId, guildId, ownerUserId });
 
   if (existing) {
     return normalizeExistingSettings(existing);
@@ -196,21 +207,21 @@ export async function ensureOrvitechSalesSettings(botId: string, guildId: string
 
   const now = new Date();
   const storeId = randomUUID();
-  const settings: MongoOrvitechSalesSettings = {
+  const settings: MongoNexTechSalesSettings = {
     _id: randomUUID(),
     botId,
     guildId,
     storeId,
     enabled: false,
     ownerUserId,
-    publicUrl: `/orvitech/${storeId}`,
+    publicUrl: `/nex-tech/${storeId}`,
     currency: "BRL",
     saleChannelId: null,
     logChannelId: null,
     supportRoleIds: [],
     customerRoleId: null,
-    panelTitle: "OrviTech Bot",
-    panelDescription: "Planos, liberacoes e pagamentos do bot OrviTech.",
+    panelTitle: "Nex Tech Bot",
+    panelDescription: "Planos, liberacoes e pagamentos do bot Nex Tech.",
     panelColor: "#7c3aed",
     panelImageUrl: null,
     thumbnailUrl: null,
@@ -238,16 +249,16 @@ export async function ensureOrvitechSalesSettings(botId: string, guildId: string
     updatedAt: now
   };
 
-  await orvitechSalesSettings.insertOne(settings);
+  await nexTechSalesSettings.insertOne(settings);
   return settings;
 }
 
-async function normalizeExistingSettings(settings: MongoOrvitechSalesSettings) {
+async function normalizeExistingSettings(settings: MongoNexTechSalesSettings) {
   if (settings.storeId && settings.paymentProviders.every((provider) => provider.gatewayId && provider.ownerUserId && provider.storeId)) {
     return settings;
   }
 
-  const { orvitechSalesSettings } = await getMongoCollections();
+  const { nexTechSalesSettings } = await getMongoCollections();
   const storeId = settings.storeId || randomUUID();
   const paymentProviders = settings.paymentProviders.map((provider) => ({
     ...provider,
@@ -257,7 +268,7 @@ async function normalizeExistingSettings(settings: MongoOrvitechSalesSettings) {
     webhookSecretEncrypted: provider.webhookSecretEncrypted ?? null
   }));
 
-  await orvitechSalesSettings.updateOne(
+  await nexTechSalesSettings.updateOne(
     { _id: settings._id, ownerUserId: settings.ownerUserId },
     {
       $set: {
@@ -275,10 +286,10 @@ async function normalizeExistingSettings(settings: MongoOrvitechSalesSettings) {
   };
 }
 
-export async function saveOrvitechSalesSettings(botId: string, guildId: string, input: SaveOrvitechSalesSettingsInput, actorId: string) {
-  const current = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function saveNexTechSalesSettings(botId: string, guildId: string, input: SaveNexTechSalesSettingsInput, actorId: string) {
+  const current = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const now = new Date();
-  const patch: Partial<MongoOrvitechSalesSettings> = {
+  const patch: Partial<MongoNexTechSalesSettings> = {
     updatedAt: now,
     updatedBy: actorId
   };
@@ -303,16 +314,16 @@ export async function saveOrvitechSalesSettings(botId: string, guildId: string, 
     }
   }
 
-  const { orvitechSalesSettings } = await getMongoCollections();
-  await orvitechSalesSettings.updateOne({ _id: current._id, ownerUserId: actorId }, { $set: patch });
-  return (await orvitechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
+  const { nexTechSalesSettings } = await getMongoCollections();
+  await nexTechSalesSettings.updateOne({ _id: current._id, ownerUserId: actorId }, { $set: patch });
+  return (await nexTechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
 }
 
-export async function saveOrvitechPaymentProvider(botId: string, guildId: string, input: SavePaymentProviderInput, actorId: string) {
-  const current = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function saveNexTechPaymentProvider(botId: string, guildId: string, input: SavePaymentProviderInput, actorId: string) {
+  const current = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const now = new Date();
   const existing = current.paymentProviders.find((provider) => provider.id === input.id);
-  const nextProvider: MongoOrvitechSalesPaymentProvider = {
+  const nextProvider: MongoNexTechSalesPaymentProvider = {
     id: existing?.id ?? randomUUID(),
     gatewayId: existing?.gatewayId ?? randomUUID(),
     ownerUserId: actorId,
@@ -331,8 +342,8 @@ export async function saveOrvitechPaymentProvider(botId: string, guildId: string
     ? current.paymentProviders.map((provider) => provider.id === existing.id ? nextProvider : provider)
     : [nextProvider, ...current.paymentProviders];
 
-  const { orvitechSalesSettings } = await getMongoCollections();
-  await orvitechSalesSettings.updateOne(
+  const { nexTechSalesSettings } = await getMongoCollections();
+  await nexTechSalesSettings.updateOne(
     { _id: current._id, ownerUserId: actorId },
     {
       $set: {
@@ -343,15 +354,15 @@ export async function saveOrvitechPaymentProvider(botId: string, guildId: string
     }
   );
 
-  return (await orvitechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
+  return (await nexTechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
 }
 
-export async function deleteOrvitechPaymentProvider(botId: string, guildId: string, providerId: string, actorId: string) {
-  const current = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function deleteNexTechPaymentProvider(botId: string, guildId: string, providerId: string, actorId: string) {
+  const current = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const nextProviders = current.paymentProviders.filter((provider) => provider.id !== providerId);
 
-  const { orvitechSalesSettings } = await getMongoCollections();
-  await orvitechSalesSettings.updateOne(
+  const { nexTechSalesSettings } = await getMongoCollections();
+  await nexTechSalesSettings.updateOne(
     { _id: current._id, ownerUserId: actorId },
     {
       $set: {
@@ -362,17 +373,17 @@ export async function deleteOrvitechPaymentProvider(botId: string, guildId: stri
     }
   );
 
-  return (await orvitechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
+  return (await nexTechSalesSettings.findOne({ _id: current._id, ownerUserId: actorId })) ?? current;
 }
 
-export async function saveOrvitechSalesPlan(botId: string, guildId: string, planId: string | null, input: SavePlanInput, actorId: string) {
-  const { orvitechSalesPlans } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function saveNexTechSalesPlan(botId: string, guildId: string, planId: string | null, input: SavePlanInput, actorId: string) {
+  const { nexTechSalesPlans } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const scope = tenantScope(botId, guildId, actorId, settings.storeId);
   const now = new Date();
 
   if (planId) {
-    await orvitechSalesPlans.updateOne(
+    await nexTechSalesPlans.updateOne(
       { _id: planId, ...scope },
       {
         $set: {
@@ -390,10 +401,10 @@ export async function saveOrvitechSalesPlan(botId: string, guildId: string, plan
       }
     );
 
-    return orvitechSalesPlans.findOne({ _id: planId, ...scope });
+    return nexTechSalesPlans.findOne({ _id: planId, ...scope });
   }
 
-  const plan: MongoOrvitechSalesPlan = {
+  const plan: MongoNexTechSalesPlan = {
     _id: randomUUID(),
     botId,
     guildId,
@@ -413,20 +424,20 @@ export async function saveOrvitechSalesPlan(botId: string, guildId: string, plan
     updatedAt: now
   };
 
-  await orvitechSalesPlans.insertOne(plan);
+  await nexTechSalesPlans.insertOne(plan);
   return plan;
 }
 
-export async function saveOrvitechProduct(botId: string, guildId: string, productId: string | null, input: SaveProductInput, actorId: string) {
-  const { orvitechProducts } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function saveNexTechProduct(botId: string, guildId: string, productId: string | null, input: SaveProductInput, actorId: string) {
+  const { nexTechProducts } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const scope = tenantScope(botId, guildId, actorId, settings.storeId);
   const now = new Date();
   const slug = slugifyProduct(input.slug || input.name);
   const productPatch = productFieldsFromInput(input, settings);
 
   if (productId) {
-    await orvitechProducts.updateOne(
+    await nexTechProducts.updateOne(
       { _id: productId, ...scope },
       {
         $set: {
@@ -438,10 +449,10 @@ export async function saveOrvitechProduct(botId: string, guildId: string, produc
       }
     );
 
-    return orvitechProducts.findOne({ _id: productId, ...scope });
+    return nexTechProducts.findOne({ _id: productId, ...scope });
   }
 
-  const product: MongoOrvitechProduct = {
+  const product: MongoNexTechProduct = {
     _id: randomUUID(),
     botId,
     guildId,
@@ -455,20 +466,20 @@ export async function saveOrvitechProduct(botId: string, guildId: string, produc
     ...productPatch
   };
 
-  await orvitechProducts.insertOne(product);
+  await nexTechProducts.insertOne(product);
   return product;
 }
 
-export async function duplicateOrvitechProduct(botId: string, guildId: string, productId: string, actorId: string) {
-  const { orvitechProducts } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function duplicateNexTechProduct(botId: string, guildId: string, productId: string, actorId: string) {
+  const { nexTechProducts } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const scope = tenantScope(botId, guildId, actorId, settings.storeId);
-  const product = await orvitechProducts.findOne({ _id: productId, ...scope });
+  const product = await nexTechProducts.findOne({ _id: productId, ...scope });
 
   if (!product) return null;
 
   const now = new Date();
-  const copy: MongoOrvitechProduct = {
+  const copy: MongoNexTechProduct = {
     ...product,
     _id: randomUUID(),
     name: `${product.name} Copia`,
@@ -480,17 +491,17 @@ export async function duplicateOrvitechProduct(botId: string, guildId: string, p
     updatedBy: actorId
   };
 
-  await orvitechProducts.insertOne(copy);
+  await nexTechProducts.insertOne(copy);
   return copy;
 }
 
-export async function deleteOrvitechProduct(botId: string, guildId: string, productId: string, actorId: string) {
-  const { orvitechProducts } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
-  return orvitechProducts.findOneAndDelete({ _id: productId, ...tenantScope(botId, guildId, actorId, settings.storeId) });
+export async function deleteNexTechProduct(botId: string, guildId: string, productId: string, actorId: string) {
+  const { nexTechProducts } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
+  return nexTechProducts.findOneAndDelete({ _id: productId, ...tenantScope(botId, guildId, actorId, settings.storeId) });
 }
 
-export async function saveOrvitechProductBannerUpload(input: {
+export async function saveNexTechProductBannerUpload(input: {
   actorId: string;
   botId: string;
   buffer: Buffer;
@@ -501,16 +512,16 @@ export async function saveOrvitechProductBannerUpload(input: {
   const extension = PRODUCT_IMAGE_EXTENSIONS[input.mimeType];
 
   if (!extension) {
-    throw createOrvitechSalesError("Formato de imagem nao suportado.", 400);
+    throw createNexTechSalesError("Formato de imagem nao suportado.", 400);
   }
 
-  const { orvitechProducts } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(input.botId, input.guildId, input.actorId);
+  const { nexTechProducts } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(input.botId, input.guildId, input.actorId);
   const scope = tenantScope(input.botId, input.guildId, input.actorId, settings.storeId);
-  const product = await orvitechProducts.findOne({ _id: input.productId, ...scope });
+  const product = await nexTechProducts.findOne({ _id: input.productId, ...scope });
 
   if (!product) {
-    throw createOrvitechSalesError("Produto nao encontrado.", 404);
+    throw createNexTechSalesError("Produto nao encontrado.", 404);
   }
 
   await fs.mkdir(PRODUCT_UPLOAD_DIR, { recursive: true });
@@ -518,8 +529,8 @@ export async function saveOrvitechProductBannerUpload(input: {
   const filePath = path.join(PRODUCT_UPLOAD_DIR, filename);
   await fs.writeFile(filePath, input.buffer);
 
-  const bannerUrl = `/uploads/orvitech-products/${filename}`;
-  await orvitechProducts.updateOne(
+  const bannerUrl = `/uploads/nex-tech-products/${filename}`;
+  await nexTechProducts.updateOne(
     { _id: input.productId, ...scope },
     {
       $set: {
@@ -530,24 +541,24 @@ export async function saveOrvitechProductBannerUpload(input: {
     }
   );
 
-  return orvitechProducts.findOne({ _id: input.productId, ...scope });
+  return nexTechProducts.findOne({ _id: input.productId, ...scope });
 }
 
-export async function deleteScopedOrvitechSalesPlan(botId: string, guildId: string, planId: string, ownerUserId: string) {
-  const { orvitechSalesPlans } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, ownerUserId);
-  const deleted = await orvitechSalesPlans.findOneAndDelete({ _id: planId, ...tenantScope(botId, guildId, ownerUserId, settings.storeId) });
+export async function deleteScopedNexTechSalesPlan(botId: string, guildId: string, planId: string, ownerUserId: string) {
+  const { nexTechSalesPlans } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, ownerUserId);
+  const deleted = await nexTechSalesPlans.findOneAndDelete({ _id: planId, ...tenantScope(botId, guildId, ownerUserId, settings.storeId) });
   return deleted;
 }
 
-export async function saveOrvitechSale(botId: string, guildId: string, input: SaveSaleInput, actorId: string) {
-  const { orvitechCustomers, orvitechSales, orvitechSalesPlans, orvitechSubscriptions } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function saveNexTechSale(botId: string, guildId: string, input: SaveSaleInput, actorId: string) {
+  const { nexTechCustomers, nexTechSales, nexTechSalesPlans, nexTechSubscriptions } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const scope = tenantScope(botId, guildId, actorId, settings.storeId);
-  const plan = input.planId ? await orvitechSalesPlans.findOne({ _id: input.planId, ...scope }) : null;
+  const plan = input.planId ? await nexTechSalesPlans.findOne({ _id: input.planId, ...scope }) : null;
   const now = new Date();
   const provider = settings.paymentProviders.find((item) => item.id === input.paymentProviderId) ?? null;
-  const customer = await upsertCustomer(orvitechCustomers, {
+  const customer = await upsertCustomer(nexTechCustomers, {
     botId,
     guildId,
     ownerUserId: actorId,
@@ -559,7 +570,7 @@ export async function saveOrvitechSale(botId: string, guildId: string, input: Sa
   const amountCents = input.amountCents ?? plan?.priceCents ?? 0;
   const paidAt = input.status === "paid" ? now : null;
   const expiresAt = paidAt && plan?.durationDays ? new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000) : null;
-  const sale: MongoOrvitechSale = {
+  const sale: MongoNexTechSale = {
     _id: randomUUID(),
     botId,
     guildId,
@@ -590,9 +601,9 @@ export async function saveOrvitechSale(botId: string, guildId: string, input: Sa
     updatedAt: now
   };
 
-  await orvitechSales.insertOne(sale);
+  await nexTechSales.insertOne(sale);
   if (sale.status === "paid" && plan) {
-    await orvitechSubscriptions.insertOne({
+    await nexTechSubscriptions.insertOne({
       _id: randomUUID(),
       botId,
       guildId,
@@ -611,11 +622,11 @@ export async function saveOrvitechSale(botId: string, guildId: string, input: Sa
   return sale;
 }
 
-export async function getPublicOrvitechProduct(storeId: string, slug: string): Promise<PublicOrvitechProductDto | null> {
-  const { orvitechProducts, orvitechSalesSettings } = await getMongoCollections();
+export async function getPublicNexTechProduct(storeId: string, slug: string): Promise<PublicNexTechProductDto | null> {
+  const { nexTechProducts, nexTechSalesSettings } = await getMongoCollections();
   const [settings, product] = await Promise.all([
-    orvitechSalesSettings.findOne({ storeId }),
-    orvitechProducts.findOne({ storeId, slug: slugifyProduct(slug), active: true })
+    nexTechSalesSettings.findOne({ storeId }),
+    nexTechProducts.findOne({ storeId, slug: slugifyProduct(slug), active: true })
   ]);
 
   if (!settings || !product || !settings.enabled) {
@@ -642,10 +653,10 @@ export async function getPublicOrvitechProduct(storeId: string, slug: string): P
   };
 }
 
-export async function createProductCheckout(storeId: string, slug: string, input: ProductCheckoutInput) {
-  const { orvitechCustomers, orvitechProducts, orvitechSales, orvitechSalesSettings } = await getMongoCollections();
-  const settings = await orvitechSalesSettings.findOne({ storeId });
-  const product = await orvitechProducts.findOne({ storeId, slug: slugifyProduct(slug), active: true });
+export async function createProductCheckout(storeId: string, slug: string, input: ProductCheckoutInput): Promise<ProductCheckoutDto | null> {
+  const { nexTechCustomers, nexTechProducts, nexTechSales, nexTechSalesSettings } = await getMongoCollections();
+  const settings = await nexTechSalesSettings.findOne({ storeId });
+  const product = await nexTechProducts.findOne({ storeId, slug: slugifyProduct(slug), active: true });
 
   if (!settings || !product || !settings.enabled) {
     return null;
@@ -654,7 +665,7 @@ export async function createProductCheckout(storeId: string, slug: string, input
   const plan = product.plans[input.planType];
 
   if (!plan.enabled) {
-    throw createOrvitechSalesError("Plano indisponivel para este produto.", 400);
+    throw createNexTechSalesError("Plano indisponivel para este produto.", 400);
   }
 
   const provider = settings.paymentProviders.find((item) => item.id === input.paymentProviderId && item.enabled)
@@ -663,12 +674,12 @@ export async function createProductCheckout(storeId: string, slug: string, input
     ?? null;
 
   if (!provider) {
-    throw createOrvitechSalesError("Nenhum gateway de pagamento ativo nesta loja.", 400);
+    throw createNexTechSalesError("Nenhum gateway de pagamento ativo nesta loja.", 400);
   }
 
   const now = new Date();
   const buyerId = input.buyerId?.trim() || `guest-${randomUUID()}`;
-  const customer = await upsertCustomer(orvitechCustomers, {
+  const customer = await upsertCustomer(nexTechCustomers, {
     botId: settings.botId,
     guildId: settings.guildId,
     ownerUserId: settings.ownerUserId,
@@ -677,8 +688,17 @@ export async function createProductCheckout(storeId: string, slug: string, input
     buyerName: normalizeNullable(input.buyerName) ?? normalizeNullable(input.buyerEmail),
     now
   });
-  const sale: MongoOrvitechSale = {
-    _id: randomUUID(),
+  const saleId = randomUUID();
+  const successUrl = buildProductPaymentSuccessUrl(settings.storeId, product.slug, saleId);
+  const checkoutUrl = buildProviderCheckoutUrl(provider, {
+    amountCents: plan.priceCents,
+    currency: settings.currency,
+    productName: product.name,
+    saleId,
+    successUrl
+  });
+  const sale: MongoNexTechSale = {
+    _id: saleId,
     botId: settings.botId,
     guildId: settings.guildId,
     ownerUserId: settings.ownerUserId,
@@ -693,6 +713,8 @@ export async function createProductCheckout(storeId: string, slug: string, input
     paymentGatewayId: provider.gatewayId,
     paymentProviderId: provider.id,
     paymentProviderLabel: provider.label,
+    checkoutUrl,
+    successUrl,
     productId: product._id,
     productName: product.name,
     productPlanType: input.planType,
@@ -708,32 +730,34 @@ export async function createProductCheckout(storeId: string, slug: string, input
     updatedAt: now
   };
 
-  await orvitechSales.insertOne(sale);
+  await nexTechSales.insertOne(sale);
   return {
+    checkoutUrl,
     gatewayId: provider.gatewayId,
     instructions: provider.instructions,
     provider: provider.provider,
     publicKey: provider.publicKey,
-    sale: toSaleDto(sale)
+    sale: toSaleDto(sale),
+    successUrl
   };
 }
 
-export async function updateOrvitechSaleStatus(botId: string, guildId: string, saleId: string, status: MongoOrvitechSaleStatus, actorId: string) {
-  const { orvitechSales, orvitechSalesPlans, orvitechSubscriptions } = await getMongoCollections();
-  const settings = await ensureOrvitechSalesSettings(botId, guildId, actorId);
+export async function updateNexTechSaleStatus(botId: string, guildId: string, saleId: string, status: MongoNexTechSaleStatus, actorId: string) {
+  const { nexTechSales, nexTechSalesPlans, nexTechSubscriptions } = await getMongoCollections();
+  const settings = await ensureNexTechSalesSettings(botId, guildId, actorId);
   const scope = tenantScope(botId, guildId, actorId, settings.storeId);
-  const sale = await orvitechSales.findOne({ _id: saleId, ...scope });
+  const sale = await nexTechSales.findOne({ _id: saleId, ...scope });
 
   if (!sale) return null;
 
-  const plan = sale.planId ? await orvitechSalesPlans.findOne({ _id: sale.planId, ...scope }) : null;
+  const plan = sale.planId ? await nexTechSalesPlans.findOne({ _id: sale.planId, ...scope }) : null;
   const now = new Date();
   const paidAt = status === "paid" ? sale.paidAt ?? now : sale.paidAt;
   const expiresAt = status === "paid" && paidAt && plan?.durationDays
     ? sale.expiresAt ?? new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000)
     : sale.expiresAt;
 
-  await orvitechSales.updateOne(
+  await nexTechSales.updateOne(
     { _id: saleId, ...scope },
     {
       $set: {
@@ -746,9 +770,9 @@ export async function updateOrvitechSaleStatus(botId: string, guildId: string, s
     }
   );
 
-  const updated = await orvitechSales.findOne({ _id: saleId, ...scope });
+  const updated = await nexTechSales.findOne({ _id: saleId, ...scope });
   if (updated?.status === "paid" && plan) {
-    await orvitechSubscriptions.updateOne(
+    await nexTechSubscriptions.updateOne(
       { saleId: updated._id, ...scope },
       {
         $set: {
@@ -776,9 +800,9 @@ export async function updateOrvitechSaleStatus(botId: string, guildId: string, s
   return updated;
 }
 
-export async function processOrvitechPaymentWebhook(storeId: string, gatewayId: string, input: ProcessWebhookInput) {
-  const { orvitechSalesSettings, orvitechWebhookLogs } = await getMongoCollections();
-  const settings = await orvitechSalesSettings.findOne({ storeId });
+export async function processNexTechPaymentWebhook(storeId: string, gatewayId: string, input: ProcessWebhookInput) {
+  const { nexTechSalesSettings, nexTechWebhookLogs } = await getMongoCollections();
+  const settings = await nexTechSalesSettings.findOne({ storeId });
 
   if (!settings) {
     return {
@@ -801,7 +825,7 @@ export async function processOrvitechPaymentWebhook(storeId: string, gatewayId: 
   const signatureValid = validateWebhookSignature(provider.webhookSecretEncrypted ?? null, input.rawBody, input.signature ?? null);
   const now = new Date();
 
-  await orvitechWebhookLogs.insertOne({
+  await nexTechWebhookLogs.insertOne({
     _id: randomUUID(),
     botId: settings.botId,
     guildId: settings.guildId,
@@ -833,13 +857,13 @@ export async function processOrvitechPaymentWebhook(storeId: string, gatewayId: 
 }
 
 function toDashboardDto(
-  settings: MongoOrvitechSalesSettings,
-  plans: MongoOrvitechSalesPlan[],
-  products: MongoOrvitechProduct[],
-  sales: MongoOrvitechSale[],
+  settings: MongoNexTechSalesSettings,
+  plans: MongoNexTechSalesPlan[],
+  products: MongoNexTechProduct[],
+  sales: MongoNexTechSale[],
   customers: number,
   subscriptions: number
-): OrvitechSalesDashboardDto {
+): NexTechSalesDashboardDto {
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -862,7 +886,7 @@ function toDashboardDto(
   };
 }
 
-export function toSettingsDto(settings: MongoOrvitechSalesSettings): OrvitechSalesSettingsDto {
+export function toSettingsDto(settings: MongoNexTechSalesSettings): NexTechSalesSettingsDto {
   return {
     ...settings,
     id: settings._id,
@@ -872,7 +896,7 @@ export function toSettingsDto(settings: MongoOrvitechSalesSettings): OrvitechSal
   };
 }
 
-export function toPlanDto(plan: MongoOrvitechSalesPlan): OrvitechSalesPlanDto {
+export function toPlanDto(plan: MongoNexTechSalesPlan): NexTechSalesPlanDto {
   return {
     ...plan,
     id: plan._id,
@@ -881,17 +905,17 @@ export function toPlanDto(plan: MongoOrvitechSalesPlan): OrvitechSalesPlanDto {
   };
 }
 
-export function toProductDto(product: MongoOrvitechProduct): OrvitechProductDto {
+export function toProductDto(product: MongoNexTechProduct): NexTechProductDto {
   return {
     ...product,
     id: product._id,
-    publicUrl: `/orvitech/${product.storeId}/${product.slug}`,
+    publicUrl: `/nex-tech/${product.storeId}/${product.slug}`,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString()
   };
 }
 
-export function toSaleDto(sale: MongoOrvitechSale): OrvitechSaleDto {
+export function toSaleDto(sale: MongoNexTechSale): NexTechSaleDto {
   return {
     ...sale,
     id: sale._id,
@@ -902,7 +926,7 @@ export function toSaleDto(sale: MongoOrvitechSale): OrvitechSaleDto {
   };
 }
 
-function toPaymentProviderDto(provider: MongoOrvitechSalesPaymentProvider): OrvitechSalesPaymentProviderDto {
+function toPaymentProviderDto(provider: MongoNexTechSalesPaymentProvider): NexTechSalesPaymentProviderDto {
   return {
     id: provider.id,
     gatewayId: provider.gatewayId,
@@ -930,8 +954,50 @@ function tenantScope(botId: string, guildId: string, ownerUserId: string, storeI
   };
 }
 
+function buildProductPaymentSuccessUrl(storeId: string, slug: string, saleId: string) {
+  const origin = env.SITE_ORIGIN || env.FRONTEND_URL || env.BACKEND_URL;
+  const path = `/nex-tech/${encodeURIComponent(storeId)}/${encodeURIComponent(slug)}/sucesso`;
+
+  if (!origin) {
+    return `${path}?saleId=${encodeURIComponent(saleId)}`;
+  }
+
+  const url = new URL(path, origin);
+  url.searchParams.set("saleId", saleId);
+  return url.toString();
+}
+
+function buildProviderCheckoutUrl(
+  provider: MongoNexTechSalesPaymentProvider,
+  context: {
+    amountCents: number;
+    currency: "BRL" | "USD" | "EUR";
+    productName: string;
+    saleId: string;
+    successUrl: string;
+  }
+) {
+  if (provider.provider !== "custom" || !provider.publicKey) {
+    return null;
+  }
+
+  try {
+    const url = new URL(provider.publicKey);
+    url.searchParams.set("saleId", context.saleId);
+    url.searchParams.set("externalReference", context.saleId);
+    url.searchParams.set("successUrl", context.successUrl);
+    url.searchParams.set("returnUrl", context.successUrl);
+    url.searchParams.set("amountCents", String(context.amountCents));
+    url.searchParams.set("currency", context.currency);
+    url.searchParams.set("product", context.productName);
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function upsertCustomer(
-  collection: Awaited<ReturnType<typeof getMongoCollections>>["orvitechCustomers"],
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["nexTechCustomers"],
   input: {
     botId: string;
     buyerId: string;
@@ -1016,8 +1082,8 @@ function readWebhookSaleId(payload: unknown) {
   return typeof saleId === "string" ? saleId : null;
 }
 
-function productFieldsFromInput(input: SaveProductInput, settings: MongoOrvitechSalesSettings): Omit<
-  MongoOrvitechProduct,
+function productFieldsFromInput(input: SaveProductInput, settings: MongoNexTechSalesSettings): Omit<
+  MongoNexTechProduct,
   "_id" | "botId" | "createdAt" | "createdBy" | "guildId" | "ownerUserId" | "slug" | "storeId" | "updatedAt" | "updatedBy"
 > {
   return {
@@ -1054,7 +1120,7 @@ function normalizePlan(
   fallbackButton: string,
   fallbackPrice: number,
   fallbackProviderId: string | null
-): MongoOrvitechProductPlanConfig {
+): MongoNexTechProductPlanConfig {
   return {
     benefits: Array.isArray(plan.benefits) ? plan.benefits.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [],
     buttonColor: plan.buttonColor?.trim() || "#7c3aed",
@@ -1069,7 +1135,7 @@ function normalizePlan(
 }
 
 function normalizeFeatureToggles(toggles: SaveProductInput["toggles"] = {}) {
-  const keys: MongoOrvitechProductFeatureKey[] = [
+  const keys: MongoNexTechProductFeatureKey[] = [
     "hosting",
     "updates",
     "support",
@@ -1083,7 +1149,7 @@ function normalizeFeatureToggles(toggles: SaveProductInput["toggles"] = {}) {
     "activationKey"
   ];
 
-  return Object.fromEntries(keys.map((key) => [key, Boolean(toggles[key])])) as Record<MongoOrvitechProductFeatureKey, boolean>;
+  return Object.fromEntries(keys.map((key) => [key, Boolean(toggles[key])])) as Record<MongoNexTechProductFeatureKey, boolean>;
 }
 
 function slugifyProduct(value: string) {
@@ -1097,12 +1163,12 @@ function slugifyProduct(value: string) {
 }
 
 async function uniqueProductSlug(storeId: string, wantedSlug: string) {
-  const { orvitechProducts } = await getMongoCollections();
+  const { nexTechProducts } = await getMongoCollections();
   const base = slugifyProduct(wantedSlug);
   let slug = base;
   let suffix = 2;
 
-  while (await orvitechProducts.findOne({ storeId, slug }, { projection: { _id: 1 } })) {
+  while (await nexTechProducts.findOne({ storeId, slug }, { projection: { _id: 1 } })) {
     slug = `${base}-${suffix}`;
     suffix += 1;
   }
@@ -1110,7 +1176,7 @@ async function uniqueProductSlug(storeId: string, wantedSlug: string) {
   return slug;
 }
 
-function createOrvitechSalesError(message: string, statusCode: number) {
+function createNexTechSalesError(message: string, statusCode: number) {
   return Object.assign(new Error(message), {
     statusCode
   });

@@ -46,7 +46,7 @@ export function DocsPage() {
         <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-4 px-4 sm:px-6">
           <a className="flex items-center gap-2" href="/">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500]"><Bot className="h-5 w-5" /></span>
-            <strong className="text-lg text-[#FFD500]">Orvitek</strong><span className="hidden text-sm text-zinc-500 sm:inline">/ Documentação</span>
+            <strong className="text-lg text-[#FFD500]">Nex Tech</strong><span className="hidden text-sm text-zinc-500 sm:inline">/ Documentação</span>
           </a>
           <div className="ml-auto hidden max-w-sm flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[.035] px-3 md:flex">
             <Search className="h-4 w-4 text-zinc-500" /><input aria-label="Buscar na documentação" className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-zinc-600" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar na documentação..." value={query} />
@@ -65,11 +65,11 @@ export function DocsPage() {
         <article className="min-w-0 flex-1 px-5 py-12 sm:px-8 lg:px-14">
           <div className="mx-auto max-w-4xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/20 bg-[#FFD500]/10 px-3 py-1.5 text-xs text-[#FFEA70]"><BookOpen className="h-3.5 w-3.5" />Documentação oficial</div>
-            <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-5xl">Documentação Orvitek</h1>
+            <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-5xl">Documentação Nex Tech</h1>
             <p className="mt-5 max-w-3xl text-lg leading-8 text-zinc-400">Aprenda a acessar a plataforma, organizar seus bots e configurar módulos com segurança.</p>
 
             <DocsSection icon={BookOpen} id="visao-geral" title="Visão geral">
-              <p>A Orvitek centraliza a administração de bots Discord, servidores, módulos e permissões. Cada configuração é vinculada ao bot e ao servidor selecionados para evitar alterações no contexto errado.</p>
+              <p>A Nex Tech centraliza a administração de bots Discord, servidores, módulos e permissões. Cada configuração é vinculada ao bot e ao servidor selecionados para evitar alterações no contexto errado.</p>
               <Callout icon={ShieldCheck} title="Documentação segura">Esta página nunca exibe tokens, chaves privadas, IDs pessoais ou variáveis do ambiente de produção.</Callout>
             </DocsSection>
 
@@ -80,8 +80,8 @@ export function DocsPage() {
             </DocsSection>
 
             <DocsSection icon={KeyRound} id="acesso" title="Acesso com Discord">
-              <p>O login utiliza OAuth2. A senha da sua conta Discord não passa pela Orvitek. Depois da autenticação, a plataforma valida se sua conta possui acesso à organização e aos servidores disponíveis.</p>
-              <SafeCode title="Fluxo de acesso" code={`Site Orvitek\n  → Discord OAuth2\n  → validação da sessão\n  → seleção do bot\n  → dashboard autorizado`} />
+              <p>O login utiliza OAuth2. A senha da sua conta Discord não passa pela Nex Tech. Depois da autenticação, a plataforma valida se sua conta possui acesso à organização e aos servidores disponíveis.</p>
+              <SafeCode title="Fluxo de acesso" code={`Site Nex Tech\n  → Discord OAuth2\n  → validação da sessão\n  → seleção do bot\n  → dashboard autorizado`} />
             </DocsSection>
 
             <DocsSection icon={Bot} id="bots-servidores" title="Bots e servidores">
@@ -95,7 +95,7 @@ export function DocsPage() {
             </DocsSection>
 
             <DocsSection icon={ShieldCheck} id="permissoes" title="Permissões">
-              <p>A Orvitek respeita as permissões do Discord e os cargos configurados em cada módulo. Para administrar cargos ou mensagens, o cargo do bot precisa estar acima dos cargos gerenciados.</p>
+              <p>A Nex Tech respeita as permissões do Discord e os cargos configurados em cada módulo. Para administrar cargos ou mensagens, o cargo do bot precisa estar acima dos cargos gerenciados.</p>
               <SafeCode title="Checklist" code={`✓ Ver canal\n✓ Enviar mensagens\n✓ Incorporar links\n✓ Ler histórico\n✓ Gerenciar cargos (quando necessário)`} />
             </DocsSection>
 

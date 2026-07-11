@@ -6,7 +6,7 @@ import { z } from "zod";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const productionPublicUrl = "";
+const productionPublicUrl = "https://nextech.discloud.app";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
 const requiredDiscordScopes = "identify connections guilds guilds.join";
@@ -26,7 +26,7 @@ function applyPackedEnv() {
   const base64Config =
     cleanEnvValue(process.env.APP_CONFIG_B64)
     ?? cleanEnvValue(process.env.APP_CONFIG_BASE64)
-    ?? cleanEnvValue(process.env.ORVITEK_CONFIG_B64);
+    ?? cleanEnvValue(process.env.NEX_TECH_CONFIG_B64);
   const rawConfig = jsonConfig ?? (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : undefined);
 
   if (!rawConfig) {

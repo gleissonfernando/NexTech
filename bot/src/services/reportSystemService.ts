@@ -35,7 +35,7 @@ import { renderComponentsV2Panel } from "./panelVisualRenderer";
 const PREFIX = "iab_admin";
 const PANEL_SELECT_ID = "iab_report_select";
 const PUBLIC_PREFIX = "iab";
-const TOPIC_PREFIX = "orvitek-iab:";
+const TOPIC_PREFIX = "nex-tech-iab:";
 const LEGACY_IDENTIFIED_BUTTON_ID = "iab_denuncia_identificada";
 const LEGACY_ANONYMOUS_BUTTON_ID = "iab_denuncia_anonima";
 const ANONYMOUS_DISABLED_MESSAGE = "A denuncia anonima foi desativada. Abra o ticket com identificacao.";

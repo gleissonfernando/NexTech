@@ -77,13 +77,13 @@ const terminalSequences: [TerminalSequence, ...TerminalSequence[]] = [
     command: "$ POST /api/v1/bots/create",
     response: [
       { text: "{" },
-      { text: '  "name": "Orvitek Manager",' },
+      { text: '  "name": "Nex Tech Manager",' },
       { text: '  "modules": ["moderation", "logs", "tickets"]' },
       { text: "}" },
       { text: "201 Created", tone: "status" },
       { text: 'bot_id: "orv_94A7"' },
       { text: 'status: "online"' },
-      { text: 'dashboard_link: "/dashboard/orvitek-manager"' }
+      { text: 'dashboard_link: "/dashboard/nex-tech-manager"' }
     ]
   }
 ];
@@ -307,7 +307,7 @@ export function Login({
         <Reveal className="mx-auto max-w-5xl rounded-lg border border-[#FFD500]/25 bg-[#141414]/95 px-6 py-12 text-center shadow-glow sm:px-10">
           <h2 className="text-4xl font-black text-white sm:text-5xl">Pronto para automatizar seus bots?</h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#B3B3B3]">
-            Entre com Discord, valide seu acesso e comece a controlar seus bots pelo Orvitek.
+            Entre com Discord, valide seu acesso e comece a controlar seus bots pelo Nex Tech.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Button className="h-12 min-w-44" disabled={verifying} onClick={handleStart}>
@@ -368,7 +368,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
           <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500] shadow-[0_0_22px_rgba(255,213,0,0.18)]">
             <Bot className="h-5 w-5" />
           </span>
-          <span className="text-xl font-black text-[#FFD500] drop-shadow-[0_0_18px_rgba(255,213,0,0.28)]">Orvitek</span>
+          <span className="text-xl font-black text-[#FFD500] drop-shadow-[0_0_18px_rgba(255,213,0,0.28)]">Nex Tech</span>
         </button>
 
         <nav className="hidden items-center gap-1 rounded-full border border-[#FFD500]/15 bg-black/35 p-1 md:flex">
@@ -507,17 +507,17 @@ function TerminalMockup() {
         </div>
         <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-zinc-400">
           <Terminal className="h-4 w-4 text-[#FFD500]" />
-          <span className="truncate">orvitek-cli ~ orvitek-bots.discloud.app</span>
+          <span className="truncate">nex-tech-cli ~ nextech.discloud.app</span>
         </div>
       </div>
-      <div aria-label="Demonstração animada do terminal Orvitek" aria-live="off" className="min-h-[21rem] p-5 font-mono text-sm leading-7">
+      <div aria-label="Demonstração animada do terminal Nex Tech" aria-live="off" className="min-h-[21rem] p-5 font-mono text-sm leading-7">
         <TerminalCommandLine command={typedCommand} typing={typing} />
         {visibleResponse.map((line, index) => (
           <TerminalResponseItem key={`${sequenceIndex}-${line.text}-${index}`} line={line} />
         ))}
       </div>
       <div className="flex items-center justify-between border-t border-[#FFD500]/15 px-4 py-3 text-xs text-zinc-400">
-        <span>request_id: orvitek-live-demo</span>
+        <span>request_id: nex-tech-live-demo</span>
         <span className="flex items-center gap-2 text-[#3DDC84]">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#3DDC84]" />
           Online
@@ -668,7 +668,7 @@ function PublicServerMarquee({ servers }: { servers: PublicServer[] }) {
       <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#0A0A0A] to-transparent sm:w-36" />
       <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#0A0A0A] to-transparent sm:w-36" />
       <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[.22em] text-[#FFD500]">
-        {servers.length} {servers.length === 1 ? "servidor conectado" : "servidores conectados à Orvitek"}
+        {servers.length} {servers.length === 1 ? "servidor conectado" : "servidores conectados à Nex Tech"}
       </p>
       <div className="server-marquee-track flex w-max hover:[animation-play-state:paused]">
         <PublicServerGroup servers={items} />
@@ -707,7 +707,7 @@ function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: 
     >
       <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
         <div>
-          <button className="text-2xl font-black text-[#FFD500]" onClick={() => onNavigate("inicio")} type="button">Orvitek</button>
+          <button className="text-2xl font-black text-[#FFD500]" onClick={() => onNavigate("inicio")} type="button">Nex Tech</button>
           <p className="mt-3 text-sm text-zinc-400">Desde {currentYear} — Transforma</p>
           <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">Plataforma para criação, controle e gerenciamento de bots conectados ao Discord.</p>
         </div>
@@ -719,7 +719,7 @@ function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: 
         </div>
       </div>
       <div className="mx-auto mt-10 max-w-7xl border-t border-[#FFD500]/10 pt-6 text-sm text-zinc-500">
-        © {currentYear} Orvitek. Todos os direitos reservados.
+        © {currentYear} Nex Tech. Todos os direitos reservados.
       </div>
     </motion.footer>
   );

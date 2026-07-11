@@ -119,7 +119,7 @@ export async function handleEmojiCloneInteraction(interaction: Interaction, cont
           new TextInputBuilder()
             .setCustomId("prefix")
             .setLabel("Prefixo opcional")
-            .setPlaceholder("Exemplo: orvitek")
+            .setPlaceholder("Exemplo: nex-tech")
             .setRequired(false)
             .setStyle(TextInputStyle.Short)
         )
@@ -288,7 +288,7 @@ export function emojiClonePanelPayload(ephemeral = false) {
 }
 
 function emojiClonePanelLinks() {
-  const origin = env.FRONTEND_URL || "https://orvitek-bots.discloud.app";
+  const origin = env.FRONTEND_URL || "https://nextech.discloud.app";
   const addBotUrl = buildDiscordBotInviteUrl(env.DISCORD_CLIENT_ID);
 
   return {

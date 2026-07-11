@@ -2718,17 +2718,17 @@ export type DevModuleDefinition = {
   label: string;
 };
 
-export type OrvitechPaymentProviderType = "manual" | "pix" | "mercadopago" | "stripe" | "paypal" | "custom";
-export type OrvitechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
+export type NexTechPaymentProviderType = "manual" | "pix" | "mercadopago" | "stripe" | "paypal" | "custom";
+export type NexTechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
 
-export type OrvitechSalesPaymentProvider = {
+export type NexTechSalesPaymentProvider = {
   id: string;
   gatewayId: string;
   ownerUserId: string;
   storeId: string;
   enabled: boolean;
   label: string;
-  provider: OrvitechPaymentProviderType;
+  provider: NexTechPaymentProviderType;
   publicKey: string | null;
   webhookUrl: string | null;
   instructions: string | null;
@@ -2738,7 +2738,7 @@ export type OrvitechSalesPaymentProvider = {
   updatedAt: string;
 };
 
-export type OrvitechSalesSettings = {
+export type NexTechSalesSettings = {
   id: string;
   botId: string;
   guildId: string;
@@ -2757,14 +2757,14 @@ export type OrvitechSalesSettings = {
   panelImageUrl: string | null;
   thumbnailUrl: string | null;
   termsUrl: string | null;
-  paymentProviders: OrvitechSalesPaymentProvider[];
+  paymentProviders: NexTechSalesPaymentProvider[];
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type OrvitechSalesPlan = {
+export type NexTechSalesPlan = {
   id: string;
   botId: string;
   guildId: string;
@@ -2782,7 +2782,7 @@ export type OrvitechSalesPlan = {
   updatedAt: string;
 };
 
-export type OrvitechProductFeatureKey =
+export type NexTechProductFeatureKey =
   | "hosting"
   | "updates"
   | "support"
@@ -2795,7 +2795,7 @@ export type OrvitechProductFeatureKey =
   | "automaticLogin"
   | "activationKey";
 
-export type OrvitechProductPlanConfig = {
+export type NexTechProductPlanConfig = {
   benefits: string[];
   buttonColor: string;
   buttonText: string;
@@ -2807,7 +2807,7 @@ export type OrvitechProductPlanConfig = {
   priceText: string;
 };
 
-export type OrvitechProduct = {
+export type NexTechProduct = {
   id: string;
   active: boolean;
   additionalInfo: string;
@@ -2828,8 +2828,8 @@ export type OrvitechProduct = {
   observations: string;
   ownerUserId: string;
   plans: {
-    lifetime: OrvitechProductPlanConfig;
-    monthly: OrvitechProductPlanConfig;
+    lifetime: NexTechProductPlanConfig;
+    monthly: NexTechProductPlanConfig;
   };
   publicUrl: string;
   seo: {
@@ -2839,13 +2839,13 @@ export type OrvitechProduct = {
   shortDescription: string;
   slug: string;
   storeId: string;
-  toggles: Record<OrvitechProductFeatureKey, boolean>;
+  toggles: Record<NexTechProductFeatureKey, boolean>;
   updatedAt: string;
   updatedBy: string | null;
   warnings: string;
 };
 
-export type OrvitechSale = {
+export type NexTechSale = {
   id: string;
   botId: string;
   guildId: string;
@@ -2858,12 +2858,14 @@ export type OrvitechSale = {
   paymentGatewayId: string | null;
   paymentProviderId: string | null;
   paymentProviderLabel: string | null;
+  checkoutUrl?: string | null;
+  successUrl?: string | null;
   productId?: string | null;
   productName?: string | null;
   productPlanType?: "monthly" | "lifetime" | "manual";
   productSlug?: string | null;
   externalReference: string | null;
-  status: OrvitechSaleStatus;
+  status: NexTechSaleStatus;
   notes: string | null;
   paidAt: string | null;
   expiresAt: string | null;
@@ -2873,11 +2875,11 @@ export type OrvitechSale = {
   updatedAt: string;
 };
 
-export type OrvitechSalesDashboard = {
-  plans: OrvitechSalesPlan[];
-  products: OrvitechProduct[];
-  sales: OrvitechSale[];
-  settings: OrvitechSalesSettings;
+export type NexTechSalesDashboard = {
+  plans: NexTechSalesPlan[];
+  products: NexTechProduct[];
+  sales: NexTechSale[];
+  settings: NexTechSalesSettings;
   stats: {
     activePlans: number;
     customers: number;
@@ -2890,10 +2892,10 @@ export type OrvitechSalesDashboard = {
   };
 };
 
-export type PublicOrvitechProduct = {
-  paymentProviders: Array<Pick<OrvitechSalesPaymentProvider, "gatewayId" | "id" | "label" | "provider">>;
-  product: OrvitechProduct;
-  settings: Pick<OrvitechSalesSettings, "currency" | "enabled" | "panelColor" | "storeId" | "termsUrl">;
+export type PublicNexTechProduct = {
+  paymentProviders: Array<Pick<NexTechSalesPaymentProvider, "gatewayId" | "id" | "label" | "provider">>;
+  product: NexTechProduct;
+  settings: Pick<NexTechSalesSettings, "currency" | "enabled" | "panelColor" | "storeId" | "termsUrl">;
 };
 
 export type PriceTableItem = {
@@ -3090,8 +3092,8 @@ export type SaveManualPaymentSettingsPayload = Partial<Omit<
   "botId" | "guildId" | "id" | "salePanelMessageId" | "updatedAt" | "updatedBy"
 >>;
 
-export type SaveOrvitechSalesSettingsPayload = Partial<Pick<
-  OrvitechSalesSettings,
+export type SaveNexTechSalesSettingsPayload = Partial<Pick<
+  NexTechSalesSettings,
   | "currency"
   | "customerRoleId"
   | "enabled"
@@ -3107,19 +3109,19 @@ export type SaveOrvitechSalesSettingsPayload = Partial<Pick<
   | "thumbnailUrl"
 >>;
 
-export type SaveOrvitechPaymentProviderPayload = {
+export type SaveNexTechPaymentProviderPayload = {
   enabled: boolean;
   id?: string | null;
   instructions?: string | null;
   label: string;
-  provider: OrvitechPaymentProviderType;
+  provider: NexTechPaymentProviderType;
   publicKey?: string | null;
   secret?: string | null;
   webhookSecret?: string | null;
   webhookUrl?: string | null;
 };
 
-export type SaveOrvitechSalesPlanPayload = {
+export type SaveNexTechSalesPlanPayload = {
   checkoutMessage?: string | null;
   description?: string | null;
   durationDays?: number | null;
@@ -3130,12 +3132,12 @@ export type SaveOrvitechSalesPlanPayload = {
   priceCents: number;
 };
 
-export type SaveOrvitechProductPayload = Omit<
-  OrvitechProduct,
+export type SaveNexTechProductPayload = Omit<
+  NexTechProduct,
   "botId" | "createdAt" | "createdBy" | "guildId" | "id" | "ownerUserId" | "publicUrl" | "storeId" | "updatedAt" | "updatedBy"
 >;
 
-export type SaveOrvitechSalePayload = {
+export type SaveNexTechSalePayload = {
   amountCents?: number | null;
   buyerId: string;
   buyerName?: string | null;
@@ -3143,7 +3145,7 @@ export type SaveOrvitechSalePayload = {
   notes?: string | null;
   paymentProviderId?: string | null;
   planId?: string | null;
-  status: OrvitechSaleStatus;
+  status: NexTechSaleStatus;
 };
 
 export type BotGuildConfig = {

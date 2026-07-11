@@ -17,11 +17,11 @@ export function PublicPlansPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,213,0,.13),transparent_32rem)]" />
       <div className="relative mx-auto max-w-7xl">
         <header className="flex items-center justify-between gap-4">
-          <a className="flex items-center gap-2 text-[#FFD500]" href="/"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10"><Bot className="h-5 w-5" /></span><strong className="text-xl">Orvitek</strong></a>
+          <a className="flex items-center gap-2 text-[#FFD500]" href="/"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10"><Bot className="h-5 w-5" /></span><strong className="text-xl">Nex Tech</strong></a>
           <a className="flex items-center gap-2 rounded-lg border border-[#FFD500]/25 px-4 py-2 text-sm text-[#FFEA70] transition hover:bg-[#FFD500]/10" href="/"><ArrowLeft className="h-4 w-4" />Voltar ao início</a>
         </header>
         <section className="py-20 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm text-[#FFEA70]"><Sparkles className="h-4 w-4" />Planos Orvitek</span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm text-[#FFEA70]"><Sparkles className="h-4 w-4" />Planos Nex Tech</span>
           <h1 className="mt-6 text-4xl font-black tracking-tight sm:text-6xl">Escolha o plano ideal para sua operação</h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-zinc-400">Compare os planos públicos e entre na dashboard somente quando decidir continuar.</p>
         </section>

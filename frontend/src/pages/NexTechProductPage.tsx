@@ -1,11 +1,12 @@
 import { AlertCircle, CheckCircle2, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { checkoutOrvitechProduct, getPublicOrvitechProduct } from "../lib/api";
-import type { OrvitechProductPlanConfig, PublicOrvitechProduct } from "../types";
+import { checkoutNexTechProduct, getPublicNexTechProduct } from "../lib/api";
+import type { NexTechProductPlanConfig, PublicNexTechProduct } from "../types";
 import { Button } from "../components/ui/button";
 
-type OrvitechProductPageProps = {
+type NexTechProductPageProps = {
   slug: string;
+  status?: "success" | null;
   storeId: string;
 };
 
@@ -23,10 +24,11 @@ const featureLabels: Record<string, string> = {
   updates: "Atualizacoes"
 };
 
-export function OrvitechProductPage({ slug, storeId }: OrvitechProductPageProps) {
-  const [page, setPage] = useState<PublicOrvitechProduct | null>(null);
+export function NexTechProductPage({ slug, status = null, storeId }: NexTechProductPageProps) {
+  const [page, setPage] = useState<PublicNexTechProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
+  const [checkoutSuccessUrl, setCheckoutSuccessUrl] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<"monthly" | "lifetime" | null>(null);
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
@@ -34,7 +36,7 @@ export function OrvitechProductPage({ slug, storeId }: OrvitechProductPageProps)
   useEffect(() => {
     let mounted = true;
 
-    getPublicOrvitechProduct(storeId, slug)
+    getPublicNexTechProduct(storeId, slug)
       .then((data) => {
         if (mounted) setPage(data);
       })
@@ -62,14 +64,21 @@ export function OrvitechProductPage({ slug, storeId }: OrvitechProductPageProps)
 
     setCheckoutPlan(planType);
     setCheckoutMessage(null);
+    setCheckoutSuccessUrl(null);
     try {
-      const result = await checkoutOrvitechProduct(page.settings.storeId, page.product.slug, {
+      const result = await checkoutNexTechProduct(page.settings.storeId, page.product.slug, {
         buyerEmail: buyerEmail || null,
         buyerName: buyerName || null,
         paymentProviderId: page.product.plans[planType].paymentProviderId ?? page.paymentProviders[0]?.id ?? null,
         planType
       });
 
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
+
+      setCheckoutSuccessUrl(result.successUrl);
       setCheckoutMessage(result.instructions || `Pedido criado. Gateway: ${result.provider}. Venda: ${result.sale.id}`);
     } catch {
       setCheckoutMessage("Nao foi possivel iniciar a compra. Confira os dados e tente novamente.");
@@ -100,6 +109,30 @@ export function OrvitechProductPage({ slug, storeId }: OrvitechProductPageProps)
 
   const { product } = page;
   const accent = product.layout.accentColor || page.settings.panelColor || "#FFD500";
+
+  if (status === "success") {
+    const saleId = new URLSearchParams(window.location.search).get("saleId");
+
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.18),transparent_34%),linear-gradient(180deg,#050506,#09090d_48%,#050506)] px-4 text-white">
+        <div className="w-full max-w-lg rounded-lg border border-emerald-400/25 bg-zinc-950/90 p-6 text-center shadow-[0_0_60px_rgba(34,197,94,0.14)]">
+          <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-300" />
+          <h1 className="mt-4 text-2xl font-black">Pagamento concluido</h1>
+          <p className="mt-3 text-sm font-medium leading-6 text-zinc-300">
+            Recebemos o retorno do pagamento de {product.name}. Se o gateway enviar webhook, a venda sera confirmada automaticamente; caso contrario, a loja pode validar manualmente.
+          </p>
+          {saleId ? (
+            <p className="mt-4 rounded-lg border border-zinc-800 bg-black/35 px-3 py-2 text-xs font-semibold text-zinc-400">
+              Pedido: {saleId}
+            </p>
+          ) : null}
+          <Button className="mt-5 w-full bg-emerald-500 text-white hover:bg-emerald-400" onClick={() => window.location.assign(`/nex-tech/${encodeURIComponent(storeId)}/${encodeURIComponent(slug)}`)}>
+            Voltar ao produto
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,213,0,0.22),transparent_34%),linear-gradient(180deg,#050506,#09090d_48%,#050506)] px-4 py-8 text-white">
@@ -173,8 +206,13 @@ export function OrvitechProductPage({ slug, storeId }: OrvitechProductPageProps)
                 <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "lifetime"} onClick={() => void handleCheckout("lifetime")} plan={product.plans.lifetime} />
               </div>
               {checkoutMessage ? (
-                <div className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-100">
-                  {checkoutMessage}
+                <div className="mt-4 space-y-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-100">
+                  <p>{checkoutMessage}</p>
+                  {checkoutSuccessUrl ? (
+                    <a className="block break-all text-xs text-emerald-200 underline decoration-emerald-300/50" href={checkoutSuccessUrl}>
+                      URL de retorno apos pagamento: {checkoutSuccessUrl}
+                    </a>
+                  ) : null}
                 </div>
               ) : null}
               <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-zinc-400">
@@ -211,7 +249,7 @@ function PlanCard({
   currency: "BRL" | "USD" | "EUR";
   loading: boolean;
   onClick: () => void;
-  plan: OrvitechProductPlanConfig;
+  plan: NexTechProductPlanConfig;
 }) {
   if (!plan.enabled) return null;
 

@@ -7,9 +7,9 @@ const mode = process.argv[2] ?? "full";
 const root = process.cwd();
 const require = createRequire(import.meta.url);
 const requiredDiscloud = {
-  NAME: "OrviteK",
+  NAME: "NexTech",
   TYPE: "site",
-  ID: "orvitek-bots",
+  ID: "nextech",
   MAIN: "index.js",
   RAM: "1024",
   VERSION: "latest",

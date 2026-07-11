@@ -73,7 +73,7 @@ const IDS = {
 } as const;
 
 const DEACTIVATED_COURSE_PANEL_MESSAGE = "Este painel foi desativado. Utilize o novo sistema de cursos.";
-const COURSE_EXAM_CHANNEL_TOPIC_PREFIX = "orvitek-course-exam";
+const COURSE_EXAM_CHANNEL_TOPIC_PREFIX = "nex-tech-course-exam";
 const DEFAULT_EXAM_CHANNEL_EXPIRATION_HOURS = 24;
 const MAX_EXAM_CHANNEL_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
 const EXAM_CHANNEL_ACTIVE_RECHECK_DELAY = 15 * 60 * 1000;

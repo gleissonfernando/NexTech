@@ -116,7 +116,7 @@ function requestOnce(label) {
       headers: {
         "accept": "application/json",
         "connection": "keep-alive",
-        "user-agent": label === "bots" ? "orvitek-load-bot/1.0" : "orvitek-load-user/1.0",
+        "user-agent": label === "bots" ? "nex-tech-load-bot/1.0" : "nex-tech-load-user/1.0",
         ...(label === "bots" ? { "x-load-bot": "true" } : {})
       },
       hostname: target.hostname,

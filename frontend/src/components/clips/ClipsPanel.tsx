@@ -463,7 +463,7 @@ export function ClipsPanel({ botId, canManage, guild, platform = "twitch", refre
                   <input
                     className="social-input"
                     onChange={(event) => updateForm("channelInput", event.target.value)}
-                    placeholder={isKick ? "nome-do-canal" : "orvitek"}
+                    placeholder={isKick ? "nome-do-canal" : "nex-tech"}
                     value={form.channelInput}
                   />
                 </Field>

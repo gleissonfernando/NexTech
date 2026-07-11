@@ -15,7 +15,7 @@ process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
 
 function loadRuntimeConfigFile() {
-  const path = ".orvitek-runtime-env.json";
+  const path = ".nex-tech-runtime-env.json";
   if (!existsSync(path)) {
     return;
   }
@@ -36,7 +36,7 @@ function loadRuntimeConfigFile() {
       }
     }
   } catch (error) {
-    console.warn("[start] .orvitek-runtime-env.json invalido:", error instanceof Error ? error.message : error);
+    console.warn("[start] .nex-tech-runtime-env.json invalido:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -45,7 +45,7 @@ function packedConfigValue(key) {
   const base64Config =
     process.env.APP_CONFIG_B64?.trim()
     || process.env.APP_CONFIG_BASE64?.trim()
-    || process.env.ORVITEK_CONFIG_B64?.trim();
+    || process.env.NEX_TECH_CONFIG_B64?.trim();
   const rawConfig = jsonConfig || (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : "");
 
   if (!rawConfig) {
@@ -108,7 +108,7 @@ function ensureBuild() {
     return;
   }
 
-  if (process.env.NODE_ENV === "production" && process.env.ORVITEK_RUNTIME_BUILD !== "true") {
+  if (process.env.NODE_ENV === "production" && process.env.NEX_TECH_RUNTIME_BUILD !== "true") {
     const missing = requiredBuildFiles.filter((file) => !existsSync(file));
     const detail = missing.length > 0 ? `Arquivos ausentes: ${missing.join(", ")}.` : "Arquivos de build existem, mas parecem desatualizados.";
     console.error(`[start] build de producao nao encontrado. ${detail} Rode o BUILD da hospedagem antes do START.`);
@@ -164,7 +164,7 @@ function startProcess(name, command, args, options = {}) {
   const child = spawn(command, args, {
     env: {
       ...process.env,
-      NODE_OPTIONS: process.env.NODE_OPTIONS || `--max-old-space-size=${Math.max(256, Number(process.env.ORVITEK_NODE_MAX_OLD_SPACE_MB) || 512)}`
+      NODE_OPTIONS: process.env.NODE_OPTIONS || `--max-old-space-size=${Math.max(256, Number(process.env.NEX_TECH_NODE_MAX_OLD_SPACE_MB) || 512)}`
     },
     shell: process.platform === "win32",
     stdio: "inherit"

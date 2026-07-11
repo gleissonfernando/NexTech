@@ -60,24 +60,24 @@ import {
   runDiscloudConsoleCommand
 } from "../services/discloudMonitoringService";
 import {
-  deleteOrvitechPaymentProvider,
-  deleteOrvitechProduct,
-  deleteScopedOrvitechSalesPlan,
-  duplicateOrvitechProduct,
-  getOrvitechSalesDashboard,
-  ORVITECH_SALES_MODULE_ID,
-  saveOrvitechPaymentProvider,
-  saveOrvitechProduct,
-  saveOrvitechProductBannerUpload,
-  saveOrvitechSale,
-  saveOrvitechSalesPlan,
-  saveOrvitechSalesSettings,
+  deleteNexTechPaymentProvider,
+  deleteNexTechProduct,
+  deleteScopedNexTechSalesPlan,
+  duplicateNexTechProduct,
+  getNexTechSalesDashboard,
+  NEX_TECH_SALES_MODULE_ID,
+  saveNexTechPaymentProvider,
+  saveNexTechProduct,
+  saveNexTechProductBannerUpload,
+  saveNexTechSale,
+  saveNexTechSalesPlan,
+  saveNexTechSalesSettings,
   toProductDto,
   toPlanDto,
   toSaleDto,
   toSettingsDto,
-  updateOrvitechSaleStatus
-} from "../services/orvitechSalesService";
+  updateNexTechSaleStatus
+} from "../services/nexTechSalesService";
 import { devPlansRouter } from "./plans";
 import type { DashboardAuth } from "../services/tokenService";
 
@@ -132,7 +132,7 @@ const guildConfigSchema = z.object({
   modules: z.record(z.record(z.unknown())).default({})
 });
 
-const orvitechSalesSettingsSchema = z.object({
+const nexTechSalesSettingsSchema = z.object({
   currency: z.enum(["BRL", "USD", "EUR"]).optional(),
   customerRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   enabled: z.boolean().optional(),
@@ -148,7 +148,7 @@ const orvitechSalesSettingsSchema = z.object({
   thumbnailUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
 });
 
-const orvitechPaymentProviderSchema = z.object({
+const nexTechPaymentProviderSchema = z.object({
   enabled: z.boolean().default(true),
   id: z.string().min(1).max(120).nullable().optional(),
   instructions: z.string().max(1200).nullable().optional().or(z.literal("")),
@@ -160,13 +160,13 @@ const orvitechPaymentProviderSchema = z.object({
   webhookUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
 });
 
-const orvitechSalesPlanSchema = z.object({
+const nexTechSalesPlanSchema = z.object({
   checkoutMessage: z.string().max(1200).nullable().optional().or(z.literal("")),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   durationDays: z.number().int().min(1).max(3650).nullable().optional(),
   enabled: z.boolean().default(true),
   imageUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
-  moduleIds: z.array(devModuleIdSchema).default([ORVITECH_SALES_MODULE_ID]),
+  moduleIds: z.array(devModuleIdSchema).default([NEX_TECH_SALES_MODULE_ID]),
   name: z.string().min(2).max(100),
   priceCents: z.number().int().min(0).max(100000000)
 });
@@ -183,7 +183,7 @@ const productPlanSchema = z.object({
   priceText: z.string().max(80).default("")
 });
 
-const orvitechProductSchema = z.object({
+const nexTechProductSchema = z.object({
   active: z.boolean().default(true),
   additionalInfo: z.string().max(3000).nullable().optional().or(z.literal("")),
   bannerUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
@@ -210,12 +210,12 @@ const orvitechProductSchema = z.object({
   toggles: z.record(z.boolean()).optional(),
   warnings: z.string().max(3000).nullable().optional().or(z.literal(""))
 });
-const orvitechProductBannerUpload = raw({
+const nexTechProductBannerUpload = raw({
   limit: "10mb",
   type: ["image/gif", "image/jpeg", "image/png", "image/webp"]
 });
 
-const orvitechSaleSchema = z.object({
+const nexTechSaleSchema = z.object({
   amountCents: z.number().int().min(0).max(100000000).nullable().optional(),
   buyerId: z.string().regex(/^\d{5,32}$/),
   buyerName: z.string().max(100).nullable().optional().or(z.literal("")),
@@ -226,7 +226,7 @@ const orvitechSaleSchema = z.object({
   status: z.enum(["pending", "paid", "cancelled", "refunded"]).default("pending")
 });
 
-const orvitechSaleStatusSchema = z.object({
+const nexTechSaleStatusSchema = z.object({
   status: z.enum(["pending", "paid", "cancelled", "refunded"])
 });
 
@@ -1072,7 +1072,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/config", async (req, res, next) =>
   }
 });
 
-devRouter.get("/bots/:botId/guilds/:guildId/orvitech-sales", async (req, res, next) => {
+devRouter.get("/bots/:botId/guilds/:guildId/nex-tech-sales", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1082,13 +1082,13 @@ devRouter.get("/bots/:botId/guilds/:guildId/orvitech-sales", async (req, res, ne
       });
     }
 
-    return res.json(await getOrvitechSalesDashboard(req.params.botId, req.params.guildId, auth.user.discordId));
+    return res.json(await getNexTechSalesDashboard(req.params.botId, req.params.guildId, auth.user.discordId));
   } catch (error) {
     return next(error);
   }
 });
 
-devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/settings", async (req, res, next) => {
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/settings", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1098,15 +1098,15 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/settings", async (r
       });
     }
 
-    const input = orvitechSalesSettingsSchema.parse(req.body ?? {});
-    const settings = await saveOrvitechSalesSettings(req.params.botId, req.params.guildId, {
+    const input = nexTechSalesSettingsSchema.parse(req.body ?? {});
+    const settings = await saveNexTechSalesSettings(req.params.botId, req.params.guildId, {
       ...input,
       panelImageUrl: input.panelImageUrl === "" ? null : input.panelImageUrl,
       termsUrl: input.termsUrl === "" ? null : input.termsUrl,
       thumbnailUrl: input.thumbnailUrl === "" ? null : input.thumbnailUrl
     }, auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_settings", "Configuracao do sistema de vendas OrviTech atualizada.", {
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_settings", "Configuracao do sistema de vendas Nex Tech atualizada.", {
       enabled: settings.enabled
     });
 
@@ -1118,7 +1118,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/settings", async (r
   }
 });
 
-devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/providers", async (req, res, next) => {
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/providers", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1128,8 +1128,8 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/providers", async (r
       });
     }
 
-    const input = orvitechPaymentProviderSchema.parse(req.body ?? {});
-    const settings = await saveOrvitechPaymentProvider(req.params.botId, req.params.guildId, {
+    const input = nexTechPaymentProviderSchema.parse(req.body ?? {});
+    const settings = await saveNexTechPaymentProvider(req.params.botId, req.params.guildId, {
       ...input,
       instructions: input.instructions === "" ? null : input.instructions,
       publicKey: input.publicKey === "" ? null : input.publicKey,
@@ -1138,7 +1138,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/providers", async (r
       webhookUrl: input.webhookUrl === "" ? null : input.webhookUrl
     }, auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_provider", `Pagamento OrviTech salvo: ${input.label}.`, {
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_provider", `Pagamento Nex Tech salvo: ${input.label}.`, {
       provider: input.provider
     });
 
@@ -1150,7 +1150,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/providers", async (r
   }
 });
 
-devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/providers/:providerId", async (req, res, next) => {
+devRouter.delete("/bots/:botId/guilds/:guildId/nex-tech-sales/providers/:providerId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1160,9 +1160,9 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/providers/:provide
       });
     }
 
-    const settings = await deleteOrvitechPaymentProvider(req.params.botId, req.params.guildId, req.params.providerId, auth.user.discordId);
+    const settings = await deleteNexTechPaymentProvider(req.params.botId, req.params.guildId, req.params.providerId, auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_provider_delete", "Pagamento OrviTech removido.");
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_provider_delete", "Pagamento Nex Tech removido.");
 
     return res.json({
       settings: toSettingsDto(settings)
@@ -1172,7 +1172,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/providers/:provide
   }
 });
 
-devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products", async (req, res, next) => {
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/products", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1182,10 +1182,10 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products", async (re
       });
     }
 
-    const input = orvitechProductSchema.parse(req.body ?? {});
-    const product = await saveOrvitechProduct(req.params.botId, req.params.guildId, null, sanitizeOrvitechProductInput(input), auth.user.discordId);
+    const input = nexTechProductSchema.parse(req.body ?? {});
+    const product = await saveNexTechProduct(req.params.botId, req.params.guildId, null, sanitizeNexTechProductInput(input), auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_product_create", `Produto OrviTech criado: ${input.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_product_create", `Produto Nex Tech criado: ${input.name}.`);
 
     return res.status(201).json({
       product: product ? toProductDto(product) : null
@@ -1195,7 +1195,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products", async (re
   }
 });
 
-devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId", async (req, res, next) => {
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/products/:productId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1205,8 +1205,8 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId
       });
     }
 
-    const input = orvitechProductSchema.parse(req.body ?? {});
-    const product = await saveOrvitechProduct(req.params.botId, req.params.guildId, req.params.productId, sanitizeOrvitechProductInput(input), auth.user.discordId);
+    const input = nexTechProductSchema.parse(req.body ?? {});
+    const product = await saveNexTechProduct(req.params.botId, req.params.guildId, req.params.productId, sanitizeNexTechProductInput(input), auth.user.discordId);
 
     if (!product) {
       return res.status(404).json({
@@ -1214,7 +1214,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_product_update", `Produto OrviTech atualizado: ${input.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_product_update", `Produto Nex Tech atualizado: ${input.name}.`);
 
     return res.json({
       product: toProductDto(product)
@@ -1224,7 +1224,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId
   }
 });
 
-devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/duplicate", async (req, res, next) => {
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/products/:productId/duplicate", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1234,7 +1234,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/
       });
     }
 
-    const product = await duplicateOrvitechProduct(req.params.botId, req.params.guildId, req.params.productId, auth.user.discordId);
+    const product = await duplicateNexTechProduct(req.params.botId, req.params.guildId, req.params.productId, auth.user.discordId);
 
     if (!product) {
       return res.status(404).json({
@@ -1242,7 +1242,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_product_duplicate", `Produto OrviTech duplicado: ${product.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_product_duplicate", `Produto Nex Tech duplicado: ${product.name}.`);
 
     return res.status(201).json({
       product: toProductDto(product)
@@ -1252,7 +1252,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/
   }
 });
 
-devRouter.put("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/banner", orvitechProductBannerUpload, async (req, res, next) => {
+devRouter.put("/bots/:botId/guilds/:guildId/nex-tech-sales/products/:productId/banner", nexTechProductBannerUpload, async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1268,7 +1268,7 @@ devRouter.put("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/b
       });
     }
 
-    const product = await saveOrvitechProductBannerUpload({
+    const product = await saveNexTechProductBannerUpload({
       actorId: auth.user.discordId,
       botId: req.params.botId,
       buffer: req.body,
@@ -1283,7 +1283,7 @@ devRouter.put("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/b
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_product_banner", `Banner do produto OrviTech atualizado: ${product.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_product_banner", `Banner do produto Nex Tech atualizado: ${product.name}.`);
 
     return res.json({
       product: toProductDto(product)
@@ -1293,7 +1293,7 @@ devRouter.put("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId/b
   }
 });
 
-devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productId", async (req, res, next) => {
+devRouter.delete("/bots/:botId/guilds/:guildId/nex-tech-sales/products/:productId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1303,7 +1303,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productI
       });
     }
 
-    const product = await deleteOrvitechProduct(req.params.botId, req.params.guildId, req.params.productId, auth.user.discordId);
+    const product = await deleteNexTechProduct(req.params.botId, req.params.guildId, req.params.productId, auth.user.discordId);
 
     if (!product) {
       return res.status(404).json({
@@ -1311,7 +1311,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productI
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_product_delete", `Produto OrviTech removido: ${product.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_product_delete", `Produto Nex Tech removido: ${product.name}.`);
 
     return res.json({
       product: toProductDto(product)
@@ -1321,7 +1321,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/products/:productI
   }
 });
 
-devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/plans", async (req, res, next) => {
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/plans", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1331,15 +1331,15 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/plans", async (req, 
       });
     }
 
-    const input = orvitechSalesPlanSchema.parse(req.body ?? {});
-    const plan = await saveOrvitechSalesPlan(req.params.botId, req.params.guildId, null, {
+    const input = nexTechSalesPlanSchema.parse(req.body ?? {});
+    const plan = await saveNexTechSalesPlan(req.params.botId, req.params.guildId, null, {
       ...input,
       checkoutMessage: input.checkoutMessage === "" ? null : input.checkoutMessage,
       description: input.description === "" ? null : input.description,
       imageUrl: input.imageUrl === "" ? null : input.imageUrl
     }, auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_create", `Plano OrviTech criado: ${input.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_plan_create", `Plano Nex Tech criado: ${input.name}.`);
 
     return res.status(201).json({
       plan: plan ? toPlanDto(plan) : null
@@ -1349,7 +1349,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/plans", async (req, 
   }
 });
 
-devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", async (req, res, next) => {
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/plans/:planId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1359,8 +1359,8 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", asy
       });
     }
 
-    const input = orvitechSalesPlanSchema.parse(req.body ?? {});
-    const plan = await saveOrvitechSalesPlan(req.params.botId, req.params.guildId, req.params.planId, {
+    const input = nexTechSalesPlanSchema.parse(req.body ?? {});
+    const plan = await saveNexTechSalesPlan(req.params.botId, req.params.guildId, req.params.planId, {
       ...input,
       checkoutMessage: input.checkoutMessage === "" ? null : input.checkoutMessage,
       description: input.description === "" ? null : input.description,
@@ -1373,7 +1373,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", asy
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_update", `Plano OrviTech atualizado: ${input.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_plan_update", `Plano Nex Tech atualizado: ${input.name}.`);
 
     return res.json({
       plan: toPlanDto(plan)
@@ -1383,7 +1383,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", asy
   }
 });
 
-devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", async (req, res, next) => {
+devRouter.delete("/bots/:botId/guilds/:guildId/nex-tech-sales/plans/:planId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1393,7 +1393,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", as
       });
     }
 
-    const deleted = await deleteScopedOrvitechSalesPlan(req.params.botId, req.params.guildId, req.params.planId, auth.user.discordId);
+    const deleted = await deleteScopedNexTechSalesPlan(req.params.botId, req.params.guildId, req.params.planId, auth.user.discordId);
 
     if (!deleted) {
       return res.status(404).json({
@@ -1401,7 +1401,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", as
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_plan_delete", `Plano OrviTech removido: ${deleted.name}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_plan_delete", `Plano Nex Tech removido: ${deleted.name}.`);
 
     return res.json({
       plan: toPlanDto(deleted)
@@ -1411,7 +1411,7 @@ devRouter.delete("/bots/:botId/guilds/:guildId/orvitech-sales/plans/:planId", as
   }
 });
 
-devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/sales", async (req, res, next) => {
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/sales", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1421,15 +1421,15 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/sales", async (req, 
       });
     }
 
-    const input = orvitechSaleSchema.parse(req.body ?? {});
-    const sale = await saveOrvitechSale(req.params.botId, req.params.guildId, {
+    const input = nexTechSaleSchema.parse(req.body ?? {});
+    const sale = await saveNexTechSale(req.params.botId, req.params.guildId, {
       ...input,
       buyerName: input.buyerName === "" ? null : input.buyerName,
       externalReference: input.externalReference === "" ? null : input.externalReference,
       notes: input.notes === "" ? null : input.notes
     }, auth.user.discordId);
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_sale_create", `Venda OrviTech registrada para ${input.buyerId}.`, {
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_sale_create", `Venda Nex Tech registrada para ${input.buyerId}.`, {
       status: sale.status
     });
 
@@ -1441,7 +1441,7 @@ devRouter.post("/bots/:botId/guilds/:guildId/orvitech-sales/sales", async (req, 
   }
 });
 
-devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/sales/:saleId/status", async (req, res, next) => {
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/sales/:saleId/status", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
 
@@ -1451,8 +1451,8 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/sales/:saleId/statu
       });
     }
 
-    const input = orvitechSaleStatusSchema.parse(req.body ?? {});
-    const sale = await updateOrvitechSaleStatus(req.params.botId, req.params.guildId, req.params.saleId, input.status, auth.user.discordId);
+    const input = nexTechSaleStatusSchema.parse(req.body ?? {});
+    const sale = await updateNexTechSaleStatus(req.params.botId, req.params.guildId, req.params.saleId, input.status, auth.user.discordId);
 
     if (!sale) {
       return res.status(404).json({
@@ -1460,7 +1460,7 @@ devRouter.patch("/bots/:botId/guilds/:guildId/orvitech-sales/sales/:saleId/statu
       });
     }
 
-    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "orvitech_sales_status", `Venda OrviTech marcada como ${input.status}.`);
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "nexTech_sales_status", `Venda Nex Tech marcada como ${input.status}.`);
 
     return res.json({
       sale: toSaleDto(sale)
@@ -1518,7 +1518,7 @@ async function writeDevBotAudit(
   });
 }
 
-function sanitizeOrvitechProductInput(input: z.infer<typeof orvitechProductSchema>) {
+function sanitizeNexTechProductInput(input: z.infer<typeof nexTechProductSchema>) {
   return {
     ...input,
     additionalInfo: input.additionalInfo === "" ? null : input.additionalInfo,

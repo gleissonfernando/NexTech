@@ -392,7 +392,7 @@ export async function createWorkspaceBotCredential(workspaceId: string, input: B
     _id: randomUUID(),
     authTag: protectedToken.authTag,
     botClientId: input.botClientId,
-    botName: trimText(input.botName, 80) || "Bot Orvitek",
+    botName: trimText(input.botName, 80) || "Bot Nex Tech",
     createdAt: now,
     encryptedDataKey: protectedToken.encryptedDataKey,
     iv: protectedToken.iv,
