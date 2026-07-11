@@ -10,8 +10,10 @@ build
 !**/.env.example
 .env.local
 .env.*.local
-.orvitek-runtime-env.json
+.NexTechk-runtime-env.json
 .nex-tech-runtime-env.json
+.orvitek-runtime-env.json
+*-runtime-env.json
 coverage
 dev-logs
 logs

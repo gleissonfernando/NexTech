@@ -4,6 +4,8 @@ node_modules
 .env
 .env.*
 !.env.example
+*-runtime-env.json
+.orvitek-runtime-env.json
 README.md
 .DS_Store
 .vscode

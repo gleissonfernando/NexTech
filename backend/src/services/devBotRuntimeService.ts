@@ -50,6 +50,7 @@ const restartTimers = new Map<string, NodeJS.Timeout>();
 const moduleRestartTimers = new Map<string, NodeJS.Timeout>();
 let supervisorLeaseTimer: NodeJS.Timeout | null = null;
 let supervisorLeaseHeld = false;
+let supervisorLeaseLocalOnly = false;
 let supervisorLeaseErrors = 0;
 
 export async function startRegisteredDevBots() {
@@ -208,8 +209,12 @@ async function ensureDevBotSupervisorLease() {
 
   supervisorLeaseHeld = true;
   supervisorLeaseErrors = 0;
-  startDevBotSupervisorLeaseRenewal();
-  console.info(`[dev-bot] trava distribuida de supervisor adquirida por ${DEV_BOT_SUPERVISOR_INSTANCE_ID}.`);
+  if (!supervisorLeaseLocalOnly) {
+    startDevBotSupervisorLeaseRenewal();
+    console.info(`[dev-bot] trava distribuida de supervisor adquirida por ${DEV_BOT_SUPERVISOR_INSTANCE_ID}.`);
+  } else {
+    console.warn("[dev-bot] MongoDB bloqueou escritas; usando supervisor local para iniciar bots cadastrados nesta instancia.");
+  }
   return true;
 }
 
@@ -242,6 +247,10 @@ async function acquireDevBotSupervisorLease() {
     return lease?.instanceId === DEV_BOT_SUPERVISOR_INSTANCE_ID;
   } catch (error) {
     if (isDuplicateKeyError(error)) return false;
+    if (isMongoWriteBlockedError(error)) {
+      supervisorLeaseLocalOnly = true;
+      return true;
+    }
     console.error("[dev-bot] falha ao adquirir trava distribuida de supervisor:", readRuntimeError(error));
     return false;
   }
@@ -255,6 +264,7 @@ function startDevBotSupervisorLeaseRenewal() {
 
 async function renewDevBotSupervisorLease() {
   if (!supervisorLeaseHeld) return;
+  if (supervisorLeaseLocalOnly) return;
   const now = new Date();
 
   try {
@@ -300,7 +310,10 @@ async function releaseDevBotSupervisorLease() {
   supervisorLeaseTimer = null;
   const held = supervisorLeaseHeld;
   supervisorLeaseHeld = false;
+  const localOnly = supervisorLeaseLocalOnly;
+  supervisorLeaseLocalOnly = false;
   if (!held) return;
+  if (localOnly) return;
 
   const { serviceHeartbeats } = await getMongoCollections();
   await serviceHeartbeats.deleteOne({
@@ -313,6 +326,11 @@ async function releaseDevBotSupervisorLease() {
 
 function isDuplicateKeyError(error: unknown) {
   return typeof error === "object" && error !== null && (error as { code?: unknown }).code === 11000;
+}
+
+function isMongoWriteBlockedError(error: unknown) {
+  const message = readRuntimeError(error).toLowerCase();
+  return message.includes("over your space quota") || message.includes("writes are blocked");
 }
 
 function readRuntimeError(error: unknown) {

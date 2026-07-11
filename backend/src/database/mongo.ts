@@ -3593,13 +3593,16 @@ const globalForMongo = globalThis as unknown as {
 };
 
 function databaseNameFromUri(uri: string) {
-  try {
-    const url = new URL(uri);
-    const dbName = decodeURIComponent(url.pathname.replace(/^\/+/, "").split("/")[0] ?? "");
-    return dbName || "nex-tech";
-  } catch {
-    return "nex-tech";
-  }
+  const configuredName = process.env.MONGODB_DATABASE_NAME || process.env.MONGODB_DB_NAME;
+  const defaultName = "orvitek";
+  const legacyNames: Record<string, string> = {
+    ricardinho98: defaultName
+  };
+
+  const rawName = configuredName || uri.match(/^mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/i)?.[1] || "";
+  const dbName = decodeURIComponent(rawName.replace(/^\/+/, "").split("/")[0] ?? "");
+
+  return legacyNames[dbName] || dbName || defaultName;
 }
 
 function getMongoClient() {

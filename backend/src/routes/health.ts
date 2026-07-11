@@ -48,11 +48,14 @@ healthRouter.get("/bots", (_req, res) => {
 healthRouter.get("/servers", async (_req, res, next) => {
   try {
     const bots = await listDevBots();
-    const servers = [...new Map(bots.map((bot) => [bot.mainGuildId, {
+    const servers = [...new Map(bots.map((bot) => [bot.id, {
+      botId: bot.id,
+      botName: bot.name,
       iconUrl: bot.mainGuildIconUrl,
       id: bot.mainGuildId,
       memberCount: bot.mainGuildMemberCount,
-      name: bot.mainGuildName
+      name: bot.mainGuildName,
+      status: bot.status
     }])).values()];
     return res.json({ servers });
   } catch (error) {

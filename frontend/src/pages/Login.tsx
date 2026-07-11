@@ -37,10 +37,13 @@ type LoginProps = {
 };
 
 type PublicServer = {
+  botId?: string;
+  botName?: string;
   iconUrl: string | null;
   id: string;
   memberCount: number;
   name: string;
+  status?: string;
 };
 
 const reveal = {
@@ -664,11 +667,11 @@ function PublicServerMarquee({ servers }: { servers: PublicServer[] }) {
   const items = Array.from({ length: Math.max(1, Math.ceil(8 / servers.length)) }, () => servers).flat();
 
   return (
-    <section aria-label="Servidores conectados" className="relative overflow-hidden border-y border-[#FFD500]/15 bg-black/35 py-8">
+    <section aria-label="Bots cadastrados" className="relative overflow-hidden border-y border-[#FFD500]/15 bg-black/35 py-8">
       <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#0A0A0A] to-transparent sm:w-36" />
       <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#0A0A0A] to-transparent sm:w-36" />
       <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[.22em] text-[#FFD500]">
-        {servers.length} {servers.length === 1 ? "servidor conectado" : "servidores conectados à Nex Tech"}
+        {servers.length} {servers.length === 1 ? "bot cadastrado" : "bots cadastrados na Nex Tech"}
       </p>
       <div className="server-marquee-track flex w-max hover:[animation-play-state:paused]">
         <PublicServerGroup servers={items} />
@@ -682,12 +685,13 @@ function PublicServerGroup({ ariaHidden = false, servers }: { ariaHidden?: boole
   return (
     <div aria-hidden={ariaHidden || undefined} className="flex shrink-0 items-center gap-12 pr-12 sm:gap-16 sm:pr-16">
       {servers.map((server, index) => (
-        <div className="flex w-32 shrink-0 flex-col items-center text-center" key={`${server.id}-${index}`}>
+        <div className="flex w-36 shrink-0 flex-col items-center text-center" key={`${server.botId ?? server.id}-${index}`}>
           <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/35 bg-[#141414] shadow-[0_0_22px_rgba(255,213,0,.12)]">
             {server.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={server.iconUrl} /> : <Server aria-hidden="true" className="h-6 w-6 text-[#FFD500]" />}
           </div>
-          <p className="mt-3 w-full truncate text-sm font-semibold text-zinc-200" title={server.name}>{server.name}</p>
-          <p className="mt-1 text-xs font-medium text-[#FFD500]">{server.memberCount.toLocaleString("pt-BR")} membros</p>
+          <p className="mt-3 w-full truncate text-sm font-semibold text-zinc-200" title={server.botName ?? server.name}>{server.botName ?? server.name}</p>
+          <p className="mt-1 w-full truncate text-xs font-medium text-[#FFD500]" title={server.name}>{server.name}</p>
+          <p className="mt-1 text-[11px] font-medium text-zinc-400">{server.memberCount.toLocaleString("pt-BR")} membros</p>
         </div>
       ))}
     </div>

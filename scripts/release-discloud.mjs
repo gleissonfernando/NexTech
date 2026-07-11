@@ -72,7 +72,7 @@ console.log("[release] Status Discloud...");
 run("discloud", ["app", "status", appId]);
 
 console.log("[release] Health check...");
-const healthUrl = "https://nextech.discloud.app/health";
+const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
 console.log("[release] Concluido.");

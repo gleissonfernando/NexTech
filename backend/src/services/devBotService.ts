@@ -1410,18 +1410,26 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
     return getDevBot(botId);
   }
 
-  await devBots.updateOne(
-    {
-      _id: botId
-    },
-    {
-      $set: {
-        status,
-        statusMessage: safeStatusMessage,
-        updatedAt: new Date()
+  try {
+    await devBots.updateOne(
+      {
+        _id: botId
+      },
+      {
+        $set: {
+          status,
+          statusMessage: safeStatusMessage,
+          updatedAt: new Date()
+        }
       }
+    );
+  } catch (error) {
+    if (!isMongoWriteBlockedError(error)) {
+      throw error;
     }
-  );
+
+    console.warn(`[dev-bot:${botId}] MongoDB bloqueou escrita de status; mantendo processo em execucao sem persistir "${status}".`);
+  }
 
   const bot = await getDevBot(botId);
 
@@ -1509,18 +1517,26 @@ export async function syncDevBotProfile(
 
   const now = new Date();
 
-  await devBots.updateOne(
-    {
-      _id: botId
-    },
-    {
-      $set: {
-        name: username,
-        avatarUrl,
-        updatedAt: now
+  try {
+    await devBots.updateOne(
+      {
+        _id: botId
+      },
+      {
+        $set: {
+          name: username,
+          avatarUrl,
+          updatedAt: now
+        }
       }
+    );
+  } catch (error) {
+    if (!isMongoWriteBlockedError(error)) {
+      throw error;
     }
-  );
+
+    console.warn(`[dev-bot:${botId}] MongoDB bloqueou sincronizacao de perfil; mantendo runtime ativo.`);
+  }
 
   const updated = await devBots.findOne({ _id: botId });
   const dto = updated ? toDevBotDto(updated) : toDevBotDto({
@@ -1576,64 +1592,80 @@ export async function syncDevBotGuilds(botId: string, guilds: Array<{ id: string
   const uniqueGuilds = [...new Map(guilds.map((guild) => [guild.id, guild])).values()];
 
   if (uniqueGuilds.length) {
-    await Promise.all([
-      guildCollection.bulkWrite(
-        uniqueGuilds.map((guild) => ({
-          updateOne: {
-            filter: {
-              _id: guild.id
-            },
-            update: {
-              $set: {
-                name: guild.name,
-                botEnabled: true,
-                updatedAt: now
+    try {
+      await Promise.all([
+        guildCollection.bulkWrite(
+          uniqueGuilds.map((guild) => ({
+            updateOne: {
+              filter: {
+                _id: guild.id
               },
-              $setOnInsert: {
-                _id: guild.id,
-                icon: null,
-                ownerId: null,
-                createdAt: now
-              }
-            },
-            upsert: true
-          }
-        }))
-      ),
-      botGuildConfigs.bulkWrite(
-        uniqueGuilds.map((guild) => ({
-          updateOne: {
-            filter: {
-              botId,
-              guildId: guild.id
-            },
-            update: {
-              $set: {
-                guildName: guild.name,
-                updatedAt: now
+              update: {
+                $set: {
+                  name: guild.name,
+                  botEnabled: true,
+                  updatedAt: now
+                },
+                $setOnInsert: {
+                  _id: guild.id,
+                  icon: null,
+                  ownerId: null,
+                  createdAt: now
+                }
               },
-              $setOnInsert: {
-                _id: randomUUID(),
+              upsert: true
+            }
+          }))
+        ),
+        botGuildConfigs.bulkWrite(
+          uniqueGuilds.map((guild) => ({
+            updateOne: {
+              filter: {
                 botId,
-                guildId: guild.id,
-                modules: {},
-                createdAt: now
-              }
-            },
-            upsert: true
-          }
-        }))
-      )
-    ]);
+                guildId: guild.id
+              },
+              update: {
+                $set: {
+                  guildName: guild.name,
+                  updatedAt: now
+                },
+                $setOnInsert: {
+                  _id: randomUUID(),
+                  botId,
+                  guildId: guild.id,
+                  modules: {},
+                  createdAt: now
+                }
+              },
+              upsert: true
+            }
+          }))
+        )
+      ]);
+    } catch (error) {
+      if (!isMongoWriteBlockedError(error)) {
+        throw error;
+      }
+
+      console.warn(`[dev-bot:${botId}] MongoDB bloqueou sincronizacao de guilds; mantendo runtime ativo com dados ja persistidos.`);
+    }
   }
 
   const retainedGuildIds = [...new Set([bot.mainGuildId, ...uniqueGuilds.map((guild) => guild.id)])];
-  await botGuildConfigs.deleteMany({
-    botId,
-    guildId: {
-      $nin: retainedGuildIds
+  try {
+    await botGuildConfigs.deleteMany({
+      botId,
+      guildId: {
+        $nin: retainedGuildIds
+      }
+    });
+  } catch (error) {
+    if (!isMongoWriteBlockedError(error)) {
+      throw error;
     }
-  });
+
+    console.warn(`[dev-bot:${botId}] MongoDB bloqueou limpeza de guilds antigas; mantendo runtime ativo.`);
+  }
 }
 
 export async function listBotGuildConfigs(botId: string) {
@@ -2849,6 +2881,11 @@ function createDevBotError(message: string, statusCode: number) {
 
 function isDevBotError(error: unknown): error is Error & { statusCode: number } {
   return error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number";
+}
+
+function isMongoWriteBlockedError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("over your space quota") || message.includes("writes are blocked");
 }
 
 function normalizeDiscordBotToken(value: string) {
