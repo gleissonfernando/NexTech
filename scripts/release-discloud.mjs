@@ -52,6 +52,8 @@ function hasChanges() {
 
 console.log("[release] Validando build e deploy-check...");
 run("npm", ["run", "deploy:check"]);
+console.log("[release] Preparando pacote runtime para Discloud...");
+run("node", ["scripts/prepare-discloud-package.mjs"]);
 
 if (hasChanges()) {
   console.log("[release] Criando commit...");
@@ -66,7 +68,7 @@ console.log(`[release] Enviando para origin/${branch}...`);
 run("git", ["push", "origin", branch]);
 
 console.log(`[release] Atualizando Discloud app ${appId}...`);
-run("discloud", ["app", "commit", appId]);
+run("discloud", ["app", "commit", appId], { cwd: path.join(root, ".discloud-package") });
 
 console.log("[release] Status Discloud...");
 run("discloud", ["app", "status", appId]);
