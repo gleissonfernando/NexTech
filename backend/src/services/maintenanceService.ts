@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getMongoCollections, type MongoMaintenanceLog, type MongoMaintenanceState } from "../database/mongo";
 import { emitRealtime, emitRealtimeToRoom, botRealtimeRoom } from "../realtime/events";
+import { listDevBotRuntimeConfigs, setDevBotDesiredOnline } from "./devBotService";
+import { stopSelectedDevBotProcesses } from "./devBotRuntimeService";
 
 export type MaintenanceAction = "enabled" | "disabled" | "manual_alert";
 
@@ -84,6 +86,9 @@ export async function setMaintenanceMode(input: {
   const message = input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.";
 
   await persistState(next);
+  if (input.active) {
+    await stopBotsForMaintenance();
+  }
   await appendMaintenanceLog({
     action,
     active: next.active,
@@ -95,6 +100,26 @@ export async function setMaintenanceMode(input: {
   const dto = await getMaintenanceState();
   emitMaintenanceUpdate(dto, input.active ? "maintenance:started" : "maintenance:ended");
   return dto;
+}
+
+async function stopBotsForMaintenance() {
+  const bots = await listDevBotRuntimeConfigs().catch((error) => {
+    console.warn("[maintenance] nao foi possivel listar bots para desligamento:", error instanceof Error ? error.message : error);
+    return [];
+  });
+  const botIds = bots.map((bot) => bot.id);
+
+  if (!botIds.length) {
+    return;
+  }
+
+  await Promise.allSettled(
+    botIds.map((botId) => setDevBotDesiredOnline(botId, false))
+  );
+  await stopSelectedDevBotProcesses(botIds, {
+    message: "Bot desligado pelo modo de manutencao global.",
+    notifyBot: true
+  });
 }
 
 export async function sendMaintenanceManualAlert(input: {

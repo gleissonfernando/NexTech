@@ -68,7 +68,7 @@ botDevApiRouter.get("/runtime/modules", async (req, res, next) => {
     }
 
     return res.json({
-      active: permissions.status !== "error" && permissions.status !== "invalid_token",
+      active: permissions.desiredOnline && permissions.status !== "error" && permissions.status !== "invalid_token",
       botId,
       checkedAt: new Date().toISOString(),
       enabledModules: permissions.enabledModules,

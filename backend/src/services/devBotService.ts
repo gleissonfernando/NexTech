@@ -1400,11 +1400,16 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
     },
     {
       projection: {
+        desiredOnline: 1,
         status: 1,
         statusMessage: 1
       }
     }
   );
+
+  if (status === "online" && current?.desiredOnline === false) {
+    return getDevBot(botId);
+  }
 
   if (current?.status === status && current.statusMessage === safeStatusMessage) {
     return getDevBot(botId);
