@@ -29,6 +29,9 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 backend/prisma/migrations/dev.db
 backend/uploads/*
+!backend/uploads/brand/
+backend/uploads/brand/*
+!backend/uploads/brand/pagseguro-logo.png
 !backend/uploads/welcome/
 backend/uploads/welcome/*
 !backend/uploads/welcome/.gitkeep
