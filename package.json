@@ -30,6 +30,7 @@
     "deploy:check:fast": "node scripts/deploy-check.mjs fast",
     "deploy:check:env": "npm run build && node scripts/deploy-check.mjs env",
     "audit:dev-bots": "npm run build --workspace backend && node scripts/audit-dev-bots.mjs",
+    "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",
     "release:discloud": "node scripts/release-discloud.mjs",
     "load:test": "node scripts/load-test.mjs",
     "validate:anti-spam": "node scripts/validate-anti-spam.cjs",

@@ -25,6 +25,7 @@ import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { resolveTranscriptUrl } from "./transcriptUrlService";
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
@@ -491,13 +492,6 @@ function formatElapsed(start: Date, end: Date) {
     hours ? `${hours}h` : null,
     minutes ? `${minutes}min` : null
   ].filter(Boolean).join(" ") || "menos de 1min";
-}
-
-function resolveTranscriptUrl(transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>) {
-  if (transcript.publicUrl) return transcript.publicUrl;
-  if (transcript.transcript.publicUrl) return transcript.transcript.publicUrl;
-  const origin = (env.FRONTEND_URL || (env.BACKEND_API_URL ? new URL(env.BACKEND_API_URL).origin : "") || "https://nextech.discloud.app").replace(/\/+$/, "");
-  return `${origin}${transcript.transcript.htmlPath}`;
 }
 
 function toSelectOption(option: TicketPanelOption) {

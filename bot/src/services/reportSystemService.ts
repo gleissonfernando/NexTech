@@ -31,6 +31,7 @@ import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/select
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { resolveTranscriptUrl } from "./transcriptUrlService";
 
 const PREFIX = "iab_admin";
 const PANEL_SELECT_ID = "iab_report_select";
@@ -858,13 +859,6 @@ function formatElapsed(start: Date, end: Date) {
     hours ? `${hours}h` : null,
     minutes ? `${minutes}min` : null
   ].filter(Boolean).join(" ") || "menos de 1min";
-}
-
-function resolveTranscriptUrl(transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>) {
-  if (transcript.publicUrl) return transcript.publicUrl;
-  if (transcript.transcript.publicUrl) return transcript.transcript.publicUrl;
-  const origin = (env.FRONTEND_URL || (env.BACKEND_API_URL ? new URL(env.BACKEND_API_URL).origin : "") || "https://nextech.discloud.app").replace(/\/+$/, "");
-  return `${origin}${transcript.transcript.htmlPath}`;
 }
 
 async function logIabEvent(context: BotContext, guild: Guild, settings: GuildSettings, topic: ReportTopic, action: string, message: string, actorId: string | null) {

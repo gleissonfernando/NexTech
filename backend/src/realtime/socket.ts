@@ -32,7 +32,7 @@ const recentBotOfflineSignals = new Map<string, number>();
 export function createSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL || true,
+      origin: env.APP_BASE_URL,
       credentials: true
     }
   });

@@ -1,4 +1,5 @@
 import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { APP_BASE_URL, buildTranscriptUrl } from "../config/appUrl";
 import { env } from "../config/env";
 import { getMongoCollections, type MongoTicket, type MongoTranscript, type MongoTranscriptAccessLog, type MongoTranscriptMessage } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -9,11 +10,6 @@ const HASH_DIGEST = "sha256";
 const DEFAULT_TEMP_PASSWORD_TTL_HOURS = 72;
 const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
-const LEGACY_TRANSCRIPT_ORIGINS = new Set([
-  "https://orvitek-bots.discloud.app",
-  "http://orvitek-bots.discloud.app"
-]);
-const CURRENT_TRANSCRIPT_ORIGIN = "https://nextech.discloud.app";
 
 export type TranscriptInput = {
   botId?: string | null;
@@ -86,7 +82,7 @@ export async function createTranscript(input: TranscriptInput) {
     txtPath: `/transcripts/${encodeURIComponent(transcriptId)}/export.txt`,
     htmlContent: "",
     textContent: "",
-    websiteUrl: publicUrl,
+    websiteUrl: null,
     status: input.status ?? (input.isPartial ? "Incompleto" : "Finalizado"),
     createdAt: toDate(input.createdAt) ?? now,
     closedAt: toDate(input.closedAt) ?? now,
@@ -154,12 +150,11 @@ export async function createTranscript(input: TranscriptInput) {
 }
 
 export function buildTranscriptPublicUrl(transcriptId: string) {
-  const baseUrl = resolveTranscriptPublicBaseUrl();
-  return `${baseUrl}/transcripts/${encodeURIComponent(transcriptId)}`;
+  return buildTranscriptUrl(transcriptId);
 }
 
 export function resolveTranscriptPublicBaseUrl() {
-  const configured = env.TRANSCRIPT_BASE_URL || env.SITE_ORIGIN || env.FRONTEND_URL || env.BACKEND_URL;
+  const configured = APP_BASE_URL;
 
   if (configured) {
     if (env.NODE_ENV === "production" && isLocalUrl(configured)) {
@@ -176,22 +171,11 @@ export function resolveTranscriptPublicBaseUrl() {
 }
 
 function normalizeTranscriptPublicBaseUrl(value: string) {
-  const normalized = value.replace(/\/+$/, "");
-  return LEGACY_TRANSCRIPT_ORIGINS.has(normalized) ? CURRENT_TRANSCRIPT_ORIGIN : normalized;
+  return value.replace(/\/+$/, "");
 }
 
-function normalizeTranscriptPublicUrl(value: string | null | undefined, transcriptId: string) {
-  if (!value) {
-    return buildTranscriptPublicUrl(transcriptId);
-  }
-
-  try {
-    const url = new URL(value);
-    const origin = normalizeTranscriptPublicBaseUrl(url.origin);
-    return `${origin}${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return buildTranscriptPublicUrl(transcriptId);
-  }
+function normalizeTranscriptPublicUrl(_value: string | null | undefined, transcriptId: string) {
+  return buildTranscriptPublicUrl(transcriptId);
 }
 
 export function getTranscriptStartupStatus() {

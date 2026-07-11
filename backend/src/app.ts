@@ -23,7 +23,7 @@ export const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
 const frontendIndexPath = path.join(frontendDistPath, "index.html");
 const uploadsPath = path.resolve(__dirname, "../uploads");
-const corsOrigin = env.FRONTEND_URL || true;
+const corsOrigin = env.APP_BASE_URL;
 
 ensureFrontendBuild();
 

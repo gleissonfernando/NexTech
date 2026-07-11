@@ -28,6 +28,7 @@ import { env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext, GuildSettings, ReportSystemSettings } from "../types";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { resolveTranscriptUrl } from "./transcriptUrlService";
 
 type Competence = "iab" | "conselho" | "hcmd" | "comissario";
 type Draft = {
@@ -329,7 +330,7 @@ async function closeSubpoena(interaction: ButtonInteraction, context: BotContext
   await sendCompetenceLog(interaction.guild!, settings, state, interaction.user.id, [
     `Ação: **Intimação ${status.toLowerCase()}**`,
     `Canal apagado: <#${channelId}>`,
-    transcript ? `Transcript: ${subpoenaTranscriptUrl(transcript)}` : "Transcript: falhou"
+    transcript ? `Transcript: ${resolveTranscriptUrl(transcript)}` : "Transcript: falhou"
   ].join("\n"));
   cases.delete(channelId);
   await interaction.editReply(transcript ? `Intimação ${status.toLowerCase()}. Transcript gerado e canal será apagado.` : `Intimação ${status.toLowerCase()}. Não consegui gerar o transcript, mas o canal será apagado.`);
@@ -483,7 +484,7 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
   const channelId = settings.reportSystem.transcriptChannelId ?? logFor(settings.reportSystem, state.finalCompetence);
   const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
   if (!channel?.isTextBased() || !("send" in channel)) return;
-  const url = subpoenaTranscriptUrl(transcript);
+  const url = resolveTranscriptUrl(transcript);
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
   const participants = new Set(messages.map((message) => message.authorId).filter(Boolean));
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt;
@@ -629,7 +630,6 @@ function canUseCommand(member: GuildMember, report: ReportSystemSettings) { if (
 function canManageCompetence(member: GuildMember, report: ReportSystemSettings, competence: Competence) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; return hasAnyRole(member, orgRoleIds(report, competence)); }
 function canManageCase(member: GuildMember, report: ReportSystemSettings, state: CaseState) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; return canManageCompetence(member, report, state.finalCompetence); }
 function subpoenaStaffDisplayName(report: ReportSystemSettings, state: CaseState) { return state.finalCompetence === "iab" ? report.anonymousInvestigatorName || "Equipe IAB" : `Equipe ${COMPETENCE_LABEL[state.finalCompetence]}`; }
-function subpoenaTranscriptUrl(transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>) { return transcript.publicUrl || transcript.transcript.publicUrl || `${env.FRONTEND_URL || "https://nextech.discloud.app"}/transcripts/${transcript.transcript.id}`; }
 function orgRoleIds(report: ReportSystemSettings, competence: Competence) { const fallback = competence === "iab" ? [...report.viewRoleIds, ...report.replyRoleIds, ...report.adminRoleIds] : []; return [...new Set((competence === "iab" ? report.iabRoleIds : competence === "conselho" ? report.conselhoRoleIds : competence === "hcmd" ? report.hcmdRoleIds : report.comissarioRoleIds).concat(fallback))]; }
 function allOrgRoleIds(report: ReportSystemSettings) { return [...new Set([...orgRoleIds(report, "iab"), ...orgRoleIds(report, "conselho"), ...orgRoleIds(report, "hcmd"), ...orgRoleIds(report, "comissario")])]; }
 function categoryFor(report: ReportSystemSettings, competence: Competence) { return competence === "iab" ? report.iabCategoryId ?? report.categoryId : competence === "conselho" ? report.conselhoCategoryId ?? report.categoryId : competence === "hcmd" ? report.hcmdCategoryId ?? report.categoryId : report.comissarioCategoryId ?? report.categoryId; }

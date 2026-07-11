@@ -142,6 +142,10 @@ function isLocalUrl(value: string) {
   }
 }
 
+function isOfficialProductionUrl(value: string) {
+  return normalizeUrl(value) === productionPublicUrl;
+}
+
 applyPackedEnv();
 
 const configuredSiteOrigin =
@@ -192,6 +196,7 @@ const envSchema = z
     PLAN_TOKEN_KEY_VERSION: z.string().optional().default("v1"),
     MASTER_TRANSCRIPT_PASSWORD: z.string().default("NPD Lua Bennett"),
     MASTER_TRANSCRIPT_PASSWORD_HASH: z.string().optional().default(""),
+    APP_BASE_URL: envOptionalUrl("APP_BASE_URL"),
     TRANSCRIPT_BASE_URL: envOptionalUrl("TRANSCRIPT_BASE_URL"),
     TRANSCRIPT_PORT: z.coerce.number().int().min(1).max(65535).optional(),
     DISCORD_BOT_TOKEN: z.string().default(""),
@@ -236,10 +241,18 @@ const envSchema = z
   })
   .transform((value) => {
     const mongoUrl = productionSafeUrl(cleanEnvValue(value.MONGODB_URI)) ?? "";
-    const configuredOrigin = cleanEnvValue(value.SITE_ORIGIN) ?? cleanEnvValue(value.FRONTEND_URL) ?? cleanEnvValue(value.BACKEND_URL);
-    const oauthFrontendUrl = configuredOrigin && !isLocalUrl(configuredOrigin)
-      ? normalizeUrl(configuredOrigin)
-      : productionSiteOrigin;
+    const configuredAppBaseUrl =
+      cleanEnvValue(value.TRANSCRIPT_BASE_URL)
+      ?? cleanEnvValue(value.APP_BASE_URL)
+      ?? cleanEnvValue(value.SITE_ORIGIN)
+      ?? cleanEnvValue(value.FRONTEND_URL)
+      ?? cleanEnvValue(value.BACKEND_URL);
+    const appBaseUrl = isProduction
+      ? productionPublicUrl
+      : configuredAppBaseUrl && !isLocalUrl(configuredAppBaseUrl)
+      ? normalizeUrl(configuredAppBaseUrl)
+      : productionPublicUrl;
+    const oauthFrontendUrl = appBaseUrl;
     const oauthCallbackUrl = oauthFrontendUrl ? discordRedirectUriFor(oauthFrontendUrl) : "";
     const configuredDiscordRedirect =
       cleanEnvValue(value.DISCORD_REDIRECT_URI)
@@ -249,7 +262,7 @@ const envSchema = z
       ? normalizeUrl(configuredDiscordRedirect)
       : "";
     const effectiveDiscordRedirect = oauthCallbackUrl || normalizedDiscordRedirect;
-    const configuredTranscriptBaseUrl = cleanEnvValue(value.TRANSCRIPT_BASE_URL);
+    const configuredTranscriptBaseUrl = cleanEnvValue(value.TRANSCRIPT_BASE_URL) ?? cleanEnvValue(value.APP_BASE_URL);
     const normalizedTranscriptBaseUrl = configuredTranscriptBaseUrl && (!isProduction || !isLocalUrl(configuredTranscriptBaseUrl))
       ? normalizeUrl(configuredTranscriptBaseUrl)
       : "";
@@ -262,9 +275,14 @@ const envSchema = z
       console.warn("[env] TRANSCRIPT_BASE_URL local ignorado em producao. Configure um dominio publico para transcripts.");
     }
 
+    if (isProduction && configuredAppBaseUrl && !isOfficialProductionUrl(configuredAppBaseUrl)) {
+      console.warn("[env] URL publica configurada difere da URL oficial; usando https://nextech.discloud.app.");
+    }
+
     return {
       ...value,
       MONGODB_URI: mongoUrl,
+      APP_BASE_URL: appBaseUrl,
       SITE_ORIGIN: oauthFrontendUrl,
       FRONTEND_URL: oauthFrontendUrl,
       BACKEND_URL: oauthFrontendUrl,
@@ -292,6 +310,7 @@ process.env.MONGODB_URI = env.MONGODB_URI;
 process.env.SITE_ORIGIN = env.SITE_ORIGIN;
 process.env.FRONTEND_URL = env.FRONTEND_URL;
 process.env.BACKEND_URL = env.BACKEND_URL;
+process.env.APP_BASE_URL = env.APP_BASE_URL;
 process.env.TRANSCRIPT_BASE_URL = env.TRANSCRIPT_BASE_URL;
 process.env.TRANSCRIPT_PORT = String(env.TRANSCRIPT_PORT);
 process.env.DISCORD_REDIRECT_URI = env.DISCORD_REDIRECT_URI;
@@ -303,6 +322,7 @@ if (env.NODE_ENV === "production") {
   const missing = [
     ["SITE_ORIGIN", env.SITE_ORIGIN],
     ["FRONTEND_URL", env.FRONTEND_URL],
+    ["APP_BASE_URL", env.APP_BASE_URL],
     ["TRANSCRIPT_BASE_URL", env.TRANSCRIPT_BASE_URL],
     ["MONGODB_URI", env.MONGODB_URI],
     ["BOT_API_TOKEN", cleanEnvValue(env.BOT_API_TOKEN)],

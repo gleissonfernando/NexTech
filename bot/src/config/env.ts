@@ -104,9 +104,15 @@ function isLocalUrl(value: string) {
 applyPackedEnv();
 
 const configuredFrontendUrl = cleanEnvValue(process.env.FRONTEND_URL);
+const configuredAppBaseUrl =
+  cleanEnvValue(process.env.TRANSCRIPT_BASE_URL)
+  ?? cleanEnvValue(process.env.APP_BASE_URL)
+  ?? configuredFrontendUrl;
 const productionFrontendUrl =
-  configuredFrontendUrl && !isLocalUrl(configuredFrontendUrl)
-    ? normalizeUrl(configuredFrontendUrl)
+  isProduction
+    ? productionPublicUrl
+    : configuredAppBaseUrl && !isLocalUrl(configuredAppBaseUrl)
+    ? normalizeUrl(configuredAppBaseUrl)
     : productionPublicUrl;
 const defaultBackendUrl = productionFrontendUrl;
 const defaultBackendApiUrl = defaultBackendUrl ? `${defaultBackendUrl}/api` : "";
@@ -120,6 +126,8 @@ const envSchema = z
     DASHBOARD_GUILD_IDS: z.string().optional().default(""),
     BOT_MAIN_GUILD_ID: z.string().optional().default(""),
     BOT_COMMAND_GUILD_IDS: z.string().optional().default(""),
+    APP_BASE_URL: envUrl("APP_BASE_URL", productionFrontendUrl),
+    TRANSCRIPT_BASE_URL: envUrl("TRANSCRIPT_BASE_URL", productionFrontendUrl),
     FRONTEND_URL: envUrl("FRONTEND_URL", productionFrontendUrl),
     BACKEND_API_URL: envUrl("BACKEND_API_URL", defaultBackendApiUrl),
     BACKEND_SOCKET_URL: envUrl("BACKEND_SOCKET_URL", defaultBackendUrl),
