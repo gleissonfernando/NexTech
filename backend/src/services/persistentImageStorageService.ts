@@ -61,7 +61,44 @@ export async function savePersistentImage(input: {
   };
 
   const { persistentImages } = await getMongoCollections();
-  await persistentImages.insertOne(doc);
+  const previousId = parsePersistentImageId(input.previousUrl ?? "");
+  let previousDeletedBeforeInsert = false;
+
+  try {
+    await persistentImages.insertOne(doc);
+  } catch (error) {
+    if (!isMongoStorageQuotaError(error)) {
+      throw error;
+    }
+
+    await deletePersistentImageHistory({
+      botId: doc.botId,
+      guildId: doc.guildId,
+      imageType: doc.imageType,
+      keepIds: previousId ? [previousId] : [],
+      moduleId: doc.moduleId
+    });
+
+    try {
+      await persistentImages.insertOne(doc);
+    } catch (retryError) {
+      if (!previousId || !isMongoStorageQuotaError(retryError)) {
+        throw retryError;
+      }
+
+      await persistentImages.deleteOne({ _id: previousId, guildId: doc.guildId });
+      previousDeletedBeforeInsert = true;
+      await persistentImages.insertOne(doc);
+    }
+  }
+
+  await deletePersistentImageHistory({
+    botId: doc.botId,
+    guildId: doc.guildId,
+    imageType: doc.imageType,
+    keepIds: [doc._id],
+    moduleId: doc.moduleId
+  }).catch(() => null);
 
   await createLog({
     botId: input.botId ?? null,
@@ -73,6 +110,7 @@ export async function savePersistentImage(input: {
       moduleId: input.moduleId,
       newUrl: publicUrl,
       oldUrl: input.previousUrl ?? null,
+      previousDeletedBeforeInsert,
       size: input.buffer.length,
       storageProvider: "mongodb",
       status: "uploaded"
@@ -116,6 +154,23 @@ export async function removePersistentImageByUrl(input: {
     type: "panel_image.removed",
     userId: input.actorId
   }).catch(() => null);
+}
+
+async function deletePersistentImageHistory(input: {
+  botId: string | null;
+  guildId: string;
+  imageType: string;
+  keepIds: string[];
+  moduleId: string;
+}) {
+  const { persistentImages } = await getMongoCollections();
+  await persistentImages.deleteMany({
+    botId: input.botId,
+    guildId: input.guildId,
+    imageType: input.imageType,
+    moduleId: input.moduleId,
+    ...(input.keepIds.length ? { _id: { $nin: input.keepIds } } : {})
+  });
 }
 
 export async function migrateLocalImageToPersistent(input: {
@@ -187,6 +242,11 @@ function parsePersistentImageId(value: string) {
   if (!normalized) return null;
   const match = normalized.match(/\/api\/persistent-images\/([a-f0-9-]{36})(?:[?#].*)?$/i);
   return match?.[1] ?? null;
+}
+
+function isMongoStorageQuotaError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("over your space quota") || message.includes("writes are blocked on your cluster");
 }
 
 function resolveLocalUploadPath(localUrl: string, uploadsRoot: string) {
