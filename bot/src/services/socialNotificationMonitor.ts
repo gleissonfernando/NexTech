@@ -16,11 +16,13 @@ let serviceStarted = false;
 const TWITCH_BATCH_SIZE = 100;
 const NOTIFICATION_CONCURRENCY = 25;
 const LIVE_PREVIEW_REFRESH_DELAY_MS = 30_000;
+const LOCAL_LIVE_CLAIM_TTL_MS = 6 * 60 * 60_000;
 const LIVE_PANEL_BRAND = "vortex lives";
 const TWITCH_LOOKUP_PREFIX = {
   login: "login:",
   user: "user:"
 } as const;
+const localLiveStartClaims = new Map<string, number>();
 
 export function startSocialNotificationMonitor(client: Client, api: ApiClient) {
   if (serviceStarted) {
@@ -169,6 +171,10 @@ async function processNotification(
     return;
   }
 
+  if (!(await claimLiveStart(api, notification, stream))) {
+    return;
+  }
+
   const messageId = await sendLiveAlert(client, notification, stream);
 
   await api.updateTwitchNotificationState(notification.id, {
@@ -184,6 +190,31 @@ async function processNotification(
     title: stream.title,
     url: `https://www.twitch.tv/${stream.userLogin}`
   });
+}
+
+async function claimLiveStart(api: ApiClient, notification: SocialNotification, stream: TwitchStream) {
+  const claimKey = `${notification.id}:${stream.id}`;
+
+  try {
+    const result = await api.claimTwitchLiveStart(notification.id, {
+      lastLiveAt: stream.startedAt,
+      streamId: stream.id
+    });
+
+    if (result.claimed) {
+      rememberLocalLiveStartClaim(claimKey);
+    }
+
+    return result.claimed;
+  } catch (error) {
+    if (hasLocalLiveStartClaim(claimKey)) {
+      return false;
+    }
+
+    rememberLocalLiveStartClaim(claimKey);
+    console.warn("[social-notifications] usando trava local para live Twitch:", error instanceof Error ? error.message : error);
+    return true;
+  }
 }
 
 function notificationLookupKey(notification: SocialNotification) {
@@ -312,6 +343,32 @@ function buildLivePreviewImageUrl(thumbnailUrl: string | null | undefined, chann
 
 function appendCacheBuster(url: string) {
   return `${url}${url.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+}
+
+function hasLocalLiveStartClaim(key: string) {
+  const claimedAt = localLiveStartClaims.get(key);
+
+  if (!claimedAt) {
+    return false;
+  }
+
+  if (Date.now() - claimedAt > LOCAL_LIVE_CLAIM_TTL_MS) {
+    localLiveStartClaims.delete(key);
+    return false;
+  }
+
+  return true;
+}
+
+function rememberLocalLiveStartClaim(key: string) {
+  const now = Date.now();
+  localLiveStartClaims.set(key, now);
+
+  for (const [claimKey, claimedAt] of localLiveStartClaims) {
+    if (now - claimedAt > LOCAL_LIVE_CLAIM_TTL_MS) {
+      localLiveStartClaims.delete(claimKey);
+    }
+  }
 }
 
 function formatMention(notification: SocialNotification): { content: string | null; allowedMentions: MessageMentionOptions } {

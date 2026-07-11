@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Request } from "express";
 import { requireAuth, requireBot } from "../middleware/auth";
 import {
+  claimTwitchLiveStart,
   createServiceError,
   createTwitchNotification,
   deleteTwitchNotification,
@@ -50,6 +51,11 @@ const stateSchema = z.object({
   lastStreamId: z.string().optional().nullable(),
   lastMessageId: z.string().optional().nullable(),
   twitchAvatar: z.string().optional().nullable()
+});
+
+const claimStartSchema = z.object({
+  lastLiveAt: z.string().min(1),
+  streamId: z.string().min(1)
 });
 
 const listQuerySchema = z.object({
@@ -228,6 +234,19 @@ socialNotificationsRouter.patch("/bot/twitch/:id/state", requireBot, async (req,
     return res.json({
       notification
     });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+socialNotificationsRouter.post("/bot/twitch/:id/claim-start", requireBot, async (req, res, next) => {
+  try {
+    const id = getRequiredParam(req.params.id, "id");
+    const botId = await resolveRequestBotId(req);
+    const input = claimStartSchema.parse(req.body);
+    const result = await claimTwitchLiveStart(id, input, botId);
+
+    return res.json(result);
   } catch (error) {
     return handleRouteError(error, res, next);
   }

@@ -59,6 +59,11 @@ export type UpdateTwitchNotificationStateInput = {
   twitchAvatar?: string | null;
 };
 
+export type ClaimTwitchLiveStartInput = {
+  lastLiveAt: string;
+  streamId: string;
+};
+
 type ServiceError = Error & {
   statusCode?: number;
 };
@@ -406,6 +411,81 @@ export async function updateTwitchNotificationState(
     };
     memoryNotifications.set(id, updated);
     return updated;
+  }
+}
+
+export async function claimTwitchLiveStart(
+  id: string,
+  input: ClaimTwitchLiveStartInput,
+  botId?: string | null
+) {
+  const normalizedBotId = normalizeBotId(botId);
+  const now = new Date();
+
+  try {
+    const { socialNotifications } = await getMongoCollections();
+    const scopeQuery = notificationBotScopeQuery(normalizedBotId);
+    const updated = await socialNotifications.findOneAndUpdate(
+      {
+        _id: id,
+        platform: "twitch",
+        $and: [
+          scopeQuery,
+          {
+            $or: [
+              { lastStreamId: { $ne: input.streamId } },
+              { lastStreamId: null },
+              { lastStreamId: { $exists: false } }
+            ]
+          }
+        ]
+      },
+      {
+        $set: {
+          isLive: true,
+          lastLiveAt: new Date(input.lastLiveAt),
+          lastStreamId: input.streamId,
+          updatedAt: now
+        },
+        $unset: {
+          lastMessageId: ""
+        }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    return {
+      claimed: Boolean(updated),
+      notification: updated ? toDto(updated) : null
+    };
+  } catch {
+    const current = memoryNotifications.get(id);
+    if (!current || normalizeBotId(current.botId) !== normalizedBotId) {
+      throw createServiceError("Notificacao nao encontrada.", 404);
+    }
+
+    if (current.lastStreamId === input.streamId) {
+      return {
+        claimed: false,
+        notification: current
+      };
+    }
+
+    const updated: SocialNotificationDto = {
+      ...current,
+      isLive: true,
+      lastLiveAt: input.lastLiveAt,
+      lastMessageId: null,
+      lastStreamId: input.streamId,
+      updatedAt: now.toISOString()
+    };
+    memoryNotifications.set(id, updated);
+    return {
+      claimed: true,
+      notification: updated
+    };
   }
 }
 

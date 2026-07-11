@@ -2878,6 +2878,15 @@ export class ApiClient {
     return data.notification;
   }
 
+  async claimTwitchLiveStart(id: string, input: { lastLiveAt: string; streamId: string }) {
+    const { data } = await this.http.post<{ claimed: boolean; notification: SocialNotification | null }>(
+      `/social-notifications/bot/twitch/${id}/claim-start`,
+      input,
+      { timeout: 8_000 }
+    );
+    return data;
+  }
+
   async getActiveKickNotifications() {
     const { data } = await this.http.get<{ notifications: KickNotification[] }>("/kick-integration/bot/active", {
       timeout: 30_000
@@ -2904,6 +2913,21 @@ export class ApiClient {
   }) {
     const { data } = await this.http.patch<{ notification: KickNotification }>(`/kick-integration/bot/${id}/state`, input);
     return data.notification;
+  }
+
+  async claimKickLiveStart(id: string, input: {
+    kickAvatar?: string | null;
+    kickCategory?: string | null;
+    lastLiveAt: string;
+    peakViewers?: number | null;
+    streamId: string;
+  }) {
+    const { data } = await this.http.post<{ claimed: boolean; notification: KickNotification | null }>(
+      `/kick-integration/bot/${id}/claim-start`,
+      input,
+      { timeout: 8_000 }
+    );
+    return data;
   }
 
   async getActiveClipConfigs() {

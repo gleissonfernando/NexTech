@@ -81,6 +81,14 @@ export type UpdateKickNotificationStateInput = {
   peakViewers?: number | null;
 };
 
+export type ClaimKickLiveStartInput = {
+  kickAvatar?: string | null;
+  kickCategory?: string | null;
+  lastLiveAt: string;
+  peakViewers?: number | null;
+  streamId: string;
+};
+
 export type KickStatusPayload = {
   apiConfigured: boolean;
   apiStatus: "not_configured" | "ok" | "error";
@@ -637,6 +645,87 @@ export async function updateKickNotificationState(
   }
 }
 
+export async function claimKickLiveStart(
+  id: string,
+  input: ClaimKickLiveStartInput,
+  botId?: string | null
+) {
+  const normalizedBotId = normalizeBotId(botId);
+  const now = new Date();
+
+  try {
+    const { socialNotifications } = await getMongoCollections();
+    const scopeQuery = notificationBotScopeQuery(normalizedBotId);
+    const updated = await socialNotifications.findOneAndUpdate(
+      {
+        _id: id,
+        platform: "kick",
+        $and: [
+          scopeQuery,
+          {
+            $or: [
+              { lastStreamId: { $ne: input.streamId } },
+              { lastStreamId: null },
+              { lastStreamId: { $exists: false } }
+            ]
+          }
+        ]
+      },
+      {
+        $set: {
+          isLive: true,
+          kickAvatar: input.kickAvatar ?? null,
+          kickCategory: input.kickCategory ?? null,
+          lastLiveAt: new Date(input.lastLiveAt),
+          lastStreamId: input.streamId,
+          peakViewers: input.peakViewers ?? null,
+          updatedAt: now
+        },
+        $unset: {
+          lastMessageId: ""
+        }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    return {
+      claimed: Boolean(updated),
+      notification: updated ? toDto(updated) : null
+    };
+  } catch {
+    const current = memoryNotifications.get(id);
+    if (!current || normalizeBotId(current.botId) !== normalizedBotId) {
+      throw createServiceError("Notificacao Kick nao encontrada.", 404);
+    }
+
+    if (current.lastStreamId === input.streamId) {
+      return {
+        claimed: false,
+        notification: current
+      };
+    }
+
+    const updated: KickNotificationDto = {
+      ...current,
+      isLive: true,
+      kickAvatar: input.kickAvatar ?? current.kickAvatar,
+      kickCategory: input.kickCategory ?? current.kickCategory,
+      lastLiveAt: input.lastLiveAt,
+      lastMessageId: null,
+      lastStreamId: input.streamId,
+      peakViewers: input.peakViewers ?? current.peakViewers,
+      updatedAt: now.toISOString()
+    };
+    memoryNotifications.set(id, updated);
+    return {
+      claimed: true,
+      notification: updated
+    };
+  }
+}
+
 export async function sendKickNotificationTest(
   guildId: string,
   id: string,
@@ -789,6 +878,22 @@ export async function processKickWebhookStatus(
         title: payload.title ?? null,
         userId
       });
+      const claim = await claimKickLiveStart(notification.id, {
+        kickAvatar: fallbackStream.avatar ?? notification.kickAvatar ?? null,
+        kickCategory: fallbackStream.categoryName,
+        lastLiveAt: fallbackStream.startedAt,
+        peakViewers: Math.max(notification.peakViewers ?? 0, fallbackStream.viewerCount),
+        streamId: fallbackStream.id
+      }, notification.botId);
+
+      if (!claim.claimed) {
+        results.push({
+          notificationId: notification.id,
+          state: "ignored"
+        });
+        continue;
+      }
+
       const messageId = await sendInputForNotification(notification, fallbackStream);
       await updateKickNotificationState(notification.id, {
         isLive: true,

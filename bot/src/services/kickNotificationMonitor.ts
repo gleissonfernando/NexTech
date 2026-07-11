@@ -14,7 +14,9 @@ let running = false;
 let serviceStarted = false;
 const NOTIFICATION_CONCURRENCY = 25;
 const LIVE_PREVIEW_REFRESH_DELAY_MS = 30_000;
+const LOCAL_LIVE_CLAIM_TTL_MS = 6 * 60 * 60_000;
 const DEFAULT_EMBED_COLOR = "#53FC18";
+const localLiveStartClaims = new Map<string, number>();
 
 export function startKickNotificationMonitor(client: Client, api: ApiClient) {
   if (serviceStarted) {
@@ -104,6 +106,10 @@ async function processNotification(
     return;
   }
 
+  if (!(await claimLiveStart(api, notification, stream, peakViewers))) {
+    return;
+  }
+
   const messageId = await sendLiveAlert(client, notification, stream);
 
   await api.updateKickNotificationState(notification.id, {
@@ -122,6 +128,34 @@ async function processNotification(
     title: stream.title,
     url: stream.url
   });
+}
+
+async function claimLiveStart(api: ApiClient, notification: KickNotification, stream: KickStream, peakViewers: number) {
+  const claimKey = `${notification.id}:${stream.id}`;
+
+  try {
+    const result = await api.claimKickLiveStart(notification.id, {
+      kickAvatar: stream.avatar ?? notification.kickAvatar ?? null,
+      kickCategory: stream.categoryName,
+      lastLiveAt: stream.startedAt,
+      peakViewers,
+      streamId: stream.id
+    });
+
+    if (result.claimed) {
+      rememberLocalLiveStartClaim(claimKey);
+    }
+
+    return result.claimed;
+  } catch (error) {
+    if (hasLocalLiveStartClaim(claimKey)) {
+      return false;
+    }
+
+    rememberLocalLiveStartClaim(claimKey);
+    console.warn("[kick-integration] usando trava local para live Kick:", error instanceof Error ? error.message : error);
+    return true;
+  }
 }
 
 async function sendLiveAlert(client: Client, notification: KickNotification, stream: KickStream) {
@@ -352,6 +386,32 @@ function normalizeEmbedColor(value?: string | null) {
 
 function appendCacheBuster(url: string) {
   return `${url}${url.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+}
+
+function hasLocalLiveStartClaim(key: string) {
+  const claimedAt = localLiveStartClaims.get(key);
+
+  if (!claimedAt) {
+    return false;
+  }
+
+  if (Date.now() - claimedAt > LOCAL_LIVE_CLAIM_TTL_MS) {
+    localLiveStartClaims.delete(key);
+    return false;
+  }
+
+  return true;
+}
+
+function rememberLocalLiveStartClaim(key: string) {
+  const now = Date.now();
+  localLiveStartClaims.set(key, now);
+
+  for (const [claimKey, claimedAt] of localLiveStartClaims) {
+    if (now - claimedAt > LOCAL_LIVE_CLAIM_TTL_MS) {
+      localLiveStartClaims.delete(claimKey);
+    }
+  }
 }
 
 function formatDateTime(value: Date) {

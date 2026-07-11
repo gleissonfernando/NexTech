@@ -6,6 +6,7 @@ import { canManageDashboardGuild } from "../services/dashboardGuildAccessService
 import { canReadDevBotModule, canUseDevBotModule, getDevBotToken } from "../services/devBotService";
 import { isGuildTextChannel } from "../services/discordOptionsService";
 import {
+  claimKickLiveStart,
   createKickNotification,
   createServiceError,
   deleteKickNotification,
@@ -69,6 +70,14 @@ const stateSchema = z.object({
   peakViewers: z.number().optional().nullable()
 });
 
+const claimStartSchema = z.object({
+  kickAvatar: z.string().optional().nullable(),
+  kickCategory: z.string().optional().nullable(),
+  lastLiveAt: z.string().min(1),
+  peakViewers: z.number().optional().nullable(),
+  streamId: z.string().min(1)
+});
+
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -121,6 +130,19 @@ kickNotificationsRouter.patch("/bot/:id/state", requireBot, async (req, res, nex
     return res.json({
       notification
     });
+  } catch (error) {
+    return handleRouteError(error, res, next);
+  }
+});
+
+kickNotificationsRouter.post("/bot/:id/claim-start", requireBot, async (req, res, next) => {
+  try {
+    const id = getRequiredParam(req.params.id, "id");
+    const botId = await resolveRequestBotId(req);
+    const input = claimStartSchema.parse(req.body);
+    const result = await claimKickLiveStart(id, input, botId);
+
+    return res.json(result);
   } catch (error) {
     return handleRouteError(error, res, next);
   }
