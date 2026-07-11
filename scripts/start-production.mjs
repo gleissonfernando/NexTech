@@ -31,6 +31,10 @@ function loadRuntimeConfigFile() {
         continue;
       }
 
+      if (key === "MONGODB_URI" && process.env.NEX_TECH_ALLOW_RUNTIME_MONGODB_URI !== "true") {
+        continue;
+      }
+
       process.env[key] = typeof value === "string" ? value : String(value);
     }
   } catch (error) {
