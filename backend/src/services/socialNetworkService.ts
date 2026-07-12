@@ -1083,6 +1083,10 @@ function toPanelDto(panel: MongoSocialPanel, memberCount: number): SocialPanelDt
 }
 
 async function writeSocialAudit(type: string, action: string, member: SocialMemberDto, userId?: string | null) {
+  if (!member.botId) {
+    return;
+  }
+
   await createLog({
     botId: member.botId,
     guildId: member.guildId,
@@ -1100,6 +1104,10 @@ async function writeSocialAudit(type: string, action: string, member: SocialMemb
 }
 
 async function writePanelAudit(type: string, action: string, panel: SocialPanelDto, userId?: string | null) {
+  if (!panel.botId) {
+    return;
+  }
+
   await createLog({
     botId: panel.botId,
     guildId: panel.guildId,

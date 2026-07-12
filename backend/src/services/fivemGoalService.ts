@@ -579,10 +579,12 @@ export async function createFivemGoalSubmission(input: {
   };
   await fivemGoalSubmissions.insertOne(doc);
   await writeFivemGoalLog({ action: status === "approved" ? "submission.auto_approved" : "submission.created", botId: normalizedBotId, details: { proofUrl: doc.proofUrl, value: doc.value }, guildId: input.guildId, metaId: meta.id, userId: input.userId });
-  emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", {
-    botId: normalizedBotId,
-    guildId: input.guildId
-  });
+  if (normalizedBotId) {
+    emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", {
+      botId: normalizedBotId,
+      guildId: input.guildId
+    });
+  }
   return toSubmissionDto(doc);
 }
 
@@ -628,7 +630,9 @@ export async function moderateFivemGoalSubmission(guildId: string, botId: string
   );
   if (!row) return null;
   await writeFivemGoalLog({ action: status === "approved" ? "submission.approved" : "submission.refused", botId: normalizedBotId, details: { refusalReason: update.refusalReason ?? null, value: row.value }, guildId, metaId: row.metaId, userId: actorId });
-  emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId });
+  if (normalizedBotId) {
+    emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId });
+  }
   return toSubmissionDto(row);
 }
 

@@ -1554,7 +1554,7 @@ function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId:
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!guildId) {
+    if (!guildId || !botId) {
       setLogs([]);
       return;
     }

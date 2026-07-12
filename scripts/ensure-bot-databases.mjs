@@ -1,6 +1,6 @@
-import path from "node:path";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
+import path from "node:path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 applyPackedEnv();
@@ -84,7 +84,7 @@ try {
 }
 
 function botDatabaseName(botId) {
-  const prefix = (process.env.BOT_DATABASE_PREFIX || "orvitek_bot").trim() || "orvitek_bot";
+  const prefix = (process.env.BOT_DATABASE_PREFIX || "NexTech_bot").trim() || "NexTech_bot";
   const normalizedBotId = botId.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
 
   if (!normalizedBotId) {
@@ -96,7 +96,7 @@ function botDatabaseName(botId) {
 
 function databaseNameFromUri(uri) {
   const configuredName = process.env.MONGODB_DATABASE_NAME || process.env.MONGODB_DB_NAME;
-  const defaultName = "orvitek";
+  const defaultName = "NexTech";
   const legacyNames = {
     ricardinho98: defaultName
   };

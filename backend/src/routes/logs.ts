@@ -37,6 +37,12 @@ logsRouter.get("/", async (req, res) => {
   const guildId = typeof req.query.guildId === "string" ? req.query.guildId : undefined;
   const botId = await resolveRequestBotId(req);
 
+  if (!guildId || !botId) {
+    return res.status(400).json({
+      message: "guildId e botId sao obrigatorios para consultar logs."
+    });
+  }
+
   if (isBotRequest(req)) {
     const logs = filterLogs(await listLogs(guildId, botId), req.query);
     return res.json({
@@ -46,7 +52,7 @@ logsRouter.get("/", async (req, res) => {
 
   const user = res.locals.dashboardAuth.user;
 
-  if (guildId && !(await canReadScopedGuild(req, guildId, botId))) {
+  if (!(await canReadScopedGuild(req, guildId, botId))) {
     return res.status(403).json({
       message: "Servidor nao encontrado ou sem o bot."
     });
@@ -56,7 +62,7 @@ logsRouter.get("/", async (req, res) => {
   const allowedGuildIds = getAccessibleGuildIds(user);
 
   return res.json({
-    logs: guildId ? logs : logs.filter((log) => allowedGuildIds.has(log.guildId))
+    logs: allowedGuildIds.has(guildId) ? logs : []
   });
 });
 
@@ -96,6 +102,12 @@ logsRouter.post("/", async (req, res, next) => {
   try {
     const input = logSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
+
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio para registrar logs."
+      });
+    }
 
     if (isBotRequest(req)) {
       const moduleId = runtimeModuleIdForLogType(input.type);

@@ -1026,7 +1026,7 @@ export function DevPanel({
       <div className="space-y-7">
         <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
         {message ? (
-          <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
+          <div className="rounded-lg border border-[#FFEA70]/20 bg-[#FFD500]/[0.07] px-3 py-2 text-sm font-medium text-[#FFEA70] shadow-[0_0_18px_rgba(255,213,0,0.08)]">
             {message}
           </div>
         ) : null}
@@ -1905,21 +1905,21 @@ function BotGlobalSelect({
   }, [bots, query]);
 
   return (
-    <Card className={`relative overflow-visible border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)] hover:translate-y-0 ${open ? "z-[120]" : "z-0"}`}>
-      <CardContent className="overflow-visible p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <Card className={`relative overflow-visible border-[#FFD500]/15 bg-zinc-950/55 shadow-[0_0_20px_rgba(255,213,0,0.05)] hover:translate-y-0 ${open ? "z-[120]" : "z-0"}`}>
+      <CardContent className="overflow-visible p-3 sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-bold text-white">Selecionar Bot</p>
-          <p className="mt-1 text-xs font-medium text-zinc-300">Tudo nesta aba DEV carrega e salva apenas para o bot selecionado.</p>
+          <p className="text-sm font-semibold text-white">Selecionar Bot</p>
+          <p className="mt-1 text-xs font-medium text-zinc-500">Tudo nesta aba DEV carrega e salva apenas para o bot selecionado.</p>
         </div>
         <div className="relative w-full lg:w-[420px]">
           <button
-            className="flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border border-[#FFD500]/20 bg-black/55 px-3 py-2 text-left shadow-inner transition duration-300 hover:border-[#FFEA70]/40 hover:bg-[#FFD500]/10"
+            className="flex min-h-[52px] w-full items-center justify-between gap-3 rounded-lg border border-[#FFD500]/15 bg-black/45 px-3 py-2 text-left shadow-inner transition duration-300 hover:border-[#FFEA70]/35 hover:bg-[#FFD500]/[0.07]"
             onClick={() => setOpen((current) => !current)}
             type="button"
           >
             <span className="flex min-w-0 items-center gap-3">
-              <Avatar className="h-10 w-10 rounded-xl border border-zinc-700" fallback={selectedBot?.name ?? "Bot"} src={selectedBot?.avatarUrl} />
+              <Avatar className="h-9 w-9 rounded-lg border border-zinc-700" fallback={selectedBot?.name ?? "Bot"} src={selectedBot?.avatarUrl} />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-bold text-white">{selectedBot?.name ?? "Selecione um bot"}</span>
                 <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-zinc-300">
@@ -2052,6 +2052,7 @@ function BotModuleWorkspace({
     ]
   }, modules, true);
   const activeSecurityCount = securityModules.filter((module) => enabledSet.has(module.id)).length;
+  const moduleSections = moduleDashboardSections(filteredModules, categories);
 
   useEffect(() => {
     setFavoriteIds(readFavoriteModules(bot.id));
@@ -2101,20 +2102,22 @@ function BotModuleWorkspace({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-5 p-5 sm:p-6">
+      <CardContent className="space-y-6 p-5 sm:p-6">
         <style>
           {`@keyframes bot-card-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }`}
         </style>
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <BotMenuStatCard icon={CheckCircle2} label="Módulos ativos" tone="success" value={`${activeModules.length}/${modules.length}`} />
-          <BotMenuStatCard icon={ShieldCheck} label="Protecoes ativas" tone="purple" value={String(activeSecurityCount)} />
-          <BotMenuStatCard icon={SlidersHorizontal} label="Precisam configuração" tone="warning" value={String(inactiveCount)} />
-          <BotMenuStatCard icon={Power} label="Bot online" tone={isBotRunningStatus(bot.status) ? "success" : "muted"} value={isBotRunningStatus(bot.status) ? "100%" : "0%"} />
-        </section>
+        <BotMenuSummary
+          metrics={[
+            { icon: CheckCircle2, label: "Módulos ativos", tone: "success", value: `${activeModules.length}/${modules.length}` },
+            { icon: ShieldCheck, label: "Protecoes ativas", tone: "gold", value: String(activeSecurityCount) },
+            { emphasized: true, icon: SlidersHorizontal, label: "Precisam configuração", tone: "warning", value: String(inactiveCount) },
+            { icon: Power, label: "Bot online", tone: isBotRunningStatus(bot.status) ? "success" : "muted", value: isBotRunningStatus(bot.status) ? "100%" : "0%" }
+          ]}
+        />
 
-        <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="min-w-0 rounded-lg border border-[#FFD500]/15 bg-black/35 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur">
-            <div className="mb-3 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="min-w-0 self-start rounded-lg border border-[#FFD500]/15 bg-black/35 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur xl:sticky xl:top-4">
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/55 p-3">
               <Avatar className="h-10 w-10 rounded-lg border border-[#FFD500]/25" fallback={bot.name} src={bot.avatarUrl} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-white">{bot.name}</p>
@@ -2160,8 +2163,8 @@ function BotModuleWorkspace({
             </nav>
           </aside>
 
-          <section className="min-w-0 space-y-4">
-            <div className="rounded-lg border border-[#FFD500]/15 bg-black/25 p-4 backdrop-blur">
+          <section className="min-w-0 space-y-5">
+            <div className="rounded-lg border border-[#FFD500]/15 bg-black/20 p-4 backdrop-blur">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h3 className="text-base font-bold text-white">
@@ -2193,18 +2196,31 @@ function BotModuleWorkspace({
             ) : null}
 
             {activeMenuId === "database-maintenance" && !normalizedQuery ? null : filteredModules.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                {filteredModules.map((module, index) => (
-                  <ModuleDashboardCard
-                    enabled={enabledSet.has(module.id)}
-                    favorite={favoriteSet.has(module.id)}
-                    index={index}
-                    key={module.id}
-                    module={module}
-                    onToggle={onToggle}
-                    onToggleFavorite={toggleFavorite}
-                    status={bot.status}
-                  />
+              <div className="space-y-7">
+                {moduleSections.map((section) => (
+                  <section className="scroll-mt-6 space-y-3" id={`bot-menu-section-${section.id}`} key={section.id}>
+                    <div className="flex flex-col gap-2 border-b border-zinc-800/80 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                      <div className="min-w-0">
+                        <h4 className="truncate text-sm font-bold uppercase tracking-[0.14em] text-[#FFEA70]" title={section.label}>{section.label}</h4>
+                        {section.description ? <p className="mt-1 line-clamp-1 text-xs font-medium text-zinc-500" title={section.description}>{section.description}</p> : null}
+                      </div>
+                      <Badge variant="muted">{section.modules.filter((module) => enabledSet.has(module.id)).length}/{section.modules.length} ativos</Badge>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                      {section.modules.map((module, index) => (
+                        <ModuleDashboardCard
+                          enabled={enabledSet.has(module.id)}
+                          favorite={favoriteSet.has(module.id)}
+                          index={index}
+                          key={module.id}
+                          module={module}
+                          onToggle={onToggle}
+                          onToggleFavorite={toggleFavorite}
+                          status={bot.status}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             ) : (
@@ -2508,35 +2524,40 @@ function DatabaseMaintenancePanel({ bot, guilds }: { bot: DevBot; guilds: Dashbo
   );
 }
 
-function BotMenuStatCard({
-  icon: Icon,
-  label,
-  tone,
-  value
+function BotMenuSummary({
+  metrics
 }: {
-  icon: typeof Bot;
-  label: string;
-  tone: "success" | "purple" | "warning" | "muted";
-  value: string;
+  metrics: Array<{
+    emphasized?: boolean;
+    icon: typeof Bot;
+    label: string;
+    tone: "success" | "gold" | "warning" | "muted";
+    value: string;
+  }>;
 }) {
   const toneClass = {
+    gold: "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]",
     muted: "border-zinc-700 bg-zinc-900 text-zinc-300",
-    purple: "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]",
     success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
     warning: "border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
-  }[tone];
+  };
 
   return (
-    <div className="group rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_16px_38px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-0.5 hover:border-[#FFD500]/35 hover:bg-zinc-950 hover:shadow-[0_0_28px_rgba(255,213,0,0.10)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${toneClass}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <span className="h-2 w-2 rounded-full bg-[#FFEA70] opacity-50 transition group-hover:opacity-100" />
+    <section className="rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.18)]">
+      <div className="grid divide-y divide-zinc-800/80 md:grid-cols-4 md:divide-x md:divide-y-0">
+        {metrics.map(({ emphasized, icon: Icon, label, tone, value }) => (
+          <div className={["flex min-h-[96px] items-center gap-3 px-3 py-3", emphasized ? "rounded-md bg-yellow-500/[0.06]" : ""].join(" ")} key={label}>
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${toneClass[tone]}`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className={["text-2xl font-bold", emphasized ? "text-yellow-100" : "text-white"].join(" ")}>{value}</p>
+              <p className={["mt-1 truncate text-xs font-semibold uppercase tracking-[0.14em]", emphasized ? "text-yellow-200" : "text-zinc-500"].join(" ")} title={label}>{label}</p>
+            </div>
+          </div>
+        ))}
       </div>
-      <p className="mt-4 text-2xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-    </div>
+    </section>
   );
 }
 
@@ -2555,13 +2576,17 @@ function BotMenuCategoryButton({
   onClick: () => void;
   total: number;
 }) {
+  const inactive = count === 0 && !active;
+
   return (
     <button
       className={[
         "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
         active
           ? "bg-[#FFD500]/18 text-white ring-1 ring-[#FFEA70]/30 shadow-[0_0_22px_rgba(255,213,0,0.13)]"
-          : "text-zinc-400 hover:bg-zinc-900/80 hover:text-white"
+          : inactive
+            ? "text-zinc-500 opacity-70 hover:bg-zinc-900/55 hover:text-zinc-300 hover:opacity-100"
+            : "text-zinc-400 hover:bg-zinc-900/80 hover:text-white"
       ].join(" ")}
       onClick={onClick}
       title={`${label}: ${count}/${total} ativos`}
@@ -2571,7 +2596,7 @@ function BotMenuCategoryButton({
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="rounded-full border border-zinc-800 bg-black/35 px-2 py-0.5 text-xs text-zinc-300">{total ? count : 0}</span>
+      <span className={["rounded-full border px-2 py-0.5 text-xs", inactive ? "border-zinc-900 bg-black/20 text-zinc-600" : "border-zinc-800 bg-black/35 text-zinc-300"].join(" ")}>{total ? count : 0}</span>
     </button>
   );
 }
@@ -2595,21 +2620,35 @@ function ModuleDashboardCard({
 }) {
   const Icon = iconForModule(module.id);
   const moduleStatus = moduleCardStatus(enabled, status);
+  const cardClassName = [
+    "group relative flex min-h-[212px] flex-col overflow-hidden rounded-lg border p-4 shadow-[0_18px_44px_rgba(0,0,0,0.22)] backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:border-[#FFD500]/45 hover:bg-zinc-950 hover:shadow-[0_0_30px_rgba(255,213,0,0.12)]",
+    enabled
+      ? "border-emerald-500/25 bg-[linear-gradient(135deg,rgba(16,38,31,0.56),rgba(9,9,11,0.88))] ring-1 ring-emerald-400/10"
+      : "border-zinc-800/95 bg-zinc-950/58"
+  ].join(" ");
+  const statusPillClassName = [
+    "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-bold",
+    enabled
+      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+      : isBotErrorStatus(status)
+        ? "border-red-400/30 bg-red-500/10 text-red-200"
+        : "border-zinc-800 bg-black/25 text-zinc-400"
+  ].join(" ");
 
   return (
     <div
-      className="group relative min-h-[184px] overflow-hidden rounded-lg border border-zinc-800/95 bg-zinc-950/75 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur transition duration-300 hover:-translate-y-1 hover:scale-[1.015] hover:border-[#FFD500]/45 hover:bg-zinc-950 hover:shadow-[0_0_34px_rgba(255,213,0,0.14)]"
+      className={cardClassName}
       style={{ animation: `bot-card-in 280ms ease-out ${Math.min(index, 10) * 22}ms both` }}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#FFEA70]/50 to-transparent opacity-0 transition group-hover:opacity-100" />
+      <div className={["pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent transition", enabled ? "via-emerald-300/55 opacity-100" : "via-[#FFEA70]/50 opacity-0 group-hover:opacity-100"].join(" ")} />
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 text-[#FFEA70] shadow-[0_0_24px_rgba(255,213,0,0.10)]">
+        <div className={["flex min-w-0 items-start gap-3", enabled ? "" : "opacity-75"].join(" ")}>
+          <div className={["flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border shadow-[0_0_24px_rgba(255,213,0,0.10)]", enabled ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200" : "border-[#FFD500]/20 bg-[#FFD500]/[0.07] text-[#FFEA70]"].join(" ")}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <h3 className="truncate text-sm font-bold text-white" title={module.label}>{module.label}</h3>
-            <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-zinc-500">{moduleDescription(module.id)}</p>
+            <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-zinc-500" title={moduleDescription(module.id)}>{moduleDescription(module.id)}</p>
           </div>
         </div>
         <button
@@ -2622,10 +2661,10 @@ function ModuleDashboardCard({
         </button>
       </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-zinc-900 pt-4">
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-600">Status</p>
-          <p className={`mt-1 flex items-center gap-2 text-sm font-semibold ${moduleStatus.className}`}>
+          <p className={statusPillClassName}>
             <span className={`h-2.5 w-2.5 rounded-full ${moduleStatus.dotClassName}`} />
             {moduleStatus.label}
           </p>
@@ -2633,7 +2672,7 @@ function ModuleDashboardCard({
         <Switch checked={enabled} className="shrink-0" onCheckedChange={(checked) => onToggle(module.id, checked)} title={enabled ? "Desativar módulo" : "Ativar módulo"} />
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2 border-t border-zinc-900/90 pt-4">
         <button
           className="flex h-9 min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 text-xs font-bold text-[#FFEA70] transition hover:border-[#FFEA70]/45 hover:bg-[#FFD500]/18"
           onClick={() => onToggle(module.id, !enabled)}
@@ -2752,15 +2791,17 @@ const defaultProductForm: SaveNexTechProductPayload = {
       priceText: "R$ 30,00/mes"
     },
     lifetime: {
-      benefits: ["Acesso permanente", "Sem mensalidade", "Atualizacoes vitalicias", "Suporte"],
+      benefits: ["Licenca permanente", "Atualizacoes futuras", "Hospedagem gratuita por 1 mes", "Suporte prioritario", "Atendimento 24 horas"],
       buttonColor: "#9333ea",
       buttonText: "Vitalicio",
-      description: "Acesso permanente sem mensalidade.",
+      description: "Licenca permanente do modulo. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
       enabled: false,
       name: "Plano Vitalicio",
+      freeHostingDays: 30,
+      hostingPriceCents: 1200,
       paymentProviderId: null,
-      priceCents: 12000,
-      priceText: "R$ 120,00"
+      priceCents: 15000,
+      priceText: "R$ 150,00"
     }
   },
   seo: {
@@ -3360,6 +3401,51 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
+          <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0 xl:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-white">Plano Vitalicio</CardTitle>
+              <CardDescription>Licencas permanentes, hospedagem gratuita e proximas cobrancas de hospedagem.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 lg:grid-cols-2">
+              {dashboard?.lifetimeLicenses.map((license) => {
+                const pendingHostingSale = dashboard.sales.find((sale) => (
+                  sale.productPlanType === "hosting"
+                  && sale.status === "pending"
+                  && sale.customerId === license.customerId
+                  && sale.productName === license.moduleName
+                ));
+
+                return (
+                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-4" key={license.subscriptionId}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-white">{license.moduleName}</p>
+                        <p className="mt-1 text-xs font-medium text-zinc-400">Compra: {formatDate(license.purchaseDate)}</p>
+                      </div>
+                      <Badge variant={license.licenseStatus === "active" ? "success" : "muted"}>{license.licenseStatus === "active" ? "Licenca ativa" : "Licenca cancelada"}</Badge>
+                    </div>
+                    <div className="mt-4 grid gap-2 text-xs font-semibold text-zinc-300 sm:grid-cols-2">
+                      <PlanInfoLine label="Hospedagem" value={hostingStatusLabel(license.hostingStatus)} />
+                      <PlanInfoLine label="Dias gratis" value={String(license.hostingFreeDaysRemaining)} />
+                      <PlanInfoLine label="Valor hospedagem" value={formatMoney(license.hostingPriceCents, dashboard.settings.currency)} />
+                      <PlanInfoLine label="Proximo vencimento" value={license.nextHostingDueAt ? formatDate(license.nextHostingDueAt) : "Sem vencimento"} />
+                      <PlanInfoLine label="Suporte" value={license.supportLevel === "priority" ? "Prioritario" : "Padrao"} />
+                      <PlanInfoLine label="Atualizacoes" value={license.updatesIncluded ? "Inclusas" : "Nao inclusas"} />
+                    </div>
+                    <Button className="mt-4 w-full" disabled={!pendingHostingSale || saving === pendingHostingSale.id} onClick={() => pendingHostingSale ? void handleSaleStatus(pendingHostingSale.id, "paid") : undefined} variant="outline">
+                      Renovar Hospedagem
+                    </Button>
+                  </div>
+                );
+              })}
+              {!dashboard?.lifetimeLicenses.length ? (
+                <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm font-medium text-zinc-400 lg:col-span-2">
+                  Nenhum Plano Vitalicio vendido ainda.
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
           <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
             <CardHeader>
               <CardTitle className="text-white">Planos de venda</CardTitle>
@@ -3464,6 +3550,15 @@ function SalesMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PlanInfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+      <p className="text-[0.68rem] uppercase text-zinc-500">{label}</p>
+      <p className="mt-1 truncate text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
 function ProductTextArea({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
   return (
     <label className="block">
@@ -3506,6 +3601,12 @@ function ProductPlanEditor({
       <div className="mt-3 grid gap-3">
         <DevInput label="Nome" onChange={(value) => updatePlan("name", value)} value={plan.name} />
         <DevInput inputMode="numeric" label={`Valor em centavos (${currency})`} onChange={(value) => updatePlan("priceCents", Number(value.replace(/\D/g, "")))} value={String(plan.priceCents)} />
+        {title.toLowerCase().includes("vitalicio") ? (
+          <>
+            <DevInput inputMode="numeric" label="Hospedagem em centavos" onChange={(value) => updatePlan("hostingPriceCents", Number(value.replace(/\D/g, "")))} value={String(plan.hostingPriceCents ?? 1200)} />
+            <DevInput inputMode="numeric" label="Hospedagem gratis em dias" onChange={(value) => updatePlan("freeHostingDays", Number(value.replace(/\D/g, "")))} value={String(plan.freeHostingDays ?? 30)} />
+          </>
+        ) : null}
         <DevInput label="Texto do valor" onChange={(value) => updatePlan("priceText", value)} value={plan.priceText} />
         <DevInput label="Texto do botao" onChange={(value) => updatePlan("buttonText", value)} value={plan.buttonText} />
         <DevInput label="Cor do botao" onChange={(value) => updatePlan("buttonColor", value)} value={plan.buttonColor} />
@@ -3587,6 +3688,17 @@ function saleStatusLabel(status: NexTechSaleStatus) {
     paid: "Paga",
     pending: "Pendente",
     refunded: "Reembolsada"
+  };
+
+  return labels[status];
+}
+
+function hostingStatusLabel(status: "active" | "pending_payment" | "suspended" | "not_required") {
+  const labels: Record<typeof status, string> = {
+    active: "Ativa",
+    not_required: "Nao aplicavel",
+    pending_payment: "Pagamento pendente",
+    suspended: "Suspensa"
   };
 
   return labels[status];
@@ -4293,6 +4405,45 @@ function moduleDashboardCategories(modules: DevModuleDefinition[]) {
       description: item.id === "settings" ? "Configurações gerais, comandos e ferramentas administrativas" : item.description
     }))
     .filter((item) => modulesForMenu(item, modules, true).length > 0);
+}
+
+type ModuleDashboardSection = {
+  description: string;
+  id: string;
+  label: string;
+  modules: DevModuleDefinition[];
+};
+
+function moduleDashboardSections(visibleModules: DevModuleDefinition[], categories: BotMenuItem[]): ModuleDashboardSection[] {
+  const assigned = new Set<string>();
+  const sections: ModuleDashboardSection[] = categories
+    .map((category) => {
+      const categoryModules = modulesForMenu(category, visibleModules, true).filter((module) => {
+        if (assigned.has(module.id)) return false;
+        assigned.add(module.id);
+        return true;
+      });
+
+      return {
+        description: category.description,
+        id: category.id,
+        label: category.label,
+        modules: categoryModules
+      };
+    })
+    .filter((section) => section.modules.length > 0);
+  const remainingModules = visibleModules.filter((module) => !assigned.has(module.id));
+
+  if (remainingModules.length) {
+    sections.push({
+      description: "Módulos cadastrados fora das categorias principais.",
+      id: "others",
+      label: "Outros módulos",
+      modules: remainingModules
+    });
+  }
+
+  return sections;
 }
 
 function iconForModule(moduleId: string) {

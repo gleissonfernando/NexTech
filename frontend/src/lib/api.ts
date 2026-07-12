@@ -641,6 +641,7 @@ export async function resendEmojiFromLibrary(botId: string, emojiId: string, pay
 }
 
 export async function validateFakeEmojiCloneToken(payload: {
+  botId: string;
   sourceGuildId: string;
   targetGuildId: string;
   token: string;
@@ -920,7 +921,7 @@ export async function publishReportSystemPanel(guildId: string, botId?: string |
   return data.settings;
 }
 
-export async function getLogs(guildId?: string, botId?: string | null) {
+export async function getLogs(guildId: string, botId: string) {
   const { data } = await api.get<{ logs: LogEntry[] }>("/logs", {
     params: {
       guildId,

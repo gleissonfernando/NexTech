@@ -202,8 +202,8 @@ export function NexTechProductPage({ slug, status = null, storeId }: NexTechProd
                 />
               </div>
               <div className="mt-4 space-y-3">
-                <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "monthly"} onClick={() => void handleCheckout("monthly")} plan={product.plans.monthly} />
-                <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "lifetime"} onClick={() => void handleCheckout("lifetime")} plan={product.plans.lifetime} />
+                <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "monthly"} onClick={() => void handleCheckout("monthly")} plan={product.plans.monthly} planType="monthly" />
+                <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "lifetime"} onClick={() => void handleCheckout("lifetime")} plan={product.plans.lifetime} planType="lifetime" />
               </div>
               {checkoutMessage ? (
                 <div className="mt-4 space-y-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-100">
@@ -243,13 +243,15 @@ function PlanCard({
   currency,
   loading,
   onClick,
-  plan
+  plan,
+  planType
 }: {
   accent: string;
   currency: "BRL" | "USD" | "EUR";
   loading: boolean;
   onClick: () => void;
   plan: NexTechProductPlanConfig;
+  planType: "monthly" | "lifetime";
 }) {
   if (!plan.enabled) return null;
 
@@ -267,6 +269,11 @@ function PlanCard({
             </li>
           ))}
         </ul>
+      ) : null}
+      {planType === "lifetime" ? (
+        <p className="mt-3 rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/10 p-3 text-xs font-semibold leading-5 text-[#FFEA70]">
+          Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de {formatMoney(plan.hostingPriceCents ?? 1200, currency)} por mes. Sua licenca continuara sendo vitalicia.
+        </p>
       ) : null}
       <Button className="mt-4 w-full text-white hover:brightness-110" disabled={loading} onClick={onClick} style={{ backgroundColor: plan.buttonColor || accent }}>
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

@@ -75,6 +75,12 @@ ticketsRouter.post("/", async (req, res, next) => {
     const input = ticketSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
 
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio para criar ticket."
+      });
+    }
+
     if (!isBotRequest(req) && !(await canManageScopedGuild(req, input.guildId, botId))) {
       return res.status(403).json({
         message: "Servidor nao encontrado ou sem o bot."

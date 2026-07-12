@@ -16,6 +16,7 @@ export type PanelBlock =
   | { divider?: boolean; id: string; order: number; spacing?: "small" | "large" | number; type: "separator" }
   | { id: string; items: Array<{ description?: string | null; spoiler?: boolean; url: string }>; order: number; type: "media_gallery" }
   | { accessory?: { kind: "thumbnail"; description?: string | null; url: string } | { kind: "button"; customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string } | null; id: string; order: number; texts: string[]; type: "section" }
+  | { altText?: string | null; attachmentName?: string | null; imageUrl?: string | null; id: string; order: number; text: string; type: "footer" }
   | { buttons: Array<{ customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string }>; id: string; order: number; type: "action_row" };
 
 export type ComponentsV2FooterConfig = {
@@ -129,9 +130,23 @@ export function renderPanelFromBlocks(input: { accentColor: number; blocks: Pane
 
 export function renderPanelBlocks(blocks: PanelBlock[] | null | undefined) {
   const components: unknown[] = [];
-  for (const block of normalizePanelBlocks(blocks)) {
+  const normalizedBlocks = normalizePanelBlocks(blocks);
+  const footerBlocks = normalizedBlocks.filter((block) => block.type === "footer");
+  const contentBlocks = normalizedBlocks.filter((block) => block.type !== "footer");
+
+  for (const block of contentBlocks) {
     const component = renderPanelBlock(block);
     if (component) components.push(component);
+  }
+
+  for (const block of footerBlocks) {
+    const component = renderPanelBlock(block);
+    if (component) {
+      if (!isSeparator(components.at(-1))) {
+        components.push({ type: 14, divider: true, spacing: 1 });
+      }
+      components.push(component);
+    }
   }
   return components;
 }
@@ -195,6 +210,7 @@ function renderPanelBlock(block: PanelBlock) {
       const accessory = renderSectionAccessory(block.accessory);
       return accessory ? { type: 9, components: texts, accessory } : { type: 10, content: texts.map((item) => item.content).join("\n").slice(0, 4000) };
     }
+    if (block.type === "footer") return renderFooterBlock(block);
     if (block.type === "action_row") {
       const buttons = block.buttons.map(renderButtonComponent).filter(Boolean).slice(0, 5);
       return buttons.length ? { type: 1, components: buttons } : null;
@@ -205,6 +221,37 @@ function renderPanelBlock(block: PanelBlock) {
   return null;
 }
 
+function renderFooterBlock(block: Extract<PanelBlock, { type: "footer" }>) {
+  const content = (block.text || "-# ").slice(0, 4000);
+  const text = { type: 10, content: content || "-# " };
+  const imageUrl = footerImageUrl(block);
+  if (!imageUrl) return text;
+  return {
+    type: 9,
+    components: [text],
+    accessory: {
+      type: 11,
+      media: { url: imageUrl },
+      description: (block.altText || "Imagem de rodape").slice(0, 1024)
+    }
+  };
+}
+
+function footerImageUrl(block: Extract<PanelBlock, { type: "footer" }>) {
+  const attachmentName = block.attachmentName?.trim();
+  if (attachmentName && /^[^\\/:\0]{1,255}$/.test(attachmentName)) {
+    return `attachment://${attachmentName}`;
+  }
+
+  const rawUrl = block.imageUrl?.trim();
+  if (!rawUrl) return null;
+  const url = resolvePanelImageUrl(rawUrl);
+  if (!url) {
+    console.warn("[panel-visual] Rodape com imagem invalida ignorada.", { blockId: block.id });
+  }
+  return url;
+}
+
 function renderSectionAccessory(accessory: Extract<PanelBlock, { type: "section" }>["accessory"]) {
   if (!accessory) return null;
   if (accessory.kind === "thumbnail") {
@@ -212,6 +259,10 @@ function renderSectionAccessory(accessory: Extract<PanelBlock, { type: "section"
     return url ? { type: 11, media: { url }, description: accessory.description || "Thumbnail" } : null;
   }
   return renderButtonComponent(accessory);
+}
+
+function isSeparator(component: unknown) {
+  return Boolean(component && typeof component === "object" && (component as { type?: unknown }).type === 14);
 }
 
 function renderButtonComponent(button: { customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string } | null | undefined) {

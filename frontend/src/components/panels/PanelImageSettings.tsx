@@ -187,7 +187,11 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
   }
 
   function addTextBlock() {
-    setBlocks([...blocks(), { editable: true, id: blockId(), order: blocks().length, type: "text", content: "-# Rodape do painel" }]);
+    setBlocks([...blocks(), { editable: true, id: blockId(), order: blocks().length, type: "text", content: "Texto do painel" }]);
+  }
+
+  function addFooterBlock() {
+    setBlocks([...blocks(), { altText: "Imagem de rodape", id: blockId(), imageUrl: draft.imagePosition === "footer" ? draft.imageUrl : "", order: blocks().length, text: "-# Rodape do painel", type: "footer" }]);
   }
 
   function addSeparatorBlock() {
@@ -481,7 +485,8 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button disabled={disabled} onClick={addBannerBlock} type="button" variant="outline"><Plus className="h-4 w-4" />Adicionar banner</Button>
-                  <Button disabled={disabled} onClick={addTextBlock} type="button" variant="outline"><Type className="h-4 w-4" />Texto/rodape</Button>
+                  <Button disabled={disabled} onClick={addTextBlock} type="button" variant="outline"><Type className="h-4 w-4" />Texto</Button>
+                  <Button disabled={disabled} onClick={addFooterBlock} type="button" variant="outline"><Image className="h-4 w-4" />Rodape</Button>
                   <Button disabled={disabled} onClick={addSeparatorBlock} type="button" variant="ghost">Separador</Button>
                 </div>
               </div>
@@ -513,6 +518,16 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                       <div className="grid gap-2">
                         <textarea className="min-h-20 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { texts: event.target.value.split(/\n{2,}/).slice(0, 3) } as Partial<PanelBlock>)} value={block.texts.join("\n\n")} />
                         <input className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { accessory: { kind: "thumbnail", url: event.target.value } } as Partial<PanelBlock>)} placeholder="URL da thumbnail" value={block.accessory?.kind === "thumbnail" ? block.accessory.url : ""} />
+                      </div>
+                    ) : null}
+                    {block.type === "footer" ? (
+                      <div className="grid gap-2">
+                        <textarea className="min-h-20 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { text: event.target.value } as Partial<PanelBlock>)} value={block.text} />
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <input className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { imageUrl: event.target.value, attachmentName: null } as Partial<PanelBlock>)} placeholder="URL HTTPS da miniatura" value={block.imageUrl ?? ""} />
+                          <input className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { altText: event.target.value } as Partial<PanelBlock>)} placeholder="Texto alternativo" value={block.altText ?? ""} />
+                        </div>
+                        <input className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100" disabled={disabled} onChange={(event) => updateBlock(block.id, { attachmentName: event.target.value, imageUrl: null } as Partial<PanelBlock>)} placeholder="Attachment local opcional: arquivo.png" value={block.attachmentName ?? ""} />
                       </div>
                     ) : null}
                   </div>
@@ -661,7 +676,8 @@ function blockId() {
 function blockLabel(block: PanelBlock) {
   if (block.type === "media_gallery") return "Banner / Media Gallery";
   if (block.type === "section") return "Section com thumbnail";
-  if (block.type === "text") return "Texto / Rodape";
+  if (block.type === "footer") return "Rodape com miniatura";
+  if (block.type === "text") return "Texto";
   if (block.type === "separator") return "Separador";
   return "Botoes";
 }

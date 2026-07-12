@@ -201,6 +201,10 @@ async function writeAuthorizationLog(
   result: BotCommandAuthorizationResult,
   extraMetadata: Record<string, unknown> = {}
 ) {
+  if (!input.botId) {
+    return;
+  }
+
   await createLog({
     botId: input.botId,
     guildId: input.guildId,

@@ -24,6 +24,7 @@ const settingsSchema = z.object({
       z.object({ kind: z.literal("thumbnail"), description: z.string().max(1024).nullable().optional(), url: z.string().max(2048) }),
       z.object({ kind: z.literal("button"), customId: z.string().max(100).optional(), disabled: z.boolean().optional(), label: z.string().max(80), style: z.enum(["primary", "secondary", "success", "danger", "link"]).optional(), url: z.string().max(2048).optional() })
     ]).nullable().optional(), id: z.string().min(1).max(80), order: z.number().int(), texts: z.array(z.string().max(4000)).min(1).max(3), type: z.literal("section") }),
+    z.object({ altText: z.string().max(1024).nullable().optional(), attachmentName: z.string().max(255).nullable().optional(), imageUrl: z.string().max(2048).nullable().optional(), id: z.string().min(1).max(80), order: z.number().int(), text: z.string().max(4000), type: z.literal("footer") }),
     z.object({ buttons: z.array(z.object({ customId: z.string().max(100).optional(), disabled: z.boolean().optional(), label: z.string().max(80), style: z.enum(["primary", "secondary", "success", "danger", "link"]).optional(), url: z.string().max(2048).optional() })).min(1).max(5), id: z.string().min(1).max(80), order: z.number().int(), type: z.literal("action_row") })
   ])).max(30).optional(),
   customHeight: z.coerce.number().int().min(16).max(2000).nullable().optional(),

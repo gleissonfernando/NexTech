@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ensureGuild, getMongoCollections, type MongoLogEntry } from "../database/mongo";
 import {
-  botRealtimeRoom,
   devBotRealtimeRoom,
   emitRealtimeToRoom
 } from "../realtime/events";
@@ -9,7 +8,7 @@ import { getGuildSettings, type LogCategory } from "./settingsService";
 
 export type LogEntryDto = {
   id: string;
-  botId: string | null;
+  botId: string;
   guildId: string;
   userId?: string | null;
   executorId?: string | null;
@@ -27,7 +26,7 @@ export type LogEntryDto = {
 };
 
 export type CreateLogInput = {
-  botId?: string | null;
+  botId: string;
   guildId: string;
   userId?: string | null;
   executorId?: string | null;
@@ -60,9 +59,10 @@ export type CreateSystemLogInput = Omit<CreateLogInput, "type" | "message"> & {
 const memoryLogs: LogEntryDto[] = [];
 
 export async function createLog(input: CreateLogInput) {
+  const botId = requireBotId(input.botId);
   const log: LogEntryDto = {
     id: randomUUID(),
-    botId: normalizeBotId(input.botId),
+    botId,
     guildId: input.guildId,
     userId: input.userId,
     executorId: input.executorId ?? null,
@@ -87,7 +87,7 @@ export async function createLog(input: CreateLogInput) {
     const { logEntries } = await getMongoCollections();
     const doc: MongoLogEntry = {
       _id: randomUUID(),
-      botId: normalizeBotId(input.botId),
+      botId,
       guildId: input.guildId,
       userId: input.userId ?? null,
       executorId: input.executorId ?? null,
@@ -112,7 +112,7 @@ export async function createLog(input: CreateLogInput) {
     const persistedLog = {
       ...log,
       id: doc._id,
-      botId: normalizeBotId(doc.botId),
+      botId: requireBotId(doc.botId),
       userId: doc.userId,
       executorId: doc.executorId ?? null,
       channelId: doc.channelId ?? null,
@@ -134,8 +134,8 @@ export async function createLog(input: CreateLogInput) {
   }
 }
 
-export async function listLogs(guildId?: string, botId?: string | null) {
-  const normalizedBotId = normalizeBotId(botId);
+export async function listLogs(guildId: string, botId: string) {
+  const normalizedBotId = requireBotId(botId);
 
   try {
     const { logEntries } = await getMongoCollections();
@@ -144,12 +144,12 @@ export async function listLogs(guildId?: string, botId?: string | null) {
       .sort({
         createdAt: -1
       })
-      .limit(guildId ? 250 : 50)
+      .limit(250)
       .toArray();
 
     const entries = logs.map((log) => ({
       id: log._id,
-      botId: normalizeBotId(log.botId),
+      botId: requireBotId(log.botId),
       guildId: log.guildId,
       userId: log.userId,
       executorId: log.executorId ?? null,
@@ -169,8 +169,8 @@ export async function listLogs(guildId?: string, botId?: string | null) {
     return filterSiteLogs(entries, guildId, normalizedBotId);
   } catch {
     const entries = memoryLogs
-      .filter((log) => (!guildId || log.guildId === guildId) && log.botId === normalizedBotId)
-      .slice(0, guildId ? 250 : 50);
+      .filter((log) => log.guildId === guildId && log.botId === normalizedBotId)
+      .slice(0, 250);
 
     return filterSiteLogs(entries, guildId, normalizedBotId);
   }
@@ -222,11 +222,7 @@ export function logCategoryForType(type: string): LogCategory {
   return "automation";
 }
 
-async function filterSiteLogs(entries: LogEntryDto[], guildId: string | undefined, botId: string | null) {
-  if (!guildId) {
-    return entries.slice(0, 50);
-  }
-
+async function filterSiteLogs(entries: LogEntryDto[], guildId: string, botId: string) {
   const settings = await getGuildSettings(guildId, botId).catch(() => null);
 
   if (!settings?.siteLogsEnabled) {
@@ -240,32 +236,20 @@ async function filterSiteLogs(entries: LogEntryDto[], guildId: string | undefine
 }
 
 function dispatchDiscordLog(log: LogEntryDto) {
-  const room = log.botId ? devBotRealtimeRoom(log.botId) : botRealtimeRoom();
-  emitRealtimeToRoom(room, "logs:discord_dispatch", log);
+  emitRealtimeToRoom(devBotRealtimeRoom(log.botId), "logs:discord_dispatch", log);
 }
 
-function normalizeBotId(botId: string | null | undefined) {
+function requireBotId(botId: string | null | undefined) {
   const normalized = botId?.trim();
-  return normalized ? normalized : null;
+  if (!normalized) {
+    throw new Error("botId obrigatorio para registrar ou consultar logs.");
+  }
+
+  return normalized;
 }
 
-function scopedQuery(guildId: string | undefined, botId: string | null) {
-  const botScope = botId
-    ? { botId }
-    : {
-        $or: [
-          {
-            botId: null
-          },
-          {
-            botId: {
-              $exists: false
-            }
-          }
-        ]
-      };
-
-  return guildId ? { guildId, ...botScope } : botScope;
+function scopedQuery(guildId: string, botId: string) {
+  return { botId, guildId };
 }
 
 function moduleNameFromType(type: string) {

@@ -569,6 +569,10 @@ async function writeKickAudit(input: {
   metadata?: Record<string, unknown>;
   userId: string;
 }) {
+  if (!input.botId) {
+    return;
+  }
+
   await createLog({
     botId: input.botId,
     guildId: input.guildId,
@@ -594,6 +598,10 @@ async function recordLiveEvent(
   title?: string,
   url?: string
 ) {
+  if (!botId) {
+    return;
+  }
+
   const event = createLiveEvent({
     botId,
     guildId,

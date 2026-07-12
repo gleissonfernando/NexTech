@@ -856,6 +856,7 @@ function toLogDto(row: MongoFivemHierarchyLog): FivemHierarchyLogDto {
 }
 
 function emitFivemHierarchyPanelUpdated(guildId: string, botId: string | null, action: string, panel: FivemHierarchyPanelDto) {
+  if (!botId) return;
   emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "fivem:hierarchy:updated", {
     action,
     botId,

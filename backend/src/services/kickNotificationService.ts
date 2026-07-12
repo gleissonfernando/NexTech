@@ -285,6 +285,10 @@ export async function saveKickApiConfig(
   );
 
   const saved = await getKickApiConfig(guildId, normalizedBotId);
+  if (!normalizedBotId) {
+    return saved;
+  }
+
   await createLog({
     botId: normalizedBotId,
     guildId,
@@ -1419,6 +1423,10 @@ async function assertGuildLimit(guildId: string, botId: string | null) {
 }
 
 async function writeActionLog(type: string, action: string, notification: KickNotificationDto, userId: string) {
+  if (!notification.botId) {
+    return;
+  }
+
   await createLog({
     botId: notification.botId,
     guildId: notification.guildId,

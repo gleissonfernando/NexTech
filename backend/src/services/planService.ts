@@ -202,7 +202,11 @@ const FEATURE_SEEDS: SavePlanFeatureInput[] = [
   { category: "security", key: "security.anti_ban", name: "Anti Ban", description: "Protecao contra acoes administrativas indevidas.", order: 100 },
   { category: "security", key: "security.self_bot", name: "SelfBot Protection", description: "Deteccao e mitigacao de selfbots.", order: 110 },
   { category: "security", key: "security.role_protection", name: "Protecao de cargos", description: "Protecao contra alteracoes indevidas de cargos e permissoes.", order: 111 },
-  { category: "support", key: "support.priority", name: "Suporte prioritario", description: "Atendimento prioritario para operacao critica.", order: 120 }
+  { category: "support", key: "support.priority", name: "Suporte prioritario", description: "Atendimento prioritario para operacao critica.", order: 120 },
+  { category: "support", key: "support.24h", name: "Atendimento 24 horas", description: "Atendimento prioritario 24 horas para plano vitalicio.", order: 121 },
+  { category: "billing", key: "billing.lifetime_license", name: "Licenca vitalicia", description: "Licenca permanente do modulo adquirido.", order: 130 },
+  { category: "billing", key: "billing.future_updates", name: "Atualizacoes futuras", description: "Atualizacoes futuras e correcoes do modulo inclusas.", order: 131 },
+  { category: "billing", key: "billing.free_hosting_30d", name: "Hospedagem gratis 30 dias", description: "Primeiro mes de hospedagem incluso na compra vitalicia.", order: 132 }
 ];
 
 const PLAN_SEEDS: SavePlanInput[] = [
@@ -353,10 +357,112 @@ const PLAN_SEEDS: SavePlanInput[] = [
     shortDescription: "Protecao de cargos completa sem hospedagem.",
     slug: "protecao-cargos-completo",
     validityDays: 30
+  },
+  {
+    badge: "Vitalicio",
+    billingCycle: "lifetime",
+    botLimit: 1,
+    color: "#FFD500",
+    description: "Licenca permanente do Sistema de Streaming, com atualizacoes futuras, 1 mes de hospedagem gratis, suporte prioritario e atendimento 24 horas. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
+    entitlements: entitlementsFor(["streamer.twitch_alerts", "streamer.kick_alerts", "streamer.clip_automation", "streamer.giveaways", "streamer.vip", "streamer.ranking", "streamer.ai", "discord.dashboard", "discord.logs", "billing.lifetime_license", "billing.future_updates", "billing.free_hosting_30d", "support.priority", "support.24h"]),
+    guildLimit: 1,
+    icon: "radio",
+    isActive: true,
+    isPublic: true,
+    isPurchasable: true,
+    isRecommended: true,
+    name: "Streaming Vitalicio",
+    order: 90,
+    priceInCents: 15000,
+    shortDescription: "Licenca vitalicia do modulo Streaming com 1 mes de hospedagem gratis.",
+    slug: "streaming-vitalicio",
+    validityDays: null
+  },
+  {
+    badge: "Vitalicio",
+    billingCycle: "lifetime",
+    botLimit: 1,
+    color: "#3DDC84",
+    description: "Licenca permanente do Sistema de Policia RP, com atualizacoes futuras, 1 mes de hospedagem gratis, suporte prioritario e atendimento 24 horas. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
+    entitlements: entitlementsFor(["fivem.police", "fivem.finance", "fivem.orders", "fivem.hierarchy", "discord.logs", "discord.dashboard", "billing.lifetime_license", "billing.future_updates", "billing.free_hosting_30d", "support.priority", "support.24h"]),
+    guildLimit: 1,
+    icon: "building",
+    isActive: true,
+    isPublic: true,
+    isPurchasable: true,
+    isRecommended: true,
+    name: "Policia RP Vitalicio",
+    order: 100,
+    priceInCents: 15000,
+    shortDescription: "Licenca vitalicia do modulo Policia RP com 1 mes de hospedagem gratis.",
+    slug: "policia-rp-vitalicio",
+    validityDays: null
+  },
+  {
+    badge: "Vitalicio",
+    billingCycle: "lifetime",
+    botLimit: 1,
+    color: "#FFEA70",
+    description: "Licenca permanente do Sistema de Faccao RP, com atualizacoes futuras, 1 mes de hospedagem gratis, suporte prioritario e atendimento 24 horas. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
+    entitlements: entitlementsFor(["fivem.faction", "fivem.finance", "fivem.orders", "fivem.hierarchy", "discord.logs", "discord.dashboard", "billing.lifetime_license", "billing.future_updates", "billing.free_hosting_30d", "support.priority", "support.24h"]),
+    guildLimit: 1,
+    icon: "users",
+    isActive: true,
+    isPublic: true,
+    isPurchasable: true,
+    isRecommended: true,
+    name: "Faccao RP Vitalicio",
+    order: 110,
+    priceInCents: 15000,
+    shortDescription: "Licenca vitalicia do modulo Faccao RP com 1 mes de hospedagem gratis.",
+    slug: "faccao-rp-vitalicio",
+    validityDays: null
+  },
+  {
+    badge: "Vitalicio",
+    billingCycle: "lifetime",
+    botLimit: 1,
+    color: "#8B5CF6",
+    description: "Licenca permanente do Sistema de Protecao Discord, com atualizacoes futuras, 1 mes de hospedagem gratis, suporte prioritario e atendimento 24 horas. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
+    entitlements: entitlementsFor(["security.role_protection", "security.anti_ban", "security.self_bot", "discord.logs", "discord.dashboard", "billing.lifetime_license", "billing.future_updates", "billing.free_hosting_30d", "support.priority", "support.24h"]),
+    guildLimit: 1,
+    icon: "shield",
+    isActive: true,
+    isPublic: true,
+    isPurchasable: true,
+    isRecommended: true,
+    name: "Protecao Discord Vitalicio",
+    order: 120,
+    priceInCents: 15000,
+    shortDescription: "Licenca vitalicia do modulo Protecao Discord com 1 mes de hospedagem gratis.",
+    slug: "protecao-discord-vitalicio",
+    validityDays: null
+  },
+  {
+    badge: "Vitalicio",
+    billingCycle: "lifetime",
+    botLimit: 1,
+    color: "#38BDF8",
+    description: "Licenca permanente do Sistema Financeiro, com atualizacoes futuras, 1 mes de hospedagem gratis, suporte prioritario e atendimento 24 horas. Apos o periodo gratuito sera cobrada apenas a hospedagem, a partir de R$12,00 por mes.",
+    entitlements: entitlementsFor(["fivem.finance", "discord.logs", "discord.dashboard", "billing.lifetime_license", "billing.future_updates", "billing.free_hosting_30d", "support.priority", "support.24h"]),
+    guildLimit: 1,
+    icon: "wallet",
+    isActive: true,
+    isPublic: true,
+    isPurchasable: true,
+    isRecommended: true,
+    name: "Financeiro Vitalicio",
+    order: 130,
+    priceInCents: 15000,
+    shortDescription: "Licenca vitalicia do modulo Financeiro com 1 mes de hospedagem gratis.",
+    slug: "financeiro-vitalicio",
+    validityDays: null
   }
 ];
 
 const LEGACY_PUBLIC_PLAN_SLUGS = ["streamer", "fivem", "discord-management"];
+const LIFETIME_HOSTING_FREE_DAYS = 30;
+const LIFETIME_HOSTING_MONTHLY_PRICE_IN_CENTS = 1200;
 
 export async function ensurePlanSeed() {
   const { planFeatures, plans } = await getMongoCollections();
@@ -1516,9 +1622,7 @@ export async function manualActivateSubscription(input: ManualActivationInput, a
     discordId: input.userId,
     endsAt: plan.validityDays ? new Date(now.getTime() + plan.validityDays * 86_400_000) : null,
     guildLimit: plan.guildLimit,
-    metadata: {
-      activation: "manual"
-    },
+    metadata: buildSubscriptionMetadata({ activation: "manual", plan, now }),
     planId: plan._id,
     planSlug: plan.slug,
     startedAt: now,
@@ -1612,10 +1716,7 @@ export async function completeTestPaymentOrder(orderId: string, actor: PlanActor
       discordId: order.discordId,
       endsAt: plan.validityDays ? new Date(now.getTime() + plan.validityDays * 86_400_000) : null,
       guildLimit: plan.guildLimit,
-      metadata: {
-        activation: "payment_test",
-        paymentOrderId: order._id
-      },
+      metadata: buildSubscriptionMetadata({ activation: "payment_test", paymentOrderId: order._id, plan, snapshot: order.planSnapshot, now }),
       planId: plan._id,
       planSlug: plan.slug,
       startedAt: now,
@@ -2135,11 +2236,7 @@ async function activatePaidOrder(order: MongoPaymentOrder, plan: MongoPlan, acto
       discordId: order.discordId,
       endsAt: validityDays ? new Date(now.getTime() + validityDays * 86_400_000) : null,
       guildLimit,
-      metadata: {
-        activation,
-        paymentOrderId: order._id,
-        planSnapshot: snapshot ?? snapshotPlan(plan)
-      },
+      metadata: buildSubscriptionMetadata({ activation, paymentOrderId: order._id, plan, snapshot, now }),
       planId: plan._id,
       planSlug: plan.slug,
       startedAt: now,
@@ -2268,6 +2365,44 @@ function snapshotPlan(plan: MongoPlan) {
     snapshotAt: new Date().toISOString(),
     validityDays: plan.validityDays
   };
+}
+
+function buildSubscriptionMetadata(input: {
+  activation: string;
+  now: Date;
+  paymentOrderId?: string;
+  plan: MongoPlan;
+  snapshot?: Record<string, unknown>;
+}) {
+  const planSnapshot = input.snapshot ?? snapshotPlan(input.plan);
+  const metadata: Record<string, unknown> = {
+    activation: input.activation,
+    planSnapshot
+  };
+
+  if (input.paymentOrderId) {
+    metadata.paymentOrderId = input.paymentOrderId;
+  }
+
+  if (input.plan.billingCycle === "lifetime") {
+    const hostingFreeUntil = new Date(input.now.getTime() + LIFETIME_HOSTING_FREE_DAYS * 86_400_000);
+    metadata.license = {
+      expiresAt: null,
+      status: "active",
+      support: "priority",
+      type: "lifetime",
+      updatesIncluded: true
+    };
+    metadata.hosting = {
+      freeDays: LIFETIME_HOSTING_FREE_DAYS,
+      freeUntil: hostingFreeUntil.toISOString(),
+      monthlyPriceInCents: LIFETIME_HOSTING_MONTHLY_PRICE_IN_CENTS,
+      nextDueAt: hostingFreeUntil.toISOString(),
+      status: "active"
+    };
+  }
+
+  return metadata;
 }
 
 async function markPaymentEvent(eventId: string, status: MongoPaymentEvent["status"], result: string, orderId: string | null = null) {

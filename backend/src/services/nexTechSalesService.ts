@@ -10,7 +10,8 @@ import type {
   MongoNexTechSalesPaymentProvider,
   MongoNexTechSalesPlan,
   MongoNexTechSalesSettings,
-  MongoNexTechSaleStatus
+  MongoNexTechSaleStatus,
+  MongoNexTechSubscription
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { env } from "../config/env";
@@ -60,6 +61,7 @@ export type NexTechSalesDashboardDto = {
   products: NexTechProductDto[];
   sales: NexTechSaleDto[];
   settings: NexTechSalesSettingsDto;
+  lifetimeLicenses: NexTechLifetimeLicenseDto[];
   stats: {
     activePlans: number;
     customers: number;
@@ -70,6 +72,26 @@ export type NexTechSalesDashboardDto = {
     salesThisMonth: number;
     totalSales: number;
   };
+};
+
+export type NexTechLifetimeLicenseDto = {
+  customerId: string;
+  expiresAt: string | null;
+  hostingFreeDaysRemaining: number;
+  hostingFreeUntil: string | null;
+  hostingPriceCents: number;
+  hostingStatus: "active" | "pending_payment" | "suspended" | "not_required";
+  licenseStatus: "active" | "cancelled";
+  licenseType: "monthly" | "lifetime" | "manual";
+  moduleName: string;
+  nextHostingDueAt: string | null;
+  ownerUserId: string;
+  purchaseDate: string;
+  saleId: string;
+  storeId: string;
+  subscriptionId: string;
+  supportLevel: "standard" | "priority";
+  updatesIncluded: boolean;
 };
 
 export type PublicNexTechProductDto = {
@@ -154,7 +176,7 @@ export type ProductCheckoutInput = {
   buyerId?: string | null;
   buyerName?: string | null;
   paymentProviderId?: string | null;
-  planType: Exclude<MongoNexTechSalePlanType, "manual">;
+  planType: Extract<MongoNexTechSalePlanType, "monthly" | "lifetime">;
 };
 
 export type ProductCheckoutDto = {
@@ -168,6 +190,9 @@ export type ProductCheckoutDto = {
 };
 
 const PRODUCT_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/nex-tech-products");
+const LIFETIME_PLAN_PRICE_CENTS = 15000;
+const LIFETIME_FREE_HOSTING_DAYS = 30;
+const LIFETIME_HOSTING_PRICE_CENTS = 1200;
 const PRODUCT_IMAGE_EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
   "image/jpeg": "jpg",
@@ -189,15 +214,17 @@ export async function getNexTechSalesDashboard(botId: string, guildId: string, o
   const { nexTechCustomers, nexTechProducts, nexTechSales, nexTechSalesPlans, nexTechSubscriptions } = await getMongoCollections();
   const settings = await ensureNexTechSalesSettings(botId, guildId, ownerUserId);
   const scope = tenantScope(botId, guildId, ownerUserId, settings.storeId);
-  const [plans, products, sales, customers, subscriptions] = await Promise.all([
+  await reconcileLifetimeHostingCharges(settings);
+  const [plans, products, sales, customers, subscriptions, lifetimeLicenses] = await Promise.all([
     nexTechSalesPlans.find(scope).sort({ createdAt: -1 }).toArray(),
     nexTechProducts.find(scope).sort({ updatedAt: -1 }).toArray(),
     nexTechSales.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
     nexTechCustomers.countDocuments(scope),
-    nexTechSubscriptions.countDocuments({ ...scope, status: "active" })
+    nexTechSubscriptions.countDocuments({ ...scope, status: "active" }),
+    nexTechSubscriptions.find({ ...scope, productPlanType: "lifetime" }).sort({ createdAt: -1 }).toArray()
   ]);
 
-  return toDashboardDto(settings, plans, products, sales, customers, subscriptions);
+  return toDashboardDto(settings, plans, products, sales, customers, subscriptions, lifetimeLicenses);
 }
 
 export async function ensureNexTechSalesSettings(botId: string, guildId: string, ownerUserId: string) {
@@ -622,6 +649,9 @@ export async function saveNexTechSale(botId: string, guildId: string, input: Sav
       updatedAt: now
     });
   }
+  if (sale.status === "paid") {
+    await activateNexTechSaleBenefits(settings, sale, now);
+  }
   return sale;
 }
 
@@ -696,7 +726,7 @@ export async function createProductCheckout(storeId: string, slug: string, input
   const checkout = await buildProviderCheckout(provider, settings, {
     amountCents: plan.priceCents,
     currency: settings.currency,
-    payerEmail: normalizeNullable(input.buyerEmail),
+    payerEmail: mercadoPagoCheckoutPayerEmail(input.buyerEmail, buyerId, saleId),
     planName: plan.name,
     productName: product.name,
     saleId,
@@ -800,6 +830,9 @@ export async function updateNexTechSaleStatus(botId: string, guildId: string, sa
       },
       { upsert: true }
     );
+  }
+  if (updated?.status === "paid") {
+    await activateNexTechSaleBenefits(settings, updated, now);
   }
 
   return updated;
@@ -907,7 +940,8 @@ function toDashboardDto(
   products: MongoNexTechProduct[],
   sales: MongoNexTechSale[],
   customers: number,
-  subscriptions: number
+  subscriptions: number,
+  lifetimeLicenses: MongoNexTechSubscription[]
 ): NexTechSalesDashboardDto {
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -918,6 +952,7 @@ function toDashboardDto(
     plans: plans.map(toPlanDto),
     products: products.map(toProductDto),
     sales: sales.map(toSaleDto),
+    lifetimeLicenses: lifetimeLicenses.map(toLifetimeLicenseDto),
     stats: {
       activePlans: plans.filter((plan) => plan.enabled).length,
       customers,
@@ -928,6 +963,34 @@ function toDashboardDto(
       subscriptions,
       totalSales: sales.length
     }
+  };
+}
+
+function toLifetimeLicenseDto(subscription: MongoNexTechSubscription): NexTechLifetimeLicenseDto {
+  const now = Date.now();
+  const hostingFreeUntil = subscription.hostingFreeUntil ?? null;
+  const hostingFreeDaysRemaining = hostingFreeUntil
+    ? Math.max(0, Math.ceil((hostingFreeUntil.getTime() - now) / 86_400_000))
+    : 0;
+
+  return {
+    customerId: subscription.customerId,
+    expiresAt: subscription.expiresAt?.toISOString() ?? null,
+    hostingFreeDaysRemaining,
+    hostingFreeUntil: hostingFreeUntil?.toISOString() ?? null,
+    hostingPriceCents: subscription.hostingPriceCents ?? LIFETIME_HOSTING_PRICE_CENTS,
+    hostingStatus: subscription.hostingStatus ?? "active",
+    licenseStatus: subscription.licenseStatus ?? "active",
+    licenseType: subscription.licenseType ?? "lifetime",
+    moduleName: subscription.productName ?? "Modulo",
+    nextHostingDueAt: subscription.nextHostingDueAt?.toISOString() ?? null,
+    ownerUserId: subscription.ownerUserId,
+    purchaseDate: subscription.startsAt.toISOString(),
+    saleId: subscription.saleId,
+    storeId: subscription.storeId,
+    subscriptionId: subscription._id,
+    supportLevel: subscription.supportLevel ?? "priority",
+    updatesIncluded: subscription.updatesIncluded !== false
   };
 }
 
@@ -1101,6 +1164,7 @@ async function createMercadoPagoProductPreference(
   const failureUrl = buildProductPaymentResultUrl(settings.storeId, context.saleId, "failure");
   const pendingUrl = buildProductPaymentResultUrl(settings.storeId, context.saleId, "pending");
   const notificationUrl = provider.webhookUrl || buildMercadoPagoNotificationUrl(settings.storeId, provider.gatewayId);
+  const environment = mercadoPagoProviderEnvironment(provider, accessToken);
 
   const checkout = await createMercadoPagoCheckoutPreference({
     accessToken,
@@ -1109,6 +1173,7 @@ async function createMercadoPagoProductPreference(
       pending: pendingUrl,
       success: context.successUrl
     },
+    environment,
     externalReference: context.saleId,
     items: [
       {
@@ -1119,6 +1184,11 @@ async function createMercadoPagoProductPreference(
         unitPriceInCents: context.amountCents
       }
     ],
+    metadata: {
+      nextech_sale_id: context.saleId,
+      source: "nextech_product_checkout",
+      store_id: settings.storeId
+    },
     notificationUrl,
     payerEmail: context.payerEmail
   }).catch((error) => {
@@ -1129,6 +1199,33 @@ async function createMercadoPagoProductPreference(
     checkoutUrl: checkout.checkoutUrl,
     externalReference: checkout.preferenceId
   };
+}
+
+function mercadoPagoCheckoutPayerEmail(inputEmail: string | null | undefined, buyerId: string, saleId: string) {
+  const email = normalizeNullable(inputEmail);
+
+  if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return email;
+  }
+
+  const normalizedBuyerId = buyerId.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 64) || "guest";
+  const normalizedSaleId = saleId.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 64);
+  return `checkout-${normalizedBuyerId}-${normalizedSaleId}@nextech.discloud.app`;
+}
+
+function mercadoPagoProviderEnvironment(provider: MongoNexTechSalesPaymentProvider, accessToken: string): "test" | "production" | undefined {
+  const publicKey = provider.publicKey?.trim().toUpperCase() ?? "";
+  const token = accessToken.trim().toUpperCase();
+
+  if (publicKey.startsWith("TEST-") || token.startsWith("TEST-")) {
+    return "test";
+  }
+
+  if (publicKey.startsWith("APP_USR-") || token.startsWith("APP_USR-")) {
+    return "production";
+  }
+
+  return undefined;
 }
 
 async function getMercadoPagoPayment(provider: MongoNexTechSalesPaymentProvider, paymentId: string) {
@@ -1182,6 +1279,13 @@ async function applyMercadoPagoPaymentStatus(settings: MongoNexTechSalesSettings
       }
     }
   );
+  const updatedSale = {
+    ...current,
+    paidAt,
+    status: nextStatus,
+    updatedAt: now,
+    updatedBy: null
+  };
 
   if (nextStatus === "paid" && current.planId) {
     await nexTechSubscriptions.updateOne(
@@ -1212,8 +1316,183 @@ async function applyMercadoPagoPaymentStatus(settings: MongoNexTechSalesSettings
       { upsert: true }
     );
   }
+  if (nextStatus === "paid") {
+    await activateNexTechSaleBenefits(settings, updatedSale, now);
+  }
 
   return true;
+}
+
+async function activateNexTechSaleBenefits(settings: MongoNexTechSalesSettings, sale: MongoNexTechSale, now: Date) {
+  if (sale.productPlanType === "hosting") {
+    await renewLifetimeHosting(settings, sale, now);
+    return;
+  }
+
+  if (sale.productPlanType !== "lifetime" && sale.productPlanType !== "monthly") {
+    return;
+  }
+
+  const { nexTechProducts, nexTechSubscriptions } = await getMongoCollections();
+  const product = sale.productId
+    ? await nexTechProducts.findOne({ _id: sale.productId, ownerUserId: settings.ownerUserId, storeId: settings.storeId })
+    : null;
+  const plan = product?.plans[sale.productPlanType];
+  const isLifetime = sale.productPlanType === "lifetime";
+  const freeHostingDays = isLifetime ? Math.max(0, Math.floor(plan?.freeHostingDays ?? LIFETIME_FREE_HOSTING_DAYS)) : null;
+  const hostingFreeUntil = freeHostingDays ? new Date(now.getTime() + freeHostingDays * 86_400_000) : null;
+  const hostingPriceCents = isLifetime ? Math.max(0, Math.round(plan?.hostingPriceCents ?? LIFETIME_HOSTING_PRICE_CENTS)) : null;
+
+  await nexTechSubscriptions.updateOne(
+    {
+      customerId: sale.customerId,
+      ownerUserId: settings.ownerUserId,
+      productId: sale.productId ?? null,
+      productPlanType: sale.productPlanType,
+      storeId: settings.storeId
+    },
+    {
+      $set: {
+        expiresAt: isLifetime ? null : sale.expiresAt,
+        hostingFreeUntil,
+        hostingPriceCents,
+        hostingStatus: isLifetime ? "active" : "not_required",
+        lastHostingChargeAt: null,
+        licenseExpiresAt: isLifetime ? null : sale.expiresAt,
+        licenseStatus: "active",
+        licenseType: sale.productPlanType,
+        nextHostingDueAt: isLifetime ? hostingFreeUntil : null,
+        productId: sale.productId ?? null,
+        productName: sale.productName ?? product?.name ?? sale.planName,
+        productPlanType: sale.productPlanType,
+        productSlug: sale.productSlug ?? product?.slug ?? null,
+        status: "active",
+        supportLevel: isLifetime ? "priority" : "standard",
+        updatesIncluded: true,
+        updatedAt: now
+      },
+      $setOnInsert: {
+        _id: randomUUID(),
+        botId: settings.botId,
+        createdAt: now,
+        customerId: sale.customerId,
+        guildId: settings.guildId,
+        ownerUserId: settings.ownerUserId,
+        planId: sale.planId ?? sale.productId ?? sale._id,
+        saleId: sale._id,
+        startsAt: sale.paidAt ?? now,
+        storeId: settings.storeId
+      }
+    },
+    { upsert: true }
+  );
+}
+
+async function renewLifetimeHosting(settings: MongoNexTechSalesSettings, sale: MongoNexTechSale, now: Date) {
+  const { nexTechSubscriptions } = await getMongoCollections();
+  const current = await nexTechSubscriptions.findOne({
+    customerId: sale.customerId,
+    ownerUserId: settings.ownerUserId,
+    productId: sale.productId ?? null,
+    productPlanType: "lifetime",
+    storeId: settings.storeId
+  });
+
+  if (!current) {
+    return;
+  }
+
+  const base = current.nextHostingDueAt && current.nextHostingDueAt > now ? current.nextHostingDueAt : now;
+  const nextHostingDueAt = new Date(base.getTime() + 30 * 86_400_000);
+  await nexTechSubscriptions.updateOne(
+    { _id: current._id, ownerUserId: settings.ownerUserId, storeId: settings.storeId },
+    {
+      $set: {
+        hostingStatus: "active",
+        lastHostingChargeAt: now,
+        nextHostingDueAt,
+        status: "active",
+        updatedAt: now
+      }
+    }
+  );
+}
+
+async function reconcileLifetimeHostingCharges(settings: MongoNexTechSalesSettings) {
+  const { nexTechCustomers, nexTechSales, nexTechSubscriptions } = await getMongoCollections();
+  const now = new Date();
+  const scope = tenantScope(settings.botId, settings.guildId, settings.ownerUserId, settings.storeId);
+  const dueSubscriptions = await nexTechSubscriptions.find({
+    ...scope,
+    productPlanType: "lifetime",
+    status: "active",
+    nextHostingDueAt: { $ne: null, $lte: now }
+  }).limit(100).toArray();
+
+  for (const subscription of dueSubscriptions) {
+    const productId = subscription.productId ?? null;
+    const existingCharge = await nexTechSales.findOne({
+      ...scope,
+      customerId: subscription.customerId,
+      productId,
+      productPlanType: "hosting",
+      status: "pending"
+    });
+
+    if (existingCharge) {
+      await nexTechSubscriptions.updateOne(
+        { _id: subscription._id, ...scope },
+        { $set: { hostingStatus: "suspended", updatedAt: now } }
+      );
+      continue;
+    }
+
+    const customer = await nexTechCustomers.findOne({ _id: subscription.customerId, ...scope });
+    const sale: MongoNexTechSale = {
+      _id: randomUUID(),
+      amountCents: subscription.hostingPriceCents ?? LIFETIME_HOSTING_PRICE_CENTS,
+      botId: settings.botId,
+      buyerId: customer?.discordId ?? subscription.customerId,
+      buyerName: customer?.name ?? null,
+      checkoutUrl: null,
+      createdAt: now,
+      createdBy: null,
+      currency: settings.currency,
+      customerId: subscription.customerId,
+      expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+      externalReference: null,
+      guildId: settings.guildId,
+      notes: "Cobranca mensal de hospedagem do Plano Vitalicio.",
+      ownerUserId: settings.ownerUserId,
+      paidAt: null,
+      paymentGatewayId: null,
+      paymentProviderId: null,
+      paymentProviderLabel: null,
+      planId: null,
+      planName: `Hospedagem - ${subscription.productName ?? "Plano Vitalicio"}`,
+      productId,
+      productName: subscription.productName ?? null,
+      productPlanType: "hosting",
+      productSlug: subscription.productSlug ?? null,
+      status: "pending",
+      storeId: settings.storeId,
+      successUrl: null,
+      updatedAt: now,
+      updatedBy: null
+    };
+
+    await nexTechSales.insertOne(sale);
+    await nexTechSubscriptions.updateOne(
+      { _id: subscription._id, ...scope },
+      {
+        $set: {
+          hostingStatus: "suspended",
+          lastHostingChargeAt: now,
+          updatedAt: now
+        }
+      }
+    );
+  }
 }
 
 async function upsertCustomer(
@@ -1452,7 +1731,7 @@ function productFieldsFromInput(input: SaveProductInput, settings: MongoNexTechS
     observations: normalizeNullable(input.observations) ?? "",
     plans: {
       monthly: normalizePlan(input.plans.monthly, "Plano Mensal", "Mensal", 30, settings.paymentProviders[0]?.id ?? null),
-      lifetime: normalizePlan(input.plans.lifetime, "Plano Vitalicio", "Vitalicio", 0, settings.paymentProviders[0]?.id ?? null)
+      lifetime: normalizePlan(input.plans.lifetime, "Plano Vitalicio", "Vitalicio", LIFETIME_PLAN_PRICE_CENTS, settings.paymentProviders[0]?.id ?? null)
     },
     seo: {
       description: normalizeNullable(input.seo?.description),
@@ -1477,6 +1756,8 @@ function normalizePlan(
     buttonText: plan.buttonText?.trim() || fallbackButton,
     description: plan.description?.trim() || "",
     enabled: plan.enabled,
+    freeHostingDays: Number.isFinite(plan.freeHostingDays) ? Math.max(0, Math.floor(plan.freeHostingDays ?? 0)) : null,
+    hostingPriceCents: Number.isFinite(plan.hostingPriceCents) ? Math.max(0, Math.round(plan.hostingPriceCents ?? 0)) : null,
     name: plan.name.trim() || fallbackName,
     paymentProviderId: plan.paymentProviderId ?? fallbackProviderId,
     priceCents: Number.isFinite(plan.priceCents) ? plan.priceCents : fallbackPrice,

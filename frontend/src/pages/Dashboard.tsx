@@ -939,7 +939,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
 
     Promise.allSettled([
       getGuildSettings(selectedGuildId, activeBotId),
-      getLogs(selectedGuildId, activeBotId),
+      activeBotId ? getLogs(selectedGuildId, activeBotId) : Promise.resolve([]),
       getLives(selectedGuildId, activeBotId),
       getTickets(selectedGuildId, activeBotId),
       enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
@@ -981,6 +981,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
 
   useEffect(() => {
     const socket = createDashboardSocket();
+
+    if (selectedGuildId && activeBotId) {
+      socket.emit("logs:subscribe", {
+        botId: activeBotId,
+        guildId: selectedGuildId
+      });
+    }
 
     socket.on("bot:status", (status: BotStatus) => {
       if ((status.botId ?? null) === activeBotId) {
@@ -1026,9 +1033,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     socket.on("settings:updated", (nextSettings: GuildSettings) => {
       if (nextSettings.guildId === selectedGuildId && (nextSettings.botId ?? null) === activeBotId) {
         setSettings(nextSettings);
-        void getLogs(selectedGuildId, activeBotId)
-          .then((nextLogs) => setLogs(userVisibleLogs(nextLogs)))
-          .catch(() => undefined);
+        if (selectedGuildId && activeBotId) {
+          void getLogs(selectedGuildId, activeBotId)
+            .then((nextLogs) => setLogs(userVisibleLogs(nextLogs)))
+            .catch(() => undefined);
+        }
       }
     });
 
@@ -1045,7 +1054,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   async function handleLogsSettingsChange(nextSettings: GuildSettings) {
     setSettings(nextSettings);
 
-    if (!selectedGuildId) {
+    if (!selectedGuildId || !activeBotId) {
       setLogs([]);
       return;
     }

@@ -467,9 +467,10 @@ function toOrderDto(row: MongoFivemOrder): FivemOrderDto { const { _id, createdA
 function toLogDto(row: MongoFivemOrderLog): FivemOrderLogDto { const { _id, createdAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), id: _id }; }
 async function writeLog(input: Omit<MongoFivemOrderLog, "_id" | "createdAt">) { const { fivemOrderLogs } = await getMongoCollections(); await fivemOrderLogs.insertOne({ _id: randomUUID(), createdAt: new Date(), ...input, botId: normalizeBotId(input.botId) }); }
 function emitUpdated(guildId: string, botId: string | null) {
+  if (!botId) return;
   emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "fivem:orders:updated", { botId, guildId });
   emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "lavagem:config_updated", { botId, guildId });
-  if (botId) emitRealtimeToRoom(devBotRealtimeRoom(botId), "lavagem:config_updated", { botId, guildId });
+  emitRealtimeToRoom(devBotRealtimeRoom(botId), "lavagem:config_updated", { botId, guildId });
 }
 async function nextOrderNumber(guildId: string, botId: string | null) { const { fivemOrders } = await getMongoCollections(); const last = await fivemOrders.find(scopeQuery(guildId, botId)).sort({ orderNumber: -1 }).limit(1).next(); return (last?.orderNumber ?? 0) + 1; }
 function assertTransition(from: MongoFivemOrderStatus, to: MongoFivemOrderStatus) { const allowed: Record<MongoFivemOrderStatus, MongoFivemOrderStatus[]> = { open: ["approved", "in_production", "delivered", "cancelled", "rejected"], pending_approval: ["approved", "in_production", "delivered", "cancelled", "rejected"], approved: ["in_production", "delivered", "cancelled"], in_production: ["ready", "delivered", "cancelled"], ready: ["delivered", "cancelled"], delivered: [], cancelled: [], rejected: [] }; if (!allowed[from].includes(to)) throw orderError(`Nao e permitido alterar de ${from} para ${to}.`, 409); }

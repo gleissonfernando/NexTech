@@ -1,6 +1,6 @@
-import path from "node:path";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
+import path from "node:path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 applyPackedEnv();
@@ -76,7 +76,7 @@ try {
 
 function databaseNameFromUri(uri) {
   const configuredName = process.env.MONGODB_DATABASE_NAME || process.env.MONGODB_DB_NAME;
-  const defaultName = "orvitek";
+  const defaultName = "NexTech";
   const legacyNames = {
     ricardinho98: defaultName
   };

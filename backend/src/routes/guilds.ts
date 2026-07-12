@@ -87,11 +87,11 @@ guildsRouter.post("/:guildId/delete-channels", async (req, res, next) => {
   try {
     const guildId = req.params.guildId;
     const input = z.object({
-      botId: z.string().trim().min(1).nullable().optional(),
+      botId: z.string().trim().min(1),
       channelIds: z.array(z.string().regex(/^\d{16,22}$/)).max(500).default([]),
       roleIds: z.array(z.string().regex(/^\d{16,22}$/)).max(250).default([])
     }).refine((value) => value.channelIds.length + value.roleIds.length > 0, "Selecione ao menos um canal ou cargo.").parse(req.body);
-    const botId = input.botId ?? null;
+    const botId = input.botId;
 
     if (
       !canReadDashboardGuild(res.locals.dashboardAuth.user, guildId) &&

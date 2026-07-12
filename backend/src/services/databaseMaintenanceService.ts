@@ -586,6 +586,10 @@ async function writeMaintenanceLog(input: {
   targetUserId: string | null;
   type: string;
 }) {
+  if (!input.botId) {
+    return;
+  }
+
   await createLog({
     botId: input.botId,
     guildId: input.guildId,
@@ -603,6 +607,7 @@ async function writeMaintenanceLog(input: {
 }
 
 function emitMaintenanceUpdated(guildId: string, botId: string | null, payload: Record<string, unknown>) {
+  if (!botId) return;
   emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "database-maintenance:updated", { botId, guildId, ...payload });
 }
 

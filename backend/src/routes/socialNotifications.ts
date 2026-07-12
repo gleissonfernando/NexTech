@@ -457,6 +457,10 @@ async function writeLiveAudit(input: {
   metadata?: Record<string, unknown>;
   userId: string;
 }) {
+  if (!input.botId) {
+    return;
+  }
+
   await createLog({
     botId: input.botId,
     guildId: input.guildId,

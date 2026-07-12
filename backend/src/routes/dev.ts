@@ -1487,6 +1487,10 @@ async function writeDevBotAudit(
   message: string,
   metadata: Record<string, unknown> = {}
 ) {
+  if (!botId) {
+    return;
+  }
+
   const bot = botId ? await getDevBot(botId).catch(() => null) : null;
 
   await createLog({

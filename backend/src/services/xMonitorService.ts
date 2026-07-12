@@ -582,6 +582,9 @@ async function applyWebhookProfile(account: XAccountDto, input: XWebhookPostInpu
 
 export async function listXMonitorLogs(guildId: string, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
+  if (!normalizedBotId) {
+    return [];
+  }
 
   try {
     const { logEntries } = await getMongoCollections();
@@ -600,7 +603,7 @@ export async function listXMonitorLogs(guildId: string, botId?: string | null) {
 
     return logs.map((log) => ({
       id: log._id,
-      botId: normalizeBotId(log.botId),
+      botId: log.botId,
       guildId: log.guildId,
       userId: log.userId,
       type: log.type,
@@ -1092,6 +1095,10 @@ async function writeXLog(
   userId?: string | null,
   metadata: Record<string, unknown> = {}
 ) {
+  if (!account.botId) {
+    return;
+  }
+
   const log = await createLog({
     botId: account.botId,
     guildId: account.guildId,
@@ -1246,10 +1253,10 @@ function postBotScopeQuery(botId: string | null) {
   };
 }
 
-function logScopeQuery(guildId: string, botId: string | null) {
+function logScopeQuery(guildId: string, botId: string) {
   return {
     guildId,
-    ...accountBotScopeQuery(botId)
+    botId
   };
 }
 

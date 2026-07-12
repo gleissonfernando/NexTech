@@ -52,6 +52,12 @@ livesRouter.post("/events", async (req, res, next) => {
     const input = liveEventSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
 
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio para registrar evento de live."
+      });
+    }
+
     if (!isBotRequest(req) && !(await canManageScopedGuild(req, input.guildId, botId))) {
       return res.status(403).json({
         message: "Servidor nao encontrado ou sem o bot."

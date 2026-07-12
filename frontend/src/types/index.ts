@@ -764,6 +764,7 @@ export type PanelBlock =
   | { divider?: boolean; id: string; order: number; spacing?: "small" | "large" | number; type: "separator" }
   | { id: string; items: Array<{ description?: string | null; spoiler?: boolean; url: string }>; order: number; type: "media_gallery" }
   | { accessory?: { kind: "thumbnail"; description?: string | null; url: string } | { kind: "button"; customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string } | null; id: string; order: number; texts: string[]; type: "section" }
+  | { altText?: string | null; attachmentName?: string | null; imageUrl?: string | null; id: string; order: number; text: string; type: "footer" }
   | { buttons: Array<{ customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string }>; id: string; order: number; type: "action_row" };
 
 export type PanelImageSettings = {
@@ -795,7 +796,7 @@ export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<
 
 export type LogEntry = {
   id: string;
-  botId: string | null;
+  botId: string;
   guildId: string;
   userId?: string | null;
   executorId?: string | null;
@@ -2804,6 +2805,8 @@ export type NexTechProductPlanConfig = {
   buttonText: string;
   description: string;
   enabled: boolean;
+  freeHostingDays?: number | null;
+  hostingPriceCents?: number | null;
   name: string;
   paymentProviderId: string | null;
   priceCents: number;
@@ -2851,7 +2854,9 @@ export type NexTechProduct = {
 export type NexTechSale = {
   id: string;
   botId: string;
+  customerId: string;
   guildId: string;
+  ownerUserId: string;
   planId: string | null;
   planName: string;
   buyerId: string;
@@ -2865,8 +2870,9 @@ export type NexTechSale = {
   successUrl?: string | null;
   productId?: string | null;
   productName?: string | null;
-  productPlanType?: "monthly" | "lifetime" | "manual";
+  productPlanType?: "monthly" | "lifetime" | "hosting" | "manual";
   productSlug?: string | null;
+  storeId: string;
   externalReference: string | null;
   status: NexTechSaleStatus;
   notes: string | null;
@@ -2879,6 +2885,7 @@ export type NexTechSale = {
 };
 
 export type NexTechSalesDashboard = {
+  lifetimeLicenses: NexTechLifetimeLicense[];
   plans: NexTechSalesPlan[];
   products: NexTechProduct[];
   sales: NexTechSale[];
@@ -2893,6 +2900,26 @@ export type NexTechSalesDashboard = {
     salesThisMonth: number;
     totalSales: number;
   };
+};
+
+export type NexTechLifetimeLicense = {
+  customerId: string;
+  expiresAt: string | null;
+  hostingFreeDaysRemaining: number;
+  hostingFreeUntil: string | null;
+  hostingPriceCents: number;
+  hostingStatus: "active" | "pending_payment" | "suspended" | "not_required";
+  licenseStatus: "active" | "cancelled";
+  licenseType: "monthly" | "lifetime" | "manual";
+  moduleName: string;
+  nextHostingDueAt: string | null;
+  ownerUserId: string;
+  purchaseDate: string;
+  saleId: string;
+  storeId: string;
+  subscriptionId: string;
+  supportLevel: "standard" | "priority";
+  updatesIncluded: boolean;
 };
 
 export type PublicNexTechProduct = {

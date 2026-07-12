@@ -412,6 +412,20 @@ function normalizeBlock(block: MongoPanelBlock, index: number): MongoPanelBlock 
       : null;
     return { accessory, id, order: index, texts, type: "section" };
   }
+  if (block.type === "footer") {
+    const text = String(block.text ?? "").slice(0, 4000) || "-# Rodape do painel";
+    const imageUrl = normalizeImageUrl(block.imageUrl);
+    const attachmentName = normalizeAttachmentName(block.attachmentName);
+    return {
+      altText: block.altText?.slice(0, 1024) ?? null,
+      attachmentName,
+      imageUrl: imageUrl || null,
+      id,
+      order: index,
+      text,
+      type: "footer"
+    };
+  }
   if (block.type === "action_row") {
     const buttons = (block.buttons ?? []).filter((button) => button.label).slice(0, 5).map((button) => ({ customId: button.customId?.slice(0, 100), disabled: Boolean(button.disabled), label: button.label.slice(0, 80), style: button.style ?? "secondary", url: button.url }));
     return buttons.length ? { buttons, id, order: index, type: "action_row" } : null;
@@ -423,7 +437,15 @@ function legacyBlocks(panelId: string, imageEnabled: boolean, imageUrl: string, 
   if (!imageEnabled || !imageUrl || position === "none") return [];
   const order = position === "top" || position === "banner" ? 0 : position === "middle" ? 2 : 10;
   if (position === "thumbnail" || position === "side" || position === "footer") {
-    return [{ accessory: { kind: "thumbnail", url: imageUrl }, id: `${panelId}_legacy_section`, order, texts: [position === "footer" ? "-# Rodape do painel" : "## Imagem do painel"], type: "section" }];
+    if (position === "footer") {
+      return [{ altText: "Imagem de rodape", id: `${panelId}_legacy_footer`, imageUrl, order, text: "-# Rodape do painel", type: "footer" }];
+    }
+    return [{ accessory: { kind: "thumbnail", url: imageUrl }, id: `${panelId}_legacy_section`, order, texts: ["## Imagem do painel"], type: "section" }];
   }
   return [{ id: `${panelId}_legacy_media`, items: [{ description: "Banner do painel", url: imageUrl }], order, type: "media_gallery" }];
+}
+
+function normalizeAttachmentName(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && /^[^\\/:\0]{1,255}$/.test(trimmed) ? trimmed : null;
 }

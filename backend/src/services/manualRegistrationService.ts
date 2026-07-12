@@ -597,6 +597,7 @@ async function writeManualRegistrationLog(input: Omit<MongoManualRegistrationLog
 }
 
 function emitManualRegistrationUpdated(guildId: string, botId: string | null) {
+  if (!botId) return;
   emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "manual-registration:updated", { botId, guildId });
 }
 

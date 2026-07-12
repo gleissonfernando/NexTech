@@ -265,6 +265,9 @@ settingsRouter.patch("/bot/:guildId", requireBot, async (req, res, next) => {
     if (!guildId) {
       return res.status(400).json({ message: "guildId obrigatorio." });
     }
+    if (!botId) {
+      return res.status(400).json({ message: "botId obrigatorio." });
+    }
 
     await validateGuildResources(guildId, botId, input);
     const settings = await updateGuildSettings(guildId, input, botId);
@@ -298,6 +301,11 @@ settingsRouter.post("/bot/:guildId/self-bot-role", requireBot, async (req, res, 
     if (!guildId) {
       return res.status(400).json({
         message: "guildId obrigatorio."
+      });
+    }
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
       });
     }
 
@@ -521,6 +529,11 @@ settingsRouter.put("/:guildId/welcome-image", requireAuth, welcomeImageUpload, a
         message: "guildId obrigatorio."
       });
     }
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
+      });
+    }
 
     if (!(await canManageSettings(req, res, guildId, botId))) {
       return res.status(403).json({
@@ -564,6 +577,11 @@ settingsRouter.put("/:guildId/leave-image", requireAuth, welcomeImageUpload, asy
     if (!guildId) {
       return res.status(400).json({
         message: "guildId obrigatorio."
+      });
+    }
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
       });
     }
 
@@ -610,6 +628,12 @@ settingsRouter.post("/:guildId/welcome-test", requireAuth, async (req, res, next
     if (!guildId) {
       return res.status(400).json({
         message: "guildId obrigatorio."
+      });
+    }
+
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
       });
     }
 
@@ -795,6 +819,12 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
     }
 
     const input = settingsSchema.parse(req.body);
+
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
+      });
+    }
 
     const ownerDevOnlyPatch = touchesOwnerDevOnlySettings(input);
     const canManageOwnerDevPatch = ownerDevOnlyPatch

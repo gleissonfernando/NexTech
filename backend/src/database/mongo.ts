@@ -1426,7 +1426,7 @@ export type MongoServiceHeartbeat = {
 
 export type MongoLogEntry = {
   _id: string;
-  botId?: string | null;
+  botId: string;
   guildId: string;
   userId: string | null;
   executorId?: string | null;
@@ -2643,6 +2643,8 @@ export type MongoNexTechProductPlanConfig = {
   buttonText: string;
   description: string;
   enabled: boolean;
+  freeHostingDays?: number | null;
+  hostingPriceCents?: number | null;
   name: string;
   paymentProviderId: string | null;
   priceCents: number;
@@ -2687,7 +2689,7 @@ export type MongoNexTechProduct = {
 };
 
 export type MongoNexTechSaleStatus = "pending" | "paid" | "cancelled" | "refunded";
-export type MongoNexTechSalePlanType = "monthly" | "lifetime" | "manual";
+export type MongoNexTechSalePlanType = "monthly" | "lifetime" | "hosting" | "manual";
 
 export type MongoNexTechSale = {
   _id: string;
@@ -2747,6 +2749,20 @@ export type MongoNexTechSubscription = {
   status: "active" | "cancelled" | "expired";
   startsAt: Date;
   expiresAt: Date | null;
+  hostingFreeUntil?: Date | null;
+  hostingPriceCents?: number | null;
+  hostingStatus?: "active" | "pending_payment" | "suspended" | "not_required";
+  lastHostingChargeAt?: Date | null;
+  licenseExpiresAt?: Date | null;
+  licenseStatus?: "active" | "cancelled";
+  licenseType?: "monthly" | "lifetime" | "manual";
+  nextHostingDueAt?: Date | null;
+  productId?: string | null;
+  productName?: string | null;
+  productPlanType?: MongoNexTechSalePlanType;
+  productSlug?: string | null;
+  supportLevel?: "standard" | "priority";
+  updatesIncluded?: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -3617,6 +3633,7 @@ export type MongoPanelBlock =
   | { divider?: boolean; id: string; order: number; spacing?: "small" | "large" | number; type: "separator" }
   | { id: string; items: Array<{ description?: string | null; spoiler?: boolean; url: string }>; order: number; type: "media_gallery" }
   | { accessory?: { kind: "thumbnail"; description?: string | null; url: string } | { kind: "button"; customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string } | null; id: string; order: number; texts: string[]; type: "section" }
+  | { altText?: string | null; attachmentName?: string | null; imageUrl?: string | null; id: string; order: number; text: string; type: "footer" }
   | { buttons: Array<{ customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string }>; id: string; order: number; type: "action_row" };
 
 export type MongoPanelImageSettings = {
@@ -3665,7 +3682,7 @@ const globalForMongo = globalThis as unknown as {
 
 function databaseNameFromUri(uri: string) {
   const configuredName = process.env.MONGODB_DATABASE_NAME || process.env.MONGODB_DB_NAME;
-  const defaultName = "orvitek";
+  const defaultName = "NexTech";
   const legacyNames: Record<string, string> = {
     ricardinho98: defaultName
   };
@@ -3677,7 +3694,7 @@ function databaseNameFromUri(uri: string) {
 }
 
 export function botDatabaseName(botId: string) {
-  const prefix = (process.env.BOT_DATABASE_PREFIX || "orvitek_bot").trim() || "orvitek_bot";
+  const prefix = (process.env.BOT_DATABASE_PREFIX || "NexTech_bot").trim() || "NexTech_bot";
   const normalizedBotId = botId.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
 
   if (!normalizedBotId) {
@@ -4033,7 +4050,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoBackgroundJob>("background_jobs").createIndex({ lockedUntil: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 }),
     db.collection<MongoServiceHeartbeat>("service_heartbeats").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection<MongoServiceHeartbeat>("service_heartbeats").createIndex({ service: 1, updatedAt: -1 }),
-    db.collection<MongoLogEntry>("LogEntry").createIndex({ guildId: 1, createdAt: -1 }),
+    db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, module: 1, action: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, caseId: 1, createdAt: -1 }),
     db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
@@ -4632,8 +4649,10 @@ async function ensureNexTechSalesIndexes(db: Db) {
     db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 }),
     db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, buyerId: 1, createdAt: -1 }),
+    db.collection<MongoNexTechSale>("nexTech_sales").createIndex({ ownerUserId: 1, storeId: 1, customerId: 1, productId: 1, productPlanType: 1, status: 1 }),
     db.collection<MongoNexTechCustomer>("nexTech_customers").createIndex({ ownerUserId: 1, storeId: 1, discordId: 1 }),
     db.collection<MongoNexTechSubscription>("nexTech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, customerId: 1, status: 1 }),
+    db.collection<MongoNexTechSubscription>("nexTech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, productPlanType: 1, nextHostingDueAt: 1, status: 1 }),
     db.collection<MongoNexTechWebhookLog>("nexTech_webhook_logs").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 })
   ]);
 }

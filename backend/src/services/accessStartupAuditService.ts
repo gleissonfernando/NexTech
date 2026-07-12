@@ -147,6 +147,10 @@ async function persistAuditCorrection(settings: MongoGuildSettings, update: Part
 }
 
 async function writeStartupAuditLog(correction: AuditCorrection) {
+  if (!correction.botId) {
+    return;
+  }
+
   await createLog({
     botId: correction.botId,
     guildId: correction.guildId,

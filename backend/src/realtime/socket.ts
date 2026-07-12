@@ -7,14 +7,13 @@ import { recordGiveawayChatEvent, type GiveawayChatEventInput } from "../service
 import { getBotStatus, updateBotStatus } from "../services/statsService";
 import {
   authorizeBotRuntimeModule,
+  canReadDevBotModule,
   findDevBotIdByClientId,
-  listAccessibleDashboardBots,
   runtimeModuleIdForLogType,
   syncDevBotGuilds,
   syncDevBotProfile,
   updateDevBotRuntimeStatus
 } from "../services/devBotService";
-import { getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
 import { isValidDashboardVerificationToken, resolveAuthFromCookieHeader } from "../services/tokenService";
 import {
   botRealtimeRoom,
@@ -61,9 +60,7 @@ export function createSocketServer(httpServer: HttpServer) {
       await socket.join(devBotRealtimeRoom(botId));
     }
 
-    if (!isBot) {
-      await joinDashboardLogRooms(socket);
-    }
+    if (!isBot) registerDashboardLogSubscription(socket);
     socket.emit("bot:status", getBotStatus());
 
     socket.on("disconnect", () => {
@@ -128,6 +125,12 @@ export function createSocketServer(httpServer: HttpServer) {
       }
 
       const botId = socket.data.botId ?? payload.botId ?? null;
+
+      if (!botId) {
+        console.warn("[socket] bot:log descartado: botId ausente.");
+        return;
+      }
+
       const moduleId = runtimeModuleIdForLogType(payload.type);
 
       if (moduleId) {
@@ -155,6 +158,11 @@ export function createSocketServer(httpServer: HttpServer) {
       }
 
       const eventBotId = socket.data.botId ?? payload.botId ?? null;
+      if (!eventBotId) {
+        console.warn("[socket] live:started descartado: botId ausente.");
+        return;
+      }
+
       const event = createLiveEvent({
         ...payload,
         botId: eventBotId,
@@ -181,6 +189,11 @@ export function createSocketServer(httpServer: HttpServer) {
       }
 
       const eventBotId = socket.data.botId ?? payload.botId ?? null;
+      if (!eventBotId) {
+        console.warn("[socket] live:ended descartado: botId ausente.");
+        return;
+      }
+
       const event = createLiveEvent({
         ...payload,
         botId: eventBotId,
@@ -221,24 +234,29 @@ export function createSocketServer(httpServer: HttpServer) {
   return io;
 }
 
-async function joinDashboardLogRooms(socket: Socket) {
-  const auth = resolveAuthFromCookieHeader(socket.handshake.headers.cookie);
+function registerDashboardLogSubscription(socket: Socket) {
+  socket.on("logs:subscribe", async (payload: { botId?: string | null; guildId?: string | null } = {}) => {
+    const auth = resolveAuthFromCookieHeader(socket.handshake.headers.cookie);
+    const guildId = typeof payload.guildId === "string" && payload.guildId.trim() ? payload.guildId.trim() : null;
+    const botId = typeof payload.botId === "string" && payload.botId.trim() ? payload.botId.trim() : null;
 
-  if (
-    !auth?.verified
-    || !isValidDashboardVerificationToken(socket.handshake.auth?.verificationToken, auth.user.discordId)
-  ) {
-    return;
-  }
+    if (
+      !auth?.verified
+      || !isValidDashboardVerificationToken(socket.handshake.auth?.verificationToken, auth.user.discordId)
+      || !guildId
+      || !botId
+    ) {
+      return;
+    }
 
-  const defaultGuildRooms = [...getAccessibleGuildIds(auth.user)]
-    .map((guildId) => dashboardLogRealtimeRoom(guildId));
-  const bots = await listAccessibleDashboardBots(auth.user).catch(() => []);
-  const botGuildRooms = bots.flatMap((bot) => bot.enabledModules.some((moduleId) => moduleId === "logs" || moduleId === "fivem-goals" || moduleId === "fivem-orders" || moduleId === "fivem-finance" || moduleId === "fivem-hierarchy" || moduleId === "manual-registration")
-    ? bot.guildIds.map((guildId) => dashboardLogRealtimeRoom(guildId, bot.id))
-    : []);
+    if (!(await canReadDevBotModule(auth.user, botId, guildId, "logs"))) {
+      return;
+    }
 
-  await socket.join([...new Set([...defaultGuildRooms, ...botGuildRooms])]);
+    const currentRooms = [...socket.rooms].filter((room) => room.startsWith("dashboard-logs:"));
+    await Promise.all(currentRooms.map((room) => socket.leave(room)));
+    await socket.join(dashboardLogRealtimeRoom(guildId, botId));
+  });
 }
 
 function scheduleBotDisconnectOffline(io: Server, botId: string) {

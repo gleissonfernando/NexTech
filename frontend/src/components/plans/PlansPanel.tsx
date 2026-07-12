@@ -65,6 +65,12 @@ export function PlansPanel() {
   const entitlements = selectedPlan?.entitlements ?? [];
   const bots = selectedWorkspace?.bots ?? [];
   const botLimit = selectedSubscription?.botLimit ?? selectedPlan?.botLimit ?? 0;
+  const lifetimeSubscriptions = activeSubscriptions
+    .map((subscription) => ({
+      plan: dashboard?.plans.find((plan) => plan.id === subscription.planId) ?? null,
+      subscription
+    }))
+    .filter(({ plan, subscription }) => plan?.billingCycle === "lifetime" || readStringMetadata(subscription.metadata, ["license", "type"]) === "lifetime");
 
   async function handleInterest(plan: Plan) {
     setBusyKey(`plan:${plan.slug}`);
@@ -186,6 +192,43 @@ export function PlansPanel() {
           />
         ))}
       </section>
+
+      {lifetimeSubscriptions.length ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {lifetimeSubscriptions.map(({ plan, subscription }) => {
+            const hostingFreeUntil = readStringMetadata(subscription.metadata, ["hosting", "freeUntil"]);
+            const nextDueAt = readStringMetadata(subscription.metadata, ["hosting", "nextDueAt"]);
+            const hostingPrice = readNumberMetadata(subscription.metadata, ["hosting", "monthlyPriceInCents"]) ?? 1200;
+            const freeDaysRemaining = daysUntil(hostingFreeUntil);
+
+            return (
+              <Card key={subscription.id}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-[#FFD500]" />
+                    Plano Vitalício
+                  </CardTitle>
+                  <CardDescription>{plan?.name ?? subscription.planSlug}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <LifetimeInfo label="Status da licença" value={subscription.status === "active" ? "Ativa" : statusLabel(subscription.status)} />
+                    <LifetimeInfo label="Data da compra" value={subscription.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "Nao informado"} />
+                    <LifetimeInfo label="Hospedagem ativa" value={readStringMetadata(subscription.metadata, ["hosting", "status"]) === "active" ? "Sim" : "Nao"} />
+                    <LifetimeInfo label="Dias gratis" value={String(freeDaysRemaining)} />
+                    <LifetimeInfo label="Valor da hospedagem" value={formatMoney(hostingPrice, plan?.currency ?? "BRL")} />
+                    <LifetimeInfo label="Proximo vencimento" value={nextDueAt ? new Date(nextDueAt).toLocaleDateString("pt-BR") : "Sem vencimento"} />
+                  </div>
+                  <Button disabled variant="outline">
+                    <CreditCard className="h-4 w-4" />
+                    Renovar Hospedagem
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </section>
+      ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
@@ -361,6 +404,15 @@ function MetricCard({ icon: Icon, label, value }: { icon: LucideIcon; label: str
   );
 }
 
+function LifetimeInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/25 px-3 py-2">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
 function formatPrice(plan: Plan) {
   const value = plan.promotionalPriceInCents ?? plan.priceInCents;
   if (value <= 0) return "Sob consulta";
@@ -369,6 +421,41 @@ function formatPrice(plan: Plan) {
     currency: plan.currency,
     style: "currency"
   }).format(value / 100);
+}
+
+function formatMoney(valueInCents: number, currency: Plan["currency"]) {
+  return new Intl.NumberFormat("pt-BR", {
+    currency,
+    style: "currency"
+  }).format(valueInCents / 100);
+}
+
+function daysUntil(value: string | null) {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.max(0, Math.ceil((timestamp - Date.now()) / 86_400_000));
+}
+
+function readStringMetadata(metadata: Record<string, unknown> | undefined, path: string[]) {
+  const value = readNestedMetadata(metadata, path);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readNumberMetadata(metadata: Record<string, unknown> | undefined, path: string[]) {
+  const value = readNestedMetadata(metadata, path);
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readNestedMetadata(metadata: Record<string, unknown> | undefined, path: string[]) {
+  let current: unknown = metadata;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
 }
 
 function statusLabel(status: string) {

@@ -10,8 +10,13 @@ export function devBotRealtimeRoom(botId: string) {
   return `dev-bot:${botId}`;
 }
 
-export function dashboardLogRealtimeRoom(guildId: string, botId?: string | null) {
-  return `dashboard-logs:${botId?.trim() || "default"}:${guildId}`;
+export function dashboardLogRealtimeRoom(guildId: string, botId: string) {
+  const normalizedBotId = botId.trim();
+  if (!normalizedBotId) {
+    throw new Error("botId obrigatorio para room de logs.");
+  }
+
+  return `dashboard-logs:${normalizedBotId}:${guildId}`;
 }
 
 export function setRealtimeServer(server: Server) {
@@ -50,12 +55,15 @@ export async function emitRealtimeToRoomWithAck<TPayload, TResponse>(
     .catch(() => [] as TResponse[]);
 }
 
-function isDashboardLogPayload(payload: unknown): payload is { botId?: string | null; guildId: string } {
+function isDashboardLogPayload(payload: unknown): payload is { botId: string; guildId: string } {
   return Boolean(
     payload
     && typeof payload === "object"
     && "guildId" in payload
     && typeof payload.guildId === "string"
     && payload.guildId.trim()
+    && "botId" in payload
+    && typeof payload.botId === "string"
+    && payload.botId.trim()
   );
 }

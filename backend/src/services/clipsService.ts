@@ -1073,8 +1073,13 @@ export async function writeClipLog(config: MongoClipsConfig, action: string, use
     message,
     createdAt: now
   });
+  const botId = normalizeBotId(config.botId);
+  if (!botId) {
+    return;
+  }
+
   await createLog({
-    botId: normalizeBotId(config.botId),
+    botId,
     guildId: config.guildId,
     userId,
     type: action,

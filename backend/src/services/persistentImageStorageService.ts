@@ -100,24 +100,26 @@ export async function savePersistentImage(input: {
     moduleId: doc.moduleId
   }).catch(() => null);
 
-  await createLog({
-    botId: input.botId ?? null,
-    guildId: input.guildId,
-    message: `Imagem ${input.imageType} do modulo ${input.moduleId} enviada para armazenamento persistente.`,
-    metadata: {
-      imageType: input.imageType,
-      mimeType: input.mimeType,
-      moduleId: input.moduleId,
-      newUrl: publicUrl,
-      oldUrl: input.previousUrl ?? null,
-      previousDeletedBeforeInsert,
-      size: input.buffer.length,
-      storageProvider: "mongodb",
-      status: "uploaded"
-    },
-    type: "panel_image.uploaded",
-    userId: input.actorId
-  }).catch(() => null);
+  if (input.botId) {
+    await createLog({
+      botId: input.botId,
+      guildId: input.guildId,
+      message: `Imagem ${input.imageType} do modulo ${input.moduleId} enviada para armazenamento persistente.`,
+      metadata: {
+        imageType: input.imageType,
+        mimeType: input.mimeType,
+        moduleId: input.moduleId,
+        newUrl: publicUrl,
+        oldUrl: input.previousUrl ?? null,
+        previousDeletedBeforeInsert,
+        size: input.buffer.length,
+        storageProvider: "mongodb",
+        status: "uploaded"
+      },
+      type: "panel_image.uploaded",
+      userId: input.actorId
+    }).catch(() => null);
+  }
 
   return toDto(doc);
 }
@@ -141,19 +143,21 @@ export async function removePersistentImageByUrl(input: {
     await persistentImages.deleteOne({ _id: id, guildId: input.guildId });
   }
 
-  await createLog({
-    botId: input.botId ?? null,
-    guildId: input.guildId,
-    message: `Imagem ${input.imageType} do modulo ${input.moduleId} removida.`,
-    metadata: {
-      imageType: input.imageType,
-      moduleId: input.moduleId,
-      oldUrl: input.url,
-      status: "removed"
-    },
-    type: "panel_image.removed",
-    userId: input.actorId
-  }).catch(() => null);
+  if (input.botId) {
+    await createLog({
+      botId: input.botId,
+      guildId: input.guildId,
+      message: `Imagem ${input.imageType} do modulo ${input.moduleId} removida.`,
+      metadata: {
+        imageType: input.imageType,
+        moduleId: input.moduleId,
+        oldUrl: input.url,
+        status: "removed"
+      },
+      type: "panel_image.removed",
+      userId: input.actorId
+    }).catch(() => null);
+  }
 }
 
 async function deletePersistentImageHistory(input: {

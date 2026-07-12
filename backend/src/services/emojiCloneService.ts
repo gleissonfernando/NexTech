@@ -72,20 +72,22 @@ export async function recordEmojiCloneJob(input: RecordEmojiCloneJobInput) {
 
   const libraryItems = await upsertEmojiLibraryItems(job, input.items);
 
-  await createLog({
-    botId: job.botId,
-    guildId: job.guildId,
-    userId: job.userId,
-    type: "emoji_clone.completed",
-    message: `Clonagem de emojis finalizada: ${job.success}/${job.total} com sucesso.`,
-    metadata: {
-      failed: job.failed,
-      jobId: job._id,
-      prefix: job.prefix,
-      sourceGuildId: job.sourceGuildId,
-      total: job.total
-    }
-  }).catch(() => undefined);
+  if (job.botId) {
+    await createLog({
+      botId: job.botId,
+      guildId: job.guildId,
+      userId: job.userId,
+      type: "emoji_clone.completed",
+      message: `Clonagem de emojis finalizada: ${job.success}/${job.total} com sucesso.`,
+      metadata: {
+        failed: job.failed,
+        jobId: job._id,
+        prefix: job.prefix,
+        sourceGuildId: job.sourceGuildId,
+        total: job.total
+      }
+    }).catch(() => undefined);
+  }
 
   emitRealtime("emoji-cloner:job_recorded", {
     botId: job.botId,

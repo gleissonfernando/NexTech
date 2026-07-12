@@ -1495,8 +1495,13 @@ function requestGiveawayPanelUpdate(giveaway: MongoGiveaway, action: "publish" |
 }
 
 async function writeGiveawayLog(giveaway: MongoGiveaway, type: string, userId: string | null, message: string) {
+  const botId = normalizeBotId(giveaway.botId);
+  if (!botId) {
+    return null;
+  }
+
   const log = await createLog({
-    botId: normalizeBotId(giveaway.botId),
+    botId,
     guildId: giveaway.guildId,
     userId,
     type,

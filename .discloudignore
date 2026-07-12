@@ -5,7 +5,7 @@ node_modules
 .env.*
 !.env.example
 *-runtime-env.json
-.orvitek-runtime-env.json
+.NexTech-runtime-env.json
 README.md
 .DS_Store
 .vscode

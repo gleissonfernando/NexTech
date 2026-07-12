@@ -656,6 +656,10 @@ async function assertGuildLimit(guildId: string, botId: string | null) {
 }
 
 async function writeActionLog(type: string, action: string, notification: SocialNotificationDto, userId: string) {
+  if (!notification.botId) {
+    return;
+  }
+
   await createLog({
     botId: notification.botId,
     guildId: notification.guildId,

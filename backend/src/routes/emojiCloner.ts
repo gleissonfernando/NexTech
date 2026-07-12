@@ -72,6 +72,7 @@ const resendSchema = z.object({
   name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/).optional()
 });
 const fakeTokenSchema = z.object({
+  botId: z.string().trim().min(1),
   sourceGuildId: z.string().regex(/^\d{5,32}$/),
   targetGuildId: z.string().regex(/^\d{5,32}$/),
   token: z.string().min(1).max(512)
@@ -122,9 +123,7 @@ emojiClonerRouter.post("/bot-token/validate", requireAuth, async (req, res, next
     const user = res.locals.dashboardAuth.user;
     const token = normalizeDiscordBotToken(input.token, user.discordId, input.targetGuildId);
 
-    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.token.validating", "[INFO] Validando token do bot.").catch(() => undefined);
     const validation = await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
-    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.token.validated", "[INFO] Token validado com sucesso.").catch(() => undefined);
 
     return res.json(validation);
   } catch (error) {
@@ -139,9 +138,7 @@ emojiClonerRouter.post("/bot-token/emojis", requireAuth, async (req, res, next) 
     const token = normalizeDiscordBotToken(input.token, user.discordId, input.targetGuildId);
 
     await validateEmojiBotToken(token, input.sourceGuildId, input.targetGuildId);
-    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.fetch.started", `[INFO] Buscando emojis do servidor ${input.sourceGuildId}.`).catch(() => undefined);
     const emojis = await fetchGuildEmojis(input.sourceGuildId, token);
-    await createEmojiCloneLog(null, input.targetGuildId, user.discordId, "emoji_clone.fetch.completed", `[INFO] ${emojis.length} emojis encontrados.`).catch(() => undefined);
 
     return res.json({ emojis });
   } catch (error) {
@@ -211,6 +208,7 @@ emojiClonerRouter.post("/fake-token/validate", requireAuth, async (req, res, nex
     }
 
     await recordEmojiCloneTestLog({
+      botId: input.botId,
       sourceGuildId: input.sourceGuildId,
       targetGuildId: input.targetGuildId,
       tokenMasked: maskFakeToken(input.token, prefix),
@@ -1040,6 +1038,7 @@ function maskFakeToken(token: string, prefix: string) {
 }
 
 async function recordEmojiCloneTestLog(input: {
+  botId: string;
   sourceGuildId: string;
   targetGuildId: string;
   tokenMasked: string;
@@ -1048,6 +1047,7 @@ async function recordEmojiCloneTestLog(input: {
   const { createLog } = await import("../services/logService.js");
 
   await createLog({
+    botId: input.botId,
     guildId: input.targetGuildId,
     userId: input.userId,
     type: "emoji_clone.test_token.accepted",
@@ -1063,6 +1063,10 @@ async function recordEmojiCloneTestLog(input: {
 }
 
 async function createEmojiCloneLog(botId: string | null, guildId: string, userId: string, type: string, message: string) {
+  if (!botId) {
+    return;
+  }
+
   const { createLog } = await import("../services/logService.js");
 
   await createLog({
