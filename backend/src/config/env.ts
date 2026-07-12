@@ -54,6 +54,40 @@ function applyPackedEnv() {
   }
 }
 
+function applyEnvAlias(target: string, ...sources: string[]) {
+  if (cleanEnvValue(process.env[target])) {
+    return;
+  }
+
+  for (const source of sources) {
+    const value = cleanEnvValue(process.env[source]);
+    if (value) {
+      process.env[target] = value;
+      return;
+    }
+  }
+}
+
+function applyMercadoPagoEnvAliases() {
+  const environment = cleanEnvValue(process.env.MERCADOPAGO_ENV) ?? cleanEnvValue(process.env.MERCADO_PAGO_ENV) ?? "production";
+  const credentialPrefix = environment === "test" ? "MERCADOPAGO_TEST" : "MERCADOPAGO_PROD";
+
+  applyEnvAlias("MERCADOPAGO_ENV", "MERCADO_PAGO_ENV");
+  applyEnvAlias("MERCADOPAGO_ENABLED", "MERCADO_PAGO_ENABLED");
+  applyEnvAlias(`${credentialPrefix}_ACCESS_TOKEN`, "MERCADO_PAGO_ACCESS_TOKEN");
+  applyEnvAlias(`${credentialPrefix}_PUBLIC_KEY`, "MERCADO_PAGO_PUBLIC_KEY", "NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY");
+  applyEnvAlias(`${credentialPrefix}_WEBHOOK_SECRET`, "MERCADO_PAGO_WEBHOOK_SECRET");
+  applyEnvAlias("MERCADOPAGO_SUCCESS_URL", "MERCADO_PAGO_SUCCESS_URL");
+  applyEnvAlias("MERCADOPAGO_PENDING_URL", "MERCADO_PAGO_PENDING_URL");
+  applyEnvAlias("MERCADOPAGO_FAILURE_URL", "MERCADO_PAGO_FAILURE_URL");
+  applyEnvAlias("MERCADOPAGO_WEBHOOK_URL", "MERCADO_PAGO_WEBHOOK_URL");
+  applyEnvAlias("MERCADOPAGO_CURRENCY", "MERCADO_PAGO_CURRENCY");
+  applyEnvAlias("MERCADOPAGO_STATEMENT_DESCRIPTOR", "MERCADO_PAGO_STATEMENT_DESCRIPTOR");
+  applyEnvAlias("MERCADOPAGO_CHECKOUT_EXPIRATION_MINUTES", "MERCADO_PAGO_CHECKOUT_EXPIRATION_MINUTES");
+  applyEnvAlias("MERCADOPAGO_MAX_INSTALLMENTS", "MERCADO_PAGO_MAX_INSTALLMENTS");
+  applyEnvAlias("MERCADOPAGO_BINARY_MODE", "MERCADO_PAGO_BINARY_MODE");
+}
+
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -147,6 +181,7 @@ function isOfficialProductionUrl(value: string) {
 }
 
 applyPackedEnv();
+applyMercadoPagoEnvAliases();
 
 const configuredSiteOrigin =
   cleanEnvValue(process.env.SITE_ORIGIN)

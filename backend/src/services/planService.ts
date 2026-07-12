@@ -305,7 +305,7 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
 
   const settings = await ensurePaymentSettings();
   const mercadoPagoConfig = getMercadoPagoRuntimeConfig();
-  const selectedProvider: MongoPaymentProvider = mercadoPagoConfig.enabled ? "mercadopago" : settings.provider;
+  const selectedProvider: MongoPaymentProvider = settings.enabled ? settings.provider : "disabled";
   const paymentsEnabled = selectedProvider === "mercadopago" && mercadoPagoConfig.enabled;
   const now = new Date();
   const amountInCents = plan.promotionalPriceInCents ?? plan.priceInCents;
