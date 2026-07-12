@@ -126,6 +126,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [examLinkDraft, setExamLinkDraft] = useState<ExamLinkDraft | null>(null);
   const [imageDraft, setImageDraft] = useState({ name: "", type: "main_banner", url: "" });
   const [proofSearch, setProofSearch] = useState("");
+  const [editingProofId, setEditingProofId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [examLoading, setExamLoading] = useState(false);
@@ -382,6 +383,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   }
 
   function openNewProofRegistration() {
+    setEditingProofId(null);
     setSelectedCourseId(null);
     setCourseDraft({
       ...emptyCourse,
@@ -395,6 +397,31 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     });
     setActiveTab("courses");
     setMessage("Cadastre o curso/prova. Depois de salvar, ele aparece em Configuração de Provas para configurar perguntas e gabarito.");
+  }
+
+  function openProofEditor(courseId: string) {
+    setSelectedCourseId(courseId);
+    setEditingProofId(courseId);
+    setEditingQuestionId(null);
+    setQuestionDraft(emptyQuestion);
+    if (courseId === selectedCourseId) void loadExam(courseId);
+  }
+
+  function closeProofEditor() {
+    if (editingQuestionId || questionDraft.prompt?.trim()) {
+      const discard = window.confirm("Existem alterações no formulário de pergunta. Deseja sair mesmo assim?");
+      if (!discard) return;
+    }
+    setEditingProofId(null);
+    setEditingQuestionId(null);
+    setQuestionDraft(emptyQuestion);
+  }
+
+  function finishProofEditing() {
+    setEditingProofId(null);
+    setEditingQuestionId(null);
+    setQuestionDraft(emptyQuestion);
+    setMessage(selectedCourse ? `Prova de ${selectedCourse.name} salva com sucesso.` : "Prova salva com sucesso.");
   }
 
   async function setSelectedCourseProofMode(enabled: boolean) {
@@ -581,44 +608,66 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
         </div>
       ) : null}
 
-      {activeTab === "proofs" ? (
+      {activeTab === "proofs" && !editingProofId ? (
+        <Card>
+          <CardHeader><CardTitle>Sistema de Provas</CardTitle></CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <label className="relative block w-full lg:max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <input
+                  className="h-10 w-full rounded-lg border border-zinc-800 bg-black pl-9 pr-3 text-sm text-zinc-100"
+                  onChange={(event) => setProofSearch(event.target.value)}
+                  placeholder="Pesquisar prova..."
+                  value={proofSearch}
+                />
+              </label>
+              <Button disabled={!canManage || saving} onClick={openNewProofRegistration} type="button">
+                <PlusCircle className="h-4 w-4" />
+                Criar nova prova
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {proofCourses.map((course) => (
+                <ProofRegistryItem
+                  course={course}
+                  isSelected={selectedCourseId === course.id}
+                  key={course.id}
+                  onEdit={() => openProofEditor(course.id)}
+                  onSelect={() => setSelectedCourseId(course.id)}
+                  selectedExam={selectedCourseId === course.id ? exam : null}
+                />
+              ))}
+            </div>
+            {!proofCourses.length ? (
+              <div className="rounded-lg border border-zinc-800 bg-black/30 p-5 text-sm text-zinc-400">
+                <p className="font-semibold text-white">Nenhuma prova foi cadastrada.</p>
+                <p className="mt-1">Crie uma prova e vincule-a a um curso para começar.</p>
+                <Button className="mt-4" disabled={!canManage || saving} onClick={openNewProofRegistration} type="button">
+                  <PlusCircle className="h-4 w-4" />
+                  Criar nova prova
+                </Button>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "proofs" && editingProofId ? (
         <Card>
           <CardHeader>
-            <CardTitle>Provas cadastradas</CardTitle>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle>{selectedCourse ? `Editar prova: ${selectedCourse.name}` : "Editar prova"}</CardTitle>
+                <p className="mt-1 text-sm text-zinc-500">Sistema de Provas &gt; {selectedCourse?.name ?? "Prova selecionada"}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={saving} onClick={finishProofEditing} type="button"><Save className="h-4 w-4" />Salvar prova</Button>
+                <Button disabled={saving} onClick={closeProofEditor} type="button" variant="outline">Voltar</Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-              <div className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
-                  <label className="relative block flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                    <input
-                      className="h-10 w-full rounded-lg border border-zinc-800 bg-black pl-9 pr-3 text-sm text-zinc-100"
-                      onChange={(event) => setProofSearch(event.target.value)}
-                      placeholder="Pesquisar prova..."
-                      value={proofSearch}
-                    />
-                  </label>
-                  <Button disabled={!canManage || saving} onClick={openNewProofRegistration} type="button">
-                    <PlusCircle className="h-4 w-4" />
-                    Cadastrar prova
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {proofCourses.map((course) => (
-                    <ProofRegistryItem
-                      course={course}
-                      isSelected={selectedCourseId === course.id}
-                      key={course.id}
-                      onSelect={() => setSelectedCourseId(course.id)}
-                      selectedExam={selectedCourseId === course.id ? exam : null}
-                    />
-                  ))}
-                  {!proofCourses.length ? <p className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-500">Nenhuma prova encontrada.</p> : null}
-                </div>
-              </div>
-              <div className="min-w-0 space-y-5">
-                <SelectValueField disabled={!canManage || saving} label="Prova selecionada" onChange={(courseId) => setSelectedCourseId(courseId)} options={dashboard.courses.map((course) => [course.id, course.name])} value={selectedCourseId ?? ""} />
             {selectedCourse && exam && exam.settings.courseId === selectedCourse.id ? (
               <>
                 <CourseProofModeCard
@@ -657,7 +706,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                 ) : null}
                 <ProofCompleteness questions={exam.questions} />
                 <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
-                  <p className="mb-3 font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "Criar pergunta"}</p>
+                  <p className="mb-3 font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "Adicionar pergunta"}</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     <InputField disabled={!canManage || saving} label="Número da pergunta" onChange={(value) => setQuestionDraft({ ...questionDraft, questionNumber: Number(value) || 1, order: Math.max(0, (Number(value) || 1) - 1) })} value={String(questionDraft.questionNumber ?? 1)} />
                     <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setQuestionDraft({ ...questionDraft, type: type as "selection" | "multiple" | "written" })} options={[["selection", "Objetiva"], ["multiple", "Múltipla escolha"], ["written", "Discursiva"]]} value={questionDraft.type} />
@@ -677,7 +726,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                         ))}
                       </div>
                     ) : <InputField disabled={!canManage || saving} label="Placeholder do modal" onChange={(placeholder) => setQuestionDraft({ ...questionDraft, placeholder })} value={questionDraft.placeholder ?? ""} />}
-                    <Button disabled={!canManage || saving || !questionDraft.prompt?.trim()} onClick={() => void saveQuestion()} type="button"><Save className="h-4 w-4" />Salvar pergunta</Button>
+                    <Button disabled={!canManage || saving || !questionDraft.prompt?.trim()} onClick={() => void saveQuestion()} type="button"><PlusCircle className="h-4 w-4" />Salvar pergunta</Button>
                   </div>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -691,9 +740,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Carregando prova de {selectedCourse.name}...
               </div>
-            ) : <p className="text-sm text-zinc-500">Selecione um curso para configurar a prova.</p>}
-              </div>
-            </div>
+            ) : <p className="text-sm text-zinc-500">Selecione uma prova para editar.</p>}
           </CardContent>
         </Card>
       ) : null}
@@ -782,19 +829,16 @@ function CourseProofModeCard({ course, disabled, enabled, onToggle, questions, s
   );
 }
 
-function ProofRegistryItem({ course, isSelected, onSelect, selectedExam }: {
+function ProofRegistryItem({ course, isSelected, onEdit, onSelect, selectedExam }: {
   course: Course;
   isSelected: boolean;
+  onEdit: () => void;
   onSelect: () => void;
   selectedExam: CourseExamDashboard | null;
 }) {
   const selectedStats = selectedExam ? getProofStats(selectedExam.questions) : null;
   return (
-    <button
-      className={`w-full rounded-lg border p-3 text-left transition ${isSelected ? "border-[#FFD500]/55 bg-[#FFD500]/10 shadow-[0_0_24px_rgba(255,213,0,0.12)]" : "border-zinc-800 bg-black/30 hover:border-[#FFD500]/35 hover:bg-[#FFD500]/5"}`}
-      onClick={onSelect}
-      type="button"
-    >
+    <div className={`rounded-lg border p-4 transition ${isSelected ? "border-[#FFD500]/55 bg-[#FFD500]/10 shadow-[0_0_24px_rgba(255,213,0,0.12)]" : "border-zinc-800 bg-black/30 hover:border-[#FFD500]/35 hover:bg-[#FFD500]/5"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white">{course.name}</p>
@@ -802,11 +846,18 @@ function ProofRegistryItem({ course, isSelected, onSelect, selectedExam }: {
         </div>
         <Badge variant={course.active ? "success" : "muted"}>{course.active ? "Curso ativo" : "Curso off"}</Badge>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <p className="mt-3 line-clamp-2 min-h-10 text-xs text-zinc-500">{course.description || "Sem descrição cadastrada."}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
         {isSelected && selectedExam ? <Badge variant={selectedExam.settings.enabled ? "warning" : "muted"}>{selectedExam.settings.enabled ? "Prova ativa" : "Prova inativa"}</Badge> : <Badge variant="muted">Selecionar</Badge>}
-        {selectedStats ? <Badge variant={selectedStats.complete ? "success" : "warning"}>{selectedStats.active}/{selectedStats.total} perguntas</Badge> : null}
+        {selectedStats ? <Badge variant={selectedStats.complete ? "success" : "warning"}>{selectedStats.active}/{selectedStats.total} perguntas</Badge> : <Badge variant="muted">Perguntas ao editar</Badge>}
+        {selectedStats ? <Badge variant="default">Nota max: {formatScoreValue(selectedStats.maxScore)}</Badge> : null}
       </div>
-    </button>
+      <p className="mt-3 text-xs text-zinc-500">Curso vinculado: <span className="text-zinc-300">{course.name}</span></p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button onClick={onEdit} size="sm" type="button"><FileQuestion className="h-4 w-4" />Editar prova</Button>
+        <Button onClick={onSelect} size="sm" type="button" variant="outline">Vincular cursos</Button>
+      </div>
+    </div>
   );
 }
 
@@ -825,6 +876,7 @@ function getProofStats(questions: CourseExamQuestion[]) {
   return {
     active: activeQuestions.length,
     complete,
+    maxScore: activeQuestions.reduce((total, question) => total + (Number(question.points) || 0), 0),
     objective: objective.length,
     total: questions.length,
     written: written.length
@@ -1059,6 +1111,10 @@ function parseDecimalNumber(value: unknown, fallback: number) {
 
 function formatDecimalInput(value: number) {
   return String(value).replace(".", ",");
+}
+
+function formatScoreValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(".", ",");
 }
 
 function normalizeSearch(value: string) {
