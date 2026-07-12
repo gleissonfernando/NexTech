@@ -192,6 +192,30 @@ function readStringField(payload: Record<string, unknown> | null, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export function mercadoPagoStatusToInternal(status: string) {
+  switch (status) {
+    case "approved":
+      return "paid";
+    case "authorized":
+    case "in_process":
+      return "processing";
+    case "pending":
+      return "pending";
+    case "in_mediation":
+      return "in_review";
+    case "cancelled":
+      return "cancelled";
+    case "refunded":
+    case "partially_refunded":
+      return "refunded";
+    case "charged_back":
+      return "charged_back";
+    case "rejected":
+    default:
+      return "failed";
+  }
+}
+
 function mercadoPagoError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode });
 }

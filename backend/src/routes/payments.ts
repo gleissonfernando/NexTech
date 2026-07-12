@@ -1,9 +1,14 @@
 import { Router } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { processMercadoPagoWebhook } from "../services/planService";
 
 export const paymentsRouter = Router();
+export const paymentWebhooksRouter = Router();
 
-paymentsRouter.post("/mercado-pago/webhook", async (req, res, next) => {
+paymentsRouter.post("/mercado-pago/webhook", handleMercadoPagoWebhook);
+paymentWebhooksRouter.post("/mercado-pago", handleMercadoPagoWebhook);
+
+async function handleMercadoPagoWebhook(req: Request, res: Response, next: NextFunction) {
   try {
     const dataId = readQuery(req.query["data.id"]) ?? readQuery(req.query.data_id);
     const result = await processMercadoPagoWebhook({
@@ -20,7 +25,7 @@ paymentsRouter.post("/mercado-pago/webhook", async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
-});
+}
 
 function readQuery(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;

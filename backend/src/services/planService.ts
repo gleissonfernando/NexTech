@@ -17,7 +17,7 @@ import type {
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { buildAppUrl } from "../config/appUrl";
-import { createMercadoPagoPreference, getMercadoPagoPayment, validateMercadoPagoWebhookSignature } from "./mercadoPagoService";
+import { MercadoPagoPaymentProvider } from "./paymentProviderService";
 import { decryptSecret, encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 
@@ -1008,10 +1008,13 @@ export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) 
       throw httpError("Assinatura do webhook nao configurada.", 401);
     }
 
-    const signatureValid = validateMercadoPagoWebhookSignature({
+    const provider = new MercadoPagoPaymentProvider(
+      decryptSecret(settings.secretEncrypted),
+      decryptSecret(settings.webhookSecretEncrypted)
+    );
+    const signatureValid = await provider.validateWebhook({
       dataId,
       requestId: input.requestId,
-      secret: decryptSecret(settings.webhookSecretEncrypted),
       signature: input.signature
     });
     await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { signatureValid } });
@@ -1026,13 +1029,13 @@ export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) 
       return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Webhook sem data.id.", signatureValid: true, processedAt: new Date() }), processed: false };
     }
 
-    const payment = await getMercadoPagoPayment(decryptSecret(settings.secretEncrypted), dataId);
-    const externalReference = readString(payment.external_reference);
-    const paymentId = readString(payment.id) ?? dataId;
-    const status = readString(payment.status) ?? "unknown";
-    const amountInCents = moneyToCents(payment.transaction_amount);
-    const currency = readString(payment.currency_id);
-    const paymentMethod = readString(payment.payment_method_id) ?? readString(payment.payment_type_id);
+    const payment = await provider.getPayment(dataId);
+    const externalReference = payment.externalReference;
+    const paymentId = payment.id;
+    const status = payment.status;
+    const amountInCents = payment.amountInCents;
+    const currency = payment.currency;
+    const paymentMethod = payment.method;
 
     if (!externalReference) {
       await markPaymentEvent(insertedEvent._id, "ignored", "Pagamento sem referencia externa.");
@@ -1072,7 +1075,7 @@ export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) 
       throw httpError("Valor ou moeda divergente.", 409);
     }
 
-    const nextStatus = mercadoPagoStatusToOrderStatus(status);
+    const nextStatus = status;
     const update: Partial<MongoPaymentOrder> = {
       mercadoPagoPaymentId: paymentId,
       notes: `Status Mercado Pago confirmado: ${status}.`,
@@ -1241,30 +1244,6 @@ function snapshotPlan(plan: MongoPlan) {
   };
 }
 
-function mercadoPagoStatusToOrderStatus(status: string): MongoPaymentOrder["status"] {
-  switch (status) {
-    case "approved":
-      return "paid";
-    case "authorized":
-    case "in_process":
-      return "processing";
-    case "pending":
-      return "pending";
-    case "in_mediation":
-      return "in_review";
-    case "cancelled":
-      return "cancelled";
-    case "refunded":
-    case "partially_refunded":
-      return "refunded";
-    case "charged_back":
-      return "charged_back";
-    case "rejected":
-    default:
-      return "failed";
-  }
-}
-
 async function markPaymentEvent(eventId: string, status: MongoPaymentEvent["status"], result: string, orderId: string | null = null) {
   const { paymentEvents } = await getMongoCollections();
   await paymentEvents.updateOne({ _id: eventId }, {
@@ -1284,11 +1263,6 @@ function mapPaymentEvent(event: MongoPaymentEvent) {
     createdAt: event.createdAt.toISOString(),
     processedAt: event.processedAt ? event.processedAt.toISOString() : null
   };
-}
-
-function moneyToCents(value: unknown) {
-  const numberValue = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numberValue) ? Math.round(numberValue * 100) : 0;
 }
 
 function readString(value: unknown) {
@@ -1443,8 +1417,8 @@ async function createMercadoPagoPlanPreference(
     throw httpError("Access Token do Mercado Pago nao configurado.", 400);
   }
 
-  return createMercadoPagoPreference({
-    accessToken: decryptSecret(settings.secretEncrypted),
+  const provider = new MercadoPagoPaymentProvider(decryptSecret(settings.secretEncrypted));
+  return provider.createOneTimeCheckout({
     backUrls: {
       failure: buildAppUrl("/pagamento/falha"),
       pending: buildAppUrl("/pagamento/pendente"),
