@@ -58,18 +58,29 @@ export async function getCoursesDashboard(botId: string | null, guildId: string)
 async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: string) {
   const { courses, courseExamSettings, courseExamQuestions } = await getMongoCollections();
   const now = new Date();
-  const existing = await courses.findOne({ ...scope(botId, guildId), code: "npd-tablet-prisional" });
+  const existing = await courses.findOne({
+    ...scope(botId, guildId),
+    $or: [
+      { code: "npd-tablet-prisional" },
+      { code: "npd_tablet_prisional" },
+      { code: "curso-tablet-prisional-npd" },
+      { name: "CURSO DE TABLET E PRISIONAL - NPD" },
+      { name: "Curso de Tablet e Prisional — NPD" },
+      { name: "Curso de Tablet e Prisional - NPD" }
+    ]
+  });
   const courseId = existing?._id ?? randomUUID();
+  const description = "Esta prova foi desenvolvida com o objetivo de capacitar e instruir todos os policiais do North Police Department a realizar a instrução padrão com excelência.";
   if (!existing) {
     await courses.insertOne({
       _id: courseId,
       botId,
       guildId,
-      name: "Curso de Tablet e Prisional — NPD",
+      name: "CURSO DE TABLET E PRISIONAL - NPD",
       code: "npd-tablet-prisional",
-      description: "Curso de Tablet e Prisional da NPD. Prova cadastrada como rascunho/inativa aguardando gabarito.",
+      description,
       emoji: null,
-      color: "#2563eb",
+      color: "#FFD500",
       bannerUrl: null,
       proofBannerUrl: null,
       footerImageUrl: null,
@@ -83,7 +94,7 @@ async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: str
         cancel: "Cancelar Curso",
         enter: "Entrar no Curso",
         leave: "Sair do Curso",
-        start: "Realizar prova"
+        start: "Realizar Prova"
       },
       instructorUserIds: [],
       instructorRoleIds: [],
@@ -98,6 +109,34 @@ async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: str
       createdAt: now,
       updatedAt: now
     });
+  } else if (
+    existing.code !== "npd-tablet-prisional"
+    || existing.buttonLabels?.start !== "Realizar Prova"
+    || !existing.description
+    || existing.updatedBy === "system:seed"
+  ) {
+    const seedOwned = existing.updatedBy === "system:seed";
+    await courses.updateOne(
+      { _id: existing._id, ...scope(botId, guildId) },
+      {
+        $set: {
+          code: "npd-tablet-prisional",
+          ...(seedOwned ? {
+            color: "#FFD500",
+            description,
+            name: "CURSO DE TABLET E PRISIONAL - NPD",
+            updatedBy: "system:seed"
+          } : {
+            description: existing.description || description
+          }),
+          buttonLabels: {
+            ...existing.buttonLabels,
+            start: "Realizar Prova"
+          },
+          updatedAt: now
+        }
+      }
+    );
   }
 
   await courseExamSettings.updateOne(
@@ -143,11 +182,50 @@ async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: str
     { upsert: true }
   );
 
-  if (await courseExamQuestions.countDocuments({ ...scope(botId, guildId), courseId }) > 0) return;
-  await courseExamQuestions.insertMany(npdTabletPrisionalQuestions(courseId, botId, guildId, now));
+  const existingQuestions = await courseExamQuestions.find({ ...scope(botId, guildId), courseId }).toArray();
+  const existingByNumber = new Map(existingQuestions.map((question) => [question.questionNumber ?? question.order + 1, question]));
+  const existingByPrompt = new Map(existingQuestions.map((question) => [normalizeCourseSeedText(question.prompt), question]));
+  const nextQuestions = npdTabletPrisionalQuestions(courseId, botId, guildId, now, existingByNumber, existingByPrompt);
+
+  for (const question of nextQuestions) {
+    const existingQuestion = existingByNumber.get(question.questionNumber ?? question.order + 1) ?? existingByPrompt.get(normalizeCourseSeedText(question.prompt));
+    if (!existingQuestion) {
+      await courseExamQuestions.insertOne(question);
+      continue;
+    }
+    if (existingQuestion.updatedBy !== "system:seed") continue;
+    await courseExamQuestions.updateOne(
+      { _id: existingQuestion._id, ...scope(botId, guildId), courseId },
+      {
+        $set: {
+          active: question.active,
+          alternatives: question.alternatives,
+          correctAlternativeId: question.correctAlternativeId,
+          correctAlternativeIds: question.correctAlternativeIds,
+          description: question.description,
+          order: question.order,
+          placeholder: question.placeholder,
+          points: question.points,
+          prompt: question.prompt,
+          questionNumber: question.questionNumber,
+          title: question.title,
+          type: question.type,
+          updatedAt: now,
+          updatedBy: "system:seed"
+        }
+      }
+    );
+  }
 }
 
-function npdTabletPrisionalQuestions(courseId: string, botId: string | null, guildId: string, now: Date) {
+function npdTabletPrisionalQuestions(
+  courseId: string,
+  botId: string | null,
+  guildId: string,
+  now: Date,
+  existingByNumber: Map<number, MongoCourseExamQuestion>,
+  existingByPrompt: Map<string, MongoCourseExamQuestion>
+) {
   const rows: Array<{ prompt: string; instruction?: string; type: "selection" | "multiple"; alternatives: string[] }> = [
     { prompt: "Um boletim de ocorrência deve conter os seguintes aspectos para estar dentro do padrão:", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Título", "Descrição objetiva e completa", "Foto do veículo, se houver", "Foto da caixa com os itens ilícitos", "Foto dos documentos, ID e passaporte"] },
     { prompt: "Quais são os procedimentos básicos para realizar o prisional de um indivíduo?", instruction: "Assinale a alternativa incorreta.", type: "selection", alternatives: ["Retirar adornos", "Algemar", "Revistar, em caso de flagrante", "Tirar foto do indivíduo", "Recolher apenas a identidade", "Recolher identidade e passaporte"] },
@@ -160,34 +238,41 @@ function npdTabletPrisionalQuestions(courseId: string, botId: string | null, gui
     { prompt: "Um indivíduo chegou à NPD para liberar um veículo apreendido. Marque abaixo os procedimentos corretos.", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Solicitar a documentação do indivíduo e do veículo, incluindo identidade e passaporte", "Tirar foto do indivíduo", "Realizar o boletim em qualquer lugar", "Verificar possíveis multas com pagamentos pendentes", "Verificar se a pessoa está procurada"] },
     { prompt: "Em uma QRU de Tráfico de Drogas, o indivíduo tentou fugir, mas foi capturado com 50.000 dólares em dinheiro sujo e 100 unidades de todos os tipos de drogas. Antes de ser preso, ele forneceu informações sobre onde conseguiu as drogas e colaborou com a investigativa. Quais crimes ou atenuantes devem ser aplicados?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Tráfico de Drogas", "Porte de arma de baixo calibre", "Porte de dinheiro sujo", "Desacato", "Colaboração com D.U."] }
   ];
-  return rows.map((row, index) => ({
-    _id: randomUUID(),
-    botId,
-    guildId,
-    courseId,
-    order: index,
-    questionNumber: index + 1,
-    type: row.type,
-    prompt: row.prompt,
-    title: row.prompt,
-    description: row.instruction ?? null,
-    points: 10,
-    alternatives: row.alternatives.map((text, optionIndex) => ({
-      id: String.fromCharCode(65 + optionIndex),
+  return rows.map((row, index) => {
+    const optionPrefix = `q${String(index + 1).padStart(2, "0")}_option_`;
+    const alternatives = row.alternatives.map((text, optionIndex) => ({
+      id: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
       text,
-      value: String.fromCharCode(65 + optionIndex),
+      value: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
       score: 0,
       isCorrect: false,
       order: optionIndex
-    })),
-    correctAlternativeId: null,
-    correctAlternativeIds: [],
-    placeholder: null,
-    active: true,
-    createdAt: now,
-    updatedAt: now,
-    updatedBy: "system:seed"
-  }));
+    }));
+    const existing = existingByNumber.get(index + 1) ?? existingByPrompt.get(normalizeCourseSeedText(row.prompt));
+    const preservedCorrectIds = preserveCourseSeedCorrectIds(existing, alternatives);
+    const points = existing?.points && existing.points > 0 ? existing.points : 10;
+    return {
+      _id: existing?._id ?? randomUUID(),
+      botId,
+      guildId,
+      courseId,
+      order: index,
+      questionNumber: index + 1,
+      type: existing?.type ?? row.type,
+      prompt: row.prompt,
+      title: row.prompt,
+      description: row.instruction ?? null,
+      points,
+      alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: preservedCorrectIds.includes(alternative.id), score: preservedCorrectIds.includes(alternative.id) ? points : 0 })),
+      correctAlternativeId: (existing?.type ?? row.type) === "selection" ? preservedCorrectIds[0] ?? null : null,
+      correctAlternativeIds: (existing?.type ?? row.type) === "multiple" ? preservedCorrectIds : [],
+      placeholder: null,
+      active: true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      updatedBy: "system:seed"
+    };
+  });
 }
 
 async function ensureNpdModulationCourse(botId: string | null, guildId: string) {
