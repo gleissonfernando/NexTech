@@ -80,10 +80,10 @@ import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { KickIntegrationPanel } from "../components/social/KickIntegrationPanel";
 
 const PANEL_EMOJIS = {
-  alerta: "<a:alerta:1525682173246574692>",
-  caixa: "<a:caixa:1525682180578214021>",
-  homem: "<a:homem:1525682211985035416>",
-  prancheta: "<a:prancheta:1525682244893544489>"
+  alerta: "<:alerta:1525682173246574692>",
+  caixa: "<:caixa:1525682180578214021>",
+  homem: "<:homem:1525682211985035416>",
+  prancheta: "<:prancheta:1525682244893544489>"
 } as const;
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";

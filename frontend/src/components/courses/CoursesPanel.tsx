@@ -32,7 +32,7 @@ type CourseChannelDraft = Pick<
 >;
 type ExamLinkDraft = Pick<CourseExamDashboard["settings"], "externalLinkDescription" | "externalLinkEmoji" | "externalLinkEnabled" | "externalLinkText" | "externalLinkUrl">;
 
-const COURSE_EMOJI = "<a:trofeu:1525682256654504087>";
+const COURSE_EMOJI = "<:trofeu:1525682256654504087>";
 
 const tabs: Array<{ id: TabId; icon: typeof Image; label: string }> = [
   { id: "images", icon: Image, label: "Banners e Imagens" },
