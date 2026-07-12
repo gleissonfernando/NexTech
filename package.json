@@ -32,6 +32,7 @@
     "audit:dev-bots": "npm run build --workspace backend && node scripts/audit-dev-bots.mjs",
     "bots:ensure-databases": "node scripts/ensure-bot-databases.mjs",
     "db:reset-bot-system": "node scripts/reset-bot-system-database.mjs",
+    "seed:panel-emojis": "npm run build --workspace backend && node scripts/seed-default-panel-emojis.mjs",
     "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",
     "release:discloud": "node scripts/release-discloud.mjs",
     "load:test": "node scripts/load-test.mjs",
@@ -41,5 +42,8 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "mercadopago": "^3.2.0"
   }
 }

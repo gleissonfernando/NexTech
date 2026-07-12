@@ -38,6 +38,13 @@ type ApplicationEmojiDto = {
   url: string;
 };
 
+export type ApplicationEmojiSeedAsset = {
+  buffer: Buffer;
+  contentType: string;
+  name: string;
+  originalEmojiId: string;
+};
+
 export async function getApplicationEmojiPage(input: {
   animated?: boolean | null;
   botId: string;
@@ -152,6 +159,97 @@ export async function refreshApplicationEmojis(input: {
   }
 
   return getApplicationEmojiPage({ botId: input.botId });
+}
+
+export async function seedApplicationEmojisFromAssets(input: {
+  assets: ApplicationEmojiSeedAsset[];
+  botId: string;
+  userId: string;
+}) {
+  const bot = await resolveBotAndToken(input.botId);
+  const applicationEmojis = await listApplicationEmojis(bot.clientId, bot.token);
+  const existingAppNames = new Set(applicationEmojis.map((emoji) => emoji.name.toLowerCase()));
+  const existingAppIds = new Set(applicationEmojis.map((emoji) => emoji.id));
+  const existingAppByName = new Map(applicationEmojis.map((emoji) => [emoji.name.toLowerCase(), emoji]));
+  const { applicationEmojiItems } = await getMongoCollections();
+  const savedItems = await applicationEmojiItems.find({ botId: input.botId, originalEmojiId: { $in: input.assets.map((asset) => asset.originalEmojiId) } }).toArray();
+  const savedByOriginal = new Map(savedItems.map((item) => [item.originalEmojiId, item]));
+  const result = { created: 0, failed: 0, skipped: 0, updated: 0 };
+
+  for (const asset of input.assets) {
+    try {
+      const hash = sha256(asset.buffer);
+      const saved = savedByOriginal.get(asset.originalEmojiId);
+      const existingByName = existingAppByName.get(sanitizeEmojiName(asset.name).toLowerCase());
+
+      if (saved && saved.hash === hash && existingAppIds.has(saved.applicationEmojiId)) {
+        result.skipped += 1;
+        continue;
+      }
+
+      if (saved?.applicationEmojiId && existingAppIds.has(saved.applicationEmojiId)) {
+        await deleteApplicationEmoji(bot.clientId, saved.applicationEmojiId, bot.token).catch(() => undefined);
+        existingAppIds.delete(saved.applicationEmojiId);
+        existingAppNames.delete(saved.applicationName.toLowerCase());
+        result.updated += 1;
+      } else if (existingByName) {
+        await saveApplicationEmoji({
+          animated: Boolean(existingByName.animated),
+          applicationEmojiId: existingByName.id,
+          applicationId: bot.clientId,
+          applicationName: existingByName.name,
+          botId: input.botId,
+          hash,
+          originalEmojiId: asset.originalEmojiId,
+          originalName: asset.name,
+          size: asset.buffer.length,
+          sourceGuildId: null,
+          url: applicationEmojiUrl(existingByName),
+          userId: input.userId
+        });
+        result.skipped += 1;
+        continue;
+      }
+
+      if (existingAppIds.size >= APPLICATION_EMOJI_LIMIT) {
+        result.failed += 1;
+        continue;
+      }
+
+      const name = uniqueEmojiName(sanitizeEmojiName(asset.name), existingAppNames);
+      const created = await createApplicationEmoji(bot.clientId, bot.token, {
+        image: `data:${asset.contentType};base64,${asset.buffer.toString("base64")}`,
+        name
+      });
+      existingAppIds.add(created.id);
+      existingAppNames.add(created.name.toLowerCase());
+      existingAppByName.set(created.name.toLowerCase(), created);
+      await saveApplicationEmoji({
+        animated: Boolean(created.animated),
+        applicationEmojiId: created.id,
+        applicationId: bot.clientId,
+        applicationName: created.name,
+        botId: input.botId,
+        hash,
+        originalEmojiId: asset.originalEmojiId,
+        originalName: asset.name,
+        size: asset.buffer.length,
+        sourceGuildId: null,
+        url: applicationEmojiUrl(created),
+        userId: input.userId
+      });
+      result.created += 1;
+      await wait(750);
+    } catch (error) {
+      result.failed += 1;
+      await createApplicationEmojiLog({ botId: input.botId, guildId: "application", userId: input.userId }, "application_emoji.default_seed_failed", `Erro em ${asset.name}: ${friendlyError(error)}.`).catch(() => null);
+    }
+  }
+
+  return {
+    ...result,
+    ...(await getApplicationEmojiPage({ botId: input.botId, sort: "name" }))
+  };
 }
 
 export async function syncGuildEmojisToApplication(input: {

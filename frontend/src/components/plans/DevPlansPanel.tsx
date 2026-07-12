@@ -25,6 +25,7 @@ import {
   duplicateDevPlan,
   extendPlanSubscription,
   getDevPlansDashboard,
+  markPlanPaymentOrderPaidForTest,
   manuallyActivatePlanSubscription,
   setDevPlanActive,
   setPlanSubscriptionStatus,
@@ -380,7 +381,15 @@ export function DevPlansPanel() {
                   <p className="mt-1 text-sm text-zinc-500">{order.planSlug} / {new Date(order.createdAt).toLocaleString("pt-BR")}</p>
                   <p className="mt-1 text-xs text-zinc-600">{order.notes}</p>
                 </div>
-                <Badge variant={order.status === "paid" ? "success" : "muted"}>{order.status}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={order.status === "paid" ? "success" : "muted"}>{order.status}</Badge>
+                  {canMarkOrderPaidForTest(order.status) ? (
+                    <Button disabled={busyKey === `order:test-paid:${order.id}`} onClick={() => void withRefresh(`order:test-paid:${order.id}`, () => markPlanPaymentOrderPaidForTest(order.id), "Pagamento de teste concluido e assinatura ativada.")} size="sm" variant="outline">
+                      {busyKey === `order:test-paid:${order.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Pagar teste
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ))}
           </CardContent>
@@ -669,6 +678,10 @@ function planPayloadFromForm(form: PlanFormState): SavePlanPayload {
     slug: form.slug || undefined,
     validityDays: form.validityDays ? Number(form.validityDays) : null
   };
+}
+
+function canMarkOrderPaidForTest(status: string) {
+  return status === "pending" || status === "interest_registered";
 }
 
 function readError(error: unknown, fallback: string) {

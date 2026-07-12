@@ -32,6 +32,7 @@ import { createLog } from "./logService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
 import { canAccessDevDashboard } from "./devPermissionService";
+import { queueDefaultPanelEmojiSeed } from "./defaultPanelEmojiService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
@@ -871,6 +872,7 @@ export async function createDevBot(input: CreateDevBotInput) {
     )
   ]);
   emitRealtime("dev:bot_created", toDashboardBotDto(toDevBotDto(bot)));
+  queueDefaultPanelEmojiSeed(bot._id);
 
   return toDevBotDto(bot);
 }

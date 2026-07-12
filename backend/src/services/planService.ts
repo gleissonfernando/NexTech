@@ -740,6 +740,143 @@ export async function manualActivateSubscription(input: ManualActivationInput, a
   return toSubscriptionDto(subscription, plan, workspace);
 }
 
+export async function completeTestPaymentOrder(orderId: string, actor: PlanActor) {
+  const { paymentOrders, planSubscriptions, planWorkspaces, plans, workspaceMembers } = await getMongoCollections();
+  const order = await paymentOrders.findOne({ _id: orderId });
+  if (!order) throw httpError("Pedido de pagamento nao encontrado.", 404);
+
+  const plan = await plans.findOne({ _id: order.planId });
+  if (!plan) throw httpError("Plano do pedido nao encontrado.", 404);
+
+  const existingSubscription = await planSubscriptions.findOne({
+    "metadata.paymentOrderId": order._id
+  } as Partial<MongoPlanSubscription>);
+
+  if (order.status === "paid" && existingSubscription) {
+    const workspace = existingSubscription.workspaceId ? await planWorkspaces.findOne({ _id: existingSubscription.workspaceId }) : null;
+    return {
+      order: toPaymentOrderDto(order),
+      subscription: toSubscriptionDto(existingSubscription, plan, workspace)
+    };
+  }
+
+  if (["cancelled", "expired", "failed"].includes(order.status)) {
+    throw httpError("Pedido finalizado nao pode ser pago em teste.", 409);
+  }
+
+  const now = new Date();
+  const subscriptionId = existingSubscription?._id ?? randomUUID();
+  const workspaceId = existingSubscription?.workspaceId ?? randomUUID();
+  const workspaceName = `${plan.name} Teste`;
+
+  if (!existingSubscription) {
+    const workspace: MongoPlanWorkspace = {
+      _id: workspaceId,
+      botIds: [],
+      createdAt: now,
+      guildIds: [],
+      name: workspaceName,
+      ownerDiscordId: order.discordId,
+      ownerUserId: order.userId || order.discordId,
+      planId: plan._id,
+      slug: await uniqueWorkspaceSlug(workspaceName),
+      status: "active",
+      subscriptionId,
+      updatedAt: now
+    };
+    const subscription: MongoPlanSubscription = {
+      _id: subscriptionId,
+      activatedAt: now,
+      activatedBy: actor.id,
+      botLimit: plan.botLimit,
+      cancelledAt: null,
+      createdAt: now,
+      discordId: order.discordId,
+      endsAt: plan.validityDays ? new Date(now.getTime() + plan.validityDays * 86_400_000) : null,
+      guildLimit: plan.guildLimit,
+      metadata: {
+        activation: "payment_test",
+        paymentOrderId: order._id
+      },
+      planId: plan._id,
+      planSlug: plan.slug,
+      startedAt: now,
+      status: "active",
+      suspendedAt: null,
+      updatedAt: now,
+      userId: order.userId || order.discordId,
+      workspaceId
+    };
+
+    await planWorkspaces.insertOne(workspace);
+    await planSubscriptions.insertOne(subscription);
+    await workspaceMembers.updateOne(
+      { workspaceId, discordId: order.discordId },
+      {
+        $setOnInsert: {
+          _id: randomUUID(),
+          createdAt: now,
+          discordId: order.discordId,
+          role: "owner",
+          userId: order.userId || order.discordId,
+          workspaceId
+        },
+        $set: {
+          updatedAt: now
+        }
+      },
+      { upsert: true }
+    );
+  } else {
+    await planSubscriptions.updateOne(
+      { _id: existingSubscription._id },
+      {
+        $set: {
+          activatedAt: existingSubscription.activatedAt ?? now,
+          activatedBy: existingSubscription.activatedBy ?? actor.id,
+          cancelledAt: null,
+          startedAt: existingSubscription.startedAt ?? now,
+          status: "active",
+          suspendedAt: null,
+          updatedAt: now
+        }
+      }
+    );
+    if (existingSubscription.workspaceId) {
+      await planWorkspaces.updateOne({ _id: existingSubscription.workspaceId }, { $set: { status: "active", updatedAt: now } });
+    }
+  }
+
+  await paymentOrders.updateOne(
+    { _id: order._id },
+    {
+      $set: {
+        notes: "Pagamento marcado como pago pelo modo de teste DEV.",
+        paidAt: order.paidAt ?? now,
+        status: "paid",
+        updatedAt: now
+      }
+    }
+  );
+
+  await writePlanAudit(actor, "payment_test_paid", "payment", order._id, {
+    planSlug: plan.slug,
+    subscriptionId,
+    workspaceId
+  });
+
+  const [updatedOrder, updatedSubscription, workspace] = await Promise.all([
+    paymentOrders.findOne({ _id: order._id }),
+    planSubscriptions.findOne({ _id: subscriptionId }),
+    planWorkspaces.findOne({ _id: workspaceId })
+  ]);
+
+  return {
+    order: toPaymentOrderDto(updatedOrder ?? order),
+    subscription: updatedSubscription ? toSubscriptionDto(updatedSubscription, plan, workspace) : null
+  };
+}
+
 export async function setSubscriptionStatus(subscriptionId: string, status: Exclude<MongoPlanSubscriptionStatus, "pending" | "expired">, actor: PlanActor) {
   const { planSubscriptions, planWorkspaces } = await getMongoCollections();
   const now = new Date();

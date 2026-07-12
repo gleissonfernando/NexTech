@@ -5061,6 +5061,7 @@ function ManualRegistrationPanel({
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [categories, setCategories] = useState<GuildCategoryOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [applicationEmojis, setApplicationEmojis] = useState<ApplicationEmojiItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -5086,9 +5087,10 @@ function ManualRegistrationPanel({
     Promise.all([
       getManualRegistrationDashboard(guild.id, botId),
       getGuildLiveOptions(guild.id, botId),
-      getGuildMemberOptions(guild.id, "", botId)
+      getGuildMemberOptions(guild.id, "", botId),
+      botId ? getApplicationEmojis(botId, { sort: "name" }).catch(() => ({ items: [] })) : Promise.resolve({ items: [] })
     ])
-      .then(([dashboard, options, members]) => {
+      .then(([dashboard, options, members, emojis]) => {
         if (!active) return;
         setSettings(dashboard.settings);
         setSubmissions(dashboard.submissions);
@@ -5096,6 +5098,7 @@ function ManualRegistrationPanel({
         setChannels(options.channels);
         setCategories(options.categories ?? []);
         setRoles(options.roles);
+        setApplicationEmojis(emojis.items);
         setMemberOptions(members.filter((member) => !member.bot));
       })
       .catch(() => {
@@ -5315,7 +5318,13 @@ function ManualRegistrationPanel({
               </label>
               <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchSettings({ name: value })} value={settings.name} />
               <TicketField disabled={!canManage} label="Titulo do painel" onChange={(value) => patchSettings({ title: value })} value={settings.title} />
-              <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchSettings({ emoji: value })} value={settings.emoji ?? ""} />
+              <EmojiField
+                applicationEmojis={applicationEmojis}
+                disabled={!canManage}
+                label="Emoji do painel"
+                onChange={(value) => patchSettings({ emoji: value })}
+                value={settings.emoji ?? ""}
+              />
               <TicketField disabled={!canManage} label="Cor" onChange={(value) => patchSettings({ color: value })} type="color" value={settings.color} />
               <TicketField disabled={!canManage} label="Thumbnail URL" onChange={(value) => patchSettings({ thumbnailUrl: value })} value={settings.thumbnailUrl ?? ""} />
               <label className="block text-xs font-medium text-zinc-400">Canal do painel
@@ -5383,8 +5392,8 @@ function ManualRegistrationPanel({
                 <Button disabled={!canManage || settings.setRoles.length >= 25} onClick={addSetRole} size="sm" type="button" variant="outline">Adicionar set</Button>
               </div>
               {settings.setRoles.map((item, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[80px_1fr_1fr_1fr_110px_90px_auto]" key={`${item.id}-${index}`}>
-                  <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchSetRole(index, { emoji: value })} value={item.emoji ?? ""} />
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[180px_1fr_1fr_1fr_110px_90px_auto]" key={`${item.id}-${index}`}>
+                  <EmojiField applicationEmojis={applicationEmojis} disabled={!canManage} label="Emoji" onChange={(value) => patchSetRole(index, { emoji: value })} value={item.emoji ?? ""} />
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchSetRole(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
                   <RoleSelect disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchSetRole(index, { roleId: value })} roles={roles} value={item.roleId} />
                   <TicketField disabled={!canManage} label="Descricao" onChange={(value) => patchSetRole(index, { description: value })} value={item.description ?? ""} />
@@ -6062,6 +6071,53 @@ function TicketField({
       />
     </label>
   );
+}
+
+function EmojiField({
+  applicationEmojis,
+  disabled,
+  label,
+  onChange,
+  value
+}: {
+  applicationEmojis: ApplicationEmojiItem[];
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="block text-xs font-medium text-zinc-400">
+      {label}
+      <div className="mt-1 grid gap-2">
+        <input
+          className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/50 disabled:opacity-60"
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Emoji"
+          value={value}
+        />
+        <select
+          className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/50 disabled:opacity-60"
+          disabled={disabled || !applicationEmojis.length}
+          onChange={(event) => event.target.value && onChange(event.target.value)}
+          value=""
+        >
+          <option value="">Emojis do bot</option>
+          {applicationEmojis.map((emoji) => (
+            <option key={emoji.id} value={applicationEmojiMarkdown(emoji)}>
+              {emoji.applicationName || emoji.originalName}
+            </option>
+          ))}
+        </select>
+      </div>
+    </label>
+  );
+}
+
+function applicationEmojiMarkdown(emoji: ApplicationEmojiItem) {
+  const name = (emoji.applicationName || emoji.originalName || "emoji").replace(/[^A-Za-z0-9_]/g, "_").slice(0, 32) || "emoji";
+  return `<${emoji.animated ? "a" : ""}:${name}:${emoji.applicationEmojiId}>`;
 }
 
 function TicketArea({

@@ -583,11 +583,13 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
   const blockComponents = renderPanelBlocks(settings.panelImage?.blocks ?? []);
   if (blockComponents.length) components.push(...blockComponents);
   if (!blockComponents.length && imageUrl && ["top", "banner"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
+  const panelName = settings.title?.trim() || settings.name?.trim() || "Pedido de Set";
+  const introText = settings.description?.trim() || "Preencha seu cadastro para liberar o acesso.";
   const heading = {
     type: 10,
     content: [
-      `# ${settings.emoji ? `${settings.emoji} ` : ""}${settings.title}`,
-      settings.description || "Solicite seu set de forma rapida e acompanhe a analise da equipe."
+      `# ${settings.emoji ? `${settings.emoji} ` : ""}${panelName}`,
+      introText
     ].join("\n\n")
   };
   const sideImageUrl = imageUrl && ["thumbnail", "side"].includes(imagePosition) ? imageUrl : thumbnailUrl;
@@ -600,38 +602,31 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     accessory: { type: 11, media: { url: sideImageUrl } }
   } : heading);
   if (!blockComponents.length && imageUrl && ["below_title", "below_text"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
-  components.push({ type: 14, divider: true, spacing: 1 });
+  components.push({ type: 14, divider: false, spacing: 1 });
   if (!blockComponents.length && imageUrl && imagePosition === "middle") components.push(mediaGallery(imageUrl));
   components.push({
     type: 10,
     content: [
-      "### Como funciona",
-      "`1` Clique em **Solicitar Set**.",
-      availableSets > 1 ? "`2` Escolha o set que deseja receber." : "`2` Confirme o set disponivel.",
-      "`3` Preencha o formulario com seus dados.",
-      "`4` Acompanhe o resultado em **Meu Status**."
+      `### ${settings.emoji ? "" : "📋 "}Antes de começar`,
+      `- Tenha em mãos ${registrationFieldSummary(settings)}.`,
+      "- Revise os dados antes de enviar.",
+      availableSets > 1 ? `- Escolha um dos ${availableSets} sets disponíveis.` : "- Confirme o set disponível."
     ].join("\n")
   });
-  components.push({ type: 14, divider: true, spacing: 1 });
+  components.push({ type: 14, divider: false, spacing: 1 });
   components.push({
     type: 10,
     content: [
-      "### Informacoes importantes",
-      settings.tutorial,
-      "",
-      `> **Sets disponiveis:** ${availableSets || "definido pela equipe"}`,
-      "> **Analise:** realizada pela equipe responsavel",
-      settings.cooldownMinutes > 0 ? `> **Novo pedido:** liberado apos ${settings.cooldownMinutes} minuto(s)` : "> **Novo pedido:** sem tempo de espera",
-      "",
-      settings.footerText ? `-# ${settings.footerText}` : "-# Preencha os dados corretamente para evitar atrasos na analise."
+      "### Iniciar formulário",
+      "Clique no botão abaixo para continuar."
     ].join("\n")
   });
   if (!blockComponents.length && imageUrl && ["before_buttons", "above_buttons", "bottom"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji("📝").setLabel("Solicitar Set").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:status`).setLabel("Meu Status").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? "📝").setLabel("Iniciar Registro").setStyle(ButtonStyle.Secondary)
   ));
+  components.push({ type: 14, divider: true, spacing: 1 });
+  components.push({ type: 10, content: settings.footerText ? `-# ${settings.footerText}` : "-# Todos os direitos reservados" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
@@ -641,6 +636,17 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     })],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function registrationFieldSummary(settings: ManualRegistrationSettings) {
+  const labels = settings.fields
+    .filter((field) => field.enabled !== false)
+    .map((field) => field.label.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!labels.length) return "as informações solicitadas";
+  if (labels.length === 1) return labels[0]!;
+  return `${labels.slice(0, -1).join(", ")} e ${labels.at(-1)}`;
 }
 
 function createReviewPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {

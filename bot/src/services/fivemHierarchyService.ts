@@ -297,13 +297,17 @@ export async function refreshHierarchyPanelsForGuild(guild: Guild, context: BotC
       ? [{ error: "Painel ativo nao encontrado para este bot. Salve o painel como ativo e confira se o bot DEV correto esta selecionado.", ok: false, panelId }]
       : [];
   }
-  const fetchedMembers = await guild.members.fetch().catch((error) => {
-    console.warn(`[fivem-hierarchy] falha ao buscar membros do servidor ${guild.id}: ${errorMessage(error)}`);
-    return null;
-  });
+  const fetchedMembers = await fetchAllHierarchyMembers(guild, "buscar membros do servidor");
+  if (!fetchedMembers) {
+    return scoped.map((panel) => ({
+      error: "Nao consegui buscar a lista completa de membros no Discord; painel preservado para evitar remover nomes indevidamente.",
+      ok: false,
+      panelId: panel.id
+    }));
+  }
   const results = [];
   for (const panel of scoped) {
-    const cache = rebuildHierarchyPanelCache(guild, panel, (fetchedMembers ?? guild.members.cache).values());
+    const cache = rebuildHierarchyPanelCache(guild, panel, fetchedMembers.values());
     hierarchyPanelCaches.set(panelCacheKey(guild.id, panel.id), cache);
     results.push(await publishHierarchyPanel(guild, context, panel, cache, generationSnapshot));
   }
@@ -364,11 +368,18 @@ async function refreshHierarchyPanelsIncrementally(guild: Guild, context: BotCon
   }
 
   if (fallbackPanelIds.size) {
-    const fetchedMembers = await guild.members.fetch().catch((error) => {
-      console.warn(`[fivem-hierarchy] falha ao reconstruir cache de membros do servidor ${guild.id}: ${errorMessage(error)}`);
-      return null;
-    });
-    const members = [...(fetchedMembers ?? guild.members.cache).values()];
+    const fetchedMembers = await fetchAllHierarchyMembers(guild, "reconstruir cache de membros do servidor");
+    if (!fetchedMembers) {
+      for (const panel of scoped.filter((item) => fallbackPanelIds.has(item.id))) {
+        results.push({
+          error: "Nao consegui reconstruir a lista completa de membros no Discord; painel preservado para evitar remover nomes indevidamente.",
+          ok: false,
+          panelId: panel.id
+        });
+      }
+      return results;
+    }
+    const members = [...fetchedMembers.values()];
     for (const panel of scoped.filter((item) => fallbackPanelIds.has(item.id))) {
       const cache = rebuildHierarchyPanelCache(guild, panel, members);
       hierarchyPanelCaches.set(panelCacheKey(guild.id, panel.id), cache);
@@ -377,6 +388,15 @@ async function refreshHierarchyPanelsIncrementally(guild: Guild, context: BotCon
   }
 
   return results;
+}
+
+async function fetchAllHierarchyMembers(guild: Guild, reason: string) {
+  try {
+    return await guild.members.fetch();
+  } catch (error) {
+    console.warn(`[fivem-hierarchy] falha ao ${reason} ${guild.id}: ${errorMessage(error)}`);
+    return null;
+  }
 }
 
 async function publishHierarchyPanel(

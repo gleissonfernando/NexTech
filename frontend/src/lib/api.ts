@@ -1952,6 +1952,14 @@ export async function updatePlanPaymentSettings(payload: SavePaymentSettingsPayl
   return data.settings;
 }
 
+export async function markPlanPaymentOrderPaidForTest(orderId: string) {
+  const { data } = await api.post<{
+    order: import("../types").PaymentOrder;
+    subscription: import("../types").PlanSubscription | null;
+  }>(`/dev/payment-orders/${encodeURIComponent(orderId)}/test-paid`);
+  return data;
+}
+
 export async function getDatabaseMaintenanceModules() {
   const { data } = await api.get<{ modules: import("../types").DatabaseMaintenanceModuleOption[] }>("/database-maintenance/modules");
   return data.modules;

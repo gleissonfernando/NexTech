@@ -32,6 +32,13 @@ mkdirSync(path.join(target, "frontend"), { recursive: true });
 cpSync(path.join(root, "index.js"), path.join(target, "index.js"));
 cpSync(path.join(root, "scripts/start-production.mjs"), path.join(target, "scripts/start-production.mjs"));
 cpSync(path.join(root, "backend/dist"), path.join(target, "backend/dist"), { recursive: true });
+if (existsSync(path.join(root, "backend/assets"))) {
+  cpSync(path.join(root, "backend/assets"), path.join(target, "backend/assets"), { recursive: true });
+}
+if (existsSync(path.join(root, "emojis-paineis.zip"))) {
+  mkdirSync(path.join(target, "backend/assets"), { recursive: true });
+  cpSync(path.join(root, "emojis-paineis.zip"), path.join(target, "backend/assets/default-panel-emojis.zip"));
+}
 cpSync(path.join(root, "bot/dist"), path.join(target, "bot/dist"), { recursive: true });
 cpSync(path.join(root, "frontend/dist"), path.join(target, "frontend/dist"), { recursive: true });
 

@@ -9,6 +9,7 @@ import {
   deleteWorkspaceBotCredential,
   duplicateDevPlan,
   extendSubscription,
+  completeTestPaymentOrder,
   getCustomerPlansDashboard,
   getDevPlansDashboard,
   getPublicPlan,
@@ -444,6 +445,16 @@ devPlansRouter.get("/payment-orders", async (_req, res, next) => {
     return res.json({
       orders: dashboard.orders
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devPlansRouter.post("/payment-orders/:orderId/test-paid", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const orderId = z.string().min(8).max(120).parse(req.params.orderId);
+    return res.json(await completeTestPaymentOrder(orderId, actorFrom(req, auth)));
   } catch (error) {
     return next(error);
   }

@@ -3,6 +3,7 @@ import { app } from "./app";
 import { env } from "./config/env";
 import { createSocketServer } from "./realtime/socket";
 import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
+import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
 import { startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
 import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
@@ -65,6 +66,16 @@ httpServer.listen(env.PORT, env.HOST, () => {
         console.log("[dev-bot] start automatico desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
       }
     });
+  setTimeout(() => {
+    void seedDefaultPanelEmojisForAllBots()
+      .then((results) => {
+        const ok = results.filter((result) => result.ok).length;
+        if (ok > 0) console.log(`[default-panel-emojis] pacote padrao processado para ${ok} bot(s).`);
+      })
+      .catch((error) => {
+        console.warn("[default-panel-emojis] falha ao processar pacote padrao:", error instanceof Error ? error.message : error);
+      });
+  }, 20_000).unref();
 });
 
 function shutdown(signal: string, exitCode = 0) {
