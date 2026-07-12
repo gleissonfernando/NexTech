@@ -19,8 +19,8 @@ process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
 
 function loadRuntimeConfigFile() {
-  const path = existsSync(".orvitek-runtime-env.json") ? ".orvitek-runtime-env.json" : ".nex-tech-runtime-env.json";
-  if (!existsSync(path)) {
+  const path = [".nex-tech-runtime-env.json", ".NexTech-runtime-env.json", ".orvitek-runtime-env.json"].find(candidate => existsSync(candidate));
+  if (!path) {
     return;
   }
 
@@ -37,7 +37,7 @@ function loadRuntimeConfigFile() {
 
       if (
         key === "MONGODB_URI"
-        && path !== ".orvitek-runtime-env.json"
+        && path === ".orvitek-runtime-env.json"
         && process.env.NEX_TECH_ALLOW_RUNTIME_MONGODB_URI !== "true"
         && process.env.ORVITEK_ALLOW_RUNTIME_MONGODB_URI !== "true"
       ) {
@@ -47,7 +47,7 @@ function loadRuntimeConfigFile() {
       process.env[key] = typeof value === "string" ? value : String(value);
     }
   } catch (error) {
-    console.warn("[start] .nex-tech-runtime-env.json invalido:", error instanceof Error ? error.message : error);
+    console.warn(`[start] ${path} invalido:`, error instanceof Error ? error.message : error);
   }
 }
 
