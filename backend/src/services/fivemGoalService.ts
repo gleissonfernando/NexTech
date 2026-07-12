@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import {
   ensureGuild,
   getMongoCollections,
@@ -186,10 +187,10 @@ const DEFAULT_FIELDS: FivemGoalFieldDto[] = [
 ];
 
 const DEFAULT_ITEMS: FivemGoalItemDto[] = [
-  { category: "Dinheiro", color: "#22c55e", emoji: "💰", enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1 },
-  { category: "Itens", color: "#38bdf8", emoji: "💎", enabled: true, id: "diamante", name: "Diamante", order: 2 },
-  { category: "Armas", color: "#f97316", emoji: "🔫", enabled: true, id: "armas", name: "Armas", order: 3 },
-  { category: "Itens", color: "#a855f7", emoji: "📦", enabled: true, id: "contrabando", name: "Contrabando", order: 4 }
+  { category: "Dinheiro", color: "#22c55e", emoji: fixedSystemEmojiText("dinheiro"), enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1 },
+  { category: "Itens", color: "#38bdf8", emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "diamante", name: "Diamante", order: 2 },
+  { category: "Armas", color: "#f97316", emoji: fixedSystemEmojiText("arma"), enabled: true, id: "armas", name: "Armas", order: 3 },
+  { category: "Itens", color: "#a855f7", emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "contrabando", name: "Contrabando", order: 4 }
 ];
 
 export function defaultFivemGoalSettings(guildId: string, botId: string | null = null): FivemGoalSettingsDto {

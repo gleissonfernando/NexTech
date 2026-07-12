@@ -33,7 +33,7 @@ import type { BotCommand, BotContext } from "../types";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { Course, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseSettings } from "./apiClient";
-import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 type CourseActionInteraction = ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
 
@@ -1519,7 +1519,7 @@ function publicCoursesPanel(settings: CourseSettings, courses: Course[], panelVi
     description: "Painel de trabalho dos instrutores. Use /publicar curso ou o botão abaixo para selecionar um curso cadastrado e publicar o painel individual.",
     fields: [
       `**Cursos ativos:** ${activeCourses.length}`,
-      activeCourses.slice(0, 12).map((course) => `${course.emoji ?? "📚"} ${course.name}`).join("\n") || "Nenhum curso ativo cadastrado."
+      activeCourses.slice(0, 12).map((course) => replaceSystemEmojis(`${course.emoji ?? systemEmojiText("trofeu")} ${course.name}`)).join("\n") || "Nenhum curso ativo cadastrado."
     ],
     image: panelVisual || resolveCourseImage(settings, "module") || (settings.globalBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.globalBannerUrl } : null),
     moduleId: "courses",
@@ -1578,7 +1578,7 @@ function responsiblesPanel(course: Course, message: string) {
     accentColor: parseColor(course.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar para Configuração de Cursos").setStyle(ButtonStyle.Secondary))],
     description: "Selecione responsáveis pela dashboard em Cursos ou edite o curso no painel web para definir usuários e cargos instrutores.",
-    fields: [`**${message}**`, `Curso: ${course.emoji ?? "📚"} ${course.name}`],
+    fields: [`**${message}**`, replaceSystemEmojis(`Curso: ${course.emoji ?? systemEmojiText("trofeu")} ${course.name}`)],
     moduleId: "courses",
     title: "Responsáveis pelo curso"
   });
@@ -1607,7 +1607,7 @@ function courseEditPanel(course: Course, message: string) {
     description: "Edite os dados do curso e configure quem pode publicar. Usuários específicos e cargos autorizados funcionam ao mesmo tempo.",
     fields: [
       `**${message}**`,
-      `Curso: ${course.emoji ?? "🎓"} ${course.name}${course.code ? `\nCódigo: ${course.code}` : ""}`,
+      replaceSystemEmojis(`Curso: ${course.emoji ?? systemEmojiText("trofeu")} ${course.name}${course.code ? `\nCódigo: ${course.code}` : ""}`),
       `Local padrão: ${course.location ?? "não configurado"}\nLimite padrão: ${course.maxStudents ?? 30} vaga(s)\nStatus: ${course.active ? "ativo" : "inativo"}`,
       `Instrutores: ${course.instructorUserIds.map((id) => `<@${id}>`).join(", ") || "nenhum"}`,
       `Cargos autorizados: ${course.instructorRoleIds.map((id) => `<@&${id}>`).join(", ") || "nenhum"}`,
@@ -2077,8 +2077,8 @@ async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInte
 }
 
 function examReviewStatusLabel(attempt: CourseExamAttempt) {
-  if (attempt.result === "approved" || attempt.status === "approved") return "✅ Aprovado";
-  if (attempt.result === "rejected" || attempt.status === "rejected") return "❌ Reprovado";
+  if (attempt.result === "approved" || attempt.status === "approved") return `${systemStatusEmoji("success")} Aprovado`;
+  if (attempt.result === "rejected" || attempt.status === "rejected") return `${systemStatusEmoji("danger")} Reprovado`;
   return "Aguardando Correção";
 }
 
@@ -2170,8 +2170,9 @@ async function sendExamDetailedLog(interaction: { guild: ChatInputCommandInterac
       ].join("\n"),
       ...questions.map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1)).slice(0, 12)
     ],
+    guild: interaction.guild,
     moduleId: "courses",
-    title: "Log de Prova"
+    title: `${systemEmojiText("prancheta_acertos", interaction.guild)} Log de Prova`
   })).catch(() => null);
 }
 
@@ -2182,10 +2183,11 @@ async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["
   if (!channel?.isTextBased() || !("send" in channel)) return;
   await (channel as TextChannel).send(renderComponentsV2Panel({
     accentColor: 0x2563eb,
-    description: content,
+    description: replaceSystemEmojis(content, interaction.guild),
     fields: [`Data: ${new Date().toLocaleString("pt-BR")}`],
+    guild: interaction.guild,
     moduleId: "courses",
-    title: "🧾 Log do Sistema de Cursos"
+    title: `${systemEmojiText("folha", interaction.guild)} Log do Sistema de Cursos`
   })).catch(() => null);
 }
 

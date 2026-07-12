@@ -1,4 +1,5 @@
 import axios from "axios";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import type { GuildSettingsDto } from "./settingsService";
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
@@ -35,7 +36,7 @@ export async function publishReportSystemPanelToDiscord(settings: GuildSettingsD
       label: category.name.slice(0, 100),
       value: category.id.slice(0, 100),
       ...(category.description ? { description: category.description.slice(0, 100) } : {}),
-      ...(category.emoji ? { emoji: parseEmoji(category.emoji) } : {})
+      ...(category.emoji ? { emoji: parseEmoji(normalizePanelEmoji(category.emoji)) } : {})
     }));
 
   if (!options.length) {
@@ -97,7 +98,7 @@ function buildReportPanelComponents(
   panelImage: PanelImageSettingsDto | null = null
 ) {
   const report = settings.reportSystem;
-  const title = `${report.panelEmoji ?? "🛡️"} ${report.panelTitle}`.trim();
+  const title = `${normalizePanelEmoji(report.panelEmoji ?? fixedSystemEmojiText("alerta"))} ${report.panelTitle}`.trim();
   const image = resolvePanelImage(report.imageUrl, panelImage);
   const components: unknown[] = [];
   const lead = firstPanelLine(report.panelDescription) || "Registre uma denuncia de forma segura e sigilosa.";
@@ -158,6 +159,17 @@ function buildReportPanelComponents(
   if (image.mainUrl && image.position === "bottom") pushImage();
 
   return components;
+}
+
+function normalizePanelEmoji(value: string) {
+  return value
+    .replace(/🛡️|🛡/g, fixedSystemEmojiText("alerta"))
+    .replace(/🎫/g, fixedSystemEmojiText("prancheta"))
+    .replace(/📁/g, fixedSystemEmojiText("prancheta"))
+    .replace(/👤|👥|👮/g, fixedSystemEmojiText("homem"))
+    .replace(/⚠️|⚠/g, fixedSystemEmojiText("perigo"))
+    .replace(/✅/g, fixedSystemEmojiText("visto"))
+    .replace(/❌/g, fixedSystemEmojiText("exclamacao"));
 }
 
 function resolvePanelImage(legacyImageUrl: string | null, panelImage: PanelImageSettingsDto | null) {

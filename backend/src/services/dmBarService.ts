@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { ensureGuild, getMongoCollections, type MongoDmBarConfig, type MongoDmBarLog } from "../database/mongo";
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import { removePersistentImageByUrl, savePersistentImage } from "./persistentImageStorageService";
@@ -96,7 +97,7 @@ export async function saveDmBarConfig(botId: string, guildId: string, input: Par
     cooldownSeconds: clampNumber(input.cooldownSeconds ?? base.cooldownSeconds, 0, 3600),
     descriptionTemplate: normalizeText(input.descriptionTemplate ?? base.descriptionTemplate, 3000, base.descriptionTemplate),
     enabled: input.enabled ?? base.enabled,
-    emoji: normalizeText(input.emoji ?? base.emoji, 16, "📩"),
+    emoji: normalizeText(input.emoji ?? base.emoji, 80, fixedSystemEmojiText("discord")),
     footerEnabled: input.footerEnabled ?? base.footerEnabled,
     footerIconUrl: normalizeUrl(input.footerIconUrl ?? base.footerIconUrl),
     footerText: normalizeText(input.footerText ?? base.footerText, 300, base.footerText),
@@ -193,7 +194,7 @@ function defaultConfig(botId: string, guildId: string): MongoDmBarConfig {
     createdAt: now,
     descriptionTemplate: "Olá, {usuario}.\nVocê recebeu uma mensagem da equipe do {servidor}.\n\n**Mensagem:**\n{mensagem}\n\n**Data:** {data} às {hora}",
     enabled: false,
-    emoji: "📩",
+    emoji: fixedSystemEmojiText("discord"),
     footerEnabled: true,
     footerIconUrl: null,
     footerText: "Sistema de DM • {servidor} • Enviado em {data} às {hora}",
@@ -207,7 +208,7 @@ function defaultConfig(botId: string, guildId: string): MongoDmBarConfig {
     showServer: true,
     showTargetId: false,
     signature: "Equipe {servidor}",
-    titleTemplate: "📩 Comunicado Oficial",
+    titleTemplate: `${fixedSystemEmojiText("discord")} Comunicado Oficial`,
     updatedAt: now,
     updatedBy: null
   };

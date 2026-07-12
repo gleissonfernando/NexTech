@@ -8,7 +8,7 @@ import type { BotContext } from "../types";
 import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { FivemActionArchitecture, FivemActionSession, FivemActionSettings } from "./apiClient";
 import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
-import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const PREFIX = "fivem_action";
 const MODULE_BY_ARCHITECTURE: Record<FivemActionArchitecture, string> = { fac: "fivem-actions", police: "police-actions" };
@@ -59,8 +59,8 @@ async function publishMainPanel(client: Client, context: BotContext, config: Fiv
   const dashboard = await context.api.getFivemActionDashboard(config.guildId, config.architecture);
   const enabled = dashboard.actions.filter((item) => item.enabled).sort((a, b) => a.order - b.order);
   if (!enabled.length) throw new Error("Cadastre ao menos uma ação antes de publicar.");
-  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:open:${config.architecture}`).setPlaceholder("Escolha uma ação").addOptions(enabled.slice(0, 25).map((item) => ({ label: item.name.slice(0, 100), value: `${config.architecture}|${item.id}`, description: item.description.slice(0, 100) || undefined, emoji: item.emoji || undefined })));
-  const intro = { type: 10, content: [`# ${config.panelTitle}`, config.panelDescription].join("\n") };
+  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:open:${config.architecture}`).setPlaceholder("Escolha uma ação").addOptions(enabled.slice(0, 25).map((item) => ({ label: item.name.slice(0, 100), value: `${config.architecture}|${item.id}`, description: item.description.slice(0, 100) || undefined, emoji: item.emoji ? replaceSystemEmojis(item.emoji, guild) : undefined })));
+  const intro = { type: 10, content: replaceSystemEmojis([`# ${config.panelTitle}`, config.panelDescription].join("\n"), guild) };
   const tutorial = { type: 10, content: [`## ${systemEmojiText("folha", guild)} Como funciona`, "1. Escolha uma ação no menu.", "2. Vá ao painel criado.", "3. Entre na ação e aguarde a equipe.", "4. O responsável encerra em Resultado da ação.", "5. O relatório será enviado automaticamente."].join("\n") };
   const visuals = config.architecture === "police" ? await getPanelVisualSlots(context, config.guildId, "police-actions") : [];
   const fallbackImageUrl = config.imageUrl && config.imagePosition !== "none" ? resolvePanelImageUrl(config.imageUrl) : null;
@@ -107,12 +107,12 @@ async function showActionPage(interaction: any, context: BotContext, token: stri
   const pages = Math.max(1, Math.ceil(actions.length / 25));
   const safePage = Math.min(page, pages - 1);
   const items = actions.slice(safePage * 25, safePage * 25 + 25);
-  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:open:${architecture}`).setPlaceholder(`Ações ${safePage + 1}/${pages}`).addOptions(items.map((item) => ({ label: item.name.slice(0, 100), value: `${architecture}|${item.id}`, description: item.description.slice(0, 100) || undefined, emoji: item.emoji || undefined })));
+  const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:open:${architecture}`).setPlaceholder(`Ações ${safePage + 1}/${pages}`).addOptions(items.map((item) => ({ label: item.name.slice(0, 100), value: `${architecture}|${item.id}`, description: item.description.slice(0, 100) || undefined, emoji: item.emoji ? replaceSystemEmojis(item.emoji, interaction.guild) : undefined })));
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:page:${architecture}|${safePage - 1}`).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(safePage === 0),
-    new ButtonBuilder().setCustomId(`${PREFIX}:page:${architecture}|${safePage + 1}`).setLabel("Próxima").setStyle(ButtonStyle.Secondary).setDisabled(safePage >= pages - 1)
+    new ButtonBuilder().setCustomId(`${PREFIX}:page:${architecture}|${safePage - 1}`).setEmoji(systemComponentEmoji("porta", interaction.guild)).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(safePage === 0),
+    new ButtonBuilder().setCustomId(`${PREFIX}:page:${architecture}|${safePage + 1}`).setEmoji(systemComponentEmoji("acessar", interaction.guild)).setLabel("Próxima").setStyle(ButtonStyle.Secondary).setDisabled(safePage >= pages - 1)
   );
-  const payload = { components: [{ type: 17, accent_color: parseColor(dashboard.settings.color), components: [{ type: 10, content: `## Escolha uma ação\nPágina ${safePage + 1} de ${pages}` }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select), buttons] }], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 };
+  const payload = { components: [{ type: 17, accent_color: parseColor(dashboard.settings.color), components: [{ type: 10, content: `## ${systemEmojiText("prancheta", interaction.guild)} Escolha uma ação\n${systemEmojiText("folha", interaction.guild)} Página ${safePage + 1} de ${pages}` }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select), buttons] }], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 };
   if (interaction.replied || interaction.deferred) await interaction.editReply(payload); else await interaction.reply(payload);
 }
 
@@ -132,7 +132,7 @@ async function chooseResult(interaction: any, context: BotContext, sessionId: st
   const session = await context.api.getFivemActionSession(sessionId);
   if (session.openerId !== interaction.user.id) { await interaction.reply({ content: "Você não é o responsável por esta ação.", ephemeral: true }); return; }
   const select = new StringSelectMenuBuilder().setCustomId(`${PREFIX}:finish:${sessionId}`).setPlaceholder("Escolha o resultado").addOptions({ label: "Vitória", value: "victory", emoji: systemComponentEmoji("visto", interaction.guild) }, { label: "Derrota", value: "defeat", emoji: systemComponentEmoji("exclamacao", interaction.guild) });
-  await interaction.reply({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `## Resultado de ${session.actionName}\nSomente você pode concluir esta ação.` }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)] }], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `## ${systemEmojiText("trofeu", interaction.guild)} Resultado de ${session.actionName}\n${systemEmojiText("homem", interaction.guild)} Somente você pode concluir esta ação.` }, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)] }], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
 }
 
 async function finishAction(interaction: StringSelectMenuInteraction, context: BotContext, sessionId: string) {
@@ -203,11 +203,11 @@ function sessionPayload(session: FivemActionSession, guild: Parameters<typeof sy
   const startedAt = new Date(session.startedAt);
   const title = session.architecture === "police" ? "Sistema de Ação — Polícia" : "Sistema de Ação — FAC";
   const details = { type: 10, content: [
-    `# ${session.actionEmoji ?? systemEmojiText("arma", guild)} ${title}`,
+    replaceSystemEmojis(`# ${session.actionEmoji ?? systemEmojiText("arma", guild)} ${title}`, guild),
     `${systemEmojiText("folha", guild)} Acompanhe a ação e gerencie sua participação.`,
     "━━━━━━━━━━━━━━━━━━━━━━",
     `## ${systemEmojiText("prancheta", guild)} Detalhes`,
-    `${session.actionEmoji ?? systemEmojiText("arma", guild)} Ação: ${session.actionName}`,
+    replaceSystemEmojis(`${session.actionEmoji ?? systemEmojiText("arma", guild)} Ação: ${session.actionName}`, guild),
     `${systemEmojiText("calendario", guild)} Data: ${startedAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
     `${systemEmojiText("homem", guild)} Limite: ${session.maxParticipants}`,
     `${systemStatusEmoji(session.status === "active" ? "pending" : session.status === "victory" ? "success" : "danger", guild)} Status: ${status}`,

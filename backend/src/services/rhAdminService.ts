@@ -344,8 +344,8 @@ const defaultButtonEmojis = {
   adornment: "homem",
   approve: "visto",
   reject: "porta",
-  back: "↩️",
-  save: "💾",
+  back: "porta",
+  save: "prancheta_acertos",
   publish: "prancheta",
   logs: "prancheta_caneta"
 };

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import {
   getMongoCollections,
   type MongoAntiBanAction,
@@ -157,7 +158,7 @@ export async function sendAntiBanTest(botId: string, guildId: string) {
     body: JSON.stringify({
       embeds: [{
         color: readiness.ready ? 0x7c3aed : 0xef4444,
-        title: "🛡️ Teste do Sistema Anti Ban",
+        title: `${fixedSystemEmojiText("alerta")} Teste do Sistema Anti Ban`,
         description: readiness.ready
           ? "A proteção está pronta para monitorar este servidor."
           : `Teste recebido, mas faltam permissões: ${readiness.missingPermissions.join(", ")}.`,

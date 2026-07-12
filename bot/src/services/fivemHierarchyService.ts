@@ -16,6 +16,7 @@ import type { FivemHierarchyPanel } from "./apiClient";
 import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { FivemHierarchyPanelUpdateAck, FivemHierarchyPanelUpdateEvent } from "../websocket/socketClient";
 import { openHierarchyConfig } from "./fivemHierarchyConfigService";
+import { replaceSystemEmojis, systemEmojiText } from "./systemEmojiService";
 
 type ScheduledRefresh = {
   deletedRoleIds: Set<string>;
@@ -892,7 +893,7 @@ function renderHierarchyFields(guild: Guild, panel: FivemHierarchyPanel, cache: 
     const hiddenCount = members.length - limitedMembers.length;
     const lines = limitedMembers.map(formatHierarchyMemberLine);
     if (hiddenCount > 0) lines.push(`_+${hiddenCount} membro(s) oculto(s) pelo limite configurado._`);
-    return `${item.emoji ?? ""} **${item.name}**\n${roleExists ? (lines.length ? lines.join("\n") : "*Nenhum membro encontrado.*") : `⚠️ *Cargo não encontrado (${item.roleId}).*`}`;
+    return replaceSystemEmojis(`${item.emoji ?? systemEmojiText("homem", guild)} **${item.name}**\n${roleExists ? (lines.length ? lines.join("\n") : "*Nenhum membro encontrado.*") : `⚠️ *Cargo não encontrado (${item.roleId}).*`}`, guild);
   });
 
   return splitHierarchySections(sections.length ? sections : ["*Nenhuma hierarquia configurada.*"]);

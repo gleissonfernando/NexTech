@@ -258,6 +258,12 @@ export const SYSTEM_EMOJIS: readonly SystemEmojiDefinition[] = [
 export const SYSTEM_EMOJI_KEYS = SYSTEM_EMOJIS.map((item) => item.key) as SystemEmojiKey[];
 export const SYSTEM_EMOJI_BY_KEY = new Map<SystemEmojiKey, SystemEmojiDefinition>(SYSTEM_EMOJIS.map((item) => [item.key, item]));
 
+export function fixedSystemEmojiText(key: SystemEmojiKey) {
+  const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
+  if (!fixed) return SYSTEM_EMOJI_BY_KEY.get(key)?.fallback ?? "";
+  return `<${fixed.animated ? "a" : ""}:${fixed.name}:${fixed.emojiId}>`;
+}
+
 export function isSystemEmojiKey(value: string): value is SystemEmojiKey {
   return SYSTEM_EMOJI_BY_KEY.has(value as SystemEmojiKey);
 }

@@ -27,7 +27,7 @@ import { env, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { FivemFacAbsence, FivemFacLifecycleResult, FivemFacSettings } from "./apiClient";
 import { assertPanelChannelPermissions } from "./panelDeliveryService";
-import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const FAC_PREFIX = "fivem_fac";
 const REQUEST_BUTTON_ID = `${FAC_PREFIX}:request`;
@@ -1057,7 +1057,7 @@ function facNoticePayload(input: { accentColor?: number; description: string; ti
         components: [
           {
             type: 10,
-            content: `# ${input.title}\n${input.description}`
+            content: replaceSystemEmojis(`# ${input.title}\n${input.description}`)
           }
         ]
       }

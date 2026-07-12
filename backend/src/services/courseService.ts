@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { getMongoCollections, type MongoCourse, type MongoCourseEnrollment, type MongoCourseExamQuestion, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
@@ -839,10 +840,10 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     panelMessageId: null,
     lastPanelRequestedAt: null,
     buttonEmojis: {
-      cancel: "❌",
-      enter: "✅",
-      leave: "🚪",
-      start: "🚀"
+      cancel: fixedSystemEmojiText("exclamacao"),
+      enter: fixedSystemEmojiText("visto"),
+      leave: fixedSystemEmojiText("porta"),
+      start: fixedSystemEmojiText("acessar")
     },
     updatedAt: now,
     updatedBy: null

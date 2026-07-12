@@ -78,6 +78,13 @@ import { AntiBanPanel } from "../components/security/AntiBanPanel";
 import { SelfBotProtectionPanel } from "../components/security/SelfBotProtectionPanel";
 import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { KickIntegrationPanel } from "../components/social/KickIntegrationPanel";
+
+const PANEL_EMOJIS = {
+  alerta: "<a:alerta:1525682173246574692>",
+  caixa: "<a:caixa:1525682180578214021>",
+  homem: "<a:homem:1525682211985035416>",
+  prancheta: "<a:prancheta:1525682244893544489>"
+} as const;
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
@@ -3189,7 +3196,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
     setError(null);
     setDraft((current) => current ? {
       ...current,
-      hierarchies: [...current.hierarchies, { active: true, color: null, description: null, emoji: "👤", id: `hierarquia-${Date.now()}`, limit: null, name: "", order: current.hierarchies.length + 1, roleId: "", roleName: null }]
+      hierarchies: [...current.hierarchies, { active: true, color: null, description: null, emoji: PANEL_EMOJIS.homem, id: `hierarquia-${Date.now()}`, limit: null, name: "", order: current.hierarchies.length + 1, roleId: "", roleName: null }]
     } : current);
   }
 
@@ -3622,7 +3629,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
   }
 
   function addItem() {
-    setSettings((current) => current ? { ...current, items: [...current.items, { category: "Geral", color: "#FFD500", emoji: "📦", enabled: true, id: `item-${current.items.length + 1}`, name: `Item ${current.items.length + 1}`, order: current.items.length + 1 }] } : current);
+    setSettings((current) => current ? { ...current, items: [...current.items, { category: "Geral", color: "#FFD500", emoji: PANEL_EMOJIS.caixa, enabled: true, id: `item-${current.items.length + 1}`, name: `Item ${current.items.length + 1}`, order: current.items.length + 1 }] } : current);
   }
 
   async function save() {
@@ -5700,7 +5707,7 @@ function TicketPanelConfigurator({
         ...current.ticketPanelOptions,
         {
           description: "Descreva este atendimento.",
-          emoji: "🎫",
+          emoji: PANEL_EMOJIS.prancheta,
           enabled: true,
           label: `Atendimento ${current.ticketPanelOptions.length + 1}`,
           value: `atendimento-${current.ticketPanelOptions.length + 1}`
@@ -5895,7 +5902,7 @@ function PoliceIabPanel({
             channelOrCategoryId: null,
             color: "#dc2626",
             description: "Novo orgao de atendimento.",
-            emoji: "🛡️",
+            emoji: PANEL_EMOJIS.alerta,
             enabled: true,
             id: `orgao-${index + 1}`,
             name: `Orgao ${index + 1}`,
@@ -6179,7 +6186,7 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
     ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione o tipo de atendimento",
     ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : [{
       description: "Abrir um atendimento com a equipe.",
-      emoji: "🎫",
+      emoji: PANEL_EMOJIS.prancheta,
       enabled: true,
       label: "Suporte",
       value: "suporte"

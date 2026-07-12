@@ -769,7 +769,7 @@ function normalizeHierarchies(values: Array<Partial<FivemHierarchyEntryDto> | Mo
       active: item.active !== false,
       color: /^#[0-9a-f]{6}$/i.test(item.color ?? "") ? item.color ?? null : null,
       description: normalizeText(item.description, 300),
-      emoji: normalizeText(item.emoji, 40),
+      emoji: normalizeText(item.emoji, 80),
       id: normalizeText(item.id, 80) ?? randomUUID(),
       limit: typeof item.limit === "number" && Number.isFinite(item.limit) ? Math.max(1, Math.min(100, Math.trunc(item.limit))) : null,
       name: normalizeText(item.name, 80) ?? `Hierarquia ${index + 1}`,

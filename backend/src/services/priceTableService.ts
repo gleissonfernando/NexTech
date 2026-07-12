@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import type { MongoPriceTable, MongoPriceTableItem, MongoPriceTableRequest } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -228,10 +229,10 @@ function defaultPriceTable(): Omit<MongoPriceTable, "_id" | "botId" | "createdAt
     supportRoleIds: [],
     ticketInitialMessage: "Ola {user}! Seu atendimento para **{product}** foi aberto. Nossa equipe respondera em breve.",
     panelEmojis: {
-      products: "📦",
-      systems: "⚙️",
-      advantages: "🏆",
-      support: "🎧"
+      products: fixedSystemEmojiText("caixa"),
+      systems: fixedSystemEmojiText("engrenagem"),
+      advantages: fixedSystemEmojiText("trofeu"),
+      support: fixedSystemEmojiText("interrogacao")
     },
     panelSections: {
       includedTitle: "SISTEMAS INCLUSOS",

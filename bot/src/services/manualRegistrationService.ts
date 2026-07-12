@@ -27,7 +27,7 @@ import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 import { buildV2Container, renderPanelBlocks } from "./panelVisualRenderer";
-import { systemComponentEmoji } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "manual_registration";
 const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
@@ -152,7 +152,7 @@ async function resolveOrCreatePanelChannel(guild: Guild, settings: ManualRegistr
 
 function configKey(guildId: string, userId: string) { return `${guildId}:${userId}`; }
 function configMainPayload(settings: ManualRegistrationSettings) {
-  return { components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ⚙️ Configuração do Set\n**Cargo aprovado:** ${settings.approvedRoleId ? `<@&${settings.approvedRoleId}>` : "Não configurado"}\n**Cargos revisores:** ${settings.approverRoleIds.length ? settings.approverRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Cadastro manual:** ${settings.manualRegistrationRoleIds.length ? settings.manualRegistrationRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Canal do painel:** ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "Não configurado"}\n**Categoria dos pedidos:** ${settings.requestCategoryId ? `<#${settings.requestCategoryId}>` : "Não configurada"}` }, new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:approved`).setLabel("Configurar cargo de aprovado").setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`${PREFIX}:config:reviewers`).setLabel("Cargos de aprovação/recusa").setStyle(ButtonStyle.Secondary)), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:channels`).setLabel("Configurações de canais").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:config:manual`).setLabel("Permissão cadastro manual").setStyle(ButtonStyle.Secondary))] }], flags: MessageFlags.IsComponentsV2 as const };
+  return { components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("engrenagem")} Configuração do Set\n**Cargo aprovado:** ${settings.approvedRoleId ? `<@&${settings.approvedRoleId}>` : "Não configurado"}\n**Cargos revisores:** ${settings.approverRoleIds.length ? settings.approverRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Cadastro manual:** ${settings.manualRegistrationRoleIds.length ? settings.manualRegistrationRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Canal do painel:** ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "Não configurado"}\n**Categoria dos pedidos:** ${settings.requestCategoryId ? `<#${settings.requestCategoryId}>` : "Não configurada"}` }, new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:approved`).setEmoji(systemComponentEmoji("visto")).setLabel("Configurar cargo de aprovado").setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`${PREFIX}:config:reviewers`).setEmoji(systemComponentEmoji("homem")).setLabel("Cargos de aprovação/recusa").setStyle(ButtonStyle.Secondary)), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:channels`).setEmoji(systemComponentEmoji("discord")).setLabel("Configurações de canais").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:config:manual`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Permissão cadastro manual").setStyle(ButtonStyle.Secondary))] }], flags: MessageFlags.IsComponentsV2 as const };
 }
 async function handleSetConfigInteraction(interaction: ButtonInteraction | any, context: BotContext) {
   if (!interaction.guild || !(await isSetAdministrator(interaction.guild, interaction.user.id))) return void await interaction.reply({ content: "Você não possui permissão administrativa.", ephemeral: true });
@@ -162,10 +162,10 @@ async function handleSetConfigInteraction(interaction: ButtonInteraction | any, 
   if (interaction.isChannelSelectMenu()) { const field = action === "panel_select" ? "panelChannelId" : action === "category_select" ? "requestCategoryId" : "logChannelId"; configDrafts.set(key, { ...draft, [field]: interaction.values[0] ?? null }); return void await interaction.deferUpdate(); }
   if (action === "back") { configDrafts.delete(key); return void await interaction.update(configMainPayload(settings)); }
   if (action.startsWith("save_")) { const module = action.slice(5); const patch = module === "approved" ? { approvedRoleId: draft.approvedRoleId } : module === "reviewers" ? { approverRoleIds: draft.approverRoleIds } : module === "manual" ? { manualRegistrationRoleIds: draft.manualRegistrationRoleIds } : { panelChannelId: draft.panelChannelId, requestCategoryId: draft.requestCategoryId, logChannelId: draft.logChannelId }; if (!Object.values(patch).some((value) => value !== undefined)) return void await interaction.reply({ content: "Nenhuma alteração pendente neste módulo.", ephemeral: true }); const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, patch); configDrafts.delete(key); return void await interaction.update(configMainPayload(saved)); }
-  const backSave = (module: string) => new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:save_${module}`).setLabel("Salvar").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:config:back`).setLabel("Voltar").setStyle(ButtonStyle.Secondary));
-  if (action === "approved") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: "# Cargo atribuído ao aprovar\nSelecione um cargo e clique em **Salvar**." }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:approved_select`).setPlaceholder("Selecione o cargo aprovado").setMinValues(1).setMaxValues(1)), backSave("approved")] }] });
-  if (action === "reviewers" || action === "manual") { const module = action; return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: module === "reviewers" ? "# Cargos que aprovam ou recusam" : "# Cargos para cadastro manual" }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:${module}_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave(module)] }] }); }
-  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: "# Canais do sistema de Set\nSelecione o painel, a categoria privada e o canal de logs." }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos pedidos").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), backSave("channels")] }] });
+  const backSave = (module: string) => new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:save_${module}`).setEmoji(systemComponentEmoji("salvar")).setLabel("Salvar").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:config:back`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary));
+  if (action === "approved") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("visto")} Cargo atribuído ao aprovar\nSelecione um cargo e clique em **Salvar**.` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:approved_select`).setPlaceholder("Selecione o cargo aprovado").setMinValues(1).setMaxValues(1)), backSave("approved")] }] });
+  if (action === "reviewers" || action === "manual") { const module = action; return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: module === "reviewers" ? `# ${systemEmojiText("homem")} Cargos que aprovam ou recusam` : `# ${systemEmojiText("prancheta_caneta")} Cargos para cadastro manual` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:${module}_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave(module)] }] }); }
+  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("discord")} Canais do sistema de Set\nSelecione o painel, a categoria privada e o canal de logs.` }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos pedidos").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), backSave("channels")] }] });
 }
 async function isSetAdministrator(guild: Guild, userId: string) { const member = await guild.members.fetch(userId).catch(() => null); return Boolean(member && (guild.ownerId === userId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild))); }
 
@@ -589,7 +589,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
   const heading = {
     type: 10,
     content: [
-      `# ${settings.emoji ? `${settings.emoji} ` : ""}${panelName}`,
+      replaceSystemEmojis(`# ${settings.emoji ? `${settings.emoji} ` : `${systemEmojiText("prancheta_caneta")} `}${panelName}`),
       introText
     ].join("\n\n")
   };
@@ -608,7 +608,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
   components.push({
     type: 10,
     content: [
-      `### ${settings.emoji ? "" : "📋 "}Antes de começar`,
+      replaceSystemEmojis(`### ${settings.emoji ? "" : `${systemEmojiText("prancheta")} `}Antes de começar`),
       `- Tenha em mãos ${registrationFieldSummary(settings)}.`,
       "- Revise os dados antes de enviar.",
       availableSets > 1 ? `- Escolha um dos ${availableSets} sets disponíveis.` : "- Confirme o set disponível."
@@ -627,7 +627,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta")).setLabel("Iniciar Registro").setStyle(ButtonStyle.Secondary)
   ));
   components.push({ type: 14, divider: true, spacing: 1 });
-  components.push({ type: 10, content: settings.footerText ? `-# ${settings.footerText}` : "-# Todos os direitos reservados" });
+  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# ${settings.footerText}`) : "-# Todos os direitos reservados" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
@@ -654,7 +654,7 @@ function createReviewPayload(settings: ManualRegistrationSettings, submission: M
   const statusText = submission.status === "approved" ? "Aprovado" : submission.status === "rejected" ? submission.rejectionReason?.startsWith("Cancelado") ? "Cancelado" : "Recusado" : "Pendente";
   const imageUrl = resolveImageUrl(settings.panelImage?.imageUrl ?? null);
   const content: Array<Record<string, unknown>> = [
-    { type: 10, content: `# ${settings.emoji ?? ""} Pedido de Set` },
+    { type: 10, content: replaceSystemEmojis(`# ${settings.emoji ?? systemEmojiText("prancheta_caneta")} Pedido de Set`) },
     { type: 10, content: `Usuario: <@${submission.userId}>\nID: ${submission.userId}\nSet solicitado: ${submission.requestedRoleId ? `<@&${submission.requestedRoleId}>` : "Padrao"}\nData: <t:${Math.floor(new Date(submission.createdAt ?? Date.now()).getTime() / 1000)}:F>\nStatus: **${statusText}**` },
     { type: 14 },
     { type: 10, content: submission.fields.map((field) => `**${field.label}:** ${field.value}`).join("\n").slice(0, 3500) }
@@ -666,11 +666,11 @@ function createReviewPayload(settings: ManualRegistrationSettings, submission: M
     components: [
       { type: 17, accent_color: parseColor(settings.color), components: content },
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${submission.id}:${submission.userId}`).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${submission.id}:${submission.userId}`).setLabel("Recusar").setStyle(ButtonStyle.Danger).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:view:${submission.id}`).setLabel("Ver Detalhes").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:edit_set:${submission.id}:${submission.userId}`).setLabel("Editar Set").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${submission.id}:${submission.userId}`).setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending")
+        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Recusar").setStyle(ButtonStyle.Danger).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:view:${submission.id}`).setEmoji(systemComponentEmoji("prancheta")).setLabel("Ver Detalhes").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:edit_set:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Editar Set").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending")
       )
     ],
     flags: MessageFlags.IsComponentsV2 as const
@@ -681,7 +681,7 @@ async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings,
   if (!settings.logChannelId) return;
   const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
-  await channel.send({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+  await channel.send({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta")} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
 }
 
 async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string) {
@@ -719,7 +719,7 @@ function slug(value: string) {
 }
 
 function normalizeComponentEmoji(value: string | null) {
-  const emoji = value?.trim();
+  const emoji = replaceSystemEmojis(value?.trim() ?? "");
   if (!emoji) return undefined;
   if (/^<a?:[A-Za-z0-9_]{2,32}:\d{5,32}>$/.test(emoji)) return emoji;
   if (/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)(?:\uFE0F|\u200D|\p{Emoji_Modifier}|\p{Extended_Pictographic})*$/u.test(emoji)) return emoji;

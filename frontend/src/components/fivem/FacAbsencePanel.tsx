@@ -46,7 +46,7 @@ type FacAbsencePanelProps = {
 };
 
 const defaultMessages: FivemFacMessages = {
-  panelTitle: "📅 Solicitar Ausência",
+  panelTitle: "<a:calendario:1525682184948547724> Solicitar Ausência",
   panelDescription: "Informe a data de retorno e o motivo da sua ausência.",
   requestCreated: "Sua solicitação de ausência foi enviada para aprovação.",
   approved: "Sua ausência foi aprovada.",

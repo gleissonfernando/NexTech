@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import {
   ensureGuild,
   getMongoCollections,
@@ -145,7 +146,7 @@ const FAC_PHOTO_MIME_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp"
 };
 const DEFAULT_MESSAGES: MongoFivemFacMessages = {
-  panelTitle: "📅 Solicitar Ausência",
+  panelTitle: `${fixedSystemEmojiText("calendario")} Solicitar Ausência`,
   panelDescription: "Informe a data de retorno e o motivo da sua ausência.",
   requestCreated: "Sua solicitação de ausência foi enviada para aprovação.",
   approved: "Sua ausência foi aprovada.",
@@ -162,7 +163,7 @@ const DEFAULT_PANEL_VISUAL: MongoPanelVisualConfig = {
     {
       id: "request",
       label: "Solicitar Ausencia",
-      emoji: null,
+      emoji: fixedSystemEmojiText("calendario"),
       style: "primary",
       type: "action",
       action: "request_absence",
@@ -173,7 +174,7 @@ const DEFAULT_PANEL_VISUAL: MongoPanelVisualConfig = {
     {
       id: "mine",
       label: "Minhas Ausencias",
-      emoji: null,
+      emoji: fixedSystemEmojiText("prancheta"),
       style: "secondary",
       type: "action",
       action: "my_absences",

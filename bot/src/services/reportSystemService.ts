@@ -28,7 +28,7 @@ import {
 import { env } from "../config/env";
 import type { BotContext, GuildSettings, ReportSystemButtonKey, ReportSystemLogKey, ReportSystemSettings } from "../types";
 import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/selectMenuReset";
-import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
@@ -273,7 +273,7 @@ async function handlePublicReportSelect(interaction: StringSelectMenuInteraction
         type: 17,
         accent_color: parseColor(report.panelColor),
         components: [
-          { type: 10, content: `# ${category.emoji ?? "🛡️"} ${category.name}\nEscolha a modalidade da denúncia. A modalidade anônima protege a identidade no canal operacional, mantendo auditoria real apenas nos logs autorizados.` },
+          { type: 10, content: replaceSystemEmojis(`# ${category.emoji ?? systemEmojiText("alerta", interaction.guild)} ${category.name}\nEscolha a modalidade da denúncia. A modalidade anônima protege a identidade no canal operacional, mantendo auditoria real apenas nos logs autorizados.`, interaction.guild) },
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
               .setCustomId(`${PUBLIC_PREFIX}:id:${selectedCategoryId}:identified`)
@@ -1260,7 +1260,7 @@ function createAdminPayload(settings: GuildSettings, section: string) {
     fields,
     image: null,
     moduleId: "iab-admin",
-    title: `${report.panelEmoji ?? "🛡️"} IAB Config`
+    title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} IAB Config`)
   });
 }
 

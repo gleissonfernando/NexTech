@@ -29,7 +29,7 @@ import {
 import { isBotModuleEnabled, setRuntimeEnabledModules } from "../config/env";
 import type { BotContext } from "../types";
 import type { TemporaryCall, TemporaryVoiceSettings } from "./apiClient";
-import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const IDs = {
   allow: "tempcall_allow",
@@ -805,8 +805,8 @@ async function logCall(context: BotContext, settings: TemporaryVoiceSettings, ca
       embeds: [
         new EmbedBuilder()
           .setColor(0x3b82f6)
-          .setTitle("🔊 Call Temporária")
-          .setDescription(`**Ação:** ${action}\n**Dono:** <@${call.ownerId}>\n**Canal:** ${call.channelName}`)
+          .setTitle(replaceSystemEmojis("📋 Call Temporária", guild))
+          .setDescription(replaceSystemEmojis(`**Ação:** ${action}\n**Dono:** <@${call.ownerId}>\n**Canal:** ${call.channelName}`, guild))
           .setTimestamp()
       ]
     });
@@ -815,16 +815,17 @@ async function logCall(context: BotContext, settings: TemporaryVoiceSettings, ca
 
 async function ephemeral(interaction: Interaction, content: string) {
   if (!interaction.isRepliable()) return;
+  const renderedContent = replaceSystemEmojis(content, interaction.guild);
 
   if (interaction.deferred) {
-    await interaction.editReply({ components: [], content });
+    await interaction.editReply({ components: [], content: renderedContent });
     return;
   }
 
   if (interaction.replied) {
-    await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: renderedContent, flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: renderedContent, flags: MessageFlags.Ephemeral });
 }

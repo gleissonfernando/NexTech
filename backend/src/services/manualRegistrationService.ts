@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { ensureGuild, getMongoCollections, type MongoManualRegistrationLog, type MongoManualRegistrationSettings, type MongoManualRegistrationSubmission } from "../database/mongo";
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
@@ -132,7 +133,7 @@ export function defaultManualRegistrationSettings(guildId: string, botId: string
     cooldownMinutes: 60,
     dmNotifications: true,
     enabled: false,
-    emoji: "📝",
+    emoji: fixedSystemEmojiText("prancheta_caneta"),
     fields: DEFAULT_FIELDS.map((field) => ({ ...field })),
     footerText: "Cadastro enviado para analise da equipe.",
     guildId,

@@ -23,6 +23,7 @@ import {
 import type { BotContext } from "../types";
 import type { FivemHierarchyEntry, FivemHierarchyPanel } from "./apiClient";
 import { componentsV2Payload } from "./panelVisualRenderer";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "hierarchy_config";
 const sessions = new Map<string, { panelId?: string; pendingPositionName?: string; selectedChannelId?: string; selectedPositionId?: string; selectedRoleId?: string; updatedAt: number }>();
@@ -240,7 +241,7 @@ async function handleRoleSelect(interaction: RoleSelectMenuInteraction, context:
     return void await notice(interaction, "Posição duplicada", "O nome ou o cargo já está sendo usado nesta hierarquia.");
   }
   await interaction.deferUpdate();
-  const position: FivemHierarchyEntry = { active: true, color: null, description: null, emoji: "👤", id: randomUUID(), limit: null, name, order: panel.hierarchies.length + 1, roleId: role.id, roleName: role.name };
+  const position: FivemHierarchyEntry = { active: true, color: null, description: null, emoji: systemEmojiText("homem", interaction.guild), id: randomUUID(), limit: null, name, order: panel.hierarchies.length + 1, roleId: role.id, roleName: role.name };
   const updated = await updatePositions(context, interaction, panel, [...panel.hierarchies, position]);
   session(interaction).pendingPositionName = undefined;
   await interaction.editReply(editorPanel(interaction, updated, `A posição “${name}” foi vinculada ao cargo <@&${role.id}>.`));
@@ -337,75 +338,75 @@ async function updatePositions(context: BotContext, interaction: Interaction, pa
 
 function mainPanel(interaction: Interaction, panels: FivemHierarchyPanel[], message?: string) {
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:channels`).setLabel("Configurações de canais").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:create`).setLabel("Criar hierarquia").setStyle(ButtonStyle.Success).setDisabled(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)),
-    new ButtonBuilder().setCustomId(`${PREFIX}:edit`).setLabel("Editar hierarquia").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:refresh_all`).setLabel("Atualizar painel").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:close`).setLabel("Fechar configuração").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`${PREFIX}:channels`).setEmoji(systemComponentEmoji("discord", interaction.guild)).setLabel("Configurações de canais").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:create`).setEmoji(systemComponentEmoji("mais", interaction.guild)).setLabel("Criar hierarquia").setStyle(ButtonStyle.Success).setDisabled(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)),
+    new ButtonBuilder().setCustomId(`${PREFIX}:edit`).setEmoji(systemComponentEmoji("prancheta_caneta", interaction.guild)).setLabel("Editar hierarquia").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:refresh_all`).setEmoji(systemComponentEmoji("relogio", interaction.guild)).setLabel("Atualizar painel").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:close`).setEmoji(systemComponentEmoji("porta", interaction.guild)).setLabel("Fechar configuração").setStyle(ButtonStyle.Danger)
   );
-  return v2("Configuração do Sistema Hierárquico", `**Servidor:** ${interaction.guild?.name}\n**Responsável:** <@${interaction.user.id}>\n**Hierarquias autorizadas:** ${panels.length}\n\nDashboard e Discord usam a mesma fonte de dados. Todas as alterações confirmadas são salvas, sincronizadas e registradas.${message ? `\n\n✅ ${message}` : ""}`, [buttons]);
+  return v2(`${systemEmojiText("engrenagem", interaction.guild)} Configuração do Sistema Hierárquico`, `**Servidor:** ${interaction.guild?.name}\n**Responsável:** <@${interaction.user.id}>\n**Hierarquias autorizadas:** ${panels.length}\n\nDashboard e Discord usam a mesma fonte de dados. Todas as alterações confirmadas são salvas, sincronizadas e registradas.${message ? `\n\n${systemEmojiText("visto", interaction.guild)} ${message}` : ""}`, [buttons], interaction.guild);
 }
 
 function editorPanel(interaction: Interaction, panel: FivemHierarchyPanel, message?: string) {
   const positions = [...panel.hierarchies].sort((a, b) => a.order - b.order).map((item) => `${item.order}. **${item.name}** — ${interaction.guild?.roles.cache.has(item.roleId) ? `<@&${item.roleId}>` : `Cargo não encontrado (${item.roleId})`}`).join("\n") || "*Nenhuma posição cadastrada.*";
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:add_position:${panel.id}`).setLabel("Adicionar posição").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:rename:${panel.id}`).setLabel("Alterar nome").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:edit_position:${panel.id}`).setLabel("Editar posição").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:remove_position:${panel.id}`).setLabel("Remover posição").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:reorder:${panel.id}`).setLabel("Reordenar").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:add_position:${panel.id}`).setEmoji(systemComponentEmoji("mais", interaction.guild)).setLabel("Adicionar posição").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:rename:${panel.id}`).setEmoji(systemComponentEmoji("prancheta_caneta", interaction.guild)).setLabel("Alterar nome").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:edit_position:${panel.id}`).setEmoji(systemComponentEmoji("engrenagem", interaction.guild)).setLabel("Editar posição").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove_position:${panel.id}`).setEmoji(systemComponentEmoji("exclamacao", interaction.guild)).setLabel("Remover posição").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:reorder:${panel.id}`).setEmoji(systemComponentEmoji("prancheta", interaction.guild)).setLabel("Reordenar").setStyle(ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:save:${panel.id}`).setLabel("Salvar progresso").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:finish:${panel.id}`).setLabel("Terminei a hierarquia").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:channel_screen:${panel.id}`).setLabel("Canais/Publicação").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:delete:${panel.id}`).setLabel(panel.status === "draft" ? "Cancelar criação" : "Excluir hierarquia").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:back`).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:save:${panel.id}`).setEmoji(systemComponentEmoji("salvar", interaction.guild)).setLabel("Salvar progresso").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:finish:${panel.id}`).setEmoji(systemComponentEmoji("visto", interaction.guild)).setLabel("Terminei a hierarquia").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:channel_screen:${panel.id}`).setEmoji(systemComponentEmoji("discord", interaction.guild)).setLabel("Canais/Publicação").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:delete:${panel.id}`).setEmoji(systemComponentEmoji("perigo", interaction.guild)).setLabel(panel.status === "draft" ? "Cancelar criação" : "Excluir hierarquia").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:back`).setEmoji(systemComponentEmoji("porta", interaction.guild)).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
   );
-  return v2(`Montagem da Hierarquia — ${panel.name}`, `**Status:** ${statusName(panel.status)}\n**Posições:** ${panel.hierarchies.length}\n**Revisão:** ${panel.configRevision}\n**Último salvamento:** <t:${Math.floor(Date.parse(panel.updatedAt) / 1000)}:R>\n\n${positions}${message ? `\n\n✅ ${message}` : ""}`, [row1, row2]);
+  return v2(`${systemEmojiText("prancheta", interaction.guild)} Montagem da Hierarquia — ${panel.name}`, `**Status:** ${statusName(panel.status)}\n**Posições:** ${panel.hierarchies.length}\n**Revisão:** ${panel.configRevision}\n**Último salvamento:** <t:${Math.floor(Date.parse(panel.updatedAt) / 1000)}:R>\n\n${positions}${message ? `\n\n${systemEmojiText("visto", interaction.guild)} ${message}` : ""}`, [row1, row2], interaction.guild);
 }
 
 function channelPanel(panel: FivemHierarchyPanel, message?: string) {
   const channel = new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_value:${panel.id}`).setPlaceholder("Escolha o canal de publicação").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1);
   if (panel.panelChannelId) channel.setDefaultChannels(panel.panelChannelId);
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:save_channel:${panel.id}`).setLabel("Salvar canal").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:publish:${panel.id}`).setLabel(panel.panelMessageId ? "Atualizar publicação" : "Publicar hierarquia").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:unpublish:${panel.id}`).setLabel("Remover publicação").setStyle(ButtonStyle.Danger).setDisabled(!panel.panelMessageId),
-    new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:save_channel:${panel.id}`).setEmoji(systemComponentEmoji("salvar")).setLabel("Salvar canal").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:publish:${panel.id}`).setEmoji(systemComponentEmoji("prancheta")).setLabel(panel.panelMessageId ? "Atualizar publicação" : "Publicar hierarquia").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:unpublish:${panel.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Remover publicação").setStyle(ButtonStyle.Danger).setDisabled(!panel.panelMessageId),
+    new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
   );
   const managers = [...panel.managerUserIds.map((id) => `<@${id}>`), ...panel.managerRoleIds.map((id) => `<@&${id}>`)].join(" ") || "Somente administradores do servidor";
   const command = [...panel.commandUserIds.map((id) => `<@${id}>`), ...panel.commandRoleIds.map((id) => `<@&${id}>`)].join(" ") || "Não configurado";
-  return v2("Configurações de canais", `**Hierarquia:** ${panel.name}\n**Canal:** ${panel.panelChannelId ? `<#${panel.panelChannelId}>` : "Não configurado"}\n**Publicação:** ${panel.panelMessageId ? "Ativa" : "Não publicada"}\n**Última publicação:** ${panel.publishedAt ? `<t:${Math.floor(Date.parse(panel.publishedAt) / 1000)}:F>` : "-"}\n**Posições:** ${panel.hierarchies.length}\n**Gestores:** ${managers}\n**Comando:** ${command}\n**Mensagem:** ${panel.panelMessageId ?? "-"}${message ? `\n\n✅ ${message}` : ""}`, [new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channel), actions]);
+  return v2(`${systemEmojiText("discord")} Configurações de canais`, `**Hierarquia:** ${panel.name}\n**Canal:** ${panel.panelChannelId ? `<#${panel.panelChannelId}>` : "Não configurado"}\n**Publicação:** ${panel.panelMessageId ? "Ativa" : "Não publicada"}\n**Última publicação:** ${panel.publishedAt ? `<t:${Math.floor(Date.parse(panel.publishedAt) / 1000)}:F>` : "-"}\n**Posições:** ${panel.hierarchies.length}\n**Gestores:** ${managers}\n**Comando:** ${command}\n**Mensagem:** ${panel.panelMessageId ?? "-"}${message ? `\n\n${systemEmojiText("visto")} ${message}` : ""}`, [new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channel), actions]);
 }
 
 function rolePicker(panelId: string, name: string) {
   const select = new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:position_role:${panelId}`).setPlaceholder("Escolha o cargo do Discord").setMinValues(1).setMaxValues(1);
-  return v2("Vincular cargo", `Posição: **${name}**\nEscolha o cargo que representa esta posição.`, [new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(select), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panelId}`).setLabel("Voltar").setStyle(ButtonStyle.Secondary))]);
+  return v2(`${systemEmojiText("homem")} Vincular cargo`, `Posição: **${name}**\nEscolha o cargo que representa esta posição.`, [new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(select), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panelId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))]);
 }
 
 function confirmRemovePanel(panel: FivemHierarchyPanel, position: FivemHierarchyEntry) {
-  return v2("Confirmar remoção", `Deseja remover a posição **${position.name}** e o vínculo <@&${position.roleId}> desta hierarquia? O cargo real não será apagado.`, [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:remove_confirm:${panel.id}`).setLabel("Confirmar remoção").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setLabel("Cancelar").setStyle(ButtonStyle.Secondary))]);
+  return v2(`${systemEmojiText("perigo")} Confirmar remoção`, `Deseja remover a posição **${position.name}** e o vínculo <@&${position.roleId}> desta hierarquia? O cargo real não será apagado.`, [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:remove_confirm:${panel.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Confirmar remoção").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar").setStyle(ButtonStyle.Secondary))]);
 }
 
 function confirmDeletePanel(panel: FivemHierarchyPanel) {
-  return v2("Confirmar exclusão", `Deseja realmente excluir a hierarquia **${panel.name}**? A publicação também será removida.`, [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:delete_confirm:${panel.id}`).setLabel("Confirmar exclusão").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setLabel("Continuar configurando").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:back`).setLabel("Voltar").setStyle(ButtonStyle.Secondary))]);
+  return v2(`${systemEmojiText("perigo")} Confirmar exclusão`, `Deseja realmente excluir a hierarquia **${panel.name}**? A publicação também será removida.`, [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:delete_confirm:${panel.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Confirmar exclusão").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setEmoji(systemComponentEmoji("engrenagem")).setLabel("Continuar configurando").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:back`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))]);
 }
 
 function reorderPanel(panel: FivemHierarchyPanel, selectedId: string, message?: string) {
   const selected = panel.hierarchies.find((item) => item.id === selectedId);
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:up:${panel.id}:${selectedId}`).setLabel("Subir").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:down:${panel.id}:${selectedId}`).setLabel("Descer").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:first:${panel.id}:${selectedId}`).setLabel("Mover para o início").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:last:${panel.id}:${selectedId}`).setLabel("Mover para o final").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:up:${panel.id}:${selectedId}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Subir").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:down:${panel.id}:${selectedId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Descer").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:first:${panel.id}:${selectedId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Mover para o início").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:last:${panel.id}:${selectedId}`).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Mover para o final").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:editor:${panel.id}`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
   );
-  return v2("Reordenar posições", `**Selecionada:** ${selected?.name ?? "-"}\n\n${panel.hierarchies.slice().sort((a, b) => a.order - b.order).map((item) => `${item.order}. ${item.name}`).join("\n")}${message ? `\n\n✅ ${message}` : ""}`, [buttons]);
+  return v2(`${systemEmojiText("prancheta")} Reordenar posições`, `**Selecionada:** ${selected?.name ?? "-"}\n\n${panel.hierarchies.slice().sort((a, b) => a.order - b.order).map((item) => `${item.order}. ${item.name}`).join("\n")}${message ? `\n\n${systemEmojiText("visto")} ${message}` : ""}`, [buttons]);
 }
 
-function v2(title: string, text: string, components: unknown[]): any {
-  return componentsV2Payload({ accentColor: 0x22c55e, components: [{ type: 10, content: `# ${title}\n${text}` }, ...components], ephemeral: true });
+function v2(title: string, text: string, components: unknown[], guild: Parameters<typeof replaceSystemEmojis>[1] = null): any {
+  return componentsV2Payload({ accentColor: 0x22c55e, components: [{ type: 10, content: replaceSystemEmojis(`# ${title}\n${text}`, guild) }, ...components], ephemeral: true });
 }
 
 function privateMessage(title: string, text: string) { return v2(title, text, []); }

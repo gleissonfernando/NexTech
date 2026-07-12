@@ -41,23 +41,30 @@ const guildEmojiCaches = new Map<string, GuildSystemEmojiCache>();
 
 const unicodeReplacementPairs: Array<[RegExp, SystemEmojiKey]> = [
   [/✅|✔️|✔/g, "visto"],
-  [/⚠️|⚠/g, "perigo"],
+  [/⚠️|⚠|🚫/g, "perigo"],
   [/❓/g, "interrogacao"],
-  [/❗/g, "exclamacao"],
+  [/❗|❕|🔴|❌/g, "exclamacao"],
   [/📅/g, "calendario"],
-  [/🏆/g, "trofeu"],
-  [/💰/g, "dinheiro"],
-  [/📄/g, "folha"],
-  [/📋/g, "prancheta"],
-  [/📝/g, "prancheta_caneta"],
-  [/👤|👥/g, "homem"],
-  [/🔗/g, "link"],
-  [/📦/g, "caixa"],
-  [/🕒|⏰/g, "relogio"],
-  [/⚙️|⚙/g, "engrenagem"],
-  [/🚪/g, "porta"],
+  [/🏆|⭐|📚|🎓/g, "trofeu"],
+  [/🏅|🎖️|🎖/g, "trofeu_alt"],
+  [/💰|💵|💸/g, "dinheiro"],
+  [/📄|🧾|⚖️|⚖/g, "folha"],
+  [/📋|🏷️|🏷|📁|🎫/g, "prancheta"],
+  [/📝|✏️|✏/g, "prancheta_caneta"],
+  [/👤|👥|👮/g, "homem"],
+  [/🔗|📨|📩/g, "link"],
+  [/📦|📭|💎/g, "caixa"],
+  [/🕒|⏰|⏳|🔄/g, "relogio"],
+  [/⚙️|⚙|🔧|🏛️|🏛/g, "engrenagem"],
+  [/🚪|↩️|↩/g, "porta"],
   [/🤖/g, "robo"],
-  [/☁️|☁/g, "nuvem"]
+  [/📈|📊/g, "prancheta_acertos"],
+  [/📣|🛡️|🛡/g, "alerta"],
+  [/▶️|▶/g, "liga"],
+  [/🚀|➡️|➡/g, "acessar"],
+  [/☁️|☁/g, "nuvem"],
+  [/🔫/g, "arma"],
+  [/🔍|🎧/g, "interrogacao"]
 ];
 
 export async function refreshSystemEmojis(context: BotContext) {
@@ -220,16 +227,28 @@ function systemEmojiNames(definition: SystemEmojiDefinition) {
 }
 
 function runtimeEmoji(key: SystemEmojiKey): RuntimeEmoji {
+  const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
+  const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
+  if (fixed) {
+    return {
+      key,
+      name: fixed.name,
+      emojiId: fixed.emojiId,
+      animated: fixed.animated,
+      sourceGuildId: null,
+      enabled: true,
+      fallback: definition.fallback
+    };
+  }
+
   const configured = runtimeEmojis.get(key);
   if (configured) return configured;
 
-  const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
-  const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
   return {
     key,
-    name: fixed.name ?? definition.name,
-    emojiId: fixed.emojiId,
-    animated: fixed.animated,
+    name: definition.name,
+    emojiId: null,
+    animated: false,
     sourceGuildId: null,
     enabled: true,
     fallback: definition.fallback

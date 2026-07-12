@@ -101,7 +101,7 @@ const facSettingsSchema = z.object({
     buttons: z.array(z.object({
       id: z.string().max(40),
       label: z.string().min(1).max(80),
-      emoji: z.string().max(40).nullable().optional(),
+      emoji: z.string().max(80).nullable().optional(),
       style: z.enum(["primary", "secondary", "success", "danger", "link"]),
       type: z.enum(["action", "url"]),
       action: z.enum(["request_absence", "my_absences", "url"]),
@@ -212,7 +212,7 @@ const hierarchyEntrySchema = z.object({
   active: z.boolean().optional(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
   description: z.string().max(300).nullable().optional(),
-  emoji: z.string().max(40).nullable().optional(),
+  emoji: z.string().max(80).nullable().optional(),
   id: z.string().max(80).optional(),
   limit: z.coerce.number().int().min(1).max(100).nullable().optional(),
   name: z.string().min(1).max(80),

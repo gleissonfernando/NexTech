@@ -20,6 +20,7 @@ import {
 } from "discord.js";
 import type { OpenDutySettings } from "../services/apiClient";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "../services/panelVisualRenderer";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "../services/systemEmojiService";
 import type { BotCommand, BotContext } from "../types";
 
 const MODULE_ID = "police-open-duty";
@@ -239,7 +240,7 @@ function dmPayload(settings: OpenDutySettings, target: User, message: string) {
   const footerImage = settings.footerImageUrl ? resolvePanelImageUrl(settings.footerImageUrl) : null;
   const pushBanner = () => { if (banner) components.push({ type: 12, items: [{ media: { url: banner }, description: "Ponto Aberto" }] }); };
   if (settings.imagePosition === "top") pushBanner();
-  components.push({ type: 10, content: `# Notificacao de Ponto Aberto\n${message}`.slice(0, 3900) });
+  components.push({ type: 10, content: replaceSystemEmojis(`# ${systemEmojiText("alerta")} Notificacao de Ponto Aberto\n${message}`).slice(0, 3900) });
   if (settings.imagePosition === "middle") pushBanner();
   if (settings.imagePosition === "bottom") pushBanner();
   return {
@@ -283,17 +284,17 @@ async function sendAlert(interaction: ButtonInteraction, settings: OpenDutySetti
 
 function actionRow(draftId: string, settings: OpenDutySettings) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setLabel(`${settings.buttonEmojis.send} Enviar mensagem padrao`).setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setLabel(`${settings.buttonEmojis.edit} Editar mensagem`).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setLabel(`${settings.buttonEmojis.cancel} Cancelar`).setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Enviar mensagem padrao").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Editar mensagem").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
   ).toJSON();
 }
 
 function confirmEditedRow(draftId: string, settings: OpenDutySettings) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setLabel(`${settings.buttonEmojis.send} Confirmar envio`).setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setLabel(`${settings.buttonEmojis.edit} Editar novamente`).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setLabel(`${settings.buttonEmojis.cancel} Cancelar`).setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Confirmar envio").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Editar novamente").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
   ).toJSON();
 }
 
@@ -333,7 +334,7 @@ function panel(settings: OpenDutySettings, input: { actions?: unknown[]; descrip
     footer: footer(settings, settings.footerImageUrl ? resolvePanelImageUrl(settings.footerImageUrl) : null),
     image: settings.panelBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.panelBannerUrl } : null,
     moduleId: MODULE_ID,
-    title: input.title
+    title: `${systemEmojiText(input.title.toLowerCase().includes("alerta") ? "alerta" : input.title.toLowerCase().includes("log") ? "folha" : "engrenagem")} ${input.title}`
   });
 }
 

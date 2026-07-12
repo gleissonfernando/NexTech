@@ -32,6 +32,8 @@ type CourseChannelDraft = Pick<
 >;
 type ExamLinkDraft = Pick<CourseExamDashboard["settings"], "externalLinkDescription" | "externalLinkEmoji" | "externalLinkEnabled" | "externalLinkText" | "externalLinkUrl">;
 
+const COURSE_EMOJI = "<a:trofeu:1525682256654504087>";
+
 const tabs: Array<{ id: TabId; icon: typeof Image; label: string }> = [
   { id: "images", icon: Image, label: "Banners e Imagens" },
   { id: "channels", icon: SlidersHorizontal, label: "Configuração de Canais" },
@@ -77,7 +79,7 @@ const emptyCourse: SaveCoursePayload = {
   code: null,
   defaultSchedule: null,
   description: null,
-  emoji: "📚",
+  emoji: COURSE_EMOJI,
   footerImageUrl: null,
   imagePosition: "top",
   instructorRoleIds: [],

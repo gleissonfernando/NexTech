@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { ensureGuild, getMongoCollections, type MongoGuildSettings, type MongoSafeBotMessageState } from "../database/mongo";
 import {
   normalizeDashboardAccessLevel,
@@ -294,7 +295,7 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
   panelBannerUrl: null,
   panelFooterText: "Logs do sistema - acesso restrito",
   panelColor: "#2563eb",
-  moduleEmoji: "📁",
+  moduleEmoji: fixedSystemEmojiText("prancheta"),
   moduleName: null,
   showAnonymousAuthorToRoleIds: []
 };
@@ -320,7 +321,7 @@ const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione o tipo de atendimento";
 const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
   {
     description: "Abrir um atendimento com a equipe.",
-    emoji: "🎫",
+    emoji: fixedSystemEmojiText("prancheta"),
     enabled: true,
     label: "Suporte",
     value: "suporte"
@@ -329,15 +330,15 @@ const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
 const REPORT_BUTTON_KEYS: ReportSystemButtonKey[] = ["claim", "reply", "status", "requestEvidence", "addMember", "removeMember", "transcript", "close", "reopen", "delete"];
 const REPORT_LOG_KEYS: ReportSystemLogKey[] = ["opened", "closed", "replies", "statusChanged", "messagesDeleted", "anonymous", "admin"];
 const DEFAULT_REPORT_CATEGORIES: ReportSystemCategoryDto[] = [
-  { channelOrCategoryId: null, color: "#dc2626", description: "Painel principal de denuncias da IAB.", emoji: "🛡️", enabled: true, id: "denuncias-iab", name: "Denúncias IAB", order: 1 },
-  { channelOrCategoryId: null, color: "#991b1b", description: "Casos envolvendo alto comando.", emoji: "⭐", enabled: true, id: "denuncia-alto-comando", name: "Denúncia de Alto Comando", order: 2 },
-  { channelOrCategoryId: null, color: "#ef4444", description: "Denuncias contra policiais.", emoji: "👮", enabled: true, id: "denuncia-policiais", name: "Denúncia de Policiais", order: 3 },
-  { channelOrCategoryId: null, color: "#7f1d1d", description: "Demandas da corregedoria.", emoji: "⚖️", enabled: true, id: "corregedoria", name: "Corregedoria", order: 4 },
-  { channelOrCategoryId: null, color: "#b91c1c", description: "Assuntos internos e auditoria.", emoji: "📁", enabled: true, id: "assuntos-internos", name: "Assuntos Internos", order: 5 },
-  { channelOrCategoryId: null, color: "#dc2626", description: "Investigacoes internas da IAB.", emoji: "🔎", enabled: true, id: "iab", name: "IAB", order: 6 },
-  { channelOrCategoryId: null, color: "#7f1d1d", description: "Casos contra integrantes da IAB.", emoji: "🏛️", enabled: true, id: "conselho", name: "Conselho", order: 7 },
-  { channelOrCategoryId: null, color: "#111827", description: "Competencia exclusiva do High Command.", emoji: "⭐", enabled: true, id: "high-command", name: "High Command", order: 8 },
-  { channelOrCategoryId: null, color: "#0f172a", description: "Casos contra High Command.", emoji: "🎖️", enabled: true, id: "comissario", name: "Comissário", order: 9 }
+  { channelOrCategoryId: null, color: "#dc2626", description: "Painel principal de denuncias da IAB.", emoji: fixedSystemEmojiText("alerta"), enabled: true, id: "denuncias-iab", name: "Denúncias IAB", order: 1 },
+  { channelOrCategoryId: null, color: "#991b1b", description: "Casos envolvendo alto comando.", emoji: fixedSystemEmojiText("trofeu"), enabled: true, id: "denuncia-alto-comando", name: "Denúncia de Alto Comando", order: 2 },
+  { channelOrCategoryId: null, color: "#ef4444", description: "Denuncias contra policiais.", emoji: fixedSystemEmojiText("homem"), enabled: true, id: "denuncia-policiais", name: "Denúncia de Policiais", order: 3 },
+  { channelOrCategoryId: null, color: "#7f1d1d", description: "Demandas da corregedoria.", emoji: fixedSystemEmojiText("folha"), enabled: true, id: "corregedoria", name: "Corregedoria", order: 4 },
+  { channelOrCategoryId: null, color: "#b91c1c", description: "Assuntos internos e auditoria.", emoji: fixedSystemEmojiText("prancheta"), enabled: true, id: "assuntos-internos", name: "Assuntos Internos", order: 5 },
+  { channelOrCategoryId: null, color: "#dc2626", description: "Investigacoes internas da IAB.", emoji: fixedSystemEmojiText("interrogacao"), enabled: true, id: "iab", name: "IAB", order: 6 },
+  { channelOrCategoryId: null, color: "#7f1d1d", description: "Casos contra integrantes da IAB.", emoji: fixedSystemEmojiText("engrenagem"), enabled: true, id: "conselho", name: "Conselho", order: 7 },
+  { channelOrCategoryId: null, color: "#111827", description: "Competencia exclusiva do High Command.", emoji: fixedSystemEmojiText("trofeu"), enabled: true, id: "high-command", name: "High Command", order: 8 },
+  { channelOrCategoryId: null, color: "#0f172a", description: "Casos contra High Command.", emoji: fixedSystemEmojiText("trofeu_alt"), enabled: true, id: "comissario", name: "Comissário", order: 9 }
 ];
 const DEFAULT_REPORT_STATUSES: ReportSystemStatusDto[] = [
   { color: "#22c55e", id: "aberta", name: "Aberta", order: 1 },
@@ -1174,7 +1175,7 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     panelChannelId: null,
     panelColor: "#dc2626",
     panelDescription: "Selecione o órgão competente para abrir uma denúncia ou intimação com segurança. Denúncias anônimas preservam a identidade no canal operacional; logs autorizados mantêm auditoria real.",
-    panelEmoji: "🛡️",
+    panelEmoji: fixedSystemEmojiText("alerta"),
     panelPlaceholder: "Selecione o órgão competente",
     panelTitle: "Denúncias IAB",
     subpoenaDmText: "Voce recebeu uma intimacao institucional. Acesse o canal indicado e responda dentro do prazo.",

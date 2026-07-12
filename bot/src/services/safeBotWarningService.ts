@@ -14,6 +14,7 @@ import {
 import type { SafeBotWarningLevel, SafeBotWarningRecord, SafeBotWarningSettings } from "./apiClient";
 import type { BotContext } from "../types";
 import type { Message } from "discord.js";
+import { systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "safe_warning";
 const confirmations = new Map<string, { guildId: string; userId: string; reason: string; staffId: string; expiresAt: number }>();
@@ -267,7 +268,7 @@ async function sendWarningLog(warning: SafeBotWarningRecord, settings: SafeBotWa
   if (!channelId) return;
   const channel = await target.guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !channel.isSendable()) return;
-  const embed = new EmbedBuilder().setColor(warning.status === "failed" ? 0xed4245 : 0xf59e0b).setTitle("⚠️ Nova advertência do Safe Bot").setDescription([
+  const embed = new EmbedBuilder().setColor(warning.status === "failed" ? 0xed4245 : 0xf59e0b).setTitle(`${systemEmojiText("alerta", target.guild)} Nova advertência do Safe Bot`).setDescription([
     `**Usuário:** <@${target.id}>`, `**ID:** ${target.id}`, `**Staff:** <@${staff.id}>`,
     `**Advertência:** ${warning.warningNumber}`, `**Nível:** ${warning.level?.name ?? "Nível não configurado"}`,
     `**Motivo:** ${warning.reason}`, `**Ação configurada:** ${actionLabel(warning.configuredAction)}`,

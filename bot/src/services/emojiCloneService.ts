@@ -15,6 +15,7 @@ import type { BotContext, GuildSettings } from "../types";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "./runtimeModuleGuard";
+import { systemEmojiText } from "./systemEmojiService";
 
 const MODULE_ID = "emoji-cloner";
 const V2_FLAG = 32768;
@@ -264,27 +265,33 @@ export function emojiClonePanelPayload(ephemeral = false) {
       type: 17,
       accent_color: 0x7c3aed,
       components: [
-        { type: 10, content: "# 🚀 | Painel Clonagem De Emojis" },
+        { type: 10, content: `# ${systemEmojiText("nuvem")} | Painel Clonagem De Emojis` },
         { type: 10, content: "> Olá, membro! Acesse o painel de clonagem de emojis abaixo e divirta-se clonando." },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "## ❕ | Funcionalidades Importantes:" },
-        { type: 10, content: "• 🔗 | Para clonar por ID do servidor, informe origem e destino; nesse modo o bot precisa estar nos dois servidores.\n• 🤖 | Se o bot estiver apenas no destino, cole codigos ou links dos emojis que deseja clonar.\n• 🛡️ | O sistema respeita permissoes, bots autorizados e configuracoes do board.\n•." },
+        { type: 10, content: `## ${systemEmojiText("exclamacao")} | Funcionalidades Importantes:` },
+        { type: 10, content: `• ${systemEmojiText("link")} | Para clonar por ID do servidor, informe origem e destino; nesse modo o bot precisa estar nos dois servidores.\n• ${systemEmojiText("robo")} | Se o bot estiver apenas no destino, cole codigos ou links dos emojis que deseja clonar.\n• ${systemEmojiText("perigo")} | O sistema respeita permissoes, bots autorizados e configuracoes do board.` },
         { type: 14, divider: true, spacing: 1 },
         {
           type: 1,
           components: [
-            { type: 2, custom_id: "emoji_clone_start", label: "⭐ Clonar Emojis", style: 2 },
-            { type: 2, label: "🔗 Adicionar Bot", style: 5, url: panelLinks.addBotUrl },
-            { type: 2, label: "🔴 Como Utilizar", style: 5, url: panelLinks.howToUrl }
+            { type: 2, custom_id: "emoji_clone_start", emoji: componentEmoji("acessar"), label: "Clonar Emojis", style: 2 },
+            { type: 2, emoji: componentEmoji("link"), label: "Adicionar Bot", style: 5, url: panelLinks.addBotUrl },
+            { type: 2, emoji: componentEmoji("interrogacao"), label: "Como Utilizar", style: 5, url: panelLinks.howToUrl }
           ]
         },
         {
           type: 10,
-          content: "🏵️ | Todos os copyrights para NexTechK bots."
+          content: `${systemEmojiText("trofeu_alt")} | Todos os copyrights para NexTechK bots.`
         }
       ]
     }
   ], ephemeral);
+}
+
+function componentEmoji(key: Parameters<typeof systemEmojiText>[0]) {
+  const text = systemEmojiText(key);
+  const match = /^<a?:([^:>]+):(\d+)>$/.exec(text);
+  return match ? { id: match[2], name: match[1], animated: text.startsWith("<a:") } : { name: text };
 }
 
 function emojiClonePanelLinks() {

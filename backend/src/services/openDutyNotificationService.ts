@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { getMongoCollections, type MongoOpenDutyNotification, type MongoOpenDutySettings } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 
@@ -71,14 +72,14 @@ export async function getOpenDutySettings(botId: string | null, guildId: string)
     imagePosition: "top",
     panelColor: "#2563eb",
     buttonEmojis: {
-      send: "📩",
-      edit: "✏️",
-      cancel: "❌",
-      config: "⚙️",
-      logs: "🧾",
-      reset: "🔄",
-      search: "🔍",
-      save: "💾"
+      send: fixedSystemEmojiText("acessar"),
+      edit: fixedSystemEmojiText("prancheta_caneta"),
+      cancel: fixedSystemEmojiText("porta"),
+      config: fixedSystemEmojiText("engrenagem"),
+      logs: fixedSystemEmojiText("folha"),
+      reset: fixedSystemEmojiText("relogio"),
+      search: fixedSystemEmojiText("interrogacao"),
+      save: fixedSystemEmojiText("prancheta_acertos")
     },
     counterMode: "reset_after_3",
     updatedAt: now,

@@ -28,7 +28,7 @@ const configSchema = z.object({
   cooldownSeconds: z.coerce.number().int().min(0).max(3600).optional(),
   descriptionTemplate: z.string().max(3000).optional(),
   enabled: z.boolean().optional(),
-  emoji: z.string().max(16).optional(),
+  emoji: z.string().max(80).optional(),
   footerEnabled: z.boolean().optional(),
   footerIconUrl: z.string().nullable().optional(),
   footerText: z.string().max(300).optional(),

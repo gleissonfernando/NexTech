@@ -20,6 +20,7 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { FivemGoalSettings } from "./apiClient";
+import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
@@ -358,6 +359,7 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
 
 async function createUserGoalPanel(context: BotContext, guildId: string, userId: string, username: string) {
   const runtime = await context.api.getFivemGoalUserRuntime(guildId, userId);
+  const guild = context.client.guilds.cache.get(guildId) ?? null;
   const active = runtime.configs.find((item) => item.status === "active") ?? runtime.configs[0] ?? null;
   const approved = runtime.submissions.filter((item) => item.status === "approved" && (!active || item.metaId === active.id));
   const current = approved.reduce((total, item) => total + item.value, 0);
@@ -366,23 +368,23 @@ async function createUserGoalPanel(context: BotContext, guildId: string, userId:
   const filled = Math.round(percent / 10);
   const rank = runtime.ranking.find((item) => item.userId === userId)?.rank ?? null;
   const content = [
-    `# 📊 Painel Individual de Metas`,
-    `👤 **Responsavel:** <@${userId}> (${username})`,
-    `🏷️ **Meta atual:** ${active?.name ?? "Nenhuma meta ativa"}`,
-    `📅 **Criado:** <t:${Math.floor(Date.now() / 1000)}:d>`,
-    `📈 **Progresso:** ${formatGoalValue(current)} / ${formatGoalValue(target)}`,
+    `# ${systemEmojiText("trofeu", guild)} Painel Individual de Metas`,
+    `${systemEmojiText("homem", guild)} **Responsavel:** <@${userId}> (${username})`,
+    `${systemEmojiText("prancheta", guild)} **Meta atual:** ${active?.name ?? "Nenhuma meta ativa"}`,
+    `${systemEmojiText("calendario", guild)} **Criado:** <t:${Math.floor(Date.now() / 1000)}:d>`,
+    `${systemEmojiText("prancheta_acertos", guild)} **Progresso:** ${formatGoalValue(current)} / ${formatGoalValue(target)}`,
     `\`${"█".repeat(filled)}${"░".repeat(10 - filled)}\` **${percent}%**`,
-    `🏆 **Ranking geral:** ${rank ? `#${rank}` : "Ainda sem posicao"}`,
-    `🟢 **Status:** ${percent >= 100 ? "Meta concluida" : "Em andamento"}`
+    `${systemEmojiText("trofeu_alt", guild)} **Ranking geral:** ${rank ? `#${rank}` : "Ainda sem posicao"}`,
+    `${systemStatusEmoji(percent >= 100 ? "success" : "active", guild)} **Status:** ${percent >= 100 ? "Meta concluida" : "Em andamento"}`
   ].join("\n");
   return {
     allowedMentions: { parse: [] as never[] },
     components: [{ type: 17, accent_color: percent >= 100 ? 0x22c55e : 0x3b82f6, components: [{ type: 10, content }] }, new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:add:${userId}`).setLabel("Adicionar Meta").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:history:${userId}`).setLabel("Historico").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:ranking:${userId}`).setLabel("Ranking").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:refresh:${userId}`).setLabel("Atualizar").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:review:${userId}`).setLabel("Solicitar Revisao").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:add:${userId}`).setEmoji(systemComponentEmoji("mais", guild)).setLabel("Adicionar Meta").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:history:${userId}`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Historico").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:ranking:${userId}`).setEmoji(systemComponentEmoji("trofeu", guild)).setLabel("Ranking").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:refresh:${userId}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Atualizar").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:user:review:${userId}`).setEmoji(systemComponentEmoji("interrogacao", guild)).setLabel("Solicitar Revisao").setStyle(ButtonStyle.Secondary)
     )],
     flags: MessageFlags.IsComponentsV2 as const
   };

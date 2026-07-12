@@ -22,6 +22,7 @@ import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { DmBarConfig } from "./apiClient";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import type { BotCommand, BotContext } from "../types";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const MODULE_ID = "police-dm";
 const PREFIX = "dm_bar";
@@ -43,14 +44,14 @@ export async function openDmBar(interaction: ChatInputCommandInteraction, contex
   if (!config.enabled) return interaction.reply({ content: "O sistema de DM está temporariamente desativado.", ephemeral: true });
   if (!canUse(interaction.member as GuildMember, interaction.user.id, config)) {
     await log(context, config, interaction.guild.id, interaction.user.id, null, "Tentativa sem permissão", "", "denied", null);
-    return interaction.reply({ content: "❌ Você não possui permissão para usar o sistema de DM.", ephemeral: true });
+    return interaction.reply({ content: `${systemStatusEmoji("danger", interaction.guild)} Você não possui permissão para usar o sistema de DM.`, ephemeral: true });
   }
   const cooldown = consumeCooldown(interaction.guild.id, interaction.user.id, config.cooldownSeconds);
   if (cooldown > 0) return interaction.reply({ content: `Aguarde ${cooldown}s para usar o /dm novamente.`, ephemeral: true });
 
   const select = new UserSelectMenuBuilder().setCustomId(`${PREFIX}:target`).setPlaceholder("Selecione o usuário que receberá a DM").setMinValues(1).setMaxValues(1);
   return interaction.reply({
-    components: [{ type: 17, accent_color: color(config.accentColor), components: [{ type: 10, content: `# ${config.emoji} Barra DM\nSelecione o usuário que receberá a mensagem privada.` }, new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select)] }],
+    components: [{ type: 17, accent_color: color(config.accentColor), components: [{ type: 10, content: replaceSystemEmojis(`# ${config.emoji || systemEmojiText("discord", interaction.guild)} Barra DM\nSelecione o usuário que receberá a mensagem privada.`, interaction.guild) }, new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select)] }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
 }
@@ -94,9 +95,9 @@ async function submitModal(interaction: ModalSubmitInteraction, context: BotCont
     components: [
       ...(preview.components ?? []),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setLabel("Enviar DM").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setLabel("Editar mensagem").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setLabel("Cancelar").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`${PREFIX}:send:${draftId}`).setEmoji(systemComponentEmoji("visto", interaction.guild)).setLabel("Enviar DM").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`${PREFIX}:edit:${draftId}`).setEmoji(systemComponentEmoji("prancheta_caneta", interaction.guild)).setLabel("Editar mensagem").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${draftId}`).setEmoji(systemComponentEmoji("porta", interaction.guild)).setLabel("Cancelar").setStyle(ButtonStyle.Danger)
       )
     ]
   });
@@ -109,17 +110,17 @@ async function sendDraft(interaction: ButtonInteraction, context: BotContext, dr
   if (!draft) return interaction.followUp({ content: "Rascunho expirado. Use /dm novamente.", ephemeral: true });
   const config = await getConfig(context, draft.guildId);
   const target = await interaction.client.users.fetch(draft.targetId).catch(() => null);
-  if (!target) return interaction.followUp({ content: "❌ Usuário inválido ou não encontrado.", ephemeral: true });
+  if (!target) return interaction.followUp({ content: `${systemStatusEmoji("danger", interaction.guild)} Usuário inválido ou não encontrado.`, ephemeral: true });
   try {
     await target.send(dmPayload(config, interaction.user, target, draft.title, draft.message, draft.observation, interaction.guild?.name ?? "Servidor"));
     drafts.delete(draftId);
     await log(context, config, draft.guildId, interaction.user.id, target.id, draft.title, draft.message, "sent", null);
     await sendLogChannel(interaction, config, target, draft, "sent", null);
-    return interaction.followUp({ content: `✅ DM enviada com sucesso para ${target}.`, ephemeral: true });
+    return interaction.followUp({ content: `${systemStatusEmoji("success", interaction.guild)} DM enviada com sucesso para ${target}.`, ephemeral: true });
   } catch {
     await log(context, config, draft.guildId, interaction.user.id, target.id, draft.title, draft.message, "failed", "Privado bloqueado.");
     await sendLogChannel(interaction, config, target, draft, "failed", "Privado bloqueado.");
-    return interaction.followUp({ content: `❌ Não foi possível enviar a DM para ${target}. O usuário provavelmente está com mensagens privadas bloqueadas.`, ephemeral: true });
+    return interaction.followUp({ content: `${systemStatusEmoji("danger", interaction.guild)} Não foi possível enviar a DM para ${target}. O usuário provavelmente está com mensagens privadas bloqueadas.`, ephemeral: true });
   }
 }
 
@@ -156,12 +157,12 @@ function dmPayload(config: DmBarConfig, author: User, target: User, title: strin
   const renderedDescription = renderDmDescription(config.descriptionTemplate, vars, message);
   const pushImage = () => { if (mainImage) components.push({ type: 12, items: [{ media: { url: mainImage }, description: renderedTitle }] }); };
   if (mainImage && config.imagePosition === "top") pushImage();
-  components.push({ type: 10, content: `# ${renderedTitle}\n${renderedDescription}`.slice(0, 3900) });
+  components.push({ type: 10, content: replaceSystemEmojis(`# ${renderedTitle}\n${renderedDescription}`).slice(0, 3900) });
   if (mainImage && (config.imagePosition === "middle" || config.imagePosition === "gallery" || config.imagePosition === "thumbnail")) pushImage();
-  if (observation) components.push({ type: 10, content: `**Observação:**\n${observation}` });
+  if (observation) components.push({ type: 10, content: replaceSystemEmojis(`**Observação:**\n${observation}`) });
   if (mainImage && config.imagePosition === "bottom") pushImage();
   const footer = config.footerEnabled
-    ? { image: config.footerIconUrl, text: `${config.emoji} ${applyVars(stripSenderLines(config.footerText), vars)}`.trim() }
+    ? { image: config.footerIconUrl, text: replaceSystemEmojis(`${config.emoji} ${applyVars(stripSenderLines(config.footerText), vars)}`.trim()) }
     : { enabled: false };
   return {
     allowedMentions: config.allowMentions ? undefined : { parse: [] as never[] },
@@ -211,9 +212,10 @@ async function sendLogChannel(interaction: ButtonInteraction, config: DmBarConfi
       `**Status:** ${status}\n**Enviado por:** <@${interaction.user.id}> (${interaction.user.id})\n**Recebeu:** <@${target.id}> (${target.id})\n**Data:** <t:${Math.floor(Date.now() / 1000)}:F>`,
       `**Titulo:** ${draft.title}\n**Conteudo:**\n${draft.message.slice(0, 1500)}${error ? `\n**Erro:** ${error}` : ""}`
     ],
+    guild: interaction.guild,
     image: config.mainImageUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: resolvePanelImageUrl(config.mainImageUrl) } : null,
     moduleId: MODULE_ID,
-    title: "Log Barra DM"
+    title: `${systemEmojiText("folha", interaction.guild)} Log Barra DM`
   });
   await channel.send({ ...payload, allowedMentions: { users: [interaction.user.id, target.id] } }).catch(() => null);
 }
