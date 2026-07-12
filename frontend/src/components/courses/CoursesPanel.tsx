@@ -127,8 +127,10 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const [imageDraft, setImageDraft] = useState({ name: "", type: "main_banner", url: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [examLoading, setExamLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const examLoadSeqRef = useRef(0);
   const lastChannelSettingsRef = useRef<CourseChannelDraft | null>(null);
 
   const selectedCourse = useMemo(() => dashboard?.courses.find((course) => course.id === selectedCourseId) ?? null, [dashboard, selectedCourseId]);
@@ -160,14 +162,20 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   useEffect(() => {
     if (!selectedCourse) {
+      examLoadSeqRef.current += 1;
       setCourseDraft(emptyCourse);
       setExam(null);
+      setExamLoading(false);
       setExamLinkDraft(null);
+      setEditingQuestionId(null);
+      setQuestionDraft(emptyQuestion);
       return;
     }
     setCourseDraft(toCoursePayload(selectedCourse));
+    setEditingQuestionId(null);
+    setQuestionDraft(emptyQuestion);
     void loadExam(selectedCourse.id);
-  }, [selectedCourse]);
+  }, [botId, guildId, selectedCourse?.id]);
 
   useEffect(() => {
     setExamLinkDraft(exam ? toExamLinkDraft(exam.settings) : null);
@@ -231,13 +239,14 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     }
     setSaving(true);
     try {
+      const wasEditing = Boolean(selectedCourse);
       const saved = selectedCourse
         ? await updateCourseApi(botId, guildId, selectedCourse.id, courseDraft)
         : await createCourseApi(botId, guildId, courseDraft);
-      setDashboard({
-        ...dashboard,
-        courses: selectedCourse ? dashboard.courses.map((course) => course.id === saved.id ? saved : course) : [saved, ...dashboard.courses]
-      });
+      setDashboard((current) => current ? {
+        ...current,
+        courses: wasEditing ? current.courses.map((course) => course.id === saved.id ? saved : course) : [saved, ...current.courses]
+      } : current);
       setSelectedCourseId(saved.id);
       setMessage("Curso cadastrado com sucesso.");
     } catch (err) {
@@ -251,8 +260,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     if (!dashboard || !selectedCourse) return;
     setSaving(true);
     try {
-      await deleteCourseApi(botId, guildId, selectedCourse.id);
-      setDashboard({ ...dashboard, courses: dashboard.courses.filter((course) => course.id !== selectedCourse.id) });
+      const courseId = selectedCourse.id;
+      await deleteCourseApi(botId, guildId, courseId);
+      setDashboard((current) => current ? { ...current, courses: current.courses.filter((course) => course.id !== courseId) } : current);
       setSelectedCourseId(null);
       setMessage("Curso excluído.");
     } catch (err) {
@@ -263,29 +273,40 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   }
 
   async function loadExam(courseId: string) {
+    const requestId = ++examLoadSeqRef.current;
     setExam(null);
+    setExamLoading(true);
+    setError("");
     try {
       const data = await getCourseExamDashboard(botId, guildId, courseId);
+      if (requestId !== examLoadSeqRef.current) return;
+      if (data.settings.courseId !== courseId) {
+        throw new Error("A prova carregada não pertence ao curso selecionado.");
+      }
       setExam(data);
     } catch (err) {
+      if (requestId !== examLoadSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Não foi possível carregar a prova.");
+    } finally {
+      if (requestId === examLoadSeqRef.current) setExamLoading(false);
     }
   }
 
   async function saveQuestion() {
-    if (!selectedCourse || !exam || !questionDraft.prompt?.trim()) return;
+    if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id || !questionDraft.prompt?.trim()) return;
+    const courseId = selectedCourse.id;
     const payload = normalizeQuestion(questionDraft);
     setSaving(true);
     try {
       const saved = editingQuestionId
-        ? await updateCourseExamQuestionApi(botId, guildId, selectedCourse.id, editingQuestionId, payload)
-        : await createCourseExamQuestionApi(botId, guildId, selectedCourse.id, payload);
-      setExam({
-        ...exam,
+        ? await updateCourseExamQuestionApi(botId, guildId, courseId, editingQuestionId, payload)
+        : await createCourseExamQuestionApi(botId, guildId, courseId, payload);
+      setExam((current) => current && current.settings.courseId === courseId ? {
+        ...current,
         questions: editingQuestionId
-          ? exam.questions.map((question) => question.id === saved.id ? saved : question).sort(sortQuestion)
-          : [...exam.questions, saved].sort(sortQuestion)
-      });
+          ? current.questions.map((question) => question.id === saved.id ? saved : question).sort(sortQuestion)
+          : [...current.questions, saved].sort(sortQuestion)
+      } : current);
       setEditingQuestionId(null);
       setQuestionDraft(emptyQuestion);
       setMessage("Pergunta salva.");
@@ -297,7 +318,8 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   }
 
   async function saveExamLinkSettings() {
-    if (!selectedCourse || !exam || !examLinkDraft) return;
+    if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id || !examLinkDraft) return;
+    const courseId = selectedCourse.id;
     if (examLinkDraft.externalLinkEnabled && examLinkDraft.externalLinkUrl && !examLinkDraft.externalLinkUrl.startsWith("https://")) {
       setError("O link externo precisa começar com https://.");
       return;
@@ -305,11 +327,27 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     setSaving(true);
     setError("");
     try {
-      const settings = await saveCourseExamSettings(botId, guildId, selectedCourse.id, examLinkDraft);
-      setExam({ ...exam, settings });
+      const settings = await saveCourseExamSettings(botId, guildId, courseId, examLinkDraft);
+      setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
       setMessage("Link externo da prova salvo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar o link externo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSelectedExamSettings(patch: Partial<CourseExamDashboard["settings"]>) {
+    if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id) return;
+    const courseId = selectedCourse.id;
+    setSaving(true);
+    setError("");
+    try {
+      const settings = await saveCourseExamSettings(botId, guildId, courseId, patch);
+      setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
+      setMessage("Configurações da prova salvas.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível salvar as configurações da prova.");
     } finally {
       setSaving(false);
     }
@@ -484,17 +522,17 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <CardHeader><CardTitle>Configuração de Provas</CardTitle></CardHeader>
           <CardContent className="space-y-5">
             <SelectValueField disabled={!canManage || saving} label="Curso" onChange={(courseId) => setSelectedCourseId(courseId)} options={dashboard.courses.map((course) => [course.id, course.name])} value={selectedCourseId ?? ""} />
-            {selectedCourse && exam ? (
+            {selectedCourse && exam && exam.settings.courseId === selectedCourse.id ? (
               <>
                 <div className="grid gap-3 md:grid-cols-4">
-                  <DecimalInputField disabled={!canManage || saving} label="Nota mínima" onCommit={(minScore) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { minScore }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.minScore} />
-                  <DecimalInputField disabled={!canManage || saving} label="Nota máxima manual" onCommit={(manualQuestionMaxScore) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualQuestionMaxScore }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualQuestionMaxScore ?? 10} />
-                  <ToggleField disabled={!canManage || saving} label="Aprovação sempre manual" onChange={(manualApproval) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { manualApproval }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.manualApproval ?? true} />
-                  <ToggleField disabled={!canManage || saving} label="Prova ativa" onChange={(enabled) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { enabled }).then((settings) => setExam({ ...exam, settings }))} value={exam.settings.enabled} />
-                  <SelectField disabled={!canManage || saving} label="Categoria dos canais da prova" onChange={(temporaryCategoryId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { temporaryCategoryId }).then((settings) => setExam({ ...exam, settings }))} options={categories} value={exam.settings.temporaryCategoryId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de correção manual" onChange={(correctionChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { correctionChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de resultado da prova" onChange={(resultChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { resultChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.resultChannelId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveCourseExamSettings(botId, guildId, selectedCourse.id, { logChannelId }).then((settings) => setExam({ ...exam, settings }))} options={textChannels} value={exam.settings.logChannelId ?? ""} />
+                  <DecimalInputField disabled={!canManage || saving} label="Nota mínima" onCommit={(minScore) => void saveSelectedExamSettings({ minScore })} value={exam.settings.minScore} />
+                  <DecimalInputField disabled={!canManage || saving} label="Nota máxima manual" onCommit={(manualQuestionMaxScore) => void saveSelectedExamSettings({ manualQuestionMaxScore })} value={exam.settings.manualQuestionMaxScore ?? 10} />
+                  <ToggleField disabled={!canManage || saving} label="Aprovação sempre manual" onChange={(manualApproval) => void saveSelectedExamSettings({ manualApproval })} value={exam.settings.manualApproval ?? true} />
+                  <ToggleField disabled={!canManage || saving} label="Prova ativa" onChange={(enabled) => void saveSelectedExamSettings({ enabled })} value={exam.settings.enabled} />
+                  <SelectField disabled={!canManage || saving} label="Categoria dos canais da prova" onChange={(temporaryCategoryId) => void saveSelectedExamSettings({ temporaryCategoryId })} options={categories} value={exam.settings.temporaryCategoryId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de correção manual" onChange={(correctionChannelId) => void saveSelectedExamSettings({ correctionChannelId })} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de resultado da prova" onChange={(resultChannelId) => void saveSelectedExamSettings({ resultChannelId })} options={textChannels} value={exam.settings.resultChannelId ?? ""} />
+                  <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveSelectedExamSettings({ logChannelId })} options={textChannels} value={exam.settings.logChannelId ?? ""} />
                 </div>
                 {examLinkDraft ? (
                   <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
@@ -538,11 +576,16 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   </div>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {exam.questions.sort(sortQuestion).map((question) => (
-                    <QuestionCard key={question.id} question={question} onDelete={() => void deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id).then(() => setExam({ ...exam, questions: exam.questions.filter((item) => item.id !== question.id) }))} onEdit={() => { setEditingQuestionId(question.id); setQuestionDraft(toQuestionPayload(question)); }} />
+                  {[...exam.questions].sort(sortQuestion).map((question) => (
+                    <QuestionCard key={question.id} question={question} onDelete={() => void deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id).then(() => setExam((current) => current && current.settings.courseId === selectedCourse.id ? { ...current, questions: current.questions.filter((item) => item.id !== question.id) } : current))} onEdit={() => { setEditingQuestionId(question.id); setQuestionDraft(toQuestionPayload(question)); }} />
                   ))}
                 </div>
               </>
+            ) : selectedCourse && examLoading ? (
+              <div className="flex min-h-24 items-center gap-3 rounded-lg border border-zinc-800 bg-black/30 p-4 text-sm text-zinc-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando prova de {selectedCourse.name}...
+              </div>
             ) : <p className="text-sm text-zinc-500">Selecione um curso para configurar a prova.</p>}
           </CardContent>
         </Card>
