@@ -144,11 +144,12 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   }, [botId, guildId]);
 
   useEffect(() => {
+    if (activeTab === "proofs") return;
     const timer = window.setInterval(() => {
       void getCoursesDashboard(botId, guildId).then((data) => setDashboard(data)).catch(() => null);
     }, 10_000);
     return () => window.clearInterval(timer);
-  }, [botId, guildId]);
+  }, [activeTab, botId, guildId]);
 
   useEffect(() => {
     const next = dashboard ? toChannelDraft(dashboard.settings) : null;
@@ -174,8 +175,8 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     setCourseDraft(toCoursePayload(selectedCourse));
     setEditingQuestionId(null);
     setQuestionDraft(emptyQuestion);
-    void loadExam(selectedCourse.id);
-  }, [botId, guildId, selectedCourse?.id]);
+    if (activeTab === "proofs") void loadExam(selectedCourse.id);
+  }, [activeTab, botId, guildId, selectedCourse?.id]);
 
   useEffect(() => {
     setExamLinkDraft(exam ? toExamLinkDraft(exam.settings) : null);

@@ -4555,9 +4555,9 @@ function BotOverview({ bot, modules }: { bot: DevBot; modules: DevModuleDefiniti
       <OverviewMetric label="Módulos ativos" value={`${activeModules.length}/${modules.length}`} />
       <OverviewMetric label="Servidor" value={bot.mainGuildName || bot.mainGuildId} />
       <OverviewMetric label="Token protegido" value={bot.tokenMasked || "Protegido"} />
-      <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] p-4 sm:col-span-3">
+      <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/[0.08] p-4 sm:col-span-3">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
+          <ShieldCheck className="h-5 w-5 shrink-0 text-[#FFEA70]" />
           <div>
             <p className="text-sm font-bold text-white">Acesso protegido</p>
             <p className="text-xs font-medium text-zinc-300">Login Discord e usuário autorizado para este bot.</p>
