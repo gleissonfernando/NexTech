@@ -325,7 +325,14 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id || !questionDraft.prompt?.trim()) return;
     const courseId = selectedCourse.id;
     const payload = normalizeQuestion(questionDraft);
+    const validationError = validateQuestionPayload(payload);
+    if (validationError) {
+      setMessage("");
+      setError(validationError);
+      return;
+    }
     setSaving(true);
+    setError("");
     try {
       const saved = editingQuestionId
         ? await updateCourseExamQuestionApi(botId, guildId, courseId, editingQuestionId, payload)
@@ -338,9 +345,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       } : current);
       setEditingQuestionId(null);
       setQuestionDraft(emptyQuestion);
+      setError("");
       setMessage("Pergunta salva.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar a pergunta.");
+      setMessage("");
+      setError(readApiError(err, "Não foi possível salvar a pergunta."));
     } finally {
       setSaving(false);
     }
@@ -940,6 +949,36 @@ function normalizeQuestion(question: SaveCourseExamQuestionPayload) {
     correctAlternativeId: question.type === "written" ? null : question.type === "multiple" ? null : question.correctAlternativeId ?? alternatives.find((option) => option.isCorrect)?.id ?? null,
     correctAlternativeIds
   } satisfies SaveCourseExamQuestionPayload;
+}
+
+function validateQuestionPayload(question: SaveCourseExamQuestionPayload) {
+  if (!question.prompt?.trim()) return "Informe o texto da pergunta.";
+  if (question.prompt.trim().length > 1200) return "A pergunta pode ter no máximo 1200 caracteres.";
+  if ((question.description ?? "").length > 1200) return "A descrição pode ter no máximo 1200 caracteres.";
+  if (question.type !== "written") {
+    const alternatives = question.alternatives ?? [];
+    if (alternatives.length > 10) return "A pergunta pode ter no máximo 10 alternativas.";
+    const longAlternative = alternatives.find((option) => option.text.length > 500);
+    if (longAlternative) return `A alternativa ${longAlternative.id ?? ""} pode ter no máximo 500 caracteres.`.trim();
+  }
+  return "";
+}
+
+function readApiError(error: unknown, fallback: string) {
+  const response = (error as { response?: { data?: unknown; status?: number } } | null)?.response;
+  const data = response?.data;
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    const direct = record.message ?? record.error;
+    if (typeof direct === "string" && direct.trim()) return direct;
+    const issues = record.issues ?? record.errors;
+    if (Array.isArray(issues) && issues.length) {
+      const first = issues[0] as Record<string, unknown>;
+      if (typeof first.message === "string") return first.message;
+    }
+  }
+  if (response?.status === 400) return `${fallback} Verifique os campos da pergunta.`;
+  return error instanceof Error ? error.message : fallback;
 }
 
 function toggleCorrectAlternative(question: SaveCourseExamQuestionPayload, optionId: string, index: number, checked: boolean) {
