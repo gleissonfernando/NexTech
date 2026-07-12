@@ -667,13 +667,26 @@ async function ensureNpdApproachCourse(botId: string | null, guildId: string) {
       createdAt: now,
       updatedAt: now
     });
-  } else if (existing.code !== "npd_abordagem" || existing.buttonLabels?.start !== "Realizar Prova" || !existing.description) {
+  } else if (
+    existing.code !== "npd_abordagem"
+    || existing.buttonLabels?.start !== "Realizar Prova"
+    || !existing.description
+    || existing.updatedBy === "system:seed"
+  ) {
+    const seedOwned = existing.updatedBy === "system:seed";
     await courses.updateOne(
       { _id: existing._id, ...scope(botId, guildId) },
       {
         $set: {
           code: "npd_abordagem",
-          description: existing.description || description,
+          ...(seedOwned ? {
+            color: "#FFD500",
+            description,
+            name: "CURSO DE ABORDAGEM - NPD",
+            updatedBy: "system:seed"
+          } : {
+            description: existing.description || description
+          }),
           buttonLabels: {
             ...existing.buttonLabels,
             start: "Realizar Prova"
@@ -735,6 +748,29 @@ async function ensureNpdApproachCourse(botId: string | null, guildId: string) {
   for (const question of nextQuestions) {
     const existingQuestion = existingByNumber.get(question.questionNumber ?? question.order + 1) ?? existingByPrompt.get(normalizeCourseSeedText(question.prompt));
     if (!existingQuestion) await courseExamQuestions.insertOne(question);
+    else if (existingQuestion.updatedBy === "system:seed") {
+      await courseExamQuestions.updateOne(
+        { _id: existingQuestion._id, ...scope(botId, guildId), courseId },
+        {
+          $set: {
+            active: question.active,
+            alternatives: question.alternatives,
+            correctAlternativeId: question.correctAlternativeId,
+            correctAlternativeIds: question.correctAlternativeIds,
+            description: question.description,
+            order: question.order,
+            placeholder: question.placeholder,
+            points: question.points,
+            prompt: question.prompt,
+            questionNumber: question.questionNumber,
+            title: question.title,
+            type: question.type,
+            updatedAt: now,
+            updatedBy: "system:seed"
+          }
+        }
+      );
+    }
   }
 }
 
