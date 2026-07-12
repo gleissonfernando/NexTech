@@ -490,6 +490,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                 <InputField disabled={!canManage} label="Banner da prova" onChange={(proofBannerUrl) => setCourseDraft({ ...courseDraft, proofBannerUrl })} value={courseDraft.proofBannerUrl ?? ""} />
                 <InputField disabled={!canManage} label="Instrutores por ID de usuário" onChange={(value) => setCourseDraft({ ...courseDraft, instructorUserIds: csv(value) })} value={(courseDraft.instructorUserIds ?? []).join(",")} />
                 <MultiRoleField disabled={!canManage} label="Cargos de instrutor" onChange={(instructorRoleIds) => setCourseDraft({ ...courseDraft, instructorRoleIds })} options={roles} value={courseDraft.instructorRoleIds ?? []} />
+                <ToggleField disabled={!canManage || saving} label="Curso ativo" onChange={(active) => setCourseDraft({ ...courseDraft, active })} value={courseDraft.active ?? true} />
               </div>
               <TextAreaField disabled={!canManage} label="Descrição" onChange={(description) => setCourseDraft({ ...courseDraft, description })} value={courseDraft.description ?? ""} />
               <TextAreaField disabled={!canManage} label="Texto do painel de publicação" onChange={(publishText) => setCourseDraft({ ...courseDraft, publishText })} value={courseDraft.publishText ?? ""} />
