@@ -2090,7 +2090,7 @@ function BotModuleWorkspace({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">Bot Menu</Badge>
-              <Badge variant={isBotReadyStatus(bot.status) ? "success" : isBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
+              <Badge variant={isBotReadyStatus(bot.status) ? "warning" : isBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
                 {statusLabel(bot.status)}
               </Badge>
             </div>
@@ -2122,10 +2122,10 @@ function BotModuleWorkspace({
         </style>
         <BotMenuSummary
           metrics={[
-            { icon: CheckCircle2, label: "Módulos ativos", tone: "success", value: `${activeModules.length}/${modules.length}` },
+            { icon: CheckCircle2, label: "Módulos ativos", tone: "gold", value: `${activeModules.length}/${modules.length}` },
             { icon: ShieldCheck, label: "Protecoes ativas", tone: "gold", value: String(activeSecurityCount) },
             { emphasized: true, icon: SlidersHorizontal, label: "Precisam configuração", tone: "warning", value: String(inactiveCount) },
-            { icon: Power, label: "Bot online", tone: isBotRunningStatus(bot.status) ? "success" : "muted", value: isBotRunningStatus(bot.status) ? "100%" : "0%" }
+            { icon: Power, label: "Bot online", tone: isBotRunningStatus(bot.status) ? "gold" : "muted", value: isBotRunningStatus(bot.status) ? "100%" : "0%" }
           ]}
         />
 
@@ -2835,7 +2835,7 @@ function BotMenuSummary({
   const toneClass = {
     gold: "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]",
     muted: "border-zinc-700 bg-zinc-900 text-zinc-300",
-    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    success: "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]",
     warning: "border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
   };
 
@@ -2920,13 +2920,13 @@ function ModuleDashboardCard({
   const cardClassName = [
     "group relative flex min-h-[212px] flex-col overflow-hidden rounded-lg border p-4 shadow-[0_18px_44px_rgba(0,0,0,0.22)] backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:border-[#FFD500]/45 hover:bg-zinc-950 hover:shadow-[0_0_30px_rgba(255,213,0,0.12)]",
     enabled
-      ? "border-emerald-500/25 bg-[linear-gradient(135deg,rgba(16,38,31,0.56),rgba(9,9,11,0.88))] ring-1 ring-emerald-400/10"
+      ? "border-[#FFD500]/30 bg-[linear-gradient(135deg,rgba(255,213,0,0.10),rgba(9,9,11,0.90))] ring-1 ring-[#FFD500]/10"
       : "border-zinc-800/95 bg-zinc-950/58"
   ].join(" ");
   const statusPillClassName = [
     "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-bold",
     enabled
-      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+      ? "border-[#FFD500]/35 bg-[#FFD500]/10 text-[#FFEA70]"
       : isBotErrorStatus(status)
         ? "border-red-400/30 bg-red-500/10 text-red-200"
         : "border-zinc-800 bg-black/25 text-zinc-400"
@@ -2937,10 +2937,10 @@ function ModuleDashboardCard({
       className={cardClassName}
       style={{ animation: `bot-card-in 280ms ease-out ${Math.min(index, 10) * 22}ms both` }}
     >
-      <div className={["pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent transition", enabled ? "via-emerald-300/55 opacity-100" : "via-[#FFEA70]/50 opacity-0 group-hover:opacity-100"].join(" ")} />
+      <div className={["pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent transition", enabled ? "via-[#FFEA70]/65 opacity-100" : "via-[#FFEA70]/50 opacity-0 group-hover:opacity-100"].join(" ")} />
       <div className="flex items-start justify-between gap-3">
         <div className={["flex min-w-0 items-start gap-3", enabled ? "" : "opacity-75"].join(" ")}>
-          <div className={["flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border shadow-[0_0_24px_rgba(255,213,0,0.10)]", enabled ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200" : "border-[#FFD500]/20 bg-[#FFD500]/[0.07] text-[#FFEA70]"].join(" ")}>
+          <div className={["flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border shadow-[0_0_24px_rgba(255,213,0,0.10)]", enabled ? "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]" : "border-[#FFD500]/20 bg-[#FFD500]/[0.07] text-[#FFEA70]"].join(" ")}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -4815,8 +4815,8 @@ function moduleCardStatus(enabled: boolean, botStatus: DevBotStatus) {
 
   if (enabled) {
     return {
-      className: "text-emerald-300",
-      dotClassName: "bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.55)]",
+      className: "text-[#FFEA70]",
+      dotClassName: "bg-[#FFD500] shadow-[0_0_14px_rgba(255,213,0,0.55)]",
       label: "Ativo"
     };
   }
