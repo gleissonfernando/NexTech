@@ -3462,7 +3462,7 @@ export type PlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "annual"
 export type PaymentProvider = "disabled" | "mercadopago";
 export type PlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type PlanWorkspaceStatus = "active" | "suspended" | "cancelled";
-export type PaymentOrderStatus = "interest_registered" | "pending" | "paid" | "cancelled" | "expired" | "failed";
+export type PaymentOrderStatus = "interest_registered" | "pending" | "processing" | "paid" | "cancelled" | "expired" | "failed" | "refunded" | "charged_back" | "in_review";
 export type BotCredentialStatus = "stored" | "validated" | "invalid" | "disabled";
 
 export type PlanEntitlement = {
@@ -3581,8 +3581,11 @@ export type PaymentOrder = {
   createdAt: string;
   currency: "BRL" | "USD" | "EUR";
   discordId: string;
+  externalReference?: string | null;
+  mercadoPagoPaymentId?: string | null;
   notes: string | null;
   paidAt: string | null;
+  paymentMethod?: string | null;
   pixCode: string | null;
   planId: string;
   planSlug: string;

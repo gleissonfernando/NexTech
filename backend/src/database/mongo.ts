@@ -3372,7 +3372,17 @@ export type MongoPlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "an
 export type MongoPaymentProvider = "disabled" | "mercadopago" | "asaas" | "efi" | "custom";
 export type MongoPlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type MongoPlanWorkspaceStatus = "active" | "suspended" | "cancelled";
-export type MongoPlanPaymentOrderStatus = "interest_registered" | "pending" | "paid" | "cancelled" | "expired" | "failed";
+export type MongoPlanPaymentOrderStatus =
+  | "interest_registered"
+  | "pending"
+  | "processing"
+  | "paid"
+  | "cancelled"
+  | "expired"
+  | "failed"
+  | "refunded"
+  | "charged_back"
+  | "in_review";
 export type MongoBotCredentialStatus = "stored" | "validated" | "invalid" | "disabled";
 
 export type MongoPlanEntitlement = {
@@ -3500,10 +3510,15 @@ export type MongoPaymentOrder = {
   createdAt: Date;
   currency: "BRL" | "USD" | "EUR";
   discordId: string;
+  externalReference?: string | null;
+  idempotencyKey?: string | null;
+  mercadoPagoPaymentId?: string | null;
   notes: string | null;
   paidAt: Date | null;
+  paymentMethod?: string | null;
   pixCode: string | null;
   planId: string;
+  planSnapshot?: Record<string, unknown>;
   planSlug: string;
   provider: MongoPaymentProvider;
   providerOrderId: string | null;
@@ -3522,6 +3537,8 @@ export type MongoPaymentEvent = {
   payloadHash: string;
   processedAt: Date | null;
   provider: MongoPaymentProvider;
+  result?: string | null;
+  signatureValid?: boolean;
   status: "received" | "ignored" | "processed" | "failed";
 };
 
@@ -4077,7 +4094,11 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoPaymentOrder>("payment_orders").createIndex({ discordId: 1, createdAt: -1 }),
     db.collection<MongoPaymentOrder>("payment_orders").createIndex({ planId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoPaymentOrder>("payment_orders").createIndex({ provider: 1, providerOrderId: 1 }),
+    db.collection<MongoPaymentOrder>("payment_orders").createIndex({ idempotencyKey: 1 }, { sparse: true, unique: true }),
+    db.collection<MongoPaymentOrder>("payment_orders").createIndex({ externalReference: 1 }, { sparse: true, unique: true }),
+    db.collection<MongoPaymentOrder>("payment_orders").createIndex({ mercadoPagoPaymentId: 1 }, { sparse: true }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, eventId: 1 }),
+    db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, payloadHash: 1 }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ actorId: 1, createdAt: -1 }),

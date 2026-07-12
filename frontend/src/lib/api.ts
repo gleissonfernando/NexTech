@@ -268,6 +268,15 @@ export async function getCustomerPlansDashboard() {
   return data;
 }
 
+export async function getCustomerPaymentOrder(orderId: string) {
+  const { data } = await api.get<{
+    order: import("../types").PaymentOrder;
+    plan: Plan | null;
+    subscription: import("../types").PlanSubscription | null;
+  }>(`/customer/payment-orders/${encodeURIComponent(orderId)}`);
+  return data;
+}
+
 export async function createPlanCheckoutInterest(planSlug: string) {
   const { data } = await api.post<{
     order: import("../types").PaymentOrder;

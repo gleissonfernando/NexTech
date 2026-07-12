@@ -10,6 +10,7 @@ import {
   duplicateDevPlan,
   extendSubscription,
   completeTestPaymentOrder,
+  getCustomerPaymentOrder,
   getCustomerPlansDashboard,
   getDevPlansDashboard,
   getPublicPlan,
@@ -183,6 +184,16 @@ customerPlansRouter.get("/subscription", async (_req, res, next) => {
       subscriptions: dashboard.subscriptions,
       workspaces: dashboard.workspaces
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+customerPlansRouter.get("/payment-orders/:orderId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const orderId = z.string().min(8).max(120).parse(req.params.orderId);
+    return res.json(await getCustomerPaymentOrder(orderId, auth));
   } catch (error) {
     return next(error);
   }

@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 export type MercadoPagoBackUrls = {
   failure: string;
   pending: string;
@@ -18,6 +20,7 @@ export type CreateMercadoPagoPreferenceInput = {
   autoReturn?: "approved" | "all";
   backUrls: MercadoPagoBackUrls;
   externalReference: string;
+  idempotencyKey?: string | null;
   items: MercadoPagoPreferenceItemInput[];
   notificationUrl?: string | null;
   payerEmail?: string | null;
@@ -34,7 +37,8 @@ export async function createMercadoPagoPreference(input: CreateMercadoPagoPrefer
     body: JSON.stringify(body),
     headers: {
       Authorization: `Bearer ${input.accessToken}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(input.idempotencyKey ? { "X-Idempotency-Key": input.idempotencyKey } : {})
     },
     method: "POST"
   });
@@ -55,6 +59,60 @@ export async function createMercadoPagoPreference(input: CreateMercadoPagoPrefer
     checkoutUrl,
     preferenceId
   };
+}
+
+export type MercadoPagoPayment = Record<string, unknown>;
+
+export async function getMercadoPagoPayment(accessToken: string, paymentId: string): Promise<MercadoPagoPayment> {
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    method: "GET"
+  });
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+
+  if (!response.ok || !payload) {
+    throw mercadoPagoError(readMercadoPagoError(payload) ?? "Nao foi possivel consultar o pagamento no Mercado Pago.", 502);
+  }
+
+  return payload;
+}
+
+export function validateMercadoPagoWebhookSignature(input: {
+  dataId?: string | null;
+  requestId?: string | null;
+  secret: string;
+  signature?: string | null;
+}) {
+  const parts = parseSignature(input.signature);
+  const ts = parts.get("ts");
+  const v1 = parts.get("v1");
+
+  if (!ts || !v1) return false;
+
+  const manifest = [
+    input.dataId ? `id:${input.dataId};` : "",
+    input.requestId ? `request-id:${input.requestId};` : "",
+    `ts:${ts};`
+  ].join("");
+  const expected = createHmac("sha256", input.secret).update(manifest).digest("hex");
+
+  try {
+    return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+function parseSignature(signature?: string | null) {
+  const parts = new Map<string, string>();
+  for (const part of (signature ?? "").split(",")) {
+    const [key, ...valueParts] = part.trim().split("=");
+    const value = valueParts.join("=").trim();
+    if (key && value) parts.set(key.trim(), value);
+  }
+  return parts;
 }
 
 function buildProtectedPreferenceBody(input: CreateMercadoPagoPreferenceInput) {

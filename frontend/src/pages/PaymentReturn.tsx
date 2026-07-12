@@ -1,4 +1,7 @@
-import { AlertCircle, ArrowRight, CheckCircle2, Clock3, CreditCard, Home, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, ArrowRight, CheckCircle2, Clock3, CreditCard, Home, Loader2, ShieldCheck } from "lucide-react";
+import { getCustomerPaymentOrder } from "../lib/api";
+import type { PaymentOrder } from "../types";
 
 type PaymentReturnStatus = "success" | "pending" | "failure";
 
@@ -30,20 +33,43 @@ const statusConfig: Record<PaymentReturnStatus, {
   success: {
     accent: "text-emerald-300",
     icon: CheckCircle2,
-    label: "Compra aprovada",
-    message: "O Mercado Pago retornou a compra como aprovada. A liberacao do plano sera sincronizada pelo processamento do pagamento.",
-    title: "Compra realizada com sucesso"
+    label: "Pagamento confirmado",
+    message: "O pedido interno foi confirmado pelo backend. Se a ativacao ainda nao aparecer, atualize o painel em alguns instantes.",
+    title: "Pagamento aprovado"
   }
 };
 
 export function PaymentReturnPage({ status }: PaymentReturnPageProps) {
-  const config = statusConfig[status];
-  const Icon = config.icon;
   const params = new URLSearchParams(window.location.search);
   const paymentId = params.get("payment_id") || params.get("collection_id");
   const paymentStatus = params.get("status") || params.get("collection_status");
   const orderReference = params.get("external_reference");
   const preferenceId = params.get("preference_id");
+  const [order, setOrder] = useState<PaymentOrder | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState(Boolean(orderReference));
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const verifiedStatus = order ? statusFromOrder(order.status, status) : status;
+  const config = statusConfig[verifiedStatus];
+  const Icon = config.icon;
+
+  useEffect(() => {
+    if (!orderReference) return;
+    let cancelled = false;
+    setLoadingOrder(true);
+    getCustomerPaymentOrder(orderReference)
+      .then((result) => {
+        if (!cancelled) setOrder(result.order);
+      })
+      .catch(() => {
+        if (!cancelled) setOrderError("Nao foi possivel consultar o pedido interno agora.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOrder(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderReference]);
 
   return (
     <main className="min-h-screen bg-[#070707] px-4 py-8 text-white sm:px-6 lg:px-8">
@@ -66,11 +92,19 @@ export function PaymentReturnPage({ status }: PaymentReturnPageProps) {
           </div>
 
           <div className="mt-7 grid gap-3 rounded-lg border border-zinc-800 bg-black/25 p-4 sm:grid-cols-2">
-            <PaymentDetail label="Status Mercado Pago" value={paymentStatus ?? statusLabel(status)} />
-            <PaymentDetail label="Payment ID" value={paymentId ?? "Nao informado"} />
+            <PaymentDetail label="Status interno" value={loadingOrder ? "Consultando..." : order?.status ?? statusLabel(verifiedStatus)} />
+            <PaymentDetail label="Status Mercado Pago" value={paymentStatus ?? "Aguardando webhook"} />
+            <PaymentDetail label="Payment ID" value={order?.mercadoPagoPaymentId ?? paymentId ?? "Nao informado"} />
             <PaymentDetail label="Pedido interno" value={orderReference ?? "Nao informado"} />
             <PaymentDetail label="Preference ID" value={preferenceId ?? "Nao informado"} />
+            <PaymentDetail label="Valor confirmado" value={order ? formatMoney(order.amountInCents, order.currency) : "Aguardando pedido"} />
           </div>
+          {loadingOrder || orderError ? (
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-800 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+              {loadingOrder ? <Loader2 className="h-4 w-4 animate-spin text-[#FFD500]" /> : <AlertCircle className="h-4 w-4 text-amber-300" />}
+              {loadingOrder ? "Consultando status oficial salvo no backend..." : orderError}
+            </div>
+          ) : null}
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <a className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#FFD500] px-4 text-sm font-bold text-black transition hover:bg-[#FFEA70]" href="/dashboard">
@@ -86,11 +120,25 @@ export function PaymentReturnPage({ status }: PaymentReturnPageProps) {
 
         <div className="mt-5 flex items-start gap-3 rounded-lg border border-[#FFD500]/15 bg-[#FFD500]/[.05] p-4 text-sm leading-6 text-zinc-400">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD500]" />
-          <p>O valor da compra e criado no servidor. O navegador apenas recebe o link de checkout e nao consegue alterar o preco enviado ao Mercado Pago.</p>
+          <p>O retorno do Mercado Pago e apenas visual. O plano so e liberado quando o backend confirma o pagamento pelo webhook assinado e consulta oficial da API.</p>
         </div>
       </div>
     </main>
   );
+}
+
+function statusFromOrder(orderStatus: PaymentOrder["status"], fallback: PaymentReturnStatus): PaymentReturnStatus {
+  if (orderStatus === "paid") return "success";
+  if (["pending", "processing", "in_review"].includes(orderStatus)) return "pending";
+  if (["cancelled", "expired", "failed", "refunded", "charged_back"].includes(orderStatus)) return "failure";
+  return fallback;
+}
+
+function formatMoney(cents: number, currency: PaymentOrder["currency"]) {
+  return new Intl.NumberFormat("pt-BR", {
+    currency,
+    style: "currency"
+  }).format(cents / 100);
 }
 
 function PaymentDetail({ label, value }: { label: string; value: string }) {

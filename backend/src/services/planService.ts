@@ -2,6 +2,7 @@ import { createCipheriv, createHash, createHmac, randomBytes, randomUUID } from 
 import { env } from "../config/env";
 import type {
   MongoBotCredential,
+  MongoPaymentEvent,
   MongoPaymentOrder,
   MongoPaymentProvider,
   MongoPaymentSettings,
@@ -16,7 +17,7 @@ import type {
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { buildAppUrl } from "../config/appUrl";
-import { createMercadoPagoPreference } from "./mercadoPagoService";
+import { createMercadoPagoPreference, getMercadoPagoPayment, validateMercadoPagoWebhookSignature } from "./mercadoPagoService";
 import { decryptSecret, encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 
@@ -140,6 +141,13 @@ export type PaymentSettingsDto = Omit<MongoPaymentSettings, "_id" | "secretEncry
   secretConfigured: boolean;
   updatedAt: string;
   webhookSecretConfigured: boolean;
+};
+
+export type MercadoPagoWebhookInput = {
+  body: unknown;
+  dataId: string | null;
+  requestId: string | null;
+  signature: string | null;
 };
 
 const FEATURE_SEEDS: SavePlanFeatureInput[] = [
@@ -273,6 +281,42 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
   const paymentsEnabled = settings.enabled && settings.provider !== "disabled";
   const now = new Date();
   const amountInCents = plan.promotionalPriceInCents ?? plan.priceInCents;
+  const reusableOrder = paymentsEnabled && plan.isPurchasable && amountInCents > 0
+    ? await paymentOrders.findOne({
+      amountInCents,
+      currency: plan.currency,
+      discordId: auth.user.discordId,
+      planId: plan._id,
+      provider: settings.provider,
+      status: { $in: ["pending", "processing", "in_review"] },
+      checkoutUrl: { $ne: null },
+      createdAt: { $gte: new Date(now.getTime() - 10 * 60_000) }
+    })
+    : null;
+
+  if (reusableOrder) {
+    await writePlanAudit({
+      ...actor,
+      id: auth.user.discordId,
+      name: auth.user.globalName || auth.user.username
+    }, "checkout_reused_pending_order", "payment", reusableOrder._id, {
+      planSlug: plan.slug,
+      provider: reusableOrder.provider,
+      status: reusableOrder.status
+    });
+
+    return {
+      order: toPaymentOrderDto(reusableOrder),
+      payment: {
+        enabled: true,
+        message: "Pedido pendente reutilizado. Continue pelo link de checkout.",
+        provider: reusableOrder.provider
+      },
+      plan: toPlanDto(plan)
+    };
+  }
+
+  const idempotencyKey = randomUUID();
   const order: MongoPaymentOrder = {
     _id: randomUUID(),
     amountInCents,
@@ -280,12 +324,17 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
     createdAt: now,
     currency: plan.currency,
     discordId: auth.user.discordId,
+    externalReference: null,
+    idempotencyKey,
+    mercadoPagoPaymentId: null,
     notes: paymentsEnabled
       ? "Pedido registrado. Provedor de pagamento pendente de integracao."
       : "Interesse registrado. Pagamentos estao desativados e nenhum QR Code/cobranca foi gerado.",
     paidAt: null,
+    paymentMethod: null,
     pixCode: null,
     planId: plan._id,
+    planSnapshot: snapshotPlan(plan),
     planSlug: plan.slug,
     provider: paymentsEnabled ? settings.provider : "disabled",
     providerOrderId: null,
@@ -294,6 +343,7 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
     updatedAt: now,
     userId: auth.user.id || auth.user.discordId
   };
+  order.externalReference = order._id;
 
   if (paymentsEnabled && plan.isPurchasable && amountInCents > 0) {
     const checkout = await createMercadoPagoPlanPreference(settings, plan, order, auth);
@@ -357,6 +407,24 @@ export async function getCustomerPlansDashboard(auth: DashboardAuth) {
       subscription.workspaceId ? workspaceRowsById.get(subscription.workspaceId) ?? null : null
     )),
     workspaces: workspaces.map((workspace) => toWorkspaceDto(workspace, bots.filter((bot) => bot.workspaceId === workspace._id)))
+  };
+}
+
+export async function getCustomerPaymentOrder(orderId: string, auth: DashboardAuth) {
+  const { paymentOrders, plans, planSubscriptions, planWorkspaces } = await getMongoCollections();
+  const order = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
+  if (!order) throw httpError("Pedido nao encontrado.", 404);
+
+  const [plan, subscription] = await Promise.all([
+    plans.findOne({ _id: order.planId }),
+    planSubscriptions.findOne({ "metadata.paymentOrderId": order._id } as Partial<MongoPlanSubscription>)
+  ]);
+  const workspace = subscription?.workspaceId ? await planWorkspaces.findOne({ _id: subscription.workspaceId }) : null;
+
+  return {
+    order: toPaymentOrderDto(order),
+    plan: plan ? toPlanDto(plan) : null,
+    subscription: subscription ? toSubscriptionDto(subscription, plan, workspace) : null
   };
 }
 
@@ -887,6 +955,378 @@ export async function completeTestPaymentOrder(orderId: string, actor: PlanActor
   };
 }
 
+export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) {
+  const settings = await ensurePaymentSettings();
+  const { paymentEvents, paymentOrders, plans } = await getMongoCollections();
+  const now = new Date();
+  const payload = isRecord(input.body) ? input.body : {};
+  const dataId = input.dataId ?? readNestedString(payload, ["data", "id"]);
+  const eventType = readString(payload.type) ?? readString(payload.action) ?? "unknown";
+  const eventId = readString(payload.id) ?? input.requestId ?? dataId ?? null;
+  const payloadHash = sha256(JSON.stringify(payload));
+  const eventDoc: MongoPaymentEvent = {
+    _id: randomUUID(),
+    createdAt: now,
+    eventId,
+    eventType,
+    orderId: null,
+    payloadHash,
+    processedAt: null,
+    provider: "mercadopago",
+    result: null,
+    signatureValid: false,
+    status: "received"
+  };
+
+  const existingProcessed = eventId
+    ? await paymentEvents.findOne({ provider: "mercadopago", eventId, status: "processed" })
+    : await paymentEvents.findOne({ provider: "mercadopago", payloadHash, status: "processed" });
+
+  if (existingProcessed) {
+    return {
+      duplicate: true,
+      event: mapPaymentEvent(existingProcessed),
+      processed: true
+    };
+  }
+
+  const insertedEvent = await paymentEvents.insertOne(eventDoc).then(() => eventDoc);
+
+  try {
+    if (settings.provider !== "mercadopago" || !settings.enabled) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Mercado Pago desativado nas configuracoes.");
+      return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Mercado Pago desativado nas configuracoes.", processedAt: new Date() }), processed: false };
+    }
+
+    if (!settings.secretEncrypted) {
+      await markPaymentEvent(insertedEvent._id, "failed", "Access Token Mercado Pago ausente.");
+      throw httpError("Access Token Mercado Pago ausente.", 500);
+    }
+
+    if (!settings.webhookSecretEncrypted) {
+      await markPaymentEvent(insertedEvent._id, "failed", "Webhook secret Mercado Pago ausente.");
+      throw httpError("Assinatura do webhook nao configurada.", 401);
+    }
+
+    const signatureValid = validateMercadoPagoWebhookSignature({
+      dataId,
+      requestId: input.requestId,
+      secret: decryptSecret(settings.webhookSecretEncrypted),
+      signature: input.signature
+    });
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { signatureValid } });
+
+    if (!signatureValid) {
+      await markPaymentEvent(insertedEvent._id, "failed", "Assinatura Mercado Pago invalida.");
+      throw httpError("Assinatura Mercado Pago invalida.", 401);
+    }
+
+    if (!dataId) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Webhook sem data.id.");
+      return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Webhook sem data.id.", signatureValid: true, processedAt: new Date() }), processed: false };
+    }
+
+    const payment = await getMercadoPagoPayment(decryptSecret(settings.secretEncrypted), dataId);
+    const externalReference = readString(payment.external_reference);
+    const paymentId = readString(payment.id) ?? dataId;
+    const status = readString(payment.status) ?? "unknown";
+    const amountInCents = moneyToCents(payment.transaction_amount);
+    const currency = readString(payment.currency_id);
+    const paymentMethod = readString(payment.payment_method_id) ?? readString(payment.payment_type_id);
+
+    if (!externalReference) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Pagamento sem referencia externa.");
+      return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Pagamento sem referencia externa.", signatureValid: true, processedAt: new Date() }), processed: false };
+    }
+
+    const order = await paymentOrders.findOne({ _id: externalReference });
+    if (!order) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Pedido interno nao encontrado.", null);
+      return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, orderId: null, status: "ignored", result: "Pedido interno nao encontrado.", signatureValid: true, processedAt: new Date() }), processed: false };
+    }
+
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { orderId: order._id } });
+
+    if (order.provider !== "mercadopago" || order.externalReference !== externalReference) {
+      await markPaymentEvent(insertedEvent._id, "failed", "Referencia do pedido divergente.", order._id);
+      throw httpError("Referencia do pedido divergente.", 409);
+    }
+
+    if (amountInCents !== order.amountInCents || currency !== order.currency) {
+      await paymentOrders.updateOne({ _id: order._id }, {
+        $set: {
+          mercadoPagoPaymentId: paymentId,
+          notes: "Pagamento Mercado Pago recusado por divergencia de valor ou moeda.",
+          status: "failed",
+          updatedAt: new Date()
+        }
+      });
+      await markPaymentEvent(insertedEvent._id, "failed", "Valor ou moeda divergente.", order._id);
+      await writePlanAudit(systemPaymentActor(), "payment_amount_mismatch", "payment", order._id, {
+        expectedAmountInCents: order.amountInCents,
+        expectedCurrency: order.currency,
+        receivedAmountInCents: amountInCents,
+        receivedCurrency: currency,
+        mercadoPagoPaymentId: paymentId
+      });
+      throw httpError("Valor ou moeda divergente.", 409);
+    }
+
+    const nextStatus = mercadoPagoStatusToOrderStatus(status);
+    const update: Partial<MongoPaymentOrder> = {
+      mercadoPagoPaymentId: paymentId,
+      notes: `Status Mercado Pago confirmado: ${status}.`,
+      paymentMethod,
+      status: nextStatus,
+      updatedAt: new Date()
+    };
+    if (nextStatus === "paid") update.paidAt = order.paidAt ?? new Date();
+
+    await paymentOrders.updateOne({ _id: order._id }, { $set: update });
+
+    let subscription = null;
+    if (nextStatus === "paid") {
+      const plan = await plans.findOne({ _id: order.planId });
+      if (!plan) {
+        await markPaymentEvent(insertedEvent._id, "failed", "Plano do pedido nao encontrado.", order._id);
+        throw httpError("Plano do pedido nao encontrado.", 404);
+      }
+      subscription = await activatePaidOrder(order, plan, systemPaymentActor(), "mercadopago_webhook");
+    }
+
+    await markPaymentEvent(insertedEvent._id, "processed", `Status processado: ${status}.`, order._id);
+    await writePlanAudit(systemPaymentActor(), "mercadopago_webhook_processed", "payment", order._id, {
+      mercadoPagoPaymentId: paymentId,
+      paymentMethod,
+      status
+    });
+
+    const updatedOrder = await paymentOrders.findOne({ _id: order._id });
+    return {
+      duplicate: false,
+      event: mapPaymentEvent({ ...insertedEvent, orderId: order._id, processedAt: new Date(), result: `Status processado: ${status}.`, signatureValid: true, status: "processed" }),
+      order: updatedOrder ? toPaymentOrderDto(updatedOrder) : null,
+      processed: true,
+      subscription
+    };
+  } catch (error) {
+    if (!("statusCode" in Object(error))) {
+      await markPaymentEvent(insertedEvent._id, "failed", error instanceof Error ? error.message : String(error));
+    }
+    throw error;
+  }
+}
+
+async function activatePaidOrder(order: MongoPaymentOrder, plan: MongoPlan, actor: PlanActor, activation: string) {
+  const { planSubscriptions, planWorkspaces, workspaceMembers } = await getMongoCollections();
+  const now = new Date();
+  const existingSubscription = await planSubscriptions.findOne({
+    "metadata.paymentOrderId": order._id
+  } as Partial<MongoPlanSubscription>);
+  const snapshot = order.planSnapshot;
+  const botLimit = readSnapshotNumber(snapshot, "botLimit") ?? plan.botLimit;
+  const guildLimit = readSnapshotNumber(snapshot, "guildLimit") ?? plan.guildLimit;
+  const validityDays = readSnapshotNumber(snapshot, "validityDays") ?? plan.validityDays;
+  const subscriptionId = existingSubscription?._id ?? randomUUID();
+  const workspaceId = existingSubscription?.workspaceId ?? randomUUID();
+  const workspaceName = `${readSnapshotString(snapshot, "name") ?? plan.name} Workspace`;
+
+  if (!existingSubscription) {
+    const workspace: MongoPlanWorkspace = {
+      _id: workspaceId,
+      botIds: [],
+      createdAt: now,
+      guildIds: [],
+      name: workspaceName,
+      ownerDiscordId: order.discordId,
+      ownerUserId: order.userId || order.discordId,
+      planId: plan._id,
+      slug: await uniqueWorkspaceSlug(workspaceName),
+      status: "active",
+      subscriptionId,
+      updatedAt: now
+    };
+    const subscription: MongoPlanSubscription = {
+      _id: subscriptionId,
+      activatedAt: now,
+      activatedBy: actor.id,
+      botLimit,
+      cancelledAt: null,
+      createdAt: now,
+      discordId: order.discordId,
+      endsAt: validityDays ? new Date(now.getTime() + validityDays * 86_400_000) : null,
+      guildLimit,
+      metadata: {
+        activation,
+        paymentOrderId: order._id,
+        planSnapshot: snapshot ?? snapshotPlan(plan)
+      },
+      planId: plan._id,
+      planSlug: plan.slug,
+      startedAt: now,
+      status: "active",
+      suspendedAt: null,
+      updatedAt: now,
+      userId: order.userId || order.discordId,
+      workspaceId
+    };
+
+    await planWorkspaces.insertOne(workspace);
+    await planSubscriptions.insertOne(subscription);
+    await workspaceMembers.updateOne(
+      { workspaceId, discordId: order.discordId },
+      {
+        $setOnInsert: {
+          _id: randomUUID(),
+          createdAt: now,
+          discordId: order.discordId,
+          role: "owner",
+          userId: order.userId || order.discordId,
+          workspaceId
+        },
+        $set: { updatedAt: now }
+      },
+      { upsert: true }
+    );
+  } else {
+    await planSubscriptions.updateOne({ _id: existingSubscription._id }, {
+      $set: {
+        activatedAt: existingSubscription.activatedAt ?? now,
+        activatedBy: existingSubscription.activatedBy ?? actor.id,
+        botLimit,
+        cancelledAt: null,
+        guildLimit,
+        startedAt: existingSubscription.startedAt ?? now,
+        status: "active",
+        suspendedAt: null,
+        updatedAt: now
+      }
+    });
+    if (existingSubscription.workspaceId) {
+      await planWorkspaces.updateOne({ _id: existingSubscription.workspaceId }, { $set: { status: "active", updatedAt: now } });
+    }
+  }
+
+  await writePlanAudit(actor, "subscription_activated_by_payment", "subscription", subscriptionId, {
+    activation,
+    paymentOrderId: order._id,
+    planSlug: plan.slug,
+    workspaceId
+  });
+
+  const [updatedSubscription, workspace] = await Promise.all([
+    planSubscriptions.findOne({ _id: subscriptionId }),
+    planWorkspaces.findOne({ _id: workspaceId })
+  ]);
+
+  return updatedSubscription ? toSubscriptionDto(updatedSubscription, plan, workspace) : null;
+}
+
+function snapshotPlan(plan: MongoPlan) {
+  return {
+    botLimit: plan.botLimit,
+    billingCycle: plan.billingCycle,
+    currency: plan.currency,
+    description: plan.description,
+    entitlements: plan.entitlements,
+    guildLimit: plan.guildLimit,
+    name: plan.name,
+    planId: plan._id,
+    priceInCents: plan.promotionalPriceInCents ?? plan.priceInCents,
+    regularPriceInCents: plan.priceInCents,
+    shortDescription: plan.shortDescription,
+    slug: plan.slug,
+    snapshotAt: new Date().toISOString(),
+    validityDays: plan.validityDays
+  };
+}
+
+function mercadoPagoStatusToOrderStatus(status: string): MongoPaymentOrder["status"] {
+  switch (status) {
+    case "approved":
+      return "paid";
+    case "authorized":
+    case "in_process":
+      return "processing";
+    case "pending":
+      return "pending";
+    case "in_mediation":
+      return "in_review";
+    case "cancelled":
+      return "cancelled";
+    case "refunded":
+    case "partially_refunded":
+      return "refunded";
+    case "charged_back":
+      return "charged_back";
+    case "rejected":
+    default:
+      return "failed";
+  }
+}
+
+async function markPaymentEvent(eventId: string, status: MongoPaymentEvent["status"], result: string, orderId: string | null = null) {
+  const { paymentEvents } = await getMongoCollections();
+  await paymentEvents.updateOne({ _id: eventId }, {
+    $set: {
+      orderId,
+      processedAt: new Date(),
+      result,
+      status
+    }
+  });
+}
+
+function mapPaymentEvent(event: MongoPaymentEvent) {
+  return {
+    ...event,
+    id: event._id,
+    createdAt: event.createdAt.toISOString(),
+    processedAt: event.processedAt ? event.processedAt.toISOString() : null
+  };
+}
+
+function moneyToCents(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) ? Math.round(numberValue * 100) : 0;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readNestedString(value: Record<string, unknown>, pathParts: string[]) {
+  let current: unknown = value;
+  for (const part of pathParts) {
+    if (!isRecord(current)) return null;
+    current = current[part];
+  }
+  return readString(current);
+}
+
+function readSnapshotNumber(snapshot: unknown, key: string) {
+  if (!isRecord(snapshot)) return null;
+  const value = snapshot[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readSnapshotString(snapshot: unknown, key: string) {
+  if (!isRecord(snapshot)) return null;
+  return readString(snapshot[key]);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function systemPaymentActor(): PlanActor {
+  return { id: "system:mercadopago", name: "Mercado Pago" };
+}
+
 export async function setSubscriptionStatus(subscriptionId: string, status: Exclude<MongoPlanSubscriptionStatus, "pending" | "expired">, actor: PlanActor) {
   const { planSubscriptions, planWorkspaces } = await getMongoCollections();
   const now = new Date();
@@ -1011,6 +1451,7 @@ async function createMercadoPagoPlanPreference(
       success: buildAppUrl("/pagamento/sucesso")
     },
     externalReference: order._id,
+    idempotencyKey: order.idempotencyKey,
     items: [
       {
         currencyId: plan.currency,
@@ -1020,6 +1461,7 @@ async function createMercadoPagoPlanPreference(
         unitPriceInCents: order.amountInCents
       }
     ],
+    notificationUrl: buildAppUrl("/api/payments/mercado-pago/webhook?source_news=webhooks"),
     payerEmail: auth.user.email
   });
 }
