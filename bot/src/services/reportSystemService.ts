@@ -400,13 +400,13 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
   await channel.setTopic(topic).catch(() => null);
 
   if (mode === "anonymous") {
-    await channel.send(createAnonymousPreparationPayload(settings, ticket.ticket));
+    await channel.send(createAnonymousPreparationPayload(settings, ticket.ticket, interaction.guild));
     await logIabEvent(context, interaction.guild!, settings, topicFromString(topic)!, "Criado", `Denuncia anonima criada em preparacao por ${interaction.user.tag}.`, interaction.user.id);
     await interaction.editReply(`Canal privado criado para preparar sua denuncia: <#${channel.id}>`);
     return;
   }
 
-  await channel.send(withManagementMention(settings, createManagementPayload(settings, ticket.ticket, topicFromString(topic)!, "Aberto")));
+  await channel.send(withManagementMention(settings, createManagementPayload(settings, ticket.ticket, topicFromString(topic)!, "Aberto", undefined, interaction.guild)));
   await logIabEvent(context, interaction.guild!, settings, topicFromString(topic)!, "Criado", `Denuncia identificada criada por ${interaction.user.tag}.`, interaction.user.id);
   await interaction.editReply(`Denuncia identificada aberta: <#${channel.id}>`);
 }
@@ -526,7 +526,7 @@ async function submitAnonymousReport(interaction: ButtonInteraction, context: Bo
   const nextTopic = { ...topic, status: "open" as const, submittedAt };
   await channel.setTopic(makeTopic(nextTopic)).catch(() => null);
   const updatedTicket = await context.api.updateTicketStatus(ticket.id, { status: "OPEN" });
-  const managementPayload = withManagementMention(settings, createManagementPayload(settings, updatedTicket ?? ticket, nextTopic, "Em analise", stats));
+  const managementPayload = withManagementMention(settings, createManagementPayload(settings, updatedTicket ?? ticket, nextTopic, "Em analise", stats, channel.guild));
   if (preparationPanel) {
     await preparationPanel.edit(managementPayload as never).catch(async () => {
       await channel.send(managementPayload).catch(() => null);
@@ -553,7 +553,7 @@ async function claimReport(interaction: ButtonInteraction, context: BotContext, 
     await channel.permissionOverwrites.edit(roleId, { AttachFiles: false, CreatePrivateThreads: false, CreatePublicThreads: false, ReadMessageHistory: true, SendMessages: false, ViewChannel: true }).catch(() => null);
   }
   await channel.permissionOverwrites.edit(interaction.user.id, { AttachFiles: true, ReadMessageHistory: true, SendMessages: true, ViewChannel: true }).catch(() => null);
-  await interaction.message.edit(createManagementPayload(settings, updated ?? ticket, topic, "Em analise") as never).catch(() => null);
+  await interaction.message.edit(createManagementPayload(settings, updated ?? ticket, topic, "Em analise", undefined, interaction.guild) as never).catch(() => null);
   await logIabEvent(context, interaction.guild!, settings, topic, "Assumido", `Denuncia assumida por <@${interaction.user.id}>.`, interaction.user.id);
 }
 
@@ -587,7 +587,7 @@ async function callReporter(interaction: ButtonInteraction, context: BotContext,
   await channel.setTopic(makeTopic(nextTopic)).catch(() => null);
   await logIabEvent(context, interaction.guild!, settings, nextTopic, "Denunciante chamado", `Denunciante chamado por <@${interaction.user.id}>.`, interaction.user.id);
   await channel.send({ allowedMentions: { parse: [] }, content: "O denunciante foi chamado de volta para complementar a denuncia." }).catch(() => null);
-  await interaction.message.edit(createManagementPayload(settings, ticket, nextTopic, "Denunciante chamado") as never).catch(() => null);
+  await interaction.message.edit(createManagementPayload(settings, ticket, nextTopic, "Denunciante chamado", undefined, interaction.guild) as never).catch(() => null);
   await interaction.editReply(`Acesso devolvido para <@${topic.openerId}>.`);
   void ticket;
 }
@@ -648,8 +648,8 @@ async function finishReport(context: BotContext, guild: Guild, settings: GuildSe
   const nextTopic = { ...topic, status: status === "Finalizado" ? "closed" as const : "archived" as const };
   await channel.setTopic(makeTopic(nextTopic)).catch(() => null);
   if (deleteChannel) await channel.delete(`Denuncia IAB finalizada por ${actorId}`).catch(() => null);
-  else if (managementMessage) await managementMessage.edit(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status) as never).catch(() => null);
-  else await channel.send(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status)).catch(() => null);
+  else if (managementMessage) await managementMessage.edit(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status, undefined, guild) as never).catch(() => null);
+  else await channel.send(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status, undefined, guild)).catch(() => null);
 }
 
 async function closeReportChannel(context: BotContext, guild: Guild, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic, actorId: string, managementMessageId?: string) {
@@ -661,7 +661,7 @@ async function closeReportChannel(context: BotContext, guild: Guild, settings: G
   await channel.delete(`Denuncia IAB finalizada por ${actorId}`).catch(() => null);
 }
 
-function createAnonymousPreparationPayload(settings: GuildSettings, ticket: TicketRecord): MessageCreateOptions {
+function createAnonymousPreparationPayload(settings: GuildSettings, ticket: TicketRecord, guild: Guild | null = null): MessageCreateOptions {
   const report = settings.reportSystem;
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:submit:${ticket.id}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Encaminhar denuncia").setStyle(ButtonStyle.Success),
@@ -675,13 +675,14 @@ function createAnonymousPreparationPayload(settings: GuildSettings, ticket: Tick
       "Envie todas as provas antes de confirmar.\nAguarde todos os arquivos terminarem o upload.\nApos confirmar, voce perdera acesso ao canal.",
       "A equipe recebera a denuncia sem ver sua identidade no painel. Sua identidade sera registrada apenas nas logs internas administrativas."
     ],
+    guild,
     image: report.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.thumbnailUrl } : null,
     moduleId: "iab-anonymous-prep",
     title: "Preparacao da Denuncia Anonima"
   });
 }
 
-function createReporterCalledPayload(settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic): MessageCreateOptions {
+function createReporterCalledPayload(settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic, guild: Guild | null = null): MessageCreateOptions {
   const report = settings.reportSystem;
   return renderComponentsV2Panel({
     accentColor: parseColor(topic.mode === "anonymous" ? report.anonymousEmbedColor : report.panelColor),
@@ -693,6 +694,7 @@ function createReporterCalledPayload(settings: GuildSettings, ticket: TicketReco
       `**Ticket:** ${ticket.id}\n**Status:** Denunciante chamado\n**Orgao:** ${topic.categoryName}`,
       topic.mode === "anonymous" ? "**Identidade no canal:** Denunciante Anonimo" : `**Denunciante:** <@${topic.openerId}>`
     ],
+    guild,
     image: report.dmBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.dmBannerUrl } : null,
     moduleId: "iab-reporter-called",
     title: "Denunciante chamado"
@@ -730,7 +732,7 @@ async function anonymizePreparedReporterMessages(channel: TextChannel, settings:
   return { attachmentCount, messageCount: reporterMessages.length };
 }
 
-function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic, statusLabel: string, stats?: { attachmentCount: number; messageCount: number }): MessageCreateOptions {
+function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic, statusLabel: string, stats?: { attachmentCount: number; messageCount: number }, guild: Guild | null = null): MessageCreateOptions {
   const report = settings.reportSystem;
   const isAnonymous = topic.mode === "anonymous";
   const isArchived = topic.status === "archived";
@@ -738,10 +740,10 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
   const claimed = Boolean(ticket.responsibleUserId);
   const calledBack = Boolean(topic.reporterCalled);
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setEmoji(systemComponentEmoji("homem")).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!report.buttons.claim || isArchived || isClosed || (isAnonymous && claimed)),
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Chamar denunciante de volta").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed || (isAnonymous && calledBack)),
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:archive:${ticket.id}`).setEmoji(systemComponentEmoji("caixa")).setLabel("Arquivar").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed),
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:finish:${ticket.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Finalizar").setStyle(ButtonStyle.Danger).setDisabled(isClosed)
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!report.buttons.claim || isArchived || isClosed || (isAnonymous && claimed)),
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Chamar denunciante de volta").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed || (isAnonymous && calledBack)),
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:archive:${ticket.id}`).setEmoji(systemComponentEmoji("caixa", guild)).setLabel("Arquivar").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed),
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:finish:${ticket.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar").setStyle(ButtonStyle.Danger).setDisabled(isClosed)
   );
   return renderComponentsV2Panel({
     accentColor: topic.mode === "anonymous" ? 0xf2b84b : parseColor(report.panelColor),
@@ -755,6 +757,7 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
       `**Responsavel atual:** ${ticket.responsibleUserId ? (topic.mode === "anonymous" ? "Equipe responsavel" : `<@${ticket.responsibleUserId}>`) : "Ninguem assumiu ainda"}\n**Denunciante chamado de volta:** ${topic.reporterCalled ? "Sim" : "Nao"}\n**Transcript:** ${topic.status === "archived" || topic.status === "closed" ? "Gerado" : "Aguardando arquivamento/finalizacao"}`,
       `**Canal de origem:** <#${topic.channelId}>\n**Categoria atual:** ${topic.categoryName}`
     ],
+    guild,
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
     moduleId: "iab-management",
     title: topic.mode === "anonymous" && topic.status === "archived" ? "Denuncia Anonima Arquivada" : topic.mode === "anonymous" ? "Denuncia Anonima Recebida" : "Painel de Gerenciamento da Denuncia"
@@ -826,29 +829,30 @@ async function sendTranscriptPanel(guild: Guild, settings: GuildSettings, topic:
   await (channel as TextChannel).send(renderComponentsV2Panel({
     accentColor: 0xf2b84b,
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setEmoji(systemComponentEmoji("link")).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
-      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:copylink:${ticket.id}`).setEmoji(systemComponentEmoji("link")).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true)
+      new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:copylink:${ticket.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true)
     )],
     description: "O atendimento foi finalizado e o transcript foi salvo com seguranca. Apenas pessoas autorizadas neste canal de logs devem acessar este registro.",
     fields: [
-      `**Informacoes do Ticket**\n**Ticket:** ${ticket.id}\n**Canal:** <#${topic.channelId}>\n**Tipo:** ${topic.mode === "anonymous" ? "Denuncia Anonima" : "Denuncia Identificada"}\n**Status:** ${formatTranscriptStatus(status)}`,
+      `**Informacoes do Ticket**\n**Ticket:** ${ticket.id}\n**Canal:** <#${topic.channelId}>\n**Tipo:** ${topic.mode === "anonymous" ? "Denuncia Anonima" : "Denuncia Identificada"}\n**Status:** ${formatTranscriptStatus(status, guild)}`,
       `**Envolvidos**\n**Denunciante real:** <@${topic.openerId}> (${topic.openerId})\n**Responsavel:** ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nao assumido"}\n**Orgao:** ${topic.categoryName}`,
       `**Dados do Caso**\n**Criado em:** ${createdAt ? `<t:${Math.floor(createdAt.getTime() / 1000)}:F>` : "-"}\n**Fechado em:** <t:${Math.floor(closedAt.getTime() / 1000)}:F>\n**Tempo total:** ${createdAt ? formatElapsed(createdAt, closedAt) : "-"}\n**Resumo:** ${messages.length} mensagens, ${attachmentCount} anexos, ${participants.size} participantes`,
       `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha:** ${transcript.temporaryPassword ? `||${transcript.temporaryPassword}||` : "nao gerada"}\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuracao padrao"}`
     ],
+    guild,
     image: report.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.thumbnailUrl } : null,
     moduleId: "iab-transcript",
-    title: `${systemEmojiText("folha")} Transcript Gerado`
+    title: `${systemEmojiText("folha", guild)} Transcript Gerado`
   })).catch(() => null);
 }
 
-function formatTranscriptStatus(status: string) {
+function formatTranscriptStatus(status: string, guild: Guild | null = null) {
   const normalized = status.toLowerCase();
-  if (normalized.includes("final")) return `${systemStatusEmoji("active")} ${status}`;
-  if (normalized.includes("arquiv")) return `${systemEmojiText("caixa")} ${status}`;
-  if (normalized.includes("pend")) return `${systemStatusEmoji("pending")} ${status}`;
-  if (normalized.includes("recus") || normalized.includes("neg")) return `${systemStatusEmoji("danger")} ${status}`;
-  return `${systemEmojiText("perigo")} ${status}`;
+  if (normalized.includes("final")) return `${systemStatusEmoji("active", guild)} ${status}`;
+  if (normalized.includes("arquiv")) return `${systemEmojiText("caixa", guild)} ${status}`;
+  if (normalized.includes("pend")) return `${systemStatusEmoji("pending", guild)} ${status}`;
+  if (normalized.includes("recus") || normalized.includes("neg")) return `${systemStatusEmoji("danger", guild)} ${status}`;
+  return `${systemEmojiText("perigo", guild)} ${status}`;
 }
 
 function formatElapsed(start: Date, end: Date) {

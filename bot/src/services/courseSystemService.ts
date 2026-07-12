@@ -274,8 +274,32 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     await beginStudentExam(interaction, context);
     return;
   }
+  if (interaction.customId.startsWith("course_exam_ident_name:")) {
+    await showIdentificationNameModal(interaction);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_id:")) {
+    await showIdentificationIdModal(interaction);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_confirm:")) {
+    await confirmExamIdentification(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_correct:")) {
+    await resetExamIdentificationPanel(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_cancel:")) {
+    await cancelExamIdentification(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_confirm_answer:")) {
+    await confirmExamAnswer(interaction, context);
+    return;
+  }
   if (interaction.customId.startsWith("course_exam_retry:")) {
-    await replyDeactivatedPanel(interaction);
+    await retryExamQuestion(interaction, context);
     return;
   }
   if (interaction.customId.startsWith("course_exam_next:")) {
@@ -323,6 +347,10 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
   const courseId = interaction.values[0] ?? "";
   if (interaction.customId.startsWith("course_exam_answer:")) {
     await selectExamAnswer(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_rank:")) {
+    await selectIdentificationRank(interaction, context);
     return;
   }
   if (interaction.customId === IDS.publishSelect) {
@@ -443,6 +471,14 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   }
   if (interaction.customId.startsWith("course_exam_written_modal:")) {
     await submitWrittenAnswer(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_name_modal:")) {
+    await submitIdentificationName(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_ident_id_modal:")) {
+    await submitIdentificationId(interaction, context);
     return;
   }
   if (interaction.customId.startsWith(`${IDS.examApproveModal}:`)) {
@@ -873,9 +909,37 @@ async function beginStudentExamOnce(interaction: ButtonInteraction, context: Bot
   ]);
   if (!runtime.settings.enabled) return void await interaction.editReply("Este curso não possui uma prova vinculada. Configure a prova correspondente antes de liberar o avaliativo.");
   if (!runtime.questions.length) return void await interaction.editReply("A prova vinculada a este curso não foi encontrada.");
-  const attempt = await context.api.getCourseExamAttemptByChannel(interaction.guildId!, interaction.channelId).catch(() => null);
+  let attempt = await context.api.getCourseExamAttemptByChannel(interaction.guildId!, interaction.channelId).catch(() => null);
+  if (!attempt) {
+    attempt = await context.api.createCourseExamAttempt(interaction.guildId!, {
+      channelId: interaction.channelId,
+      courseId: publication.courseId,
+      instructorId: publication.instructorId,
+      publicationId,
+      studentId
+    }).catch(() => null);
+  }
   if (!attempt || attempt.studentId !== studentId) return void await interaction.editReply("Tentativa de prova inválida para este canal.");
   if (attempt.status !== "in_progress") return void await interaction.editReply("Esta prova já foi finalizada e não pode ser realizada novamente.");
+  if (!attempt.identificationConfirmedAt) {
+    await context.api.updateCourseExamIdentification(interaction.guildId!, attempt.id, {
+      discordDisplayName: interaction.user.globalName ?? interaction.user.username,
+      discordUsername: interaction.user.username,
+      guildNickname: member.nickname ?? null
+    }).catch(() => null);
+    const updated = await context.api.getCourseExamAttempt(interaction.guildId!, attempt.id);
+    await interaction.message.edit(examIdentificationPanel(course, publication, runtime.settings, updated.attempt, member.displayName)).catch(() => null);
+    await interaction.editReply(updated.attempt.studentIdentification?.rpFullName || updated.attempt.studentIdentification?.currentRank || updated.attempt.studentIdentification?.rpId
+      ? "Sua tentativa foi restaurada. Continue a identificação no painel."
+      : "Preencha sua identificação antes de iniciar as perguntas.");
+    return;
+  }
+  const scheduled = runtime.settings.releaseMode === "scheduled" && runtime.settings.releaseAt && Date.parse(runtime.settings.releaseAt) > Date.now();
+  if (scheduled || runtime.settings.releaseMode === "instructor") {
+    await interaction.message.edit(examReleasePanel(course, runtime.settings, attempt)).catch(() => null);
+    await interaction.editReply(scheduled ? "Sua prova ainda não foi liberada no horário configurado." : "Sua prova ainda aguarda liberação do instrutor.");
+    return;
+  }
   const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attempt.id);
   await interaction.message.edit({ components: [] }).catch(() => null);
   await interaction.editReply(bundle.attempt.currentQuestionIndex > 0 ? "Prova retomada do ponto salvo." : "Você pode começar a responder. A primeira pergunta foi enviada no canal.");
@@ -883,6 +947,131 @@ async function beginStudentExamOnce(interaction: ButtonInteraction, context: Bot
   if (!channel?.isTextBased() || !("send" in channel)) return;
   if (bundle.attempt.currentQuestionIndex === 0) await channel.send(examIntroPanel(course, runtime.settings)).catch(() => null);
   await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, bundle.attempt, bundle.questions.length ? bundle.questions : runtime.questions);
+}
+
+async function showIdentificationNameModal(interaction: ButtonInteraction) {
+  const attemptId = idFromCustomId(interaction.customId);
+  await interaction.showModal(new ModalBuilder()
+    .setCustomId(`course_exam_ident_name_modal:${attemptId}:${interaction.message.id}`)
+    .setTitle("Identificação do Aluno")
+    .addComponents(inputRow("rpFullName", "Nome completo (RP)", TextInputStyle.Short, true, 120)));
+}
+
+async function submitIdentificationName(interaction: ModalSubmitInteraction, context: BotContext) {
+  const [, attemptId, messageId] = interaction.customId.split(":");
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const rpFullName = interaction.fields.getTextInputValue("rpFullName");
+  let errorMessage = "Não foi possível salvar o nome.";
+  const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId!, { rpFullName }).catch((error) => {
+    errorMessage = error instanceof Error ? error.message : errorMessage;
+    return null;
+  });
+  if (!attempt) {
+    await interaction.editReply(errorMessage);
+    return;
+  }
+  await updateIdentificationMessage(interaction, context, attempt, messageId);
+  await interaction.editReply("Nome salvo. Selecione a patente atual.");
+}
+
+async function selectIdentificationRank(interaction: StringSelectMenuInteraction, context: BotContext) {
+  const attemptId = idFromCustomId(interaction.customId);
+  const rank = interaction.values[0] as "CADET" | "OFFICER" | "SENIOR_OFFICER" | undefined;
+  await interaction.deferUpdate();
+  const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId, { currentRank: rank ?? null });
+  await interaction.message.edit(await identificationPanelForAttempt(interaction, context, attempt)).catch(() => null);
+  await interaction.followUp({ content: "Patente salva. Informe o ID.", flags: MessageFlags.Ephemeral }).catch(() => null);
+}
+
+async function showIdentificationIdModal(interaction: ButtonInteraction) {
+  const attemptId = idFromCustomId(interaction.customId);
+  await interaction.showModal(new ModalBuilder()
+    .setCustomId(`course_exam_ident_id_modal:${attemptId}:${interaction.message.id}`)
+    .setTitle("Identificação do Aluno")
+    .addComponents(inputRow("rpId", "ID", TextInputStyle.Short, true, 32, "")));
+}
+
+async function submitIdentificationId(interaction: ModalSubmitInteraction, context: BotContext) {
+  const [, attemptId, messageId] = interaction.customId.split(":");
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const rpId = interaction.fields.getTextInputValue("rpId");
+  let errorMessage = "Não foi possível salvar o ID.";
+  const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId!, { rpId }).catch((error) => {
+    errorMessage = error instanceof Error ? error.message : errorMessage;
+    return null;
+  });
+  if (!attempt) {
+    await interaction.editReply(errorMessage);
+    return;
+  }
+  await updateIdentificationMessage(interaction, context, attempt, messageId);
+  await interaction.editReply("ID salvo. Confirme seus dados para liberar a prova.");
+}
+
+async function confirmExamIdentification(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferUpdate();
+  const attemptId = idFromCustomId(interaction.customId);
+  const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId, {
+    discordDisplayName: interaction.user.globalName ?? interaction.user.username,
+    discordUsername: interaction.user.username,
+    guildNickname: (interaction.member as GuildMember | null)?.nickname ?? null,
+    confirm: true
+  }).catch(() => null);
+  if (!attempt) {
+    await interaction.followUp({ content: "Preencha nome completo, patente e ID antes de confirmar.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const [course, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, attempt.courseId),
+    context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId)
+  ]);
+  await interaction.message.edit(examReleasePanel(course, runtime.settings, attempt)).catch(() => null);
+  await interaction.followUp({ content: "Dados confirmados. Você já pode iniciar a prova.", flags: MessageFlags.Ephemeral }).catch(() => null);
+}
+
+async function resetExamIdentificationPanel(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferUpdate();
+  const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id) {
+    await interaction.followUp({ content: "Esta interação pertence a outro usuário.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.message.edit(await identificationPanelForAttempt(interaction, context, bundle.attempt)).catch(() => null);
+}
+
+async function cancelExamIdentification(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id) {
+    await interaction.editReply("Esta interação pertence a outro usuário.");
+    return;
+  }
+  await context.api.releaseCourseExamStart(interaction.guildId!, bundle.attempt.publicationId, interaction.user.id).catch(() => null);
+  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Prova cancelada pelo aluno\nTentativa: ${attemptId}\nAluno: <@${interaction.user.id}>`).catch(() => null);
+  if (interaction.channel?.isTextBased() && "delete" in interaction.channel) {
+    await interaction.editReply("Prova cancelada. O canal temporário será encerrado.");
+    await (interaction.channel as TextChannel).delete("Prova cancelada pelo aluno.").catch(() => null);
+    return;
+  }
+  await interaction.editReply("Prova cancelada.");
+}
+
+async function updateIdentificationMessage(interaction: ModalSubmitInteraction, context: BotContext, attempt: CourseExamAttempt, messageId?: string) {
+  if (!messageId || !interaction.channel?.isTextBased() || !("messages" in interaction.channel)) return;
+  const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
+  await message?.edit(await identificationPanelForAttempt(interaction, context, attempt)).catch(() => null);
+}
+
+async function identificationPanelForAttempt(interaction: { guildId: string | null; guild: ButtonInteraction["guild"] }, context: BotContext, attempt: CourseExamAttempt) {
+  const [course, publication, runtime] = await Promise.all([
+    context.api.getCourse(interaction.guildId!, attempt.courseId),
+    context.api.getCoursePublication(interaction.guildId!, attempt.publicationId),
+    context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId)
+  ]);
+  const member = await interaction.guild?.members.fetch(attempt.studentId).catch(() => null);
+  return examIdentificationPanel(course, publication, runtime.settings, attempt, member?.displayName ?? attempt.studentId);
 }
 
 export async function handleCourseExamMessage(message: Message, context: BotContext) {
@@ -913,20 +1102,48 @@ async function selectExamAnswer(interaction: StringSelectMenuInteraction, contex
     return;
   }
   await interaction.deferUpdate();
-  const selectedAlternativeId = interaction.values[0] ?? null;
-  const answer = await context.api.saveCourseExamAnswer(interaction.guildId!, attemptId, { questionId: question.id, questionIndex, selectedAlternativeId }).catch(() => null);
+  const selectedAlternativeIds = interaction.values;
+  const course = await context.api.getCourse(interaction.guildId!, bundle.attempt.courseId);
+  await interaction.message.edit(pendingSelectionQuestionPanel(course, bundle.attempt, question, questionIndex + 1, bundle.questions.length, selectedAlternativeIds)).catch(() => null);
+}
+
+async function confirmExamAnswer(interaction: ButtonInteraction, context: BotContext) {
+  const [, attemptId, questionIndexRaw, selectedRaw] = interaction.customId.split(":");
+  const questionIndex = Number(questionIndexRaw);
+  const selectedAlternativeIds = (selectedRaw ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (!attemptId || !Number.isInteger(questionIndex) || !selectedAlternativeIds.length) {
+    await interaction.reply({ content: "Responda à questão antes de continuar.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id || bundle.attempt.status !== "in_progress") {
+    await interaction.reply({ content: "Tentativa de prova inválida.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const question = bundle.questions[bundle.attempt.currentQuestionIndex];
+  if (!question || !Number.isInteger(questionIndex) || questionIndex !== bundle.attempt.currentQuestionIndex) {
+    await interaction.reply({ content: "Esta questão já foi respondida ou não está mais ativa.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferUpdate();
+  const answer = await context.api.saveCourseExamAnswer(interaction.guildId!, attemptId, {
+    questionId: question.id,
+    questionIndex,
+    selectedAlternativeId: question.type === "selection" ? selectedAlternativeIds[0] : null,
+    selectedAlternativeIds: question.type === "multiple" ? selectedAlternativeIds : null
+  }).catch(() => null);
   if (!answer) {
     await interaction.followUp({ content: "Esta questão já foi respondida ou não está mais ativa.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const selected = question.alternatives.find((alternative) => alternative.id === selectedAlternativeId) ?? null;
-  await interaction.message.edit(answeredSelectionQuestionPanel(bundle.attempt, question, questionIndex + 1, bundle.questions.length, selected)).catch(() => null);
+  await interaction.message.edit(answeredSelectionQuestionPanel(bundle.attempt, question, questionIndex + 1, bundle.questions.length, selectedAlternativeIds)).catch(() => null);
   const updated = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
   const [course, runtime] = await Promise.all([
     context.api.getCourse(interaction.guildId!, updated.attempt.courseId),
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
-  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `📝 Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\nPergunta: ${question.prompt}\nResposta: ${selected?.text ?? selectedAlternativeId}`);
+  const selectedText = question.alternatives.filter((alternative) => selectedAlternativeIds.includes(alternative.id)).map((alternative) => alternative.text).join("; ");
+  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `📝 Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\nPergunta: ${question.prompt}\nResposta: ${selectedText}`);
   await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
 }
 
@@ -995,8 +1212,20 @@ async function submitWrittenAnswer(interaction: ModalSubmitInteraction, context:
 }
 
 async function retryExamQuestion(interaction: ButtonInteraction, context: BotContext) {
-  void context;
-  await replyDeactivatedPanel(interaction);
+  const [, attemptId, questionIndexRaw] = interaction.customId.split(":");
+  const questionIndex = Number(questionIndexRaw);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId ?? "").catch(() => null);
+  if (!bundle || bundle.attempt.studentId !== interaction.user.id || bundle.attempt.status !== "in_progress") {
+    await interaction.reply({ content: "Tentativa de prova inválida.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const question = bundle.questions[bundle.attempt.currentQuestionIndex];
+  if (!question || !Number.isInteger(questionIndex) || questionIndex !== bundle.attempt.currentQuestionIndex) {
+    await interaction.reply({ content: "Esta questão já foi respondida ou não está mais ativa.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const course = await context.api.getCourse(interaction.guildId!, bundle.attempt.courseId);
+  await interaction.update(selectionQuestionPanel(course, bundle.attempt, question, questionIndex + 1, bundle.questions.length));
 }
 
 async function commitExamAnswer(interaction: ButtonInteraction, context: BotContext) {
@@ -1512,6 +1741,83 @@ function studentExamWelcomePanel(course: Course, publication: CoursePublication,
   });
 }
 
+function examIdentificationPanel(course: Course, publication: CoursePublication, settings: CourseExamSettings, attempt: CourseExamAttempt, studentName: string) {
+  void publication;
+  void settings;
+  const identification = attempt.studentIdentification;
+  const completed = Boolean(identification?.rpFullName && identification.currentRank && identification.rpId);
+  const actions = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_ident_name:${attempt.id}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel(identification?.rpFullName ? "Corrigir nome" : "Informar nome").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`course_exam_ident_id:${attempt.id}`).setEmoji(systemComponentEmoji("homem")).setLabel(identification?.rpId ? "Corrigir ID" : "Informar ID").setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`course_exam_ident_rank:${attempt.id}`)
+        .setPlaceholder("Patente atual")
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions([
+          { label: "Cadet", value: "CADET", default: identification?.currentRank === "CADET" },
+          { label: "Officer", value: "OFFICER", default: identification?.currentRank === "OFFICER" },
+          { label: "Senior Officer", value: "SENIOR_OFFICER", default: identification?.currentRank === "SENIOR_OFFICER" }
+        ])
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_ident_confirm:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Confirmar dados").setStyle(ButtonStyle.Success).setDisabled(!completed),
+      new ButtonBuilder().setCustomId(`course_exam_ident_correct:${attempt.id}`).setEmoji(systemComponentEmoji("prancheta")).setLabel("Corrigir dados").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`course_exam_ident_cancel:${attempt.id}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar prova").setStyle(ButtonStyle.Danger)
+    )
+  ];
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions,
+    description: "Confirme seus dados antes de iniciar as perguntas. Cada etapa é salva automaticamente.",
+    fields: [
+      `**Nome completo (RP):** ${identification?.rpFullName || "Pendente"}`,
+      `**Patente atual:** ${rankLabel(identification?.currentRank)}`,
+      `**ID:** ${identification?.rpId || "Pendente"}`,
+      `**Usuário:** ${studentName}`,
+      `**Curso:** ${course.name}`
+    ],
+    moduleId: "courses",
+    title: "Confirme seus dados"
+  });
+}
+
+function examReleasePanel(course: Course, settings: CourseExamSettings, attempt: CourseExamAttempt) {
+  const scheduled = settings.releaseMode === "scheduled" && settings.releaseAt && Date.parse(settings.releaseAt) > Date.now();
+  const instructor = settings.releaseMode === "instructor";
+  const disabled = scheduled || instructor;
+  const description = scheduled
+    ? "Sua identificação foi concluída. Aguarde o horário de início da prova."
+    : instructor
+      ? "Aguardando liberação do instrutor."
+      : "Sua identificação foi concluída. Clique em Iniciar prova quando estiver pronto.";
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_begin:${attempt.publicationId}:${attempt.studentId}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Iniciar prova").setStyle(ButtonStyle.Success).setDisabled(disabled),
+      new ButtonBuilder().setCustomId(`course_exam_ident_correct:${attempt.id}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Corrigir dados").setStyle(ButtonStyle.Secondary)
+    )],
+    description,
+    fields: [
+      `**Curso:** ${course.name}`,
+      `**Aluno:** <@${attempt.studentId}>`,
+      scheduled ? `**Liberação:** <t:${Math.floor(Date.parse(settings.releaseAt!) / 1000)}:F>` : `**Liberação:** ${settings.releaseMode === "instructor" ? "Instrutor" : "Imediata"}`
+    ],
+    moduleId: "courses",
+    title: "Prova liberada"
+  });
+}
+
+function rankLabel(rank: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null | undefined) {
+  if (rank === "CADET") return "Cadet";
+  if (rank === "OFFICER") return "Officer";
+  if (rank === "SENIOR_OFFICER") return "Senior Officer";
+  return "Pendente";
+}
+
 function coursePublicationStatusLabel(publication: CoursePublication, full: boolean) {
   if (publication.status === "open" && full) return `${systemStatusEmoji("warning")} Lotado`;
   const labels: Record<CoursePublication["status"], string> = {
@@ -1564,7 +1870,7 @@ async function sendExamQuestion(channel: TextChannel, settings: CourseExamSettin
     await channel.send(examFinishPanel(course, settings, attempt));
     return;
   }
-  if (question.type === "selection") {
+  if (question.type === "selection" || question.type === "multiple") {
     await channel.send(selectionQuestionPanel(course, attempt, question, attempt.currentQuestionIndex + 1, questions.length));
     return;
   }
@@ -1572,15 +1878,16 @@ async function sendExamQuestion(channel: TextChannel, settings: CourseExamSettin
 }
 
 function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number) {
+  const isMultiple = question.type === "multiple";
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`course_exam_answer:${attempt.id}:${index - 1}`)
-          .setPlaceholder("RadioButtonGroupV2: marque uma alternativa")
+          .setPlaceholder(isMultiple ? "Selecione todas as alternativas corretas" : "Selecione uma alternativa")
           .setMinValues(1)
-          .setMaxValues(1)
+          .setMaxValues(isMultiple ? Math.min(10, question.alternatives.length) : 1)
           .addOptions(question.alternatives.slice(0, 10).map((alternative) => ({
             label: `Alternativa ${alternative.id}`.slice(0, 100),
             value: alternative.id,
@@ -1588,18 +1895,36 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
           })))
       )
     ],
-    description: question.description || "Selecione uma alternativa para continuar.",
+    description: question.description || (isMultiple ? "Assinale as alternativas corretas." : "Assinale a alternativa correta."),
     fields: [
-      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `Curso: ${course.name}\nQuestão ${index} de ${total}\nValor: ${question.points}`,
       `**${question.prompt}**`,
       question.alternatives.map((alternative) => `( ) ${alternative.text}`).join("\n")
     ],
     moduleId: "courses",
-    title: "Questão Objetiva"
+    title: `Questão ${String(index).padStart(2, "0")}`
   });
 }
 
-function answeredSelectionQuestionPanel(attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number, selected: CourseExamQuestion["alternatives"][number] | null) {
+function pendingSelectionQuestionPanel(course: Course, attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number, selectedIds: string[]) {
+  return renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_confirm_answer:${attempt.id}:${index - 1}:${selectedIds.join(",")}`).setEmoji(systemComponentEmoji("visto")).setLabel("Confirmar resposta").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`course_exam_retry:${attempt.id}:${index - 1}`).setEmoji(systemComponentEmoji("voltar")).setLabel("Alterar seleção").setStyle(ButtonStyle.Secondary)
+    )],
+    description: "Revise sua seleção e confirme para salvar. Depois de confirmada, a resposta não poderá ser alterada.",
+    fields: [
+      `Curso: ${course.name}\nQuestão ${index} de ${total}\nValor: ${question.points}`,
+      `**${question.prompt}**`,
+      question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
+    ],
+    moduleId: "courses",
+    title: "Confirmar resposta"
+  });
+}
+
+function answeredSelectionQuestionPanel(attempt: CourseExamAttempt, question: CourseExamQuestion, index: number, total: number, selectedIds: string[]) {
   void attempt;
   return renderComponentsV2Panel({
     accentColor: 0x16a34a,
@@ -1607,7 +1932,7 @@ function answeredSelectionQuestionPanel(attempt: CourseExamAttempt, question: Co
     fields: [
       `Pergunta ${index}/${total}\nValor: ${question.points}`,
       `**${question.prompt}**`,
-      question.alternatives.map((alternative) => `${alternative.id === selected?.id ? "(X)" : "( )"} ${alternative.text}`).join("\n")
+      question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
     ],
     moduleId: "courses",
     title: "Questão Respondida"
@@ -1707,7 +2032,7 @@ async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitI
 function examCorrectionPanel(course: Course, courseSettings: CourseSettings, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   const reviewed = attempt.result === "approved" || attempt.result === "rejected";
-  const objectiveTotal = questions.filter((question) => question.type === "selection").length;
+  const objectiveTotal = questions.filter((question) => question.type === "selection" || question.type === "multiple").length;
   const writtenTotal = questions.filter((question) => question.type === "written").length;
   const finalScore = attempt.finalScore ?? attempt.automaticScore ?? attempt.score;
   const fields = [
@@ -1784,12 +2109,15 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
     ].join("\n").slice(0, 1900);
   }
   const alternatives = answer?.alternativesSnapshot?.length ? answer.alternativesSnapshot : question.alternatives;
+  const selectedIds = answer?.selectedAlternativeIds?.length ? answer.selectedAlternativeIds : answer?.selectedAlternativeId ? [answer.selectedAlternativeId] : [];
+  const expectedIds = question.correctAlternativeIds?.length ? question.correctAlternativeIds : question.alternatives.filter((alternative) => alternative.isCorrect || alternative.id === question.correctAlternativeId).map((alternative) => alternative.id);
   return [
     `QUESTÃO ${String(index).padStart(2, "0")}`,
     answer?.questionText || question.prompt,
     "",
-    alternatives.map((alternative) => `${alternative.id === answer?.selectedAlternativeId ? "(X)" : "( )"} ${alternative.text}`).join("\n"),
+    alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n"),
     "",
+    `Resposta esperada: ${expectedIds.length ? expectedIds.join(", ") : "não configurada"}`,
     `Resultado da questão: ${answer?.correct ? "correta" : "incorreta"}`,
     `Pontuação obtida: ${formatScore(answer?.pointsEarned ?? 0)} de ${formatScore(answer?.maxScore ?? question.points)}`
   ].join("\n").slice(0, 1900);
@@ -2107,9 +2435,9 @@ function validateRuntimeProof(questions: CourseExamQuestion[]) {
     const question = ordered[index];
     if (!question?.prompt.trim()) return { ok: false, message: `A pergunta ${index + 1} precisa ter texto configurado.` };
     if (!question.points || question.points <= 0) return { ok: false, message: `A pergunta ${index + 1} precisa ter nota máxima configurada.` };
-    if (question.type === "selection") {
+    if (question.type === "selection" || question.type === "multiple") {
       if (question.alternatives.length < 2) return { ok: false, message: `A pergunta ${index + 1} precisa ter pelo menos 2 alternativas.` };
-      if (!question.alternatives.some((alternative) => alternative.isCorrect || alternative.id === question.correctAlternativeId)) return { ok: false, message: `A pergunta ${index + 1} precisa ter uma alternativa correta definida.` };
+      if (!question.alternatives.some((alternative) => alternative.isCorrect || alternative.id === question.correctAlternativeId || question.correctAlternativeIds?.includes(alternative.id))) return { ok: false, message: `A pergunta ${index + 1} precisa ter uma alternativa correta definida.` };
     }
   }
   return { ok: true, message: "Prova completa." };

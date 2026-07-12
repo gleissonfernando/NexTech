@@ -49,6 +49,7 @@ import {
   saveCourseExamAnswer,
   saveCourseExamSettings,
   setCourseExamCorrectionMessage,
+  updateCourseExamIdentification,
   updateCourseExamQuestion
 } from "../services/courseExamService";
 
@@ -227,11 +228,19 @@ const examSettingsSchema = z.object({
   , manualQuestionMaxScore: decimalNumber(z.number().min(0).max(1000)).optional()
   , manualApproval: z.boolean().optional()
   , automaticApproval: z.boolean().optional()
+  , releaseMode: z.enum(["immediate", "scheduled", "instructor"]).optional()
+  , releaseAt: z.string().datetime().nullable().optional().or(z.literal(""))
+  , attemptLimit: z.number().int().min(1).max(20).nullable().optional()
+  , allowAnswerChange: z.boolean().optional()
+  , showAnswersAfterExam: z.boolean().optional()
+  , version: z.number().int().min(1).max(1000).optional()
+  , examKey: z.string().max(120).nullable().optional().or(z.literal(""))
 });
 const examQuestionSchema = z.object({
   active: z.boolean().optional(),
   alternatives: z.array(z.object({ id: z.string().max(80).optional(), text: z.string().max(500), value: z.string().max(120).optional(), score: decimalNumber(z.number().min(0).max(1000)).optional(), isCorrect: z.boolean().optional(), order: z.number().int().min(0).optional() })).max(10).optional(),
   correctAlternativeId: z.string().max(80).nullable().optional(),
+  correctAlternativeIds: z.array(z.string().max(80)).max(10).optional(),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   order: z.number().int().min(0).optional(),
   questionNumber: z.number().int().min(1).max(100).optional(),
@@ -239,7 +248,7 @@ const examQuestionSchema = z.object({
   points: decimalNumber(z.number().min(0).max(1000)).optional(),
   prompt: z.string().min(1).max(1200),
   title: z.string().max(1200).optional(),
-  type: z.enum(["selection", "written"])
+  type: z.enum(["selection", "multiple", "written"])
 });
 const reorderExamQuestionsSchema = z.object({ questionIds: z.array(z.string().min(1)).max(500) });
 const attemptSchema = z.object({ channelId: snowflake, courseId: z.string().min(1), instructorId: snowflake, publicationId: z.string().min(1), questionsSnapshot: z.array(z.any()).max(100).optional(), studentId: snowflake });
@@ -248,7 +257,17 @@ const answerSchema = z.object({
   questionId: z.string().min(1).nullable().optional(),
   questionIndex: z.number().int().min(0).nullable().optional(),
   selectedAlternativeId: z.string().min(1).max(80).nullable().optional(),
+  selectedAlternativeIds: z.array(z.string().min(1).max(80)).max(10).nullable().optional(),
   writtenAnswer: z.string().max(3000).nullable().optional()
+});
+const identificationSchema = z.object({
+  discordUsername: z.string().max(100).nullable().optional(),
+  discordDisplayName: z.string().max(100).nullable().optional(),
+  guildNickname: z.string().max(100).nullable().optional(),
+  rpFullName: z.string().max(120).nullable().optional(),
+  currentRank: z.enum(["CADET", "OFFICER", "SENIOR_OFFICER"]).nullable().optional(),
+  rpId: z.string().max(32).nullable().optional(),
+  confirm: z.boolean().optional()
 });
 const reviewSchema = z.object({ actorId: snowflake, manualScore: decimalNumber(z.number().min(0).max(1000)).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
 const correctionMessageSchema = z.object({ messageId: snowflake });
@@ -446,6 +465,16 @@ coursesRouter.get("/bot/:guildId/exam-attempts/:attemptId", requireBot, async (r
   } catch (error) { return next(error); }
 });
 
+coursesRouter.patch("/bot/:guildId/exam-attempts/:attemptId/identification", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const attempt = await updateCourseExamIdentification(botId, guildId, routeParam(req, "attemptId"), identificationSchema.parse(req.body ?? {}));
+    if (!attempt) return res.status(404).json({ message: "Tentativa nao encontrada." });
+    return res.json({ attempt });
+  } catch (error) { return next(error); }
+});
+
 coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/answers", requireBot, async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
@@ -455,6 +484,7 @@ coursesRouter.post("/bot/:guildId/exam-attempts/:attemptId/answers", requireBot,
       questionId: parsed.questionId ?? parsed.question?.id ?? null,
       questionIndex: parsed.questionIndex ?? parsed.question?.order ?? null,
       selectedAlternativeId: parsed.selectedAlternativeId,
+      selectedAlternativeIds: parsed.selectedAlternativeIds,
       writtenAnswer: parsed.writtenAnswer
     });
     if (!answer) return res.status(409).json({ message: "Esta questão já foi respondida ou não está mais ativa." });

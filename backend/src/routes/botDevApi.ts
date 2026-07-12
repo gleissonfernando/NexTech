@@ -49,6 +49,8 @@ const tagVerificationStatusSchema = z.object({
   lastError: z.string().max(500).nullable()
 });
 const systemEmojiValidationSchema = z.object({
+  extraEmojiNames: z.array(z.string().min(2).max(32)).max(250).optional(),
+  guildId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   emojis: z.array(z.object({
     animated: z.boolean().optional(),
     emojiId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
@@ -95,6 +97,8 @@ botDevApiRouter.post("/system-emojis/validation", async (req, res, next) => {
 
     return res.json(await recordSystemEmojiValidation({
       botId,
+      extraEmojiNames: input.extraEmojiNames ?? [],
+      guildId: input.guildId ?? null,
       emojis: input.emojis
     }));
   } catch (error) {

@@ -8,6 +8,19 @@ const DEFAULT_FINAL = "Sua prova foi concluída. Clique abaixo para finalizar.";
 const DEFAULT_APPROVAL = "Você foi aprovado na prova do curso.";
 const DEFAULT_REJECTION = "Você foi reprovado na prova do curso.";
 const DEFAULT_EXTERNAL_LINK_TEXT = "Acessar material da prova";
+const DEFAULT_RELEASE_MODE = "immediate";
+
+type StudentRank = "CADET" | "OFFICER" | "SENIOR_OFFICER";
+
+type IdentificationInput = {
+  discordDisplayName?: string | null;
+  discordUsername?: string | null;
+  guildNickname?: string | null;
+  rpFullName?: string | null;
+  currentRank?: StudentRank | null;
+  rpId?: string | null;
+  confirm?: boolean;
+};
 
 export type CourseExamSettingsDto = ReturnType<typeof mapSettings>;
 export type CourseExamQuestionDto = ReturnType<typeof mapQuestion>;
@@ -59,6 +72,13 @@ export async function getCourseExamSettings(botId: string | null, guildId: strin
     manualQuestionMaxScore: 10,
     manualApproval: true,
     automaticApproval: false,
+    releaseMode: DEFAULT_RELEASE_MODE,
+    releaseAt: null,
+    attemptLimit: 1,
+    allowAnswerChange: false,
+    showAnswersAfterExam: false,
+    version: 1,
+    examKey: null,
     externalLinkEnabled: false,
     externalLinkText: DEFAULT_EXTERNAL_LINK_TEXT,
     externalLinkUrl: null,
@@ -75,8 +95,9 @@ export async function saveCourseExamSettings(botId: string | null, guildId: stri
   const { courseExamSettings } = await getMongoCollections();
   const now = new Date();
   await getCourseExamSettings(botId, guildId, courseId);
+  const patch = await cleanSettings(botId, guildId, courseId, input);
   await courseExamSettings.updateOne({ ...scope(botId, guildId), courseId }, {
-    $set: { ...cleanSettings(input), updatedAt: now, updatedBy: actorId }
+    $set: { ...patch, updatedAt: now, updatedBy: actorId }
   });
   await logCourseAction(botId, guildId, "course.exam_settings_saved", actorId, courseId, null, input);
   return getCourseExamSettings(botId, guildId, courseId);
@@ -93,13 +114,14 @@ export async function createCourseExamQuestion(botId: string | null, guildId: st
     courseId,
     order: Number.isFinite(input.order) ? Number(input.order) : total,
     questionNumber: Number.isFinite(input.questionNumber) ? Number(input.questionNumber) : total + 1,
-    type: input.type === "written" ? "written" : "selection",
+    type: normalizeQuestionType(input.type),
     prompt: input.prompt?.trim() || "Nova pergunta",
     title: input.title?.trim() || input.prompt?.trim() || "Nova pergunta",
     description: input.description?.trim() || null,
     points: Math.max(0, Number(input.points) || 1),
-    alternatives: normalizeAlternatives(input.alternatives, input.type === "written" ? "written" : "selection"),
-    correctAlternativeId: input.type === "written" ? null : normalizeCorrect(input.correctAlternativeId),
+    alternatives: normalizeAlternatives(input.alternatives, normalizeQuestionType(input.type)),
+    correctAlternativeId: normalizeQuestionType(input.type) === "written" ? null : normalizeCorrect(input.correctAlternativeId),
+    correctAlternativeIds: normalizeQuestionType(input.type) === "multiple" ? normalizeCorrectList(input.correctAlternativeIds ?? input.correctAlternativeId ?? input.alternatives) : [],
     placeholder: input.placeholder?.trim() || null,
     active: input.active !== false,
     createdAt: now,
@@ -115,13 +137,17 @@ export async function updateCourseExamQuestion(botId: string | null, guildId: st
   const patch: Partial<MongoCourseExamQuestion> = {};
   if (input.order !== undefined) patch.order = Number(input.order) || 0;
   if (input.questionNumber !== undefined) patch.questionNumber = Math.max(1, Math.min(100, Number(input.questionNumber) || 1));
-  if (input.type !== undefined) patch.type = input.type === "written" ? "written" : "selection";
+  if (input.type !== undefined) patch.type = normalizeQuestionType(input.type);
   if (input.prompt !== undefined) patch.prompt = input.prompt.trim() || "Pergunta";
   if (input.title !== undefined) patch.title = input.title?.trim() || input.prompt?.trim() || "Pergunta";
   if (input.description !== undefined) patch.description = input.description?.trim() || null;
   if (input.points !== undefined) patch.points = Math.max(0, Number(input.points) || 0);
-  if (input.alternatives !== undefined) patch.alternatives = normalizeAlternatives(input.alternatives, patch.type ?? input.type ?? "selection");
+  if (input.alternatives !== undefined) patch.alternatives = normalizeAlternatives(input.alternatives, patch.type ?? normalizeQuestionType(input.type));
   if (input.correctAlternativeId !== undefined) patch.correctAlternativeId = patch.type === "written" || input.type === "written" ? null : normalizeCorrect(input.correctAlternativeId);
+  if (input.correctAlternativeIds !== undefined || input.alternatives !== undefined || input.type !== undefined) {
+    const type = patch.type ?? normalizeQuestionType(input.type);
+    patch.correctAlternativeIds = type === "multiple" ? normalizeCorrectList(input.correctAlternativeIds ?? input.correctAlternativeId ?? input.alternatives) : [];
+  }
   if (input.placeholder !== undefined) patch.placeholder = input.placeholder?.trim() || null;
   if (input.active !== undefined) patch.active = input.active !== false;
   patch.updatedAt = new Date();
@@ -205,6 +231,7 @@ export async function createOrResumeCourseExamAttempt(botId: string | null, guil
     return mapAttempt(existing);
   }
   const now = new Date();
+  const previousAttempts = await collections.courseExamAttempts.countDocuments({ ...scope(botId, guildId), publicationId: input.publicationId, studentId: input.studentId });
   const enrollment = await collections.courseEnrollments.findOne({
     ...scope(botId, guildId), publicationId: input.publicationId, studentId: input.studentId, enrollmentStatus: "ENROLLED", examStatus: "STARTING", examChannelId: input.channelId
   });
@@ -230,6 +257,10 @@ export async function createOrResumeCourseExamAttempt(botId: string | null, guil
     instructorId: publication.instructorId,
     status: "in_progress",
     questionsSnapshot,
+    examVersion: examSettings.version ?? 1,
+    attemptNumber: previousAttempts + 1,
+    studentIdentification: null,
+    identificationConfirmedAt: null,
     startedAt: now,
     finishedAt: null,
     correctedAt: null,
@@ -263,6 +294,57 @@ export async function createOrResumeCourseExamAttempt(botId: string | null, guil
   return mapAttempt(doc);
 }
 
+export async function updateCourseExamIdentification(botId: string | null, guildId: string, attemptId: string, input: IdentificationInput) {
+  const collections = await getMongoCollections();
+  const attempt = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" });
+  if (!attempt) return null;
+  const now = new Date();
+  const current = attempt.studentIdentification ?? {
+    discordUserId: attempt.studentId,
+    discordUsername: "",
+    discordDisplayName: "",
+    guildNickname: null,
+    rpFullName: "",
+    currentRank: null,
+    rpId: "",
+    guildId,
+    courseId: attempt.courseId,
+    examId: attempt.examId ?? "",
+    attemptId: attempt._id,
+    temporaryChannelId: attempt.channelId,
+    startedAt: attempt.startedAt,
+    identificationCompletedAt: null
+  };
+  const next = {
+    ...current,
+    discordUsername: normalizeText(input.discordUsername ?? current.discordUsername, 100),
+    discordDisplayName: normalizeText(input.discordDisplayName ?? current.discordDisplayName, 100),
+    guildNickname: normalizeNullableText(input.guildNickname ?? current.guildNickname, 100),
+    rpFullName: input.rpFullName !== undefined ? normalizeFullName(input.rpFullName) : current.rpFullName,
+    currentRank: input.currentRank !== undefined ? normalizeRank(input.currentRank) : current.currentRank,
+    rpId: input.rpId !== undefined ? normalizeRpId(input.rpId) : current.rpId
+  };
+  const completed = Boolean(next.rpFullName && next.currentRank && next.rpId);
+  const shouldConfirm = input.confirm === true;
+  if (shouldConfirm && !completed) {
+    throw Object.assign(new Error("Preencha nome completo, patente e ID antes de confirmar."), { statusCode: 400 });
+  }
+  next.identificationCompletedAt = shouldConfirm ? now : completed ? next.identificationCompletedAt : null;
+  await collections.courseExamAttempts.updateOne(
+    { _id: attemptId, ...scope(botId, guildId), status: "in_progress" },
+    {
+      $set: {
+        studentIdentification: next,
+        identificationConfirmedAt: shouldConfirm ? now : attempt.identificationConfirmedAt ?? null,
+        updatedAt: now
+      }
+    }
+  );
+  await logCourseAction(botId, guildId, shouldConfirm ? "course.exam_identification_confirmed" : "course.exam_identification_saved", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId });
+  const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
+  return updated ? mapAttempt(updated) : null;
+}
+
 export async function getCourseExamAttemptByChannel(botId: string | null, guildId: string, channelId: string) {
   const { courseExamAttempts } = await getMongoCollections();
   const attempt = await courseExamAttempts.findOne({ ...scope(botId, guildId), channelId }, { sort: { updatedAt: -1 } });
@@ -278,23 +360,36 @@ export async function getCourseExamAttemptBundle(botId: string | null, guildId: 
   return attempt ? { answers: answers.map(mapAnswer), attempt: mapAttempt(attempt), questions: attemptQuestions(attempt).map(mapQuestion) } : null;
 }
 
-export async function saveCourseExamAnswer(botId: string | null, guildId: string, attemptId: string, input: { questionId?: string | null; questionIndex?: number | null; selectedAlternativeId?: string | null; writtenAnswer?: string | null }) {
+export async function saveCourseExamAnswer(botId: string | null, guildId: string, attemptId: string, input: { questionId?: string | null; questionIndex?: number | null; selectedAlternativeId?: string | null; selectedAlternativeIds?: string[] | null; writtenAnswer?: string | null }) {
   const collections = await getMongoCollections();
   const attempt = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" });
   if (!attempt) return null;
+  if (!attempt.identificationConfirmedAt) return null;
+  const examSettings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
+    ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
+  if (!isExamReleased(examSettings)) return null;
   const questions = attemptQuestions(attempt);
   const questionIndex = Number.isInteger(input.questionIndex) ? Number(input.questionIndex) : attempt.currentQuestionIndex;
   if (questionIndex !== attempt.currentQuestionIndex) return null;
   const question = questions[questionIndex];
   if (!question) return null;
   if (input.questionId && input.questionId !== question._id) return null;
+  const selectedAlternativeIds = question.type === "multiple"
+    ? normalizeCorrectList(input.selectedAlternativeIds ?? input.selectedAlternativeId)
+    : [];
   const selectedAlternativeId = question.type === "selection" ? normalizeCorrect(input.selectedAlternativeId) : null;
   const selectedAlternative = question.alternatives.find((alternative) => alternative.id === selectedAlternativeId);
+  const selectedAlternatives = question.type === "multiple" ? question.alternatives.filter((alternative) => selectedAlternativeIds.includes(alternative.id)) : [];
   if (question.type === "selection" && !selectedAlternative) return null;
+  if (question.type === "multiple" && (!selectedAlternativeIds.length || selectedAlternativeIds.length !== selectedAlternatives.length)) return null;
   const writtenAnswer = question.type === "written" ? input.writtenAnswer?.trim().slice(0, 3000) || "" : null;
   if (question.type === "written" && !writtenAnswer) return null;
-  const correct = question.type === "selection" ? Boolean(selectedAlternative?.isCorrect ?? selectedAlternativeId === question.correctAlternativeId) : null;
-  const pointsEarned = question.type === "selection" ? Math.max(0, Number(selectedAlternative?.score ?? (correct ? question.points : 0)) || 0) : 0;
+  const correct = question.type === "selection"
+    ? Boolean(selectedAlternative?.isCorrect ?? selectedAlternativeId === question.correctAlternativeId)
+    : question.type === "multiple"
+      ? sameSet(selectedAlternativeIds, correctIds(question))
+      : null;
+  const pointsEarned = question.type === "selection" || question.type === "multiple" ? (correct ? question.points : 0) : 0;
   const now = new Date();
   const doc: MongoCourseExamAnswer = {
     _id: randomUUID(),
@@ -307,8 +402,9 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
     questionText: question.prompt,
     type: question.type,
     selectedAlternativeId,
-    selectedAlternativeText: selectedAlternative?.text ?? null,
-    alternativesSnapshot: question.type === "selection" ? question.alternatives : [],
+    selectedAlternativeIds,
+    selectedAlternativeText: question.type === "multiple" ? selectedAlternatives.map((item) => item.text).join("; ") : selectedAlternative?.text ?? null,
+    alternativesSnapshot: question.type === "selection" || question.type === "multiple" ? question.alternatives : [],
     writtenAnswer,
     correct,
     pointsEarned,
@@ -332,26 +428,47 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
     collections.courseExamAnswers.find({ ...scope(botId, guildId), attemptId }).toArray()
   ]);
   if (!attempt) return null;
+  const examSettings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
+    ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
   const relevantQuestions = attemptQuestions(attempt);
   if (!relevantQuestions.length) return null;
   const answeredQuestionIds = new Set(answers.map((answer) => answer.questionId));
   if (!relevantQuestions.every((question) => answeredQuestionIds.has(question._id))) return null;
   const maxScore = relevantQuestions.reduce((total, question) => total + question.points, 0);
-  const score = answers.filter((answer) => answer.type === "selection").reduce((total, answer) => total + answer.pointsEarned, 0);
-  const objectiveCorrect = answers.filter((answer) => answer.type === "selection" && answer.correct === true).length;
-  const objectiveWrong = answers.filter((answer) => answer.type === "selection" && answer.correct === false).length;
+  const score = answers.filter((answer) => answer.type === "selection" || answer.type === "multiple").reduce((total, answer) => total + answer.pointsEarned, 0);
+  const objectiveCorrect = answers.filter((answer) => (answer.type === "selection" || answer.type === "multiple") && answer.correct === true).length;
+  const objectiveWrong = answers.filter((answer) => (answer.type === "selection" || answer.type === "multiple") && answer.correct === false).length;
   const writtenCount = answers.filter((answer) => answer.type === "written").length;
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
+  const automaticResult = examSettings?.automaticApproval && writtenCount === 0
+    ? (percent >= Number(examSettings.minScore ?? 0) ? "approved" as const : "rejected" as const)
+    : null;
+  const nextStatus = automaticResult ?? "awaiting_review";
   const now = new Date();
   const updatedStatus = await collections.courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" }, {
-    $set: { automaticScore: score, finishedAt: now, maxScore, objectiveCorrect, objectiveWrong, percent, score, status: "awaiting_review", updatedAt: now, writtenCount }
+    $set: {
+      automaticScore: score,
+      correctedAt: automaticResult ? now : null,
+      correctedBy: automaticResult ? "automatic" : null,
+      finalScore: automaticResult ? score : null,
+      finishedAt: now,
+      maxScore,
+      objectiveCorrect,
+      objectiveWrong,
+      percent,
+      result: automaticResult,
+      score,
+      status: nextStatus,
+      updatedAt: now,
+      writtenCount
+    }
   });
   if (updatedStatus.matchedCount === 0) return null;
   const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
   await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score });
   await collections.courseEnrollments.updateOne(
     { ...scope(botId, guildId), publicationId: attempt.publicationId, studentId: attempt.studentId },
-    { $set: { examStatus: "COMPLETED", attemptId, examChannelId: attempt.channelId, score, correctAnswers: objectiveCorrect, completedAt: now, updatedAt: now } }
+    { $set: { examStatus: automaticResult === "approved" ? "APPROVED" : automaticResult === "rejected" ? "FAILED" : "COMPLETED", attemptId, examChannelId: attempt.channelId, score, correctAnswers: objectiveCorrect, completedAt: now, result: automaticResult, updatedAt: now } }
   );
   emitRealtime("courses:publication", { botId, guildId, publicationId: attempt.publicationId });
   return updated ? { answers: answers.map(mapAnswer), attempt: mapAttempt(updated), questions: relevantQuestions.map(mapQuestion) } : null;
@@ -415,6 +532,13 @@ function mapSettings(settings: MongoCourseExamSettings) {
     manualQuestionMaxScore: settings.manualQuestionMaxScore ?? 10,
     manualApproval: settings.manualApproval ?? true,
     automaticApproval: settings.automaticApproval ?? false,
+    releaseMode: settings.releaseMode ?? DEFAULT_RELEASE_MODE,
+    releaseAt: settings.releaseAt?.toISOString() ?? null,
+    attemptLimit: settings.attemptLimit ?? null,
+    allowAnswerChange: settings.allowAnswerChange ?? false,
+    showAnswersAfterExam: settings.showAnswersAfterExam ?? false,
+    version: settings.version ?? 1,
+    examKey: settings.examKey ?? null,
     externalLinkEnabled: settings.externalLinkEnabled ?? false,
     externalLinkText: settings.externalLinkText ?? DEFAULT_EXTERNAL_LINK_TEXT,
     externalLinkUrl: settings.externalLinkUrl ?? null,
@@ -440,6 +564,7 @@ function mapQuestion(question: MongoCourseExamQuestion) {
     points: question.points,
     alternatives: question.alternatives,
     correctAlternativeId: question.correctAlternativeId,
+    correctAlternativeIds: question.correctAlternativeIds ?? correctIds(question),
     placeholder: question.placeholder,
     active: question.active,
     createdAt: question.createdAt.toISOString(),
@@ -460,6 +585,14 @@ function mapAttempt(attempt: MongoCourseExamAttempt) {
     studentId: attempt.studentId,
     instructorId: attempt.instructorId,
     status: attempt.status,
+    examVersion: attempt.examVersion ?? 1,
+    attemptNumber: attempt.attemptNumber ?? 1,
+    studentIdentification: attempt.studentIdentification ? {
+      ...attempt.studentIdentification,
+      startedAt: attempt.studentIdentification.startedAt.toISOString(),
+      identificationCompletedAt: attempt.studentIdentification.identificationCompletedAt?.toISOString() ?? null
+    } : null,
+    identificationConfirmedAt: attempt.identificationConfirmedAt?.toISOString() ?? null,
     startedAt: attempt.startedAt.toISOString(),
     finishedAt: attempt.finishedAt?.toISOString() ?? null,
     correctedAt: attempt.correctedAt?.toISOString() ?? null,
@@ -494,6 +627,7 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
     questionText: answer.questionText ?? null,
     type: answer.type,
     selectedAlternativeId: answer.selectedAlternativeId,
+    selectedAlternativeIds: answer.selectedAlternativeIds ?? (answer.selectedAlternativeId ? [answer.selectedAlternativeId] : []),
     selectedAlternativeText: answer.selectedAlternativeText ?? null,
     alternativesSnapshot: answer.alternativesSnapshot ?? [],
     writtenAnswer: answer.writtenAnswer,
@@ -504,8 +638,8 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
   };
 }
 
-function cleanSettings(input: Partial<CourseExamSettingsDto>) {
-  const patch: Partial<CourseExamSettingsDto> = { ...input };
+async function cleanSettings(botId: string | null, guildId: string, courseId: string, input: Partial<CourseExamSettingsDto>) {
+  const patch: Record<string, unknown> = { ...input };
   if ("correctionChannelId" in input) patch.correctionChannelId = input.correctionChannelId || null;
   if ("resultChannelId" in input) patch.resultChannelId = input.resultChannelId || null;
   if ("temporaryCategoryId" in input) patch.temporaryCategoryId = input.temporaryCategoryId || null;
@@ -515,6 +649,20 @@ function cleanSettings(input: Partial<CourseExamSettingsDto>) {
   if ("manualQuestionMaxScore" in input) patch.manualQuestionMaxScore = Math.max(0, Number(input.manualQuestionMaxScore ?? 10));
   if ("manualApproval" in input) patch.manualApproval = input.manualApproval ?? true;
   if ("automaticApproval" in input) patch.automaticApproval = input.automaticApproval ?? false;
+  if ("releaseMode" in input) patch.releaseMode = input.releaseMode === "scheduled" || input.releaseMode === "instructor" ? input.releaseMode : "immediate";
+  if ("releaseAt" in input) {
+    const releaseAt = input.releaseAt ? new Date(input.releaseAt) : null;
+    patch.releaseAt = releaseAt && !Number.isNaN(releaseAt.getTime()) ? releaseAt : null;
+  }
+  if ("attemptLimit" in input) patch.attemptLimit = input.attemptLimit ? Math.max(1, Math.min(20, Number(input.attemptLimit))) : null;
+  if ("allowAnswerChange" in input) patch.allowAnswerChange = input.allowAnswerChange === true;
+  if ("showAnswersAfterExam" in input) patch.showAnswersAfterExam = input.showAnswersAfterExam === true;
+  if ("version" in input) patch.version = Math.max(1, Number(input.version ?? 1) || 1);
+  if ("examKey" in input) patch.examKey = input.examKey?.trim().slice(0, 120) || null;
+  if (input.enabled === true) {
+    const validation = await validateCourseExamActivation(botId, guildId, courseId, patch);
+    if (!validation.ok) throw Object.assign(new Error(validation.errors[0] ?? "Não é possível ativar esta prova."), { statusCode: 400 });
+  }
   if ("externalLinkEnabled" in input) patch.externalLinkEnabled = input.externalLinkEnabled === true;
   if ("externalLinkText" in input) patch.externalLinkText = input.externalLinkText?.trim().slice(0, 80) || DEFAULT_EXTERNAL_LINK_TEXT;
   if ("externalLinkUrl" in input) patch.externalLinkUrl = sanitizeExternalUrl(input.externalLinkUrl);
@@ -523,7 +671,7 @@ function cleanSettings(input: Partial<CourseExamSettingsDto>) {
   return patch;
 }
 
-function normalizeAlternatives(value: unknown, type: "selection" | "written") {
+function normalizeAlternatives(value: unknown, type: MongoCourseExamQuestion["type"]) {
   if (type === "written") return [];
   const source = Array.isArray(value) ? value : [];
   return source
@@ -548,6 +696,117 @@ function normalizeCorrect(value: unknown): string | null {
   return normalized ? normalized.slice(0, 80) : null;
 }
 
+function normalizeCorrectList(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  return [...new Set(source.flatMap((item) => {
+    if (typeof item === "string") return [item.trim()];
+    const option = item as { id?: unknown; isCorrect?: unknown };
+    return option.isCorrect === true ? [String(option.id ?? "").trim()] : [];
+  }).filter(Boolean).map((item) => item.slice(0, 80)))];
+}
+
+function normalizeQuestionType(value: unknown): MongoCourseExamQuestion["type"] {
+  return value === "written" || value === "multiple" ? value : "selection";
+}
+
+function correctIds(question: Pick<MongoCourseExamQuestion, "alternatives" | "correctAlternativeId" | "correctAlternativeIds">) {
+  const fromList = question.correctAlternativeIds?.filter(Boolean) ?? [];
+  if (fromList.length) return [...new Set(fromList)];
+  const fromAlternatives = question.alternatives.filter((alternative) => alternative.isCorrect).map((alternative) => alternative.id);
+  if (fromAlternatives.length) return [...new Set(fromAlternatives)];
+  return question.correctAlternativeId ? [question.correctAlternativeId] : [];
+}
+
+function sameSet(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const expected = new Set(right);
+  return left.every((item) => expected.has(item));
+}
+
+function isExamReleased(settings: Pick<MongoCourseExamSettings, "releaseMode" | "releaseAt"> | null | undefined) {
+  if (!settings) return true;
+  if (settings.releaseMode === "instructor") return false;
+  if (settings.releaseMode === "scheduled" && settings.releaseAt && settings.releaseAt.getTime() > Date.now()) return false;
+  return true;
+}
+
+function normalizeText(value: string | null | undefined, maxLength: number) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function normalizeNullableText(value: string | null | undefined, maxLength: number) {
+  const normalized = normalizeText(value, maxLength);
+  return normalized || null;
+}
+
+function normalizeFullName(value: string | null | undefined) {
+  const normalized = normalizeText(value, 120);
+  if (normalized.length < 3) throw Object.assign(new Error("Nome completo RP deve ter pelo menos 3 caracteres."), { statusCode: 400 });
+  return normalized;
+}
+
+function normalizeRpId(value: string | null | undefined) {
+  const normalized = String(value ?? "").replace(/\s+/g, "");
+  if (!/^\d+$/.test(normalized)) throw Object.assign(new Error("ID RP deve conter apenas números."), { statusCode: 400 });
+  return normalized.slice(0, 32);
+}
+
+function normalizeRank(value: StudentRank | null | undefined) {
+  return value === "CADET" || value === "OFFICER" || value === "SENIOR_OFFICER" ? value : null;
+}
+
+async function validateCourseExamActivation(botId: string | null, guildId: string, courseId: string, settingsPatch: Record<string, unknown>) {
+  const collections = await getMongoCollections();
+  const [settings, course, questions] = await Promise.all([
+    collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId }),
+    collections.courses.findOne({ _id: courseId, ...scope(botId, guildId) }),
+    collections.courseExamQuestions.find({ ...scope(botId, guildId), courseId, active: true }).sort({ order: 1, createdAt: 1 }).toArray()
+  ]);
+  const merged = { ...(settings ? mapSettings(settings) : {}), ...settingsPatch } as Partial<CourseExamSettingsDto>;
+  const errors: string[] = [];
+  if (!course) errors.push("Curso não encontrado.");
+  if (!questions.length) errors.push("A prova precisa ter pelo menos 1 pergunta ativa configurada.");
+  if (!Number(merged.minScore)) errors.push("Nota mínima não configurada.");
+  if (!merged.logChannelId && !merged.correctionChannelId) errors.push("Canal de logs ou correção não configurado.");
+  const orders = new Set<number>();
+  questions.forEach((question, index) => {
+    const label = `Questão ${String(question.questionNumber ?? index + 1).padStart(2, "0")}`;
+    if (!question.prompt.trim()) errors.push(`${label} sem enunciado configurado.`);
+    if (orders.has(question.order)) errors.push(`${label} possui ordem duplicada.`);
+    orders.add(question.order);
+    if (!question.points || question.points <= 0) errors.push(`${label} sem pontuação configurada.`);
+    if (question.type !== "written") {
+      if (question.alternatives.length < 2) errors.push(`${label} precisa ter pelo menos duas alternativas.`);
+      question.alternatives.forEach((alternative) => {
+        if (!alternative.text.trim()) errors.push(`${label} possui alternativa ${alternative.id} sem texto.`);
+        if (isIncompleteAlternativeText(alternative.text)) errors.push(`${label} possui alternativa ${alternative.id} incompleta.`);
+      });
+      const duplicateAlternative = hasDuplicate(question.alternatives.map((item) => item.text.toLowerCase().trim()));
+      if (duplicateAlternative) errors.push(`${label} possui alternativas duplicadas.`);
+      if (!correctIds(question).length) errors.push(`${label} sem gabarito configurado.`);
+    }
+  });
+  return { ok: errors.length === 0, errors };
+}
+
+function hasDuplicate(values: string[]) {
+  const seen = new Set<string>();
+  for (const value of values.filter(Boolean)) {
+    if (seen.has(value)) return true;
+    seen.add(value);
+  }
+  return false;
+}
+
+function isIncompleteAlternativeText(value: string) {
+  const normalized = value.trim();
+  return normalized.endsWith("...") || normalized.includes("[incomplet") || normalized.includes("INCOMPLET");
+}
+
 function normalizeQuestionSnapshot(value: unknown): MongoCourseExamQuestion[] {
   const source = Array.isArray(value) ? value : [];
   const normalized: MongoCourseExamQuestion[] = [];
@@ -555,7 +814,7 @@ function normalizeQuestionSnapshot(value: unknown): MongoCourseExamQuestion[] {
     const question = item as Partial<CourseExamQuestionDto> & Partial<MongoCourseExamQuestion> & { id?: string };
     const id = String(question.id ?? question._id ?? "").trim();
     const prompt = String(question.prompt ?? "").trim();
-    const type = question.type === "written" ? "written" : "selection";
+    const type = normalizeQuestionType(question.type);
     if (!id || !prompt) return;
     const now = new Date();
     normalized.push({
@@ -564,6 +823,7 @@ function normalizeQuestionSnapshot(value: unknown): MongoCourseExamQuestion[] {
       alternatives: normalizeAlternatives(question.alternatives, type),
       botId: question.botId ?? null,
       correctAlternativeId: type === "written" ? null : normalizeCorrect(question.correctAlternativeId),
+      correctAlternativeIds: type === "multiple" ? normalizeCorrectList(question.correctAlternativeIds ?? question.alternatives) : [],
       courseId: String(question.courseId ?? ""),
       createdAt: question.createdAt ? new Date(question.createdAt) : now,
       description: question.description ?? null,

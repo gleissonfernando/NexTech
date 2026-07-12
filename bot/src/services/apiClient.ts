@@ -69,7 +69,8 @@ export type TranscriptCreateResult = {
 
 export type SystemEmojiRuntimeConfig = {
   botId: string | null;
-  definitions: Array<{ key: string; name: string; fallback: string; label: string; description: string }>;
+  guildId?: string | null;
+  definitions: Array<{ key: string; name: string; aliases?: string[]; fallback: string; label: string; description: string }>;
   emojis: Array<{
     key: string;
     name: string;
@@ -78,11 +79,14 @@ export type SystemEmojiRuntimeConfig = {
     sourceGuildId: string | null;
     enabled: boolean;
     fallback: string;
-    scope: "global" | "bot" | "default";
+    guildId?: string | null;
+    scope: "global" | "bot" | "guild" | "default";
   }>;
 };
 
 export type SystemEmojiValidationPayload = {
+  extraEmojiNames?: string[];
+  guildId?: string | null;
   emojis: Array<{
     key: string;
     name?: string | null;
@@ -275,6 +279,13 @@ export type CourseExamSettings = {
   manualQuestionMaxScore: number;
   manualApproval: boolean;
   automaticApproval: boolean;
+  releaseMode: "immediate" | "scheduled" | "instructor";
+  releaseAt: string | null;
+  attemptLimit: number | null;
+  allowAnswerChange: boolean;
+  showAnswersAfterExam: boolean;
+  version: number;
+  examKey: string | null;
   externalLinkEnabled: boolean;
   externalLinkText: string;
   externalLinkUrl: string | null;
@@ -291,13 +302,14 @@ export type CourseExamQuestion = {
   courseId: string;
   order: number;
   questionNumber: number;
-  type: "selection" | "written";
+  type: "selection" | "multiple" | "written";
   prompt: string;
   title: string;
   description: string | null;
   points: number;
   alternatives: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   correctAlternativeId: string | null;
+  correctAlternativeIds: string[];
   placeholder: string | null;
   active: boolean;
   createdAt: string;
@@ -316,6 +328,25 @@ export type CourseExamAttempt = {
   studentId: string;
   instructorId: string;
   status: "in_progress" | "finished" | "approved" | "rejected" | "awaiting_review" | "manual_reviewed";
+  examVersion: number;
+  attemptNumber: number;
+  studentIdentification: {
+    discordUserId: string;
+    discordUsername: string;
+    discordDisplayName: string;
+    guildNickname: string | null;
+    rpFullName: string;
+    currentRank: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null;
+    rpId: string;
+    guildId: string;
+    courseId: string;
+    examId: string;
+    attemptId: string;
+    temporaryChannelId: string;
+    startedAt: string;
+    identificationCompletedAt: string | null;
+  } | null;
+  identificationConfirmedAt: string | null;
   startedAt: string;
   finishedAt: string | null;
   correctedAt: string | null;
@@ -346,8 +377,9 @@ export type CourseExamAnswer = {
   questionId: string;
   questionOrder: number;
   questionText: string | null;
-  type: "selection" | "written";
+  type: "selection" | "multiple" | "written";
   selectedAlternativeId: string | null;
+  selectedAlternativeIds: string[];
   selectedAlternativeText: string | null;
   alternativesSnapshot: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   writtenAnswer: string | null;
@@ -2190,7 +2222,20 @@ export class ApiClient {
     return data;
   }
 
-  async saveCourseExamAnswer(guildId: string, attemptId: string, input: { questionId?: string | null; questionIndex?: number | null; selectedAlternativeId?: string | null; writtenAnswer?: string | null }) {
+  async updateCourseExamIdentification(guildId: string, attemptId: string, input: {
+    discordUsername?: string | null;
+    discordDisplayName?: string | null;
+    guildNickname?: string | null;
+    rpFullName?: string | null;
+    currentRank?: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null;
+    rpId?: string | null;
+    confirm?: boolean;
+  }) {
+    const { data } = await this.http.patch<{ attempt: CourseExamAttempt }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/identification`, input);
+    return data.attempt;
+  }
+
+  async saveCourseExamAnswer(guildId: string, attemptId: string, input: { questionId?: string | null; questionIndex?: number | null; selectedAlternativeId?: string | null; selectedAlternativeIds?: string[] | null; writtenAnswer?: string | null }) {
     const { data } = await this.http.post<{ answer: CourseExamAnswer }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/answers`, input);
     return data.answer;
   }

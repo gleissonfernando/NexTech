@@ -700,7 +700,7 @@ async function publishFivemFacPanel(client: Client, context: BotContext, guildId
 
   assertPanelChannelPermissions(channel, client, "FAC", { requirePinMessages: false });
 
-  const payload = buildPanelPayload(settings);
+  const payload = buildPanelPayload(settings, guild);
   let messageId: string | null = settings.panelMessageId ?? null;
 
   if (settings.panelMessageId) {
@@ -760,7 +760,7 @@ async function createAbsenceChannel(guild: Guild, settings: FivemFacSettings, ab
     reason: "Canal privado para solicitacao de ausencia FAC",
     type: ChannelType.GuildText
   });
-  const message = await channel.send(buildAbsenceReviewPayload(absence));
+  const message = await channel.send(buildAbsenceReviewPayload(absence, channel.guild));
 
   return {
     channel,
@@ -911,7 +911,7 @@ async function removeAbsenceRole(guild: Guild, settings: FivemFacSettings, absen
 
 async function updateAbsenceMessage(interaction: ButtonInteraction | ModalSubmitInteraction, settings: FivemFacSettings, absence: FivemFacAbsence) {
   if (interaction.isMessageComponent() && interaction.message.editable) {
-    await interaction.message.edit(buildAbsenceReviewPayload(absence)).catch(() => null);
+    await interaction.message.edit(buildAbsenceReviewPayload(absence, interaction.guild)).catch(() => null);
     return;
   }
 
@@ -932,7 +932,7 @@ async function updateStoredAbsenceMessage(guild: Guild, absence: FivemFacAbsence
   }
 
   const message = await channel.messages.fetch(absence.requestMessageId).catch(() => null);
-  await message?.edit(buildAbsenceReviewPayload(absence)).catch(() => null);
+  await message?.edit(buildAbsenceReviewPayload(absence, guild)).catch(() => null);
 }
 
 async function updateFivemFacAbsenceMessage(client: Client, absence: FivemFacAbsence) {
@@ -998,19 +998,19 @@ async function notifyAbsenceUser(guild: Guild, absence: FivemFacAbsence, message
   }
 }
 
-function buildPanelPayload(settings: FivemFacSettings) {
+function buildPanelPayload(settings: FivemFacSettings, guild: Guild | null = null) {
   const panelComponents: Array<Record<string, unknown>> = [
     {
       type: 10,
       content: [
-        `# ${settings.messages.panelTitle || `${systemEmojiText("calendario")} Sistema de Ausências FAC`}`,
+        `# ${settings.messages.panelTitle || `${systemEmojiText("calendario", guild)} Sistema de Ausências FAC`}`,
         settings.messages.panelDescription || "Solicite sua ausência de forma organizada. A equipe recebe o pedido em um canal privado, avalia o motivo e o sistema aplica ou remove o cargo automaticamente quando chegar a data correta.",
         "",
         "### Como funciona",
-        `${systemEmojiText("prancheta_caneta")} **Solicitação:** informe a data de retorno e o motivo.`,
-        `${systemEmojiText("prancheta_acertos")} **Análise:** a staff aprova ou reprova pelo painel interno.`,
-        `${systemEmojiText("homem")} **Cargo:** aplicado somente após aprovação.`,
-        `${systemEmojiText("relogio")} **Retorno:** removido automaticamente ao fim da ausência.`
+        `${systemEmojiText("prancheta_caneta", guild)} **Solicitação:** informe a data de retorno e o motivo.`,
+        `${systemEmojiText("prancheta_acertos", guild)} **Análise:** a staff aprova ou reprova pelo painel interno.`,
+        `${systemEmojiText("homem", guild)} **Cargo:** aplicado somente após aprovação.`,
+        `${systemEmojiText("relogio", guild)} **Retorno:** removido automaticamente ao fim da ausência.`
       ].join("\n")
     }
   ];
@@ -1025,12 +1025,12 @@ function buildPanelPayload(settings: FivemFacSettings) {
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(REQUEST_BUTTON_ID)
-          .setEmoji(systemComponentEmoji("calendario"))
+          .setEmoji(systemComponentEmoji("calendario", guild))
           .setLabel("Solicitar ausência")
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId(MINE_BUTTON_ID)
-          .setEmoji(systemComponentEmoji("prancheta"))
+          .setEmoji(systemComponentEmoji("prancheta", guild))
           .setLabel("Minhas ausências")
           .setStyle(ButtonStyle.Secondary)
       )
@@ -1106,13 +1106,13 @@ function facLogPayload(input: { absence: FivemFacAbsence | null; actorId: string
   };
 }
 
-function buildAbsenceReviewPayload(absence: FivemFacAbsence) {
+function buildAbsenceReviewPayload(absence: FivemFacAbsence, guild: Guild | null = null) {
   const photoUrl = toPublicImageUrl(absence.photoUrl);
   const components: Array<Record<string, unknown>> = [
     {
       type: 10,
       content: [
-        `# ${statusEmoji(absence.status)} Solicitação de Ausência`,
+        `# ${statusEmoji(absence.status, guild)} Solicitação de Ausência`,
         `**Usuário:** <@${absence.userId}>`,
         `**Status:** ${statusLabel(absence.status)}`,
         `**Período:** ${formatDateOnly(absence.startDate)} até ${formatDateOnly(absence.endDate)}`,
@@ -1143,19 +1143,19 @@ function buildAbsenceReviewPayload(absence: FivemFacAbsence) {
         new ButtonBuilder()
           .setCustomId(`${APPROVE_PREFIX}:${absence.id}`)
           .setDisabled(!pending)
-          .setEmoji(systemComponentEmoji("visto"))
+          .setEmoji(systemComponentEmoji("visto", guild))
           .setLabel("Aprovar")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(`${REJECT_PREFIX}:${absence.id}`)
           .setDisabled(!pending)
-          .setEmoji(systemComponentEmoji("exclamacao"))
+          .setEmoji(systemComponentEmoji("exclamacao", guild))
           .setLabel("Reprovar")
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId(`${CLOSE_PREFIX}:${absence.id}`)
           .setDisabled(closed)
-          .setEmoji(systemComponentEmoji("porta"))
+          .setEmoji(systemComponentEmoji("porta", guild))
           .setLabel("Encerrar")
           .setStyle(ButtonStyle.Secondary)
       )
@@ -1404,14 +1404,14 @@ function statusColor(status: FivemFacAbsence["status"]) {
   return colors[status];
 }
 
-function statusEmoji(status: FivemFacAbsence["status"]) {
+function statusEmoji(status: FivemFacAbsence["status"], guild: Guild | null = null) {
   const emojis: Record<FivemFacAbsence["status"], string> = {
-    active: systemStatusEmoji("active"),
-    approved: systemStatusEmoji("success"),
-    closed: systemComponentEmoji("porta"),
-    finished: systemStatusEmoji("success"),
-    pending: systemStatusEmoji("pending"),
-    rejected: systemStatusEmoji("danger")
+    active: systemStatusEmoji("active", guild),
+    approved: systemStatusEmoji("success", guild),
+    closed: systemComponentEmoji("porta", guild),
+    finished: systemStatusEmoji("success", guild),
+    pending: systemStatusEmoji("pending", guild),
+    rejected: systemStatusEmoji("danger", guild)
   };
 
   return emojis[status];

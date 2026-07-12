@@ -1031,6 +1031,13 @@ export type CourseExamSettings = {
   manualQuestionMaxScore: number;
   manualApproval: boolean;
   automaticApproval: boolean;
+  releaseMode: "immediate" | "scheduled" | "instructor";
+  releaseAt: string | null;
+  attemptLimit: number | null;
+  allowAnswerChange: boolean;
+  showAnswersAfterExam: boolean;
+  version: number;
+  examKey: string | null;
   externalLinkEnabled: boolean;
   externalLinkText: string;
   externalLinkUrl: string | null;
@@ -1047,13 +1054,14 @@ export type CourseExamQuestion = {
   courseId: string;
   order: number;
   questionNumber: number;
-  type: "selection" | "written";
+  type: "selection" | "multiple" | "written";
   prompt: string;
   title: string;
   description: string | null;
   points: number;
   alternatives: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   correctAlternativeId: string | null;
+  correctAlternativeIds: string[];
   placeholder: string | null;
   active: boolean;
   createdAt: string;
@@ -1071,6 +1079,25 @@ export type CourseExamAttempt = {
   studentId: string;
   instructorId: string;
   status: "in_progress" | "finished" | "approved" | "rejected" | "awaiting_review" | "manual_reviewed";
+  examVersion?: number;
+  attemptNumber?: number;
+  studentIdentification?: {
+    discordUserId: string;
+    discordUsername: string;
+    discordDisplayName: string;
+    guildNickname: string | null;
+    rpFullName: string;
+    currentRank: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null;
+    rpId: string;
+    guildId: string;
+    courseId: string;
+    examId: string;
+    attemptId: string;
+    temporaryChannelId: string;
+    startedAt: string;
+    identificationCompletedAt: string | null;
+  } | null;
+  identificationConfirmedAt?: string | null;
   startedAt: string;
   finishedAt: string | null;
   correctedAt: string | null;
@@ -1128,7 +1155,7 @@ export type CoursesDashboard = {
 export type SaveCourseSettingsPayload = Partial<Omit<CourseSettings, "id" | "botId" | "guildId" | "updatedAt">>;
 export type SaveCoursePayload = Partial<Omit<Course, "id" | "botId" | "guildId" | "createdAt" | "updatedAt">> & { name: string };
 export type SaveCourseExamSettingsPayload = Partial<Omit<CourseExamSettings, "id" | "botId" | "guildId" | "courseId" | "updatedAt">>;
-export type SaveCourseExamQuestionPayload = Partial<Omit<CourseExamQuestion, "id" | "botId" | "guildId" | "courseId" | "createdAt" | "updatedAt">> & { prompt: string; type: "selection" | "written" };
+export type SaveCourseExamQuestionPayload = Partial<Omit<CourseExamQuestion, "id" | "botId" | "guildId" | "courseId" | "createdAt" | "updatedAt">> & { prompt: string; type: "selection" | "multiple" | "written" };
 
 export type RhAdminSettings = {
   id: string;
@@ -3235,6 +3262,7 @@ export type DatabaseMaintenanceModuleOption = {
 export type SystemEmojiDefinition = {
   key: string;
   name: string;
+  aliases?: string[];
   fallback: string;
   label: string;
   description: string;
@@ -3248,8 +3276,10 @@ export type SystemEmojiConfig = {
   sourceGuildId: string | null;
   enabled: boolean;
   fallback: string;
-  scope: "global" | "bot" | "default";
+  extraEmojiNames: string[];
+  scope: "global" | "bot" | "guild" | "default";
   botId: string | null;
+  guildId: string | null;
   preview: string;
   found: boolean;
   missing: boolean;
@@ -3263,6 +3293,7 @@ export type SystemEmojiConfig = {
 
 export type SystemEmojiDashboard = {
   botId: string | null;
+  guildId: string | null;
   definitions: SystemEmojiDefinition[];
   emojis: SystemEmojiConfig[];
   summary: {
@@ -3271,7 +3302,9 @@ export type SystemEmojiDashboard = {
     found: number;
     missing: number;
     disabled: number;
+    extras: number;
     fallbacks: number;
+    lastSyncAt: string | null;
   };
 };
 
@@ -3281,6 +3314,7 @@ export type SaveSystemEmojiPayload = {
   emojiId?: string | null;
   enabled?: boolean;
   fallback?: string | null;
+  guildId?: string | null;
   name?: string | null;
   sourceGuildId?: string | null;
 };

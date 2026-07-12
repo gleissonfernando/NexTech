@@ -1,5 +1,6 @@
 import { getMongoCollections, type MongoSystemEmoji } from "../database/mongo";
 import {
+  FIXED_SYSTEM_EMOJI_BY_KEY,
   isSystemEmojiKey,
   SYSTEM_EMOJI_BY_KEY,
   SYSTEM_EMOJIS,
@@ -14,8 +15,9 @@ export type SystemEmojiDto = {
   sourceGuildId: string | null;
   enabled: boolean;
   fallback: string;
-  scope: "global" | "bot" | "default";
+  scope: "global" | "bot" | "guild" | "default";
   botId: string | null;
+  guildId: string | null;
   preview: string;
   found: boolean;
   missing: boolean;
@@ -25,10 +27,12 @@ export type SystemEmojiDto = {
   lastValidatedAt: string | null;
   label: string;
   description: string;
+  extraEmojiNames: string[];
 };
 
 export type SystemEmojiDashboard = {
   botId: string | null;
+  guildId: string | null;
   definitions: typeof SYSTEM_EMOJIS;
   emojis: SystemEmojiDto[];
   summary: {
@@ -37,7 +41,9 @@ export type SystemEmojiDashboard = {
     found: number;
     missing: number;
     disabled: number;
+    extras: number;
     fallbacks: number;
+    lastSyncAt: string | null;
   };
 };
 
@@ -52,6 +58,8 @@ type UpdateSystemEmojiInput = {
 
 type ValidationInput = {
   botId: string | null;
+  guildId?: string | null;
+  extraEmojiNames?: string[];
   emojis: Array<{
     key: string;
     name?: string | null;
@@ -62,30 +70,41 @@ type ValidationInput = {
   }>;
 };
 
-export async function getSystemEmojiDashboard(botId?: string | null): Promise<SystemEmojiDashboard> {
-  const emojis = await listSystemEmojis(botId ?? null);
+export async function getSystemEmojiDashboard(botId?: string | null, guildId?: string | null): Promise<SystemEmojiDashboard> {
+  const normalizedBotId = normalizeBotId(botId);
+  const normalizedGuildId = normalizeGuildId(guildId);
+  const emojis = await listSystemEmojis(normalizedBotId, normalizedGuildId);
+  const extraEmojiNames = [...new Set(emojis.flatMap((item) => item.extraEmojiNames))].sort();
+  const timestamps = emojis
+    .map((item) => item.lastValidatedAt)
+    .filter((item): item is string => Boolean(item))
+    .sort();
   const summary = {
     total: emojis.length,
     configured: emojis.filter((item) => Boolean(item.emojiId)).length,
     found: emojis.filter((item) => item.found).length,
     missing: emojis.filter((item) => item.missing).length,
     disabled: emojis.filter((item) => !item.enabled).length,
-    fallbacks: emojis.filter((item) => !item.emojiId || item.missing || !item.enabled).length
+    extras: extraEmojiNames.length,
+    fallbacks: emojis.filter((item) => !item.emojiId || item.missing || !item.enabled).length,
+    lastSyncAt: timestamps.at(-1) ?? null
   };
 
   return {
-    botId: botId ?? null,
+    botId: normalizedBotId,
+    guildId: normalizedGuildId,
     definitions: SYSTEM_EMOJIS,
     emojis,
     summary
   };
 }
 
-export async function getSystemEmojiRuntimeConfig(botId?: string | null) {
-  const dashboard = await getSystemEmojiDashboard(botId ?? null);
+export async function getSystemEmojiRuntimeConfig(botId?: string | null, guildId?: string | null) {
+  const dashboard = await getSystemEmojiDashboard(botId ?? null, guildId ?? null);
 
   return {
-    botId: botId ?? null,
+    botId: dashboard.botId,
+    guildId: dashboard.guildId,
     definitions: dashboard.definitions,
     emojis: dashboard.emojis.map((item) => ({
       key: item.key,
@@ -95,12 +114,13 @@ export async function getSystemEmojiRuntimeConfig(botId?: string | null) {
       sourceGuildId: item.sourceGuildId,
       enabled: item.enabled,
       fallback: item.fallback,
+      guildId: item.guildId,
       scope: item.scope
     }))
   };
 }
 
-export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEmojiInput, actorId: string | null, botId?: string | null) {
+export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEmojiInput, actorId: string | null, botId?: string | null, guildId?: string | null) {
   if (!isSystemEmojiKey(key)) {
     throw new Error("Emoji do sistema invalido.");
   }
@@ -108,6 +128,7 @@ export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEm
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
   const now = new Date();
   const normalizedBotId = normalizeBotId(botId);
+  const normalizedGuildId = normalizeGuildId(guildId);
   const name = normalizeEmojiName(input.name ?? definition.name);
   const emojiId = normalizeSnowflake(input.emojiId ?? null);
   const sourceGuildId = normalizeSnowflake(input.sourceGuildId ?? null);
@@ -115,7 +136,7 @@ export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEm
   const { systemEmojis } = await getMongoCollections();
 
   await systemEmojis.updateOne(
-    { botId: normalizedBotId, key },
+    { botId: normalizedBotId, guildId: normalizedGuildId, key },
     {
       $set: {
         animated: Boolean(input.animated),
@@ -123,6 +144,7 @@ export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEm
         emojiId,
         enabled: input.enabled ?? true,
         fallback,
+        guildId: normalizedGuildId,
         key,
         name,
         sourceGuildId,
@@ -130,34 +152,38 @@ export async function updateSystemEmojiConfig(key: string, input: UpdateSystemEm
         updatedBy: actorId
       },
       $setOnInsert: {
-        _id: documentId(normalizedBotId, key),
+        _id: documentId(normalizedBotId, normalizedGuildId, key),
         createdAt: now
       }
     },
     { upsert: true }
   );
 
-  return getSystemEmojiDashboard(normalizedBotId);
+  return getSystemEmojiDashboard(normalizedBotId, normalizedGuildId);
 }
 
-export async function resetSystemEmojiConfig(key: string, botId?: string | null) {
+export async function resetSystemEmojiConfig(key: string, botId?: string | null, guildId?: string | null) {
   if (!isSystemEmojiKey(key)) {
     throw new Error("Emoji do sistema invalido.");
   }
 
   const normalizedBotId = normalizeBotId(botId);
+  const normalizedGuildId = normalizeGuildId(guildId);
   const { systemEmojis } = await getMongoCollections();
-  await systemEmojis.deleteOne({ botId: normalizedBotId, key });
-  return getSystemEmojiDashboard(normalizedBotId);
+  await systemEmojis.deleteOne({ botId: normalizedBotId, guildId: normalizedGuildId, key });
+  return getSystemEmojiDashboard(normalizedBotId, normalizedGuildId);
 }
 
-export async function ensureSystemEmojiDefaults(botId?: string | null) {
+export async function ensureSystemEmojiDefaults(botId?: string | null, guildId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
-  return getSystemEmojiDashboard(normalizedBotId);
+  const normalizedGuildId = normalizeGuildId(guildId);
+  return getSystemEmojiDashboard(normalizedBotId, normalizedGuildId);
 }
 
 export async function recordSystemEmojiValidation(input: ValidationInput) {
   const normalizedBotId = normalizeBotId(input.botId);
+  const normalizedGuildId = normalizeGuildId(input.guildId);
+  const extraEmojiNames = [...new Set((input.extraEmojiNames ?? []).map((item) => normalizeExtraEmojiName(item)).filter(Boolean))].sort();
   const now = new Date();
   const { systemEmojis } = await getMongoCollections();
   const operations = input.emojis
@@ -168,13 +194,15 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
       const foundUpdate = item.found ? { lastFoundAt: now, lastMissingAt: null } : { lastMissingAt: now };
 
       return systemEmojis.updateOne(
-        { botId: normalizedBotId, key },
+        { botId: normalizedBotId, guildId: normalizedGuildId, key },
         {
           $set: {
             animated: Boolean(item.animated),
             botId: normalizedBotId,
             enabled: true,
+            extraEmojiNames,
             fallback: definition.fallback,
+            guildId: normalizedGuildId,
             key,
             lastValidatedAt: now,
             lastValidationBotId: normalizedBotId,
@@ -186,7 +214,7 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
             ...foundUpdate
           },
           $setOnInsert: {
-            _id: documentId(normalizedBotId, key),
+            _id: documentId(normalizedBotId, normalizedGuildId, key),
             createdAt: now
           }
         },
@@ -195,55 +223,72 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
     });
 
   await Promise.all(operations);
-  return getSystemEmojiDashboard(normalizedBotId);
+  return getSystemEmojiDashboard(normalizedBotId, normalizedGuildId);
 }
 
-async function listSystemEmojis(botId: string | null) {
+async function listSystemEmojis(botId: string | null, guildId: string | null) {
   const { systemEmojis } = await getMongoCollections();
-  const docs = await systemEmojis.find({ botId: { $in: [null, botId].filter((item) => item !== undefined) as Array<string | null> } }).toArray();
-  const globalDocs = new Map(docs.filter((item) => item.botId === null).map((item) => [item.key, item]));
-  const botDocs = new Map(docs.filter((item) => item.botId === botId && botId !== null).map((item) => [item.key, item]));
+  const docs = await systemEmojis.find({
+    $or: [
+      { botId: null, guildId: null },
+      ...(botId ? [{ botId, guildId: null }] : []),
+      ...(botId && guildId ? [{ botId, guildId }] : []),
+      ...(!botId && guildId ? [{ botId: null, guildId }] : [])
+    ]
+  }).toArray();
+  const globalDocs = new Map(docs.filter((item) => item.botId === null && (item.guildId ?? null) === null).map((item) => [item.key, item]));
+  const botDocs = new Map(docs.filter((item) => item.botId === botId && botId !== null && (item.guildId ?? null) === null).map((item) => [item.key, item]));
+  const guildDocs = new Map(docs.filter((item) => (item.guildId ?? null) === guildId && guildId !== null).map((item) => [item.key, item]));
 
   return SYSTEM_EMOJIS.map((definition) => {
-    const doc = (botDocs.get(definition.key) ?? globalDocs.get(definition.key) ?? null) as MongoSystemEmoji | null;
-    return toDto(definition.key, doc, botId);
+    const doc = (guildDocs.get(definition.key) ?? botDocs.get(definition.key) ?? globalDocs.get(definition.key) ?? null) as MongoSystemEmoji | null;
+    return toDto(definition.key, doc, botId, guildId);
   });
 }
 
-function toDto(key: SystemEmojiKey, doc: MongoSystemEmoji | null, requestedBotId: string | null): SystemEmojiDto {
+function toDto(key: SystemEmojiKey, doc: MongoSystemEmoji | null, requestedBotId: string | null, requestedGuildId: string | null): SystemEmojiDto {
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
-  const name = doc?.name || definition.name;
-  const emojiId = doc?.emojiId || null;
+  const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
+  const name = fixed.name || doc?.name || definition.name;
+  const emojiId = fixed.emojiId || doc?.emojiId || null;
+  const animated = fixed.animated ?? doc?.animated ?? false;
   const enabled = doc?.enabled ?? true;
   const lastMissingAt = doc?.lastMissingAt ?? null;
   const lastFoundAt = doc?.lastFoundAt ?? null;
-  const missing = enabled && Boolean(emojiId) && lastMissingAt !== null && (!lastFoundAt || lastMissingAt > lastFoundAt);
+  const fixedFound = Boolean(enabled && fixed.emojiId);
+  const missing = fixedFound ? false : enabled && Boolean(emojiId) && lastMissingAt !== null && (!lastFoundAt || lastMissingAt > lastFoundAt);
 
   return {
     key,
     name,
     emojiId,
-    animated: doc?.animated ?? false,
+    animated,
     sourceGuildId: doc?.sourceGuildId ?? null,
     enabled,
     fallback: doc?.fallback || definition.fallback,
-    scope: doc ? (doc.botId ? "bot" : "global") : "default",
+    scope: doc ? ((doc.guildId ?? null) ? "guild" : doc.botId ? "bot" : "global") : "default",
     botId: doc?.botId ?? requestedBotId,
-    preview: emojiId && enabled ? `<${doc?.animated ? "a" : ""}:${name}:${emojiId}>` : (doc?.fallback || definition.fallback),
-    found: Boolean(enabled && emojiId && lastFoundAt && !missing),
+    guildId: doc?.guildId ?? requestedGuildId,
+    preview: emojiId && enabled ? `<${animated ? "a" : ""}:${name}:${emojiId}>` : (doc?.fallback || definition.fallback),
+    found: fixedFound || Boolean(enabled && emojiId && lastFoundAt && !missing),
     missing,
     updatedAt: doc?.updatedAt ? doc.updatedAt.toISOString() : null,
     lastFoundAt: lastFoundAt ? lastFoundAt.toISOString() : null,
     lastMissingAt: lastMissingAt ? lastMissingAt.toISOString() : null,
     lastValidatedAt: doc?.lastValidatedAt ? doc.lastValidatedAt.toISOString() : null,
     label: definition.label,
-    description: definition.description
+    description: definition.description,
+    extraEmojiNames: doc?.extraEmojiNames ?? []
   };
 }
 
 function normalizeBotId(botId?: string | null) {
   const value = (botId ?? "").trim();
   return value || null;
+}
+
+function normalizeGuildId(guildId?: string | null) {
+  return normalizeSnowflake(guildId ?? null);
 }
 
 function normalizeEmojiName(value: string) {
@@ -268,6 +313,11 @@ function normalizeFallback(value: string | null, defaultValue: string) {
   return normalized.slice(0, 16) || defaultValue;
 }
 
-function documentId(botId: string | null, key: string) {
-  return `${botId ?? "global"}:${key}`;
+function normalizeExtraEmojiName(value: string) {
+  const normalized = value.trim();
+  return /^[a-zA-Z0-9_]{2,32}$/.test(normalized) ? normalized : "";
+}
+
+function documentId(botId: string | null, guildId: string | null, key: string) {
+  return `${botId ?? "global"}:${guildId ?? "global"}:${key}`;
 }

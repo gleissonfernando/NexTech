@@ -92,7 +92,7 @@ export async function handleTemporaryVoiceMessage(message: Message, context: Bot
   }
 
   await message.delete().catch(() => null);
-  const panel = await message.channel.send(panelPayload());
+  const panel = await message.channel.send(panelPayload(message.guild));
 
   if (settings.panelChannelId === message.channelId) {
     await context.api.updateTemporaryVoicePanelState(message.guild.id, panel.id).catch(() => null);
@@ -743,33 +743,33 @@ async function publishPanel(guild: Guild, context: BotContext, settings: Tempora
     if (message) return;
   }
 
-  const message = await channel.send(panelPayload());
+  const message = await channel.send(panelPayload(guild));
   await context.api.updateTemporaryVoicePanelState(guild.id, message.id);
 }
 
-function panelPayload() {
+function panelPayload(guild: Guild | null = null) {
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(IDs.private, "perigo", ButtonStyle.Danger),
-    button(IDs.public, "liga", ButtonStyle.Success),
-    button(IDs.limit, "prancheta_caneta", ButtonStyle.Primary),
-    button(IDs.create, "acessar", ButtonStyle.Secondary)
+    button(IDs.private, "perigo", ButtonStyle.Danger, guild),
+    button(IDs.public, "liga", ButtonStyle.Success, guild),
+    button(IDs.limit, "prancheta_caneta", ButtonStyle.Primary, guild),
+    button(IDs.create, "acessar", ButtonStyle.Secondary, guild)
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button(IDs.allow, "visto", ButtonStyle.Success),
-    button(IDs.disconnect, "porta", ButtonStyle.Secondary),
-    button(IDs.ban, "perigo", ButtonStyle.Danger),
-    button(IDs.delete, "exclamacao", ButtonStyle.Danger)
+    button(IDs.allow, "visto", ButtonStyle.Success, guild),
+    button(IDs.disconnect, "porta", ButtonStyle.Secondary, guild),
+    button(IDs.ban, "perigo", ButtonStyle.Danger, guild),
+    button(IDs.delete, "exclamacao", ButtonStyle.Danger, guild)
   );
 
   const container = new ContainerBuilder()
     .setAccentColor(0x111827)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${systemEmojiText("engrenagem")} Gerenciamento das calls temporárias\nAqui você verá todas as formas de gerenciar sua call temporária.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${systemEmojiText("engrenagem", guild)} Gerenciamento das calls temporárias\nAqui você verá todas as formas de gerenciar sua call temporária.`))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("prancheta_caneta")} Edição\n${systemEmojiText("perigo")} | Deixar privada\n${systemEmojiText("liga")} | Deixar pública\n${systemEmojiText("prancheta_caneta")} | Alterar limite`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("prancheta_caneta", guild)} Edição\n${systemEmojiText("perigo", guild)} | Deixar privada\n${systemEmojiText("liga", guild)} | Deixar pública\n${systemEmojiText("prancheta_caneta", guild)} | Alterar limite`))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("engrenagem")} Gerenciamento\n${systemEmojiText("visto")} | Permitir alguém\n${systemEmojiText("porta")} | Desconectar alguém\n${systemEmojiText("perigo")} | Banir alguém`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("engrenagem", guild)} Gerenciamento\n${systemEmojiText("visto", guild)} | Permitir alguém\n${systemEmojiText("porta", guild)} | Desconectar alguém\n${systemEmojiText("perigo", guild)} | Banir alguém`))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("discord")} Gerenciamento da call\n${systemEmojiText("acessar")} | Criar call\n${systemEmojiText("exclamacao")} | Deletar call`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${systemEmojiText("discord", guild)} Gerenciamento da call\n${systemEmojiText("acessar", guild)} | Criar call\n${systemEmojiText("exclamacao", guild)} | Deletar call`))
     .addActionRowComponents(row1, row2);
 
   return {
@@ -778,8 +778,8 @@ function panelPayload() {
   };
 }
 
-function button(id: string, emoji: Parameters<typeof systemComponentEmoji>[0], style: ButtonStyle) {
-  return new ButtonBuilder().setCustomId(id).setEmoji(systemComponentEmoji(emoji)).setStyle(style);
+function button(id: string, emoji: Parameters<typeof systemComponentEmoji>[0], style: ButtonStyle, guild: Guild | null = null) {
+  return new ButtonBuilder().setCustomId(id).setEmoji(systemComponentEmoji(emoji, guild)).setStyle(style);
 }
 
 async function logCall(context: BotContext, settings: TemporaryVoiceSettings, call: TemporaryCall, action: string, userId: string) {

@@ -7,6 +7,7 @@ import {
     Copy,
     CreditCard,
     Database,
+    Download,
     ExternalLink,
     Eye,
     EyeOff,
@@ -21,6 +22,7 @@ import {
     MoreVertical,
     Power,
     Plus,
+    RefreshCw,
     ScrollText,
     Search,
     Server,
@@ -2218,7 +2220,7 @@ function BotModuleWorkspace({
             ) : null}
 
             {activeMenuId === "system-emojis" && !normalizedQuery ? (
-              <SystemEmojisPanel bot={bot} />
+              <SystemEmojisPanel bot={bot} guilds={guilds} />
             ) : null}
 
             {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis") && !normalizedQuery ? null : filteredModules.length ? (
@@ -2559,17 +2561,19 @@ type SystemEmojiDraft = {
   sourceGuildId: string;
 };
 
-function SystemEmojisPanel({ bot }: { bot: DevBot }) {
+function SystemEmojisPanel({ bot, guilds }: { bot: DevBot; guilds: DashboardMeGuild[] }) {
   const [dashboard, setDashboard] = useState<SystemEmojiDashboard | null>(null);
   const [drafts, setDrafts] = useState<Record<string, SystemEmojiDraft>>({});
   const [busy, setBusy] = useState<string | null>("load");
   const [message, setMessage] = useState<string | null>(null);
+  const guildOptions = useMemo(() => buildBotGuildOptions(bot, guilds), [bot, guilds]);
+  const [selectedGuildId, setSelectedGuildId] = useState(() => bot.mainGuildId || guildOptions[0]?.id || "");
 
   const load = useCallback(async () => {
     setBusy("load");
     setMessage(null);
     try {
-      const data = await getSystemEmojiDashboard(bot.id);
+      const data = await getSystemEmojiDashboard(bot.id, selectedGuildId || null);
       setDashboard(data);
       setDrafts(Object.fromEntries(data.emojis.map((emoji) => [emoji.key, draftFromEmoji(emoji)])));
     } catch (error) {
@@ -2577,7 +2581,13 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
     } finally {
       setBusy(null);
     }
-  }, [bot.id]);
+  }, [bot.id, selectedGuildId]);
+
+  useEffect(() => {
+    if (!selectedGuildId && guildOptions[0]?.id) {
+      setSelectedGuildId(guildOptions[0].id);
+    }
+  }, [guildOptions, selectedGuildId]);
 
   useEffect(() => {
     void load();
@@ -2605,6 +2615,7 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
         emojiId: draft.emojiId.trim() || null,
         enabled: draft.enabled,
         fallback: draft.fallback.trim() || emoji.fallback,
+        guildId: selectedGuildId || null,
         name: draft.name.trim() || emoji.name,
         sourceGuildId: draft.sourceGuildId.trim() || null
       });
@@ -2622,7 +2633,7 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
     setBusy(`reset:${emoji.key}`);
     setMessage(null);
     try {
-      const data = await resetSystemEmoji(emoji.key, bot.id);
+      const data = await resetSystemEmoji(emoji.key, bot.id, selectedGuildId || null);
       setDashboard(data);
       setDrafts(Object.fromEntries(data.emojis.map((item) => [item.key, draftFromEmoji(item)])));
       setMessage(`Emoji ${emoji.key} voltou para o padrao/global.`);
@@ -2637,15 +2648,41 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
     setBusy("sync");
     setMessage(null);
     try {
-      const data = await syncSystemEmojis(bot.id);
+      const data = await syncSystemEmojis(bot.id, selectedGuildId || null);
       setDashboard(data);
       setDrafts(Object.fromEntries(data.emojis.map((item) => [item.key, draftFromEmoji(item)])));
-      setMessage("Sincronizacao solicitada. Reinicie ou aguarde o bot validar para marcar encontrados.");
+      setMessage("Sincronizacao solicitada. O bot atualiza o cache automaticamente quando ler os emojis do servidor.");
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Falha ao sincronizar emojis.");
     } finally {
       setBusy(null);
     }
+  }
+
+  function exportEmojiList() {
+    if (!dashboard) return;
+    const payload = {
+      botId: dashboard.botId,
+      exportedAt: new Date().toISOString(),
+      guildId: dashboard.guildId,
+      summary: dashboard.summary,
+      emojis: dashboard.emojis.map((emoji) => ({
+        animated: emoji.animated,
+        enabled: emoji.enabled,
+        fallback: emoji.fallback,
+        found: emoji.found,
+        key: emoji.key,
+        name: emoji.name,
+        sourceGuildId: emoji.sourceGuildId
+      })),
+      extraEmojiNames: [...new Set(dashboard.emojis.flatMap((emoji) => emoji.extraEmojiNames))]
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `nextech-system-emojis-${dashboard.guildId ?? "global"}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   const summary = dashboard?.summary;
@@ -2654,12 +2691,29 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-lg border border-[#FFD500]/15 bg-black/25 p-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="text-base font-bold text-white">Emojis do Sistema</h3>
-          <p className="mt-1 text-sm font-medium text-zinc-400">Configuração por bot para painéis Components V2, menus, botões, status e logs.</p>
+          <h3 className="text-base font-bold text-white">Sistema Global de Emojis</h3>
+          <p className="mt-1 text-sm font-medium text-zinc-400">Cache por servidor para painéis, embeds, botões, menus, logs e módulos futuros.</p>
         </div>
-        <Button disabled={Boolean(busy)} onClick={() => void syncDefaults()} size="sm">
-          {busy === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SmilePlus className="h-4 w-4" />} Sincronizar por nome
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            className="h-9 rounded-lg border border-zinc-800 bg-black px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]"
+            onChange={(event) => setSelectedGuildId(event.target.value)}
+            value={selectedGuildId}
+          >
+            {guildOptions.map((guild) => (
+              <option key={guild.id} value={guild.id}>{guild.name}</option>
+            ))}
+          </select>
+          <Button disabled={Boolean(busy)} onClick={() => void load()} size="sm" variant="outline">
+            {busy === "load" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar cache
+          </Button>
+          <Button disabled={Boolean(busy)} onClick={() => void syncDefaults()} size="sm">
+            {busy === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SmilePlus className="h-4 w-4" />} Validar emojis
+          </Button>
+          <Button disabled={!dashboard || Boolean(busy)} onClick={exportEmojiList} size="sm" variant="outline">
+            <Download className="h-4 w-4" /> Exportar lista
+          </Button>
+        </div>
       </div>
 
       {message ? (
@@ -2668,12 +2722,17 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
         </div>
       ) : null}
 
-      <div className="grid gap-2 sm:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-6">
         <OverviewMetric label="Total" value={String(summary?.total ?? 0)} />
         <OverviewMetric label="Configurados" value={String(summary?.configured ?? 0)} />
         <OverviewMetric label="Encontrados" value={String(summary?.found ?? 0)} />
         <OverviewMetric label="Fallbacks" value={String(summary?.fallbacks ?? 0)} />
+        <OverviewMetric label="Extras" value={String(summary?.extras ?? 0)} />
         <OverviewMetric label="Desativados" value={String(summary?.disabled ?? 0)} />
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 bg-black/25 px-4 py-3 text-xs font-semibold text-zinc-400">
+        Servidor: <span className="text-white">{guildLabel(guildOptions, selectedGuildId)}</span> · Última sincronização: <span className="text-white">{summary?.lastSyncAt ? new Date(summary.lastSyncAt).toLocaleString("pt-BR") : "não validado"}</span>
       </div>
 
       {busy === "load" ? (
@@ -2740,7 +2799,7 @@ function SystemEmojisPanel({ bot }: { bot: DevBot }) {
                   </div>
                 </div>
                 <p className="text-xs font-medium text-zinc-500">
-                  Escopo: {emoji.scope === "bot" ? "bot selecionado" : emoji.scope === "global" ? "global" : "fallback interno"} · Última validação: {emoji.lastValidatedAt ? new Date(emoji.lastValidatedAt).toLocaleString("pt-BR") : "não validado"}
+                  Escopo: {emoji.scope === "guild" ? "servidor selecionado" : emoji.scope === "bot" ? "bot selecionado" : emoji.scope === "global" ? "global" : "fallback interno"} · Última validação: {emoji.lastValidatedAt ? new Date(emoji.lastValidatedAt).toLocaleString("pt-BR") : "não validado"}
                 </p>
               </CardContent>
             </Card>

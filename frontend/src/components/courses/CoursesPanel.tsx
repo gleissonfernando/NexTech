@@ -101,6 +101,7 @@ const emptyQuestion: SaveCourseExamQuestionPayload = {
     { id: "D", text: "", score: 0, isCorrect: false, order: 3 }
   ],
   correctAlternativeId: "C",
+  correctAlternativeIds: ["C"],
   description: null,
   order: 0,
   questionNumber: 1,
@@ -498,19 +499,19 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   <p className="mb-3 font-semibold text-white">{editingQuestionId ? "Editar pergunta" : "Criar pergunta"}</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     <InputField disabled={!canManage || saving} label="Número da pergunta" onChange={(value) => setQuestionDraft({ ...questionDraft, questionNumber: Number(value) || 1, order: Math.max(0, (Number(value) || 1) - 1) })} value={String(questionDraft.questionNumber ?? 1)} />
-                    <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setQuestionDraft({ ...questionDraft, type: type as "selection" | "written" })} options={[["selection", "Objetiva"], ["written", "Discursiva"]]} value={questionDraft.type} />
+                    <SelectValueField disabled={!canManage || saving} label="Tipo" onChange={(type) => setQuestionDraft({ ...questionDraft, type: type as "selection" | "multiple" | "written" })} options={[["selection", "Objetiva"], ["multiple", "Múltipla escolha"], ["written", "Discursiva"]]} value={questionDraft.type} />
                     <DecimalInputField disabled={!canManage || saving} label="Nota máxima" onCommit={(points) => setQuestionDraft({ ...questionDraft, points })} value={questionDraft.points ?? 10} />
                   </div>
                   <div className="mt-3 space-y-3">
                     <TextAreaField disabled={!canManage || saving} label="Pergunta" onChange={(prompt) => setQuestionDraft({ ...questionDraft, prompt })} value={questionDraft.prompt} />
                     <TextAreaField disabled={!canManage || saving} label="Descrição opcional" onChange={(description) => setQuestionDraft({ ...questionDraft, description })} value={questionDraft.description ?? ""} />
-                    {questionDraft.type === "selection" ? (
+                    {questionDraft.type !== "written" ? (
                       <div className="grid gap-3 md:grid-cols-2">
                         {(questionDraft.alternatives ?? []).map((option, index) => (
                           <div className="rounded-lg border border-zinc-800 p-3" key={option.id ?? index}>
                             <InputField disabled={!canManage || saving} label={`Resposta ${index + 1}`} onChange={(text) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { text }) })} value={option.text} />
                             <DecimalInputField disabled={!canManage || saving} label="Pontuação" onCommit={(score) => setQuestionDraft({ ...questionDraft, alternatives: updateOption(questionDraft.alternatives, index, { score }) })} value={option.score ?? 0} />
-                            <ToggleField disabled={!canManage || saving} label="Correta" onChange={(checked) => setQuestionDraft({ ...questionDraft, correctAlternativeId: checked ? option.id : questionDraft.correctAlternativeId, alternatives: (questionDraft.alternatives ?? []).map((item, itemIndex) => ({ ...item, isCorrect: itemIndex === index ? checked : false })) })} value={Boolean(option.isCorrect)} />
+                            <ToggleField disabled={!canManage || saving} label="Correta" onChange={(checked) => setQuestionDraft(toggleCorrectAlternative(questionDraft, option.id, index, checked))} value={Boolean(option.isCorrect)} />
                           </div>
                         ))}
                       </div>
@@ -574,11 +575,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 }
 
 function ProofCompleteness({ questions }: { questions: CourseExamQuestion[] }) {
-  const objective = questions.filter((question) => question.type === "selection");
+  const objective = questions.filter((question) => question.type === "selection" || question.type === "multiple");
   const written = questions.filter((question) => question.type === "written");
   const complete = questions.length > 0
     && questions.every((question) => question.prompt.trim() && question.points > 0)
-    && objective.every((question) => question.alternatives.length >= 2 && question.alternatives.some((option) => option.isCorrect || option.id === question.correctAlternativeId));
+    && objective.every((question) => question.alternatives.length >= 2 && hasCorrectAlternative(question));
   return <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">Status da prova: <Badge variant={complete ? "success" : "warning"}>{complete ? "Completa" : "Incompleta"}</Badge> • Perguntas: {questions.length} • Objetivas: {objective.length} • Discursivas: {written.length}</div>;
 }
 
@@ -587,10 +588,10 @@ function QuestionCard({ onDelete, onEdit, question }: { onDelete: () => void; on
     <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold text-white">Pergunta {question.questionNumber ?? question.order + 1}: {question.prompt}</p>
-        <Badge variant={question.type === "written" ? "warning" : "success"}>{question.type === "written" ? "Discursiva" : "Radio/Seleção"}</Badge>
+        <Badge variant={question.type === "written" ? "warning" : "success"}>{question.type === "written" ? "Discursiva" : question.type === "multiple" ? "Múltipla escolha" : "Objetiva"}</Badge>
       </div>
       <p className="mt-1 text-xs text-zinc-500">Nota máxima: {question.points}</p>
-      {question.type === "selection" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text} - ${option.score ?? 0} pontos${option.isCorrect ? " - correta" : ""}`).join(" | ")}</p> : null}
+      {question.type !== "written" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text} - ${option.score ?? 0} pontos${isCorrectAlternative(question, option.id) ? " - correta" : ""}`).join(" | ")}</p> : null}
       <div className="mt-3 flex gap-2">
         <Button onClick={onEdit} size="sm" type="button" variant="outline">Editar</Button>
         <Button onClick={onDelete} size="sm" type="button" variant="destructive">Excluir</Button>
@@ -626,14 +627,47 @@ function toExamLinkDraft(settings: CourseExamDashboard["settings"]): ExamLinkDra
 
 function normalizeQuestion(question: SaveCourseExamQuestionPayload) {
   const questionNumber = Math.max(1, Math.min(100, Number(question.questionNumber ?? 1)));
+  const alternatives = question.type === "written" ? [] : (question.alternatives ?? []).filter((option) => option.text?.trim()).map((option, index) => ({ ...option, id: option.id || String.fromCharCode(65 + index), order: index, value: option.value || option.id || String.fromCharCode(65 + index), score: parseDecimalNumber(option.score, 0) }));
+  const correctAlternativeIds = question.type === "multiple"
+    ? alternatives.filter((option) => option.isCorrect || question.correctAlternativeIds?.includes(option.id)).map((option) => option.id)
+    : [];
   return {
     ...question,
     questionNumber,
     order: questionNumber - 1,
     type: question.type,
-    alternatives: question.type === "written" ? [] : (question.alternatives ?? []).filter((option) => option.text?.trim()).map((option, index) => ({ ...option, id: option.id || String.fromCharCode(65 + index), order: index, value: option.value || option.id || String.fromCharCode(65 + index), score: parseDecimalNumber(option.score, 0) })),
-    correctAlternativeId: question.type === "written" ? null : question.correctAlternativeId ?? (question.alternatives ?? []).find((option) => option.isCorrect)?.id ?? null
+    alternatives,
+    correctAlternativeId: question.type === "written" ? null : question.type === "multiple" ? null : question.correctAlternativeId ?? alternatives.find((option) => option.isCorrect)?.id ?? null,
+    correctAlternativeIds
   } satisfies SaveCourseExamQuestionPayload;
+}
+
+function toggleCorrectAlternative(question: SaveCourseExamQuestionPayload, optionId: string, index: number, checked: boolean) {
+  if (question.type === "multiple") {
+    const current = new Set(question.correctAlternativeIds ?? []);
+    if (checked) current.add(optionId);
+    else current.delete(optionId);
+    return {
+      ...question,
+      alternatives: (question.alternatives ?? []).map((item, itemIndex) => ({ ...item, isCorrect: itemIndex === index ? checked : Boolean(item.isCorrect) })),
+      correctAlternativeId: null,
+      correctAlternativeIds: [...current]
+    };
+  }
+  return {
+    ...question,
+    correctAlternativeId: checked ? optionId : question.correctAlternativeId,
+    correctAlternativeIds: [],
+    alternatives: (question.alternatives ?? []).map((item, itemIndex) => ({ ...item, isCorrect: itemIndex === index ? checked : false }))
+  };
+}
+
+function hasCorrectAlternative(question: CourseExamQuestion) {
+  return question.alternatives.some((option) => isCorrectAlternative(question, option.id));
+}
+
+function isCorrectAlternative(question: CourseExamQuestion, optionId: string) {
+  return question.correctAlternativeIds?.includes(optionId) || question.correctAlternativeId === optionId || question.alternatives.find((option) => option.id === optionId)?.isCorrect === true;
 }
 
 function updateOption(options: SaveCourseExamQuestionPayload["alternatives"], index: number, patch: Record<string, unknown>) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getMongoCollections, type MongoCourse, type MongoCourseEnrollment, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
+import { getMongoCollections, type MongoCourse, type MongoCourseEnrollment, type MongoCourseExamQuestion, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
@@ -29,6 +29,10 @@ type CourseSettingsUpdate = Partial<Omit<CourseSettingsDto, "id" | "botId" | "gu
 
 export async function getCoursesDashboard(botId: string | null, guildId: string): Promise<CourseDashboard> {
   const collections = await getMongoCollections();
+  await ensureNpdTabletPrisionalCourse(botId, guildId);
+  await ensureNpdModulationCourse(botId, guildId);
+  await ensureNpdTrackingCourse(botId, guildId);
+  await ensureNpdApproachCourse(botId, guildId);
   const settings = await getCourseSettings(botId, guildId);
   const [courses, publications, scheduleRequests, reports, logs, enrollments] = await Promise.all([
     collections.courses.find(scope(botId, guildId)).sort({ updatedAt: -1 }).toArray(),
@@ -48,6 +52,737 @@ export async function getCoursesDashboard(botId: string | null, guildId: string)
     logs: logs.map(mapLog),
     enrollments: enrollments.map(mapEnrollment)
   };
+}
+
+async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: string) {
+  const { courses, courseExamSettings, courseExamQuestions } = await getMongoCollections();
+  const now = new Date();
+  const existing = await courses.findOne({ ...scope(botId, guildId), code: "npd-tablet-prisional" });
+  const courseId = existing?._id ?? randomUUID();
+  if (!existing) {
+    await courses.insertOne({
+      _id: courseId,
+      botId,
+      guildId,
+      name: "Curso de Tablet e Prisional — NPD",
+      code: "npd-tablet-prisional",
+      description: "Curso de Tablet e Prisional da NPD. Prova cadastrada como rascunho/inativa aguardando gabarito.",
+      emoji: null,
+      color: "#2563eb",
+      bannerUrl: null,
+      proofBannerUrl: null,
+      footerImageUrl: null,
+      thumbnailUrl: null,
+      imagePosition: "top",
+      publishText: null,
+      proofInstructionText: null,
+      startedText: null,
+      cancelledText: null,
+      buttonLabels: {
+        cancel: "Cancelar Curso",
+        enter: "Entrar no Curso",
+        leave: "Sair do Curso",
+        start: "Realizar prova"
+      },
+      instructorUserIds: [],
+      instructorRoleIds: [],
+      allowGeneralInstructorRoles: true,
+      publishChannelId: null,
+      maxStudents: 30,
+      location: null,
+      defaultSchedule: null,
+      active: false,
+      createdBy: "system:seed",
+      updatedBy: "system:seed",
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  await courseExamSettings.updateOne(
+    { ...scope(botId, guildId), courseId },
+    {
+      $setOnInsert: {
+        _id: randomUUID(),
+        botId,
+        guildId,
+        courseId,
+        enabled: false,
+        minScore: 70,
+        maxTimeMinutes: null,
+        correctionChannelId: null,
+        resultChannelId: null,
+        temporaryCategoryId: null,
+        logChannelId: null,
+        deleteWrittenAnswers: false,
+        allowCurrentQuestionReview: false,
+        initialMessage: "Bem-vindo à prova do Curso de Tablet e Prisional — NPD. Leia cada pergunta com atenção.",
+        finalMessage: "Deseja realmente finalizar sua prova? Depois da finalização, as respostas não poderão ser alteradas.",
+        approvalMessage: "Você foi aprovado na prova do Curso de Tablet e Prisional — NPD.",
+        rejectionMessage: "Você foi reprovado na prova do Curso de Tablet e Prisional — NPD.",
+        manualQuestionMaxScore: 0,
+        manualApproval: false,
+        automaticApproval: true,
+        releaseMode: "immediate",
+        releaseAt: null,
+        attemptLimit: 1,
+        allowAnswerChange: false,
+        showAnswersAfterExam: false,
+        version: 1,
+        examKey: "npd-tablet-prisional-v1",
+        externalLinkEnabled: false,
+        externalLinkText: "Acessar material da prova",
+        externalLinkUrl: null,
+        externalLinkDescription: null,
+        externalLinkEmoji: null,
+        updatedAt: now,
+        updatedBy: "system:seed"
+      }
+    },
+    { upsert: true }
+  );
+
+  if (await courseExamQuestions.countDocuments({ ...scope(botId, guildId), courseId }) > 0) return;
+  await courseExamQuestions.insertMany(npdTabletPrisionalQuestions(courseId, botId, guildId, now));
+}
+
+function npdTabletPrisionalQuestions(courseId: string, botId: string | null, guildId: string, now: Date) {
+  const rows: Array<{ prompt: string; instruction?: string; type: "selection" | "multiple"; alternatives: string[] }> = [
+    { prompt: "Um boletim de ocorrência deve conter os seguintes aspectos para estar dentro do padrão:", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Título", "Descrição objetiva e completa", "Foto do veículo, se houver", "Foto da caixa com os itens ilícitos", "Foto dos documentos, ID e passaporte"] },
+    { prompt: "Quais são os procedimentos básicos para realizar o prisional de um indivíduo?", instruction: "Assinale a alternativa incorreta.", type: "selection", alternatives: ["Retirar adornos", "Algemar", "Revistar, em caso de flagrante", "Tirar foto do indivíduo", "Recolher apenas a identidade", "Recolher identidade e passaporte"] },
+    { prompt: "Onde as caixas com itens ilícitos devem ser descartadas?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["No porta-malas da viatura", "No baú de evidências", "Devolvida ao indivíduo", "No porta-luvas da viatura", "Jogar fora utilizando a opção “DESCARTAR” do inventário"] },
+    { prompt: "Selecione o crime inafiançável:", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Roubo a Caixa Registradora", "Tráfico de Drogas", "Roubo a Residência", "Desacato", "Fuga de Abordagem"] },
+    { prompt: "Um indivíduo foi capturado em uma QRU de Tráfico de Drogas e, após revistá-lo, você encontrou uma Five-7, além das drogas. O indivíduo solicita a utilização do sistema de fiança e você aplica a fiança após a solicitação. Essa conduta está de acordo com o manual da NPD?", type: "selection", alternatives: ["Sim. O indivíduo possui direito de pagar fiança por se tratar de uma QRU de Venda de Drogas", "Não. O porte de arma torna o crime inafiançável."] },
+    { prompt: "Um indivíduo, durante o prisional de uma QRU de Caixa Registradora, solicitou a utilização do Sistema de Fianças. Porém, existe apenas você como maior patente disponível no momento, sendo Officer. Como você daria continuidade?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Explicaria que o sistema de fiança não estava funcionando", "Explicaria que, no momento, não existem oficiais com as patentes necessárias para autorizar a utilização do sistema", "Aplicaria a fiança", "Aplicaria a fiança e explicaria nas observações do boletim que não havia uma patente superior no momento do prisional"] },
+    { prompt: "Você está apreendendo um veículo com placa irregular. Quais são os procedimentos?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Retirar a placa na rua", "Levar o veículo até um departamento da NPD", "Comprar uma chave de fenda e retirar a placa", "Solicitar uma patente superior", "Tirar foto do veículo apenas depois de retirar a placa"] },
+    { prompt: "Em quais situações de prisional devemos contatar um membro da investigativa, D.U?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Porte de arma de baixo calibre", "Porte de 50 ou mais unidades de drogas", "Utilização de uniformes", "Porte de 20.000 ou mais em dinheiro sujo", "Porte de arma de alto calibre"] },
+    { prompt: "Um indivíduo chegou à NPD para liberar um veículo apreendido. Marque abaixo os procedimentos corretos.", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Solicitar a documentação do indivíduo e do veículo, incluindo identidade e passaporte", "Tirar foto do indivíduo", "Realizar o boletim em qualquer lugar", "Verificar possíveis multas com pagamentos pendentes", "Verificar se a pessoa está procurada"] },
+    { prompt: "Em uma QRU de Tráfico de Drogas, o indivíduo tentou fugir, mas foi capturado com 50.000 dólares em dinheiro sujo e 100 unidades de todos os tipos de drogas. Antes de ser preso, ele forneceu informações sobre onde conseguiu as drogas e colaborou com a investigativa. Quais crimes ou atenuantes devem ser aplicados?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Tráfico de Drogas", "Porte de arma de baixo calibre", "Porte de dinheiro sujo", "Desacato", "Colaboração com D.U."] }
+  ];
+  return rows.map((row, index) => ({
+    _id: randomUUID(),
+    botId,
+    guildId,
+    courseId,
+    order: index,
+    questionNumber: index + 1,
+    type: row.type,
+    prompt: row.prompt,
+    title: row.prompt,
+    description: row.instruction ?? null,
+    points: 10,
+    alternatives: row.alternatives.map((text, optionIndex) => ({
+      id: String.fromCharCode(65 + optionIndex),
+      text,
+      value: String.fromCharCode(65 + optionIndex),
+      score: 0,
+      isCorrect: false,
+      order: optionIndex
+    })),
+    correctAlternativeId: null,
+    correctAlternativeIds: [],
+    placeholder: null,
+    active: true,
+    createdAt: now,
+    updatedAt: now,
+    updatedBy: "system:seed"
+  }));
+}
+
+async function ensureNpdModulationCourse(botId: string | null, guildId: string) {
+  const { courses, courseExamSettings, courseExamQuestions } = await getMongoCollections();
+  const now = new Date();
+  const existing = await courses.findOne({
+    ...scope(botId, guildId),
+    $or: [
+      { code: "npd_modulacao" },
+      { code: "curso-modulacao-npd" },
+      { code: "npd-modulacao" },
+      { name: "Curso de Modulação" }
+    ]
+  });
+  const courseId = existing?._id ?? randomUUID();
+  if (!existing) {
+    await courses.insertOne({
+      _id: courseId,
+      botId,
+      guildId,
+      name: "Curso de Modulação",
+      code: "npd_modulacao",
+      description: "Curso de Modulação da NPD. Prova cadastrada como rascunho/inativa aguardando gabarito.",
+      emoji: null,
+      color: "#0f766e",
+      bannerUrl: null,
+      proofBannerUrl: null,
+      footerImageUrl: null,
+      thumbnailUrl: null,
+      imagePosition: "top",
+      publishText: null,
+      proofInstructionText: null,
+      startedText: null,
+      cancelledText: null,
+      buttonLabels: {
+        cancel: "Cancelar Curso",
+        enter: "Entrar no Curso",
+        leave: "Sair do Curso",
+        start: "Iniciar Prova"
+      },
+      instructorUserIds: [],
+      instructorRoleIds: [],
+      allowGeneralInstructorRoles: true,
+      publishChannelId: null,
+      maxStudents: 30,
+      location: null,
+      defaultSchedule: null,
+      active: false,
+      createdBy: "system:seed",
+      updatedBy: "system:seed",
+      createdAt: now,
+      updatedAt: now
+    });
+  } else if (existing.code !== "npd_modulacao" || existing.buttonLabels?.start !== "Iniciar Prova") {
+    await courses.updateOne(
+      { _id: existing._id, ...scope(botId, guildId) },
+      {
+        $set: {
+          code: "npd_modulacao",
+          buttonLabels: {
+            ...existing.buttonLabels,
+            start: "Iniciar Prova"
+          },
+          updatedAt: now
+        }
+      }
+    );
+  }
+
+  await courseExamSettings.updateOne(
+    { ...scope(botId, guildId), courseId },
+    {
+      $setOnInsert: {
+        _id: randomUUID(),
+        botId,
+        guildId,
+        courseId,
+        enabled: false,
+        minScore: 70,
+        maxTimeMinutes: null,
+        correctionChannelId: null,
+        resultChannelId: null,
+        temporaryCategoryId: null,
+        logChannelId: null,
+        deleteWrittenAnswers: false,
+        allowCurrentQuestionReview: false,
+        initialMessage: "Bem-vindo à prova do Curso de Modulação — NPD. Leia cada pergunta com atenção.",
+        finalMessage: "Deseja realmente finalizar sua prova? Depois da finalização, as respostas não poderão ser alteradas.",
+        approvalMessage: "Parabéns! Você concluiu e foi aprovado na prova do Curso de Modulação da NPD.",
+        rejectionMessage: "Sua prova foi concluída, mas a nota mínima necessária não foi atingida.",
+        manualQuestionMaxScore: 0,
+        manualApproval: false,
+        automaticApproval: true,
+        releaseMode: "immediate",
+        releaseAt: null,
+        attemptLimit: 1,
+        allowAnswerChange: false,
+        showAnswersAfterExam: false,
+        version: 1,
+        examKey: "curso-modulacao-npd-v1",
+        externalLinkEnabled: false,
+        externalLinkText: "Acessar material da prova",
+        externalLinkUrl: null,
+        externalLinkDescription: null,
+        externalLinkEmoji: null,
+        updatedAt: now,
+        updatedBy: "system:seed"
+      }
+    },
+    { upsert: true }
+  );
+
+  const existingQuestions = await courseExamQuestions.find({ ...scope(botId, guildId), courseId }).toArray();
+  const existingByNumber = new Map(existingQuestions.map((question) => [question.questionNumber ?? question.order + 1, question]));
+  const existingByPrompt = new Map(existingQuestions.map((question) => [normalizeCourseSeedText(question.prompt), question]));
+  const nextQuestions = npdModulationQuestions(courseId, botId, guildId, now, existingByNumber, existingByPrompt);
+
+  for (const question of nextQuestions) {
+    const existingQuestion = existingByNumber.get(question.questionNumber ?? question.order + 1) ?? existingByPrompt.get(normalizeCourseSeedText(question.prompt));
+    if (!existingQuestion) {
+      await courseExamQuestions.insertOne(question);
+      continue;
+    }
+    if (existingQuestion.updatedBy !== "system:seed") continue;
+    await courseExamQuestions.updateOne(
+      { _id: existingQuestion._id, ...scope(botId, guildId) },
+      {
+        $set: {
+          order: question.order,
+          questionNumber: question.questionNumber,
+          type: question.type,
+          prompt: question.prompt,
+          title: question.title,
+          description: question.description,
+          points: question.points,
+          alternatives: question.alternatives,
+          correctAlternativeId: question.correctAlternativeId,
+          correctAlternativeIds: question.correctAlternativeIds,
+          placeholder: question.placeholder,
+          active: true,
+          updatedAt: now,
+          updatedBy: "system:seed"
+        }
+      }
+    );
+  }
+}
+
+function npdModulationQuestions(
+  courseId: string,
+  botId: string | null,
+  guildId: string,
+  now: Date,
+  existingByNumber: Map<number, MongoCourseExamQuestion>,
+  existingByPrompt: Map<string, MongoCourseExamQuestion>
+) {
+  const rows: Array<{ prompt: string; instruction: string; type: "selection" | "multiple"; alternatives: string[] }> = [
+    { prompt: "Quais métodos a seguir podem ajudar a manter uma modulação clara e objetiva?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Pensar antes de falar", "Estruturar informações", "Teste de frequência no início do expediente", "Evitar modulações com informações desnecessárias", "Treinamento diário"] },
+    { prompt: "Sua QSV necessita de conserto e os mecânicos estão disponíveis apenas na Capital. Selecione a opção mais adequada para informar o QRL:", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["/cp Badge + QRL", "/cp QRA + QRL + Motivo", "/cp Badge + QRL + Motivo", "/cp QRA + QRL"] },
+    { prompt: "Ao adentrar em serviço, você precisa se identificar no /CP para que os oficiais saibam que você está disponível para prestar apoio. Selecione a opção mais adequada para informar o QRV:", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["/cp QRA + QRV", "/cp QRV", "/cp QRV + QRA", "/cp Badge + QRV"] },
+    { prompt: "Você está em um acompanhamento de um possível cód. 5, com visual armado. Quais informações são de prioridade na modulação?", instruction: "Assinale a alternativa incorreta.", type: "selection", alternatives: ["Cor do veículo", "Cor da vestimenta", "Modulação do local", "Conversas paralelas durante a modulação", "Modulação solicitando apoio"] },
+    { prompt: "Dentre os QTH's citados abaixo, qual deles não faz parte da Jurisdição da NPD?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Marinas Beach", "Lenhador", "Mergulhador", "Madereira", "Sandy Shores"] },
+    { prompt: "Selecione o significado correto do código ADAM de patrulhamento.", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Unidade composta por apenas um oficial", "Unidade investigativa composta por um oficial", "Unidade composta por cão policial", "Unidade composta por dois oficiais ou mais", "Unidade composta por motocicletas"] },
+    { prompt: "Você está a caminho do HP e precisa anunciar QRL com o alfabeto fonético. Qual seria a representação correta?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Tango Zulu", "Delta Papa", "Charlie Alfa", "Hotel Papa", "Alfa November"] },
+    { prompt: "Houve um Roubo ao Banco Paleto e o oficial que realizou o primeiro contato está solicitando nomes para participar da ação. Suponhamos que você já participou de uma ação. Qual o informe que você deverá mandar no /cp?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["/cp QRA + NF", "/cp QRA + JF", "/cp Badge + NF", "/cp Badge + JF", "/cp QRA"] },
+    { prompt: "A NPD possui jurisdição sobre diversos territórios no norte.", instruction: "Assinale a alternativa incorreta.", type: "selection", alternatives: ["Paleto Bay", "Grapeseed", "Vila portugal", "Vinewood", "Kartódromo"] },
+    { prompt: "Você recebeu uma denúncia de uma QRU de Roubo a Veículos, sem visual confirmado, e precisa pedir apoio para realizar abordagem. Como você iria categorizar a intensidade da abordagem via rádio POLICIANPD?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Abordagem de código 1", "Abordagem de código 2", "Abordagem de código 3", "Abordagem de código 5", "Abordagem de código 0"] }
+  ];
+
+  return rows.map((row, index) => {
+    const optionPrefix = `q${String(index + 1).padStart(2, "0")}_option_`;
+    const alternatives = row.alternatives.map((text, optionIndex) => ({
+      id: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      text,
+      value: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      score: 0,
+      isCorrect: false,
+      order: optionIndex
+    }));
+    const existing = existingByNumber.get(index + 1) ?? existingByPrompt.get(normalizeCourseSeedText(row.prompt));
+    const preservedCorrectIds = preserveCourseSeedCorrectIds(existing, alternatives);
+    const type = row.type;
+    return {
+      _id: existing?._id ?? randomUUID(),
+      botId,
+      guildId,
+      courseId,
+      order: index,
+      questionNumber: index + 1,
+      type,
+      prompt: row.prompt,
+      title: row.prompt,
+      description: row.instruction,
+      points: existing?.points && existing.points > 0 ? existing.points : 10,
+      alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: preservedCorrectIds.includes(alternative.id), score: preservedCorrectIds.includes(alternative.id) ? (existing?.points && existing.points > 0 ? existing.points : 10) : 0 })),
+      correctAlternativeId: type === "selection" ? preservedCorrectIds[0] ?? null : null,
+      correctAlternativeIds: type === "multiple" ? preservedCorrectIds : [],
+      placeholder: null,
+      active: true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      updatedBy: "system:seed"
+    };
+  });
+}
+
+async function ensureNpdTrackingCourse(botId: string | null, guildId: string) {
+  const { courses, courseExamSettings, courseExamQuestions } = await getMongoCollections();
+  const now = new Date();
+  const existing = await courses.findOne({
+    ...scope(botId, guildId),
+    $or: [
+      { code: "npd_acompanhamento" },
+      { code: "curso-acompanhamento-npd" },
+      { code: "npd-acompanhamento" },
+      { name: "CURSO DE ACOMPANHAMENTO - NPD" },
+      { name: "Curso de Acompanhamento - NPD" }
+    ]
+  });
+  const courseId = existing?._id ?? randomUUID();
+  const description = "Esta prova foi desenvolvida com o objetivo de capacitar e instruir todos os policiais do North Police Department a realizar a instrução padrão e com excelência, para que nosso batalhão mantenha o alto padrão no nosso procedimento de acompanhamento.\n\nApós a aprovação no curso, será esperado e cobrado a execução plena e adequada de todos os conteúdos abordados nesta apostila. Uma vez que o curso foi registrado na planilha, falhas no procedimento estarão sujeitas a punições, além da reciclagem do respectivo curso.";
+
+  if (!existing) {
+    await courses.insertOne({
+      _id: courseId,
+      botId,
+      guildId,
+      name: "CURSO DE ACOMPANHAMENTO - NPD",
+      code: "npd_acompanhamento",
+      description,
+      emoji: null,
+      color: "#b91c1c",
+      bannerUrl: null,
+      proofBannerUrl: null,
+      footerImageUrl: null,
+      thumbnailUrl: null,
+      imagePosition: "top",
+      publishText: null,
+      proofInstructionText: null,
+      startedText: null,
+      cancelledText: null,
+      buttonLabels: {
+        cancel: "Cancelar Curso",
+        enter: "Entrar no Curso",
+        leave: "Sair do Curso",
+        start: "Realizar Prova"
+      },
+      instructorUserIds: [],
+      instructorRoleIds: [],
+      allowGeneralInstructorRoles: true,
+      publishChannelId: null,
+      maxStudents: 30,
+      location: null,
+      defaultSchedule: null,
+      active: false,
+      createdBy: "system:seed",
+      updatedBy: "system:seed",
+      createdAt: now,
+      updatedAt: now
+    });
+  } else if (existing.code !== "npd_acompanhamento" || existing.buttonLabels?.start !== "Realizar Prova" || !existing.description) {
+    await courses.updateOne(
+      { _id: existing._id, ...scope(botId, guildId) },
+      {
+        $set: {
+          code: "npd_acompanhamento",
+          description: existing.description || description,
+          buttonLabels: {
+            ...existing.buttonLabels,
+            start: "Realizar Prova"
+          },
+          updatedAt: now
+        }
+      }
+    );
+  }
+
+  await courseExamSettings.updateOne(
+    { ...scope(botId, guildId), courseId },
+    {
+      $setOnInsert: {
+        _id: randomUUID(),
+        botId,
+        guildId,
+        courseId,
+        enabled: false,
+        minScore: 70,
+        maxTimeMinutes: null,
+        correctionChannelId: null,
+        resultChannelId: null,
+        temporaryCategoryId: null,
+        logChannelId: null,
+        deleteWrittenAnswers: false,
+        allowCurrentQuestionReview: false,
+        initialMessage: "Bem-vindo à prova do CURSO DE ACOMPANHAMENTO - NPD. Leia cada pergunta com atenção.",
+        finalMessage: "Tem certeza de que deseja finalizar? Depois da confirmação, as respostas não poderão ser alteradas.",
+        approvalMessage: "Você foi aprovado no CURSO DE ACOMPANHAMENTO - NPD.",
+        rejectionMessage: "Sua prova foi concluída, mas a nota mínima necessária não foi atingida.",
+        manualQuestionMaxScore: 0,
+        manualApproval: false,
+        automaticApproval: true,
+        releaseMode: "immediate",
+        releaseAt: null,
+        attemptLimit: 1,
+        allowAnswerChange: false,
+        showAnswersAfterExam: false,
+        version: 1,
+        examKey: "npd-acompanhamento-v1",
+        externalLinkEnabled: false,
+        externalLinkText: "Acessar material da prova",
+        externalLinkUrl: null,
+        externalLinkDescription: null,
+        externalLinkEmoji: null,
+        updatedAt: now,
+        updatedBy: "system:seed"
+      }
+    },
+    { upsert: true }
+  );
+
+  const existingQuestions = await courseExamQuestions.find({ ...scope(botId, guildId), courseId }).toArray();
+  const existingByNumber = new Map(existingQuestions.map((question) => [question.questionNumber ?? question.order + 1, question]));
+  const existingByPrompt = new Map(existingQuestions.map((question) => [normalizeCourseSeedText(question.prompt), question]));
+  const nextQuestions = npdTrackingQuestions(courseId, botId, guildId, now, existingByNumber, existingByPrompt);
+
+  for (const question of nextQuestions) {
+    const existingQuestion = existingByNumber.get(question.questionNumber ?? question.order + 1) ?? existingByPrompt.get(normalizeCourseSeedText(question.prompt));
+    if (!existingQuestion) await courseExamQuestions.insertOne(question);
+  }
+}
+
+function npdTrackingQuestions(
+  courseId: string,
+  botId: string | null,
+  guildId: string,
+  now: Date,
+  existingByNumber: Map<number, MongoCourseExamQuestion>,
+  existingByPrompt: Map<string, MongoCourseExamQuestion>
+) {
+  const rows: Array<{ prompt: string; instruction: string; type: "selection" | "multiple"; alternatives: string[] }> = [
+    { prompt: "Como é dividida a estrutura de um acompanhamento?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Viatura primária e secundária com apoio DAF", "Viatura primária, secundária, terciária e sem apoio DAF", "Viatura primária, secundária, terciária e apoio DAF", "Viatura primária com apoio DAF"] },
+    { prompt: "Quais as funções da viatura primária em um acompanhamento?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Modular", "Dar pit", "Responsável pelo cerco caso necessário", "Antecipação de movimentos", "Manter contato visual"] },
+    { prompt: "Quais as funções da viatura secundária em um acompanhamento?", instruction: "Assinale as alternativas incorretas.", type: "multiple", alternatives: ["Modular", "Dar pit", "Responsável pelo cerco caso necessário", "Antecipação de movimentos", "Manter contato visual"] },
+    { prompt: "Quais as funções da viatura terciária em um acompanhamento?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Modular", "Dar pit", "Responsável pelo cerco caso necessário", "Antecipação de movimentos", "Manter contato visual"] },
+    { prompt: "Quais as funções do DAF em um acompanhamento?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Dar pit", "Realizar manobras arriscadas", "Modular", "Responsável pelo cerco caso necessário", "Manter contato visual"] },
+    { prompt: "Durante um acompanhamento de uma ação fechada de Roubo a Joalheria, um dos veículos ficam sem gasolina e iniciam fuga a pé. Como você reagiria?", instruction: "Assinale as alternativas incorretas.", type: "multiple", alternatives: ["Descer do veículo imediatamente para acompanhá-lo a pé", "Adiantar com uma viatura, descer do veículo, dar cabeçada e algemar", "Trancar a viatura", "Usar taser caso o indivíduo esteja passando rádio", "Abrir código 5 nos indivíduos"] },
+    { prompt: "Durante um acompanhamento já completo com 3 unidades sendo 1 MARY, 2 FAST e 1 DAF em uma QRU de Roubo a Caixa Registradora, o indivíduo se direciona sentido a Capital. Qual o procedimento correto a ser aplicado nessa situação?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Explodir o veículo", "Contactar a PMC através da rádio POLICIALIVIO e furar os pneus", "Dar pit na tentativa de evitar que o veículo chegue até a Capital", "Contactar a PMC através da rádio POLICIALIVIO e solicitar o apoio de 3 unidades", "Dar QTA após o veículo chegar na Capital"] },
+    { prompt: "Durante um acompanhamento de um Tráfico de Drogas você caiu da moto ou capotou a QSV quatro rodas. Como você reagiria após essa situação?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Sairia imediatamente do acompanhamento", "Subiria na moto / Descapotaria a QSV e seguiria o acompanhamento normalmente", "Voltaria para a NPD e pegaria outra QSV", "Informaria QTA + motivo, se retirando do acompanhamento"] },
+    { prompt: "Quantas MARY’s são necessárias para fechar uma unidade?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["1", "2", "3", "4", "5"] },
+    { prompt: "Em qual situação deve-se retirar o dispositivo de NITRO quando aplicado no veículo dos indivíduos?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Em uma abordagem de código 1", "Em uma abordagem de código 2", "Quando o veículo passa por você em alta velocidade usando NITRO", "Em uma ação que haja tentativa de fuga"] }
+  ];
+
+  return rows.map((row, index) => {
+    const optionPrefix = `q${String(index + 1).padStart(2, "0")}_option_`;
+    const alternatives = row.alternatives.map((text, optionIndex) => ({
+      id: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      text,
+      value: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      score: 0,
+      isCorrect: false,
+      order: optionIndex
+    }));
+    const existing = existingByNumber.get(index + 1) ?? existingByPrompt.get(normalizeCourseSeedText(row.prompt));
+    const preservedCorrectIds = preserveCourseSeedCorrectIds(existing, alternatives);
+    const points = existing?.points && existing.points > 0 ? existing.points : 10;
+    return {
+      _id: existing?._id ?? randomUUID(),
+      botId,
+      guildId,
+      courseId,
+      order: index,
+      questionNumber: index + 1,
+      type: existing?.type ?? row.type,
+      prompt: row.prompt,
+      title: row.prompt,
+      description: row.instruction,
+      points,
+      alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: preservedCorrectIds.includes(alternative.id), score: preservedCorrectIds.includes(alternative.id) ? points : 0 })),
+      correctAlternativeId: (existing?.type ?? row.type) === "selection" ? preservedCorrectIds[0] ?? null : null,
+      correctAlternativeIds: (existing?.type ?? row.type) === "multiple" ? preservedCorrectIds : [],
+      placeholder: null,
+      active: true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      updatedBy: "system:seed"
+    };
+  });
+}
+
+async function ensureNpdApproachCourse(botId: string | null, guildId: string) {
+  const { courses, courseExamSettings, courseExamQuestions } = await getMongoCollections();
+  const now = new Date();
+  const existing = await courses.findOne({
+    ...scope(botId, guildId),
+    $or: [
+      { code: "npd_abordagem" },
+      { code: "curso-abordagem-npd" },
+      { code: "npd-abordagem" },
+      { name: "CURSO DE ABORDAGEM - NPD" },
+      { name: "Curso de Abordagem - NPD" }
+    ]
+  });
+  const courseId = existing?._id ?? randomUUID();
+  const description = "Esta prova foi desenvolvida com o objetivo de capacitar e instruir todos os policiais do North Police Department a realizar a instrução padrão e com excelência, para que nosso batalhão mantenha o alto padrão no nosso procedimento de abordagem.\n\nApós a aprovação no curso, será esperado e cobrado a execução plena e adequada de todos os conteúdos abordados nesta apostila. Uma vez que o curso foi registrado na planilha, falhas no procedimento estarão sujeitas a punições, além da reciclagem do respectivo curso.";
+
+  if (!existing) {
+    await courses.insertOne({
+      _id: courseId,
+      botId,
+      guildId,
+      name: "CURSO DE ABORDAGEM - NPD",
+      code: "npd_abordagem",
+      description,
+      emoji: null,
+      color: "#7c3aed",
+      bannerUrl: null,
+      proofBannerUrl: null,
+      footerImageUrl: null,
+      thumbnailUrl: null,
+      imagePosition: "top",
+      publishText: null,
+      proofInstructionText: null,
+      startedText: null,
+      cancelledText: null,
+      buttonLabels: {
+        cancel: "Cancelar Curso",
+        enter: "Entrar no Curso",
+        leave: "Sair do Curso",
+        start: "Realizar Prova"
+      },
+      instructorUserIds: [],
+      instructorRoleIds: [],
+      allowGeneralInstructorRoles: true,
+      publishChannelId: null,
+      maxStudents: 30,
+      location: null,
+      defaultSchedule: null,
+      active: false,
+      createdBy: "system:seed",
+      updatedBy: "system:seed",
+      createdAt: now,
+      updatedAt: now
+    });
+  } else if (existing.code !== "npd_abordagem" || existing.buttonLabels?.start !== "Realizar Prova" || !existing.description) {
+    await courses.updateOne(
+      { _id: existing._id, ...scope(botId, guildId) },
+      {
+        $set: {
+          code: "npd_abordagem",
+          description: existing.description || description,
+          buttonLabels: {
+            ...existing.buttonLabels,
+            start: "Realizar Prova"
+          },
+          updatedAt: now
+        }
+      }
+    );
+  }
+
+  await courseExamSettings.updateOne(
+    { ...scope(botId, guildId), courseId },
+    {
+      $setOnInsert: {
+        _id: randomUUID(),
+        botId,
+        guildId,
+        courseId,
+        enabled: false,
+        minScore: 70,
+        maxTimeMinutes: null,
+        correctionChannelId: null,
+        resultChannelId: null,
+        temporaryCategoryId: null,
+        logChannelId: null,
+        deleteWrittenAnswers: false,
+        allowCurrentQuestionReview: false,
+        initialMessage: "Bem-vindo à prova do CURSO DE ABORDAGEM - NPD. Leia cada pergunta com atenção.",
+        finalMessage: "Tem certeza de que deseja finalizar esta prova? Depois da confirmação, as respostas não poderão ser alteradas.",
+        approvalMessage: "Você foi aprovado no CURSO DE ABORDAGEM - NPD.",
+        rejectionMessage: "Sua prova foi concluída, mas a nota mínima necessária não foi atingida.",
+        manualQuestionMaxScore: 0,
+        manualApproval: false,
+        automaticApproval: true,
+        releaseMode: "immediate",
+        releaseAt: null,
+        attemptLimit: 1,
+        allowAnswerChange: false,
+        showAnswersAfterExam: false,
+        version: 1,
+        examKey: "npd-abordagem-v1",
+        externalLinkEnabled: false,
+        externalLinkText: "Acessar material da prova",
+        externalLinkUrl: null,
+        externalLinkDescription: null,
+        externalLinkEmoji: null,
+        updatedAt: now,
+        updatedBy: "system:seed"
+      }
+    },
+    { upsert: true }
+  );
+
+  const existingQuestions = await courseExamQuestions.find({ ...scope(botId, guildId), courseId }).toArray();
+  const existingByNumber = new Map(existingQuestions.map((question) => [question.questionNumber ?? question.order + 1, question]));
+  const existingByPrompt = new Map(existingQuestions.map((question) => [normalizeCourseSeedText(question.prompt), question]));
+  const nextQuestions = npdApproachQuestions(courseId, botId, guildId, now, existingByNumber, existingByPrompt);
+
+  for (const question of nextQuestions) {
+    const existingQuestion = existingByNumber.get(question.questionNumber ?? question.order + 1) ?? existingByPrompt.get(normalizeCourseSeedText(question.prompt));
+    if (!existingQuestion) await courseExamQuestions.insertOne(question);
+  }
+}
+
+function npdApproachQuestions(
+  courseId: string,
+  botId: string | null,
+  guildId: string,
+  now: Date,
+  existingByNumber: Map<number, MongoCourseExamQuestion>,
+  existingByPrompt: Map<string, MongoCourseExamQuestion>
+) {
+  const rows: Array<{ prompt: string; instruction: string; type: "selection" | "multiple"; alternatives: string[] }> = [
+    { prompt: "Quais requisitos para iniciar-se uma abordagem de código 1?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Vantagem numérica", "Apontar arma na cara do indivíduo para manter nossa segurança", "Vantagem tática", "Algemar o indivíduo", "Revistar o indivíduo"] },
+    { prompt: "O que deve-se verificar em uma abordagem de código 1 (baixa intensidade)?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Solicitar documentos", "Verificar multas pendentes", "Algemar e revistar", "Verificar situação do veículo (avariado ou não)", "Verificar se o passaporte está em dia"] },
+    { prompt: "Selecione procedimentos que você faria em uma abordagem de código 2 próximo à uma denúncia de Venda de Drogas (média intensidade).", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Observar comportamento do indivíduo perante a abordagem", "Realizar o teste de pólvora", "Algemar (por ser suspeito)", "Realizar o teste de entorpecentes", "Verificação de documentos (identidade e passaporte)"] },
+    { prompt: "Selecione procedimentos que você faria em uma abordagem de código 3 em um Roubo de Caixa Eletrônico (alta intensidade).", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Revistar o indivíduo", "Usar força letal (armas)", "Liberar o indivíduo", "Algemar o indivíduo"] },
+    { prompt: "Quais tipos de comportamentos devem ser aderidos pelo oficial durante uma abordagem de COD.1?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Apresentação (QRA)", "Revistar o veículo", "Contextualização (motivo da abordagem)", "Averiguação (verificação de documentos)", "Advertência — se houver (multa, advertência verbal, entre outros)"] },
+    { prompt: "Durante uma abordagem de código 3, onde dois indivíduos foram vistos armados e já estão algemados, vários veículos/pessoas começam a se aproximar. O que você faria nessa situação?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Solicitar que saiam do perímetro da abordagem", "Prisão por desobediência em caso de insistência de permanência no local", "Uso progressivo da força", "Abriria fogo contra os mesmos", "Solicitar apoio adicional na abordagem"] },
+    { prompt: "Durante um cód. 5 no aeroporto de Trevor, três indivíduos fortemente armados foram vistos disparando contra cidadãos de bem. O que você faria nessa situação?", instruction: "Assinale as alternativas corretas.", type: "multiple", alternatives: ["Solicitaria apoio", "Tentaria, sozinho, abater os mesmos", "Informaria na rádio POLICIANPD as descrições de vestimentas", "Informaria na rádio POLICIANPD as descrições dos veículos", "Realizaria uma abordagem de código 3"] },
+    { prompt: "Você avistou 4 indivíduos efetuando disparos em uma QRU de Contrato Ilegal e, após notar a chegada da polícia, os mesmos entraram em seus veículos e aplicaram fuga de abordagem. Qual o procedimento correto a ser seguido?", instruction: "Assinale a alternativa correta.", type: "selection", alternatives: ["Solicitar apoio e abater os quatro indivíduos", "Solicitar apoio e iniciar acompanhamento"] },
+    { prompt: "Em quais momentos podemos realizar a revista direta nos indivíduos/veículos?", instruction: "Assinale a alternativa incorreta.", type: "selection", alternatives: ["Flagrante de denúncia", "Uso de máscaras", "Uso de colete militar", "Uniforme combinado", "Veículo irregular", "Após ganhar uma ação fechada (Ammunation, Lojinha, Joalheria etc.)"] },
+    { prompt: "Qual é o procedimento de revista do sexo oposto?", instruction: "Assinale as alternativas corretas. A alternativa E está incompleta e deve ser completada por um administrador antes da publicação.", type: "multiple", alternatives: ["Feita por um(a) oficial do mesmo sexo", "Pode-se usar a metodologia da “caixa” caso não haja oficiais do mesmo sexo", "Pode revistar diretamente se não colaborar", "Chamar o PC. Moretta para realizar a revista independente do sexo", "Pode-se usar a metodologia da “caixa” se o indivíduo permitir, mesmo com um oficial do sexo oposto..."] }
+  ];
+
+  return rows.map((row, index) => {
+    const optionPrefix = `q${String(index + 1).padStart(2, "0")}_option_`;
+    const alternatives = row.alternatives.map((text, optionIndex) => ({
+      id: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      text,
+      value: `${optionPrefix}${String(optionIndex + 1).padStart(2, "0")}`,
+      score: 0,
+      isCorrect: false,
+      order: optionIndex
+    }));
+    const existing = existingByNumber.get(index + 1) ?? existingByPrompt.get(normalizeCourseSeedText(row.prompt));
+    const preservedCorrectIds = preserveCourseSeedCorrectIds(existing, alternatives);
+    const points = existing?.points && existing.points > 0 ? existing.points : 10;
+    return {
+      _id: existing?._id ?? randomUUID(),
+      botId,
+      guildId,
+      courseId,
+      order: index,
+      questionNumber: index + 1,
+      type: existing?.type ?? row.type,
+      prompt: row.prompt,
+      title: row.prompt,
+      description: row.instruction,
+      points,
+      alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: preservedCorrectIds.includes(alternative.id), score: preservedCorrectIds.includes(alternative.id) ? points : 0 })),
+      correctAlternativeId: (existing?.type ?? row.type) === "selection" ? preservedCorrectIds[0] ?? null : null,
+      correctAlternativeIds: (existing?.type ?? row.type) === "multiple" ? preservedCorrectIds : [],
+      placeholder: null,
+      active: true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      updatedBy: "system:seed"
+    };
+  });
+}
+
+function preserveCourseSeedCorrectIds(
+  existing: MongoCourseExamQuestion | undefined,
+  nextAlternatives: Array<{ id: string; text: string; order: number }>
+) {
+  if (!existing) return [];
+  const existingCorrectIds = [
+    ...(existing.correctAlternativeIds ?? []),
+    ...(existing.correctAlternativeId ? [existing.correctAlternativeId] : []),
+    ...existing.alternatives.filter((alternative) => alternative.isCorrect).map((alternative) => alternative.id)
+  ].filter(Boolean);
+  const byOldId = new Map(existing.alternatives.map((alternative, index) => [alternative.id, index]));
+  const byText = new Map(existing.alternatives.map((alternative, index) => [normalizeCourseSeedText(alternative.text), index]));
+  return [...new Set(existingCorrectIds.flatMap((correctId) => {
+    const oldIndex = byOldId.get(correctId);
+    if (oldIndex != null && nextAlternatives[oldIndex]) return [nextAlternatives[oldIndex].id];
+    const existingAlternative = existing.alternatives.find((alternative) => alternative.id === correctId);
+    const textIndex = existingAlternative ? byText.get(normalizeCourseSeedText(existingAlternative.text)) : undefined;
+    if (textIndex != null && nextAlternatives[textIndex]) return [nextAlternatives[textIndex].id];
+    return [];
+  }))];
+}
+
+function normalizeCourseSeedText(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 export async function getCourseSettings(botId: string | null, guildId: string) {

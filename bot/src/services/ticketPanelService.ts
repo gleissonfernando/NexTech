@@ -55,7 +55,7 @@ export async function publishTicketPanel(interaction: ChatInputCommandInteractio
     return;
   }
 
-  const payload = createTicketPanelPayload(settings);
+  const payload = createTicketPanelPayload(settings, interaction.guild);
 
   if (!payload) {
     await interaction.reply({ content: "Configure pelo menos uma opcao ativa para o painel de ticket.", ephemeral: true });
@@ -305,7 +305,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
   await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}.`);
 }
 
-function createTicketPanelPayload(settings: GuildSettings) {
+function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null) {
   const options = settings.ticketPanelOptions.filter((option) => option.enabled).slice(0, 25);
 
   if (!options.length) {
@@ -325,7 +325,7 @@ function createTicketPanelPayload(settings: GuildSettings) {
           .setPlaceholder(settings.ticketPanelPlaceholder || "Selecione o tipo de atendimento")
           .addOptions(options.map(toSelectOption))
       );
-  return renderComponentsV2Panel({ accentColor: parseColor(settings.ticketPanelColor), actions: [action], description: contentBlocks[1] ?? "", fields: contentBlocks.slice(2), image: settings.ticketPanelImage && imageUrl ? { ...settings.ticketPanelImage, imageUrl } : null, moduleId: "ticket", title: `${systemEmojiText("interrogacao")} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}` });
+  return renderComponentsV2Panel({ accentColor: parseColor(settings.ticketPanelColor), actions: [action], description: contentBlocks[1] ?? "", fields: contentBlocks.slice(2), guild, image: settings.ticketPanelImage && imageUrl ? { ...settings.ticketPanelImage, imageUrl } : null, moduleId: "ticket", title: `${systemEmojiText("interrogacao", guild)} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}` });
 }
 
 async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption) {
@@ -455,32 +455,33 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
     accentColor: 0xf2b84b,
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setEmoji(systemComponentEmoji("link")).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("link")).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("relogio")).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("perigo")).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
+        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)
       )
     ],
     description: "O atendimento foi finalizado e o transcript foi salvo com seguranca. O acesso ao link e senha deve permanecer restrito ao canal de logs configurado.",
     fields: [
-      `**Informacoes do Ticket**\n**Ticket:** #${transcript.transcript.ticketId ?? transcript.transcript.id}\n**Canal:** ${transcript.transcript.channelName ? `#${transcript.transcript.channelName}` : "-"}\n**Tipo:** ${transcript.transcript.type}\n**Status:** ${formatTranscriptStatus(ticket.finalResult ?? transcript.transcript.status)}`,
+      `**Informacoes do Ticket**\n**Ticket:** #${transcript.transcript.ticketId ?? transcript.transcript.id}\n**Canal:** ${transcript.transcript.channelName ? `#${transcript.transcript.channelName}` : "-"}\n**Tipo:** ${transcript.transcript.type}\n**Status:** ${formatTranscriptStatus(ticket.finalResult ?? transcript.transcript.status, guild)}`,
       `**Envolvidos**\n**Aberto por:** <@${ticket.openerId}>\n**Finalizado por:** <@${closedById}>\n**Responsavel:** ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nao assumido"}\n**Categoria:** ${ticket.categoryName ?? ticket.subject}`,
       `**Dados do Caso**\n**Criado em:** <t:${Math.floor(createdAt.getTime() / 1000)}:F>\n**Fechado em:** <t:${Math.floor(closedAt.getTime() / 1000)}:F>\n**Tempo total:** ${formatElapsed(createdAt, closedAt)}\n**Resumo:** ${transcript.transcript.messageCount ?? 0} mensagens, ${transcript.transcript.attachmentCount ?? 0} anexos, ${transcript.transcript.participantCount ?? 0} participantes`,
       `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha temporaria:** ${transcript.temporaryPassword ? `||${transcript.temporaryPassword}||` : "nao gerada"}\n**Expira em:** ${transcript.temporaryPasswordExpiresAt ? `<t:${Math.floor(Date.parse(transcript.temporaryPasswordExpiresAt) / 1000)}:D>` : "configuracao padrao"}`
     ],
+    guild,
     image: null,
     moduleId: "ticket-transcript",
-    title: `${systemEmojiText("folha")} Transcript Gerado`
+    title: `${systemEmojiText("folha", guild)} Transcript Gerado`
   })).catch(() => null);
 }
 
-function formatTranscriptStatus(status: string) {
+function formatTranscriptStatus(status: string, guild: Guild | null = null) {
   const normalized = status.toLowerCase();
-  if (normalized.includes("final") || normalized.includes("resolv")) return `${systemStatusEmoji("active")} ${status}`;
-  if (normalized.includes("arquiv")) return `${systemEmojiText("caixa")} ${status}`;
-  if (normalized.includes("pend") || normalized.includes("aguard")) return `${systemStatusEmoji("pending")} ${status}`;
-  if (normalized.includes("recus") || normalized.includes("neg")) return `${systemStatusEmoji("danger")} ${status}`;
-  return `${systemEmojiText("perigo")} ${status}`;
+  if (normalized.includes("final") || normalized.includes("resolv")) return `${systemStatusEmoji("active", guild)} ${status}`;
+  if (normalized.includes("arquiv")) return `${systemEmojiText("caixa", guild)} ${status}`;
+  if (normalized.includes("pend") || normalized.includes("aguard")) return `${systemStatusEmoji("pending", guild)} ${status}`;
+  if (normalized.includes("recus") || normalized.includes("neg")) return `${systemStatusEmoji("danger", guild)} ${status}`;
+  return `${systemEmojiText("perigo", guild)} ${status}`;
 }
 
 function formatElapsed(start: Date, end: Date) {

@@ -500,6 +500,13 @@ export type MongoCourseExamSettings = {
   manualQuestionMaxScore?: number;
   manualApproval?: boolean;
   automaticApproval?: boolean;
+  releaseMode?: "immediate" | "scheduled" | "instructor";
+  releaseAt?: Date | null;
+  attemptLimit?: number | null;
+  allowAnswerChange?: boolean;
+  showAnswersAfterExam?: boolean;
+  version?: number;
+  examKey?: string | null;
   externalLinkEnabled?: boolean;
   externalLinkText?: string | null;
   externalLinkUrl?: string | null;
@@ -516,13 +523,14 @@ export type MongoCourseExamQuestion = {
   courseId: string;
   order: number;
   questionNumber?: number;
-  type: "selection" | "written";
+  type: "selection" | "multiple" | "written";
   prompt: string;
   title?: string;
   description: string | null;
   points: number;
   alternatives: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   correctAlternativeId: string | null;
+  correctAlternativeIds?: string[];
   placeholder: string | null;
   active: boolean;
   createdAt: Date;
@@ -542,6 +550,25 @@ export type MongoCourseExamAttempt = {
   instructorId: string;
   status: "in_progress" | "finished" | "approved" | "rejected" | "awaiting_review" | "manual_reviewed";
   questionsSnapshot?: MongoCourseExamQuestion[];
+  examVersion?: number;
+  attemptNumber?: number;
+  studentIdentification?: {
+    discordUserId: string;
+    discordUsername: string;
+    discordDisplayName: string;
+    guildNickname: string | null;
+    rpFullName: string;
+    currentRank: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null;
+    rpId: string;
+    guildId: string;
+    courseId: string;
+    examId: string;
+    attemptId: string;
+    temporaryChannelId: string;
+    startedAt: Date;
+    identificationCompletedAt: Date | null;
+  } | null;
+  identificationConfirmedAt?: Date | null;
   startedAt: Date;
   finishedAt: Date | null;
   correctedAt: Date | null;
@@ -572,8 +599,9 @@ export type MongoCourseExamAnswer = {
   questionId: string;
   questionOrder: number;
   questionText?: string;
-  type: "selection" | "written";
+  type: "selection" | "multiple" | "written";
   selectedAlternativeId: string | null;
+  selectedAlternativeIds?: string[];
   selectedAlternativeText?: string | null;
   alternativesSnapshot?: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   writtenAnswer: string | null;
@@ -3386,12 +3414,14 @@ export type MongoSystemEmoji = {
   _id: string;
   key: string;
   botId: string | null;
+  guildId?: string | null;
   name: string;
   emojiId: string | null;
   animated: boolean;
   sourceGuildId: string | null;
   enabled: boolean;
   fallback: string;
+  extraEmojiNames?: string[];
   updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -4168,8 +4198,12 @@ async function createMongoIndexes(db: Db) {
 async function ensureSystemEmojiIndexes(db: Db) {
   const collection = db.collection<MongoSystemEmoji>("system_emojis");
 
+  await collection.updateMany({ guildId: { $exists: false } }, { $set: { guildId: null } });
+  await collection.dropIndex("botId_1_key_1").catch(() => undefined);
+
   await Promise.all([
-    collection.createIndex({ botId: 1, key: 1 }, { unique: true }),
+    collection.createIndex({ botId: 1, guildId: 1, key: 1 }, { unique: true }),
+    collection.createIndex({ botId: 1, guildId: 1, updatedAt: -1 }),
     collection.createIndex({ updatedAt: -1 }),
     collection.createIndex({ lastValidatedAt: -1 })
   ]);

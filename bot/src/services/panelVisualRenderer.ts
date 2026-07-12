@@ -1,5 +1,6 @@
-import { MessageFlags } from "discord.js";
+import { MessageFlags, type Guild } from "discord.js";
 import { env } from "../config/env";
+import { replaceSystemEmojis } from "./systemEmojiService";
 
 export type PanelVisualPosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 const MAX_V2_COMPONENTS = 40;
@@ -42,6 +43,7 @@ export function renderComponentsV2Panel(input: {
   fields?: string[];
   footer?: ComponentsV2FooterConfig;
   footerImage?: string | null;
+  guild?: Guild | null;
   image?: PanelVisualConfig | null;
   moduleId?: string;
   title: string;
@@ -89,11 +91,13 @@ export function renderComponentsV2Panel(input: {
   if (!blockComponents.length && (media || extraMedia.length) && position === "bottom") pushMedia();
 
   const footer = mergeFooter(input.footer, footerImage);
-  return {
+  const payload = {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({ accentColor: input.accentColor, components, footer })],
     flags: MessageFlags.IsComponentsV2 as const
   };
+
+  return input.guild ? replaceComponentText(payload, input.guild) : payload;
 }
 
 export function componentsV2Payload(input: {
@@ -102,12 +106,15 @@ export function componentsV2Payload(input: {
   components: unknown[];
   ephemeral?: boolean;
   footer?: ComponentsV2FooterConfig;
+  guild?: Guild | null;
 }) {
-  return {
+  const payload = {
     ...(input.allowedMentions === undefined ? { allowedMentions: { parse: [] as never[] } } : { allowedMentions: input.allowedMentions }),
     components: [buildV2Container(input)],
     flags: (input.ephemeral ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
   };
+
+  return input.guild ? replaceComponentText(payload, input.guild) : payload;
 }
 
 export function buildV2Container(input: { accentColor?: number; components: unknown[]; footer?: ComponentsV2FooterConfig }) {
@@ -126,6 +133,20 @@ export function renderPanelFromBlocks(input: { accentColor: number; blocks: Pane
     components: [buildV2Container({ accentColor: input.accentColor, components: renderPanelBlocks(input.blocks), footer: input.footer })],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function replaceComponentText<T>(value: T, guild: Guild): T {
+  if (typeof value === "string") return replaceSystemEmojis(value, guild) as T;
+  if (Array.isArray(value)) return value.map((item) => replaceComponentText(item, guild)) as T;
+  if (!value || typeof value !== "object") return value;
+
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    output[key] = key === "custom_id" || key === "url"
+      ? item
+      : replaceComponentText(item, guild);
+  }
+  return output as T;
 }
 
 export function renderPanelBlocks(blocks: PanelBlock[] | null | undefined) {

@@ -17,8 +17,10 @@ import {
 } from "discord.js";
 import { createHash } from "node:crypto";
 import { isBotModuleEnabled } from "../config/env";
+import type { SystemEmojiKey } from "../config/systemEmojis";
 import type { BotContext } from "../types";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "./runtimeModuleGuard";
+import { systemEmojiText } from "./systemEmojiService";
 
 const MODULE_ID = "server-generator";
 const CUSTOM_ID_PREFIX = "server_generator_modal";
@@ -223,6 +225,13 @@ const styleEmoji: Record<string, string[]> = {
   premium: ["✧", "◆", "◇", "✦"]
 };
 
+const generatedPanelEmojiByHint: Record<string, SystemEmojiKey> = {
+  avisos: "alerta",
+  regras: "folha",
+  sugestoes: "interrogacao",
+  ticket: "prancheta"
+};
+
 const voiceCategoryNames: Record<string, string[]> = {
   clean: ["○ Calls", "◇ Voz", "□ Salas"],
   corporate: ["▪ Reuniões", "◆ Conferência", "◇ Voice Hub"],
@@ -338,23 +347,23 @@ export async function handleServerGeneratorInteraction(interaction: Interaction,
   const startedAt = Date.now();
 
   await interaction.reply({
-    content: progressText("Analisando objetivo...", 1, 7),
+    content: progressText("Analisando objetivo...", 1, 7, interaction.guild),
     ephemeral: true
   });
 
   try {
     const plan = generatePlan(input, interaction.guild.id, interaction.user.id);
-    await interaction.editReply(progressText("Criando cargos...", 2, 7));
+    await interaction.editReply(progressText("Criando cargos...", 2, 7, interaction.guild));
     const createdRoles = await createRoles(interaction.guild, plan.roles);
-    await interaction.editReply(progressText("Criando categorias...", 3, 7));
+    await interaction.editReply(progressText("Criando categorias...", 3, 7, interaction.guild));
     const createdCategories = await createCategories(interaction.guild, plan.categories, staffRoleIds(createdRoles));
-    await interaction.editReply(progressText("Criando canais...", 4, 7));
+    await interaction.editReply(progressText("Criando canais...", 4, 7, interaction.guild));
     const createdChannels = await createChannels(createdCategories);
-    await interaction.editReply(progressText("Configurando painéis...", 5, 7));
+    await interaction.editReply(progressText("Configurando painéis...", 5, 7, interaction.guild));
     await sendPanels(createdChannels.textChannels, plan, input);
-    await interaction.editReply(progressText("Validando qualidade...", 6, 7));
+    await interaction.editReply(progressText("Validando qualidade...", 6, 7, interaction.guild));
     await ensureNoEmptyCategories(createdCategories.categories, createdChannels.textChannels);
-    await interaction.editReply(doneText(plan, createdCategories.categories.length, createdChannels.total, plan.roles.length, Date.now() - startedAt));
+    await interaction.editReply(doneText(plan, createdCategories.categories.length, createdChannels.total, plan.roles.length, Date.now() - startedAt, interaction.guild));
   } catch (error) {
     console.error("[server-generator] falha ao criar servidor:", error);
     await interaction.editReply(`Nao foi possivel finalizar a criacao: ${friendlyError(error)}`);
@@ -616,12 +625,13 @@ async function sendPanels(channels: TextChannel[], plan: ServerPlan, input: Gene
 
   for (const panel of plan.panels.slice(0, 4)) {
     const target = channels.find((channel) => channel.name.includes(panel.channelHint)) ?? firstTextChannel;
+    const emojiKey = generatedPanelEmojiByHint[panel.channelHint] ?? "prancheta";
 
     await target.send({
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle(panel.title)
+          .setTitle(`${systemEmojiText(emojiKey, target.guild)} ${panel.title}`)
           .setDescription(panel.body)
           .setFooter({ text: input.serverName })
           .setTimestamp()
@@ -709,22 +719,22 @@ function topicFor(input: GeneratorInput, channel: string) {
   return `${channel.replace(/-/g, " ")} para ${input.serverName}: ${input.objective.slice(0, 180)}`;
 }
 
-function progressText(step: string, current: number, total: number) {
+function progressText(step: string, current: number, total: number, guild: Guild | null = null) {
   return [
     `Progresso ${current}/${total}`,
     "",
-    `🔄 ${step}`
+    `${systemEmojiText("relogio", guild)} ${step}`
   ].join("\n");
 }
 
-function doneText(plan: ServerPlan, categories: number, channels: number, roles: number, elapsedMs: number) {
+function doneText(plan: ServerPlan, categories: number, channels: number, roles: number, elapsedMs: number, guild: Guild | null = null) {
   return [
-    "✅ Servidor configurado.",
+    `${systemEmojiText("visto", guild)} Servidor configurado.`,
     "",
-    `Categorias criadas: ${categories}`,
-    `Canais criados: ${channels}`,
-    `Cargos criados: ${roles}`,
-    `Tempo gasto: ${(elapsedMs / 1000).toFixed(1)}s`,
+    `${systemEmojiText("prancheta", guild)} Categorias criadas: ${categories}`,
+    `${systemEmojiText("discord", guild)} Canais criados: ${channels}`,
+    `${systemEmojiText("homem", guild)} Cargos criados: ${roles}`,
+    `${systemEmojiText("relogio", guild)} Tempo gasto: ${(elapsedMs / 1000).toFixed(1)}s`,
     "",
     plan.summary
   ].join("\n");

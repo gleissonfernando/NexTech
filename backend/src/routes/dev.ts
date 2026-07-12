@@ -446,7 +446,8 @@ devRouter.post("/maintenance/alert", async (_req, res, next) => {
 devRouter.get("/system-emojis", async (req, res, next) => {
   try {
     const botId = typeof req.query.botId === "string" ? req.query.botId : null;
-    return res.json(await getSystemEmojiDashboard(botId));
+    const guildId = typeof req.query.guildId === "string" ? req.query.guildId : null;
+    return res.json(await getSystemEmojiDashboard(botId, guildId));
   } catch (error) {
     return next(error);
   }
@@ -455,7 +456,8 @@ devRouter.get("/system-emojis", async (req, res, next) => {
 devRouter.post("/system-emojis/sync", async (req, res, next) => {
   try {
     const botId = typeof req.body?.botId === "string" ? req.body.botId : typeof req.query.botId === "string" ? req.query.botId : null;
-    return res.json(await ensureSystemEmojiDefaults(botId));
+    const guildId = typeof req.body?.guildId === "string" ? req.body.guildId : typeof req.query.guildId === "string" ? req.query.guildId : null;
+    return res.json(await ensureSystemEmojiDefaults(botId, guildId));
   } catch (error) {
     return next(error);
   }
@@ -465,9 +467,10 @@ devRouter.patch("/system-emojis/:key", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const botId = typeof req.body?.botId === "string" ? req.body.botId : typeof req.query.botId === "string" ? req.query.botId : null;
+    const guildId = typeof req.body?.guildId === "string" ? req.body.guildId : typeof req.query.guildId === "string" ? req.query.guildId : null;
     const input = systemEmojiPatchSchema.parse(req.body ?? {});
 
-    return res.json(await updateSystemEmojiConfig(req.params.key, input, auth.user.discordId, botId));
+    return res.json(await updateSystemEmojiConfig(req.params.key, input, auth.user.discordId, botId, guildId));
   } catch (error) {
     return next(error);
   }
@@ -476,7 +479,8 @@ devRouter.patch("/system-emojis/:key", async (req, res, next) => {
 devRouter.post("/system-emojis/:key/reset", async (req, res, next) => {
   try {
     const botId = typeof req.body?.botId === "string" ? req.body.botId : typeof req.query.botId === "string" ? req.query.botId : null;
-    return res.json(await resetSystemEmojiConfig(req.params.key, botId));
+    const guildId = typeof req.body?.guildId === "string" ? req.body.guildId : typeof req.query.guildId === "string" ? req.query.guildId : null;
+    return res.json(await resetSystemEmojiConfig(req.params.key, botId, guildId));
   } catch (error) {
     return next(error);
   }

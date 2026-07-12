@@ -21,6 +21,7 @@ import { handleAntiAbuseVoiceStateUpdate } from "../services/antiAbuseService";
 import { handleTemporaryCallChannelDelete, handleTemporaryVoiceStateUpdate } from "../services/temporaryVoiceService";
 import { handleVoiceLogStateUpdate } from "../services/voiceLogService";
 import { scheduleHierarchyRefresh, scheduleHierarchyRefreshForRoles } from "../services/fivemHierarchyService";
+import { cacheGuildSystemEmojis, handleSystemEmojiGuildMutation } from "../services/systemEmojiService";
 import type { BotContext } from "../types";
 import { handleAntiBanDetection, recoverDeletedProtectedRole, recoverMemberProtectedRoles, recoverUpdatedProtectedRole } from "../services/antiBanService";
 import { BoundedTaskQueue } from "../services/boundedTaskQueue";
@@ -70,9 +71,23 @@ export function registerEvents(client: Client, context: BotContext) {
   });
   client.on(Events.GuildCreate, (guild) => {
     runEvent("guildCreate", async () => {
+      await cacheGuildSystemEmojis(guild, context);
       await ensureSafeBotSetup(guild, context);
       if (isBotModuleEnabled("fivem-hierarchy")) scheduleHierarchyRefresh(guild, context);
     });
+  });
+
+  client.on(Events.GuildEmojiCreate, (emoji) => {
+    if (isMaintenanceModeActive()) return;
+    runEvent("guildEmojiCreate.systemEmojis", () => handleSystemEmojiGuildMutation(emoji, context));
+  });
+  client.on(Events.GuildEmojiUpdate, (_oldEmoji, newEmoji) => {
+    if (isMaintenanceModeActive()) return;
+    runEvent("guildEmojiUpdate.systemEmojis", () => handleSystemEmojiGuildMutation(newEmoji, context));
+  });
+  client.on(Events.GuildEmojiDelete, (emoji) => {
+    if (isMaintenanceModeActive()) return;
+    runEvent("guildEmojiDelete.systemEmojis", () => handleSystemEmojiGuildMutation(emoji, context));
   });
 
   const memberEventsEnabled = env.BOT_MEMBER_EVENTS_ENABLED

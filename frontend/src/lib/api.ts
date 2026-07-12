@@ -2026,30 +2026,32 @@ export async function getDatabaseMaintenanceModules() {
   return data.modules;
 }
 
-export async function getSystemEmojiDashboard(botId?: string | null) {
+export async function getSystemEmojiDashboard(botId?: string | null, guildId?: string | null) {
   const { data } = await api.get<SystemEmojiDashboard>("/dev/system-emojis", {
-    params: botId ? { botId } : undefined
+    params: { ...(botId ? { botId } : {}), ...(guildId ? { guildId } : {}) }
   });
   return data;
 }
 
 export async function saveSystemEmoji(key: string, payload: SaveSystemEmojiPayload) {
   const { data } = await api.patch<SystemEmojiDashboard>(`/dev/system-emojis/${encodeURIComponent(key)}`, payload, {
-    params: payload.botId ? { botId: payload.botId } : undefined
+    params: { ...(payload.botId ? { botId: payload.botId } : {}), ...(payload.guildId ? { guildId: payload.guildId } : {}) }
   });
   return data;
 }
 
-export async function resetSystemEmoji(key: string, botId?: string | null) {
+export async function resetSystemEmoji(key: string, botId?: string | null, guildId?: string | null) {
   const { data } = await api.post<SystemEmojiDashboard>(`/dev/system-emojis/${encodeURIComponent(key)}/reset`, {
-    botId: botId ?? null
+    botId: botId ?? null,
+    guildId: guildId ?? null
   });
   return data;
 }
 
-export async function syncSystemEmojis(botId?: string | null) {
+export async function syncSystemEmojis(botId?: string | null, guildId?: string | null) {
   const { data } = await api.post<SystemEmojiDashboard>("/dev/system-emojis/sync", {
-    botId: botId ?? null
+    botId: botId ?? null,
+    guildId: guildId ?? null
   });
   return data;
 }
