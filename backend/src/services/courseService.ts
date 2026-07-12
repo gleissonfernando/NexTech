@@ -203,6 +203,7 @@ async function ensureNpdModulationCourse(botId: string | null, guildId: string) 
     ]
   });
   const courseId = existing?._id ?? randomUUID();
+  const description = "Curso de Modulação da NPD. Prova avaliativa com 10 questões sobre comunicação, códigos operacionais, QRL, QRV e procedimentos de rádio.";
   if (!existing) {
     await courses.insertOne({
       _id: courseId,
@@ -210,9 +211,9 @@ async function ensureNpdModulationCourse(botId: string | null, guildId: string) 
       guildId,
       name: "Curso de Modulação",
       code: "npd_modulacao",
-      description: "Curso de Modulação da NPD. Prova cadastrada como rascunho/inativa aguardando gabarito.",
+      description,
       emoji: null,
-      color: "#0f766e",
+      color: "#FFD500",
       bannerUrl: null,
       proofBannerUrl: null,
       footerImageUrl: null,
@@ -241,12 +242,26 @@ async function ensureNpdModulationCourse(botId: string | null, guildId: string) 
       createdAt: now,
       updatedAt: now
     });
-  } else if (existing.code !== "npd_modulacao" || existing.buttonLabels?.start !== "Iniciar Prova") {
+  } else if (
+    existing.code !== "npd_modulacao"
+    || existing.buttonLabels?.start !== "Iniciar Prova"
+    || !existing.description
+    || existing.updatedBy === "system:seed"
+  ) {
+    const seedOwned = existing.updatedBy === "system:seed";
     await courses.updateOne(
       { _id: existing._id, ...scope(botId, guildId) },
       {
         $set: {
           code: "npd_modulacao",
+          ...(seedOwned ? {
+            color: "#FFD500",
+            description,
+            name: "Curso de Modulação",
+            updatedBy: "system:seed"
+          } : {
+            description: existing.description || description
+          }),
           buttonLabels: {
             ...existing.buttonLabels,
             start: "Iniciar Prova"
