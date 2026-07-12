@@ -18,6 +18,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
+  type Guild,
   type GuildMember,
   type Interaction,
   type Message,
@@ -1988,12 +1989,12 @@ async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: 
   const courseSettings = await context.api.getCourseSettings(interaction.guildId!);
   const channel = await fetchTextChannel(interaction, examCorrectionChannelId(courseSettings, runtime.settings));
   if (!channel) return;
-  const message = await channel.send(examCorrectionPanel(course, courseSettings, attempt, questions, answers));
+  const message = await channel.send(examCorrectionPanel(course, attempt, questions, answers, interaction.guild));
   await context.api.setCourseExamCorrectionMessage(interaction.guildId!, attempt.id, message.id).catch(() => null);
 }
 
 async function editExamCorrectionPanel(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, course: Course, courseSettings: CourseSettings, examSettings: CourseExamSettings, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
-  const payload = examCorrectionPanel(course, courseSettings, attempt, questions, answers);
+  const payload = examCorrectionPanel(course, attempt, questions, answers, interaction.guild);
   const sourceMessage = "message" in interaction ? interaction.message : null;
   if (sourceMessage?.editable) {
     await sourceMessage.edit(payload).catch(() => null);
@@ -2011,7 +2012,7 @@ async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitI
   const correctedAt = attempt.correctedAt ? Math.floor(new Date(attempt.correctedAt).getTime() / 1000) : Math.floor(Date.now() / 1000);
   await channel.send(renderComponentsV2Panel({
     accentColor: parseColor(course.color),
-    description: `${courseSettings.resultMentionRoleId ? `<@&${courseSettings.resultMentionRoleId}>\n` : ""}Resultado final da prova corrigida.`,
+    description: "Resultado final da prova corrigida.",
     fields: [
       [
         `Nome do aluno: <@${attempt.studentId}>`,
@@ -2024,12 +2025,13 @@ async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitI
         `Data da correção: <t:${correctedAt}:F>`
       ].join("\n")
     ],
+    guild: interaction.guild,
     moduleId: "courses",
     title: "Resultado de Prova"
   })).catch(() => null);
 }
 
-function examCorrectionPanel(course: Course, courseSettings: CourseSettings, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
+function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null) {
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   const reviewed = attempt.result === "approved" || attempt.result === "rejected";
   const objectiveTotal = questions.filter((question) => question.type === "selection" || question.type === "multiple").length;
@@ -2058,8 +2060,9 @@ function examCorrectionPanel(course: Course, courseSettings: CourseSettings, att
       new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(reviewed),
       new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar").setStyle(ButtonStyle.Danger).setDisabled(reviewed)
     )],
-    description: `${courseSettings.evaluatorMentionRoleId ? `<@&${courseSettings.evaluatorMentionRoleId}>\n` : ""}Painel de avaliação manual da prova.`,
+    description: "Painel de avaliação manual da prova.",
     fields,
+    guild,
     moduleId: "courses",
     title: "Correção de Prova"
   });
