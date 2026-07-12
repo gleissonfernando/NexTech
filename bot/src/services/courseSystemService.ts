@@ -542,7 +542,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     ? await existingMessage.edit(coursePublicationPanel(course, publication, settings, interaction.guild!))
     : await (channel as TextChannel).send(coursePublicationPanel(course, publication, settings, interaction.guild!));
   await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
-  await sendCourseLog(interaction, settings, `📚 Curso publicado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publication.scheduledFor}\nLocal: ${publication.location}\nVagas: ${publication.capacity}`);
+  await sendCourseLog(interaction, settings, `Curso publicado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publication.scheduledFor}\nLocal: ${publication.location}\nVagas: ${publication.capacity}`);
   await interaction.editReply("Curso publicado com sucesso.");
 }
 
@@ -1144,7 +1144,7 @@ async function confirmExamAnswer(interaction: ButtonInteraction, context: BotCon
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
   const selectedText = question.alternatives.filter((alternative) => selectedAlternativeIds.includes(alternative.id)).map((alternative) => alternative.text).join("; ");
-  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `📝 Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}\nResposta: ${selectedText}`);
+  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}\nResposta: ${selectedText}`);
   await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
 }
 
@@ -1205,7 +1205,7 @@ async function submitWrittenAnswer(interaction: ModalSubmitInteraction, context:
     context.api.getCourse(interaction.guildId!, updated.attempt.courseId),
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
-  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `📝 Pergunta discursiva respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}`);
+  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Pergunta discursiva respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}`);
   await interaction.editReply("Resposta salva.");
   if (channel?.isTextBased() && "send" in channel) {
     await sendExamQuestion(channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
@@ -2206,9 +2206,8 @@ async function sendExamDetailedLog(interaction: { guild: ChatInputCommandInterac
       ].join("\n"),
       ...questions.map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1)).slice(0, 12)
     ],
-    guild: interaction.guild,
     moduleId: "courses",
-    title: `${systemEmojiText("prancheta_acertos", interaction.guild)} Log de Prova`
+    title: "Log de Prova"
   })).catch(() => null);
 }
 
@@ -2219,11 +2218,10 @@ async function sendCourseLog(interaction: { guild: ChatInputCommandInteraction["
   if (!channel?.isTextBased() || !("send" in channel)) return;
   await (channel as TextChannel).send(renderComponentsV2Panel({
     accentColor: 0x2563eb,
-    description: replaceSystemEmojis(content, interaction.guild),
+    description: content,
     fields: [`Data: ${new Date().toLocaleString("pt-BR")}`],
-    guild: interaction.guild,
     moduleId: "courses",
-    title: `${systemEmojiText("folha", interaction.guild)} Log do Sistema de Cursos`
+    title: "Log do Sistema de Cursos"
   })).catch(() => null);
 }
 
