@@ -1,5 +1,5 @@
 import axios from "axios";
-import { fixedSystemEmojiText } from "../config/systemEmojis";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import type { GuildSettingsDto } from "./settingsService";
 import { getPanelImageSettings, type PanelImageSettingsDto } from "./panelImageSettingsService";
 
@@ -162,14 +162,14 @@ function buildReportPanelComponents(
 }
 
 function normalizePanelEmoji(value: string) {
-  return value
+  return normalizeFixedSystemEmojiText(value
     .replace(/🛡️|🛡/g, fixedSystemEmojiText("alerta"))
     .replace(/🎫/g, fixedSystemEmojiText("prancheta"))
     .replace(/📁/g, fixedSystemEmojiText("prancheta"))
     .replace(/👤|👥|👮/g, fixedSystemEmojiText("homem"))
     .replace(/⚠️|⚠/g, fixedSystemEmojiText("perigo"))
     .replace(/✅/g, fixedSystemEmojiText("visto"))
-    .replace(/❌/g, fixedSystemEmojiText("exclamacao"));
+    .replace(/❌/g, fixedSystemEmojiText("exclamacao")));
 }
 
 function resolvePanelImage(legacyImageUrl: string | null, panelImage: PanelImageSettingsDto | null) {

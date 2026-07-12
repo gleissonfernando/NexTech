@@ -1,6 +1,7 @@
 import type { Client, Guild, GuildEmoji } from "discord.js";
 import {
   FIXED_SYSTEM_EMOJI_BY_KEY,
+  normalizeFixedSystemEmojiText,
   SYSTEM_EMOJI_BY_KEY,
   SYSTEM_EMOJIS,
   type SystemEmojiDefinition,
@@ -195,7 +196,7 @@ export function systemStatusEmoji(status: "success" | "warning" | "danger" | "ac
 }
 
 export function replaceSystemEmojis(input: string, guild?: Guild | null, client?: Client | null) {
-  return unicodeReplacementPairs.reduce((text, [pattern, key]) => text.replace(pattern, systemEmojiText(key, guild, client)), input);
+  return unicodeReplacementPairs.reduce((text, [pattern, key]) => text.replace(pattern, systemEmojiText(key, guild, client)), normalizeFixedSystemEmojiText(input));
 }
 
 function cachedEmoji(key: SystemEmojiKey, name: string, fallback: string, emoji: GuildEmoji | null): CachedGuildEmoji {

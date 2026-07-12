@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { fixedSystemEmojiText } from "../config/systemEmojis";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { ensureGuild, getMongoCollections, type MongoGuildSettings, type MongoSafeBotMessageState } from "../database/mongo";
 import {
   normalizeDashboardAccessLevel,
@@ -1119,7 +1119,7 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
 
       return {
         description: normalizeNullableText(record.description, 100),
-        emoji: normalizeNullableText(record.emoji, 80),
+        emoji: normalizeNullableSystemEmojiText(record.emoji),
         enabled: record.enabled !== false,
         label,
         value
@@ -1237,7 +1237,7 @@ function normalizeReportSystemSettings(value: unknown, fallback = defaultReportS
     panelChannelId: normalizeSnowflake(String(record.panelChannelId ?? "")),
     panelColor: normalizePanelColor(String(record.panelColor ?? fallback.panelColor)),
     panelDescription: normalizeNullableText(record.panelDescription, 1000) ?? fallback.panelDescription,
-    panelEmoji: normalizeNullableText(record.panelEmoji, 80),
+    panelEmoji: normalizeNullableSystemEmojiText(record.panelEmoji),
     panelPlaceholder: normalizeNullableText(record.panelPlaceholder, 120) ?? fallback.panelPlaceholder,
     panelTitle: normalizeNullableText(record.panelTitle, 120) ?? fallback.panelTitle,
     subpoenaDmText: normalizeNullableText(record.subpoenaDmText, 1000) ?? fallback.subpoenaDmText,
@@ -1269,7 +1269,7 @@ function normalizeReportCategories(value: unknown): ReportSystemCategoryDto[] {
       channelOrCategoryId: normalizeSnowflake(String(record.channelOrCategoryId ?? "")),
       color: normalizePanelColor(String(record.color ?? "#dc2626")),
       description: normalizeNullableText(record.description, 100),
-      emoji: normalizeNullableText(record.emoji, 80),
+      emoji: normalizeNullableSystemEmojiText(record.emoji),
       enabled: record.enabled !== false,
       id,
       name,
@@ -1316,6 +1316,11 @@ function slug(value: string) {
 function normalizeNullableText(value: unknown, maxLength: number) {
   const normalized = typeof value === "string" ? value.trim().slice(0, maxLength) : "";
   return normalized || null;
+}
+
+function normalizeNullableSystemEmojiText(value: unknown) {
+  const normalized = normalizeNullableText(value, 80);
+  return normalized ? normalizeFixedSystemEmojiText(normalized) : null;
 }
 
 function normalizeBotId(botId: string | null | undefined) {

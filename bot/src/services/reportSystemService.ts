@@ -1130,7 +1130,7 @@ function createOpenedReportPayload(settings: GuildSettings, input: { categoryNam
     ],
     image: null,
     moduleId: "iab-report",
-    title: `${report.panelEmoji ?? "IAB"} Nova denuncia`
+    title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} Nova denuncia`)
   });
 }
 
@@ -1303,7 +1303,7 @@ function sectionActions(section: string, report: ReportSystemSettings) {
 function sectionText(section: string, report: ReportSystemSettings) {
   if (section === "channels") return "Configure categoria temporaria, canais de logs, transcript e auditoria.";
   if (section === "roles") return "Defina cargos administrativos e operacionais. Administradores do Discord sempre podem acessar.";
-  if (section === "categories") return report.categories.map((item) => `${item.enabled ? "ON" : "OFF"} ${item.emoji ?? ""} **${item.name}**`).join("\n");
+  if (section === "categories") return report.categories.map((item) => replaceSystemEmojis(`${item.enabled ? "ON" : "OFF"} ${item.emoji ?? ""} **${item.name}**`)).join("\n");
   if (section === "anonymity") return `Denuncias anonimas: **${report.allowAnonymousReports ? "sim" : "nao"}**\nRespostas anonimas da equipe: **${report.allowAnonymousStaffReplies ? "sim" : "nao"}**`;
   if (section === "status") return report.statuses.map((item) => `**${item.order}.** ${item.name}`).join("\n");
   if (section === "buttons") return "Marque os botoes que devem aparecer nas denuncias.";
@@ -1514,7 +1514,7 @@ function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions
   const options = report.categories.filter((item) => item.enabled).slice(0, 25).map((item) => {
     const optionBuilder = new StringSelectMenuOptionBuilder().setLabel(item.name).setValue(item.id);
     if (item.description) optionBuilder.setDescription(item.description);
-    if (item.emoji) optionBuilder.setEmoji(item.emoji);
+    if (item.emoji) optionBuilder.setEmoji(replaceSystemEmojis(item.emoji));
     return optionBuilder;
   });
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(PANEL_SELECT_ID).setPlaceholder(report.panelPlaceholder).addOptions(options));
@@ -1526,7 +1526,7 @@ function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions
     footer: { text: report.footerText ?? "OrviteK" },
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
     moduleId: "iab-panel",
-    title: `${report.panelEmoji ?? ""} ${report.panelTitle}`.trim()
+    title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} ${report.panelTitle}`.trim())
   });
 }
 
