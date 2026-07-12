@@ -50,8 +50,8 @@ export function renderComponentsV2Panel(input: {
   const imageUrl = requestedPosition === "footer" ? null : requestedImageUrl;
   const footerImage = input.footerImage ?? (requestedPosition === "footer" ? requestedImageUrl : null);
   const blockComponents = renderPanelBlocks([
-    ...(input.image?.blocks ?? []),
-    ...(input.extraImages ?? []).flatMap((image) => image?.blocks ?? [])
+    ...customPanelBlocks(input.image?.blocks),
+    ...(input.extraImages ?? []).flatMap((image) => customPanelBlocks(image?.blocks))
   ]);
   const extraMedia = blockComponents.length ? [] : (input.extraImages ?? [])
     .map((image) => image?.imageEnabled ? resolvePanelImageUrl(image.imageUrl ?? null) : null)
@@ -171,6 +171,10 @@ function normalizePanelBlocks(blocks: PanelBlock[] | null | undefined) {
     .filter((block): block is PanelBlock => Boolean(block?.id && block.type))
     .sort((a, b) => a.order - b.order)
     .slice(0, 30);
+}
+
+function customPanelBlocks(blocks: PanelBlock[] | null | undefined) {
+  return (blocks ?? []).filter((block) => !/_legacy_(media|section)$/i.test(block.id));
 }
 
 function renderPanelBlock(block: PanelBlock) {

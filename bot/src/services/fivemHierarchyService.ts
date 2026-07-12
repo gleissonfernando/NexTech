@@ -550,7 +550,7 @@ async function publishHierarchyPanelUnlocked(input: HierarchyPublishInput, isCan
   }
   await logMissingHierarchyRoles(context, guild, panel);
   const visuals = await getHierarchyPanelVisualSlots(context, guild.id, panel);
-  const payload = buildHierarchyPanel(guild, panel, cache, visuals[0] ?? null);
+  const payload = buildHierarchyPanel(guild, panel, cache, visuals);
   const contentHash = generatePanelHash(normalizeHierarchyPanelPayloadForHash(payload));
   console.info(`[HIERARCHY] Atualização solicitada. Guild: ${guild.id}. Hierarquia: ${panel.id}. MessageId encontrado: ${panel.panelMessageId ?? "nenhum"}.`);
   if (isCancelled()) return hierarchyCancelledResult(panel.id);
@@ -796,9 +796,21 @@ function fivemHierarchyVisualPanelId(panelId: string) {
   return `fivem-hierarchy-${normalized || "panel"}`;
 }
 
-function buildHierarchyPanel(guild: Guild, panel: FivemHierarchyPanel, cache: HierarchyPanelCache, visual: PanelVisualConfig | null) {
-  const singleVisual = sanitizeSingleHierarchyVisual(visual?.imageEnabled ? visual : null);
-  return renderComponentsV2Panel({ accentColor: colorToInt(panel.color), actions: [], description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.", fields: renderHierarchyFields(guild, panel, cache), footer: panel.footerEnabled ? { text: panel.footerText ?? "OrviteK" } : { enabled: false }, image: singleVisual, moduleId: "fivem-hierarchy", title: panel.title });
+function buildHierarchyPanel(guild: Guild, panel: FivemHierarchyPanel, cache: HierarchyPanelCache, visuals: PanelVisualConfig[]) {
+  const sanitizedVisuals = visuals
+    .map((visual) => sanitizeSingleHierarchyVisual(visual?.imageEnabled ? visual : null))
+    .filter((visual): visual is PanelVisualConfig => Boolean(visual));
+  return renderComponentsV2Panel({
+    accentColor: colorToInt(panel.color),
+    actions: [],
+    description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.",
+    extraImages: sanitizedVisuals.slice(1),
+    fields: renderHierarchyFields(guild, panel, cache),
+    footer: panel.footerEnabled ? { text: panel.footerText ?? "OrviteK" } : { enabled: false },
+    image: sanitizedVisuals[0] ?? null,
+    moduleId: "fivem-hierarchy",
+    title: panel.title
+  });
 }
 
 export function generatePanelHash(payload: unknown) {
@@ -1199,9 +1211,9 @@ async function deleteOfficialHierarchyPanelMessage(
 function sanitizeSingleHierarchyVisual(visual: PanelVisualConfig | null): PanelVisualConfig | null {
   if (!visual?.imageEnabled || !visual.imageUrl) return null;
   return {
-    blocks: [],
+    blocks: visual.blocks ?? [],
     imageEnabled: true,
-    imagePosition: visual.imagePosition === "thumbnail" ? "top" : visual.imagePosition,
+    imagePosition: visual.imagePosition,
     imageUrl: visual.imageUrl
   };
 }
