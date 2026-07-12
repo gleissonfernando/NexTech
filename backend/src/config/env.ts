@@ -176,10 +176,6 @@ function isLocalUrl(value: string) {
   }
 }
 
-function isOfficialProductionUrl(value: string) {
-  return normalizeUrl(value) === productionPublicUrl;
-}
-
 applyPackedEnv();
 applyMercadoPagoEnvAliases();
 
@@ -316,9 +312,7 @@ const envSchema = z
       ?? cleanEnvValue(value.SITE_ORIGIN)
       ?? cleanEnvValue(value.FRONTEND_URL)
       ?? cleanEnvValue(value.BACKEND_URL);
-    const appBaseUrl = isProduction
-      ? productionPublicUrl
-      : configuredAppBaseUrl && !isLocalUrl(configuredAppBaseUrl)
+    const appBaseUrl = configuredAppBaseUrl && (!isProduction || !isLocalUrl(configuredAppBaseUrl))
       ? normalizeUrl(configuredAppBaseUrl)
       : productionPublicUrl;
     const oauthFrontendUrl = appBaseUrl;
@@ -342,10 +336,6 @@ const envSchema = z
 
     if (isProduction && configuredTranscriptBaseUrl && isLocalUrl(configuredTranscriptBaseUrl)) {
       console.warn("[env] TRANSCRIPT_BASE_URL local ignorado em producao. Configure um dominio publico para transcripts.");
-    }
-
-    if (isProduction && configuredAppBaseUrl && !isOfficialProductionUrl(configuredAppBaseUrl)) {
-      console.warn("[env] URL publica configurada difere da URL oficial; usando https://nextech.discloud.app.");
     }
 
     return {

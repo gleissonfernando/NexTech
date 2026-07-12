@@ -109,9 +109,7 @@ const configuredAppBaseUrl =
   ?? cleanEnvValue(process.env.APP_BASE_URL)
   ?? configuredFrontendUrl;
 const productionFrontendUrl =
-  isProduction
-    ? productionPublicUrl
-    : configuredAppBaseUrl && !isLocalUrl(configuredAppBaseUrl)
+  configuredAppBaseUrl && (!isProduction || !isLocalUrl(configuredAppBaseUrl))
     ? normalizeUrl(configuredAppBaseUrl)
     : productionPublicUrl;
 const defaultBackendUrl = productionFrontendUrl;

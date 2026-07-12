@@ -8,18 +8,18 @@ process.env.NODE_ENV = "production";
 process.env.HOST ||= "0.0.0.0";
 process.env.PORT ||= process.env.TRANSCRIPT_PORT || "8080";
 process.env.TRANSCRIPT_PORT ||= process.env.PORT;
-process.env.APP_BASE_URL = "https://nextech.discloud.app";
-process.env.TRANSCRIPT_BASE_URL = process.env.APP_BASE_URL;
-process.env.SITE_ORIGIN = process.env.APP_BASE_URL;
-process.env.FRONTEND_URL = process.env.APP_BASE_URL;
-process.env.BACKEND_URL = process.env.APP_BASE_URL;
+process.env.APP_BASE_URL ||= packedConfigValue("APP_BASE_URL") || packedConfigValue("SITE_ORIGIN") || packedConfigValue("FRONTEND_URL") || "https://nextech.discloud.app";
+process.env.TRANSCRIPT_BASE_URL ||= packedConfigValue("TRANSCRIPT_BASE_URL") || process.env.APP_BASE_URL;
+process.env.SITE_ORIGIN ||= packedConfigValue("SITE_ORIGIN") || process.env.APP_BASE_URL;
+process.env.FRONTEND_URL ||= packedConfigValue("FRONTEND_URL") || process.env.APP_BASE_URL;
+process.env.BACKEND_URL ||= packedConfigValue("BACKEND_URL") || process.env.APP_BASE_URL;
 process.env.BOT_API_TOKEN ||= packedConfigValue("BOT_API_TOKEN") || randomBytes(32).toString("hex");
 process.env.START_REGISTERED_DEV_BOTS ||= packedConfigValue("START_REGISTERED_DEV_BOTS") || "";
 process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
 
 function loadRuntimeConfigFile() {
-  const path = ".nex-tech-runtime-env.json";
+  const path = existsSync(".orvitek-runtime-env.json") ? ".orvitek-runtime-env.json" : ".nex-tech-runtime-env.json";
   if (!existsSync(path)) {
     return;
   }
@@ -35,7 +35,12 @@ function loadRuntimeConfigFile() {
         continue;
       }
 
-      if (key === "MONGODB_URI" && process.env.NEX_TECH_ALLOW_RUNTIME_MONGODB_URI !== "true") {
+      if (
+        key === "MONGODB_URI"
+        && path !== ".orvitek-runtime-env.json"
+        && process.env.NEX_TECH_ALLOW_RUNTIME_MONGODB_URI !== "true"
+        && process.env.ORVITEK_ALLOW_RUNTIME_MONGODB_URI !== "true"
+      ) {
         continue;
       }
 
