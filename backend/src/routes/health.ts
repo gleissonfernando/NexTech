@@ -186,7 +186,7 @@ function mailHealth() {
 }
 
 function paymentsHealth() {
-  const provider = env.PAYMENTS_ENABLED ? env.PAYMENT_PROVIDER : "disabled";
+  const provider = resolvePaymentHealthProvider();
   const supported = provider === "disabled" || provider === "mercadopago";
 
   if (provider === "mercadopago") {
@@ -206,4 +206,16 @@ function paymentsHealth() {
     provider,
     status: supported ? "disabled" : "unsupported_provider"
   };
+}
+
+function resolvePaymentHealthProvider() {
+  if (process.env.PAYMENTS_ENABLED?.trim().toLowerCase() === "false") {
+    return "disabled";
+  }
+
+  if (env.PAYMENT_PROVIDER === "mercadopago" || env.MERCADOPAGO_ENABLED) {
+    return "mercadopago";
+  }
+
+  return env.PAYMENT_PROVIDER;
 }

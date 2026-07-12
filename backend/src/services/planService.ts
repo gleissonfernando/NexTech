@@ -2711,8 +2711,12 @@ function toPaymentSettingsDto(settings: MongoPaymentSettings): PaymentSettingsDt
 }
 
 function resolveEnvPaymentProvider(): MongoPaymentProvider {
-  if (!env.PAYMENTS_ENABLED) {
+  if (isPaymentDisabledByEnv()) {
     return "disabled";
+  }
+
+  if (env.PAYMENT_PROVIDER === "mercadopago" || env.MERCADOPAGO_ENABLED) {
+    return "mercadopago";
   }
 
   return env.PAYMENT_PROVIDER;
@@ -2720,6 +2724,10 @@ function resolveEnvPaymentProvider(): MongoPaymentProvider {
 
 function isResolvedPaymentProviderEnabled(provider: MongoPaymentProvider, mercadoPagoConfig: ReturnType<typeof getMercadoPagoRuntimeConfig>) {
   return provider === "mercadopago" && mercadoPagoConfig.enabled;
+}
+
+function isPaymentDisabledByEnv() {
+  return process.env.PAYMENTS_ENABLED?.trim().toLowerCase() === "false";
 }
 
 function toAuditLogDto(log: MongoPlanAuditLog) {
