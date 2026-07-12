@@ -3140,7 +3140,28 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
     return null;
   }
 
-  async function savePanel() {
+  function upsertPanelState(panel: FivemHierarchyPanelType) {
+    setPanels((current) => {
+      const next = [panel, ...current.filter((item) => item.id !== panel.id && item.id !== draft?.id)];
+      latestPanelsRef.current = next;
+      return next;
+    });
+    setDraft(panel);
+  }
+
+  async function publishPanel(panel: FivemHierarchyPanelType, requestScopeKey = scopeKey) {
+    if (!guild || isLocalHierarchyPanelId(panel.id) || !panel.enabled || !panel.panelChannelId) return panel;
+    const refreshed = await refreshFivemHierarchyOfficialMessage(guild.id, panel.id, botId);
+    if (scopeKeyRef.current !== requestScopeKey) return refreshed;
+    upsertPanelState(refreshed);
+    setSyncRequested(false);
+    setMessage(refreshed.panelMessageId
+      ? `Hierarquia publicada e atualizada: ${refreshed.panelMessageId}.`
+      : "Publicacao da hierarquia concluida.");
+    return refreshed;
+  }
+
+  async function savePanel(options: { publishAfterSave?: boolean } = {}) {
     if (!guild || !draft || !draftInScope || loading || savingRef.current || officialMessageRefreshRef.current) return;
     const validationError = hierarchyValidationError(draft);
     if (validationError) return setError(validationError);
@@ -3156,25 +3177,28 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
       const synchronizedPanel = lastPanelStateAtRef.current >= requestedAt
         ? latestPanelsRef.current.find((panel) => panel.id === saved.id) ?? saved
         : saved;
-      setPanels((current) => {
-        const next = [synchronizedPanel, ...current.filter((panel) => panel.id !== synchronizedPanel.id && panel.id !== draft.id)];
-        latestPanelsRef.current = next;
-        return next;
-      });
-      setDraft(synchronizedPanel);
+      upsertPanelState(synchronizedPanel);
       markDirty(false);
       const pendingSync = lastPanelStateAtRef.current < requestedAt;
       setSyncRequested(pendingSync);
       setMessage(pendingSync
         ? "Configuracao salva. Sincronizacao do painel V2 solicitada."
         : "Configuracao salva e painel V2 sincronizado.");
+      if (options.publishAfterSave && synchronizedPanel.enabled && synchronizedPanel.panelChannelId) {
+        officialMessageRefreshRef.current = true;
+        setRefreshingOfficialMessage(true);
+        await publishPanel(synchronizedPanel, requestScopeKey);
+      }
+      return synchronizedPanel;
     } catch (error) {
       if (scopeKeyRef.current === requestScopeKey) {
         setError(readResponseMessage(error) ?? "Nao foi possivel salvar o painel de hierarquia.");
       }
     } finally {
       savingRef.current = false;
+      officialMessageRefreshRef.current = false;
       setSaving(false);
+      setRefreshingOfficialMessage(false);
     }
   }
 
@@ -3197,21 +3221,37 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
     setError(null);
     setMessage(null);
     try {
-      const refreshed = await refreshFivemHierarchyOfficialMessage(guild.id, draft.id, botId);
-      if (scopeKeyRef.current !== requestScopeKey) return;
-      setPanels((current) => {
-        const next = [refreshed, ...current.filter((panel) => panel.id !== refreshed.id)];
-        latestPanelsRef.current = next;
-        return next;
-      });
-      setDraft(refreshed);
-      setSyncRequested(false);
-      setMessage(refreshed.panelMessageId
-        ? `Mensagem oficial verificada e atualizada: ${refreshed.panelMessageId}.`
-        : "Verificacao da mensagem oficial concluida.");
+      await publishPanel(draft, requestScopeKey);
     } catch (requestError) {
       if (scopeKeyRef.current === requestScopeKey) {
         setError(readResponseMessage(requestError) ?? "Nao foi possivel verificar ou atualizar a mensagem oficial.");
+      }
+    } finally {
+      officialMessageRefreshRef.current = false;
+      setRefreshingOfficialMessage(false);
+    }
+  }
+
+  async function publishHierarchy() {
+    if (!guild || !draft || !draftInScope || loading || savingRef.current || officialMessageRefreshRef.current) return;
+    const validationError = hierarchyValidationError(draft);
+    if (validationError) return setError(validationError);
+    const requestScopeKey = scopeKey;
+    setError(null);
+    setMessage(null);
+
+    if (dirtyRef.current || isLocalHierarchyPanelId(draft.id)) {
+      await savePanel({ publishAfterSave: true });
+      return;
+    }
+
+    officialMessageRefreshRef.current = true;
+    setRefreshingOfficialMessage(true);
+    try {
+      await publishPanel(draft, requestScopeKey);
+    } catch (requestError) {
+      if (scopeKeyRef.current === requestScopeKey) {
+        setError(readResponseMessage(requestError) ?? "Nao foi possivel publicar a hierarquia.");
       }
     } finally {
       officialMessageRefreshRef.current = false;
@@ -3276,6 +3316,15 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
             <Button disabled={controlsDisabled || !draft || (!dirty && !draftIsNew)} onClick={() => void savePanel()} size="sm" type="button">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               {saving ? "Salvando e solicitando sincronizacao..." : "Salvar e atualizar painel V2"}
+            </Button>
+            <Button
+              disabled={controlsDisabled || !draft || !draft.enabled || !draft.panelChannelId}
+              onClick={() => void publishHierarchy()}
+              size="sm"
+              type="button"
+            >
+              {refreshingOfficialMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              {refreshingOfficialMessage ? "Publicando hierarquia..." : "Publicar hierarquia"}
             </Button>
             <Button
               disabled={controlsDisabled || draftIsNew || dirty || !draft?.enabled || !draft.panelChannelId}
