@@ -6051,7 +6051,7 @@ function PoliceIabPanel({
           <div className="rounded-lg border border-red-500/10 bg-black/30 p-4">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-white">Sistema de Competência das Intimações e Denúncias</h3>
-              <p className="mt-1 text-xs text-zinc-500">Configura os órgãos que podem abrir, visualizar e atuar em cada intimação. Casos contra IAB redirecionam para Conselho; casos contra High Command redirecionam para Comissário.</p>
+              <p className="mt-1 text-xs text-zinc-500">Configura os órgãos que podem abrir, visualizar e atuar em cada intimação. Oficiais vão para IAB; IAB vai para Conselho; Conselho vai para High Command; High Command vai para Alto Comando.</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <MultiRoleSelect disabled={disabled} label="Quem pode usar /intimacao" onChange={(values) => patch({ competenceCommandRoleIds: values })} roles={options.roles} values={draft.competenceCommandRoleIds} />
@@ -6064,7 +6064,7 @@ function PoliceIabPanel({
               <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} label="IAB" logChannelId={draft.iabLogChannelId} categoryId={draft.iabCategoryId} onCategory={(iabCategoryId) => patch({ iabCategoryId })} onLog={(iabLogChannelId) => patch({ iabLogChannelId })} onRoles={(iabRoleIds) => patch({ iabRoleIds })} roles={options.roles} roleIds={draft.iabRoleIds} />
               <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} label="Conselho" logChannelId={draft.conselhoLogChannelId} categoryId={draft.conselhoCategoryId} onCategory={(conselhoCategoryId) => patch({ conselhoCategoryId })} onLog={(conselhoLogChannelId) => patch({ conselhoLogChannelId })} onRoles={(conselhoRoleIds) => patch({ conselhoRoleIds })} roles={options.roles} roleIds={draft.conselhoRoleIds} />
               <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} label="High Command / HCMD" logChannelId={draft.hcmdLogChannelId} categoryId={draft.hcmdCategoryId} onCategory={(hcmdCategoryId) => patch({ hcmdCategoryId })} onLog={(hcmdLogChannelId) => patch({ hcmdLogChannelId })} onRoles={(hcmdRoleIds) => patch({ hcmdRoleIds })} roles={options.roles} roleIds={draft.hcmdRoleIds} />
-              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} label="Comissário" logChannelId={draft.comissarioLogChannelId} categoryId={draft.comissarioCategoryId} onCategory={(comissarioCategoryId) => patch({ comissarioCategoryId })} onLog={(comissarioLogChannelId) => patch({ comissarioLogChannelId })} onRoles={(comissarioRoleIds) => patch({ comissarioRoleIds })} roles={options.roles} roleIds={draft.comissarioRoleIds} />
+              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} label="Alto Comando" logChannelId={draft.comissarioLogChannelId} categoryId={draft.comissarioCategoryId} onCategory={(comissarioCategoryId) => patch({ comissarioCategoryId })} onLog={(comissarioLogChannelId) => patch({ comissarioLogChannelId })} onRoles={(comissarioRoleIds) => patch({ comissarioRoleIds })} roles={options.roles} roleIds={draft.comissarioRoleIds} />
             </div>
           </div>
 

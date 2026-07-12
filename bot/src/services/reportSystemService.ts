@@ -1181,9 +1181,10 @@ function canUseReportManagementAction(member: GuildMember | null, report: Report
 
 function reportCompetence(categoryId: string, categoryName: string): "iab" | "conselho" | "hcmd" | "comissario" {
   const value = `${categoryId} ${categoryName}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (value.includes("comiss")) return "comissario";
-  if (value.includes("high") || value.includes("hcmd") || value.includes("command")) return "hcmd";
-  if (value.includes("conselho")) return "conselho";
+  if (value.includes("comiss") || value.includes("alto comando") || value.includes("auto comando")) return "comissario";
+  if (value.includes("high") || value.includes("hcmd") || value.includes("command")) return "comissario";
+  if (value.includes("conselho") || value.includes("concil") || value.includes("council")) return "hcmd";
+  if (!value.includes("denuncias-iab") && !value.includes("denuncias iab") && value.includes("iab")) return "conselho";
   return "iab";
 }
 
