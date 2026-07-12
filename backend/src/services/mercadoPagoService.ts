@@ -109,22 +109,9 @@ export type MercadoPagoOrder = OrderResponse & Record<string, unknown>;
 export function buildMercadoPagoPixOrderBody(input: Omit<CreateMercadoPagoPixOrderInput, "accessToken" | "idempotencyKey">): CreateOrderRequest {
   const amountInCents = normalizeCents(input.amountInCents);
   const amount = centsToDecimalString(amountInCents);
-  const description = trimRequired(input.description, "Descricao da order Mercado Pago");
-  const itemTitle = trimRequired(input.itemTitle, "Titulo do item Mercado Pago");
 
   return removeUndefined({
-    currency: input.currencyId,
-    description,
     external_reference: trimRequired(input.externalReference, "Referencia externa Mercado Pago"),
-    items: [
-      {
-        description,
-        external_code: trimRequired(input.itemId, "ID do item Mercado Pago"),
-        quantity: 1,
-        title: itemTitle,
-        unit_price: amount
-      }
-    ],
     payer: input.payerEmail ? { email: trimRequired(input.payerEmail, "Email Mercado Pago") } : undefined,
     processing_mode: "automatic",
     total_amount: amount,
@@ -135,7 +122,6 @@ export function buildMercadoPagoPixOrderBody(input: Omit<CreateMercadoPagoPixOrd
           expiration_time: input.paymentExpiration ? paymentExpirationDuration(input.paymentExpiration) : undefined,
           payment_method: removeUndefined({
             id: "pix",
-            statement_descriptor: trimOptional(input.statementDescriptor),
             type: "bank_transfer"
           })
         })

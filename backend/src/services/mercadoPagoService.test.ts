@@ -54,14 +54,15 @@ test("monta payload de order Pix Mercado Pago", () => {
   assert.equal(body.processing_mode, "automatic");
   assert.equal(body.external_reference, "order-123");
   assert.equal(body.total_amount, "129.90");
-  assert.equal(body.currency, "BRL");
+  assert.equal(body.currency, undefined);
+  assert.equal(body.items, undefined);
   assert.equal(body.payer?.email, "cliente@example.com");
   assert.equal(body.transactions?.payments?.[0]?.amount, "129.90");
   assert.equal(typeof body.transactions?.payments?.[0]?.expiration_time, "string");
   assert.match(body.transactions?.payments?.[0]?.expiration_time ?? "", /^P(?:\d+D)?T(?:\d+H)?(?:\d+M)?(?:\d+S)?$/);
   assert.equal(body.transactions?.payments?.[0]?.payment_method?.id, "pix");
   assert.equal(body.transactions?.payments?.[0]?.payment_method?.type, "bank_transfer");
-  assert.equal(body.transactions?.payments?.[0]?.payment_method?.statement_descriptor, "NEXTECH");
+  assert.equal(body.transactions?.payments?.[0]?.payment_method?.statement_descriptor, undefined);
 });
 
 test("mapeia status de order Pix pelo pagamento interno", () => {
