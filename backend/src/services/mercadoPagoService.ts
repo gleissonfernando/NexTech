@@ -80,7 +80,7 @@ export async function createMercadoPagoPreference(input: CreateMercadoPagoPrefer
     body,
     requestOptions: input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined
   }).catch((error: unknown) => {
-    throw mercadoPagoError(readSdkError(error) ?? "Mercado Pago recusou a criacao da preferencia.", 502);
+    throw mercadoPagoError(readSdkError(error) ?? "Mercado Pago recusou a criacao da preferencia.", 503);
   });
 
   const productionCheckoutUrl = readStringField(payload, "init_point");
@@ -89,10 +89,10 @@ export async function createMercadoPagoPreference(input: CreateMercadoPagoPrefer
   const preferenceId = readStringField(payload, "id");
 
   if (!checkoutUrl || !preferenceId) {
-    throw mercadoPagoError("Mercado Pago nao retornou a preferencia de checkout.", 502);
+    throw mercadoPagoError("Mercado Pago nao retornou a preferencia de checkout.", 503);
   }
   if (!isMercadoPagoCheckoutUrl(checkoutUrl)) {
-    throw mercadoPagoError("Mercado Pago retornou uma URL de checkout inesperada.", 502);
+    throw mercadoPagoError("Mercado Pago retornou uma URL de checkout inesperada.", 503);
   }
 
   return {

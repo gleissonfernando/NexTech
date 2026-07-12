@@ -32,15 +32,17 @@ paymentsRouter.post("/mercadopago/checkout", checkoutRateLimit, async (req, res,
   try {
     const input = checkoutSchema.parse(req.body ?? {});
     const result = await createPublicCheckoutInterest(input.planId, actorFrom(req));
-    return res.status(201).json({
-      success: true,
-      orderId: result.order.id,
-      environment: result.order.environment ?? null,
-      checkoutUrl: result.order.checkoutUrl,
-      order: result.order,
-      payment: result.payment,
-      plan: result.plan
-    });
+    return sendCheckoutResult(res, result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+paymentsRouter.post("/create-checkout", checkoutRateLimit, async (req, res, next) => {
+  try {
+    const input = checkoutSchema.parse(req.body ?? {});
+    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req));
+    return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
   }
@@ -51,15 +53,7 @@ paymentsRouter.post("/mercadopago/checkout/authenticated", requireAuthenticated,
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = checkoutSchema.parse(req.body ?? {});
     const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth));
-    return res.status(201).json({
-      success: true,
-      orderId: result.order.id,
-      environment: result.order.environment ?? null,
-      checkoutUrl: result.order.checkoutUrl,
-      order: result.order,
-      payment: result.payment,
-      plan: result.plan
-    });
+    return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
   }
@@ -177,6 +171,18 @@ function actorFrom(req: Request, auth?: DashboardAuth): PlanActor {
     name: auth?.user.globalName || auth?.user.username || null,
     userAgent: req.header("user-agent") ?? null
   };
+}
+
+function sendCheckoutResult(res: Response, result: Awaited<ReturnType<typeof createPublicCheckoutInterest>>) {
+  return res.status(201).json({
+    success: true,
+    orderId: result.order.id,
+    environment: result.order.environment ?? null,
+    checkoutUrl: result.order.checkoutUrl,
+    order: result.order,
+    payment: result.payment,
+    plan: result.plan
+  });
 }
 
 type Bucket = { count: number; resetAt: number };
