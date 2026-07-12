@@ -77,6 +77,10 @@ export function PlansPanel() {
         window.location.href = result.order.checkoutUrl;
         return;
       }
+      if (result.order.pixCode || result.order.qrCode || result.order.providerOrderId) {
+        window.location.href = `/pagamento/pix/${encodeURIComponent(result.order.id)}`;
+        return;
+      }
       await load();
     } catch (requestError) {
       setError(readError(requestError, "Nao foi possivel registrar interesse no plano."));

@@ -1,9 +1,14 @@
 import {
+  createMercadoPagoPixOrder,
   createMercadoPagoPreference,
+  getMercadoPagoOrder,
   getMercadoPagoPayment,
+  mercadoPagoOrderStatusToInternal,
   mercadoPagoStatusToInternal,
   validateMercadoPagoWebhookSignature,
+  type CreateMercadoPagoPixOrderInput,
   type CreateMercadoPagoPreferenceInput,
+  type MercadoPagoPixOrderResult,
   type MercadoPagoPayment,
   type MercadoPagoPreferenceResult
 } from "./mercadoPagoService";
@@ -30,7 +35,9 @@ export type WebhookValidationInput = {
 };
 
 export type PaymentProvider = {
+  createPixOrder(input: Omit<CreateMercadoPagoPixOrderInput, "accessToken">): Promise<MercadoPagoPixOrderResult>;
   createOneTimeCheckout(input: Omit<CreateMercadoPagoPreferenceInput, "accessToken">): Promise<MercadoPagoPreferenceResult>;
+  getOrder(orderId: string): Promise<MercadoPagoPixOrderResult>;
   getPayment(paymentId: string): Promise<ProviderPayment>;
   validateWebhook(input: WebhookValidationInput): Promise<boolean>;
 };
@@ -41,11 +48,26 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
     private readonly webhookSecret?: string | null
   ) {}
 
+  createPixOrder(input: Omit<CreateMercadoPagoPixOrderInput, "accessToken">) {
+    return createMercadoPagoPixOrder({
+      ...input,
+      accessToken: this.accessToken
+    });
+  }
+
   createOneTimeCheckout(input: Omit<CreateMercadoPagoPreferenceInput, "accessToken">) {
     return createMercadoPagoPreference({
       ...input,
       accessToken: this.accessToken
     });
+  }
+
+  async getOrder(orderId: string) {
+    const order = await getMercadoPagoOrder(this.accessToken, orderId);
+    return {
+      ...order,
+      status: mercadoPagoOrderStatusToInternal(order)
+    };
   }
 
   async getPayment(paymentId: string): Promise<ProviderPayment> {

@@ -41,6 +41,10 @@ export function PublicPlansPage() {
         window.location.assign(result.order.checkoutUrl);
         return;
       }
+      if (result.order.pixCode || result.order.qrCode || result.order.providerOrderId) {
+        window.location.assign(`/pagamento/pix/${encodeURIComponent(result.order.id)}`);
+        return;
+      }
 
       setError(result.payment.message || "Pagamento indisponível para este plano no momento.");
     } catch (requestError) {

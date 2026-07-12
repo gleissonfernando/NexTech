@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { OrderResponse } from "mercadopago/dist/clients/order/commonTypes";
+import type { CreateOrderRequest } from "mercadopago/dist/clients/order/create/types";
 import type { PreferenceRequest } from "mercadopago/dist/clients/preference/commonTypes";
 import { getMercadoPagoSdkClient } from "./payments/mercadoPagoClient";
 
@@ -41,6 +43,36 @@ export type MercadoPagoPreferenceResult = {
   sandboxCheckoutUrl: string | null;
 };
 
+export type CreateMercadoPagoPixOrderInput = {
+  accessToken: string;
+  amountInCents: number;
+  currencyId: "BRL" | "USD" | "EUR";
+  description: string;
+  externalReference: string;
+  idempotencyKey?: string | null;
+  itemId: string;
+  itemTitle: string;
+  payerEmail?: string | null;
+  paymentExpiration?: Date | null;
+  statementDescriptor?: string | null;
+};
+
+export type MercadoPagoPixOrderResult = {
+  amountInCents: number;
+  currency: string | null;
+  externalReference: string | null;
+  orderId: string;
+  paymentId: string | null;
+  paymentMethod: string | null;
+  paymentType: string | null;
+  pixCode: string | null;
+  qrCode: string | null;
+  raw: MercadoPagoOrder;
+  rawStatus: string;
+  status: string;
+  statusDetail: string | null;
+};
+
 export async function createMercadoPagoPreference(input: CreateMercadoPagoPreferenceInput): Promise<MercadoPagoPreferenceResult> {
   const body = buildProtectedPreferenceBody(input);
   const { preference } = getMercadoPagoSdkClient(input.accessToken);
@@ -72,6 +104,67 @@ export async function createMercadoPagoPreference(input: CreateMercadoPagoPrefer
 }
 
 export type MercadoPagoPayment = Record<string, unknown>;
+export type MercadoPagoOrder = OrderResponse & Record<string, unknown>;
+
+export function buildMercadoPagoPixOrderBody(input: Omit<CreateMercadoPagoPixOrderInput, "accessToken" | "idempotencyKey">): CreateOrderRequest {
+  const amountInCents = normalizeCents(input.amountInCents);
+  const amount = centsToDecimalString(amountInCents);
+  const description = trimRequired(input.description, "Descricao da order Mercado Pago");
+  const itemTitle = trimRequired(input.itemTitle, "Titulo do item Mercado Pago");
+
+  return removeUndefined({
+    currency: input.currencyId,
+    description,
+    external_reference: trimRequired(input.externalReference, "Referencia externa Mercado Pago"),
+    items: [
+      {
+        description,
+        external_code: trimRequired(input.itemId, "ID do item Mercado Pago"),
+        quantity: 1,
+        title: itemTitle,
+        unit_price: amount
+      }
+    ],
+    payer: input.payerEmail ? { email: trimRequired(input.payerEmail, "Email Mercado Pago") } : undefined,
+    processing_mode: "automatic",
+    total_amount: amount,
+    transactions: {
+      payments: [
+        removeUndefined({
+          amount,
+          date_of_expiration: input.paymentExpiration ? input.paymentExpiration.toISOString() : undefined,
+          payment_method: removeUndefined({
+            id: "pix",
+            statement_descriptor: trimOptional(input.statementDescriptor),
+            type: "bank_transfer"
+          })
+        })
+      ]
+    },
+    type: "online"
+  }) as CreateOrderRequest;
+}
+
+export async function createMercadoPagoPixOrder(input: CreateMercadoPagoPixOrderInput): Promise<MercadoPagoPixOrderResult> {
+  const body = buildMercadoPagoPixOrderBody(input);
+  const { order } = getMercadoPagoSdkClient(input.accessToken);
+  const payload = await order.create({
+    body,
+    requestOptions: input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined
+  }).catch((error: unknown) => {
+    throw mercadoPagoError(readSdkError(error) ?? "Mercado Pago recusou a criacao da order Pix.", 502);
+  });
+
+  return normalizeMercadoPagoOrder(payload as MercadoPagoOrder);
+}
+
+export async function getMercadoPagoOrder(accessToken: string, orderId: string): Promise<MercadoPagoPixOrderResult> {
+  const { order } = getMercadoPagoSdkClient(accessToken);
+  const payload = await order.get({ id: orderId }).catch((error: unknown) => {
+    throw mercadoPagoError(readSdkError(error) ?? "Nao foi possivel consultar a order no Mercado Pago.", 502);
+  });
+  return normalizeMercadoPagoOrder(payload as MercadoPagoOrder);
+}
 
 export async function getMercadoPagoPayment(accessToken: string, paymentId: string): Promise<MercadoPagoPayment> {
   const { payment } = getMercadoPagoSdkClient(accessToken);
@@ -176,6 +269,10 @@ function centsToMoney(cents: number) {
   return Math.max(0, Math.round(cents)) / 100;
 }
 
+function centsToDecimalString(cents: number) {
+  return (Math.max(0, Math.round(cents)) / 100).toFixed(2);
+}
+
 function trimRequired(value: string, label: string) {
   const trimmed = value.trim();
   if (!trimmed) throw mercadoPagoError(`${label} vazio.`, 400);
@@ -223,6 +320,74 @@ export function mercadoPagoStatusToInternal(status: string) {
     default:
       return "error";
   }
+}
+
+export function mercadoPagoOrderStatusToInternal(order: unknown) {
+  const payment = firstOrderPayment(order);
+  const paymentStatus = readStringField(payment, "status");
+  const orderStatus = typeof (order as { status?: unknown }).status === "string" ? (order as { status: string }).status : "unknown";
+  const status = paymentStatus ?? orderStatus;
+
+  if (status === "processed") return "approved";
+  if (status === "action_required") return "pending";
+  if (status === "created") return "checkout_pending";
+  if (status === "expired") return "expired";
+  return mercadoPagoStatusToInternal(status);
+}
+
+function normalizeMercadoPagoOrder(raw: MercadoPagoOrder): MercadoPagoPixOrderResult {
+  const payment = firstOrderPayment(raw);
+  const paymentMethod = readRecord(payment, "payment_method");
+  const paymentAmount = readStringField(payment, "amount") ?? readStringField(raw, "total_amount");
+  const amountInCents = moneyToCents(paymentAmount);
+  const rawStatus = readStringField(payment, "status") ?? readStringField(raw, "status") ?? "unknown";
+  const result: MercadoPagoPixOrderResult = {
+    amountInCents,
+    currency: readStringField(raw, "currency"),
+    externalReference: readStringField(raw, "external_reference"),
+    orderId: readStringField(raw, "id") ?? "",
+    paymentId: readStringField(payment, "id"),
+    paymentMethod: readStringField(paymentMethod, "id"),
+    paymentType: readStringField(paymentMethod, "type"),
+    pixCode: readStringField(paymentMethod, "qr_code") ?? readNestedString(raw, ["type_response", "qr_data"]),
+    qrCode: readStringField(paymentMethod, "qr_code_base64"),
+    raw,
+    rawStatus,
+    status: mercadoPagoOrderStatusToInternal(raw),
+    statusDetail: readStringField(payment, "status_detail") ?? readStringField(raw, "status_detail")
+  };
+
+  if (!result.orderId) {
+    throw mercadoPagoError("Mercado Pago nao retornou o ID da order Pix.", 502);
+  }
+
+  return result;
+}
+
+function firstOrderPayment(raw: unknown) {
+  const transactions = readRecord(raw, "transactions");
+  const payments = Array.isArray(transactions?.payments) ? transactions.payments : [];
+  const first = payments[0];
+  return first && typeof first === "object" ? first as Record<string, unknown> : {};
+}
+
+function readRecord(payload: unknown, key: string) {
+  const value = payload && typeof payload === "object" ? (payload as Record<string, unknown>)[key] : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readNestedString(payload: unknown, path: string[]) {
+  let current: unknown = payload;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" && current.trim() ? current.trim() : null;
+}
+
+function moneyToCents(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) ? Math.round(numberValue * 100) : 0;
 }
 
 function safePreferenceMetadata(metadata?: Record<string, string | number | boolean | null>) {

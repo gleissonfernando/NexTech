@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
+import { MercadoPagoConfig, Order, Payment, Preference } from "mercadopago";
 
 type CachedMercadoPagoClient = {
   config: MercadoPagoConfig;
+  order: Order;
   payment: Payment;
   preference: Preference;
 };
@@ -25,6 +26,7 @@ export function getMercadoPagoSdkClient(accessToken: string) {
   });
   const next = {
     config,
+    order: new Order(config),
     payment: new Payment(config),
     preference: new Preference(config)
   };

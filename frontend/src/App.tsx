@@ -9,6 +9,7 @@ import { GiveawayRoulettePage } from "./pages/GiveawayRoulette";
 import { Login } from "./pages/Login";
 import { NexTechProductPage } from "./pages/NexTechProductPage";
 import { PaymentReturnPage } from "./pages/PaymentReturn";
+import { PixPaymentPage } from "./pages/PixPayment";
 import { PublicPlansPage } from "./pages/Plans";
 import { useAuth } from "./hooks/useAuth";
 import { dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "./lib/urls";
@@ -29,6 +30,7 @@ export function App() {
   const plansPath = path === "/planos" || path.startsWith("/planos/");
   const botRegistrationPath = path === "/cadastrar-bot" || path.startsWith("/cadastrar-bot/");
   const paymentReturnStatus = paymentReturnStatusFromPath(path);
+  const pixPaymentOrderId = pixPaymentOrderIdFromPath(path);
   const rouletteToken = rouletteTokenFromPath(path);
   const productRoute = nexTechProductRouteFromPath(path);
   const routeError = readAuthError();
@@ -38,17 +40,17 @@ export function App() {
   const protectedPanelPath = dashboardPath || devPanelPath;
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
 
     if (auth?.access.verified && !protectedPanelPath && !publicLandingPath) {
       window.location.replace(dashboardUrl(auth.user.dashboardBotSlug));
     }
-  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, plansPath, productRoute, protectedPanelPath, publicLandingPath, rouletteToken]);
+  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicLandingPath, rouletteToken]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
 
@@ -57,10 +59,10 @@ export function App() {
     }
 
     loginDiscord();
-  }, [auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, plansPath, productRoute, routeError, rouletteToken]);
+  }, [auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
 
@@ -69,7 +71,7 @@ export function App() {
     }
 
     verify();
-  }, [auth, authCallbackLanding, botRegistrationPath, docsPath, paymentReturnStatus, plansPath, productRoute, rouletteToken, verify, verifying]);
+  }, [auth, authCallbackLanding, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, rouletteToken, verify, verifying]);
 
   if (docsPath) {
     return <DocsPage />;
@@ -81,6 +83,10 @@ export function App() {
 
   if (paymentReturnStatus) {
     return <PaymentReturnPage status={paymentReturnStatus} />;
+  }
+
+  if (pixPaymentOrderId) {
+    return <PixPaymentPage orderId={pixPaymentOrderId} />;
   }
 
   if (botRegistrationPath) {
@@ -203,6 +209,21 @@ function paymentReturnStatusFromPath(path: string) {
   if (path === "/pagamento/falha") return "failure" as const;
 
   return null;
+}
+
+function pixPaymentOrderIdFromPath(path: string) {
+  if (!path.startsWith("/pagamento/pix/")) {
+    return null;
+  }
+
+  const orderId = path.slice("/pagamento/pix/".length).split("/")[0]?.trim();
+  if (!orderId) return null;
+
+  try {
+    return decodeURIComponent(orderId);
+  } catch {
+    return null;
+  }
 }
 
 function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "cloning" | "sales" | "plans" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance" {

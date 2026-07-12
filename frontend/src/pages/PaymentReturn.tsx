@@ -94,6 +94,10 @@ export function PaymentReturnPage({ status }: PaymentReturnPageProps) {
         window.location.assign(next.checkoutUrl);
         return;
       }
+      if (next.pixCode || next.qrCode || next.providerOrderId) {
+        window.location.assign(`/pagamento/pix/${encodeURIComponent(next.id)}`);
+        return;
+      }
       setOrder(next);
     } catch {
       setOrderError("Nao foi possivel criar uma nova tentativa de checkout.");

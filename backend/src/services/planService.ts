@@ -20,6 +20,7 @@ import type {
 import { getMongoCollections } from "../database/mongo";
 import { buildAppUrl } from "../config/appUrl";
 import { MercadoPagoPaymentProvider, type ProviderPayment } from "./paymentProviderService";
+import type { MercadoPagoPixOrderResult } from "./mercadoPagoService";
 import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 
@@ -169,6 +170,7 @@ export type MercadoPagoWebhookInput = {
   body: unknown;
   dataId: string | null;
   requestId: string | null;
+  resourceType?: string | null;
   signature: string | null;
 };
 
@@ -337,7 +339,11 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
       planId: plan._id,
       provider: selectedProvider,
       status: { $in: ["created", "checkout_pending", "pending", "in_process", "in_review"] },
-      checkoutUrl: { $ne: null }
+      $or: [
+        { checkoutUrl: { $ne: null } },
+        { pixCode: { $ne: null } },
+        { providerOrderId: { $ne: null } }
+      ]
     })
     : null;
 
@@ -415,11 +421,11 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
   await paymentOrders.insertOne(order);
 
   if (paymentsEnabled && shouldCreateCheckout) {
-    const checkout = await createMercadoPagoPlanPreference(settings, plan, order, auth).catch(async (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Falha ao criar checkout Mercado Pago.";
-      order.notes = "Falha ao criar checkout Mercado Pago.";
+    const checkout = await createMercadoPagoPlanPixOrder(plan, order, auth).catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Falha ao criar order Pix Mercado Pago.";
+      order.notes = "Falha ao criar order Pix Mercado Pago.";
       order.status = "error";
-      order.statusHistory = appendStatusHistory({ ...order, status: "created" }, "error", "mercadopago_preference_failed");
+      order.statusHistory = appendStatusHistory({ ...order, status: "created" }, "error", "mercadopago_order_failed");
       order.updatedAt = new Date();
       await paymentOrders.updateOne(
         { _id: order._id },
@@ -438,11 +444,17 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
       });
       throw error;
     });
-    order.checkoutUrl = checkout.checkoutUrl;
-    order.notes = "Pedido criado no Mercado Pago. Continue pelo link de checkout.";
-    order.providerOrderId = checkout.preferenceId;
-    order.sandboxCheckoutUrl = checkout.sandboxCheckoutUrl;
-    order.statusHistory = appendStatusHistory(order, "checkout_pending", "mercadopago_preference_created");
+    order.checkoutUrl = null;
+    order.notes = "Order Pix criada no Mercado Pago. Continue pelo QR Code ou codigo Pix.";
+    order.paymentMethod = checkout.paymentMethod;
+    order.paymentType = checkout.paymentType;
+    order.pixCode = checkout.pixCode;
+    order.providerOrderId = checkout.orderId;
+    order.qrCode = checkout.qrCode;
+    order.rawProviderStatus = checkout.rawStatus;
+    order.statusDetail = checkout.statusDetail;
+    order.webhookSafeResponse = safeOrderWebhookResponse(checkout.raw);
+    order.statusHistory = appendStatusHistory(order, "checkout_pending", "mercadopago_order_created");
     order.status = "checkout_pending";
     order.updatedAt = new Date();
     await paymentOrders.updateOne(
@@ -451,10 +463,16 @@ export async function createCheckoutInterest(planSlug: string, auth: DashboardAu
         $set: {
           checkoutUrl: order.checkoutUrl,
           notes: order.notes,
+          paymentMethod: order.paymentMethod,
+          paymentType: order.paymentType,
+          pixCode: order.pixCode,
           providerOrderId: order.providerOrderId,
-          sandboxCheckoutUrl: order.sandboxCheckoutUrl,
+          qrCode: order.qrCode,
+          rawProviderStatus: order.rawProviderStatus,
+          statusDetail: order.statusDetail,
           status: order.status,
           statusHistory: order.statusHistory,
+          webhookSafeResponse: order.webhookSafeResponse,
           updatedAt: order.updatedAt
         }
       }
@@ -568,7 +586,7 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
   if (!order) throw httpError("Pedido nao encontrado.", 404);
   if (isFinalPaymentStatus(order.status)) throw httpError("Pedido finalizado nao pode ser reenviado ao checkout.", 409);
   if ((order.retryAttempts ?? 0) >= 3) throw httpError("Limite de tentativas deste pedido atingido.", 429);
-  if (order.expiresAt && order.expiresAt > new Date() && order.checkoutUrl) {
+  if (order.expiresAt && order.expiresAt > new Date() && (order.checkoutUrl || order.pixCode || order.providerOrderId)) {
     throw httpError("Checkout atual ainda esta valido.", 409);
   }
 
@@ -579,27 +597,38 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
   const mercadoPagoConfig = requireMercadoPagoOperational();
   const retryOrder: MongoPaymentOrder = {
     ...order,
+    checkoutUrl: null,
     expiresAt: new Date(now.getTime() + mercadoPagoConfig.checkoutExpirationMinutes * 60_000),
     idempotencyKey: randomUUID(),
+    pixCode: null,
+    providerOrderId: null,
+    qrCode: null,
     retryAttempts: (order.retryAttempts ?? 0) + 1,
     status: "created",
     updatedAt: now
   };
-  const checkout = await createMercadoPagoPlanPreference(await ensurePaymentSettings(), plan, retryOrder, auth);
-  const statusHistory = appendStatusHistory(retryOrder, "checkout_pending", "mercadopago_retry_preference_created");
+  const checkout = await createMercadoPagoPlanPixOrder(plan, retryOrder, auth);
+  const statusHistory = appendStatusHistory(retryOrder, "checkout_pending", "mercadopago_retry_order_created");
   const updated = await paymentOrders.findOneAndUpdate(
     { _id: order._id, discordId: auth.user.discordId },
     {
       $set: {
-        checkoutUrl: checkout.checkoutUrl,
+        checkoutUrl: null,
         expiresAt: retryOrder.expiresAt,
         idempotencyKey: retryOrder.idempotencyKey,
-        notes: "Nova preferencia Mercado Pago criada para tentativa de checkout.",
-        providerOrderId: checkout.preferenceId,
+        notes: "Nova order Pix Mercado Pago criada para tentativa de checkout.",
+        paymentMethod: checkout.paymentMethod,
+        paymentType: checkout.paymentType,
+        pixCode: checkout.pixCode,
+        providerOrderId: checkout.orderId,
+        qrCode: checkout.qrCode,
+        rawProviderStatus: checkout.rawStatus,
         retryAttempts: retryOrder.retryAttempts,
-        sandboxCheckoutUrl: checkout.sandboxCheckoutUrl,
+        sandboxCheckoutUrl: null,
         status: "checkout_pending",
+        statusDetail: checkout.statusDetail,
         statusHistory,
+        webhookSafeResponse: safeOrderWebhookResponse(checkout.raw),
         updatedAt: new Date()
       }
     },
@@ -1421,6 +1450,60 @@ export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) 
       return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Webhook sem data.id.", signatureValid: true, processedAt: new Date() }), processed: false };
     }
 
+    if (isMercadoPagoOrderWebhook(payload, input.resourceType)) {
+      const mercadoOrder = await provider.getOrder(dataId);
+      const externalReference = mercadoOrder.externalReference;
+      if (!externalReference) {
+        await markPaymentEvent(insertedEvent._id, "ignored", "Order sem referencia externa.");
+        return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Order sem referencia externa.", signatureValid: true, processedAt: new Date() }), processed: false };
+      }
+
+      const order = await paymentOrders.findOne({ _id: externalReference });
+      if (!order) {
+        await markPaymentEvent(insertedEvent._id, "ignored", "Pedido interno nao encontrado.", null);
+        return { duplicate: false, event: mapPaymentEvent({ ...insertedEvent, orderId: null, status: "ignored", result: "Pedido interno nao encontrado.", signatureValid: true, processedAt: new Date() }), processed: false };
+      }
+
+      await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { orderId: order._id, paymentId: mercadoOrder.paymentId ?? dataId } });
+
+      if (order.provider !== "mercadopago" || order.externalReference !== externalReference) {
+        await markPaymentEvent(insertedEvent._id, "failed", "Referencia do pedido divergente.", order._id);
+        throw httpError("Referencia do pedido divergente.", 409);
+      }
+
+      if (order.environment && order.environment !== mercadoPagoConfig.environment) {
+        await markPaymentEvent(insertedEvent._id, "failed", "Ambiente da order divergente.", order._id);
+        throw httpError("Ambiente da order divergente.", 409);
+      }
+
+      const updatedOrder = await applyOfficialMercadoPagoOrderToOrder(order, mercadoOrder, "mercadopago_order_webhook");
+      let subscription = null;
+      if (updatedOrder.status === "approved") {
+        const plan = await plans.findOne({ _id: order.planId });
+        if (!plan) {
+          await markPaymentEvent(insertedEvent._id, "failed", "Plano do pedido nao encontrado.", order._id);
+          throw httpError("Plano do pedido nao encontrado.", 404);
+        }
+        subscription = await activatePaidOrderOnce(updatedOrder, plan, systemPaymentActor(), "mercadopago_order_webhook");
+      }
+
+      await markPaymentEvent(insertedEvent._id, "processed", `Order processada: ${mercadoOrder.rawStatus}.`, order._id);
+      await writePlanAudit(systemPaymentActor(), "mercadopago_order_webhook_processed", "payment", order._id, {
+        mercadoPagoOrderId: mercadoOrder.orderId,
+        mercadoPagoPaymentId: mercadoOrder.paymentId,
+        paymentMethod: mercadoOrder.paymentMethod,
+        status: mercadoOrder.rawStatus
+      });
+
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, orderId: order._id, paymentId: mercadoOrder.paymentId ?? dataId, processedAt: new Date(), result: `Order processada: ${mercadoOrder.rawStatus}.`, signatureValid: true, status: "processed" }),
+        order: toPaymentOrderDto(updatedOrder),
+        processed: true,
+        subscription
+      };
+    }
+
     const payment = await provider.getPayment(dataId);
     const externalReference = payment.externalReference;
     const paymentId = payment.id;
@@ -1611,6 +1694,82 @@ async function applyOfficialPaymentToOrder(
     await activatePaidOrderOnce({ ...order, ...update, status: nextStatus }, plan, actor, source);
   }
 
+  return (await paymentOrders.findOne({ _id: order._id })) ?? { ...order, ...update, status: nextStatus };
+}
+
+async function applyOfficialMercadoPagoOrderToOrder(
+  order: MongoPaymentOrder,
+  mercadoOrder: MercadoPagoPixOrderResult,
+  source: string
+) {
+  const { paymentOrders } = await getMongoCollections();
+
+  if (mercadoOrder.externalReference !== order.externalReference || order.provider !== "mercadopago") {
+    throw httpError("Referencia da order divergente.", 409);
+  }
+
+  if (mercadoOrder.amountInCents > 0 && mercadoOrder.amountInCents !== order.amountInCents) {
+    await paymentOrders.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          mercadoPagoPaymentId: mercadoOrder.paymentId,
+          notes: "Order Mercado Pago recusada por divergencia de valor.",
+          providerOrderId: mercadoOrder.orderId,
+          rawProviderStatus: mercadoOrder.rawStatus,
+          status: "rejected",
+          statusHistory: appendStatusHistory(order, "rejected", `${source}_amount_mismatch`),
+          webhookSafeResponse: safeOrderWebhookResponse(mercadoOrder.raw),
+          updatedAt: new Date()
+        }
+      }
+    );
+    throw httpError("Valor da order divergente.", 409);
+  }
+
+  if (mercadoOrder.currency && mercadoOrder.currency !== order.currency) {
+    await paymentOrders.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          mercadoPagoPaymentId: mercadoOrder.paymentId,
+          notes: "Order Mercado Pago recusada por divergencia de moeda.",
+          providerOrderId: mercadoOrder.orderId,
+          rawProviderStatus: mercadoOrder.rawStatus,
+          status: "rejected",
+          statusHistory: appendStatusHistory(order, "rejected", `${source}_currency_mismatch`),
+          webhookSafeResponse: safeOrderWebhookResponse(mercadoOrder.raw),
+          updatedAt: new Date()
+        }
+      }
+    );
+    throw httpError("Moeda da order divergente.", 409);
+  }
+
+  const nextStatus = providerStatusToOrderStatus(mercadoOrder.status);
+  const update: Partial<MongoPaymentOrder> = {
+    approvedAt: nextStatus === "approved" ? order.approvedAt ?? new Date() : order.approvedAt ?? null,
+    cancelledAt: nextStatus === "cancelled" ? order.cancelledAt ?? new Date() : order.cancelledAt ?? null,
+    checkoutUrl: null,
+    mercadoPagoPaymentId: mercadoOrder.paymentId,
+    notes: `Status Order Mercado Pago confirmado: ${nextStatus}.`,
+    paymentMethod: mercadoOrder.paymentMethod,
+    paymentType: mercadoOrder.paymentType,
+    pixCode: mercadoOrder.pixCode ?? order.pixCode,
+    providerOrderId: mercadoOrder.orderId,
+    qrCode: mercadoOrder.qrCode ?? order.qrCode,
+    rawProviderStatus: mercadoOrder.rawStatus,
+    refundedAt: nextStatus === "refunded" ? order.refundedAt ?? new Date() : order.refundedAt ?? null,
+    rejectedAt: nextStatus === "rejected" ? order.rejectedAt ?? new Date() : order.rejectedAt ?? null,
+    status: nextStatus,
+    statusDetail: mercadoOrder.statusDetail,
+    statusHistory: appendStatusHistory(order, nextStatus, source),
+    webhookSafeResponse: safeOrderWebhookResponse(mercadoOrder.raw),
+    updatedAt: new Date()
+  };
+  if (nextStatus === "approved") update.paidAt = order.paidAt ?? new Date();
+
+  await paymentOrders.updateOne({ _id: order._id }, { $set: update });
   return (await paymentOrders.findOne({ _id: order._id })) ?? { ...order, ...update, status: nextStatus };
 }
 
@@ -1972,8 +2131,7 @@ async function ensurePaymentSettings(): Promise<MongoPaymentSettings> {
   return settings;
 }
 
-async function createMercadoPagoPlanPreference(
-  settings: MongoPaymentSettings,
+async function createMercadoPagoPlanPixOrder(
   plan: MongoPlan,
   order: MongoPaymentOrder,
   auth: DashboardAuth
@@ -1983,36 +2141,16 @@ async function createMercadoPagoPlanPreference(
   }
   const mercadoPagoConfig = requireMercadoPagoOperational();
   const provider = new MercadoPagoPaymentProvider(requireMercadoPagoAccessToken(mercadoPagoConfig), mercadoPagoConfig.webhookSecret);
-  return provider.createOneTimeCheckout({
-    binaryMode: mercadoPagoConfig.binaryMode,
-    backUrls: {
-      failure: env.MERCADOPAGO_FAILURE_URL || settings.failureRedirectUrl || settings.cancelRedirectUrl || buildAppUrl("/pagamento/falha"),
-      pending: env.MERCADOPAGO_PENDING_URL || settings.pendingRedirectUrl || buildAppUrl("/pagamento/pendente"),
-      success: env.MERCADOPAGO_SUCCESS_URL || settings.approvedRedirectUrl || settings.successRedirectUrl || buildAppUrl("/pagamento/sucesso")
-    },
-    dateOfExpiration: order.expiresAt ?? null,
-    environment: mercadoPagoConfig.environment,
+  return provider.createPixOrder({
+    amountInCents: order.amountInCents,
+    currencyId: plan.currency,
+    description: plan.shortDescription || plan.description || plan.name,
     externalReference: order._id,
     idempotencyKey: order.idempotencyKey,
-    items: [
-      {
-        currencyId: plan.currency,
-        description: plan.shortDescription || plan.description || plan.name,
-        id: plan._id,
-        title: plan.name,
-        unitPriceInCents: order.amountInCents
-      }
-    ],
-    maxInstallments: mercadoPagoConfig.maxInstallments,
-    metadata: {
-      orderId: order._id,
-      planId: plan._id,
-      userId: auth.user.id || auth.user.discordId,
-      discordUserId: auth.user.discordId,
-      environment: mercadoPagoConfig.environment
-    },
-    notificationUrl: mercadoPagoConfig.webhookUrl || buildAppUrl("/api/payments/mercadopago/webhook"),
+    itemId: plan._id,
+    itemTitle: plan.name,
     payerEmail: auth.user.email,
+    paymentExpiration: order.expiresAt ?? null,
     statementDescriptor: mercadoPagoConfig.statementDescriptor
   });
 }
@@ -2329,6 +2467,9 @@ function discordCdnGuildIconUrl(guildId: string, icon: string | null) {
 
 function providerStatusToOrderStatus(status: MongoPlanPaymentOrderStatus | string): MongoPlanPaymentOrderStatus {
   if (status === "paid") return "approved";
+  if (status === "processed") return "approved";
+  if (status === "created") return "checkout_pending";
+  if (status === "action_required") return "pending";
   if (status === "failed") return "rejected";
   if (status === "charged_back") return "chargeback";
   return status as MongoPlanPaymentOrderStatus;
@@ -2385,6 +2526,34 @@ function safePaymentWebhookResponse(raw: Record<string, unknown>) {
     status_detail: readString(raw.status_detail),
     transaction_amount: typeof raw.transaction_amount === "number" ? raw.transaction_amount : Number(raw.transaction_amount) || null
   };
+}
+
+function safeOrderWebhookResponse(raw: Record<string, unknown>) {
+  const payment = readFirstPayment(raw);
+  const paymentMethod = isRecord(payment.payment_method) ? payment.payment_method : {};
+  return {
+    currency: readString(raw.currency),
+    external_reference: readString(raw.external_reference),
+    id: readString(raw.id),
+    payment_id: readString(payment.id),
+    payment_method_id: readString(paymentMethod.id),
+    payment_method_type: readString(paymentMethod.type),
+    status: readString(raw.status),
+    status_detail: readString(raw.status_detail),
+    total_amount: readString(raw.total_amount)
+  };
+}
+
+function isMercadoPagoOrderWebhook(payload: Record<string, unknown>, resourceType?: string | null) {
+  const type = resourceType?.trim().toLowerCase() || readString(payload.type)?.toLowerCase();
+  return type === "order";
+}
+
+function readFirstPayment(raw: Record<string, unknown>) {
+  const transactions = isRecord(raw.transactions) ? raw.transactions : {};
+  const payments = Array.isArray(transactions.payments) ? transactions.payments : [];
+  const payment = payments[0];
+  return isRecord(payment) ? payment : {};
 }
 
 function trimText(value: string, max: number) {

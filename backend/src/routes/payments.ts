@@ -114,6 +114,7 @@ async function handleMercadoPagoWebhook(req: Request, res: Response, next: NextF
       body: req.body,
       dataId,
       requestId: req.get("x-request-id") ?? null,
+      resourceType: readQuery(req.query.type),
       signature: req.get("x-signature") ?? null
     });
 

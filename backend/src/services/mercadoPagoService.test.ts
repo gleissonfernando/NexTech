@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mercadoPagoStatusToInternal, validateMercadoPagoWebhookSignature } from "./mercadoPagoService";
+import { buildMercadoPagoPixOrderBody, mercadoPagoOrderStatusToInternal, mercadoPagoStatusToInternal, validateMercadoPagoWebhookSignature } from "./mercadoPagoService";
 
 test("valida assinatura oficial do webhook Mercado Pago", () => {
   const secret = "test-secret";
@@ -35,4 +35,48 @@ test("mapeia status Mercado Pago para estados internos de pagamento", () => {
   assert.equal(mercadoPagoStatusToInternal("in_mediation"), "in_review");
   assert.equal(mercadoPagoStatusToInternal("charged_back"), "chargeback");
   assert.equal(mercadoPagoStatusToInternal("rejected"), "rejected");
+});
+
+test("monta payload de order Pix Mercado Pago", () => {
+  const body = buildMercadoPagoPixOrderBody({
+    amountInCents: 12990,
+    currencyId: "BRL",
+    description: "Plano Pro",
+    externalReference: "order-123",
+    itemId: "plan-pro",
+    itemTitle: "Plano Pro",
+    payerEmail: "cliente@example.com",
+    paymentExpiration: new Date("2026-07-12T06:00:00.000Z"),
+    statementDescriptor: "NEXTECH"
+  });
+
+  assert.equal(body.type, "online");
+  assert.equal(body.processing_mode, "automatic");
+  assert.equal(body.external_reference, "order-123");
+  assert.equal(body.total_amount, "129.90");
+  assert.equal(body.currency, "BRL");
+  assert.equal(body.payer?.email, "cliente@example.com");
+  assert.equal(body.transactions?.payments?.[0]?.amount, "129.90");
+  assert.equal(body.transactions?.payments?.[0]?.date_of_expiration, "2026-07-12T06:00:00.000Z");
+  assert.equal(body.transactions?.payments?.[0]?.payment_method?.id, "pix");
+  assert.equal(body.transactions?.payments?.[0]?.payment_method?.type, "bank_transfer");
+  assert.equal(body.transactions?.payments?.[0]?.payment_method?.statement_descriptor, "NEXTECH");
+});
+
+test("mapeia status de order Pix pelo pagamento interno", () => {
+  assert.equal(mercadoPagoOrderStatusToInternal({
+    id: "ORD-1",
+    status: "processed",
+    transactions: { payments: [{ status: "approved" }] }
+  }), "approved");
+  assert.equal(mercadoPagoOrderStatusToInternal({
+    id: "ORD-2",
+    status: "created",
+    transactions: { payments: [{ status: "pending" }] }
+  }), "pending");
+  assert.equal(mercadoPagoOrderStatusToInternal({
+    id: "ORD-3",
+    status: "created",
+    transactions: { payments: [{ status: "rejected" }] }
+  }), "rejected");
 });
