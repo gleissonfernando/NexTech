@@ -578,7 +578,7 @@ async function collectSubpoenaTranscriptMessages(channel: TextChannel, settings:
     if (!batch?.size) break;
     collected.push(...batch.values());
     before = batch.last()?.id;
-  } while (before && collected.length < 1000);
+  } while (before);
 
   return collected.sort((a, b) => a.createdTimestamp - b.createdTimestamp).map((message) => ({
     anonymous: message.author.id !== state.targetId,

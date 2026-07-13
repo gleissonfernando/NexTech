@@ -738,7 +738,7 @@ async function anonymizePreparedReporterMessages(channel: TextChannel, settings:
     if (!batch?.size) break;
     collected.push(...batch.values());
     before = batch.last()?.id;
-  } while (before && collected.length < 500);
+  } while (before);
 
   const reporterMessages = collected
     .filter((message) => message.author.id === topic.openerId && message.id !== panelMessageId)
@@ -1051,7 +1051,7 @@ async function collectTranscriptMessages(channel: TextChannel, topic: ReportTopi
     if (!batch?.size) break;
     collected.push(...batch.values());
     before = batch.last()?.id;
-  } while (before && collected.length < 1000);
+  } while (before);
 
   return collected.sort((a, b) => a.createdTimestamp - b.createdTimestamp).map((message) => ({
     anonymous: topic.mode === "anonymous",

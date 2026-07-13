@@ -77,9 +77,26 @@ const createTranscriptSchema = z.object({
 export const publicTranscriptsRouter = Router();
 export const transcriptsRouter = Router();
 
+const transcriptIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{2,120}$/, "Transcript invalido.");
+
+publicTranscriptsRouter.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'none'",
+    "img-src 'self' data: https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net",
+    "style-src 'unsafe-inline'",
+    "form-action 'self'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'"
+  ].join("; "));
+  next();
+});
+
 publicTranscriptsRouter.get("/:id", async (req, res, next) => {
   try {
-    const meta = await getTranscriptPublicMeta(req.params.id);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    const meta = await getTranscriptPublicMeta(transcriptId);
     if (!meta) {
       return res.status(404).send(renderLoginPage(null, "Transcript nao encontrado."));
     }
@@ -91,14 +108,15 @@ publicTranscriptsRouter.get("/:id", async (req, res, next) => {
 
 publicTranscriptsRouter.post("/:id", async (req, res, next) => {
   try {
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
     const password = typeof req.body.password === "string" ? req.body.password : "";
-    const result = await validateTranscriptPassword(req.params.id, password, {
+    const result = await validateTranscriptPassword(transcriptId, password, {
       ip: req.ip,
       userAgent: req.get("user-agent")
     });
 
     if (!result.ok) {
-      const meta = await getTranscriptPublicMeta(req.params.id);
+      const meta = await getTranscriptPublicMeta(transcriptId);
       return res.status(result.status).send(renderLoginPage(meta, result.message));
     }
 
@@ -112,13 +130,30 @@ publicTranscriptsRouter.post("/:id", async (req, res, next) => {
   }
 });
 
+publicTranscriptsRouter.get("/:id/download", async (req, res, next) => {
+  try {
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    if (req.query.token !== "session") {
+      return res.status(401).send("Senha obrigatoria.");
+    }
+    const transcript = await getTranscriptForExport(transcriptId);
+    if (!transcript) return res.status(404).send("Transcript nao encontrado.");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="transcript-${transcript._id}.html"`);
+    return res.send(transcript.htmlContent || renderTranscriptHtml(transcript, "Protegido"));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 publicTranscriptsRouter.get("/:id/export.:format", async (req, res, next) => {
   try {
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
     if (req.query.token !== "session") {
       return res.status(401).send("Senha obrigatoria.");
     }
 
-    const transcript = await getTranscriptForExport(req.params.id);
+    const transcript = await getTranscriptForExport(transcriptId);
     if (!transcript) return res.status(404).send("Transcript nao encontrado.");
 
     const format = req.params.format;
@@ -166,7 +201,8 @@ transcriptsRouter.post("/bot/:id/passwords", async (req, res, next) => {
       return res.status(403).json({ message: "Rota disponivel apenas para o bot." });
     }
     const ttlHours = Number(req.body?.ttlHours ?? 72);
-    const result = await createNewTemporaryPassword(req.params.id, ttlHours);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    const result = await createNewTemporaryPassword(transcriptId, ttlHours);
     if (!result) return res.status(404).json({ message: "Transcript nao encontrado." });
     return res.status(201).json(result);
   } catch (error) {
@@ -180,7 +216,8 @@ transcriptsRouter.post("/:id/passwords", async (req, res, next) => {
       return res.status(403).json({ message: "Sem permissao para alterar este transcript." });
     }
     const ttlHours = Number(req.body?.ttlHours ?? 72);
-    const result = await createNewTemporaryPassword(req.params.id, ttlHours);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    const result = await createNewTemporaryPassword(transcriptId, ttlHours);
     if (!result) return res.status(404).json({ message: "Transcript nao encontrado." });
     return res.status(201).json(result);
   } catch (error) {
@@ -193,7 +230,8 @@ transcriptsRouter.post("/bot/:id/passwords/revoke", async (req, res, next) => {
     if (!isBotRequest(req)) {
       return res.status(403).json({ message: "Rota disponivel apenas para o bot." });
     }
-    await revokeTranscriptTemporaryPasswords(req.params.id);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    await revokeTranscriptTemporaryPasswords(transcriptId);
     return res.json({ ok: true });
   } catch (error) {
     return next(error);
@@ -205,7 +243,8 @@ transcriptsRouter.post("/:id/passwords/revoke", async (req, res, next) => {
     if (!(await canManageTranscript(req))) {
       return res.status(403).json({ message: "Sem permissao para alterar este transcript." });
     }
-    await revokeTranscriptTemporaryPasswords(req.params.id);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    await revokeTranscriptTemporaryPasswords(transcriptId);
     return res.json({ ok: true });
   } catch (error) {
     return next(error);
@@ -217,7 +256,8 @@ transcriptsRouter.delete("/bot/:id", async (req, res, next) => {
     if (!isBotRequest(req)) {
       return res.status(403).json({ message: "Rota disponivel apenas para o bot." });
     }
-    const transcript = await softDeleteTranscript(req.params.id);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    const transcript = await softDeleteTranscript(transcriptId);
     if (!transcript) return res.status(404).json({ message: "Transcript nao encontrado." });
     return res.json({ ok: true });
   } catch (error) {
@@ -230,7 +270,8 @@ transcriptsRouter.delete("/:id", async (req, res, next) => {
     if (!(await canManageTranscript(req))) {
       return res.status(403).json({ message: "Sem permissao para excluir este transcript." });
     }
-    const transcript = await softDeleteTranscript(req.params.id);
+    const transcriptId = transcriptIdSchema.parse(req.params.id);
+    const transcript = await softDeleteTranscript(transcriptId);
     if (!transcript) return res.status(404).json({ message: "Transcript nao encontrado." });
     return res.json({ ok: true });
   } catch (error) {
@@ -240,7 +281,7 @@ transcriptsRouter.delete("/:id", async (req, res, next) => {
 
 async function canManageTranscript(req: Request) {
   if (isBotRequest(req)) return true;
-  const transcriptId = req.params.id;
+  const transcriptId = transcriptIdSchema.safeParse(req.params.id).success ? req.params.id : null;
   if (!transcriptId) return false;
   const transcript = await getTranscriptForExport(transcriptId);
   const user = req.res?.locals.dashboardAuth.user;

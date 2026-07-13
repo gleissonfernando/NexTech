@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
@@ -5,43 +6,74 @@ import { MongoClient } from "mongodb";
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 applyPackedEnv();
 
-const mongoUri = process.env.MONGODB_URI?.trim();
+const DEFAULT_BASE_URL = "https://nextech.discloud.app";
+const mongoUri = process.env.MONGODB_URI?.trim() || process.env.MONGO_URI?.trim() || process.env.DATABASE_URL?.trim();
+const appBaseUrl = normalizeBaseUrl(
+  process.env.APP_BASE_URL?.trim()
+  || process.env.TRANSCRIPT_BASE_URL?.trim()
+  || process.env.SITE_ORIGIN?.trim()
+  || DEFAULT_BASE_URL
+);
 
 if (!mongoUri) {
   throw new Error("MONGODB_URI nao configurado.");
 }
 
 const client = new MongoClient(mongoUri);
+const runId = `transcript-url-migration-${new Date().toISOString()}-${randomUUID()}`;
 
 try {
   await client.connect();
   const db = client.db();
   const transcripts = db.collection("transcripts");
-  const absoluteUrlCount = await transcripts.countDocuments({
-    websiteUrl: { $regex: /^https?:\/\//i }
-  });
-
-  const result = await transcripts.updateMany(
-    {},
-    [
-      {
-        $set: {
-          htmlPath: { $concat: ["/transcripts/", "$_id"] },
-          txtPath: { $concat: ["/transcripts/", "$_id", "/export.txt"] },
-          websiteUrl: null
-        }
-      }
+  const backups = db.collection("transcript_url_migration_backups");
+  const query = {
+    $or: [
+      { websiteUrl: { $regex: /^https?:\/\//i } },
+      { htmlPath: { $regex: /^https?:\/\//i } },
+      { txtPath: { $regex: /^https?:\/\//i } },
+      { pdfPath: { $regex: /^https?:\/\//i } }
     ]
-  );
+  };
+  const candidates = await transcripts.find(query, {
+    projection: { _id: 1, websiteUrl: 1, htmlPath: 1, txtPath: 1, pdfPath: 1 }
+  }).toArray();
+
+  if (candidates.length) {
+    await backups.insertOne({
+      _id: runId,
+      appBaseUrl,
+      count: candidates.length,
+      createdAt: new Date(),
+      records: candidates
+    });
+  }
+
+  let modified = 0;
+  for (const item of candidates) {
+    const transcriptId = String(item._id);
+    const next = {
+      htmlPath: `/transcripts/${encodeURIComponent(transcriptId)}`,
+      txtPath: `/transcripts/${encodeURIComponent(transcriptId)}/export.txt`,
+      websiteUrl: `${appBaseUrl}/transcripts/${encodeURIComponent(transcriptId)}`
+    };
+    const result = await transcripts.updateOne({ _id: item._id }, { $set: next });
+    modified += result.modifiedCount;
+  }
 
   console.log(JSON.stringify({
     ok: true,
-    absoluteUrlRecordsFound: absoluteUrlCount,
-    matched: result.matchedCount,
-    modified: result.modifiedCount
+    appBaseUrl,
+    backupRunId: runId,
+    matched: candidates.length,
+    modified
   }, null, 2));
 } finally {
   await client.close();
+}
+
+function normalizeBaseUrl(value) {
+  return (value || DEFAULT_BASE_URL).replace(/\/+$/, "") || DEFAULT_BASE_URL;
 }
 
 function applyPackedEnv() {

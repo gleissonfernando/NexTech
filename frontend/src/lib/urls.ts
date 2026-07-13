@@ -1,4 +1,4 @@
-const PRODUCTION_ORIGIN = "";
+const PRODUCTION_ORIGIN = "https://nextech.discloud.app";
 const RESERVED_DASHBOARD_PATHS = new Set(["hierarquia", "planos"]);
 
 function normalizeUrl(value?: string) {
@@ -20,7 +20,7 @@ function isPublicUrl(value?: string): value is string {
 }
 
 export function publicOrigin() {
-  const configuredPublicUrl = normalizeUrl(import.meta.env.VITE_FRONTEND_URL);
+  const configuredPublicUrl = normalizeUrl(import.meta.env.VITE_FRONTEND_URL || import.meta.env.VITE_APP_BASE_URL);
 
   if (isPublicUrl(configuredPublicUrl)) {
     return configuredPublicUrl;

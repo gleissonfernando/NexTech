@@ -156,7 +156,11 @@ import type {
 import { buildEditableFivemHierarchyPanelPayload, hierarchyPanelClientRequestId } from "./fivemHierarchy";
 import { publicOrigin } from "./urls";
 
-export const API_URL = `${publicOrigin()}/api`;
+export const API_URL = (
+  import.meta.env.VITE_API_URL
+  || `${publicOrigin()}/api`
+  || "https://nextech.discloud.app/api"
+).replace(/\/+$/, "");
 
 export const api = axios.create({
   baseURL: API_URL,

@@ -7,6 +7,7 @@ import { metricsSnapshot } from "../services/monitoringService";
 import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
 import { listDevBots } from "../services/devBotService";
+import { getTranscriptHealthStatus } from "../services/transcriptService";
 
 export const healthRouter = Router();
 
@@ -30,6 +31,19 @@ healthRouter.get("/", async (_req, res) => {
     payments,
     bot,
     timestamp: new Date().toISOString()
+  });
+});
+
+healthRouter.get("/transcripts", async (_req, res) => {
+  const health = await getTranscriptHealthStatus();
+  return res.status(health.ok ? 200 : 503).json({
+    status: health.ok ? "online" : "degraded",
+    service: health.service,
+    baseUrl: health.baseUrl,
+    database: health.database,
+    storage: health.storage,
+    route: health.route,
+    timestamp: health.timestamp
   });
 });
 

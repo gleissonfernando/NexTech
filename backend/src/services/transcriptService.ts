@@ -1,5 +1,5 @@
 import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { APP_BASE_URL, buildTranscriptUrl } from "../config/appUrl";
+import { APP_BASE_URL, TRANSCRIPT_BASE_URL, buildTranscriptUrl } from "../config/appUrl";
 import { env } from "../config/env";
 import { getMongoCollections, type MongoTicket, type MongoTranscript, type MongoTranscriptAccessLog, type MongoTranscriptMessage } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -51,6 +51,12 @@ export async function createTranscript(input: TranscriptInput) {
   const now = new Date();
   const transcriptId = `TR-${randomUUID().slice(0, 8).toUpperCase()}`;
   const publicUrl = buildTranscriptPublicUrl(transcriptId);
+  transcriptLog("Iniciando geração", {
+    channelId: input.channelId,
+    guildId: input.guildId,
+    ticketId: input.ticketId,
+    transcriptId
+  });
   const temporaryPassword = input.generateTemporaryPassword === false ? null : generateTemporaryPassword();
   const expiresAt = temporaryPassword
     ? new Date(now.getTime() + Math.max(1, input.temporaryPasswordTtlHours ?? DEFAULT_TEMP_PASSWORD_TTL_HOURS) * 60 * 60 * 1000)
@@ -66,6 +72,11 @@ export async function createTranscript(input: TranscriptInput) {
     editedAt: toDate(message.editedAt) ?? null
   }));
   const attachments = normalizedMessages.flatMap((message) => message.attachments);
+  transcriptLog(`${normalizedMessages.length} mensagens coletadas`, {
+    attachmentCount: attachments.length,
+    guildId: input.guildId,
+    transcriptId
+  });
   const transcript: MongoTranscript = {
     _id: transcriptId,
     ticketId: input.ticketId ?? null,
@@ -113,7 +124,17 @@ export async function createTranscript(input: TranscriptInput) {
 
   transcript.htmlContent = renderTranscriptHtml(transcript, "Protegido");
   transcript.textContent = renderTranscriptText(transcript);
+  transcriptLog("HTML e TXT gerados", {
+    guildId: input.guildId,
+    textBytes: Buffer.byteLength(transcript.textContent ?? "", "utf8"),
+    transcriptId
+  });
   await collections.transcripts.insertOne(transcript);
+  transcriptLog("Registro salvo no MongoDB", {
+    guildId: input.guildId,
+    storageType: "mongodb",
+    transcriptId
+  });
 
   if (temporaryPassword) {
     await collections.transcriptPasswords.insertOne({
@@ -146,6 +167,11 @@ export async function createTranscript(input: TranscriptInput) {
 
   const summary = publicTranscriptSummary(transcript);
   emitRealtime("transcripts:new", summary);
+  transcriptLog("URL pública criada", {
+    guildId: input.guildId,
+    publicUrl,
+    transcriptId
+  });
   return { publicUrl, transcript: summary, temporaryPassword, temporaryPasswordExpiresAt: expiresAt?.toISOString() ?? null };
 }
 
@@ -154,7 +180,7 @@ export function buildTranscriptPublicUrl(transcriptId: string) {
 }
 
 export function resolveTranscriptPublicBaseUrl() {
-  const configured = APP_BASE_URL;
+  const configured = TRANSCRIPT_BASE_URL || APP_BASE_URL;
 
   if (configured) {
     if (env.NODE_ENV === "production" && isLocalUrl(configured)) {
@@ -192,6 +218,41 @@ export function getTranscriptStartupStatus() {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
       port: env.TRANSCRIPT_PORT || env.PORT
+    };
+  }
+}
+
+export async function getTranscriptHealthStatus() {
+  const baseUrl = resolveTranscriptPublicBaseUrl();
+  const startedAt = Date.now();
+
+  try {
+    const { transcripts } = await getMongoCollections();
+    await transcripts.findOne({}, { projection: { _id: 1 } });
+
+    return {
+      ok: true,
+      status: "online",
+      service: "nextech-transcript",
+      baseUrl,
+      route: `${baseUrl}/transcripts/:id`,
+      database: "connected",
+      storage: "mongodb",
+      latencyMs: Date.now() - startedAt,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "degraded",
+      service: "nextech-transcript",
+      baseUrl,
+      route: `${baseUrl}/transcripts/:id`,
+      database: "error",
+      storage: "mongodb",
+      latencyMs: Date.now() - startedAt,
+      message: error instanceof Error ? error.message : "Transcript indisponivel",
+      timestamp: new Date().toISOString()
     };
   }
 }
@@ -589,4 +650,14 @@ function escapeHtml(value: string) {
 
 function escapeAttribute(value: string) {
   return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function transcriptLog(message: string, details: Record<string, unknown>) {
+  console.log(`[TRANSCRIPT] ${message}`, JSON.stringify(sanitizeLogDetails(details)));
+}
+
+function sanitizeLogDetails(details: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(details).filter(([key]) => !/password|token|secret|cookie/i.test(key))
+  );
 }
