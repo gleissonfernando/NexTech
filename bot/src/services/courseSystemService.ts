@@ -1369,8 +1369,7 @@ async function confirmExamAnswer(interaction: ButtonInteraction, context: BotCon
     context.api.getCourse(interaction.guildId!, updated.attempt.courseId),
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
-  const selectedText = question.alternatives.filter((alternative) => selectedAlternativeIds.includes(alternative.id)).map((alternative) => alternative.text).join("; ");
-  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Pergunta respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}\nResposta: ${selectedText}`);
+  await upsertExamCorrectionPanel(interaction, context, course, updated.attempt, updated.questions, updated.answers).catch(() => null);
   await sendExamQuestion(interaction.channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
 }
 
@@ -1431,7 +1430,7 @@ async function submitWrittenAnswer(interaction: ModalSubmitInteraction, context:
     context.api.getCourse(interaction.guildId!, updated.attempt.courseId),
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
-  await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Pergunta discursiva respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}`);
+  await upsertExamCorrectionPanel(interaction, context, course, updated.attempt, updated.questions, updated.answers).catch(() => null);
   await interaction.editReply("Resposta registrada com sucesso. Continue para a próxima questão.");
   if (channel?.isTextBased() && "send" in channel) {
     await sendExamQuestion(channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
@@ -2215,6 +2214,10 @@ function examFinishPanel(course: Course, settings: CourseExamSettings, attempt: 
 }
 
 async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
+  await upsertExamCorrectionPanel(interaction, context, course, attempt, questions, answers);
+}
+
+async function upsertExamCorrectionPanel(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
   const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId);
   const courseSettings = await context.api.getCourseSettings(interaction.guildId!);
   const channel = await fetchFirstTextChannel(interaction, examCorrectionChannelIds(courseSettings, runtime.settings));
@@ -2222,7 +2225,17 @@ async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: 
     await sendCourseLog(interaction, courseSettings, `Falha ao enviar painel de correção\nTentativa: ${attempt.id}\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nMotivo: nenhum canal de avaliação/log válido foi encontrado.`).catch(() => null);
     return;
   }
-  const message = await channel.send(examCorrectionPanel(course, attempt, questions, answers, interaction.guild)).catch(async (error) => {
+  const payload = examCorrectionPanel(course, attempt, questions, answers, interaction.guild);
+  if (attempt.correctionMessageId) {
+    const existing = await channel.messages.fetch(attempt.correctionMessageId).catch(() => null);
+    if (existing) {
+      await existing.edit(payload).catch(async (error) => {
+        await sendCourseLog(interaction, courseSettings, `Falha ao atualizar painel de correção\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nMensagem: ${attempt.correctionMessageId}\nErro: ${error instanceof Error ? error.message : String(error)}`).catch(() => null);
+      });
+      return;
+    }
+  }
+  const message = await channel.send(payload).catch(async (error) => {
     await sendCourseLog(interaction, courseSettings, `Falha ao enviar painel de correção\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nErro: ${error instanceof Error ? error.message : String(error)}`).catch(() => null);
     return null;
   });
@@ -2272,6 +2285,7 @@ async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitI
 function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null) {
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   const reviewed = attempt.result === "approved" || attempt.result === "rejected";
+  const reviewable = ["finished", "awaiting_review", "manual_reviewed"].includes(attempt.status);
   const writtenTotal = questions.filter((question) => question.type === "written").length;
   const finalScore = attempt.finalScore ?? attempt.automaticScore ?? attempt.score;
   const fields = [
@@ -2296,10 +2310,10 @@ function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questio
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(reviewed),
-      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar").setStyle(ButtonStyle.Danger).setDisabled(reviewed)
+      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(reviewed || !reviewable),
+      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar").setStyle(ButtonStyle.Danger).setDisabled(reviewed || !reviewable)
     )],
-    description: "Painel de avaliação manual da prova.",
+    description: reviewable ? "Painel de avaliação manual da prova." : "Painel de acompanhamento da prova. Ele é atualizado conforme o aluno responde.",
     fields,
     guild,
     moduleId: "courses",
@@ -2380,6 +2394,15 @@ function examDecisionDm(course: Course, settings: CourseExamSettings, attempt: C
 }
 
 function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAnswer | undefined, index: number) {
+  if (!answer) {
+    return [
+      `QUESTÃO ${String(index).padStart(2, "0")}`,
+      questionScoreLine(question),
+      question.prompt,
+      "",
+      "Status: aguardando resposta"
+    ].join("\n").slice(0, 1900);
+  }
   const pointsEarned = Number(answer?.pointsEarned ?? 0);
   const maxScore = Number(answer?.maxScore ?? question.points ?? 0);
   if (question.type === "written") {
