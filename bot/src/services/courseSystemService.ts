@@ -84,6 +84,8 @@ const MAX_EXAM_CHANNEL_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
 const EXAM_CHANNEL_ACTIVE_RECHECK_DELAY = 15 * 60 * 1000;
 const EXAM_CHANNEL_DELETE_RETRY_DELAY = 5 * 60 * 1000;
 const EXAM_CHANNEL_STATE_RETRY_MAX_DELAY = 60 * 60 * 1000;
+const COURSE_EVENT_DURATION_MS = 24 * 60 * 60 * 1000;
+const MAX_COURSE_EVENT_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
 
 let serviceStarted = false;
 const examProvisioning = new Map<string, Promise<string>>();
@@ -91,6 +93,8 @@ const studentExamStarting = new Map<string, Promise<unknown>>();
 const examChannelDeletionTimers = new Map<string, NodeJS.Timeout>();
 const examChannelDeletionGenerations = new Map<string, symbol>();
 const examChannelStateRetryTimers = new Map<string, NodeJS.Timeout>();
+const courseEventLifecycleTimers = new Map<string, { end?: NodeJS.Timeout; start?: NodeJS.Timeout }>();
+const courseEventLifecycleGenerations = new Map<string, symbol>();
 
 export function startCourseSystemService(client: Client, context: BotContext) {
   if (serviceStarted) return;
@@ -516,8 +520,8 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
   const time = interaction.fields.getTextInputValue("time").trim();
   const location = interaction.fields.getTextInputValue("location").trim();
   const capacity = Number(interaction.fields.getTextInputValue("capacity").trim());
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) {
-    await interaction.editReply("Informe uma quantidade de vagas válida entre 1 e 500.");
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000000) {
+    await interaction.editReply("Informe uma quantidade de vagas válida.");
     return;
   }
   if (!date || !time || !location) {
@@ -571,8 +575,8 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     ? await existingMessage.edit(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!))
     : await (channel as TextChannel).send(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!));
   await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
-  await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publicationWithEvent.scheduledFor}\nLocal: ${publicationWithEvent.location}\nVagas: ${publicationWithEvent.capacity}\nEvento: ${publicationWithEvent.discordEventUrl ?? "não criado"}`);
-  await interaction.editReply(publicationWithEvent.discordEventUrl ? `Curso agendado com sucesso: ${publicationWithEvent.discordEventUrl}` : "Curso agendado com painel publicado, mas o evento do Discord não foi criado. Verifique os logs.");
+  await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publicationWithEvent.scheduledFor}\nLocal: ${publicationWithEvent.location}\nVagas: ${publicationWithEvent.capacity}\nEvento do Discord: ${publicationWithEvent.discordEventId ? "criado" : "não criado"}`);
+  await interaction.editReply(publicationWithEvent.discordEventId ? "Curso agendado com sucesso." : "Curso agendado com painel publicado, mas o evento do Discord não foi criado. Verifique os logs.");
 }
 
 async function editCourseInfo(interaction: ModalSubmitInteraction, context: BotContext, courseId: string) {
@@ -583,8 +587,8 @@ async function editCourseInfo(interaction: ModalSubmitInteraction, context: BotC
     await interaction.editReply("Informe o nome do curso.");
     return;
   }
-  if (!Number.isInteger(maxStudents) || maxStudents < 1 || maxStudents > 500) {
-    await interaction.editReply("Informe um limite padrão de vagas entre 1 e 500.");
+  if (!Number.isInteger(maxStudents) || maxStudents < 1 || maxStudents > 1000000) {
+    await interaction.editReply("Informe um limite padrão de vagas válido.");
     return;
   }
   const course = await context.api.updateCourse(interaction.guildId!, courseId, {
@@ -627,9 +631,11 @@ async function leavePublication(interaction: ButtonInteraction, context: BotCont
 async function changePublicationStatus(interaction: ButtonInteraction, context: BotContext, publicationId: string, status: "started" | "cancelled") {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId);
-  const allowed = await canManagePublication(interaction, context, publication);
+  const allowed = status === "started"
+    ? publication.instructorId === interaction.user.id
+    : await canManagePublication(interaction, context, publication);
   if (!allowed) {
-    await interaction.editReply("Você não possui permissão para usar este sistema.");
+    await interaction.editReply(status === "started" ? "Somente o instrutor que criou esta turma pode iniciar o curso." : "Você não possui permissão para usar este sistema.");
     return;
   }
   const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id).catch(() => null);
@@ -668,7 +674,7 @@ function parseCourseScheduleWindow(dateInput: string, timeInput: string) {
   const min = timeMatch[2] ?? "";
   const startAt = new Date(`${year}-${mm}-${dd}T${hh}:${min}:00-03:00`);
   if (Number.isNaN(startAt.getTime())) return null;
-  return { startAt, endAt: new Date(startAt.getTime() + 60 * 60 * 1000) };
+  return { startAt, endAt: new Date(startAt.getTime() + COURSE_EVENT_DURATION_MS) };
 }
 
 async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotContext, course: Course, publication: CoursePublication) {
@@ -707,11 +713,13 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
     });
     eventId = event.id;
   }
-  return context.api.updateCoursePublicationEvent(guild.id, publication.id, {
+  const updated = await context.api.updateCoursePublicationEvent(guild.id, publication.id, {
     discordEventId: eventId,
     discordEventUrl: scheduledEventUrl(guild.id, eventId),
     syncError: null
   });
+  if (updated) scheduleCourseEventLifecycle(guild, context, updated, course);
+  return updated;
 }
 
 async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publication: CoursePublication) {
@@ -730,7 +738,88 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
       name: `Curso cancelado - ${course.name}`.slice(0, 100),
       status: event.status === GuildScheduledEventStatus.Canceled ? undefined : GuildScheduledEventStatus.Canceled
     });
+    clearCourseEventLifecycle(publication.id);
   }
+}
+
+function scheduleCourseEventLifecycle(guild: Guild, context: BotContext, publication: CoursePublication, course?: Course | null) {
+  clearCourseEventLifecycle(publication.id);
+  if (!publication.discordEventId || !publication.scheduledStartAt || !publication.scheduledEndAt) return;
+  if (["cancelled", "closed", "finished"].includes(publication.status)) return;
+  const generation = Symbol(publication.id);
+  courseEventLifecycleGenerations.set(publication.id, generation);
+  const startAt = Date.parse(publication.scheduledStartAt);
+  const endAt = Date.parse(publication.scheduledEndAt);
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) return;
+  if (Date.now() < endAt) {
+    scheduleCourseEventTimer(publication.id, "start", Math.max(0, startAt - Date.now()), generation, async () => {
+      await runCourseEventTransition(guild, context, publication.id, "start", course);
+    });
+  }
+  scheduleCourseEventTimer(publication.id, "end", Math.max(0, endAt - Date.now()), generation, async () => {
+    await runCourseEventTransition(guild, context, publication.id, "end", course);
+  });
+}
+
+function scheduleCourseEventTimer(publicationId: string, kind: "start" | "end", delayMs: number, generation: symbol, action: () => Promise<void>) {
+  const scheduleNext = (remainingMs: number) => {
+    const timeout = setTimeout(() => {
+      if (courseEventLifecycleGenerations.get(publicationId) !== generation) return;
+      const remaining = remainingMs - MAX_COURSE_EVENT_TIMER_DELAY;
+      if (remaining > 0) {
+        scheduleNext(remaining);
+        return;
+      }
+      void action().catch((error) => {
+        console.error(`[courses] failed to ${kind} scheduled event for publication ${publicationId}:`, error instanceof Error ? error.message : error);
+      });
+    }, Math.min(Math.max(remainingMs, 0), MAX_COURSE_EVENT_TIMER_DELAY));
+    const timers = courseEventLifecycleTimers.get(publicationId) ?? {};
+    if (timers[kind]) clearTimeout(timers[kind]);
+    timers[kind] = timeout;
+    courseEventLifecycleTimers.set(publicationId, timers);
+  };
+  scheduleNext(delayMs);
+}
+
+async function runCourseEventTransition(guild: Guild, context: BotContext, publicationId: string, transition: "start" | "end", courseHint?: Course | null) {
+  const publication = await context.api.getCoursePublication(guild.id, publicationId).catch(() => null);
+  if (!publication?.discordEventId || ["cancelled", "closed", "finished"].includes(publication.status)) return;
+  const course = courseHint?.id === publication.courseId ? courseHint : await context.api.getCourse(guild.id, publication.courseId).catch(() => null);
+  if (!course) return;
+  let event = await guild.scheduledEvents.fetch(publication.discordEventId).catch(() => null);
+  if (!event) throw new Error("Evento agendado não encontrado no Discord.");
+  if (transition === "start") {
+    if (event.status === GuildScheduledEventStatus.Scheduled) {
+      await event.edit({
+        description: courseScheduledEventDescription(course, publication, "Curso em andamento"),
+        name: `Curso iniciado - ${course.name}`.slice(0, 100),
+        status: GuildScheduledEventStatus.Active
+      });
+    }
+    await context.api.updateCoursePublicationEvent(guild.id, publication.id, { discordEventId: publication.discordEventId, discordEventUrl: publication.discordEventUrl, syncError: null }).catch(() => null);
+    return;
+  }
+  if (event.status === GuildScheduledEventStatus.Canceled || event.status === GuildScheduledEventStatus.Completed) return;
+  if (event.status === GuildScheduledEventStatus.Scheduled) {
+    event = await event.edit({ status: GuildScheduledEventStatus.Active }).catch(() => event);
+  }
+  if (!event) return;
+  await event.edit({
+    description: courseScheduledEventDescription(course, publication, "Encerrado automaticamente"),
+    name: `Curso encerrado - ${course.name}`.slice(0, 100),
+    status: GuildScheduledEventStatus.Completed
+  });
+  clearCourseEventLifecycle(publication.id);
+  await context.api.updateCoursePublicationEvent(guild.id, publication.id, { discordEventId: publication.discordEventId, discordEventUrl: publication.discordEventUrl, syncError: null }).catch(() => null);
+}
+
+function clearCourseEventLifecycle(publicationId: string) {
+  const timers = courseEventLifecycleTimers.get(publicationId);
+  if (timers?.start) clearTimeout(timers.start);
+  if (timers?.end) clearTimeout(timers.end);
+  courseEventLifecycleTimers.delete(publicationId);
+  courseEventLifecycleGenerations.delete(publicationId);
 }
 
 function courseScheduledEventDescription(course: Course, publication: CoursePublication, status: string) {
@@ -1126,7 +1215,7 @@ async function showIdentificationIdModal(interaction: ButtonInteraction) {
   await interaction.showModal(new ModalBuilder()
     .setCustomId(`course_exam_ident_id_modal:${attemptId}:${interaction.message.id}`)
     .setTitle("Identificação do Aluno")
-    .addComponents(inputRow("rpId", "ID", TextInputStyle.Short, true, 32, "")));
+    .addComponents(inputRow("rpId", "ID", TextInputStyle.Short, true, 100, "")));
 }
 
 async function submitIdentificationId(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -1514,6 +1603,8 @@ async function refreshActiveCoursePublicationPanels(client: Client, context: Bot
     ]);
     for (const publication of publications.flat()) {
       await refreshPublicationMessageByRecord({ guild, guildId: guild.id }, context, publication);
+      const course = await context.api.getCourse(guild.id, publication.courseId).catch(() => null);
+      scheduleCourseEventLifecycle(guild, context, publication, course);
     }
   }
 }
@@ -1813,11 +1904,6 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel(course.buttonLabels.cancel || "Cancelar Curso").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
     )
   ];
-  if (publication.discordEventUrl) {
-    actions.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setLabel("Ver evento do Discord").setStyle(ButtonStyle.Link).setURL(publication.discordEventUrl)
-    ));
-  }
   const examProgress = enrollments
     .filter((enrollment) => ["STARTING", "IN_PROGRESS", "COMPLETED", "APPROVED", "FAILED"].includes(enrollment.examStatus))
     .map((enrollment) => {
@@ -1837,8 +1923,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
         `**Local:** ${publication.location}`,
         `**Horário:** ${publication.scheduledFor}`,
         `**Vagas:** ${publication.students.length}/${publication.capacity}`,
-        `**Status:** ${statusText}`,
-        publication.discordEventUrl ? `**Evento:** ${publication.discordEventUrl}` : ""
+        `**Status:** ${statusText}`
       ].join("\n"),
       publication.notes ? `**Observações:** ${publication.notes}` : "",
       statusNotice,
@@ -2449,7 +2534,7 @@ function publicationModal(course: Course, mode: "publicacao" | "agendamento" = "
       inputRow("date", "Data do curso (dd/mm/aaaa)", TextInputStyle.Short, true, 40),
       inputRow("time", "Início (HH:mm)", TextInputStyle.Short, true, 40),
       inputRow("location", "Local do curso", TextInputStyle.Short, true, 120, course.location ?? ""),
-      inputRow("capacity", "Quantidade de pessoas/vagas", TextInputStyle.Short, true, 4, String(course.maxStudents ?? 30)),
+      inputRow("capacity", "Quantidade de pessoas/vagas", TextInputStyle.Short, true, 10, String(course.maxStudents ?? 30)),
       inputRow("notes", "Observações", TextInputStyle.Paragraph, false, 900)
     );
 }
@@ -2462,7 +2547,7 @@ function courseEditModal(course: Course) {
       inputRow("name", "Nome do curso", TextInputStyle.Short, true, 120, course.name),
       inputRow("code", "Código/número", TextInputStyle.Short, false, 40, course.code ?? ""),
       inputRow("location", "Local padrão do curso", TextInputStyle.Short, false, 120, course.location ?? ""),
-      inputRow("maxStudents", "Limite padrão de vagas", TextInputStyle.Short, true, 4, String(course.maxStudents ?? 30)),
+      inputRow("maxStudents", "Limite padrão de vagas", TextInputStyle.Short, true, 10, String(course.maxStudents ?? 30)),
       inputRow("active", "Curso ativo? Sim/Não", TextInputStyle.Short, true, 3, course.active ? "Sim" : "Não")
     );
 }

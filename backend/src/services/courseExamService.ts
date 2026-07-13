@@ -794,7 +794,7 @@ function normalizeFullName(value: string | null | undefined) {
 function normalizeRpId(value: string | null | undefined) {
   const normalized = String(value ?? "").replace(/\s+/g, "");
   if (!/^\d+$/.test(normalized)) throw Object.assign(new Error("ID RP deve conter apenas números."), { statusCode: 400 });
-  return normalized.slice(0, 32);
+  return normalized.slice(0, 100);
 }
 
 function normalizeRank(value: StudentRank | null | undefined) {

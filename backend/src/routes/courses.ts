@@ -78,7 +78,7 @@ const courseSchema = z.object({
   instructorRoleIds: z.array(snowflake).optional(),
   instructorUserIds: z.array(snowflake).optional(),
   allowGeneralInstructorRoles: z.boolean().optional(),
-  maxStudents: z.number().int().min(1).max(500).optional(),
+  maxStudents: z.number().int().min(1).max(1000000).optional(),
   location: z.string().max(120).nullable().optional().or(z.literal("")),
   name: z.string().min(1).max(120),
   defaultSchedule: z.string().max(120).nullable().optional().or(z.literal("")),
@@ -158,7 +158,7 @@ const manageableSchema = z.object({
   userId: snowflake
 });
 const publicationSchema = z.object({
-  capacity: z.number().int().min(1).max(500),
+  capacity: z.number().int().min(1).max(1000000),
   channelId: snowflake,
   courseId: z.string().min(1),
   discordEventType: z.enum(["EXTERNAL", "VOICE", "STAGE"]).nullable().optional(),
@@ -277,7 +277,7 @@ const identificationSchema = z.object({
   guildNickname: z.string().max(100).nullable().optional(),
   rpFullName: z.string().max(120).nullable().optional(),
   currentRank: z.enum(["CADET", "OFFICER", "SENIOR_OFFICER"]).nullable().optional(),
-  rpId: z.string().max(32).nullable().optional(),
+  rpId: z.string().max(100).nullable().optional(),
   confirm: z.boolean().optional()
 });
 const reviewSchema = z.object({ actorId: snowflake, manualScore: decimalNumber(z.number().min(0).max(1000)).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
