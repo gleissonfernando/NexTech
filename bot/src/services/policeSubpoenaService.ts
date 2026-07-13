@@ -82,22 +82,33 @@ export async function openSubpoenaFlow(interaction: ChatInputCommandInteraction,
     return;
   }
 
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id);
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
+    console.error("[police-subpoena] falha ao carregar configuracao:", error instanceof Error ? error.message : error);
+    return null;
+  });
+  if (!settings) {
+    await interaction.reply({
+      content: "Não consegui carregar a configuração de intimações agora. Se o sistema acabou de reiniciar ou saiu de manutenção, tente novamente em alguns segundos.",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
   const report = settings.reportSystem;
   if (!report.enabled) {
-    await interaction.reply({ content: "O sistema de intimações está desativado.", ephemeral: true });
+    await interaction.reply({ content: "O sistema de intimações está desativado.", flags: MessageFlags.Ephemeral });
     return;
   }
   if (!canUseCommand(interaction.member as GuildMember, report)) {
-    await interaction.reply({ content: "Você não possui permissão para usar /intimacao.", ephemeral: true });
+    await interaction.reply({ content: "Você não possui permissão para usar /intimacao.", flags: MessageFlags.Ephemeral });
     return;
   }
 
+  const payload = panel(settings, "Sistema de Competência das Intimações", "Selecione o órgão competente inicial da ocorrência.", [
+    competenceSelect(`${PREFIX}:competence`, "Órgão competente")
+  ], interaction.guild);
   await interaction.reply({
-    ...panel(settings, "Sistema de Competência das Intimações", "Selecione o órgão competente inicial da ocorrência.", [
-      competenceSelect(`${PREFIX}:competence`, "Órgão competente")
-    ], interaction.guild),
-    ephemeral: true
+    ...payload,
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
 }
 
