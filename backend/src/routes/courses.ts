@@ -31,6 +31,7 @@ import {
   setCourseEnrollmentExamChannel,
   updateCourse,
   updateCoursePanelMessage,
+  updateCoursePublicationEvent,
   updateCoursePublicationMessage,
   updateScheduleRequest
 } from "../services/courseService";
@@ -160,10 +161,14 @@ const publicationSchema = z.object({
   capacity: z.number().int().min(1).max(500),
   channelId: snowflake,
   courseId: z.string().min(1),
+  discordEventType: z.enum(["EXTERNAL", "VOICE", "STAGE"]).nullable().optional(),
   instructorId: snowflake,
   location: z.string().min(1).max(120),
   notes: z.string().max(900).nullable().optional().or(z.literal("")),
-  scheduledFor: z.string().min(1).max(120)
+  scheduledFor: z.string().min(1).max(120),
+  scheduledStartAt: z.string().datetime().nullable().optional(),
+  scheduledEndAt: z.string().datetime().nullable().optional(),
+  voiceChannelId: optionalSnowflake
 });
 const joinSchema = z.object({ userId: snowflake, studentName: z.string().trim().min(1).max(100) });
 const leaveSchema = z.object({ userId: snowflake });
@@ -172,6 +177,11 @@ const studentExamSchema = z.object({ studentId: snowflake });
 const statusSchema = z.object({ actorId: snowflake, status: z.enum(["started", "cancelled", "closed", "proof", "finished"]) });
 const publicationListSchema = z.object({ status: z.enum(["open", "started", "cancelled", "closed", "proof", "finished"]).nullable().optional() });
 const messageStateSchema = z.object({ messageId: optionalSnowflake });
+const eventStateSchema = z.object({
+  discordEventId: z.string().max(80).nullable().optional(),
+  discordEventUrl: z.string().max(2048).nullable().optional(),
+  syncError: z.string().max(1000).nullable().optional()
+});
 const scheduleSchema = z.object({
   channelId: optionalSnowflake,
   courseId: z.string().min(1),
@@ -641,6 +651,17 @@ coursesRouter.patch("/bot/:guildId/publications/:publicationId/message", require
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const input = messageStateSchema.parse(req.body ?? {});
     return res.json({ publication: await updateCoursePublicationMessage(botId, guildId, routeParam(req, "publicationId"), input.messageId || null) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+coursesRouter.patch("/bot/:guildId/publications/:publicationId/event", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const input = eventStateSchema.parse(req.body ?? {});
+    return res.json({ publication: await updateCoursePublicationEvent(botId, guildId, routeParam(req, "publicationId"), input) });
   } catch (error) {
     return next(error);
   }

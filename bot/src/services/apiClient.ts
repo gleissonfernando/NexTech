@@ -179,6 +179,14 @@ export type CoursePublication = {
   courseId: string;
   channelId: string;
   messageId: string | null;
+  discordEventId: string | null;
+  discordEventUrl: string | null;
+  discordEventType: "EXTERNAL" | "VOICE" | "STAGE";
+  voiceChannelId: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  lastSyncAt: string | null;
+  syncError: string | null;
   instructorId: string;
   location: string;
   scheduledFor: string;
@@ -2099,10 +2107,14 @@ export class ApiClient {
     capacity: number;
     channelId: string;
     courseId: string;
+    discordEventType?: "EXTERNAL" | "VOICE" | "STAGE" | null;
     instructorId: string;
     location: string;
     notes?: string | null;
     scheduledFor: string;
+    scheduledStartAt?: string | null;
+    scheduledEndAt?: string | null;
+    voiceChannelId?: string | null;
   }) {
     const { data } = await this.http.post<{ publication: CoursePublication }>(`/courses/bot/${guildId}/publications`, input);
     return data.publication;
@@ -2136,6 +2148,11 @@ export class ApiClient {
 
   async updateCoursePublicationMessage(guildId: string, publicationId: string, messageId: string | null) {
     const { data } = await this.http.patch<{ publication: CoursePublication }>(`/courses/bot/${guildId}/publications/${publicationId}/message`, { messageId });
+    return data.publication;
+  }
+
+  async updateCoursePublicationEvent(guildId: string, publicationId: string, input: { discordEventId?: string | null; discordEventUrl?: string | null; syncError?: string | null }) {
+    const { data } = await this.http.patch<{ publication: CoursePublication }>(`/courses/bot/${guildId}/publications/${publicationId}/event`, input);
     return data.publication;
   }
 

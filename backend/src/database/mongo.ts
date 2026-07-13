@@ -372,6 +372,14 @@ export type MongoCoursePublication = {
   courseId: string;
   channelId: string;
   messageId: string | null;
+  discordEventId?: string | null;
+  discordEventUrl?: string | null;
+  discordEventType?: "EXTERNAL" | "VOICE" | "STAGE" | null;
+  voiceChannelId?: string | null;
+  scheduledStartAt?: Date | null;
+  scheduledEndAt?: Date | null;
+  lastSyncAt?: Date | null;
+  syncError?: string | null;
   instructorId: string;
   location: string;
   scheduledFor: string;
@@ -4015,6 +4023,8 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoCourse>("courses").createIndex({ botId: 1, guildId: 1, active: 1, updatedAt: -1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, messageId: 1 }),
+    db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, discordEventId: 1 }),
+    db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, courseId: 1, scheduledStartAt: 1 }),
     db.collection<MongoCourseEnrollment>("course_enrollments").createIndex(
       { botId: 1, guildId: 1, publicationId: 1, studentId: 1 },
       { unique: true }

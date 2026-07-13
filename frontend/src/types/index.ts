@@ -931,6 +931,14 @@ export type CoursePublication = {
   courseId: string;
   channelId: string;
   messageId: string | null;
+  discordEventId: string | null;
+  discordEventUrl: string | null;
+  discordEventType: "EXTERNAL" | "VOICE" | "STAGE";
+  voiceChannelId: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  lastSyncAt: string | null;
+  syncError: string | null;
   instructorId: string;
   location: string;
   scheduledFor: string;

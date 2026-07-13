@@ -1173,10 +1173,14 @@ export async function createCoursePublication(botId: string | null, guildId: str
   capacity: number;
   channelId: string;
   courseId: string;
+  discordEventType?: "EXTERNAL" | "VOICE" | "STAGE" | null;
   instructorId: string;
   location: string;
   notes?: string | null;
   scheduledFor: string;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  voiceChannelId?: string | null;
 }) {
   const { coursePublications } = await getMongoCollections();
   const now = new Date();
@@ -1186,10 +1190,14 @@ export async function createCoursePublication(botId: string | null, guildId: str
       $set: {
         capacity: Math.max(1, input.capacity),
         channelId: input.channelId,
+        discordEventType: input.discordEventType ?? existingOpen.discordEventType ?? "EXTERNAL",
         instructorId: input.instructorId,
         location: input.location,
         notes: input.notes || null,
         scheduledFor: input.scheduledFor,
+        scheduledStartAt: parseOptionalDate(input.scheduledStartAt) ?? existingOpen.scheduledStartAt ?? null,
+        scheduledEndAt: parseOptionalDate(input.scheduledEndAt) ?? existingOpen.scheduledEndAt ?? null,
+        voiceChannelId: input.voiceChannelId || null,
         updatedAt: now
       }
     });
@@ -1205,6 +1213,14 @@ export async function createCoursePublication(botId: string | null, guildId: str
     courseId: input.courseId,
     channelId: input.channelId,
     messageId: null,
+    discordEventId: null,
+    discordEventUrl: null,
+    discordEventType: input.discordEventType ?? "EXTERNAL",
+    voiceChannelId: input.voiceChannelId || null,
+    scheduledStartAt: parseOptionalDate(input.scheduledStartAt),
+    scheduledEndAt: parseOptionalDate(input.scheduledEndAt),
+    lastSyncAt: null,
+    syncError: null,
     instructorId: input.instructorId,
     location: input.location,
     scheduledFor: input.scheduledFor,
@@ -1226,6 +1242,25 @@ export async function createCoursePublication(botId: string | null, guildId: str
   await logCourseAction(botId, guildId, "course.published", input.instructorId, input.courseId, doc._id, input);
   emitRealtime("courses:publication", { botId, guildId, publicationId: doc._id });
   return mapPublication(doc);
+}
+
+export async function updateCoursePublicationEvent(botId: string | null, guildId: string, publicationId: string, input: {
+  discordEventId?: string | null;
+  discordEventUrl?: string | null;
+  syncError?: string | null;
+}) {
+  const { coursePublications } = await getMongoCollections();
+  await coursePublications.updateOne({ _id: publicationId, ...scope(botId, guildId) }, {
+    $set: {
+      discordEventId: input.discordEventId ?? null,
+      discordEventUrl: input.discordEventUrl ?? null,
+      lastSyncAt: new Date(),
+      syncError: input.syncError ?? null,
+      updatedAt: new Date()
+    }
+  });
+  const publication = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
+  return publication ? mapPublication(publication) : null;
 }
 
 export async function updateCoursePublicationMessage(botId: string | null, guildId: string, publicationId: string, messageId: string | null) {
@@ -1636,6 +1671,14 @@ function mapPublication(publication: MongoCoursePublication) {
     courseId: publication.courseId,
     channelId: publication.channelId,
     messageId: publication.messageId,
+    discordEventId: publication.discordEventId ?? null,
+    discordEventUrl: publication.discordEventUrl ?? null,
+    discordEventType: publication.discordEventType ?? "EXTERNAL",
+    voiceChannelId: publication.voiceChannelId ?? null,
+    scheduledStartAt: publication.scheduledStartAt?.toISOString() ?? null,
+    scheduledEndAt: publication.scheduledEndAt?.toISOString() ?? null,
+    lastSyncAt: publication.lastSyncAt?.toISOString() ?? null,
+    syncError: publication.syncError ?? null,
     instructorId: publication.instructorId,
     location: publication.location,
     scheduledFor: publication.scheduledFor,
@@ -1654,6 +1697,12 @@ function mapPublication(publication: MongoCoursePublication) {
     createdAt: publication.createdAt.toISOString(),
     updatedAt: publication.updatedAt.toISOString()
   };
+}
+
+function parseOptionalDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function mapEnrollment(enrollment: MongoCourseEnrollment) {
