@@ -31,6 +31,7 @@ import { startPriceTableService } from "../services/priceTableService";
 import { startManualRegistrationService } from "../services/manualRegistrationService";
 import { startRhAdminService } from "../services/rhAdminService";
 import { startCourseSystemService } from "../services/courseSystemService";
+import { startTicketPanelService } from "../services/ticketPanelService";
 import {
   disableUnreleasedSafeBotChannels,
   ensureSafeBotSetup,
@@ -106,6 +107,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     if (isBotModuleEnabled("nex-tech-sales")) startNexTechSalesDeliveryService(client, context);
     if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
     if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
+    if (isBotModuleEnabled("tickets")) startTicketPanelService(client, context);
     if (!wasFivemHierarchyEnabled && isBotModuleEnabled("fivem-hierarchy")) startFivemHierarchyService(client, context);
     if (!wereLogsEnabled && isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
     if (!wasTagVerificationEnabled && isBotModuleEnabled("tag-verification")) void startTagVerificationService(client, context);
@@ -201,6 +203,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("nex-tech-sales")) startNexTechSalesDeliveryService(client, context);
   if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
   if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
+  if (isBotModuleEnabled("tickets")) startTicketPanelService(client, context);
   if (isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }

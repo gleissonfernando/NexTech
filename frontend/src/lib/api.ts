@@ -928,6 +928,14 @@ export async function publishReportSystemPanel(guildId: string, botId?: string |
   return data.settings;
 }
 
+export async function publishTicketPanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ settings: GuildSettings }>(`/settings/${guildId}/ticket-panel`, undefined, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.settings;
+}
+
 export async function getLogs(guildId: string, botId: string) {
   const { data } = await api.get<{ logs: LogEntry[] }>("/logs", {
     params: {

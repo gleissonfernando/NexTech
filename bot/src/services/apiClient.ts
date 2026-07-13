@@ -2354,6 +2354,13 @@ export class ApiClient {
     return data.settings;
   }
 
+  async updateTicketPanelState(guildId: string, input: { channelId?: string | null; messageId?: string | null }) {
+    const patch: Partial<GuildSettings> = {};
+    if ("channelId" in input) patch.ticketPanelChannelId = input.channelId ?? null;
+    if ("messageId" in input) patch.ticketPanelMessageId = input.messageId ?? null;
+    return this.updateSettingsFromBot(guildId, patch);
+  }
+
   async getManualRegistrationSettings(guildId: string) {
     const { data } = await this.http.get<{ settings: ManualRegistrationSettings }>(`/manual-registration/${guildId}/settings`);
     return data.settings;

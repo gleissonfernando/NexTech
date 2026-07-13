@@ -40,6 +40,8 @@ export type GuildSettingsDto = {
   boosterRoleId: string | null;
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
+  ticketPanelChannelId: string | null;
+  ticketPanelMessageId: string | null;
   ticketPanelImage: PanelImageSettingsDto | null;
   ticketPanelTitle: string | null;
   ticketPanelDescription: string | null;
@@ -383,12 +385,14 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     boosterRoleId: null,
     ticketEnabled: true,
     ticketCategoryId: null,
+    ticketPanelChannelId: null,
+    ticketPanelMessageId: null,
     ticketPanelImage: null,
     ticketPanelTitle: DEFAULT_TICKET_PANEL_TITLE,
     ticketPanelDescription: DEFAULT_TICKET_PANEL_DESCRIPTION,
     ticketPanelInfoText: DEFAULT_TICKET_PANEL_INFO_TEXT,
     ticketPanelFooterText: "",
-    ticketPanelColor: "#7c3aed",
+    ticketPanelColor: "#FFD500",
     ticketPanelPlaceholder: DEFAULT_TICKET_PANEL_PLACEHOLDER,
     ticketPanelOptions: DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option })),
     reportSystem: defaultReportSystemSettings(),
@@ -582,6 +586,8 @@ export async function updateGuildSettings(
     rulesButtonLabel: normalizePanelText("rulesButtonLabel" in input ? input.rulesButtonLabel : current.rulesButtonLabel) || DEFAULT_RULES_BUTTON_LABEL,
     rulesColor: normalizePanelColor("rulesColor" in input ? input.rulesColor : current.rulesColor),
     rulesPanelMessageId: normalizeSnowflake("rulesPanelMessageId" in input ? input.rulesPanelMessageId : current.rulesPanelMessageId),
+    ticketPanelChannelId: normalizeSnowflake("ticketPanelChannelId" in input ? input.ticketPanelChannelId : current.ticketPanelChannelId),
+    ticketPanelMessageId: normalizeSnowflake("ticketPanelMessageId" in input ? input.ticketPanelMessageId : current.ticketPanelMessageId),
     autoRoleIds,
     welcomeTitle: normalizePanelText("welcomeTitle" in input ? input.welcomeTitle : current.welcomeTitle),
     welcomeMessage: normalizePanelMessage("welcomeMessage" in input ? input.welcomeMessage : current.welcomeMessage),
@@ -646,6 +652,8 @@ export async function updateGuildSettings(
           boosterRoleId: next.boosterRoleId,
           ticketEnabled: next.ticketEnabled,
           ticketCategoryId: next.ticketCategoryId,
+          ticketPanelChannelId: next.ticketPanelChannelId,
+          ticketPanelMessageId: next.ticketPanelMessageId,
           ticketPanelTitle: next.ticketPanelTitle,
           ticketPanelDescription: next.ticketPanelDescription,
           ticketPanelInfoText: next.ticketPanelInfoText,
@@ -817,6 +825,8 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     boosterRoleId: settings.boosterRoleId,
     ticketEnabled: settings.ticketEnabled,
     ticketCategoryId: settings.ticketCategoryId,
+    ticketPanelChannelId: normalizeSnowflake(settings.ticketPanelChannelId),
+    ticketPanelMessageId: normalizeSnowflake(settings.ticketPanelMessageId),
     ticketPanelImage: null,
     ticketPanelTitle: normalizePanelText(settings.ticketPanelTitle) || defaults.ticketPanelTitle,
     ticketPanelDescription: normalizePanelMessage(settings.ticketPanelDescription) || defaults.ticketPanelDescription,
@@ -1096,7 +1106,7 @@ function normalizePanelColor(value: string | null | undefined) {
 
 function normalizeTicketPanelColor(value: string | null | undefined) {
   const normalized = value?.trim();
-  return normalized && /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : "#7c3aed";
+  return normalized && /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : "#FFD500";
 }
 
 function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {

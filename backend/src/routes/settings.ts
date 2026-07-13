@@ -59,6 +59,8 @@ const settingsSchema = z.object({
   boosterRoleId: z.string().nullable().optional(),
   ticketEnabled: z.boolean().optional(),
   ticketCategoryId: z.string().nullable().optional(),
+  ticketPanelChannelId: z.string().nullable().optional(),
+  ticketPanelMessageId: z.string().nullable().optional(),
   ticketPanelTitle: z.string().max(120).nullable().optional(),
   ticketPanelDescription: z.string().max(1000).nullable().optional(),
   ticketPanelInfoText: z.string().max(1200).nullable().optional(),
@@ -801,6 +803,63 @@ settingsRouter.post("/:guildId/report-system-panel", requireAuth, async (req, re
   }
 });
 
+settingsRouter.post("/:guildId/ticket-panel", requireAuth, async (req, res, next) => {
+  try {
+    const { guildId } = req.params;
+    const botId = await resolveRequestBotId(req);
+
+    if (!guildId) {
+      return res.status(400).json({
+        message: "guildId obrigatorio."
+      });
+    }
+
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatorio."
+      });
+    }
+
+    if (!(await canManageSettings(req, res, guildId, botId))) {
+      return res.status(403).json({
+        message: "Voce nao tem permissao para configurar este servidor."
+      });
+    }
+
+    if (!(await canManageModule(req, res, guildId, botId, "tickets"))) {
+      return res.status(403).json({
+        message: "O modulo de tickets nao foi liberado para este bot."
+      });
+    }
+
+    const settings = await getGuildSettings(guildId, botId);
+
+    if (!settings.ticketEnabled) {
+      return res.status(400).json({
+        message: "Ative o sistema de tickets antes de publicar o painel."
+      });
+    }
+
+    if (!settings.ticketPanelChannelId) {
+      return res.status(400).json({
+        message: "Selecione o canal do painel de tickets."
+      });
+    }
+
+    emitRealtimeToRoom(devBotRealtimeRoom(botId), "tickets:panel_publish", {
+      botId,
+      guildId,
+      settings
+    });
+
+    return res.json({
+      settings
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
   try {
     const { guildId } = req.params;
@@ -984,6 +1043,8 @@ async function canPatchSettings(
     boosterRoleId: ["roles"],
     ticketEnabled: ["tickets"],
     ticketCategoryId: ["tickets"],
+    ticketPanelChannelId: ["tickets"],
+    ticketPanelMessageId: ["tickets"],
     ticketPanelTitle: ["tickets"],
     ticketPanelDescription: ["tickets"],
     ticketPanelInfoText: ["tickets"],
@@ -1084,6 +1145,7 @@ async function validateGuildResources(
     input.welcomeDisplayChannelId,
     input.leaveChannelId,
     input.leaveDisplayChannelId,
+    input.ticketPanelChannelId,
     input.logChannelId,
     input.accountAgeLogChannelId,
     input.safeBotChannelId,

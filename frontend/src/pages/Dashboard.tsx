@@ -138,6 +138,7 @@ import {
   publishFivemGoalPanel,
   publishManualRegistrationPanel,
   publishRulesPanel,
+  publishTicketPanel,
   refreshFivemHierarchyOfficialMessage,
   refreshApplicationEmojis,
   removeAllApplicationEmojis,
@@ -5653,15 +5654,19 @@ function TicketPanelConfigurator({
 }) {
   const [draft, setDraft] = useState(() => ticketPanelDraft(settings));
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [channels, setChannels] = useState<GuildLiveOptions["channels"]>([]);
   const [applicationEmojis, setApplicationEmojis] = useState<ApplicationEmojiItem[]>([]);
-  const disabled = !guild || !settings || !canManage || saving;
+  const disabled = !guild || !settings || !canManage || saving || publishing;
 
   useEffect(() => {
     setDraft(ticketPanelDraft(settings));
   }, [
     settings?.guildId,
+    settings?.ticketPanelChannelId,
+    settings?.ticketPanelMessageId,
     settings?.ticketPanelTitle,
     settings?.ticketPanelDescription,
     settings?.ticketPanelInfoText,
@@ -5670,6 +5675,26 @@ function TicketPanelConfigurator({
     settings?.ticketPanelPlaceholder,
     JSON.stringify(settings?.ticketPanelOptions ?? [])
   ]);
+
+  useEffect(() => {
+    if (!guild) {
+      setChannels([]);
+      return;
+    }
+
+    let active = true;
+    getGuildLiveOptions(guild.id, botId)
+      .then((data) => {
+        if (active) setChannels(data.channels ?? []);
+      })
+      .catch(() => {
+        if (active) setChannels([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [botId, guild?.id]);
 
   useEffect(() => {
     if (!botId) {
@@ -5726,14 +5751,18 @@ function TicketPanelConfigurator({
     });
   }
 
+  function buildPayload() {
+    return {
+      ...draft,
+      ticketPanelOptions: draft.ticketPanelOptions.map(normalizeTicketOptionDraft)
+    };
+  }
+
   async function save() {
     if (!guild || !settings || disabled) return;
 
     const previous = settings;
-    const payload = {
-      ...draft,
-      ticketPanelOptions: draft.ticketPanelOptions.map(normalizeTicketOptionDraft)
-    };
+    const payload = buildPayload();
 
     setSaving(true);
     setStatus(null);
@@ -5752,6 +5781,31 @@ function TicketPanelConfigurator({
     }
   }
 
+  async function publish() {
+    if (!guild || !settings || disabled || !draft.ticketPanelChannelId) return;
+
+    const previous = settings;
+    const payload = buildPayload();
+
+    setPublishing(true);
+    setStatus(null);
+    setError(null);
+    onSettingsChange({ ...settings, ...payload });
+
+    try {
+      const saved = await patchGuildSettings(guild.id, payload, botId);
+      onSettingsChange(saved);
+      const published = await publishTicketPanel(guild.id, botId);
+      onSettingsChange(published);
+      setStatus("Publicacao do painel solicitada ao bot.");
+    } catch {
+      onSettingsChange(previous);
+      setError("Nao foi possivel publicar o painel de ticket.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <Card className="border-[#FFD500]/10 bg-zinc-950/70">
       <CardHeader>
@@ -5764,6 +5818,10 @@ function TicketPanelConfigurator({
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Salvar
           </Button>
+          <Button disabled={disabled || !settings?.ticketEnabled || !draft.ticketPanelChannelId} onClick={() => void publish()} size="sm" type="button" variant="outline">
+            {publishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+            Publicar/Atualizar
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -5771,10 +5829,28 @@ function TicketPanelConfigurator({
         {status ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{status}</div> : null}
 
         <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-xs font-medium text-zinc-400">
+            Canal do painel
+            <select
+              className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
+              disabled={disabled}
+              onChange={(event) => setDraft((current) => ({ ...current, ticketPanelChannelId: event.target.value || null }))}
+              value={draft.ticketPanelChannelId ?? ""}
+            >
+              <option value="">Selecione um canal</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>#{channel.name}</option>
+              ))}
+            </select>
+          </label>
           <TicketField disabled={disabled} label="Titulo" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelTitle: value }))} value={draft.ticketPanelTitle ?? ""} />
           <TicketField disabled={disabled} label="Placeholder do menu" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelPlaceholder: value }))} value={draft.ticketPanelPlaceholder ?? ""} />
           <TicketField disabled={disabled} label="Cor neon" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelColor: value }))} type="color" value={draft.ticketPanelColor} />
           <TicketField disabled={disabled} label="Rodape" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelFooterText: value }))} value={draft.ticketPanelFooterText ?? ""} />
+        </div>
+
+        <div className="rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/5 px-3 py-2 text-xs text-zinc-300">
+          Mensagem oficial: {settings?.ticketPanelMessageId ? settings.ticketPanelMessageId : "nao publicada"}
         </div>
 
         <TicketArea disabled={disabled} label="Descricao principal" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelDescription: value }))} value={draft.ticketPanelDescription ?? ""} />
@@ -6167,6 +6243,7 @@ function normalizeReportCategory(category: ReportSystemCategory, index: number):
 
 type TicketPanelDraft = Pick<
   GuildSettings,
+  | "ticketPanelChannelId"
   | "ticketPanelTitle"
   | "ticketPanelDescription"
   | "ticketPanelInfoText"
@@ -6178,6 +6255,7 @@ type TicketPanelDraft = Pick<
 
 function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
   return {
+    ticketPanelChannelId: settings?.ticketPanelChannelId ?? null,
     ticketPanelTitle: settings?.ticketPanelTitle ?? "Central de Suporte",
     ticketPanelDescription: settings?.ticketPanelDescription ?? "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
     ticketPanelInfoText: settings?.ticketPanelInfoText ?? "Horario de atendimento: Seg-Sex, 9h-18h\nDescreva seu problema com detalhes para um atendimento mais rapido.",

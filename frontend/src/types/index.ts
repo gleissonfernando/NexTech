@@ -152,6 +152,8 @@ export type GuildSettings = {
   boosterRoleId: string | null;
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
+  ticketPanelChannelId: string | null;
+  ticketPanelMessageId: string | null;
   ticketPanelImage: PanelImageSettings | null;
   ticketPanelTitle: string | null;
   ticketPanelDescription: string | null;

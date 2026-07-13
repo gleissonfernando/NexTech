@@ -75,6 +75,7 @@ export type PriceTablePanelPublishEvent = { botId?: string | null; guildId: stri
 export type ManualPaymentPanelPublishEvent = { botId?: string | null; guildId: string };
 export type CoursePanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type RhAdminPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
+export type TicketPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 
 export type NexTechSalePaidEvent = {
   amountCents: number;
@@ -269,6 +270,7 @@ export class BotSocketClient {
   private manualPaymentPanelPublishHandler: ((payload: ManualPaymentPanelPublishEvent) => void) | null = null;
   private coursePanelPublishHandler: ((payload: CoursePanelPublishEvent) => void) | null = null;
   private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
+  private ticketPanelPublishHandler: ((payload: TicketPanelPublishEvent) => void) | null = null;
   private nexTechSalePaidHandler: ((payload: NexTechSalePaidEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
@@ -377,6 +379,7 @@ export class BotSocketClient {
     if (this.manualPaymentPanelPublishHandler) this.socket.on("manual-payments:panel_publish", this.manualPaymentPanelPublishHandler);
     if (this.coursePanelPublishHandler) this.socket.on("courses:panel_publish", this.coursePanelPublishHandler);
     if (this.rhAdminPanelPublishHandler) this.socket.on("rh-admin:panel_publish", this.rhAdminPanelPublishHandler);
+    if (this.ticketPanelPublishHandler) this.socket.on("tickets:panel_publish", this.ticketPanelPublishHandler);
     if (this.nexTechSalePaidHandler) this.socket.on("nex-tech-sales:sale_paid", this.nexTechSalePaidHandler);
 
     if (this.manualRegistrationPanelPublishHandler) {
@@ -587,6 +590,12 @@ export class BotSocketClient {
     this.rhAdminPanelPublishHandler = handler;
     this.socket?.off("rh-admin:panel_publish");
     this.socket?.on("rh-admin:panel_publish", handler);
+  }
+
+  onTicketPanelPublish(handler: (payload: TicketPanelPublishEvent) => void) {
+    this.ticketPanelPublishHandler = handler;
+    this.socket?.off("tickets:panel_publish");
+    this.socket?.on("tickets:panel_publish", handler);
   }
 
   onNexTechSalePaid(handler: (payload: NexTechSalePaidEvent) => void) {

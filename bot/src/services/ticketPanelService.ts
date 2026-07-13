@@ -4,9 +4,11 @@ import {
   type ButtonInteraction,
   ButtonStyle,
   ChannelType,
+  type Client,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
+  type PartialMessage,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   TextInputBuilder,
@@ -32,6 +34,8 @@ const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
 const TICKET_STATUS_PREFIX = "ticket_status:";
 const CLOSE_MODAL_PREFIX = "ticket_close:";
+let ticketPanelServiceStarted = false;
+const panelPublicationLocks = new Map<string, Promise<string | null>>();
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
   { label: "Em análise", value: "IN_ANALYSIS" },
@@ -67,8 +71,63 @@ export async function publishTicketPanel(interaction: ChatInputCommandInteractio
     return;
   }
 
-  await interaction.channel.send(payload);
+  const message = await interaction.channel.send(payload);
+  await context.api.updateTicketPanelState(interaction.guild.id, {
+    channelId: message.channelId,
+    messageId: message.id
+  }).catch((error) => {
+    console.error("[ticket-panel] falha ao salvar painel publicado por comando:", error instanceof Error ? error.message : error);
+  });
   await interaction.reply({ content: "Painel de ticket publicado neste canal.", ephemeral: true });
+}
+
+export function startTicketPanelService(client: Client, context: BotContext) {
+  if (ticketPanelServiceStarted) return;
+  ticketPanelServiceStarted = true;
+
+  context.socket.onTicketPanelPublish((payload) => {
+    void publishConfiguredTicketPanel(client, context, payload.guildId).catch((error) => {
+      console.error(`[ticket-panel] falha ao publicar painel em ${payload.guildId}:`, error instanceof Error ? error.message : error);
+    });
+  });
+}
+
+export async function publishConfiguredTicketPanel(client: Client, context: BotContext, guildId: string) {
+  const current = panelPublicationLocks.get(guildId);
+  if (current) return current;
+
+  const publication = publishConfiguredTicketPanelUnlocked(client, context, guildId)
+    .finally(() => panelPublicationLocks.delete(guildId));
+  panelPublicationLocks.set(guildId, publication);
+  return publication;
+}
+
+export async function handleTicketPanelMessageDelete(message: Message | PartialMessage, context: BotContext) {
+  if (!message.guild) return;
+
+  const settings = await getFreshGuildSettings(context, message.guild.id, context.client.user?.id).catch(() => null);
+  if (!settings?.ticketEnabled || settings.ticketPanelMessageId !== message.id) return;
+
+  await context.api.updateTicketPanelState(message.guild.id, { messageId: null }).catch((error) => {
+    console.error("[ticket-panel] falha ao marcar painel como ausente:", error instanceof Error ? error.message : error);
+  });
+  await context.api.postLog({
+    guildId: message.guild.id,
+    message: `Painel de tickets marcado como ausente. Mensagem removida: ${message.id}.`,
+    metadata: {
+      channelId: message.channelId,
+      messageId: message.id,
+      panel: "tickets"
+    },
+    type: "ticket.panel_missing",
+    userId: context.client.user?.id ?? "system"
+  }).catch(() => null);
+
+  if (settings.ticketPanelChannelId) {
+    await publishConfiguredTicketPanel(context.client, context, message.guild.id).catch((error) => {
+      console.warn("[ticket-panel] republicacao:", error instanceof Error ? error.message : String(error));
+    });
+  }
 }
 
 export async function handleTicketPanelInteraction(interaction: Interaction, context: BotContext) {
@@ -328,6 +387,54 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
   return renderComponentsV2Panel({ accentColor: parseColor(settings.ticketPanelColor), actions: [action], description: contentBlocks[1] ?? "", fields: contentBlocks.slice(2), guild, image: settings.ticketPanelImage && imageUrl ? { ...settings.ticketPanelImage, imageUrl } : null, moduleId: "ticket", title: `${systemEmojiText("interrogacao", guild)} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}` });
 }
 
+async function publishConfiguredTicketPanelUnlocked(client: Client, context: BotContext, guildId: string) {
+  const settings = await getFreshGuildSettings(context, guildId, client.user?.id);
+
+  if (!settings.ticketEnabled) {
+    throw new Error("Sistema de tickets desativado.");
+  }
+
+  if (!settings.ticketPanelChannelId) {
+    throw new Error("Canal do painel de tickets nao configurado.");
+  }
+
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) {
+    throw new Error("Servidor nao encontrado no cache do bot.");
+  }
+
+  const channel = await guild.channels.fetch(settings.ticketPanelChannelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) {
+    throw new Error("Canal do painel de tickets indisponivel.");
+  }
+
+  const payload = createTicketPanelPayload(settings, guild);
+  if (!payload) {
+    throw new Error("Configure pelo menos uma opcao ativa para o painel de ticket.");
+  }
+
+  const textChannel = channel as TextChannel;
+  let panelMessage: Message | null = null;
+
+  if (settings.ticketPanelMessageId) {
+    panelMessage = await textChannel.messages.fetch(settings.ticketPanelMessageId).catch(() => null);
+    if (panelMessage) {
+      panelMessage = await panelMessage.edit(payload).catch(() => null);
+    }
+  }
+
+  if (!panelMessage) {
+    panelMessage = await textChannel.send(payload);
+  }
+
+  await context.api.updateTicketPanelState(guildId, {
+    channelId: textChannel.id,
+    messageId: panelMessage.id
+  });
+
+  return panelMessage.id;
+}
+
 async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption) {
   if (!settings.ticketCategoryId || !guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     return null;
@@ -551,5 +658,5 @@ function mediaGalleryComponent(imageUrl: string) {
 function parseColor(value: string | null | undefined) {
   const normalized = value?.replace("#", "") ?? "";
   const parsed = Number.parseInt(normalized, 16);
-  return Number.isFinite(parsed) ? parsed : 0x7c3aed;
+  return Number.isFinite(parsed) ? parsed : 0xffd500;
 }

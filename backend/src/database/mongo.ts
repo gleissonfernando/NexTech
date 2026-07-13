@@ -64,6 +64,8 @@ export type MongoGuildSettings = {
   boosterRoleId: string | null;
   ticketEnabled: boolean;
   ticketCategoryId: string | null;
+  ticketPanelChannelId?: string | null;
+  ticketPanelMessageId?: string | null;
   ticketPanelTitle?: string | null;
   ticketPanelDescription?: string | null;
   ticketPanelInfoText?: string | null;
