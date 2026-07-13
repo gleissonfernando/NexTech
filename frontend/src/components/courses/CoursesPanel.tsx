@@ -416,6 +416,19 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     if (courseId === selectedCourseId) void loadExam(courseId);
   }
 
+  function changeLinkedProofCourse(courseId: string) {
+    if (courseId === selectedCourseId) return;
+    if (editingQuestionId || questionDraft.prompt?.trim()) {
+      const discard = window.confirm("Existem alterações no formulário de pergunta. Deseja trocar o curso vinculado mesmo assim?");
+      if (!discard) return;
+    }
+    setSelectedCourseId(courseId);
+    setEditingProofId(courseId);
+    setEditingQuestionId(null);
+    setQuestionDraft(emptyQuestion);
+    setMessage("Curso vinculado selecionado. Configure a prova deste curso.");
+  }
+
   function closeProofEditor() {
     if (editingQuestionId || questionDraft.prompt?.trim()) {
       const discard = window.confirm("Existem alterações no formulário de pergunta. Deseja sair mesmo assim?");
@@ -643,7 +656,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   isSelected={selectedCourseId === course.id}
                   key={course.id}
                   onEdit={() => openProofEditor(course.id)}
-                  onSelect={() => setSelectedCourseId(course.id)}
+                  onSelect={() => openProofEditor(course.id)}
                   selectedExam={selectedCourseId === course.id ? exam : null}
                 />
               ))}
@@ -679,6 +692,15 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <CardContent className="space-y-5">
             {selectedCourse && exam && exam.settings.courseId === selectedCourse.id ? (
               <>
+                <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 p-4">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+                    <div>
+                      <p className="font-semibold text-white">Curso vinculado à prova</p>
+                      <p className="mt-1 text-sm text-zinc-400">Selecione qual curso usa esta prova. O sistema vai carregar somente as perguntas e configurações do curso escolhido.</p>
+                    </div>
+                    <SelectValueField disabled={!canManage || saving} label="Curso que usa esta prova" onChange={changeLinkedProofCourse} options={dashboard.courses.map((course) => [course.id, course.name])} value={selectedCourse.id} />
+                  </div>
+                </div>
                 <CourseProofModeCard
                   course={selectedCourse}
                   disabled={!canManage || saving}
