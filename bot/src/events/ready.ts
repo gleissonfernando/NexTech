@@ -32,6 +32,7 @@ import { startManualRegistrationService } from "../services/manualRegistrationSe
 import { startRhAdminService } from "../services/rhAdminService";
 import { startCourseSystemService } from "../services/courseSystemService";
 import { startTicketPanelService } from "../services/ticketPanelService";
+import { startReportSystemService } from "../services/reportSystemService";
 import {
   disableUnreleasedSafeBotChannels,
   ensureSafeBotSetup,
@@ -108,6 +109,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
     if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
     if (isBotModuleEnabled("tickets")) startTicketPanelService(client, context);
+    if (isReportSystemModuleEnabled()) startReportSystemService(client, context);
     if (!wasFivemHierarchyEnabled && isBotModuleEnabled("fivem-hierarchy")) startFivemHierarchyService(client, context);
     if (!wereLogsEnabled && isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
     if (!wasTagVerificationEnabled && isBotModuleEnabled("tag-verification")) void startTagVerificationService(client, context);
@@ -204,6 +206,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isBotModuleEnabled("rh-admin")) startRhAdminService(client, context);
   if (isBotModuleEnabled("courses")) startCourseSystemService(client, context);
   if (isBotModuleEnabled("tickets")) startTicketPanelService(client, context);
+  if (isReportSystemModuleEnabled()) startReportSystemService(client, context);
   if (isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }
@@ -381,6 +384,9 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   if (!wasFivemHierarchyEnabled && isBotModuleEnabled("fivem-hierarchy")) {
     startFivemHierarchyService(client, context);
   }
+  if (isReportSystemModuleEnabled()) {
+    startReportSystemService(client, context);
+  }
   if (!wasTagVerificationEnabled && isBotModuleEnabled("tag-verification")) {
     await startTagVerificationService(client, context);
   }
@@ -389,6 +395,10 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   }
 
   await syncVisibleGuildCommands(client, context, "module_reconcile");
+}
+
+function isReportSystemModuleEnabled() {
+  return isBotModuleEnabled("police-iab") || isBotModuleEnabled("tickets");
 }
 
 function runtimeModuleSignature(active: boolean, botId: string | null | undefined, moduleIds: string[]) {

@@ -17,6 +17,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type ChatInputCommandInteraction,
+  type Client,
   type Guild,
   type GuildMember,
   type Interaction,
@@ -41,6 +42,8 @@ const TOPIC_PREFIX = "nex-tech-iab:";
 const LEGACY_IDENTIFIED_BUTTON_ID = "iab_denuncia_identificada";
 const LEGACY_ANONYMOUS_BUTTON_ID = "iab_denuncia_anonima";
 const ANONYMOUS_DISABLED_MESSAGE = "A denuncia anonima foi desativada. Abra o ticket com identificacao.";
+let reportSystemServiceStarted = false;
+let reportPanelRecoveryRunning = false;
 const BUTTON_LABELS: Record<ReportSystemButtonKey, string> = {
   addMember: "Adicionar membro",
   claim: "Assumir denuncia",
@@ -88,6 +91,23 @@ type ReportTopic = {
   status: "preparing" | "open" | "archived" | "closed";
   ticketId: string;
 };
+
+export function startReportSystemService(client: Client, context: BotContext) {
+  if (reportSystemServiceStarted) return;
+  reportSystemServiceStarted = true;
+
+  const recover = () => {
+    void recoverOpenReportPanels(client, context).catch((error) => {
+      console.error("[iab] falha ao recuperar paineis internos:", error instanceof Error ? error.message : error);
+    });
+  };
+
+  if (client.isReady()) recover();
+  else client.once("ready", recover);
+
+  const timer = setInterval(recover, 5 * 60_000);
+  timer.unref();
+}
 
 export async function openReportSystemAdmin(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild || !interaction.member) {
@@ -400,13 +420,13 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
   await channel.setTopic(topic).catch(() => null);
 
   if (mode === "anonymous") {
-    await channel.send(createAnonymousPreparationPayload(settings, ticket.ticket, interaction.guild));
+    await sendReportControlPanel(channel, context, settings, ticket.ticket, topicFromString(topic)!, "Preparacao", interaction.guild);
     await logIabEvent(context, interaction.guild!, settings, topicFromString(topic)!, "Criado", `Denuncia anonima criada em preparacao por ${interaction.user.tag}.`, interaction.user.id);
     await interaction.editReply(`Canal privado criado para preparar sua denuncia: <#${channel.id}>`);
     return;
   }
 
-  await channel.send(withManagementMention(settings, createManagementPayload(settings, ticket.ticket, topicFromString(topic)!, "Aberto", undefined, interaction.guild)));
+  await sendReportControlPanel(channel, context, settings, ticket.ticket, topicFromString(topic)!, "Aberto", interaction.guild);
   await logIabEvent(context, interaction.guild!, settings, topicFromString(topic)!, "Criado", `Denuncia identificada criada por ${interaction.user.tag}.`, interaction.user.id);
   await interaction.editReply(`Denuncia identificada aberta: <#${channel.id}>`);
 }
@@ -529,10 +549,10 @@ async function submitAnonymousReport(interaction: ButtonInteraction, context: Bo
   const managementPayload = withManagementMention(settings, createManagementPayload(settings, updatedTicket ?? ticket, nextTopic, "Em analise", stats, channel.guild));
   if (preparationPanel) {
     await preparationPanel.edit(managementPayload as never).catch(async () => {
-      await channel.send(managementPayload).catch(() => null);
+      await sendReportControlPanel(channel, context, settings, updatedTicket ?? ticket, nextTopic, "Em analise", channel.guild, stats).catch(() => null);
     });
   } else {
-    await channel.send(managementPayload).catch(() => null);
+    await sendReportControlPanel(channel, context, settings, updatedTicket ?? ticket, nextTopic, "Em analise", channel.guild, stats).catch(() => null);
   }
   await logIabEvent(context, interaction.guild!, settings, nextTopic, "Encaminhado", `Denuncia anonima encaminhada para a equipe por <@${interaction.user.id}>.`, interaction.user.id);
 }
@@ -762,6 +782,97 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
     moduleId: "iab-management",
     title: topic.mode === "anonymous" && topic.status === "archived" ? "Denuncia Anonima Arquivada" : topic.mode === "anonymous" ? "Denuncia Anonima Recebida" : "Painel de Gerenciamento da Denuncia"
   });
+}
+
+async function sendReportControlPanel(channel: TextChannel, context: BotContext, settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic, statusLabel: string, guild: Guild | null = null, stats?: { attachmentCount: number; messageCount: number }) {
+  const payload = topic.status === "preparing"
+    ? createAnonymousPreparationPayload(settings, ticket, guild)
+    : withManagementMention(settings, createManagementPayload(settings, ticket, topic, statusLabel, stats, guild));
+
+  const sent = await channel.send(payload).catch(async (error) => {
+    await logIabEvent(context, channel.guild, settings, topic, "Erro no painel", `Falha ao enviar painel visual: ${error instanceof Error ? error.message : String(error)}. Enviando painel simples.`, context.client.user?.id ?? null);
+    return channel.send(createFallbackReportControlPayload(settings, ticket, topic, statusLabel, stats)).catch((fallbackError) => {
+      console.error("[iab] falha ao enviar painel interno:", fallbackError instanceof Error ? fallbackError.message : fallbackError);
+      return null;
+    });
+  });
+
+  return sent;
+}
+
+function createFallbackReportControlPayload(settings: GuildSettings, ticket: TicketRecord, topic: ReportTopic, statusLabel: string, stats?: { attachmentCount: number; messageCount: number }): MessageCreateOptions {
+  const preparing = topic.status === "preparing";
+  const actions = preparing
+    ? new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:submit:${ticket.id}`).setLabel("Encaminhar denuncia").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:cancel:${ticket.id}`).setLabel("Cancelar envio").setStyle(ButtonStyle.Danger)
+    )
+    : new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!settings.reportSystem.buttons.claim || Boolean(ticket.responsibleUserId)),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setLabel("Chamar denunciante").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(topic.reporterCalled)),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:archive:${ticket.id}`).setLabel("Arquivar").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:finish:${ticket.id}`).setLabel("Finalizar").setStyle(ButtonStyle.Danger)
+    );
+
+  return {
+    allowedMentions: { parse: [] },
+    components: [actions],
+    content: [
+      preparing ? "## Preparacao da Denuncia Anonima" : "## Painel de Gerenciamento da Denuncia",
+      `Ticket: ${ticket.id}`,
+      `Orgao: ${topic.categoryName}`,
+      `Status: ${statusLabel}`,
+      `Denunciante: ${topic.mode === "anonymous" ? "Anonimo" : `<@${topic.openerId}>`}`,
+      stats ? `Mensagens: ${stats.messageCount} | Anexos: ${stats.attachmentCount}` : null,
+      preparing ? "Envie as provas neste canal e clique em Encaminhar denuncia quando terminar." : "Use os botoes abaixo para assumir, arquivar ou finalizar a denuncia."
+    ].filter(Boolean).join("\n")
+  };
+}
+
+async function recoverOpenReportPanels(client: Client, context: BotContext) {
+  if (reportPanelRecoveryRunning) return;
+  reportPanelRecoveryRunning = true;
+  try {
+    for (const guild of client.guilds.cache.values()) {
+      const settings = await getFreshGuildSettings(context, guild.id, client.user?.id).catch(() => null);
+      if (!settings?.reportSystem.enabled) continue;
+
+      for (const channel of guild.channels.cache.values()) {
+        if (channel.type !== ChannelType.GuildText || !channel.topic?.startsWith(TOPIC_PREFIX)) continue;
+        const topic = topicFromString(channel.topic);
+        if (!topic || topic.status === "archived" || topic.status === "closed") continue;
+        await recoverReportPanelInChannel(channel as TextChannel, context, settings, topic);
+      }
+    }
+  } finally {
+    reportPanelRecoveryRunning = false;
+  }
+}
+
+async function recoverReportPanelInChannel(channel: TextChannel, context: BotContext, settings: GuildSettings, topic: ReportTopic) {
+  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  if (messages?.some((message) => message.author.id === context.client.user?.id && messageHasReportControl(message))) {
+    return;
+  }
+
+  const ticket = await context.api.getTicket(topic.ticketId).catch(() => null)
+    ?? await context.api.getTicketByChannel(channel.id).catch(() => null);
+  if (!ticket) return;
+
+  await sendReportControlPanel(channel, context, settings, ticket, topic, topic.status === "preparing" ? "Preparacao" : "Aberto", channel.guild);
+  await logIabEvent(context, channel.guild, settings, topic, "Painel restaurado", "Painel interno da denuncia foi restaurado automaticamente no canal aberto.", context.client.user?.id ?? null);
+}
+
+function messageHasReportControl(message: Message) {
+  return message.components.some((component) => componentHasReportControl(component.toJSON()));
+}
+
+function componentHasReportControl(component: unknown): boolean {
+  if (!component || typeof component !== "object") return false;
+  const record = component as Record<string, unknown>;
+  if (typeof record.custom_id === "string" && record.custom_id.startsWith(`${PUBLIC_PREFIX}:`)) return true;
+  const nested = Array.isArray(record.components) ? record.components : Array.isArray(record.items) ? record.items : [];
+  return nested.some(componentHasReportControl);
 }
 
 function withManagementMention(settings: GuildSettings, payload: MessageCreateOptions): MessageCreateOptions {
@@ -1049,15 +1160,37 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     return;
   }
 
-  await channel.send(createOpenedReportPayload(settings, {
+  const ticket = await context.api.createTicket({
+    allowedRoleIds: reportCompetenceRoleIds(report, reportCompetence(category.id, category.name)),
+    categoryId: category.id,
     categoryName: category.name,
-    description,
-    evidence,
+    channelId: channel.id,
+    guildId: interaction.guildId!,
+    openerId: interaction.user.id,
+    status: mode === "anonymous" ? "PENDING" : "OPEN",
+    subject: `${mode === "anonymous" ? "Denuncia anonima" : "Denuncia identificada"} - ${category.name}`
+  });
+  const topic: ReportTopic = {
+    categoryId: category.id,
+    categoryName: category.name,
+    channelId: channel.id,
+    competence: reportCompetence(category.id, category.name),
     mode,
     openerId: interaction.user.id,
-    reported,
-    summary
-  }));
+    status: mode === "anonymous" ? "preparing" : "open",
+    ticketId: ticket.ticket.id
+  };
+  await channel.setTopic(makeTopic(topic)).catch(() => null);
+  await channel.send({
+    allowedMentions: { users: [interaction.user.id] },
+    content: [
+      `Resumo: ${summary}`,
+      `Envolvidos: ${reported}`,
+      `Descricao: ${description}`,
+      `Provas/observacoes: ${evidence}`
+    ].join("\n").slice(0, 1900)
+  }).catch(() => null);
+  await sendReportControlPanel(channel, context, settings, ticket.ticket, topic, mode === "anonymous" ? "Preparacao" : "Aberto", interaction.guild);
 
   await sendReportLog(interaction.guild!, settings, {
     categoryName: category.name,
@@ -1070,7 +1203,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
 
   await interaction.editReply(
     mode === "anonymous"
-      ? "Sua denuncia anonima foi enviada para a equipe autorizada."
+      ? `Canal privado criado para preparar sua denuncia: <#${channel.id}>`
       : `Sua denuncia foi aberta: <#${channel.id}>`
   );
 }
@@ -1087,7 +1220,7 @@ async function createReportChannel(guild: Guild, settings: GuildSettings, input:
   const parent = reportCompetenceCategoryId(report, competence) ?? report.categoryId ?? undefined;
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+    { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
     ...otherRoleIds.map((id) => ({ id, deny: [PermissionFlagsBits.ViewChannel] }))
   ];
 
