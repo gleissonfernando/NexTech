@@ -2044,6 +2044,19 @@ export class ApiClient {
     return data.ticket;
   }
 
+  async claimTicket(ticketId: string, responsibleUserId: string) {
+    try {
+      const { data } = await this.http.post<{ claimed: boolean; ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/claim`, { responsibleUserId });
+      return data;
+    } catch (error) {
+      if (typeof error === "object" && error && "response" in error) {
+        const response = (error as { response?: { data?: { claimed?: boolean; ticket?: TicketRecord | null }; status?: number } }).response;
+        if (response?.status === 409) return { claimed: false, ticket: response.data?.ticket ?? null };
+      }
+      throw error;
+    }
+  }
+
   async recordTicketEvent(ticketId: string, input: { authorId?: string | null; content: string; eventType: string; guildId: string; metadata?: Record<string, unknown> }) {
     await this.http.post(`/tickets/bot/${ticketId}/events`, input);
   }

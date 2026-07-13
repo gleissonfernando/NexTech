@@ -6,7 +6,7 @@ import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
 import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import { createLog } from "../services/logService";
-import { createTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketStatus } from "../services/ticketService";
+import { claimTicket, createTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketStatus } from "../services/ticketService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const ticketSchema = z.object({
@@ -38,6 +38,10 @@ const ticketEventSchema = z.object({
   eventType: z.string().min(1),
   guildId: z.string().min(1),
   metadata: z.record(z.unknown()).optional()
+});
+
+const ticketClaimSchema = z.object({
+  responsibleUserId: z.string().min(1)
 });
 
 export const ticketsRouter = Router();
@@ -148,6 +152,19 @@ ticketsRouter.patch("/bot/:ticketId/status", async (req, res, next) => {
       closedAt: input.closedAt ? new Date(input.closedAt) : undefined
     });
     return res.json({ ticket });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ticketsRouter.post("/bot/:ticketId/claim", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) {
+      return res.status(403).json({ message: "Rota disponivel apenas para o bot." });
+    }
+    const input = ticketClaimSchema.parse(req.body);
+    const result = await claimTicket(req.params.ticketId, input.responsibleUserId);
+    return res.status(result.claimed ? 200 : 409).json(result);
   } catch (error) {
     return next(error);
   }

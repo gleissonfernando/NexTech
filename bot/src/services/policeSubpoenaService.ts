@@ -328,13 +328,29 @@ async function closeSubpoena(interaction: ButtonInteraction, context: BotContext
     console.error("[police-subpoena] failed to create transcript:", error instanceof Error ? error.message : error);
     return null;
   });
+  if (!transcript) {
+    state.status = "open";
+    cases.set(channelId, state);
+    await interaction.editReply("Não foi possível concluir o encerramento porque o transcript não foi salvo corretamente. O canal foi mantido para evitar perda de informações.");
+    return;
+  }
   await sendCompetenceLog(interaction.guild!, settings, state, interaction.user.id, [
     `Ação: **Intimação ${status.toLowerCase()}**`,
-    `Canal apagado: <#${channelId}>`,
-    transcript ? `Transcript: ${resolveTranscriptUrl(transcript)}` : "Transcript: falhou"
+    status === "Cancelada" ? `Canal apagado: <#${channelId}>` : `Canal mantido: <#${channelId}>`,
+    `Transcript: ${resolveTranscriptUrl(transcript)}`
   ].join("\n"));
+  await interaction.message.edit(casePanel(settings, state, interaction.guild)).catch(() => null);
+  if (status === "Finalizada") {
+    if (settings.reportSystem.finishedCategoryId) {
+      await (channel as TextChannel).setParent(settings.reportSystem.finishedCategoryId).catch(() => null);
+    }
+    await (channel as TextChannel).permissionOverwrites.edit(interaction.guild!.roles.everyone.id, { SendMessages: false }).catch(() => null);
+    await interaction.editReply("Intimação finalizada. Transcript gerado e canal mantido para auditoria.");
+    return;
+  }
+
   cases.delete(channelId);
-  await interaction.editReply(transcript ? `Intimação ${status.toLowerCase()}. Transcript gerado e canal será apagado.` : `Intimação ${status.toLowerCase()}. Não consegui gerar o transcript, mas o canal será apagado.`);
+  await interaction.editReply("Intimação cancelada. Transcript gerado e canal será apagado.");
   await new Promise((resolve) => setTimeout(resolve, 2_000));
   await (channel as TextChannel).delete(`Intimação ${status.toLowerCase()} por ${interaction.user.tag} (${interaction.user.id})`).catch(() => null);
 }
@@ -403,10 +419,10 @@ function casePanel(settings: GuildSettings, state: CaseState, guild: Guild | nul
     new ButtonBuilder().setCustomId(`${PREFIX}:note:${state.channelId}`).setEmoji(systemComponentEmoji("prancheta_caneta", guild)).setLabel("Adicionar observação").setStyle(ButtonStyle.Secondary)
   );
   const description = [
-    "Painel interno sigiloso da intimação. Apenas o órgão competente pode atuar neste caso.",
+    "Painel interno sigiloso da intimação. A equipe responsável fica oculta para o intimado.",
     "",
     `**Usuário intimado:** <@${state.targetId}> (${state.targetDisplayName})`,
-    `**Órgão competente:** ${COMPETENCE_LABEL[state.finalCompetence]}`,
+    "**Equipe responsável:** Sigilosa",
     "",
     `**Status:** ${statusLabel(state.status)}`,
     "",
@@ -424,19 +440,18 @@ function casePanel(settings: GuildSettings, state: CaseState, guild: Guild | nul
     guild,
     image: settings.reportSystem.subpoenaPanelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.subpoenaPanelBannerUrl } : null,
     moduleId: "police-subpoena",
-    title: `📨 Intimação ${state.finalCompetence}`
+    title: "Intimação"
   });
 }
 
 async function sendTargetDm(target: GuildMember, settings: GuildSettings, state: CaseState, channel: TextChannel) {
-  const institutional = state.finalCompetence === "iab" ? "Equipe IAB" : COMPETENCE_LABEL[state.finalCompetence];
   return target.send(renderComponentsV2Panel({
     accentColor: color(settings.reportSystem.panelColor),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", channel.guild)).setLabel("Acessar intimação").setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${channel.guildId}/${channel.id}`))],
     description: settings.reportSystem.subpoenaDmText,
     fields: [
       `Olá, **${target.displayName}**.\nVocê recebeu uma intimação institucional.`,
-      `**Órgão responsável:** ${institutional}\n**Canal:** <#${channel.id}>`
+      `**Equipe responsável:** Sigilosa\n**Canal:** <#${channel.id}>`
     ],
     guild: channel.guild,
     image: settings.reportSystem.dmBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.dmBannerUrl } : null,

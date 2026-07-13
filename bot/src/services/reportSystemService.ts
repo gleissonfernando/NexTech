@@ -512,7 +512,7 @@ async function handleReportTicketButton(interaction: ButtonInteraction, context:
       return;
     }
     await interaction.reply({
-      ...confirmPayload(settings, "Finalizar denuncia", "Tem certeza que deseja finalizar esta denuncia? Apos confirmar, o canal sera apagado em 10 segundos e a acao sera registrada nas logs.", `${PUBLIC_PREFIX}:finish-confirm:${ticketId}:${interaction.message.id}`, `${PUBLIC_PREFIX}:noop:${ticketId}`),
+      ...confirmPayload(settings, "Finalizar denuncia", "Tem certeza que deseja finalizar esta denuncia? O transcript sera gerado e o canal sera mantido na categoria de finalizados.", `${PUBLIC_PREFIX}:finish-confirm:${ticketId}:${interaction.message.id}`, `${PUBLIC_PREFIX}:noop:${ticketId}`),
       flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
     } as never);
     return;
@@ -568,7 +568,7 @@ async function submitAnonymousReport(interaction: ButtonInteraction, context: Bo
 
 async function claimReport(interaction: ButtonInteraction, context: BotContext, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic) {
   if (ticket.responsibleUserId && ticket.responsibleUserId !== interaction.user.id) {
-    await safeReply(interaction, topic.mode === "anonymous" ? "Esta denuncia ja foi assumida por um responsavel." : `Esta denuncia ja foi assumida por <@${ticket.responsibleUserId}>.`);
+    await safeReply(interaction, "Este atendimento já foi assumido por outro responsável.");
     return;
   }
   if (topic.status === "archived" || topic.status === "closed") {
@@ -576,9 +576,19 @@ async function claimReport(interaction: ButtonInteraction, context: BotContext, 
     return;
   }
   await interaction.deferUpdate();
-  const updated = await context.api.updateTicketStatus(ticket.id, { responsibleUserId: interaction.user.id, status: "IN_ANALYSIS" });
+  const claim = await context.api.claimTicket(ticket.id, interaction.user.id);
+  if (!claim.claimed) {
+    await interaction.followUp({ content: "Este atendimento já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
+    return;
+  }
+  const updated = claim.ticket ?? { ...ticket, responsibleUserId: interaction.user.id, status: "IN_ANALYSIS" };
   const staffRoleIds = reportCompetenceRoleIds(settings.reportSystem, topic.competence);
+  const supervisorRoleIds = reportSupervisorRoleIds(settings.reportSystem);
   for (const roleId of staffRoleIds) {
+    if (supervisorRoleIds.includes(roleId)) continue;
+    await channel.permissionOverwrites.edit(roleId, { AttachFiles: false, CreatePrivateThreads: false, CreatePublicThreads: false, ReadMessageHistory: true, SendMessages: false, ViewChannel: false }).catch(() => null);
+  }
+  for (const roleId of supervisorRoleIds) {
     await channel.permissionOverwrites.edit(roleId, { AttachFiles: false, CreatePrivateThreads: false, CreatePublicThreads: false, ReadMessageHistory: true, SendMessages: false, ViewChannel: true }).catch(() => null);
   }
   await channel.permissionOverwrites.edit(interaction.user.id, { AttachFiles: true, ReadMessageHistory: true, SendMessages: true, ViewChannel: true }).catch(() => null);
@@ -589,6 +599,10 @@ async function claimReport(interaction: ButtonInteraction, context: BotContext, 
 async function callReporter(interaction: ButtonInteraction, context: BotContext, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic) {
   if (topic.reporterCalled) {
     await safeReply(interaction, "O denunciante ja foi chamado de volta uma vez.");
+    return;
+  }
+  if (!ticket.responsibleUserId) {
+    await safeReply(interaction, "Assuma este atendimento antes de chamar o denunciante.");
     return;
   }
   if (topic.status === "archived" || topic.status === "closed") {
@@ -684,10 +698,21 @@ async function finishReport(context: BotContext, guild: Guild, settings: GuildSe
 async function closeReportChannel(context: BotContext, guild: Guild, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic, actorId: string, managementMessageId?: string) {
   if (topic.status === "closed") return;
   const managementMessage = managementMessageId ? await channel.messages.fetch(managementMessageId).catch(() => null) : null;
-  await channel.send({ allowedMentions: { parse: [] }, content: "Este canal sera finalizado em 10 segundos." }).catch(() => null);
-  await finishReport(context, guild, settings, channel, ticket, topic, "Finalizado", false, actorId, managementMessage ?? undefined);
-  await new Promise((resolve) => setTimeout(resolve, 10_000));
-  await channel.delete(`Denuncia IAB finalizada por ${actorId}`).catch(() => null);
+  await channel.send({ allowedMentions: { parse: [] }, content: "Este canal sera finalizado. O transcript sera salvo antes de qualquer bloqueio." }).catch(() => null);
+  try {
+    await finishReport(context, guild, settings, channel, ticket, topic, "Finalizado", false, actorId, managementMessage ?? undefined);
+  } catch (error) {
+    console.error("[iab] falha ao finalizar denuncia:", error instanceof Error ? error.message : error);
+    await channel.send({
+      allowedMentions: { parse: [] },
+      content: "Não foi possível concluir a finalização porque o transcript não foi salvo corretamente. O canal foi mantido para evitar perda de informações."
+    }).catch(() => null);
+    return;
+  }
+  if (settings.reportSystem.finishedCategoryId) {
+    await channel.setParent(settings.reportSystem.finishedCategoryId).catch(() => null);
+  }
+  await channel.setName(`finalizado-denuncia-${ticket.id.slice(0, 8)}`.slice(0, 90)).catch(() => null);
 }
 
 function createAnonymousPreparationPayload(settings: GuildSettings, ticket: TicketRecord, guild: Guild | null = null): MessageCreateOptions {
@@ -720,7 +745,7 @@ function createReporterCalledPayload(settings: GuildSettings, ticket: TicketReco
       ? "O denunciante recebeu acesso temporario. Tudo que ele enviar aqui sera apagado e reenviado pelo bot como Denunciante Anonimo."
       : "O denunciante recebeu acesso ao canal para complementar as informacoes.",
     fields: [
-      `**Ticket:** ${ticket.id}\n**Status:** Denunciante chamado\n**Orgao:** ${topic.categoryName}`,
+      `**Ticket:** ${ticket.id}\n**Status:** Denunciante chamado\n**Equipe responsavel:** Sigilosa`,
       topic.mode === "anonymous" ? "**Identidade no canal:** Denunciante Anonimo" : `**Denunciante:** <@${topic.openerId}>`
     ],
     guild,
@@ -769,8 +794,8 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
   const claimed = Boolean(ticket.responsibleUserId);
   const calledBack = Boolean(topic.reporterCalled);
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!report.buttons.claim || isArchived || isClosed || (isAnonymous && claimed)),
-    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Chamar denunciante de volta").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed || (isAnonymous && calledBack)),
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!report.buttons.claim || isArchived || isClosed || claimed),
+    new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Chamar denunciante de volta").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed || calledBack || !claimed),
     new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:archive:${ticket.id}`).setEmoji(systemComponentEmoji("caixa", guild)).setLabel("Arquivar").setStyle(ButtonStyle.Secondary).setDisabled(isArchived || isClosed),
     new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:finish:${ticket.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar").setStyle(ButtonStyle.Danger).setDisabled(isClosed)
   );
@@ -781,10 +806,10 @@ function createManagementPayload(settings: GuildSettings, ticket: TicketRecord, 
       ? "Uma nova denuncia anonima foi encaminhada para analise.\n\nAs provas enviadas pelo denunciante estao disponiveis neste canal. A identidade do denunciante permanece oculta para a equipe responsavel.\n\nSomente as logs administrativas internas registram a identidade real do denunciante."
       : "Denuncia identificada aberta. O denunciante fica visivel, mas as respostas da equipe continuam sendo encaminhadas pelo bot.",
     fields: [
-      `**Numero da denuncia:** ${ticket.id}\n**Orgao responsavel:** ${topic.categoryName}\n**Status:** ${statusLabel}\n**Denunciante:** ${topic.mode === "anonymous" ? "Anonimo" : `<@${topic.openerId}>`}`,
+      `**Numero da denuncia:** ${ticket.id}\n**Equipe responsavel:** Sigilosa\n**Status:** ${statusLabel}\n**Denunciante:** ${topic.mode === "anonymous" ? "Anonimo" : `<@${topic.openerId}>`}`,
       `**Data de envio:** ${topic.submittedAt ? `<t:${Math.floor(Date.parse(topic.submittedAt) / 1000)}:F>` : "-"}\n**Mensagens enviadas:** ${stats?.messageCount ?? "-"}\n**Anexos enviados:** ${stats?.attachmentCount ?? "-"}`,
       `**Responsavel atual:** ${ticket.responsibleUserId ? (topic.mode === "anonymous" ? "Equipe responsavel" : `<@${ticket.responsibleUserId}>`) : "Ninguem assumiu ainda"}\n**Denunciante chamado de volta:** ${topic.reporterCalled ? "Sim" : "Nao"}\n**Transcript:** ${topic.status === "archived" || topic.status === "closed" ? "Gerado" : "Aguardando arquivamento/finalizacao"}`,
-      `**Canal de origem:** <#${topic.channelId}>\n**Categoria atual:** ${topic.categoryName}`
+      `**Canal de origem:** <#${topic.channelId}>\n**Setor interno:** Oculto no atendimento`
     ],
     guild,
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
@@ -818,7 +843,7 @@ function createFallbackReportControlPayload(settings: GuildSettings, ticket: Tic
     )
     : new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:claim:${ticket.id}`).setLabel(topic.mode === "anonymous" ? "Assumir denuncia" : "Assumir ticket").setStyle(ButtonStyle.Primary).setDisabled(!settings.reportSystem.buttons.claim || Boolean(ticket.responsibleUserId)),
-      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setLabel("Chamar denunciante").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(topic.reporterCalled)),
+      new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:call:${ticket.id}`).setLabel("Chamar denunciante").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(topic.reporterCalled) || !ticket.responsibleUserId),
       new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:archive:${ticket.id}`).setLabel("Arquivar").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:finish:${ticket.id}`).setLabel("Finalizar").setStyle(ButtonStyle.Danger)
     );
@@ -829,7 +854,7 @@ function createFallbackReportControlPayload(settings: GuildSettings, ticket: Tic
     content: [
       preparing ? "## Preparacao da Denuncia Anonima" : "## Painel de Gerenciamento da Denuncia",
       `Ticket: ${ticket.id}`,
-      `Orgao: ${topic.categoryName}`,
+      "Equipe responsavel: Sigilosa",
       `Status: ${statusLabel}`,
       `Denunciante: ${topic.mode === "anonymous" ? "Anonimo" : `<@${topic.openerId}>`}`,
       stats ? `Mensagens: ${stats.messageCount} | Anexos: ${stats.attachmentCount}` : null,
@@ -908,22 +933,9 @@ function componentHasReportControl(component: unknown): boolean {
 function withManagementMention(settings: GuildSettings, payload: MessageCreateOptions): MessageCreateOptions {
   const roleIds = settings.reportSystem.mentionRoleIds.slice(0, 10);
   if (!roleIds.length) return payload;
-  const mentions = roleIds.map((roleId) => `<@&${roleId}>`).join(" ");
-  const components = Array.isArray(payload.components) ? [...payload.components] as Array<Record<string, unknown>> : [];
-  const container = components[0];
-  const containerComponents = Array.isArray(container?.components) ? [...container.components] : null;
-  if (!container || !containerComponents) return payload;
-  const firstActionIndex = containerComponents.findIndex((component) => {
-    if (!component || typeof component !== "object") return false;
-    return (component as { type?: unknown }).type === 1;
-  });
-  const mentionComponent = { type: 10, content: `**Equipe notificada:** ${mentions}` };
-  if (firstActionIndex >= 0) containerComponents.splice(firstActionIndex, 0, mentionComponent);
-  else containerComponents.push(mentionComponent);
   return {
     ...payload,
-    allowedMentions: { roles: roleIds },
-    components: ([{ ...container, components: containerComponents }, ...components.slice(1)] as unknown) as MessageCreateOptions["components"]
+    allowedMentions: { roles: roleIds }
   };
 }
 
@@ -1363,6 +1375,10 @@ function reportCompetenceRoleIds(report: ReportSystemSettings, competence: "iab"
         ? report.hcmdRoleIds
         : report.comissarioRoleIds;
   return [...new Set(ids)];
+}
+
+function reportSupervisorRoleIds(report: ReportSystemSettings) {
+  return [...new Set([...report.adminRoleIds, ...report.viewRoleIds])];
 }
 
 function allReportCompetenceRoleIds(report: ReportSystemSettings) {

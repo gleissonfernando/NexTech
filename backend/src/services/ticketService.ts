@@ -173,6 +173,41 @@ export async function updateTicketStatus(ticketId: string, input: Partial<Pick<M
   return ticket ? toDto(ticket) : null;
 }
 
+export async function claimTicket(ticketId: string, userId: string) {
+  try {
+    const { tickets } = await getMongoCollections();
+    const claimed = await tickets.findOneAndUpdate(
+      {
+        _id: ticketId,
+        responsibleUserId: { $in: [null, ""] },
+        status: { $nin: ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"] }
+      },
+      {
+        $set: {
+          responsibleUserId: userId,
+          status: "IN_ANALYSIS"
+        }
+      },
+      { returnDocument: "after" }
+    );
+
+    if (claimed) {
+      return { claimed: true, ticket: toDto(claimed) };
+    }
+
+    const existing = await tickets.findOne({ _id: ticketId });
+    return { claimed: false, ticket: existing ? toDto(existing) : null };
+  } catch (error) {
+    const ticket = memoryTickets.find((item) => item.id === ticketId);
+    if (!ticket || ticket.responsibleUserId || ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"].includes(ticket.status)) {
+      return { claimed: false, ticket: ticket ?? null };
+    }
+    ticket.responsibleUserId = userId;
+    ticket.status = "IN_ANALYSIS";
+    return { claimed: true, ticket };
+  }
+}
+
 export async function recordTicketEvent(input: {
   authorId?: string | null;
   botId?: string | null;

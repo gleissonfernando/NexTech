@@ -244,10 +244,12 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
 
   if (action === "claim") {
     await interaction.deferUpdate();
-    const updatedTicket = await context.api.updateTicketStatus(ticketId, {
-      responsibleUserId: interaction.user.id,
-      status: "IN_ANALYSIS"
-    });
+    const claim = await context.api.claimTicket(ticketId, interaction.user.id);
+    if (!claim.claimed) {
+      await interaction.followUp({ content: "Este atendimento já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
+      return;
+    }
+    const updatedTicket = claim.ticket;
     await context.api.recordTicketEvent(ticketId, {
       authorId: interaction.user.id,
       content: `Ticket assumido por ${interaction.user.tag}.`,
@@ -472,7 +474,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
 
 function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento") {
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}claim:${ticketId}`).setEmoji(systemComponentEmoji("homem")).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}claim:${ticketId}`).setEmoji(systemComponentEmoji("homem")).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}add:${ticketId}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}remove:${ticketId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Remover Usuário").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}close:${ticketId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Finalizar Ticket").setStyle(ButtonStyle.Danger)
