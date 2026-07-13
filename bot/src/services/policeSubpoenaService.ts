@@ -335,10 +335,8 @@ async function closeSubpoena(interaction: ButtonInteraction, context: BotContext
 
   state.status = status === "Finalizada" ? "finished" : "cancelled";
   cases.set(channelId, state);
-  const transcript = await createSubpoenaTranscript(context, interaction.guild!, settings, channel as TextChannel, state, interaction.user.id, status).catch((error) => {
-    console.error("[police-subpoena] failed to create transcript:", error instanceof Error ? error.message : error);
-    return null;
-  });
+  await interaction.editReply("Encerrando intimação: gerando transcript antes de apagar o canal.");
+  const transcript = await createSubpoenaTranscriptWithRetry(context, interaction.guild!, settings, channel as TextChannel, state, interaction.user.id, status);
   if (!transcript) {
     state.status = "open";
     cases.set(channelId, state);
@@ -347,23 +345,25 @@ async function closeSubpoena(interaction: ButtonInteraction, context: BotContext
   }
   await sendCompetenceLog(interaction.guild!, settings, state, interaction.user.id, [
     `Ação: **Intimação ${status.toLowerCase()}**`,
-    status === "Cancelada" ? `Canal apagado: <#${channelId}>` : `Canal mantido: <#${channelId}>`,
+    `Canal temporário: <#${channelId}>`,
+    "Ação no canal: **apagar após salvar transcript**",
     `Transcript: ${resolveTranscriptUrl(transcript)}`
   ].join("\n"));
   await interaction.message.edit(casePanel(settings, state, interaction.guild)).catch(() => null);
-  if (status === "Finalizada") {
-    if (settings.reportSystem.finishedCategoryId) {
-      await (channel as TextChannel).setParent(settings.reportSystem.finishedCategoryId).catch(() => null);
-    }
-    await (channel as TextChannel).permissionOverwrites.edit(interaction.guild!.roles.everyone.id, { SendMessages: false }).catch(() => null);
-    await interaction.editReply("Intimação finalizada. Transcript gerado e canal mantido para auditoria.");
-    return;
-  }
 
   cases.delete(channelId);
-  await interaction.editReply("Intimação cancelada. Transcript gerado e canal será apagado.");
-  await new Promise((resolve) => setTimeout(resolve, 2_000));
-  await (channel as TextChannel).delete(`Intimação ${status.toLowerCase()} por ${interaction.user.tag} (${interaction.user.id})`).catch(() => null);
+  await interaction.editReply(`Intimação ${status.toLowerCase()}. Transcript gerado e canal será apagado.`);
+  await delay(2_000);
+  const deleteError = await (channel as TextChannel)
+    .delete(`Intimação ${status.toLowerCase()} por ${interaction.user.tag} (${interaction.user.id})`)
+    .then(() => null, (error) => error);
+  if (deleteError) {
+    cases.set(channelId, { ...state, status: "open" });
+    const reason = deleteError instanceof Error ? deleteError.message : String(deleteError);
+    await sendCompetenceLog(interaction.guild!, settings, state, interaction.user.id, `Ação: **Falha ao apagar canal da intimação**\nCanal: <#${channelId}>\nTranscript: ${resolveTranscriptUrl(transcript)}\nErro: ${reason.slice(0, 1000)}`);
+    await interaction.editReply(`Transcript gerado, mas não consegui apagar o canal. Verifique se o bot tem permissão de Gerenciar Canais. Erro: ${reason.slice(0, 300)}`);
+    return;
+  }
 }
 
 async function submitNote(interaction: ModalSubmitInteraction, _context: BotContext, settings: GuildSettings, channelId: string) {
@@ -520,6 +520,21 @@ async function createSubpoenaTranscript(context: BotContext, guild: Guild, setti
   });
   await sendSubpoenaTranscriptPanel(guild, settings, state, transcript, messages, status);
   return transcript;
+}
+
+async function createSubpoenaTranscriptWithRetry(context: BotContext, guild: Guild, settings: GuildSettings, channel: TextChannel, state: CaseState, actorId: string, status: "Cancelada" | "Finalizada") {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await createSubpoenaTranscript(context, guild, settings, channel, state, actorId, status);
+    } catch (error) {
+      lastError = error;
+      console.error(`[police-subpoena] failed to create transcript (attempt ${attempt}/3):`, error instanceof Error ? error.message : error);
+      if (attempt < 3) await delay(1_500 * attempt);
+    }
+  }
+  console.error("[police-subpoena] transcript creation failed after retries:", lastError instanceof Error ? lastError.message : lastError);
+  return null;
 }
 
 async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings, state: CaseState, transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>, messages: Awaited<ReturnType<typeof collectSubpoenaTranscriptMessages>>, status: string) {
@@ -713,6 +728,7 @@ function formatSubpoenaPanelDate(value: string) {
 }
 function color(value?: string | null) { return Number.parseInt(value?.replace("#", "") ?? "", 16) || 0xdc2626; }
 function slug(value: string) { return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "usuario"; }
+function delay(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function replyDenied(interaction: Interaction) { if (!interaction.isRepliable()) return; const payload = { content: "Você não possui permissão para atuar nesta intimação.", ephemeral: true }; if (interaction.replied || interaction.deferred) await interaction.followUp(payload).catch(() => null); else await interaction.reply(payload).catch(() => null); }
 async function recoverCaseFromChannel(interaction: Interaction, settings: GuildSettings): Promise<CaseState | null> { const channel = interaction.channel as TextChannel | null; const topic = channel?.topic ?? ""; const [, competence, targetId, responsibleId, createdById] = topic.split(":"); const parsed = parseCompetence(competence); if (!channel || !parsed || !targetId || !responsibleId || !createdById) return null; const target = await interaction.guild?.members.fetch(targetId).catch(() => null); return { autoRedirected: false, channelId: channel.id, createdAt: new Date().toISOString(), createdById, deadline: settings.reportSystem.defaultDeadline, description: "Dados recuperados após reinício. Consulte o histórico do canal.", finalCompetence: parsed, guildId: channel.guildId, reason: "Recuperado pelo canal", redirectReason: null, responsibleId, selectedCompetence: parsed, status: "open", targetDisplayName: target?.displayName ?? targetId, targetId, title: "Intimação" }; }
 function recoverCaseFromTextChannel(channel: TextChannel): CaseState | null { const topic = channel.topic ?? ""; const [, competence, targetId, responsibleId, createdById] = topic.split(":"); const parsed = parseCompetence(competence); if (!parsed || !targetId || !responsibleId || !createdById) return null; return { autoRedirected: false, channelId: channel.id, createdAt: new Date().toISOString(), createdById, deadline: "Consulte o painel da intimação", description: "Dados recuperados pelo canal.", finalCompetence: parsed, guildId: channel.guildId, reason: "Recuperado pelo canal", redirectReason: null, responsibleId, selectedCompetence: parsed, status: "open", targetDisplayName: targetId, targetId, title: "Intimação" }; }
