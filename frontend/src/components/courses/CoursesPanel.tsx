@@ -147,6 +147,16 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   const categories = liveOptions?.categories ?? [];
   const roles = liveOptions?.roles ?? [];
 
+  function showSuccess(value: string) {
+    setError("");
+    setMessage(value);
+  }
+
+  function showError(value: string) {
+    setMessage("");
+    setError(value);
+  }
+
   useEffect(() => {
     void load();
   }, [botId, guildId]);
@@ -202,7 +212,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setLiveOptions(options);
       setSelectedCourseId(data.courses[0]?.id ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Curso.");
+      showError(err instanceof Error ? err.message : "Não foi possível carregar o Sistema de Curso.");
     } finally {
       setLoading(false);
     }
@@ -215,10 +225,10 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     try {
       const settings = await saveCourseSettings(botId, guildId, patch);
       setDashboard((current) => current ? { ...current, settings } : current);
-      setMessage("Configurações salvas.");
+      showSuccess("Configurações salvas.");
       return settings;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar as configurações.");
+      showError(err instanceof Error ? err.message : "Não foi possível salvar as configurações.");
       return null;
     } finally {
       setSaving(false);
@@ -243,7 +253,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   async function saveCourse() {
     if (!dashboard || !courseDraft.name?.trim()) {
-      setError("Informe o nome do curso.");
+      showError("Informe o nome do curso.");
       return;
     }
     setSaving(true);
@@ -257,9 +267,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
         courses: wasEditing ? current.courses.map((course) => course.id === saved.id ? saved : course) : [saved, ...current.courses]
       } : current);
       setSelectedCourseId(saved.id);
-      setMessage("Curso cadastrado com sucesso.");
+      showSuccess("Curso cadastrado com sucesso.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar o curso.");
+      showError(err instanceof Error ? err.message : "Não foi possível salvar o curso.");
     } finally {
       setSaving(false);
     }
@@ -277,9 +287,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
         courses: current.courses.map((course) => course.id === saved.id ? saved : course)
       } : current);
       setCourseDraft((current) => ({ ...current, active: saved.active }));
-      setMessage(active ? "Curso ativado." : "Curso desativado.");
+      showSuccess(active ? "Curso ativado." : "Curso desativado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível alterar o status do curso.");
+      showError(err instanceof Error ? err.message : "Não foi possível alterar o status do curso.");
     } finally {
       setSaving(false);
     }
@@ -293,9 +303,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       await deleteCourseApi(botId, guildId, courseId);
       setDashboard((current) => current ? { ...current, courses: current.courses.filter((course) => course.id !== courseId) } : current);
       setSelectedCourseId(null);
-      setMessage("Curso excluído.");
+      showSuccess("Curso excluído.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível excluir o curso.");
+      showError(err instanceof Error ? err.message : "Não foi possível excluir o curso.");
     } finally {
       setSaving(false);
     }
@@ -315,7 +325,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setExam(data);
     } catch (err) {
       if (requestId !== examLoadSeqRef.current) return;
-      setError(err instanceof Error ? err.message : "Não foi possível carregar a prova.");
+      showError(err instanceof Error ? err.message : "Não foi possível carregar a prova.");
     } finally {
       if (requestId === examLoadSeqRef.current) setExamLoading(false);
     }
@@ -327,8 +337,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     const payload = normalizeQuestion(questionDraft);
     const validationError = validateQuestionPayload(payload);
     if (validationError) {
-      setMessage("");
-      setError(validationError);
+      showError(validationError);
       return;
     }
     setSaving(true);
@@ -345,11 +354,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       } : current);
       setEditingQuestionId(null);
       setQuestionDraft(emptyQuestion);
-      setError("");
-      setMessage("Pergunta salva.");
+      showSuccess("Pergunta salva.");
     } catch (err) {
-      setMessage("");
-      setError(readApiError(err, "Não foi possível salvar a pergunta."));
+      showError(readApiError(err, "Não foi possível salvar a pergunta."));
     } finally {
       setSaving(false);
     }
@@ -359,7 +366,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id || !examLinkDraft) return;
     const courseId = selectedCourse.id;
     if (examLinkDraft.externalLinkEnabled && examLinkDraft.externalLinkUrl && !examLinkDraft.externalLinkUrl.startsWith("https://")) {
-      setError("O link externo precisa começar com https://.");
+      showError("O link externo precisa começar com https://.");
       return;
     }
     setSaving(true);
@@ -367,9 +374,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     try {
       const settings = await saveCourseExamSettings(botId, guildId, courseId, examLinkDraft);
       setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
-      setMessage("Link externo da prova salvo.");
+      showSuccess("Link externo da prova salvo.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar o link externo.");
+      showError(err instanceof Error ? err.message : "Não foi possível salvar o link externo.");
     } finally {
       setSaving(false);
     }
@@ -383,9 +390,9 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     try {
       const settings = await saveCourseExamSettings(botId, guildId, courseId, patch);
       setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
-      setMessage("Configurações da prova salvas.");
+      showSuccess("Configurações da prova salvas.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar as configurações da prova.");
+      showError(err instanceof Error ? err.message : "Não foi possível salvar as configurações da prova.");
     } finally {
       setSaving(false);
     }
@@ -405,7 +412,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       color: "#FFD500"
     });
     setActiveTab("courses");
-    setMessage("Cadastre o curso/prova. Depois de salvar, ele aparece em Configuração de Provas para configurar perguntas e gabarito.");
+    showSuccess("Cadastre o curso/prova. Depois de salvar, ele aparece em Configuração de Provas para configurar perguntas e gabarito.");
   }
 
   function openProofEditor(courseId: string) {
@@ -426,7 +433,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     setEditingProofId(courseId);
     setEditingQuestionId(null);
     setQuestionDraft(emptyQuestion);
-    setMessage("Curso vinculado selecionado. Configure a prova deste curso.");
+    showSuccess("Curso vinculado selecionado. Configure a prova deste curso.");
   }
 
   function closeProofEditor() {
@@ -443,7 +450,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     setEditingProofId(null);
     setEditingQuestionId(null);
     setQuestionDraft(emptyQuestion);
-    setMessage(selectedCourse ? `Prova de ${selectedCourse.name} salva com sucesso.` : "Prova salva com sucesso.");
+    showSuccess(selectedCourse ? `Prova de ${selectedCourse.name} salva com sucesso.` : "Prova salva com sucesso.");
   }
 
   async function setSelectedCourseProofMode(enabled: boolean) {
@@ -454,11 +461,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
     try {
       const settings = await saveCourseExamSettings(botId, guildId, courseId, { enabled });
       setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
-      setMessage(enabled
+      showSuccess(enabled
         ? `Modo de perguntas ativado para ${selectedCourse.name}.`
         : `Modo de perguntas desativado para ${selectedCourse.name}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível alterar o modo de perguntas deste curso.");
+      showError(err instanceof Error ? err.message : "Não foi possível alterar o modo de perguntas deste curso.");
     } finally {
       setSaving(false);
     }
@@ -466,7 +473,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   async function saveImage() {
     if (!dashboard || !imageDraft.name.trim() || !imageDraft.url.trim()) {
-      setError("Informe nome e URL da imagem.");
+      showError("Informe nome e URL da imagem.");
       return;
     }
     const image = {
