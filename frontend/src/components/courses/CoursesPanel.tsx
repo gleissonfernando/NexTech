@@ -376,7 +376,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
       showSuccess("Link externo da prova salvo.");
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Não foi possível salvar o link externo.");
+      showError(readApiError(err, "Não foi possível salvar o link externo."));
     } finally {
       setSaving(false);
     }
@@ -392,7 +392,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setExam((current) => current && current.settings.courseId === courseId ? { ...current, settings } : current);
       showSuccess("Configurações da prova salvas.");
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Não foi possível salvar as configurações da prova.");
+      showError(readApiError(err, "Não foi possível salvar as configurações da prova."));
     } finally {
       setSaving(false);
     }
@@ -465,7 +465,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
         ? `Modo de perguntas ativado para ${selectedCourse.name}.`
         : `Modo de perguntas desativado para ${selectedCourse.name}.`);
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Não foi possível alterar o modo de perguntas deste curso.");
+      showError(readApiError(err, "Não foi possível alterar o modo de perguntas deste curso."));
     } finally {
       setSaving(false);
     }

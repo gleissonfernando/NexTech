@@ -661,7 +661,7 @@ async function cleanSettings(botId: string | null, guildId: string, courseId: st
   if ("examKey" in input) patch.examKey = input.examKey?.trim().slice(0, 120) || null;
   if (input.enabled === true) {
     const validation = await validateCourseExamActivation(botId, guildId, courseId, patch);
-    if (!validation.ok) throw Object.assign(new Error(validation.errors[0] ?? "Não é possível ativar esta prova."), { statusCode: 400 });
+    if (!validation.ok) throw Object.assign(new Error(`Não é possível ativar esta prova: ${validation.errors.slice(0, 6).join(" | ")}${validation.errors.length > 6 ? ` | mais ${validation.errors.length - 6} pendência(s)` : ""}`), { statusCode: 400 });
   }
   if ("externalLinkEnabled" in input) patch.externalLinkEnabled = input.externalLinkEnabled === true;
   if ("externalLinkText" in input) patch.externalLinkText = input.externalLinkText?.trim().slice(0, 80) || DEFAULT_EXTERNAL_LINK_TEXT;
