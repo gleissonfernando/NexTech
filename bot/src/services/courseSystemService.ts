@@ -2036,7 +2036,6 @@ async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitI
 function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null) {
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   const reviewed = attempt.result === "approved" || attempt.result === "rejected";
-  const objectiveTotal = questions.filter((question) => question.type === "selection" || question.type === "multiple").length;
   const writtenTotal = questions.filter((question) => question.type === "written").length;
   const finalScore = attempt.finalScore ?? attempt.automaticScore ?? attempt.score;
   const fields = [
@@ -2052,7 +2051,8 @@ function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questio
       `Nota manual: ${attempt.manualScore === null || attempt.manualScore === undefined ? "Aguardando Correção" : formatScore(attempt.manualScore)}`,
       `Nota final: ${formatScore(finalScore)}`,
       `Status: ${examReviewStatusLabel(attempt)}`,
-      `Questões objetivas: ${attempt.objectiveCorrect} corretas / ${attempt.objectiveWrong} erradas (${objectiveTotal} total)`,
+      `Questões corretas: ${attempt.objectiveCorrect}`,
+      `Questões erradas: ${attempt.objectiveWrong}`,
       `Questões discursivas: ${attempt.writtenCount || writtenTotal}`
     ].join("\n"),
     ...questions.slice(0, 12).map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1))
@@ -2139,7 +2139,8 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
       "",
       answer?.writtenAnswer ? answer.writtenAnswer.slice(0, 900) : "Sem resposta salva.",
       "",
-      "Resultado da questão: correção manual",
+      `Resposta esperada: ${question.correctText || "não configurada"}`,
+      `Resultado da questão: ${answer?.correct === true ? "correta" : answer?.correct === false ? "incorreta" : "correção manual"}`,
       `Pontuação obtida: ${formatScore(answer?.pointsEarned ?? 0)} de ${formatScore(question.points)}`
     ].join("\n").slice(0, 1900);
   }

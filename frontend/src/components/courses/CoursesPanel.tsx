@@ -104,6 +104,7 @@ const emptyQuestion: SaveCourseExamQuestionPayload = {
   ],
   correctAlternativeId: "C",
   correctAlternativeIds: ["C"],
+  correctText: null,
   description: null,
   order: 0,
   questionNumber: 1,
@@ -766,7 +767,12 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                           </div>
                         ))}
                       </div>
-                    ) : <InputField disabled={!canManage || saving} label="Placeholder do modal" onChange={(placeholder) => setQuestionDraft({ ...questionDraft, placeholder })} value={questionDraft.placeholder ?? ""} />}
+                    ) : (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <InputField disabled={!canManage || saving} label="Placeholder do modal" onChange={(placeholder) => setQuestionDraft({ ...questionDraft, placeholder })} value={questionDraft.placeholder ?? ""} />
+                        <TextAreaField disabled={!canManage || saving} label="Resposta correta" onChange={(correctText) => setQuestionDraft({ ...questionDraft, correctText })} value={questionDraft.correctText ?? ""} />
+                      </div>
+                    )}
                     <Button disabled={!canManage || saving || !questionDraft.prompt?.trim()} onClick={() => void saveQuestion()} type="button"><PlusCircle className="h-4 w-4" />Salvar pergunta</Button>
                   </div>
                 </div>
@@ -863,7 +869,7 @@ function CourseProofModeCard({ course, disabled, enabled, onToggle, questions, s
       </div>
       {!stats.complete ? (
         <p className="mt-3 rounded-md border border-yellow-400/25 bg-black/30 px-3 py-2 text-xs text-yellow-100">
-          Para ativar, mantenha pelo menos uma pergunta ativa, com enunciado, pontuação e gabarito quando for objetiva.
+          Para ativar, mantenha pelo menos uma pergunta ativa, com enunciado, pontuação e gabarito ou resposta correta.
         </p>
       ) : null}
     </div>
@@ -913,7 +919,8 @@ function getProofStats(questions: CourseExamQuestion[]) {
   const written = activeQuestions.filter((question) => question.type === "written");
   const complete = activeQuestions.length > 0
     && activeQuestions.every((question) => question.prompt.trim() && question.points > 0)
-    && objective.every((question) => question.alternatives.length >= 2 && hasCorrectAlternative(question));
+    && objective.every((question) => question.alternatives.length >= 2 && hasCorrectAlternative(question))
+    && written.every((question) => Boolean(question.correctText?.trim()));
   return {
     active: activeQuestions.length,
     complete,
@@ -932,7 +939,7 @@ function QuestionCard({ onDelete, onEdit, question }: { onDelete: () => void; on
         <Badge variant={question.type === "written" ? "warning" : "success"}>{question.type === "written" ? "Discursiva" : question.type === "multiple" ? "Múltipla escolha" : "Objetiva"}</Badge>
       </div>
       <p className="mt-1 text-xs text-zinc-500">Nota máxima: {question.points}</p>
-      {question.type !== "written" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text} - ${option.score ?? 0} pontos${isCorrectAlternative(question, option.id) ? " - correta" : ""}`).join(" | ")}</p> : null}
+      {question.type !== "written" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text} - ${option.score ?? 0} pontos${isCorrectAlternative(question, option.id) ? " - correta" : ""}`).join(" | ")}</p> : <p className="mt-2 text-xs text-zinc-400">Resposta correta: {question.correctText || "não configurada"}</p>}
       <div className="mt-3 flex gap-2">
         <Button onClick={onEdit} size="sm" type="button" variant="outline">Editar</Button>
         <Button onClick={onDelete} size="sm" type="button" variant="destructive">Excluir</Button>
@@ -979,7 +986,8 @@ function normalizeQuestion(question: SaveCourseExamQuestionPayload) {
     type: question.type,
     alternatives,
     correctAlternativeId: question.type === "written" ? null : question.type === "multiple" ? null : question.correctAlternativeId ?? alternatives.find((option) => option.isCorrect)?.id ?? null,
-    correctAlternativeIds
+    correctAlternativeIds,
+    correctText: question.type === "written" ? question.correctText?.trim() || null : null
   } satisfies SaveCourseExamQuestionPayload;
 }
 
@@ -987,6 +995,7 @@ function validateQuestionPayload(question: SaveCourseExamQuestionPayload) {
   if (!question.prompt?.trim()) return "Informe o texto da pergunta.";
   if (question.prompt.trim().length > 1200) return "A pergunta pode ter no máximo 1200 caracteres.";
   if ((question.description ?? "").length > 1200) return "A descrição pode ter no máximo 1200 caracteres.";
+  if (question.type === "written" && !question.correctText?.trim()) return "Informe a resposta correta da pergunta discursiva.";
   if (question.type !== "written") {
     const alternatives = question.alternatives ?? [];
     if (alternatives.length > 10) return "A pergunta pode ter no máximo 10 alternativas.";

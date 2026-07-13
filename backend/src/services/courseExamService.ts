@@ -122,6 +122,7 @@ export async function createCourseExamQuestion(botId: string | null, guildId: st
     alternatives: normalizeAlternatives(input.alternatives, normalizeQuestionType(input.type)),
     correctAlternativeId: normalizeQuestionType(input.type) === "written" ? null : normalizeCorrect(input.correctAlternativeId),
     correctAlternativeIds: normalizeQuestionType(input.type) === "multiple" ? normalizeCorrectList(input.correctAlternativeIds ?? input.correctAlternativeId ?? input.alternatives) : [],
+    correctText: normalizeQuestionType(input.type) === "written" ? normalizeNullableText(input.correctText, 1000) : null,
     placeholder: input.placeholder?.trim() || null,
     active: input.active !== false,
     createdAt: now,
@@ -147,6 +148,10 @@ export async function updateCourseExamQuestion(botId: string | null, guildId: st
   if (input.correctAlternativeIds !== undefined || input.alternatives !== undefined || input.type !== undefined) {
     const type = patch.type ?? normalizeQuestionType(input.type);
     patch.correctAlternativeIds = type === "multiple" ? normalizeCorrectList(input.correctAlternativeIds ?? input.correctAlternativeId ?? input.alternatives) : [];
+  }
+  if (input.correctText !== undefined || input.type !== undefined) {
+    const type = patch.type ?? normalizeQuestionType(input.type);
+    patch.correctText = type === "written" ? normalizeNullableText(input.correctText, 1000) : null;
   }
   if (input.placeholder !== undefined) patch.placeholder = input.placeholder?.trim() || null;
   if (input.active !== undefined) patch.active = input.active !== false;
@@ -388,8 +393,10 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
     ? Boolean(selectedAlternative?.isCorrect ?? selectedAlternativeId === question.correctAlternativeId)
     : question.type === "multiple"
       ? sameSet(selectedAlternativeIds, correctIds(question))
-      : null;
-  const pointsEarned = question.type === "selection" || question.type === "multiple" ? (correct ? question.points : 0) : 0;
+      : question.correctText
+        ? normalizeWrittenAnswerForCompare(writtenAnswer) === normalizeWrittenAnswerForCompare(question.correctText)
+        : null;
+  const pointsEarned = correct === true ? question.points : 0;
   const now = new Date();
   const doc: MongoCourseExamAnswer = {
     _id: randomUUID(),
@@ -435,13 +442,14 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   const answeredQuestionIds = new Set(answers.map((answer) => answer.questionId));
   if (!relevantQuestions.every((question) => answeredQuestionIds.has(question._id))) return null;
   const maxScore = relevantQuestions.reduce((total, question) => total + question.points, 0);
-  const score = answers.filter((answer) => answer.type === "selection" || answer.type === "multiple").reduce((total, answer) => total + answer.pointsEarned, 0);
-  const objectiveCorrect = answers.filter((answer) => (answer.type === "selection" || answer.type === "multiple") && answer.correct === true).length;
-  const objectiveWrong = answers.filter((answer) => (answer.type === "selection" || answer.type === "multiple") && answer.correct === false).length;
+  const score = answers.reduce((total, answer) => total + answer.pointsEarned, 0);
+  const objectiveCorrect = answers.filter((answer) => answer.correct === true).length;
+  const objectiveWrong = answers.filter((answer) => answer.correct === false).length;
   const writtenCount = answers.filter((answer) => answer.type === "written").length;
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
-  const automaticResult = examSettings?.automaticApproval && writtenCount === 0
-    ? (percent >= Number(examSettings.minScore ?? 0) ? "approved" as const : "rejected" as const)
+  const pendingManualCorrection = answers.some((answer) => answer.correct == null);
+  const automaticResult = !pendingManualCorrection
+    ? (percent >= Number(examSettings?.minScore ?? 0) ? "approved" as const : "rejected" as const)
     : null;
   const nextStatus = automaticResult ?? "awaiting_review";
   const now = new Date();
@@ -565,6 +573,7 @@ function mapQuestion(question: MongoCourseExamQuestion) {
     alternatives: question.alternatives,
     correctAlternativeId: question.correctAlternativeId,
     correctAlternativeIds: question.correctAlternativeIds ?? correctIds(question),
+    correctText: question.correctText ?? null,
     placeholder: question.placeholder,
     active: question.active,
     createdAt: question.createdAt.toISOString(),
@@ -743,6 +752,13 @@ function normalizeNullableText(value: string | null | undefined, maxLength: numb
   return normalized || null;
 }
 
+function normalizeWrittenAnswerForCompare(value: string | null | undefined) {
+  return normalizeText(value, 1000)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function normalizeFullName(value: string | null | undefined) {
   const normalized = normalizeText(value, 120);
   if (normalized.length < 3) throw Object.assign(new Error("Nome completo RP deve ter pelo menos 3 caracteres."), { statusCode: 400 });
@@ -779,7 +795,9 @@ async function validateCourseExamActivation(botId: string | null, guildId: strin
     if (orders.has(question.order)) errors.push(`${label} possui ordem duplicada.`);
     orders.add(question.order);
     if (!question.points || question.points <= 0) errors.push(`${label} sem pontuação configurada.`);
-    if (question.type !== "written") {
+    if (question.type === "written") {
+      if (!normalizeNullableText(question.correctText, 1000)) errors.push(`${label} sem resposta correta configurada.`);
+    } else {
       if (question.alternatives.length < 2) errors.push(`${label} precisa ter pelo menos duas alternativas.`);
       question.alternatives.forEach((alternative) => {
         if (!alternative.text.trim()) errors.push(`${label} possui alternativa ${alternative.id} sem texto.`);
@@ -824,6 +842,7 @@ function normalizeQuestionSnapshot(value: unknown): MongoCourseExamQuestion[] {
       botId: question.botId ?? null,
       correctAlternativeId: type === "written" ? null : normalizeCorrect(question.correctAlternativeId),
       correctAlternativeIds: type === "multiple" ? normalizeCorrectList(question.correctAlternativeIds ?? question.alternatives) : [],
+      correctText: type === "written" ? normalizeNullableText(question.correctText, 1000) : null,
       courseId: String(question.courseId ?? ""),
       createdAt: question.createdAt ? new Date(question.createdAt) : now,
       description: question.description ?? null,

@@ -266,6 +266,7 @@ function npdTabletPrisionalQuestions(
       alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: preservedCorrectIds.includes(alternative.id), score: preservedCorrectIds.includes(alternative.id) ? points : 0 })),
       correctAlternativeId: (existing?.type ?? row.type) === "selection" ? preservedCorrectIds[0] ?? null : null,
       correctAlternativeIds: (existing?.type ?? row.type) === "multiple" ? preservedCorrectIds : [],
+      correctText: existing?.correctText ?? null,
       placeholder: null,
       active: true,
       createdAt: existing?.createdAt ?? now,

@@ -241,6 +241,7 @@ const examQuestionSchema = z.object({
   alternatives: z.array(z.object({ id: z.string().max(80).optional(), text: z.string().max(500), value: z.string().max(120).optional(), score: decimalNumber(z.number().min(0).max(1000)).optional(), isCorrect: z.boolean().optional(), order: z.number().int().min(0).optional() })).max(10).optional(),
   correctAlternativeId: z.string().max(80).nullable().optional(),
   correctAlternativeIds: z.array(z.string().max(80)).max(10).optional(),
+  correctText: z.string().max(1000).nullable().optional().or(z.literal("")),
   description: z.string().max(1200).nullable().optional().or(z.literal("")),
   order: z.number().int().min(0).optional(),
   questionNumber: z.number().int().min(1).max(100).optional(),

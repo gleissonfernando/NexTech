@@ -310,6 +310,7 @@ export type CourseExamQuestion = {
   alternatives: Array<{ id: string; text: string; value?: string; score?: number; isCorrect?: boolean; order?: number }>;
   correctAlternativeId: string | null;
   correctAlternativeIds: string[];
+  correctText: string | null;
   placeholder: string | null;
   active: boolean;
   createdAt: string;
