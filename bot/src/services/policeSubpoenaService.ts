@@ -29,7 +29,7 @@ import type { BotCommand, BotContext, GuildSettings, ReportSystemSettings } from
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
-import { resolveTranscriptUrl } from "./transcriptUrlService";
+import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
 
 type Competence = "iab" | "conselho" | "hcmd" | "comissario";
 type Draft = {
@@ -498,13 +498,15 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
   const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
   if (!channel?.isTextBased() || !("send" in channel)) return;
   const url = resolveTranscriptUrl(transcript);
+  const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
   const participants = new Set(messages.map((message) => message.authorId).filter(Boolean));
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt;
   await (channel as TextChannel).send(renderComponentsV2Panel({
     accentColor: color(settings.reportSystem.panelColor),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url)
+      new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
+      new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl)
     )],
     description: "A intimação foi encerrada e o canal temporário foi apagado. O transcript foi salvo para auditoria autorizada.",
     fields: [

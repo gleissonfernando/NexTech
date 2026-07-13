@@ -28,7 +28,7 @@ import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
-import { resolveTranscriptUrl } from "./transcriptUrlService";
+import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
@@ -556,6 +556,7 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
   if (!logChannel?.isTextBased() || !("send" in logChannel)) return;
 
   const url = resolveTranscriptUrl(transcript);
+  const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const createdAt = new Date(ticket.createdAt);
   const closedAt = transcript.transcript.closedAt ? new Date(transcript.transcript.closedAt) : new Date();
   await (logChannel as TextChannel).send(renderComponentsV2Panel({
@@ -563,6 +564,7 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
+        new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)

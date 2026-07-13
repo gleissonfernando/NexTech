@@ -33,7 +33,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
-import { resolveTranscriptUrl } from "./transcriptUrlService";
+import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const PREFIX = "iab_admin";
 const PANEL_SELECT_ID = "iab_report_select";
@@ -962,6 +962,7 @@ async function sendTranscriptPanel(guild: Guild, settings: GuildSettings, topic:
   const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
   if (!channel?.isTextBased() || !("send" in channel)) return;
   const url = resolveTranscriptUrl(transcript);
+  const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const createdAt = ticket.createdAt ? new Date(ticket.createdAt) : null;
   const closedAt = new Date();
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
@@ -971,6 +972,7 @@ async function sendTranscriptPanel(guild: Guild, settings: GuildSettings, topic:
     accentColor: 0xf2b84b,
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
+      new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl),
       new ButtonBuilder().setCustomId(`${PUBLIC_PREFIX}:copylink:${ticket.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true)
     )],
     description: "O atendimento foi finalizado e o transcript foi salvo com seguranca. Apenas pessoas autorizadas neste canal de logs devem acessar este registro.",
