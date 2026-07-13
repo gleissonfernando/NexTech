@@ -498,8 +498,11 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
   return (
     <div className="space-y-4">
-      {message ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
-      {error ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div> : null}
+      {error ? (
+        <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div>
+      ) : message ? (
+        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div>
+      ) : null}
 
       <Card>
         <CardHeader>
