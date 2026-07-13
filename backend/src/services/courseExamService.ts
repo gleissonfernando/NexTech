@@ -396,7 +396,11 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
       : question.correctText
         ? normalizeWrittenAnswerForCompare(writtenAnswer) === normalizeWrittenAnswerForCompare(question.correctText)
         : null;
-  const pointsEarned = correct === true ? question.points : 0;
+  const pointsEarned = question.type === "multiple"
+    ? calculateMultipleChoiceScore(question, selectedAlternativeIds)
+    : correct === true
+      ? question.points
+      : 0;
   const now = new Date();
   const doc: MongoCourseExamAnswer = {
     _id: randomUUID(),
@@ -734,6 +738,15 @@ function sameSet(left: string[], right: string[]) {
   if (left.length !== right.length) return false;
   const expected = new Set(right);
   return left.every((item) => expected.has(item));
+}
+
+function calculateMultipleChoiceScore(question: MongoCourseExamQuestion, selectedAlternativeIds: string[]) {
+  const expectedIds = correctIds(question);
+  if (!expectedIds.length) return 0;
+  const selected = new Set(selectedAlternativeIds);
+  const correctSelections = expectedIds.filter((id) => selected.has(id)).length;
+  const points = (question.points / expectedIds.length) * correctSelections;
+  return Math.min(question.points, Math.round(points * 100) / 100);
 }
 
 function isExamReleased(settings: Pick<MongoCourseExamSettings, "releaseMode" | "releaseAt"> | null | undefined) {

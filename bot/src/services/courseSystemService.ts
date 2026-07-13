@@ -2132,6 +2132,8 @@ function examDecisionDm(course: Course, settings: CourseExamSettings, attempt: C
 }
 
 function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAnswer | undefined, index: number) {
+  const pointsEarned = Number(answer?.pointsEarned ?? 0);
+  const maxScore = Number(answer?.maxScore ?? question.points ?? 0);
   if (question.type === "written") {
     return [
       `QUESTÃO ${String(index).padStart(2, "0")}`,
@@ -2141,7 +2143,7 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
       "",
       `Resposta esperada: ${question.correctText || "não configurada"}`,
       `Resultado da questão: ${answer?.correct === true ? "correta" : answer?.correct === false ? "incorreta" : "correção manual"}`,
-      `Pontuação obtida: ${formatScore(answer?.pointsEarned ?? 0)} de ${formatScore(question.points)}`
+      `Pontuação obtida: ${formatScore(pointsEarned)} de ${formatScore(question.points)}`
     ].join("\n").slice(0, 1900);
   }
   const alternatives = answer?.alternativesSnapshot?.length ? answer.alternativesSnapshot : question.alternatives;
@@ -2154,8 +2156,8 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
     alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n"),
     "",
     `Resposta esperada: ${expectedIds.length ? expectedIds.join(", ") : "não configurada"}`,
-    `Resultado da questão: ${answer?.correct ? "correta" : "incorreta"}`,
-    `Pontuação obtida: ${formatScore(answer?.pointsEarned ?? 0)} de ${formatScore(answer?.maxScore ?? question.points)}`
+    `Resultado da questão: ${answer?.correct ? "correta" : pointsEarned > 0 && pointsEarned < maxScore ? "parcialmente correta" : "incorreta"}`,
+    `Pontuação obtida: ${formatScore(pointsEarned)} de ${formatScore(maxScore)}`
   ].join("\n").slice(0, 1900);
 }
 
