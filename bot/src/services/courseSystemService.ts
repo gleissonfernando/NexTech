@@ -1094,7 +1094,7 @@ async function selectExamAnswer(interaction: StringSelectMenuInteraction, contex
     return;
   }
   const question = bundle.questions[bundle.attempt.currentQuestionIndex];
-  if (!question || question.type !== "selection") {
+  if (!question || (question.type !== "selection" && question.type !== "multiple")) {
     await interaction.reply({ content: "Pergunta inválida.", flags: MessageFlags.Ephemeral });
     return;
   }
@@ -1912,7 +1912,7 @@ function pendingSelectionQuestionPanel(course: Course, attempt: CourseExamAttemp
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_exam_confirm_answer:${attempt.id}:${index - 1}:${selectedIds.join(",")}`).setEmoji(systemComponentEmoji("visto")).setLabel("Confirmar resposta").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`course_exam_confirm_answer:${attempt.id}:${index - 1}:${selectedIds.join(",")}`).setEmoji(systemComponentEmoji("visto")).setLabel("Continuar").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`course_exam_retry:${attempt.id}:${index - 1}`).setEmoji(systemComponentEmoji("voltar")).setLabel("Alterar seleção").setStyle(ButtonStyle.Secondary)
     )],
     description: "Revise sua seleção e confirme para salvar. Depois de confirmada, a resposta não poderá ser alterada.",
