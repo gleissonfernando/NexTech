@@ -105,6 +105,15 @@ export function startReportSystemService(client: Client, context: BotContext) {
   if (client.isReady()) recover();
   else client.once("ready", recover);
 
+  client.on("channelCreate", (channel) => {
+    if (channel.type !== ChannelType.GuildText || !channel.topic?.startsWith(TOPIC_PREFIX)) return;
+    setTimeout(() => {
+      void recoverReportPanelFromChannel(channel as TextChannel, context).catch((error) => {
+        console.error("[iab] falha ao recuperar painel em canal criado:", error instanceof Error ? error.message : error);
+      });
+    }, 3_000).unref();
+  });
+
   const timer = setInterval(recover, 5 * 60_000);
   timer.unref();
 }
@@ -837,7 +846,13 @@ async function recoverOpenReportPanels(client: Client, context: BotContext) {
       const settings = await getFreshGuildSettings(context, guild.id, client.user?.id).catch(() => null);
       if (!settings?.reportSystem.enabled) continue;
 
-      for (const channel of guild.channels.cache.values()) {
+      const channels = await guild.channels.fetch().catch((error) => {
+        console.warn(`[iab] nao consegui buscar canais de ${guild.id}:`, error instanceof Error ? error.message : error);
+        return guild.channels.cache;
+      });
+
+      for (const channel of channels.values()) {
+        if (!channel) continue;
         if (channel.type !== ChannelType.GuildText || !channel.topic?.startsWith(TOPIC_PREFIX)) continue;
         const topic = topicFromString(channel.topic);
         if (!topic || topic.status === "archived" || topic.status === "closed") continue;
@@ -851,16 +866,31 @@ async function recoverOpenReportPanels(client: Client, context: BotContext) {
 
 async function recoverReportPanelInChannel(channel: TextChannel, context: BotContext, settings: GuildSettings, topic: ReportTopic) {
   const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  if (!messages) {
+    await logIabEvent(context, channel.guild, settings, topic, "Painel pendente", "Nao consegui ler mensagens para verificar/restaurar o painel interno. Verifique permissao Ver Canal, Ler Historico e Enviar Mensagens.", context.client.user?.id ?? null);
+    return;
+  }
   if (messages?.some((message) => message.author.id === context.client.user?.id && messageHasReportControl(message))) {
     return;
   }
 
   const ticket = await context.api.getTicket(topic.ticketId).catch(() => null)
     ?? await context.api.getTicketByChannel(channel.id).catch(() => null);
-  if (!ticket) return;
+  if (!ticket) {
+    await logIabEvent(context, channel.guild, settings, topic, "Painel pendente", "Nao encontrei o ticket salvo para restaurar o painel interno deste canal.", context.client.user?.id ?? null);
+    return;
+  }
 
   await sendReportControlPanel(channel, context, settings, ticket, topic, topic.status === "preparing" ? "Preparacao" : "Aberto", channel.guild);
   await logIabEvent(context, channel.guild, settings, topic, "Painel restaurado", "Painel interno da denuncia foi restaurado automaticamente no canal aberto.", context.client.user?.id ?? null);
+}
+
+async function recoverReportPanelFromChannel(channel: TextChannel, context: BotContext) {
+  const topic = topicFromString(channel.topic);
+  if (!topic || topic.status === "archived" || topic.status === "closed") return;
+  const settings = await getFreshGuildSettings(context, channel.guild.id, context.client.user?.id).catch(() => null);
+  if (!settings?.reportSystem.enabled) return;
+  await recoverReportPanelInChannel(channel, context, settings, topic);
 }
 
 function messageHasReportControl(message: Message) {
