@@ -452,7 +452,8 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   const writtenCount = answers.filter((answer) => answer.type === "written").length;
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
   const pendingManualCorrection = answers.some((answer) => answer.correct == null);
-  const automaticResult = !pendingManualCorrection
+  const requiresManualApproval = examSettings?.automaticApproval !== true && examSettings?.manualApproval !== false;
+  const automaticResult = !pendingManualCorrection && !requiresManualApproval
     ? (score >= Number(examSettings?.minScore ?? 0) ? "approved" as const : "rejected" as const)
     : null;
   const nextStatus = automaticResult ?? "awaiting_review";

@@ -727,6 +727,8 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                   <SelectField disabled={!canManage || saving} label="Canal de avaliação" onChange={(correctionChannelId) => void saveSelectedExamSettings({ correctionChannelId })} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
                   <SelectField disabled={!canManage || saving} label="Canal de resultado da prova" onChange={(resultChannelId) => void saveSelectedExamSettings({ resultChannelId })} options={textChannels} value={exam.settings.resultChannelId ?? ""} />
                   <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveSelectedExamSettings({ logChannelId })} options={textChannels} value={exam.settings.logChannelId ?? ""} />
+                  <ToggleField disabled={!canManage || saving} label="Aprovação manual" onChange={(manualApproval) => void saveSelectedExamSettings({ automaticApproval: manualApproval ? false : exam.settings.automaticApproval, manualApproval })} value={exam.settings.manualApproval} />
+                  <ToggleField disabled={!canManage || saving} label="Aprovação automática" onChange={(automaticApproval) => void saveSelectedExamSettings({ automaticApproval, manualApproval: automaticApproval ? false : exam.settings.manualApproval })} value={exam.settings.automaticApproval} />
                 </div>
                 {examLinkDraft ? (
                   <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">

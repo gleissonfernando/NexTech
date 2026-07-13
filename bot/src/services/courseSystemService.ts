@@ -2132,9 +2132,16 @@ function examFinishPanel(course: Course, settings: CourseExamSettings, attempt: 
 async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
   const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId);
   const courseSettings = await context.api.getCourseSettings(interaction.guildId!);
-  const channel = await fetchTextChannel(interaction, examCorrectionChannelId(courseSettings, runtime.settings));
-  if (!channel) return;
-  const message = await channel.send(examCorrectionPanel(course, attempt, questions, answers, interaction.guild));
+  const channel = await fetchFirstTextChannel(interaction, examCorrectionChannelIds(courseSettings, runtime.settings));
+  if (!channel) {
+    await sendCourseLog(interaction, courseSettings, `Falha ao enviar painel de correção\nTentativa: ${attempt.id}\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nMotivo: nenhum canal de avaliação/log válido foi encontrado.`).catch(() => null);
+    return;
+  }
+  const message = await channel.send(examCorrectionPanel(course, attempt, questions, answers, interaction.guild)).catch(async (error) => {
+    await sendCourseLog(interaction, courseSettings, `Falha ao enviar painel de correção\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nErro: ${error instanceof Error ? error.message : String(error)}`).catch(() => null);
+    return null;
+  });
+  if (!message) return;
   await context.api.setCourseExamCorrectionMessage(interaction.guildId!, attempt.id, message.id).catch(() => null);
 }
 
@@ -2146,7 +2153,7 @@ async function editExamCorrectionPanel(interaction: ButtonInteraction | ModalSub
     return;
   }
   if (!attempt.correctionMessageId) return;
-  const channel = await fetchTextChannel(interaction, examCorrectionChannelId(courseSettings, examSettings));
+  const channel = await fetchFirstTextChannel(interaction, examCorrectionChannelIds(courseSettings, examSettings));
   const message = await channel?.messages.fetch(attempt.correctionMessageId).catch(() => null);
   await message?.edit(payload).catch(() => null);
 }
@@ -2215,8 +2222,8 @@ function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questio
   });
 }
 
-function examCorrectionChannelId(courseSettings: CourseSettings, examSettings: CourseExamSettings) {
-  return examSettings.correctionChannelId || courseSettings.evaluationChannelId || examSettings.logChannelId || courseSettings.reportChannelId;
+function examCorrectionChannelIds(courseSettings: CourseSettings, examSettings: CourseExamSettings) {
+  return uniqueIds([examSettings.correctionChannelId, courseSettings.evaluationChannelId, examSettings.logChannelId, courseSettings.reportChannelId]);
 }
 
 async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInteraction, channelId: string | null | undefined) {
@@ -2224,6 +2231,18 @@ async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInte
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) return null;
   return channel as TextChannel;
+}
+
+async function fetchFirstTextChannel(interaction: ButtonInteraction | ModalSubmitInteraction, channelIds: Array<string | null | undefined>) {
+  for (const channelId of channelIds) {
+    const channel = await fetchTextChannel(interaction, channelId);
+    if (channel) return channel;
+  }
+  return null;
+}
+
+function uniqueIds(ids: Array<string | null | undefined>) {
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))];
 }
 
 function examReviewStatusLabel(attempt: CourseExamAttempt) {
