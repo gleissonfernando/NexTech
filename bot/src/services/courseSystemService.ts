@@ -1206,7 +1206,7 @@ async function submitWrittenAnswer(interaction: ModalSubmitInteraction, context:
     context.api.getCourseExamRuntime(interaction.guildId!, updated.attempt.courseId)
   ]);
   await sendCourseLog(interaction, await context.api.getCourseSettings(interaction.guildId!), `Pergunta discursiva respondida\nTentativa: ${attemptId}\nAluno: <@${updated.attempt.studentId}>\n${examStudentIdentificationSummary(updated.attempt)}\nPergunta: ${question.prompt}`);
-  await interaction.editReply("Resposta salva.");
+  await interaction.editReply("Resposta registrada com sucesso. Continue para a próxima questão.");
   if (channel?.isTextBased() && "send" in channel) {
     await sendExamQuestion(channel as TextChannel, runtime.settings, course, updated.attempt, updated.questions);
   }
@@ -1249,7 +1249,7 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
     context.api.getCourseSettings(interaction.guildId!)
   ]);
   await interaction.message.edit({ components: [] }).catch(() => null);
-  await interaction.followUp({ content: "Prova finalizada e enviada para correção.", flags: MessageFlags.Ephemeral });
+  await interaction.followUp({ content: "Prova finalizada. A equipe responsável recebeu o resultado.", flags: MessageFlags.Ephemeral });
   const postFinalizeResults = await Promise.allSettled([
     sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers),
     sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers),
@@ -1887,7 +1887,7 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`course_exam_answer:${attempt.id}:${index - 1}`)
-          .setPlaceholder(isMultiple ? "Selecione todas as alternativas corretas" : "Selecione uma alternativa")
+          .setPlaceholder(isMultiple ? "Selecione uma ou mais alternativas" : "Selecione uma alternativa")
           .setMinValues(1)
           .setMaxValues(isMultiple ? Math.min(10, question.alternatives.length) : 1)
           .addOptions(question.alternatives.slice(0, 10).map((alternative) => ({
@@ -1897,9 +1897,9 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
           })))
       )
     ],
-    description: question.description || (isMultiple ? "Assinale as alternativas corretas." : "Assinale a alternativa correta."),
+    description: question.description || "Selecione sua resposta.",
     fields: [
-      `Curso: ${course.name}\nQuestão ${index} de ${total}\nValor: ${question.points}`,
+      `Curso: ${course.name}\nQuestão ${index} de ${total}`,
       `**${question.prompt}**`,
       question.alternatives.map((alternative) => `( ) ${alternative.text}`).join("\n")
     ],
@@ -1917,7 +1917,7 @@ function pendingSelectionQuestionPanel(course: Course, attempt: CourseExamAttemp
     )],
     description: "Revise sua seleção e confirme para salvar. Depois de confirmada, a resposta não poderá ser alterada.",
     fields: [
-      `Curso: ${course.name}\nQuestão ${index} de ${total}\nValor: ${question.points}`,
+      `Curso: ${course.name}\nQuestão ${index} de ${total}`,
       `**${question.prompt}**`,
       question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
     ],
@@ -1930,9 +1930,9 @@ function answeredSelectionQuestionPanel(attempt: CourseExamAttempt, question: Co
   void attempt;
   return renderComponentsV2Panel({
     accentColor: 0x16a34a,
-    description: "Resposta salva. Esta questão foi bloqueada.",
+    description: "Resposta registrada com sucesso. Continue para a próxima questão.",
     fields: [
-      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `Pergunta ${index}/${total}`,
       `**${question.prompt}**`,
       question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
     ],
@@ -1949,7 +1949,7 @@ function writtenQuestionPanel(course: Course, attempt: CourseExamAttempt, questi
     )],
     description: "Abra o modal, envie sua resposta e aguarde a próxima etapa. Depois de enviada, a resposta não poderá ser alterada.",
     fields: [
-      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `Pergunta ${index}/${total}`,
       `**${question.prompt}**`,
       question.description || question.placeholder || "Envie sua resposta em uma mensagem abaixo."
     ],
@@ -1962,9 +1962,9 @@ function answeredWrittenQuestionPanel(attempt: CourseExamAttempt, question: Cour
   void attempt;
   return renderComponentsV2Panel({
     accentColor: 0x16a34a,
-    description: "Resposta salva. Esta questão foi bloqueada.",
+    description: "Resposta registrada com sucesso. Continue para a próxima questão.",
     fields: [
-      `Pergunta ${index}/${total}\nValor: ${question.points}`,
+      `Pergunta ${index}/${total}`,
       `**${question.prompt}**`
     ],
     moduleId: "courses",
