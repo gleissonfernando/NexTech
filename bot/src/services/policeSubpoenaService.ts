@@ -558,7 +558,7 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
       `**Intimação**\n**Canal:** ${state.channelId}\n**Status:** ${status}\n**Órgão:** ${COMPETENCE_LABEL[state.finalCompetence]}`,
       `**Envolvidos**\n**Intimado:** <@${state.targetId}> (${state.targetId})\n**Criada por:** <@${state.createdById}>\n**Responsável:** <@${state.responsibleId}>`,
       `**Resumo**\n**Criada em:** <t:${Math.floor(new Date(state.createdAt).getTime() / 1000)}:F>\n**Mensagens:** ${messages.length}\n**Anexos:** ${attachmentCount}\n**Participantes:** ${participants.size}`,
-      `**Acesso**\n**Link:** ${url}\n**Senha:** ${transcript.temporaryPassword ? `||${transcript.temporaryPassword}||` : "não gerada"}\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuração padrão"}`
+      `**Acesso**\n**Link:** ${url}\n**Senha:** temporária gerada e mantida oculta\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuração padrão"}`
     ],
     guild,
     image: settings.reportSystem.subpoenaPanelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.subpoenaPanelBannerUrl } : null,
