@@ -20,6 +20,7 @@ import {
   type Guild,
   type Interaction,
   type Message,
+  type PartialMessage,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
   type UserSelectMenuInteraction,
@@ -44,6 +45,7 @@ const IDs = {
 
 const emptyTimers = new Map<string, NodeJS.Timeout>();
 const configuredAutoDeleteTimers = new Map<string, NodeJS.Timeout>();
+const panelPublishLocks = new Map<string, Promise<string | null>>();
 let started = false;
 
 export function startTemporaryVoiceService(client: Client<true>, context: BotContext) {
@@ -86,19 +88,40 @@ export async function handleTemporaryVoiceMessage(message: Message, context: Bot
     return true;
   }
 
-  if (settings.panelChannelId === message.channelId && settings.panelMessageId) {
-    const previousPanel = await message.channel.messages.fetch(settings.panelMessageId).catch(() => null);
-    await previousPanel?.delete().catch(() => null);
-  }
-
   await message.delete().catch(() => null);
-  const panel = await message.channel.send(panelPayload(message.guild));
 
   if (settings.panelChannelId === message.channelId) {
-    await context.api.updateTemporaryVoicePanelState(message.guild.id, panel.id).catch(() => null);
+    await publishPanel(message.guild, context, settings);
+    return true;
   }
 
+  await message.channel.send(panelPayload(message.guild));
+
   return true;
+}
+
+export async function handleTemporaryVoicePanelMessageDelete(message: Message | PartialMessage, context: BotContext) {
+  if (!message.guild || !isBotModuleEnabled("temporary-voice")) return;
+  const settings = await context.api.getTemporaryVoiceSettings(message.guild.id).catch(() => null);
+  if (!settings?.enabled || settings.panelMessageId !== message.id) return;
+  await context.api.updateTemporaryVoicePanelState(message.guild.id, null).catch((error) => {
+    console.error("[temporary-voice] failed to mark deleted panel as missing:", error instanceof Error ? error.message : error);
+  });
+  await context.api.postLog({
+    guildId: message.guild.id,
+    message: `Painel de calls temporárias marcado como ausente. Mensagem removida: ${message.id}.`,
+    metadata: {
+      channelId: message.channelId,
+      messageId: message.id,
+      panel: "temporary-voice"
+    },
+    type: "voice.temporary_panel_missing",
+    userId: context.client.user?.id ?? "system"
+  }).catch(() => null);
+  const refreshed = await context.api.getTemporaryVoiceSettings(message.guild.id).catch(() => null);
+  if (refreshed?.panelChannelId) await publishPanel(message.guild, context, refreshed).catch((error) => {
+    console.warn("[temporary-voice] painel:", error instanceof Error ? error.message : String(error));
+  });
 }
 
 export async function handleTemporaryVoiceInteraction(interaction: Interaction, context: BotContext) {
@@ -729,7 +752,18 @@ async function deleteConfiguredAutoDeleteChannel(channel: VoiceChannel, context:
 }
 
 async function publishPanel(guild: Guild, context: BotContext, settings: TemporaryVoiceSettings) {
-  if (!settings.panelChannelId) return;
+  const lockKey = `${settings.botId}:${guild.id}`;
+  const active = panelPublishLocks.get(lockKey);
+  if (active) return active;
+  const operation = publishPanelUnlocked(guild, context, settings).finally(() => {
+    if (panelPublishLocks.get(lockKey) === operation) panelPublishLocks.delete(lockKey);
+  });
+  panelPublishLocks.set(lockKey, operation);
+  return operation;
+}
+
+async function publishPanelUnlocked(guild: Guild, context: BotContext, settings: TemporaryVoiceSettings) {
+  if (!settings.panelChannelId) return null;
 
   const channel = await guild.channels.fetch(settings.panelChannelId).catch(() => null);
 
@@ -740,11 +774,29 @@ async function publishPanel(guild: Guild, context: BotContext, settings: Tempora
   if (settings.panelMessageId) {
     const message = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
 
-    if (message) return;
+    if (message) {
+      await message.edit(panelPayload(guild));
+      return message.id;
+    }
   }
 
   const message = await channel.send(panelPayload(guild));
-  await context.api.updateTemporaryVoicePanelState(guild.id, message.id);
+  await context.api.updateTemporaryVoicePanelState(guild.id, message.id).catch(async (error) => {
+    await context.api.postLog({
+      guildId: guild.id,
+      message: `Painel de calls temporárias publicado, mas falhou ao salvar messageId ${message.id}.`,
+      metadata: {
+        channelId: channel.id,
+        error: error instanceof Error ? error.message : String(error),
+        messageId: message.id,
+        panel: "temporary-voice"
+      },
+      type: "voice.temporary_panel_state_failed",
+      userId: context.client.user?.id ?? "system"
+    }).catch(() => null);
+    throw error;
+  });
+  return message.id;
 }
 
 function panelPayload(guild: Guild | null = null) {

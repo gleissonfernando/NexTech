@@ -196,6 +196,13 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
 
     const previous = await getBotGuildModuleConfig(botId, guildId, moduleId);
     const normalizedConfig = normalizeModuleConfig(moduleId, input.config);
+    if (
+      moduleId === "temporary-voice"
+      && !Object.prototype.hasOwnProperty.call(input.config, "panelMessageId")
+      && previous.config.panelMessageId
+    ) {
+      (normalizedConfig as Record<string, unknown>).panelMessageId = previous.config.panelMessageId;
+    }
 
     if (moduleId === "tag-verification" && normalizedConfig.enabled === true) {
       await validateTagVerificationRole(botId, guildId, String((normalizedConfig as Record<string, unknown>).roleId));

@@ -191,7 +191,7 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (managedRuntimeBot || isBotModuleEnabled("logs") || isSelfBotModuleEnabled()) {
+  if (managedRuntimeBot || isBotModuleEnabled("logs") || isBotModuleEnabled("temporary-voice") || isSelfBotModuleEnabled()) {
     client.on(Events.MessageDelete, (message) => {
       if (isMaintenanceModeActive()) return;
       runEvent("messageDelete", () => handleMessageDelete(message, context));
