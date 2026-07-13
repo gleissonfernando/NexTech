@@ -11,6 +11,7 @@ import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, sta
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
 import { registerBackgroundJobHandler, startBackgroundJobWorker, stopBackgroundJobWorker } from "./services/backgroundJobService";
 import { getTranscriptStartupStatus } from "./services/transcriptService";
+import { runTranscriptUrlStartupMigration } from "./services/transcriptUrlMigrationService";
 
 const httpServer = createServer(app);
 let shuttingDown = false;
@@ -31,6 +32,7 @@ httpServer.listen(env.PORT, env.HOST, () => {
   const transcriptStatus = getTranscriptStartupStatus();
   if (transcriptStatus.ok) {
     console.log(`[transcripts] rota publica pronta em ${transcriptStatus.route} (porta ${transcriptStatus.port})`);
+    void runTranscriptUrlStartupMigration();
   } else {
     console.error(`[transcripts] configuracao invalida: ${transcriptStatus.error}`);
   }
