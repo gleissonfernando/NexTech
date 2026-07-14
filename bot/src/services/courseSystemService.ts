@@ -62,6 +62,10 @@ const IDS = {
   channelSchedule: "course_channel_schedule",
   channelReport: "course_channel_report",
   channelLogs: "course_channel_logs",
+  channelEvaluation: "course_channel_evaluation",
+  channelProofLogs: "course_channel_proof_logs",
+  channelResult: "course_channel_result",
+  channelTempProofCategory: "course_channel_temp_proof_category",
   editCourse: "course_config_edit_course",
   editCourseInfo: "course_edit_info",
   editSelect: "course_edit_select",
@@ -464,8 +468,12 @@ async function handleChannelSelect(interaction: ChannelSelectMenuInteraction, co
   if (interaction.customId === IDS.channelSchedule) patch.scheduleChannelId = value;
   if (interaction.customId === IDS.channelReport) patch.reportChannelId = value;
   if (interaction.customId === IDS.channelLogs) patch.logChannelId = value;
+  if (interaction.customId === IDS.channelEvaluation) patch.evaluationChannelId = value;
+  if (interaction.customId === IDS.channelProofLogs) patch.proofLogChannelId = value;
+  if (interaction.customId === IDS.channelResult) patch.resultChannelId = value;
+  if (interaction.customId === IDS.channelTempProofCategory) patch.tempProofCategoryId = value;
   const settings = await context.api.saveCourseSettings(interaction.guildId!, patch, interaction.user.id);
-  await interaction.update(channelsPanel(settings, "Configuração de publicação salva com sucesso."));
+  await interaction.update(channelsPanel(settings, "Configuração de canais salva com sucesso."));
   return;
 }
 
@@ -1605,6 +1613,7 @@ async function completeExamReview(interaction: ButtonInteraction | ModalSubmitIn
   if (resultDelivery.ok && resultDelivery.channelId && resultDelivery.messageId) {
     await context.api.setCourseExamResultDelivery(interaction.guildId!, reviewed.id, { channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }).catch((error) => logCourseFlowError("exam_result_delivery_persist_failed", error, { attemptId: reviewed.id, channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }));
   }
+  await sendFinalExamLog(interaction, courseSettings, course, reviewed, bundle.questions, bundle.answers, interaction.user.id);
   await sendCourseLog(interaction, courseSettings, `Prova corrigida\nTentativa: ${attemptId}\nAluno: <@${reviewed.studentId}>\n${examStudentIdentificationSummary(reviewed)}\nResultado: ${status === "approved" ? "Aprovado" : "Reprovado"}\nNota automática: ${formatScore(reviewed.automaticScore ?? reviewed.score)}\nNota manual: ${formatScore(reviewed.manualScore ?? 0)}\nNota final: ${formatScore(reviewed.finalScore ?? reviewed.score)}\nAvaliador: <@${interaction.user.id}>`).catch(() => null);
   const student = await interaction.guild!.members.fetch(reviewed.studentId).catch(() => null);
   await student?.send(examDecisionDm(course, runtime.settings, reviewed, status)).catch(() => null);
@@ -1640,6 +1649,7 @@ async function publishDashboardReviewedExamResult(
   if (resultDelivery.ok && resultDelivery.channelId && resultDelivery.messageId) {
     await context.api.setCourseExamResultDelivery(payload.guildId, reviewed.id, { channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }).catch((error) => logCourseFlowError("exam_result_delivery_persist_failed", error, { attemptId: reviewed.id, channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }));
   }
+  await sendFinalExamLog(interaction, courseSettings, course, reviewed, bundle.questions, bundle.answers, payload.actorId ?? null);
   await sendCourseLog(interaction, courseSettings, `Prova corrigida pela dashboard\nTentativa: ${payload.attemptId}\nAluno: <@${reviewed.studentId}>\n${examStudentIdentificationSummary(reviewed)}\nResultado: ${payload.status === "approved" ? "Aprovado" : "Reprovado"}\nNota automática: ${formatScore(reviewed.automaticScore ?? reviewed.score)}\nNota manual: ${formatScore(reviewed.manualScore ?? 0)}\nNota final: ${formatScore(reviewed.finalScore ?? reviewed.score)}\nAvaliador: ${payload.actorId ? `<@${payload.actorId}>` : "Dashboard"}`).catch(() => null);
   const student = await guild.members.fetch(reviewed.studentId).catch(() => null);
   await student?.send(examDecisionDm(course, runtime.settings, reviewed, payload.status)).catch(() => null);
@@ -1866,14 +1876,18 @@ function managersPanel(settings: CourseSettings, message?: string) {
 }
 
 function channelsPanel(settings: CourseSettings, message?: string) {
-  const channelSelect = (id: string, placeholder: string) => new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setMinValues(1).setMaxValues(1)
+  const channelSelect = (id: string, placeholder: string, ...types: ChannelType[]) => new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+    new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).setChannelTypes(...(types.length ? types : [ChannelType.GuildText, ChannelType.GuildAnnouncement])).setMinValues(1).setMaxValues(1)
   );
   return renderComponentsV2Panel({
     accentColor: 0x2563eb,
     actions: [
       channelSelect(IDS.channelPublish, "Canal padrão de publicação"),
-      channelSelect(IDS.channelLogs, "Canal de logs"),
+      channelSelect(IDS.channelEvaluation, "Canal de aprovação das provas"),
+      channelSelect(IDS.channelProofLogs, "Canal de logs das provas"),
+      channelSelect(IDS.channelResult, "Canal de resultados das provas"),
+      channelSelect(IDS.channelTempProofCategory, "Categoria de canais temporários", ChannelType.GuildCategory),
+      channelSelect(IDS.channelLogs, "Canal de logs administrativos"),
       new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.generalInstructorRoles).setPlaceholder("Cargo geral dos instrutores").setMinValues(0).setMaxValues(10)),
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))
     ],
@@ -1881,10 +1895,11 @@ function channelsPanel(settings: CourseSettings, message?: string) {
     fields: [
       message ? `**${message}**` : "",
       `Publicação: ${settings.publishChannelId ? `<#${settings.publishChannelId}>` : "não configurado"}`,
-      `Provas: ${settings.proofLogChannelId ? `<#${settings.proofLogChannelId}>` : "não configurado"}`,
-      `Avaliação: ${settings.evaluationChannelId ? `<#${settings.evaluationChannelId}>` : "não configurado"}`,
-      `Resultados: ${settings.resultChannelId ? `<#${settings.resultChannelId}>` : "não configurado"}`,
-      `Logs: ${settings.adminLogChannelId ? `<#${settings.adminLogChannelId}>` : "não configurado"}`,
+      `Canal de aprovação das provas: ${settings.evaluationChannelId ? `<#${settings.evaluationChannelId}>` : "não configurado"}`,
+      `Canal de logs das provas: ${settings.proofLogChannelId ? `<#${settings.proofLogChannelId}>` : "não configurado"}`,
+      `Canal de resultados das provas: ${settings.resultChannelId ? `<#${settings.resultChannelId}>` : "não configurado"}`,
+      `Categoria de provas: ${settings.tempProofCategoryId ? `<#${settings.tempProofCategoryId}>` : "não configurado"}`,
+      `Logs administrativos: ${settings.adminLogChannelId ? `<#${settings.adminLogChannelId}>` : settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`,
       `Cargos gerais de instrutor: ${settings.generalInstructorRoleIds.map((id) => `<@&${id}>`).join(", ") || "nenhum"}`
     ].filter(Boolean),
     moduleId: "courses",
@@ -2541,43 +2556,87 @@ async function sendExamQuestionContinuationMessages(channel: TextChannel, intera
   }
 }
 
-function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null, mentionRoleId?: string | null) {
+async function sendFinalExamLog(interaction: ButtonInteraction | ModalSubmitInteraction, settings: CourseSettings, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], reviewerId: string | null) {
+  const channelId = settings.proofLogChannelId || settings.adminLogChannelId || settings.logChannelId;
+  if (!channelId) {
+    logCourseFlow("exam_final_log_skipped", { attemptId: attempt.id, courseId: course.id, guildId: interaction.guildId, reason: "log_channel_not_configured" });
+    return;
+  }
+  const channel = await fetchTextChannel(interaction, channelId);
+  if (!channel) {
+    const diagnostics = await diagnoseTextChannels(interaction, [channelId]);
+    logCourseFlow("exam_final_log_channel_missing", { attemptId: attempt.id, channelId, courseId: course.id, guildId: interaction.guildId, diagnostics });
+    await sendCourseLog(interaction, settings, `Falha ao enviar log final da prova\nTentativa: ${attempt.id}\nCanal configurado: <#${channelId}>\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nDiagnóstico: ${diagnostics.join(" | ") || "sem diagnóstico"}`).catch(() => null);
+    return;
+  }
+
+  const member = await interaction.guild?.members.fetch(attempt.studentId).catch(() => null);
+  const reviewerLabel = reviewerId ? `<@${reviewerId}>` : attempt.correctedBy ? `<@${attempt.correctedBy}>` : "Dashboard";
+  const timestamp = Math.floor(new Date(attempt.correctedAt ?? attempt.finishedAt ?? attempt.updatedAt).getTime() / 1000);
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
+  const payload = renderComponentsV2Panel({
+    accentColor: examResultAccent(attempt),
+    description: "Resultado final persistido após análise da prova.",
+    fields: [
+      [
+        `Aluno: ${member?.displayName ?? `<@${attempt.studentId}>`} (${attempt.studentId})`,
+        `Curso: ${course.name}`,
+        `Instrutor: <@${attempt.instructorId}>`,
+        `Nota: ${formatScore(attempt.finalScore ?? attempt.score)}/${formatScore(attempt.maxScore)}`,
+        `Quantidade de acertos: ${attempt.objectiveCorrect}`,
+        `Quantidade de erros: ${attempt.objectiveWrong}`,
+        `Status: ${examFinalStatusLabel(attempt)}`,
+        `Responsável pela análise: ${reviewerLabel}`,
+        `Data: <t:${timestamp}:F>`,
+        `Tentativa: ${attempt.id}`
+      ].join("\n"),
+      ...questions.slice(0, 12).map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1))
+    ],
+    guild: interaction.guild,
+    moduleId: "courses",
+    title: "📋 RESULTADO FINAL DA PROVA"
+  });
+  const sent = await channel.send(payload).catch((error) => {
+    logCourseFlowError("exam_final_log_send_failed", error, { attemptId: attempt.id, channelId: channel.id, courseId: course.id, guildId: interaction.guildId });
+    return null;
+  });
+  if (!sent) return;
+  await sendExamQuestionContinuationMessages(channel, interaction, course, attempt, questions, answers, "Resultado Final da Prova - Perguntas", 12);
+  logCourseFlow("exam_final_log_sent", { attemptId: attempt.id, channelId: channel.id, messageId: sent.id, courseId: course.id, guildId: interaction.guildId });
+}
+
+function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null, mentionRoleId?: string | null) {
   const reviewed = attempt.result === "approved" || attempt.result === "rejected";
   const reviewable = ["finished", "awaiting_review", "manual_reviewed"].includes(attempt.status);
-  const writtenTotal = questions.filter((question) => question.type === "written").length;
   const finalScore = attempt.finalScore ?? attempt.automaticScore ?? attempt.score;
+  const status = reviewed
+    ? attempt.result === "approved" || attempt.status === "approved" ? "APROVADO" : "REPROVADO"
+    : "Aguardando análise";
   const fields = [
     [
       `Aluno: <@${attempt.studentId}>`,
-      ...examStudentIdentificationLines(attempt),
+      `ID Discord: ${attempt.studentId}`,
       `Curso: ${course.name}`,
       `Instrutor: <@${attempt.instructorId}>`,
-      `Início: <t:${Math.floor(new Date(attempt.startedAt).getTime() / 1000)}:F>`,
-      `Fim: ${attempt.finishedAt ? `<t:${Math.floor(new Date(attempt.finishedAt).getTime() / 1000)}:F>` : "-"}`,
-      `Tempo gasto: ${formatExamDuration(attempt.startedAt, attempt.finishedAt)}`,
-      `Nota automática: ${formatScore(attempt.automaticScore ?? attempt.score)}`,
-      `Nota manual: ${attempt.manualScore === null || attempt.manualScore === undefined ? "Aguardando Correção" : formatScore(attempt.manualScore)}`,
-      `Nota final: ${formatScore(finalScore)}`,
-      `Status: ${examReviewStatusLabel(attempt)}`,
-      `Avaliadores: ${mentionRoleId ? `<@&${mentionRoleId}>` : "não configurado"}`,
-      `Questões corretas: ${attempt.objectiveCorrect}`,
-      `Questões erradas: ${attempt.objectiveWrong}`,
-      `Questões discursivas: ${attempt.writtenCount || writtenTotal}`
-    ].join("\n"),
-    ...questions.slice(0, 12).map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1))
+      `Data/Hora: ${attempt.finishedAt ? `<t:${Math.floor(new Date(attempt.finishedAt).getTime() / 1000)}:F>` : "-"}`,
+      `Resultado: Nota ${formatScore(finalScore)}/${formatScore(attempt.maxScore)}`,
+      `Acertos: ${attempt.objectiveCorrect}`,
+      `Erros: ${attempt.objectiveWrong}`,
+      `Status: ${status}`,
+      `Avaliadores: ${mentionRoleId ? `<@&${mentionRoleId}>` : "não configurado"}`
+    ].join("\n")
   ];
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(reviewed || !reviewable),
-      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar").setStyle(ButtonStyle.Danger).setDisabled(reviewed || !reviewable)
+      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar aluno").setStyle(ButtonStyle.Success).setDisabled(reviewed || !reviewable),
+      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar aluno").setStyle(ButtonStyle.Danger).setDisabled(reviewed || !reviewable)
     )],
-    description: reviewable ? "Painel de avaliação manual da prova." : "Painel de acompanhamento da prova. Ele é atualizado conforme o aluno responde.",
+    description: reviewable ? "Aguardando análise da equipe responsável." : "Avaliação já analisada.",
     fields,
     guild,
     moduleId: "courses",
-    title: "Correção de Prova"
+    title: "📚 AVALIAÇÃO DE CURSO"
   });
 }
 
@@ -2615,6 +2674,9 @@ async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInte
   if (!channelId || !interaction.guild) return null;
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) return null;
+  const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
+  const permissions = me && "permissionsFor" in channel ? channel.permissionsFor(me) : null;
+  if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.SendMessages)) return null;
   return channel as TextChannel;
 }
 
