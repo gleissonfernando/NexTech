@@ -309,15 +309,20 @@ async function assertRuntime(botId: string | null, guildId: string) {
 function sanitizeSettings(input: z.infer<typeof settingsSchema>) {
   return {
     ...input,
-    adornmentBannerUrl: input.adornmentBannerUrl || null,
-    approvalDmBannerUrl: input.approvalDmBannerUrl || null,
-    dmBannerUrl: input.dmBannerUrl || null,
-    finishedDmBannerUrl: input.finishedDmBannerUrl || null,
-    panelBannerUrl: input.panelBannerUrl || null,
-    rejectionDmBannerUrl: input.rejectionDmBannerUrl || null
+    adornmentBannerUrl: normalizeOptionalUrl(input.adornmentBannerUrl),
+    approvalDmBannerUrl: normalizeOptionalUrl(input.approvalDmBannerUrl),
+    dmBannerUrl: normalizeOptionalUrl(input.dmBannerUrl),
+    finishedDmBannerUrl: normalizeOptionalUrl(input.finishedDmBannerUrl),
+    panelBannerUrl: normalizeOptionalUrl(input.panelBannerUrl),
+    rejectionDmBannerUrl: normalizeOptionalUrl(input.rejectionDmBannerUrl)
   };
 }
 
 function routeParam(req: Request, name: string) {
   return z.string().min(1).parse(req.params[name]);
+}
+
+function normalizeOptionalUrl(value: string | null | undefined) {
+  const normalized = typeof value === "string" ? value.trim() : value;
+  return normalized || null;
 }

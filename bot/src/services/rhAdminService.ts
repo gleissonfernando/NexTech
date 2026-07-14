@@ -409,6 +409,7 @@ function logDueAbsenceError(error: unknown) {
 }
 
 function mainPanel(settings: RhAdminSettings, guild: Guild | null | undefined = null) {
+  const panelBannerUrl = settings.panelBannerUrl?.trim() || null;
   return renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -422,7 +423,7 @@ function mainPanel(settings: RhAdminSettings, guild: Guild | null | undefined = 
       `──────────────────────────────\n## 🎖️ Solicitação de Adorno\n${settings.adornmentDescription}\n\n**Requisitos**\n• Envie a numeração in-game.\n• Informe um link direto da imagem.\n• A imagem deve estar pública e acessível.\n• O pedido será analisado pelo RH.`,
       "──────────────────────────────\n**Ações disponíveis**\nUse os botões abaixo para iniciar sua solicitação."
     ],
-    image: settings.panelBannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.panelBannerUrl } : null,
+    image: panelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: panelBannerUrl } : null,
     moduleId: MODULE_ID,
     title: `${systemEmojiText("homem", guild)} RH Administrativo`
   });
