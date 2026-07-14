@@ -37,7 +37,7 @@ import {
 import type { BotCommand, BotContext } from "../types";
 import { currentRuntimeBotId, env } from "../config/env";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
-import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
+import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { Course, CourseDepartment, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseSettings } from "./apiClient";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
@@ -2263,6 +2263,7 @@ function selectCoursePanel(description: string, customId: string, courses: Cours
 }
 
 function coursePublicationPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }, enrollments: CourseEnrollment[] = []) {
+  void guild;
   const students = publication.students.map((id, index) => `${index + 1}. <@${id}>`).join("\n") || "Nenhum aluno inscrito ainda.";
   const full = publication.students.length >= publication.capacity;
   const statusText = coursePublicationStatusLabel(publication, full);
@@ -2273,18 +2274,16 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
-  const actions = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji(systemComponentEmoji("acessar")).setLabel(course.buttonLabels.enter || "Entrar no Curso").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
-      new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji(systemComponentEmoji("porta")).setLabel(course.buttonLabels.leave || "Sair do Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
-    ),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji(systemComponentEmoji("liga")).setLabel("Iniciar curso").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
-      new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Realizar prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
-      new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Finalizar curso").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
-      new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel(course.buttonLabels.cancel || "Cancelar Curso").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
-    )
-  ];
+  const studentActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setLabel("Entrar").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
+    new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel("Sair").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
+  );
+  const adminActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel("Iniciar").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+    new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setLabel("Realizar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
+    new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setLabel("Finalizar").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
+    new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
+  );
   const examProgress = enrollments
     .filter((enrollment) => ["STARTING", "IN_PROGRESS", "COMPLETED", "APPROVED", "FAILED"].includes(enrollment.examStatus))
     .map((enrollment) => {
@@ -2294,31 +2293,106 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       const referenceTime = enrollment.completedAt ?? enrollment.examStartedAt;
       return `• ${enrollment.studentName} — ${label}${referenceTime ? ` — ${new Date(referenceTime).toLocaleString("pt-BR")}` : ""}`;
     });
-  return renderComponentsV2Panel({
+  const bannerUrl = resolvePanelImageUrl(course.bannerUrl);
+  const components: unknown[] = [
+    ...(bannerUrl ? [{ type: 12, items: [{ media: { url: bannerUrl }, description: course.name }] }] : []),
+    textBlock(`# 📚 ${course.name.toUpperCase()}\n${course.code ? `${course.code} • ` : ""}Curso Oficial`),
+    separator(),
+    textBlock(`## 📖 Sobre o Curso\n\n${course.publishText || course.description || "Curso disponível para inscrição. Acompanhe o status, entre na lista e aguarde o instrutor iniciar a aula."}`),
+    separator(),
+    textBlock(`## 📋 Regulamento\n\n${coursePublicationRules(course)}`),
+    separator(),
+    textBlock([
+      "## 📅 Informações",
+      "",
+      `👤 **Instrutor:** <@${publication.instructorId}>`,
+      `🏢 **DP:** ${coursePublicationDepartmentLabel(publication)}`,
+      `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
+      `🕒 **Horário:** ${coursePublicationTimeLabel(publication)}`,
+      `👥 **Vagas:** ${publication.students.length}/${publication.capacity}`,
+      `📌 **Status:** ${statusText}`,
+      "",
+      statusNotice
+    ].join("\n")),
+    separator(),
+    textBlock(`## 📝 Observações\n\n${publication.notes || "Sem observações."}`),
+    separator(),
+    textBlock(`## 👥 Alunos Inscritos\n\n${students}`),
+    ...(examProgress.length ? [
+      separator(),
+      textBlock(`## 🧾 Situação das Provas\n\n${examProgress.join("\n")}\n\n**Em andamento:** ${enrollments.filter((item) => item.examStatus === "STARTING" || item.examStatus === "IN_PROGRESS").length} | **Concluídas:** ${enrollments.filter((item) => ["COMPLETED", "APPROVED", "FAILED"].includes(item.examStatus)).length}`)
+    ] : []),
+    ...(publication.startedAt || publication.proofStartedAt || publication.finishedAt || publication.status === "cancelled" ? [
+      separator(),
+      textBlock([
+        publication.startedAt ? `🟢 **Início:** ${new Date(publication.startedAt).toLocaleString("pt-BR")} por ${publication.startedBy ? `<@${publication.startedBy}>` : `<@${publication.instructorId}>`}` : null,
+        publication.proofStartedAt ? `📝 **Prova liberada:** ${new Date(publication.proofStartedAt).toLocaleString("pt-BR")} por ${publication.proofStartedBy ? `<@${publication.proofStartedBy}>` : `<@${publication.instructorId}>`}` : null,
+        publication.finishedAt ? `✅ **Finalização:** ${new Date(publication.finishedAt).toLocaleString("pt-BR")} por ${publication.finishedBy ? `<@${publication.finishedBy}>` : "-"}\n**Duração total:** ${formatCourseDuration(publication.startedAt, publication.finishedAt)}` : null,
+        publication.status === "cancelled" ? `🚫 **Cancelamento:** ${publication.cancelledBy ? `<@${publication.cancelledBy}>` : "-"}${publication.cancelledAt ? ` em ${new Date(publication.cancelledAt).toLocaleString("pt-BR")}` : ""}` : null
+      ].filter(Boolean).join("\n"))
+    ] : []),
+    separator(),
+    studentActions.toJSON(),
+    separator(),
+    textBlock("## Administração"),
+    adminActions.toJSON(),
+    separator()
+  ];
+  return componentsV2Payload({
     accentColor: parseColor(course.color),
-    actions,
-    description: course.publishText || course.description || "Curso disponível para inscrição. Acompanhe o status, entre na lista e aguarde o instrutor iniciar a aula.",
-    fields: [
-      [
-        `**Instrutor:** <@${publication.instructorId}>`,
-        `**DP:** ${coursePublicationDepartmentLabel(publication)}`,
-        `**Horário:** ${publication.scheduledFor}`,
-        `**Vagas:** ${publication.students.length}/${publication.capacity}`,
-        `**Status:** ${statusText}`
-      ].join("\n"),
-      publication.notes ? `**Observações:** ${publication.notes}` : "",
-      statusNotice,
-      `**Alunos inscritos:**\n${students}`,
-      examProgress.length ? `**Situação das provas:**\n${examProgress.join("\n")}\n\n**Em andamento:** ${enrollments.filter((item) => item.examStatus === "STARTING" || item.examStatus === "IN_PROGRESS").length} | **Concluídas:** ${enrollments.filter((item) => ["COMPLETED", "APPROVED", "FAILED"].includes(item.examStatus)).length}` : "",
-      publication.startedAt ? `**Curso iniciado por:** ${publication.startedBy ? `<@${publication.startedBy}>` : `<@${publication.instructorId}>`}\n**Data e horário de início:** ${new Date(publication.startedAt).toLocaleString("pt-BR")}` : "",
-      publication.proofStartedAt ? `**Prova liberada por:** ${publication.proofStartedBy ? `<@${publication.proofStartedBy}>` : `<@${publication.instructorId}>`}\n**Data e horário da liberação:** ${new Date(publication.proofStartedAt).toLocaleString("pt-BR")}` : "",
-      publication.finishedAt ? `**Curso finalizado por:** ${publication.finishedBy ? `<@${publication.finishedBy}>` : "-"}\n**Data e horário de encerramento:** ${new Date(publication.finishedAt).toLocaleString("pt-BR")}\n**Duração total:** ${formatCourseDuration(publication.startedAt, publication.finishedAt)}` : "",
-      publication.status === "cancelled" ? `**Cancelamento:**\nResponsável: ${publication.cancelledBy ? `<@${publication.cancelledBy}>` : "-"}\nData: ${publication.cancelledAt ? new Date(publication.cancelledAt).toLocaleString("pt-BR") : "-"}` : ""
-    ].filter(Boolean),
-    image: course.bannerUrl ? { imageEnabled: true, imagePosition: course.imagePosition === "side" ? "side" : course.imagePosition === "footer" ? "footer" : course.imagePosition, imageUrl: course.bannerUrl } : null,
-    moduleId: "courses",
-    title: `${coursePublicationStatusEmoji(publication, full)} ${publication.status === "cancelled" ? "Curso Cancelado" : course.name}`
-  });
+    components,
+    footer: "© NexTech Systems"
+  }) as ReturnType<typeof renderComponentsV2Panel>;
+}
+
+function textBlock(content: string) {
+  return { type: 10, content: content.slice(0, 4000) };
+}
+
+function separator() {
+  return { type: 14, divider: true, spacing: 1 };
+}
+
+function coursePublicationRules(course: Course) {
+  const configured = course.proofInstructionText?.trim();
+  if (configured) {
+    return configured
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((line) => line.startsWith("•") || line.startsWith("-") ? line : `• ${line}`)
+      .join("\n");
+  }
+  return [
+    "• Siga as orientações do instrutor.",
+    "• Mantenha sua inscrição ativa no painel.",
+    "• Aguarde a liberação da prova quando o curso iniciar."
+  ].join("\n");
+}
+
+function coursePublicationDateLabel(publication: CoursePublication) {
+  if (publication.scheduledStartAt) {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: "America/Sao_Paulo",
+      year: "numeric"
+    }).format(new Date(publication.scheduledStartAt));
+  }
+  return publication.scheduledFor.trim().split(/\s+/)[0] || publication.scheduledFor || "-";
+}
+
+function coursePublicationTimeLabel(publication: CoursePublication) {
+  if (publication.scheduledStartAt) {
+    return new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      timeZone: "America/Sao_Paulo"
+    }).format(new Date(publication.scheduledStartAt));
+  }
+  return publication.scheduledFor.trim().split(/\s+/)[1] || publication.scheduledFor || "-";
 }
 
 function studentExamWelcomePanel(course: Course, publication: CoursePublication, settings: CourseExamSettings, studentId: string, studentName: string, questions: CourseExamQuestion[], disabled = false) {
