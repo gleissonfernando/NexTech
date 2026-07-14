@@ -101,6 +101,7 @@ const EXAM_CHANNEL_DELETE_RETRY_DELAY = 5 * 60 * 1000;
 const EXAM_CHANNEL_STATE_RETRY_MAX_DELAY = 60 * 60 * 1000;
 const COURSE_EVENT_DURATION_MS = 24 * 60 * 60 * 1000;
 const MAX_COURSE_EVENT_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
+const MAX_COURSE_EVENT_LOCATION_LENGTH = 100;
 const MAX_EXAM_SELECT_OPTIONS = 25;
 const EXAM_TOTAL_SCORE = 10;
 const MAX_QUESTION_SCORE = 1;
@@ -732,9 +733,16 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
   try {
     publicationWithEvent = await createOrUpdateCourseScheduledEvent(interaction.guild!, context, course, publication);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    publicationWithEvent = await context.api.updateCoursePublicationEvent(interaction.guildId!, publication.id, { syncError: message });
-    await sendCourseLog(interaction, settings, `Falha ao criar evento do Discord\nCurso: ${course.name}\nErro: ${message}`).catch(() => null);
+    const message = scheduledEventErrorMessage(error);
+    logCourseFlowError("scheduled_event_create", error, {
+      courseId: course.id,
+      guildId: interaction.guildId,
+      publicationId: publication.id,
+      scheduledEndAt: publication.scheduledEndAt,
+      scheduledStartAt: publication.scheduledStartAt
+    });
+    publicationWithEvent = await context.api.updateCoursePublicationEvent(interaction.guildId!, publication.id, { discordEventId: null, discordEventUrl: null, syncError: message });
+    await sendCourseLog(interaction, settings, `Falha ao criar evento do Discord\nCurso: ${course.name}\nPublicação: ${publication.id}\nErro: ${message}`).catch(() => null);
   }
   let existingMessage = publication.messageId && "messages" in channel
     ? await channel.messages.fetch(publication.messageId).catch(() => null)
@@ -893,12 +901,23 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
   if (!publication.scheduledStartAt || !publication.scheduledEndAt) return publication;
   const startAt = new Date(publication.scheduledStartAt);
   const endAt = new Date(publication.scheduledEndAt);
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+    throw new Error("Data do evento inválida.");
+  }
+  if (startAt.getTime() <= Date.now()) {
+    throw new Error("A data do evento precisa estar no futuro.");
+  }
+  if (endAt.getTime() <= startAt.getTime()) {
+    throw new Error("A data final do evento precisa ser maior que a data inicial.");
+  }
+  await assertCourseScheduledEventPermissions(guild);
   const payload = {
     description: courseScheduledEventDescription(course, publication, "📅 Agendado"),
-    entityMetadata: { location: publication.location },
+    entityMetadata: { location: coursePublicationDepartmentLabel(publication).slice(0, MAX_COURSE_EVENT_LOCATION_LENGTH) },
     entityType: GuildScheduledEventEntityType.External,
     name: `📅 Curso agendado - ${course.name}`.slice(0, 100),
     privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+    reason: `Agendamento automático do curso ${course.id}`,
     scheduledEndTime: endAt,
     scheduledStartTime: startAt
   };
@@ -910,6 +929,7 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
         description: payload.description,
         entityMetadata: payload.entityMetadata,
         name: payload.name,
+        reason: `Atualização automática do curso ${course.id}`,
         scheduledEndTime: payload.scheduledEndTime,
         scheduledStartTime: payload.scheduledStartTime
       });
@@ -921,6 +941,7 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
   if (!eventId) {
     const event = await guild.scheduledEvents.create(course.bannerUrl ? { ...payload, image: course.bannerUrl } : payload).catch(async (error) => {
       if (!course.bannerUrl) throw error;
+      console.warn(`[courses] failed to create scheduled event with banner for publication ${publication.id}; retrying without image:`, error instanceof Error ? error.message : error);
       return guild.scheduledEvents.create(payload);
     });
     eventId = event.id;
@@ -932,6 +953,21 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
   });
   if (updated) scheduleCourseEventLifecycle(guild, context, updated, course);
   return updated;
+}
+
+async function assertCourseScheduledEventPermissions(guild: Guild) {
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  const permissions = me?.permissions;
+  if (!permissions) throw new Error("Não foi possível validar as permissões do bot para criar eventos.");
+  if (permissions.has(PermissionFlagsBits.Administrator)) return;
+  const canCreate = permissions.has(PermissionFlagsBits.CreateEvents);
+  const canManage = permissions.has(PermissionFlagsBits.ManageEvents);
+  if (!canCreate) {
+    throw new Error(`O bot não possui a permissão Criar Eventos no servidor. Permissões atuais: ${permissions.toArray().join(", ") || "nenhuma"}.`);
+  }
+  if (!canManage) {
+    console.warn(`[courses] bot can create scheduled events in guild ${guild.id}, but does not have ManageEvents; updates to events not created by this bot may fail.`);
+  }
 }
 
 async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publication: CoursePublication) {
@@ -2943,6 +2979,22 @@ function logCourseFlowError(stage: string, error: unknown, data: Record<string, 
 function errorDetails(error: unknown) {
   if (error instanceof Error) return `${error.message}${error.stack ? `\n${error.stack}` : ""}`;
   return String(error);
+}
+
+function scheduledEventErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  const details = message.toLowerCase();
+  if (code === "50013" || details.includes("missing permissions")) {
+    return "O bot não possui permissão para criar eventos. Ative a permissão Criar Eventos no servidor para o cargo do bot.";
+  }
+  if (code === "30038" || details.includes("maximum number of guild scheduled events")) {
+    return "O servidor atingiu o limite de eventos agendados ativos. Encerre ou apague eventos antigos e tente novamente.";
+  }
+  if (code === "50035" || details.includes("invalid form body")) {
+    return `O Discord recusou os dados do evento. Verifique data, horário e DP. Detalhe: ${message}`.slice(0, 900);
+  }
+  return message.slice(0, 900);
 }
 
 function examFinalizeFailureMessage(error: unknown) {
