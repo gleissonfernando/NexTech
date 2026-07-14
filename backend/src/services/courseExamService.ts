@@ -438,16 +438,27 @@ export async function saveCourseExamAnswer(botId: string | null, guildId: string
 
 export async function finalizeCourseExamAttempt(botId: string | null, guildId: string, attemptId: string) {
   const collections = await getMongoCollections();
+  await logCourseAction(botId, guildId, "course.exam_finalize_started", null, null, null, { attemptId });
   const [attempt, answers] = await Promise.all([
     collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" }),
     collections.courseExamAnswers.find({ ...scope(botId, guildId), attemptId }).toArray()
   ]);
-  if (!attempt) return null;
+  if (!attempt) {
+    await logCourseAction(botId, guildId, "course.exam_finalize_blocked", null, null, null, { attemptId, reason: "attempt_not_in_progress_or_not_found" });
+    return null;
+  }
   await logCourseAction(botId, guildId, "course.exam_correction_started", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId });
   const relevantQuestions = attemptQuestions(attempt);
-  if (!relevantQuestions.length) return null;
+  if (!relevantQuestions.length) {
+    await logCourseAction(botId, guildId, "course.exam_finalize_blocked", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, reason: "questions_snapshot_empty" });
+    return null;
+  }
   const answeredQuestionIds = new Set(answers.map((answer) => answer.questionId));
-  if (!relevantQuestions.every((question) => answeredQuestionIds.has(question._id))) return null;
+  const missingQuestionIds = relevantQuestions.filter((question) => !answeredQuestionIds.has(question._id)).map((question) => question._id);
+  if (missingQuestionIds.length) {
+    await logCourseAction(botId, guildId, "course.exam_finalize_blocked", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, answered: answers.length, missingQuestionIds, reason: "pending_answers" });
+    return null;
+  }
   const maxScore = roundScore(relevantQuestions.reduce((total, question) => total + questionMaxScore(question), 0));
   const score = roundScore(answers.reduce((total, answer) => total + answer.pointsEarned, 0));
   const objectiveCorrect = answers.filter((answer) => answer.correct === true).length;
@@ -475,7 +486,10 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
       writtenCount
     }
   });
-  if (updatedStatus.matchedCount === 0) return null;
+  if (updatedStatus.matchedCount === 0) {
+    await logCourseAction(botId, guildId, "course.exam_finalize_blocked", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, reason: "status_update_race" });
+    return null;
+  }
   const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
   await logCourseAction(botId, guildId, "course.exam_result_saved", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, maxScore, percent, result: null, score });
   await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score });
@@ -521,6 +535,24 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
 export async function setCourseExamCorrectionMessage(botId: string | null, guildId: string, attemptId: string, messageId: string) {
   const { courseExamAttempts } = await getMongoCollections();
   await courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId) }, { $set: { correctionMessageId: messageId, updatedAt: new Date() } });
+}
+
+export async function setCourseExamCorrectionDelivery(botId: string | null, guildId: string, attemptId: string, input: { channelId: string; messageId: string }) {
+  const { courseExamAttempts } = await getMongoCollections();
+  await courseExamAttempts.updateOne(
+    { _id: attemptId, ...scope(botId, guildId) },
+    { $set: { correctionChannelId: input.channelId, correctionMessageId: input.messageId, correctionSentAt: new Date(), updatedAt: new Date() } }
+  );
+  await logCourseAction(botId, guildId, "course.exam_correction_panel_delivered", null, null, null, { attemptId, channelId: input.channelId, messageId: input.messageId });
+}
+
+export async function setCourseExamResultDelivery(botId: string | null, guildId: string, attemptId: string, input: { channelId: string; messageId: string }) {
+  const { courseExamAttempts } = await getMongoCollections();
+  await courseExamAttempts.updateOne(
+    { _id: attemptId, ...scope(botId, guildId) },
+    { $set: { resultChannelId: input.channelId, resultMessageId: input.messageId, resultSentAt: new Date(), updatedAt: new Date() } }
+  );
+  await logCourseAction(botId, guildId, "course.exam_result_panel_delivered", null, null, null, { attemptId, channelId: input.channelId, messageId: input.messageId });
 }
 
 function mapSettings(settings: MongoCourseExamSettings) {
@@ -623,7 +655,12 @@ function mapAttempt(attempt: MongoCourseExamAttempt) {
     result: attempt.result ?? null,
     maxScore: attempt.maxScore,
     percent: attempt.percent,
+    correctionChannelId: attempt.correctionChannelId ?? null,
     correctionMessageId: attempt.correctionMessageId,
+    correctionSentAt: attempt.correctionSentAt?.toISOString() ?? null,
+    resultChannelId: attempt.resultChannelId ?? null,
+    resultMessageId: attempt.resultMessageId ?? null,
+    resultSentAt: attempt.resultSentAt?.toISOString() ?? null,
     rejectionReason: attempt.rejectionReason,
     updatedAt: attempt.updatedAt.toISOString()
   };

@@ -1125,7 +1125,12 @@ export type CourseExamAttempt = {
   result: "approved" | "rejected" | null;
   maxScore: number;
   percent: number;
+  correctionChannelId: string | null;
   correctionMessageId: string | null;
+  correctionSentAt: string | null;
+  resultChannelId: string | null;
+  resultMessageId: string | null;
+  resultSentAt: string | null;
   rejectionReason: string | null;
   updatedAt: string;
 };

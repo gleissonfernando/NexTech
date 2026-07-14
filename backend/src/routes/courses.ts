@@ -50,7 +50,9 @@ import {
   reviewCourseExamAttempt,
   saveCourseExamAnswer,
   saveCourseExamSettings,
+  setCourseExamCorrectionDelivery,
   setCourseExamCorrectionMessage,
+  setCourseExamResultDelivery,
   updateCourseExamIdentification,
   updateCourseExamQuestion
 } from "../services/courseExamService";
@@ -279,6 +281,7 @@ const identificationSchema = z.object({
 });
 const reviewSchema = z.object({ actorId: snowflake, manualScore: decimalNumber(z.number().min(0).max(1000)).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
 const correctionMessageSchema = z.object({ messageId: snowflake });
+const deliveryMessageSchema = z.object({ channelId: snowflake, messageId: snowflake });
 
 coursesRouter.use(requireAuthOrBot);
 
@@ -544,6 +547,24 @@ coursesRouter.patch("/bot/:guildId/exam-attempts/:attemptId/correction-message",
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     const { messageId } = correctionMessageSchema.parse(req.body ?? {});
     await setCourseExamCorrectionMessage(botId, guildId, routeParam(req, "attemptId"), messageId);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/bot/:guildId/exam-attempts/:attemptId/correction-delivery", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    await setCourseExamCorrectionDelivery(botId, guildId, routeParam(req, "attemptId"), deliveryMessageSchema.parse(req.body ?? {}));
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/bot/:guildId/exam-attempts/:attemptId/result-delivery", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    await setCourseExamResultDelivery(botId, guildId, routeParam(req, "attemptId"), deliveryMessageSchema.parse(req.body ?? {}));
     return res.json({ ok: true });
   } catch (error) { return next(error); }
 });

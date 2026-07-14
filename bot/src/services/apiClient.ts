@@ -372,7 +372,12 @@ export type CourseExamAttempt = {
   result: "approved" | "rejected" | null;
   maxScore: number;
   percent: number;
+  correctionChannelId: string | null;
   correctionMessageId: string | null;
+  correctionSentAt: string | null;
+  resultChannelId: string | null;
+  resultMessageId: string | null;
+  resultSentAt: string | null;
   rejectionReason: string | null;
   updatedAt: string;
 };
@@ -2283,6 +2288,14 @@ export class ApiClient {
 
   async setCourseExamCorrectionMessage(guildId: string, attemptId: string, messageId: string) {
     await this.http.patch(`/courses/bot/${guildId}/exam-attempts/${attemptId}/correction-message`, { messageId });
+  }
+
+  async setCourseExamCorrectionDelivery(guildId: string, attemptId: string, input: { channelId: string; messageId: string }) {
+    await this.http.patch(`/courses/bot/${guildId}/exam-attempts/${attemptId}/correction-delivery`, input);
+  }
+
+  async setCourseExamResultDelivery(guildId: string, attemptId: string, input: { channelId: string; messageId: string }) {
+    await this.http.patch(`/courses/bot/${guildId}/exam-attempts/${attemptId}/result-delivery`, input);
   }
 
   async getRhAdminSettings(guildId: string) {

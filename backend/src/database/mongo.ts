@@ -596,7 +596,12 @@ export type MongoCourseExamAttempt = {
   result?: "approved" | "rejected" | null;
   maxScore: number;
   percent: number;
+  correctionChannelId?: string | null;
   correctionMessageId: string | null;
+  correctionSentAt?: Date | null;
+  resultChannelId?: string | null;
+  resultMessageId?: string | null;
+  resultSentAt?: Date | null;
   rejectionReason: string | null;
   updatedAt: Date;
 };
