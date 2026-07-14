@@ -760,7 +760,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
   }
   const message = existingMessage
     ? await existingMessage.edit(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!))
-    : await (channel as TextChannel).send(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!));
+    : await (channel as TextChannel).send(coursePublicationInitialPost(course, publicationWithEvent, settings, interaction.guild!));
   const publicationWithPanel = await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
   await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nPainel: ${message.id}\nHorário: ${publicationWithPanel.scheduledFor}\nDP: ${publicationWithPanel.dpNameSnapshot ?? publicationWithPanel.location}\nVagas: ${publicationWithPanel.capacity}\nEvento do Discord: criado`);
   await interaction.editReply("✅ Curso agendado, painel publicado e evento criado com sucesso.");
@@ -2365,6 +2365,17 @@ function textBlock(content: string) {
 
 function separator() {
   return { type: 14, divider: true, spacing: 1 };
+}
+
+function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
+  const payload = coursePublicationPanel(course, publication, settings, guild);
+  const roleId = settings.publicationMentionRoleId;
+  if (!roleId) return payload;
+  return {
+    ...payload,
+    allowedMentions: { roles: [roleId] },
+    content: `<@&${roleId}>`
+  };
 }
 
 function coursePublicationDateLabel(publication: CoursePublication) {

@@ -30,7 +30,7 @@ type CoursesPanelProps = {
 type TabId = "images" | "channels" | "courses" | "proofs" | "admins" | "logs";
 type CourseChannelDraft = Pick<
   CoursesDashboard["settings"],
-  "adminLogChannelId" | "defaultExpirationHours" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "tempProofCategoryId"
+  "adminLogChannelId" | "defaultExpirationHours" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publicationMentionRoleId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "tempProofCategoryId"
 >;
 type ExamLinkDraft = Pick<CourseExamDashboard["settings"], "externalLinkDescription" | "externalLinkEmoji" | "externalLinkEnabled" | "externalLinkText" | "externalLinkUrl">;
 
@@ -609,6 +609,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <SelectField disabled={!canManage || saving} label="Canal global de publicação" onChange={(publishChannelId) => updateChannelDraft({ publishChannelId })} options={textChannels} value={channelDraft?.publishChannelId ?? ""} />
+              <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar ao publicar curso" onChange={(publicationMentionRoleId) => updateChannelDraft({ publicationMentionRoleId })} options={roles} value={channelDraft?.publicationMentionRoleId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => updateChannelDraft({ tempProofCategoryId })} options={categories} value={channelDraft?.tempProofCategoryId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => updateChannelDraft({ adminLogChannelId })} options={textChannels} value={channelDraft?.adminLogChannelId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Logs de provas" onChange={(proofLogChannelId) => updateChannelDraft({ proofLogChannelId })} options={textChannels} value={channelDraft?.proofLogChannelId ?? ""} />
@@ -1275,6 +1276,7 @@ function toChannelDraft(settings: CoursesDashboard["settings"]): CourseChannelDr
     evaluationChannelId: settings.evaluationChannelId ?? null,
     evaluatorMentionRoleId: settings.evaluatorMentionRoleId ?? null,
     proofLogChannelId: settings.proofLogChannelId ?? null,
+    publicationMentionRoleId: settings.publicationMentionRoleId ?? null,
     publishChannelId: settings.publishChannelId ?? null,
     resultChannelId: settings.resultChannelId ?? null,
     resultMentionRoleId: settings.resultMentionRoleId ?? null,

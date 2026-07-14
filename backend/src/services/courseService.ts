@@ -1003,6 +1003,7 @@ export async function getCourseSettings(botId: string | null, guildId: string) {
     adminLogChannelId: null,
     temporaryCategoryId: null,
     tempProofCategoryId: null,
+    publicationMentionRoleId: null,
     evaluatorMentionRoleId: null,
     resultMentionRoleId: null,
     adminUserIds: [],
@@ -1765,6 +1766,7 @@ function mapSettings(settings: MongoCourseSettings) {
     adminLogChannelId: settings.adminLogChannelId ?? settings.logChannelId,
     temporaryCategoryId: settings.temporaryCategoryId,
     tempProofCategoryId: settings.tempProofCategoryId ?? settings.temporaryCategoryId,
+    publicationMentionRoleId: settings.publicationMentionRoleId ?? null,
     evaluatorMentionRoleId: settings.evaluatorMentionRoleId ?? null,
     resultMentionRoleId: settings.resultMentionRoleId ?? null,
     adminUserIds: settings.adminUserIds ?? [],
@@ -2009,7 +2011,10 @@ function cleanSettings(input: CourseSettingsUpdate) {
     "logChannelId",
     "adminLogChannelId",
     "temporaryCategoryId",
-    "tempProofCategoryId"
+    "tempProofCategoryId",
+    "publicationMentionRoleId",
+    "evaluatorMentionRoleId",
+    "resultMentionRoleId"
   ] as const) {
     if (key in input) cleaned[key] = input[key] || null;
   }

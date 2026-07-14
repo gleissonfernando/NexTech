@@ -112,6 +112,7 @@ export type CourseSettings = {
   adminLogChannelId: string | null;
   temporaryCategoryId: string | null;
   tempProofCategoryId: string | null;
+  publicationMentionRoleId: string | null;
   evaluatorMentionRoleId: string | null;
   resultMentionRoleId: string | null;
   adminUserIds: string[];
