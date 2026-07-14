@@ -2325,7 +2325,6 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       `🕒 **Horário:** ${coursePublicationTimeLabel(publication)}`,
       `👥 **Vagas:** ${publication.students.length}/${publication.capacity}`,
       `📌 **Status:** ${statusText}`,
-      publication.discordEventUrl ? `🔗 **Evento:** ${publication.discordEventUrl}` : null,
       "",
       statusNotice
     ].filter((line): line is string => line !== null).join("\n")),
