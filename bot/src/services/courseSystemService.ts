@@ -94,7 +94,7 @@ const COURSE_EVENT_DURATION_MS = 24 * 60 * 60 * 1000;
 const MAX_COURSE_EVENT_TIMER_DELAY = 7 * 24 * 60 * 60 * 1000;
 const MAX_EXAM_SELECT_OPTIONS = 25;
 
-let serviceStarted = false;
+const startedCourseClients = new WeakSet<Client>();
 const examProvisioning = new Map<string, Promise<string>>();
 const studentExamStarting = new Map<string, Promise<unknown>>();
 const examChannelDeletionTimers = new Map<string, NodeJS.Timeout>();
@@ -105,8 +105,8 @@ const courseEventLifecycleGenerations = new Map<string, symbol>();
 const pendingExamSelections = new Map<string, string[]>();
 
 export function startCourseSystemService(client: Client, context: BotContext) {
-  if (serviceStarted) return;
-  serviceStarted = true;
+  if (startedCourseClients.has(client)) return;
+  startedCourseClients.add(client);
   context.socket.onCoursePanelPublish((payload) => {
     const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
     if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) return;
