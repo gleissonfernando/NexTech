@@ -1518,14 +1518,16 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
   const currentBundle = await getStudentExamAttempt(interaction, context, attemptId);
   if (!currentBundle) return;
   logCourseFlow("exam_finalize_requested", { attemptId, guildId: interaction.guildId, studentId: interaction.user.id });
+  let finalizeFailureMessage = "A prova ja foi finalizada ou ainda possui questoes pendentes.";
   const result = await context.api.finalizeCourseExamAttempt(interaction.guildId!, attemptId).catch(async (error) => {
     logCourseFlowError("exam_finalize_api_failed", error, { attemptId, guildId: interaction.guildId, studentId: interaction.user.id });
+    finalizeFailureMessage = examFinalizeFailureMessage(error);
     const settings = await context.api.getCourseSettings(interaction.guildId!).catch(() => null);
     if (settings) await sendCourseLog(interaction, settings, `Falha ao finalizar prova\nTentativa: ${attemptId}\nAluno: <@${interaction.user.id}>\nErro: ${errorDetails(error)}`).catch(() => null);
     return null;
   });
   if (!result) {
-    await interaction.followUp({ content: "A prova já foi finalizada ou ainda possui questões pendentes.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: finalizeFailureMessage, flags: MessageFlags.Ephemeral });
     return;
   }
   const [course, settings] = await Promise.all([
@@ -1533,10 +1535,22 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
     context.api.getCourseSettings(interaction.guildId!)
   ]);
   await interaction.message.edit({ components: [] }).catch(() => null);
-  await interaction.followUp({ content: "Prova finalizada. A equipe responsável recebeu o resultado.", flags: MessageFlags.Ephemeral });
   logCourseFlow("exam_finalize_saved", { attemptId, courseId: result.attempt.courseId, guildId: interaction.guildId, score: result.attempt.score, percent: result.attempt.percent, answers: result.answers.length });
+  const correctionPanelSent = await sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers).catch(async (error) => {
+    logCourseFlowError("exam_correction_panel_unhandled_failed", error, { attemptId, courseId: result.attempt.courseId, guildId: interaction.guildId });
+    await sendCourseLog(interaction, settings, `Falha inesperada ao enviar painel de correção\nTentativa: ${attemptId}\nCurso: ${course.name}\nErro: ${errorDetails(error)}`).catch(() => null);
+    return false;
+  });
+  await interaction.followUp({
+    content: correctionPanelSent
+      ? "Prova finalizada. A equipe responsável recebeu o painel de aprovação."
+      : "Prova finalizada e salva, mas o painel de aprovação não foi enviado. Verifique o canal de avaliação em /curso config e as permissões do bot.",
+    flags: MessageFlags.Ephemeral
+  });
+  if (!correctionPanelSent) {
+    logCourseFlow("exam_correction_panel_not_sent_after_finalize", { attemptId, courseId: result.attempt.courseId, guildId: interaction.guildId });
+  }
   const postFinalizeResults = await Promise.allSettled([
-    sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers),
     sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers),
     context.api.getCoursePublication(interaction.guildId!, result.attempt.publicationId)
       .then((publication) => refreshPublicationMessageByRecord(interaction, context, publication))
@@ -1545,6 +1559,7 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
     logCourseFlowError("exam_post_finalize_action_failed", failed.reason, { attemptId, courseId: result.attempt.courseId, guildId: interaction.guildId });
     await sendCourseLog(interaction, settings, `Falha em ação pós-finalização\nTentativa: ${attemptId}\nCurso: ${course.name}\nErro: ${errorDetails(failed.reason)}`).catch(() => null);
   }
+  if (!correctionPanelSent) return;
   await deleteFinishedExamChannel(interaction, context);
 }
 
@@ -2679,6 +2694,14 @@ function logCourseFlowError(stage: string, error: unknown, data: Record<string, 
 function errorDetails(error: unknown) {
   if (error instanceof Error) return `${error.message}${error.stack ? `\n${error.stack}` : ""}`;
   return String(error);
+}
+
+function examFinalizeFailureMessage(error: unknown) {
+  const details = errorDetails(error).toLowerCase();
+  if (details.includes("space quota") || details.includes("writes are blocked") || details.includes("atlaserror")) {
+    return "Nao foi possivel salvar a finalizacao da prova porque o banco MongoDB/Atlas esta bloqueando gravacoes por limite de espaco. O painel de aprovacao so sera enviado depois que o banco voltar a aceitar escritas.";
+  }
+  return "Nao foi possivel salvar a finalizacao da prova agora. O painel de aprovacao nao foi enviado; verifique os logs do bot/backend e tente novamente.";
 }
 
 async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInteraction, channelId: string | null | undefined) {
