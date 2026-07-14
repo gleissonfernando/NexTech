@@ -2681,8 +2681,8 @@ function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questio
   return renderComponentsV2Panel({
     accentColor: parseColor(course.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar aluno").setStyle(ButtonStyle.Success).setDisabled(reviewed || !reviewable),
-      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar aluno").setStyle(ButtonStyle.Danger).setDisabled(reviewed || !reviewable)
+      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setLabel("✅ Aprovar aluno").setStyle(ButtonStyle.Success).setDisabled(reviewed || !reviewable),
+      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setLabel("❌ Reprovar aluno").setStyle(ButtonStyle.Danger).setDisabled(reviewed || !reviewable)
     )],
     description: reviewable ? "Aguardando análise da equipe responsável." : "Avaliação já analisada.",
     fields,
