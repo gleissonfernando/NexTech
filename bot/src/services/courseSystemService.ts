@@ -2311,15 +2311,15 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
     });
   const bannerUrl = resolvePanelImageUrl(course.bannerUrl);
   const components: unknown[] = [
-    textBlock("## 🛡️ North Police Department • Instructor Team"),
-    textBlock(`# 📢 CURSO\n${course.name}`),
-    textBlock(`## 👮 INSTRUTOR\n<@${publication.instructorId}>`),
-    textBlock(`## 📅 DATA\n${coursePublicationDateLabel(publication)}`),
-    textBlock(`## 🕒 HORÁRIO\n${coursePublicationTimeLabel(publication)}`),
-    textBlock(`## 📍 LOCAL\n${coursePublicationDepartmentLabel(publication)}`),
-    textBlock(`## 📌 STATUS\n${statusText}`),
-    textBlock(`## 🎟️ VAGAS\n${publication.students.length}/${publication.capacity}`),
-    textBlock(`## ✅ CONFIRMADOS (${publication.students.length}/${publication.capacity})\n${students}`),
+    textBlock("### 🛡️ North Police Department • Instructor Team"),
+    textBlock(`## 📢 ${course.name}`),
+    textBlock([
+      `👮 **Instrutor:** <@${publication.instructorId}>`,
+      `📅 **Data:** ${coursePublicationDateLabel(publication)}  •  🕒 **Horário:** ${coursePublicationTimeLabel(publication)}`,
+      `📍 **Local:** ${coursePublicationDepartmentLabel(publication)}`,
+      `📌 **Status:** ${statusText}  •  🎟️ **Vagas:** ${publication.students.length}/${publication.capacity}`
+    ].join("\n")),
+    textBlock(`✅ **Confirmados (${publication.students.length}/${publication.capacity})**\n${students}`),
     separator(),
     ...(bannerUrl ? [{ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner do Curso" }] }] : []),
     ...(examProgress.length ? [
