@@ -60,8 +60,7 @@ writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   description: "Prebuilt NexTech runtime package for Discloud.",
   main: "index.js",
   scripts: {
-    start: "node scripts/start-production.mjs",
-    "start:discloud": "node scripts/start-production.mjs"
+    start: "node scripts/start-production.mjs"
   },
   dependencies: {
     "@discordjs/voice": "^0.19.2",
