@@ -2296,10 +2296,12 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
     new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setLabel("Entrar").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
     new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setLabel("Sair").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
   ).toJSON();
-  const startAction = buttonRow(new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel("Iniciar Curso").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass));
-  const examAction = buttonRow(new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setLabel("Realizar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam));
-  const finishAction = buttonRow(new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setLabel("Finalizar Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass));
-  const cancelAction = buttonRow(new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel));
+  const adminActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setLabel("Iniciar").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+    new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setLabel("Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam),
+    new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setLabel("Finalizar").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
+    new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
+  ).toJSON();
   const examProgress = enrollments
     .filter((enrollment) => ["STARTING", "IN_PROGRESS", "COMPLETED", "APPROVED", "FAILED"].includes(enrollment.examStatus))
     .map((enrollment) => {
@@ -2340,10 +2342,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
     studentActions,
     separator(),
     textBlock("Administração"),
-    startAction,
-    examAction,
-    finishAction,
-    cancelAction,
+    adminActions,
     separator()
   ];
   return componentsV2Payload({
