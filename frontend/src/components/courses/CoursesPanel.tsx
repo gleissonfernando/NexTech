@@ -30,7 +30,7 @@ type CoursesPanelProps = {
 type TabId = "images" | "channels" | "courses" | "proofs" | "admins" | "logs";
 type CourseChannelDraft = Pick<
   CoursesDashboard["settings"],
-  "adminLogChannelId" | "defaultExpirationHours" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "scheduleLogChannelId" | "tempProofCategoryId"
+  "adminLogChannelId" | "defaultExpirationHours" | "evaluationChannelId" | "evaluatorMentionRoleId" | "proofLogChannelId" | "publishChannelId" | "resultChannelId" | "resultMentionRoleId" | "tempProofCategoryId"
 >;
 type ExamLinkDraft = Pick<CourseExamDashboard["settings"], "externalLinkDescription" | "externalLinkEmoji" | "externalLinkEnabled" | "externalLinkText" | "externalLinkUrl">;
 
@@ -91,7 +91,6 @@ const emptyCourse: SaveCoursePayload = {
   maxStudents: 30,
   name: "",
   proofInstructionText: "Leia cada pergunta com atenção. A pergunta final será avaliada manualmente.",
-  publishChannelId: null,
   publishText: null,
   startedText: null,
   thumbnailUrl: null
@@ -604,17 +603,16 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
 
       {activeTab === "channels" ? (
         <Card>
-          <CardHeader><CardTitle>Configuração de Canais</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Configuração Geral de Cursos e Provas</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <SelectField disabled={!canManage || saving} label="Canal global de publicação" onChange={(publishChannelId) => updateChannelDraft({ publishChannelId })} options={textChannels} value={channelDraft?.publishChannelId ?? ""} />
-              <SelectField disabled={!canManage || saving} label="Logs de agendamento" onChange={(scheduleLogChannelId) => updateChannelDraft({ scheduleLogChannelId })} options={textChannels} value={channelDraft?.scheduleLogChannelId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => updateChannelDraft({ tempProofCategoryId })} options={categories} value={channelDraft?.tempProofCategoryId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => updateChannelDraft({ adminLogChannelId })} options={textChannels} value={channelDraft?.adminLogChannelId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Logs de provas" onChange={(proofLogChannelId) => updateChannelDraft({ proofLogChannelId })} options={textChannels} value={channelDraft?.proofLogChannelId ?? ""} />
               <SelectField disabled={!canManage || saving} label="Resultados aprovado/reprovado" onChange={(resultChannelId) => updateChannelDraft({ resultChannelId })} options={textChannels} value={channelDraft?.resultChannelId ?? ""} />
-              <SelectField disabled={!canManage || saving} label="Avaliação das provas" onChange={(evaluationChannelId) => updateChannelDraft({ evaluationChannelId })} options={textChannels} value={channelDraft?.evaluationChannelId ?? ""} />
-              <SelectField disabled={!canManage || saving} label="Categoria de canais temporários" onChange={(tempProofCategoryId) => updateChannelDraft({ tempProofCategoryId })} options={categories} value={channelDraft?.tempProofCategoryId ?? ""} />
+              <SelectField disabled={!canManage || saving} label="Canal de avaliação/correção" onChange={(evaluationChannelId) => updateChannelDraft({ evaluationChannelId })} options={textChannels} value={channelDraft?.evaluationChannelId ?? ""} />
               <NumberInputField disabled={!canManage || saving} label="Expiração dos canais temporários (horas)" max={720} min={1} onChange={(defaultExpirationHours) => updateChannelDraft({ defaultExpirationHours })} value={channelDraft?.defaultExpirationHours ?? 24} />
-              <SelectField disabled={!canManage || saving} label="Logs administrativos" onChange={(adminLogChannelId) => updateChannelDraft({ adminLogChannelId })} options={textChannels} value={channelDraft?.adminLogChannelId ?? ""} />
               <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar avaliadores" onChange={(evaluatorMentionRoleId) => updateChannelDraft({ evaluatorMentionRoleId })} options={roles} value={channelDraft?.evaluatorMentionRoleId ?? ""} />
               <RoleSelect disabled={!canManage || saving} label="Cargo para mencionar resultados" onChange={(resultMentionRoleId) => updateChannelDraft({ resultMentionRoleId })} options={roles} value={channelDraft?.resultMentionRoleId ?? ""} />
             </div>
@@ -775,10 +773,6 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                 <div className="grid gap-3 md:grid-cols-4">
                   <DecimalInputField disabled={!canManage || saving} label="Nota mínima (pontos)" onCommit={(minScore) => void saveSelectedExamSettings({ minScore })} value={exam.settings.minScore} />
                   <ToggleField disabled={!canManage || saving} label="Modo deste curso ativo" onChange={(enabled) => void setSelectedCourseProofMode(enabled)} value={exam.settings.enabled} />
-                  <SelectField disabled={!canManage || saving} label="Categoria dos canais da prova" onChange={(temporaryCategoryId) => void saveSelectedExamSettings({ temporaryCategoryId })} options={categories} value={exam.settings.temporaryCategoryId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de avaliação" onChange={(correctionChannelId) => void saveSelectedExamSettings({ correctionChannelId })} options={textChannels} value={exam.settings.correctionChannelId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de resultado da prova" onChange={(resultChannelId) => void saveSelectedExamSettings({ resultChannelId })} options={textChannels} value={exam.settings.resultChannelId ?? ""} />
-                  <SelectField disabled={!canManage || saving} label="Canal de logs da prova" onChange={(logChannelId) => void saveSelectedExamSettings({ logChannelId })} options={textChannels} value={exam.settings.logChannelId ?? ""} />
                   <ToggleField disabled={!canManage || saving} label="Aprovação manual" onChange={(manualApproval) => void saveSelectedExamSettings({ automaticApproval: manualApproval ? false : exam.settings.automaticApproval, manualApproval })} value={exam.settings.manualApproval} />
                   <ToggleField disabled={!canManage || saving} label="Aprovação automática" onChange={(automaticApproval) => void saveSelectedExamSettings({ automaticApproval, manualApproval: automaticApproval ? false : exam.settings.manualApproval })} value={exam.settings.automaticApproval} />
                 </div>
@@ -1286,7 +1280,6 @@ function toChannelDraft(settings: CoursesDashboard["settings"]): CourseChannelDr
     publishChannelId: settings.publishChannelId ?? null,
     resultChannelId: settings.resultChannelId ?? null,
     resultMentionRoleId: settings.resultMentionRoleId ?? null,
-    scheduleLogChannelId: settings.scheduleLogChannelId ?? null,
     tempProofCategoryId: settings.tempProofCategoryId ?? null
   };
 }

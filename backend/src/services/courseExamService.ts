@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getMongoCollections, type MongoCourseExamAnswer, type MongoCourseExamAttempt, type MongoCourseExamQuestion, type MongoCourseExamSettings } from "../database/mongo";
-import { logCourseAction } from "./courseService";
+import { getCourseSettings, logCourseAction } from "./courseService";
 import { emitRealtime } from "../realtime/events";
 
 const DEFAULT_INITIAL = "Bem-vindo à prova do curso. Leia cada pergunta com atenção e responda uma etapa por vez.";
@@ -539,10 +539,10 @@ function mapSettings(settings: MongoCourseExamSettings) {
     enabled: settings.enabled,
     minScore: settings.minScore,
     maxTimeMinutes: settings.maxTimeMinutes,
-    correctionChannelId: settings.correctionChannelId,
-    resultChannelId: settings.resultChannelId ?? null,
-    temporaryCategoryId: settings.temporaryCategoryId ?? null,
-    logChannelId: settings.logChannelId,
+    correctionChannelId: null,
+    resultChannelId: null,
+    temporaryCategoryId: null,
+    logChannelId: null,
     deleteWrittenAnswers: settings.deleteWrittenAnswers,
     allowCurrentQuestionReview: settings.allowCurrentQuestionReview,
     initialMessage: settings.initialMessage,
@@ -661,10 +661,10 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
 
 async function cleanSettings(botId: string | null, guildId: string, courseId: string, input: Partial<CourseExamSettingsDto>) {
   const patch: Record<string, unknown> = { ...input };
-  if ("correctionChannelId" in input) patch.correctionChannelId = input.correctionChannelId || null;
-  if ("resultChannelId" in input) patch.resultChannelId = input.resultChannelId || null;
-  if ("temporaryCategoryId" in input) patch.temporaryCategoryId = input.temporaryCategoryId || null;
-  if ("logChannelId" in input) patch.logChannelId = input.logChannelId || null;
+  delete patch.correctionChannelId;
+  delete patch.resultChannelId;
+  delete patch.temporaryCategoryId;
+  delete patch.logChannelId;
   if ("maxTimeMinutes" in input) patch.maxTimeMinutes = input.maxTimeMinutes ? Math.max(1, Number(input.maxTimeMinutes)) : null;
   if ("minScore" in input) patch.minScore = Math.max(0, Number(input.minScore ?? 7));
   if ("manualQuestionMaxScore" in input) patch.manualQuestionMaxScore = Math.max(0, Number(input.manualQuestionMaxScore ?? 10));
@@ -847,17 +847,21 @@ function normalizeRank(value: StudentRank | null | undefined) {
 
 async function validateCourseExamActivation(botId: string | null, guildId: string, courseId: string, settingsPatch: Record<string, unknown>) {
   const collections = await getMongoCollections();
-  const [settings, course, questions] = await Promise.all([
+  const [settings, course, questions, courseSettings] = await Promise.all([
     collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId }),
     collections.courses.findOne({ _id: courseId, ...scope(botId, guildId) }),
-    collections.courseExamQuestions.find({ ...scope(botId, guildId), courseId, active: true }).sort({ order: 1, createdAt: 1 }).toArray()
+    collections.courseExamQuestions.find({ ...scope(botId, guildId), courseId, active: true }).sort({ order: 1, createdAt: 1 }).toArray(),
+    getCourseSettings(botId, guildId)
   ]);
   const merged = { ...(settings ? mapSettings(settings) : {}), ...settingsPatch } as Partial<CourseExamSettingsDto>;
   const errors: string[] = [];
   if (!course) errors.push("Curso não encontrado.");
   if (!questions.length) errors.push("A prova precisa ter pelo menos 1 pergunta ativa configurada.");
   if (!Number(merged.minScore)) errors.push("Nota mínima não configurada.");
-  if (!merged.logChannelId && !merged.correctionChannelId) errors.push("Canal de logs ou correção não configurado.");
+  if (!(courseSettings.tempProofCategoryId || courseSettings.temporaryCategoryId)) errors.push("Categoria de canais temporários não configurada na Configuração de Canais.");
+  if (!courseSettings.evaluationChannelId) errors.push("Canal de avaliação/correção não configurado na Configuração de Canais.");
+  if (!courseSettings.resultChannelId) errors.push("Canal de resultados não configurado na Configuração de Canais.");
+  if (!(courseSettings.proofLogChannelId || courseSettings.adminLogChannelId || courseSettings.logChannelId)) errors.push("Canal de logs não configurado na Configuração de Canais.");
   const orders = new Set<number>();
   questions.forEach((question, index) => {
     const label = `Questão ${String(question.questionNumber ?? index + 1).padStart(2, "0")}`;

@@ -83,7 +83,6 @@ const courseSchema = z.object({
   location: z.string().max(120).nullable().optional().or(z.literal("")),
   name: z.string().min(1).max(120),
   defaultSchedule: z.string().max(120).nullable().optional().or(z.literal("")),
-  publishChannelId: optionalSnowflake,
   publishText: z.string().max(1200).nullable().optional().or(z.literal("")),
   proofInstructionText: z.string().max(1200).nullable().optional().or(z.literal("")),
   startedText: z.string().max(900).nullable().optional().or(z.literal("")),
@@ -220,7 +219,6 @@ const secureExternalUrl = z.string().max(2048).refine((value) => !value || value
 const examSettingsSchema = z.object({
   allowCurrentQuestionReview: z.boolean().optional(),
   approvalMessage: z.string().max(1200).optional(),
-  correctionChannelId: optionalSnowflake,
   deleteWrittenAnswers: z.boolean().optional(),
   enabled: z.boolean().optional(),
   externalLinkDescription: z.string().max(300).nullable().optional().or(z.literal("")),
@@ -230,9 +228,6 @@ const examSettingsSchema = z.object({
   externalLinkUrl: secureExternalUrl,
   finalMessage: z.string().max(1200).optional(),
   initialMessage: z.string().max(1200).optional(),
-  logChannelId: optionalSnowflake,
-  resultChannelId: optionalSnowflake,
-  temporaryCategoryId: optionalSnowflake,
   maxTimeMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   minScore: decimalNumber(z.number().min(0).max(1000)).optional(),
   rejectionMessage: z.string().max(1200).optional()
@@ -894,7 +889,6 @@ function sanitizeCourse(input: Partial<z.infer<typeof courseSchema>>) {
     footerImageUrl: input.footerImageUrl || null,
     location: input.location || null,
     defaultSchedule: input.defaultSchedule || null,
-    publishChannelId: input.publishChannelId || null,
     publishText: input.publishText || null,
     proofInstructionText: input.proofInstructionText || null,
     startedText: input.startedText || null,
