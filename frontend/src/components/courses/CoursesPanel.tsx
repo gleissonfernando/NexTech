@@ -798,6 +798,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
                     <QuestionCard key={question.id} question={question} onDelete={() => void deleteCourseExamQuestionApi(botId, guildId, selectedCourse.id, question.id).then(() => setExam((current) => current && current.settings.courseId === selectedCourse.id ? { ...current, questions: current.questions.filter((item) => item.id !== question.id) } : current))} onEdit={() => { setEditingQuestionId(question.id); setQuestionDraft(toQuestionPayload(question)); }} />
                   ))}
                 </div>
+                <ProofResultsPanel attempts={exam.attempts} course={selectedCourse} />
               </>
             ) : selectedCourse && examLoading ? (
               <div className="flex min-h-24 items-center gap-3 rounded-lg border border-zinc-800 bg-black/30 p-4 text-sm text-zinc-400">
@@ -928,6 +929,56 @@ function ProofRegistryItem({ course, isSelected, onEdit, onSelect, selectedExam 
 function ProofCompleteness({ questions }: { questions: CourseExamQuestion[] }) {
   const stats = getProofStats(questions);
   return <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">Status da prova: <Badge variant={stats.complete ? "success" : "warning"}>{stats.complete ? "Completa" : "Incompleta"}</Badge> • Perguntas ativas: {stats.active} • Total: {stats.total} • Objetivas: {stats.objective} • Discursivas: {stats.written}</div>;
+}
+
+function ProofResultsPanel({ attempts, course }: { attempts: CourseExamDashboard["attempts"]; course: Course }) {
+  const results = [...attempts]
+    .filter((attempt) => attempt.status !== "in_progress" && attempt.finishedAt)
+    .sort((a, b) => new Date(b.finishedAt ?? b.updatedAt).getTime() - new Date(a.finishedAt ?? a.updatedAt).getTime());
+  const approved = results.filter((attempt) => attempt.result === "approved" || attempt.status === "approved").length;
+  const rejected = results.filter((attempt) => attempt.result === "rejected" || attempt.status === "rejected").length;
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/30 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">Resultados das Provas</p>
+          <p className="mt-1 text-sm text-zinc-500">{course.name}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant="default">{results.length} resultado(s)</Badge>
+          <Badge variant="success">{approved} aprovado(s)</Badge>
+          <Badge variant="warning">{rejected} reprovado(s)</Badge>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {results.map((attempt) => {
+          const identification = attempt.studentIdentification;
+          return (
+            <div className="rounded-lg border border-zinc-800 bg-black/40 p-3 text-sm text-zinc-300" key={attempt.id}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-white">{identification?.rpFullName || identification?.discordDisplayName || attempt.studentId}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Discord ID: {attempt.studentId}</p>
+                </div>
+                <Badge variant={attempt.result === "approved" || attempt.status === "approved" ? "success" : "warning"}>{proofResultLabel(attempt)}</Badge>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-2">
+                <p>Cargo: <span className="text-zinc-200">{studentRankText(identification?.currentRank)}</span></p>
+                <p>Nota: <span className="text-zinc-200">{formatScoreValue(attempt.finalScore ?? attempt.score)}/{formatScoreValue(attempt.maxScore)}</span></p>
+                <p>Acertos: <span className="text-zinc-200">{attempt.objectiveCorrect}</span></p>
+                <p>Erros: <span className="text-zinc-200">{attempt.objectiveWrong}</span></p>
+                <p>Aproveitamento: <span className="text-zinc-200">{formatScoreValue(attempt.percent)}%</span></p>
+                <p>Data: <span className="text-zinc-200">{formatDateTime(attempt.finishedAt ?? attempt.updatedAt)}</span></p>
+                <p>Tempo: <span className="text-zinc-200">{formatAttemptDuration(attempt.startedAt, attempt.finishedAt)}</span></p>
+                <p>Tentativa: <span className="text-zinc-200">{attempt.attemptNumber ?? 1}</span></p>
+              </div>
+            </div>
+          );
+        })}
+        {!results.length ? <p className="rounded-lg border border-zinc-800 bg-black/40 p-4 text-sm text-zinc-500">Nenhum resultado finalizado para esta prova.</p> : null}
+      </div>
+    </div>
+  );
 }
 
 function getProofStats(questions: CourseExamQuestion[]) {
@@ -1276,6 +1327,33 @@ function formatDecimalInput(value: number) {
 function formatScoreValue(value: number) {
   const score = Number(value ?? 0);
   return Number.isInteger(score) ? String(score) : score.toFixed(2).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+}
+
+function proofResultLabel(attempt: CourseExamDashboard["attempts"][number]) {
+  if (attempt.result === "approved" || attempt.status === "approved") return "Aprovado";
+  if (attempt.result === "rejected" || attempt.status === "rejected") return "Reprovado";
+  return "Aguardando";
+}
+
+function studentRankText(rank: "CADET" | "OFFICER" | "SENIOR_OFFICER" | null | undefined) {
+  if (rank === "CADET") return "Cadete";
+  if (rank === "OFFICER") return "Oficial";
+  if (rank === "SENIOR_OFFICER") return "Oficial Sênior";
+  return "não informado";
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("pt-BR");
+}
+
+function formatAttemptDuration(startedAt: string, finishedAt: string | null) {
+  if (!finishedAt) return "-";
+  const seconds = Math.max(0, Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}m ${rest}s`;
 }
 
 function normalizeSearch(value: string) {

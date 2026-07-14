@@ -333,6 +333,14 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     await finishExam(interaction, context);
     return;
   }
+  if (interaction.customId.startsWith("course_exam_result_answers:")) {
+    await showExamResultAnswers(interaction, context);
+    return;
+  }
+  if (interaction.customId.startsWith("course_exam_result_details:")) {
+    await showExamResultDetails(interaction, context);
+    return;
+  }
   if (interaction.customId.startsWith("course_exam_review:")) {
     await reviewExam(interaction, context);
     return;
@@ -1475,14 +1483,16 @@ async function finishExam(interaction: ButtonInteraction, context: BotContext) {
     await interaction.followUp({ content: "A prova já foi finalizada ou ainda possui questões pendentes.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const [course, settings] = await Promise.all([
+  const [course, settings, runtime] = await Promise.all([
     context.api.getCourse(interaction.guildId!, result.attempt.courseId),
-    context.api.getCourseSettings(interaction.guildId!)
+    context.api.getCourseSettings(interaction.guildId!),
+    context.api.getCourseExamRuntime(interaction.guildId!, result.attempt.courseId)
   ]);
   await interaction.message.edit({ components: [] }).catch(() => null);
   await interaction.followUp({ content: "Prova finalizada. A equipe responsável recebeu o resultado.", flags: MessageFlags.Ephemeral });
   const postFinalizeResults = await Promise.allSettled([
     sendExamCorrectionPanel(interaction, context, course, result.attempt, result.questions, result.answers),
+    sendExamResultPanel(interaction, settings, runtime.settings, course, result.attempt, result.questions, result.answers),
     sendExamDetailedLog(interaction, settings, course, result.attempt, result.questions, result.answers),
     context.api.getCoursePublication(interaction.guildId!, result.attempt.publicationId)
       .then((publication) => refreshPublicationMessageByRecord(interaction, context, publication))
@@ -1554,7 +1564,7 @@ async function completeExamReview(interaction: ButtonInteraction | ModalSubmitIn
     context.api.getCourseSettings(interaction.guildId!)
   ]);
   await editExamCorrectionPanel(interaction, context, course, courseSettings, runtime.settings, reviewed, bundle.questions, bundle.answers);
-  await sendExamResultPanel(interaction, courseSettings, runtime.settings, course, reviewed);
+  await sendExamResultPanel(interaction, courseSettings, runtime.settings, course, reviewed, bundle.questions, bundle.answers);
   await sendCourseLog(interaction, courseSettings, `Prova corrigida\nTentativa: ${attemptId}\nAluno: <@${reviewed.studentId}>\n${examStudentIdentificationSummary(reviewed)}\nResultado: ${status === "approved" ? "Aprovado" : "Reprovado"}\nNota automática: ${formatScore(reviewed.automaticScore ?? reviewed.score)}\nNota manual: ${formatScore(reviewed.manualScore ?? 0)}\nNota final: ${formatScore(reviewed.finalScore ?? reviewed.score)}\nAvaliador: <@${interaction.user.id}>`).catch(() => null);
   const student = await interaction.guild!.members.fetch(reviewed.studentId).catch(() => null);
   await student?.send(examDecisionDm(course, runtime.settings, reviewed, status)).catch(() => null);
@@ -2262,30 +2272,166 @@ async function editExamCorrectionPanel(interaction: ButtonInteraction | ModalSub
   await message?.edit(payload).catch(() => null);
 }
 
-async function sendExamResultPanel(interaction: ButtonInteraction | ModalSubmitInteraction, courseSettings: CourseSettings, examSettings: CourseExamSettings, course: Course, attempt: CourseExamAttempt) {
-  const channel = await fetchTextChannel(interaction, examSettings.resultChannelId || courseSettings.resultChannelId);
-  if (!channel) return;
-  const correctedAt = attempt.correctedAt ? Math.floor(new Date(attempt.correctedAt).getTime() / 1000) : Math.floor(Date.now() / 1000);
-  await channel.send(renderComponentsV2Panel({
-    accentColor: parseColor(course.color),
-    description: "Resultado final da prova corrigida.",
+async function sendExamResultPanel(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  courseSettings: CourseSettings,
+  examSettings: CourseExamSettings,
+  course: Course,
+  attempt: CourseExamAttempt,
+  questions: CourseExamQuestion[] = [],
+  answers: CourseExamAnswer[] = []
+) {
+  const configuredIds = uniqueIds([examSettings.resultChannelId, courseSettings.resultChannelId]);
+  if (!configuredIds.length) {
+    const message = `Erro ao localizar canal de resultado da prova\nTentativa: ${attempt.id}\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nMotivo: nenhum Canal de Aprovação/Resultado das Provas foi configurado.`;
+    console.warn(`[courses] ${message.replace(/\n/g, " | ")}`);
+    await sendCourseLog(interaction, courseSettings, message).catch(() => null);
+    return false;
+  }
+
+  const channel = await fetchFirstTextChannel(interaction, configuredIds);
+  if (!channel) {
+    const message = `Erro ao localizar canal de resultado da prova\nTentativa: ${attempt.id}\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nCanais configurados: ${configuredIds.map((id) => `<#${id}>`).join(", ")}\nMotivo: o bot não encontrou um canal de texto válido ou não possui acesso.`;
+    console.warn(`[courses] ${message.replace(/\n/g, " | ")}`);
+    await sendCourseLog(interaction, courseSettings, message).catch(() => null);
+    return false;
+  }
+
+  await sendCourseLog(interaction, courseSettings, `Canal de aprovação localizado\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>`).catch(() => null);
+  const payload = await examResultPanel(interaction, course, attempt, questions, answers);
+  const sent = await channel.send(payload).catch(async (error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[courses] failed to send exam result panel ${attempt.id}:`, reason);
+    await sendCourseLog(interaction, courseSettings, `Erro ao enviar painel de resultado\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nErro: ${reason}`).catch(() => null);
+    return null;
+  });
+  if (!sent) return false;
+  await sendCourseLog(interaction, courseSettings, `Painel de resultado enviado com sucesso\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>\nNota: ${formatScore(attempt.finalScore ?? attempt.score)}/${formatScore(attempt.maxScore)}\nStatus: ${examReviewStatusLabel(attempt)}`).catch(() => null);
+  return true;
+}
+
+async function examResultPanel(interaction: ButtonInteraction | ModalSubmitInteraction, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
+  const member = await interaction.guild?.members.fetch(attempt.studentId).catch(() => null);
+  const timestamp = Math.floor(new Date(attempt.correctedAt ?? attempt.finishedAt ?? attempt.updatedAt).getTime() / 1000);
+  const finalScore = attempt.finalScore ?? attempt.score;
+  const status = examFinalStatusLabel(attempt);
+  const totalQuestions = questions.length || answers.length || attempt.objectiveCorrect + attempt.objectiveWrong + attempt.writtenCount;
+  const identification = attempt.studentIdentification;
+  return renderComponentsV2Panel({
+    accentColor: examResultAccent(attempt),
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`course_exam_review:approved:${attempt.id}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(Boolean(attempt.result)),
+      new ButtonBuilder().setCustomId(`course_exam_review:rejected:${attempt.id}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Reprovar").setStyle(ButtonStyle.Danger).setDisabled(Boolean(attempt.result)),
+      new ButtonBuilder().setCustomId(`course_exam_result_answers:${attempt.id}`).setEmoji(systemComponentEmoji("prancheta")).setLabel("Ver respostas").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`course_exam_result_details:${attempt.id}`).setEmoji(systemComponentEmoji("folha")).setLabel("Ver detalhes da prova").setStyle(ButtonStyle.Secondary)
+    )],
+    description: "Resultado automático gerado ao finalizar a prova.",
     fields: [
       [
-        `Nome do aluno: <@${attempt.studentId}>`,
+        `Participante: ${member?.displayName ?? `<@${attempt.studentId}>`}`,
+        `ID Discord: ${attempt.studentId}`,
+        `Nome RP: ${identification?.rpFullName || "não informado"}`,
+        `Cargo: ${studentRankLabel(identification?.currentRank)}`,
+        `Prova: ${course.name}`,
+        `Data/Hora: <t:${timestamp}:F>`
+      ].join("\n"),
+      [
+        `Questões: ${totalQuestions}`,
+        `Acertos: ${attempt.objectiveCorrect}`,
+        `Erros: ${attempt.objectiveWrong}`,
+        `Aproveitamento: ${formatScore(attempt.percent)}%`,
+        `Nota: ${formatScore(finalScore)}/${formatScore(attempt.maxScore)}`,
+        `Tempo gasto: ${formatExamDuration(attempt.startedAt, attempt.finishedAt)}`,
+        `Status: ${status}`
+      ].join("\n")
+    ],
+    guild: interaction.guild,
+    image: member ? { imageEnabled: true, imagePosition: "thumbnail", imageUrl: member.displayAvatarURL({ size: 128 }) } : null,
+    moduleId: "courses",
+    title: "Resultado da Prova"
+  });
+}
+
+async function showExamResultAnswers(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle) {
+    await interaction.editReply("Resultado de prova não encontrado.");
+    return;
+  }
+  if (!(await canReviewExam(interaction, context, bundle.attempt))) {
+    await interaction.editReply("Você não tem permissão para ver as respostas desta prova.");
+    return;
+  }
+  const course = await context.api.getCourse(interaction.guildId!, bundle.attempt.courseId);
+  const answerByQuestion = new Map(bundle.answers.map((answer) => [answer.questionId, answer]));
+  const fields = bundle.questions.map((question, index) => formatAnswerSummary(question, answerByQuestion.get(question.id), index + 1));
+  await replyWithResultChunks(interaction, course, "Respostas da Prova", `Tentativa: ${bundle.attempt.id}\nAluno: <@${bundle.attempt.studentId}>`, fields);
+}
+
+async function showExamResultDetails(interaction: ButtonInteraction, context: BotContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const attemptId = idFromCustomId(interaction.customId);
+  const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId).catch(() => null);
+  if (!bundle) {
+    await interaction.editReply("Resultado de prova não encontrado.");
+    return;
+  }
+  if (!(await canReviewExam(interaction, context, bundle.attempt))) {
+    await interaction.editReply("Você não tem permissão para ver os detalhes desta prova.");
+    return;
+  }
+  const course = await context.api.getCourse(interaction.guildId!, bundle.attempt.courseId);
+  const attempt = bundle.attempt;
+  await interaction.editReply(renderComponentsV2Panel({
+    accentColor: examResultAccent(attempt),
+    description: "Detalhes persistidos do resultado individual.",
+    fields: [
+      [
+        `Tentativa: ${attempt.id}`,
+        `Aluno: <@${attempt.studentId}>`,
         ...examStudentIdentificationLines(attempt),
         `Curso: ${course.name}`,
-        `Nota automática: ${formatScore(attempt.automaticScore ?? attempt.score)}`,
-        `Nota manual: ${formatScore(attempt.manualScore ?? 0)}`,
-        `Nota final: ${formatScore(attempt.finalScore ?? attempt.score)}`,
-        `Status: ${examReviewStatusLabel(attempt)}`,
-        `Avaliador: ${attempt.correctedBy ? `<@${attempt.correctedBy}>` : `<@${interaction.user.id}>`}`,
-        `Data da correção: <t:${correctedAt}:F>`
+        `Questões: ${bundle.questions.length}`,
+        `Acertos: ${attempt.objectiveCorrect}`,
+        `Erros: ${attempt.objectiveWrong}`,
+        `Pontuação: ${formatScore(attempt.finalScore ?? attempt.score)}/${formatScore(attempt.maxScore)}`,
+        `Aproveitamento: ${formatScore(attempt.percent)}%`,
+        `Status: ${examFinalStatusLabel(attempt)}`,
+        `Início: <t:${Math.floor(new Date(attempt.startedAt).getTime() / 1000)}:F>`,
+        `Fim: ${attempt.finishedAt ? `<t:${Math.floor(new Date(attempt.finishedAt).getTime() / 1000)}:F>` : "-"}`,
+        `Tempo gasto: ${formatExamDuration(attempt.startedAt, attempt.finishedAt)}`
       ].join("\n")
     ],
     guild: interaction.guild,
     moduleId: "courses",
-    title: "Resultado de Prova"
-  })).catch(() => null);
+    title: "Detalhes da Prova"
+  }));
+}
+
+async function replyWithResultChunks(interaction: ButtonInteraction, course: Course, title: string, description: string, fields: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < fields.length; index += 6) chunks.push(fields.slice(index, index + 6));
+  const first = chunks.shift() ?? ["Nenhuma resposta encontrada."];
+  await interaction.editReply(renderComponentsV2Panel({
+    accentColor: parseColor(course.color),
+    description,
+    fields: first,
+    guild: interaction.guild,
+    moduleId: "courses",
+    title
+  }));
+  for (let index = 0; index < chunks.length; index += 1) {
+    await interaction.followUp(ephemeral(renderComponentsV2Panel({
+      accentColor: parseColor(course.color),
+      description: `${description}\nPágina ${index + 2}`,
+      fields: chunks[index],
+      guild: interaction.guild,
+      moduleId: "courses",
+      title
+    }))).catch(() => null);
+  }
 }
 
 function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], guild?: Guild | null) {
@@ -2354,6 +2500,18 @@ function examReviewStatusLabel(attempt: CourseExamAttempt) {
   if (attempt.result === "approved" || attempt.status === "approved") return `${systemStatusEmoji("success")} Aprovado`;
   if (attempt.result === "rejected" || attempt.status === "rejected") return `${systemStatusEmoji("danger")} Reprovado`;
   return "Aguardando Correção";
+}
+
+function examFinalStatusLabel(attempt: CourseExamAttempt) {
+  if (attempt.result === "approved" || attempt.status === "approved") return `${systemStatusEmoji("success")} APROVADO`;
+  if (attempt.result === "rejected" || attempt.status === "rejected") return `${systemStatusEmoji("danger")} REPROVADO`;
+  return "AGUARDANDO";
+}
+
+function examResultAccent(attempt: CourseExamAttempt) {
+  if (attempt.result === "approved" || attempt.status === "approved") return 0x16a34a;
+  if (attempt.result === "rejected" || attempt.status === "rejected") return 0xdc2626;
+  return 0xfacc15;
 }
 
 function examStudentIdentificationLines(attempt: CourseExamAttempt) {

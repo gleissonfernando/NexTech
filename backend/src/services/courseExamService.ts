@@ -443,6 +443,7 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
     collections.courseExamAnswers.find({ ...scope(botId, guildId), attemptId }).toArray()
   ]);
   if (!attempt) return null;
+  await logCourseAction(botId, guildId, "course.exam_correction_started", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId });
   const examSettings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
     ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
   const relevantQuestions = attemptQuestions(attempt);
@@ -456,12 +457,12 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   const writtenCount = answers.filter((answer) => answer.type === "written").length;
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
   const pendingManualCorrection = answers.some((answer) => answer.correct == null);
-  const requiresManualApproval = examSettings?.automaticApproval !== true && examSettings?.manualApproval !== false;
-  const automaticResult = !pendingManualCorrection && !requiresManualApproval
+  const automaticResult = !pendingManualCorrection
     ? (score >= Number(examSettings?.minScore ?? 0) ? "approved" as const : "rejected" as const)
     : null;
   const nextStatus = automaticResult ?? "awaiting_review";
   const now = new Date();
+  await logCourseAction(botId, guildId, "course.exam_score_calculated", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, maxScore, objectiveCorrect, objectiveWrong, percent, score, result: automaticResult });
   const updatedStatus = await collections.courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" }, {
     $set: {
       automaticScore: score,
@@ -482,6 +483,7 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   });
   if (updatedStatus.matchedCount === 0) return null;
   const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
+  await logCourseAction(botId, guildId, "course.exam_result_saved", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, maxScore, percent, result: automaticResult, score });
   await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score });
   await collections.courseEnrollments.updateOne(
     { ...scope(botId, guildId), publicationId: attempt.publicationId, studentId: attempt.studentId },
