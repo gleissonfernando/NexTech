@@ -943,6 +943,9 @@ export type CoursePublication = {
   syncError: string | null;
   instructorId: string;
   location: string;
+  legacyLocation: string | null;
+  dpId: string | null;
+  dpNameSnapshot: string | null;
   scheduledFor: string;
   capacity: number;
   students: string[];
@@ -957,6 +960,19 @@ export type CoursePublication = {
   proofStartedAt: string | null;
   finishedBy: string | null;
   finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CourseDepartment = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  active: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1164,6 +1180,7 @@ export type CoursesDashboard = {
   publications: CoursePublication[];
   reports: CourseReport[];
   scheduleRequests: CourseScheduleRequest[];
+  departments: CourseDepartment[];
   settings: CourseSettings;
   logs: CourseLog[];
   enrollments: CourseEnrollment[];

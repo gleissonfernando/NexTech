@@ -8,18 +8,23 @@ import { emitRealtime } from "../realtime/events";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
   COURSES_MODULE_ID,
+  CourseDepartmentError,
   createCourse,
+  createCourseDepartment,
   createCoursePublication,
   createCourseReport,
   createScheduleRequest,
+  deleteCourseDepartment,
   deleteCourse,
   expireCourseEnrollmentChannel,
   getCourse,
+  getActiveCourseDepartment,
   getCoursePublication,
   getCoursePublicationEnrollments,
   getCoursesDashboard,
   getCourseSettings,
   getManageableCourses,
+  listCourseDepartments,
   getScheduleRequest,
   joinCoursePublication,
   leaveCoursePublication,
@@ -31,6 +36,7 @@ import {
   setCoursePublicationStatus,
   setCourseEnrollmentExamChannel,
   updateCourse,
+  updateCourseDepartment,
   updateCoursePanelMessage,
   updateCoursePublicationEvent,
   updateCoursePublicationMessage,
@@ -165,7 +171,10 @@ const publicationSchema = z.object({
   channelId: snowflake,
   courseId: z.string().min(1),
   discordEventType: z.enum(["EXTERNAL", "VOICE", "STAGE"]).nullable().optional(),
+  dpId: z.string().min(1).max(100).nullable().optional(),
+  dpNameSnapshot: z.string().min(1).max(120).nullable().optional(),
   instructorId: snowflake,
+  legacyLocation: z.string().max(120).nullable().optional().or(z.literal("")),
   location: z.string().min(1).max(120),
   notes: z.string().max(900).nullable().optional().or(z.literal("")),
   scheduledFor: z.string().min(1).max(120),
@@ -179,6 +188,8 @@ const enrollmentChannelSchema = z.object({ channelId: snowflake, studentId: snow
 const studentExamSchema = z.object({ studentId: snowflake });
 const statusSchema = z.object({ actorId: snowflake, status: z.enum(["started", "cancelled", "closed", "proof", "finished"]) });
 const publicationListSchema = z.object({ status: z.enum(["open", "started", "cancelled", "closed", "proof", "finished"]).nullable().optional() });
+const departmentSchema = z.object({ name: z.string().trim().min(2).max(80) });
+const departmentUpdateSchema = z.object({ active: z.boolean().optional(), name: z.string().trim().min(2).max(80).optional() });
 const messageStateSchema = z.object({ messageId: optionalSnowflake });
 const eventStateSchema = z.object({
   discordEventId: z.string().max(80).nullable().optional(),
@@ -317,6 +328,55 @@ coursesRouter.post("/:guildId/panel", async (req, res, next) => {
     const settings = await requestCoursePanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId);
     return res.json({ settings });
   } catch (error) {
+    return next(error);
+  }
+});
+
+coursesRouter.get("/:guildId/departments", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para ver DPs." });
+    return res.json({ departments: await listCourseDepartments(botId, guildId, req.query.activeOnly === "true") });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+coursesRouter.post("/:guildId/departments", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para cadastrar DPs." });
+    const department = await createCourseDepartment(botId, guildId, departmentSchema.parse(req.body ?? {}), res.locals.dashboardAuth.user.discordId);
+    return res.status(201).json({ department });
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
+    return next(error);
+  }
+});
+
+coursesRouter.patch("/:guildId/departments/:departmentId", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para editar DPs." });
+    const department = await updateCourseDepartment(botId, guildId, routeParam(req, "departmentId"), departmentUpdateSchema.parse(req.body ?? {}), res.locals.dashboardAuth.user.discordId);
+    return res.json({ department });
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
+    return next(error);
+  }
+});
+
+coursesRouter.delete("/:guildId/departments/:departmentId", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissao para excluir DPs." });
+    return res.json(await deleteCourseDepartment(botId, guildId, routeParam(req, "departmentId"), res.locals.dashboardAuth.user.discordId));
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
     return next(error);
   }
 });
@@ -589,6 +649,51 @@ coursesRouter.post("/bot/:guildId/settings", requireBot, async (req, res, next) 
   }
 });
 
+coursesRouter.get("/bot/:guildId/departments", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.json({ departments: await listCourseDepartments(botId, guildId, req.query.activeOnly === "true") });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+coursesRouter.post("/bot/:guildId/departments", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const department = await createCourseDepartment(botId, guildId, departmentSchema.parse(req.body ?? {}), req.get("x-actor-id") ?? null);
+    return res.status(201).json({ department });
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
+    return next(error);
+  }
+});
+
+coursesRouter.patch("/bot/:guildId/departments/:departmentId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const department = await updateCourseDepartment(botId, guildId, routeParam(req, "departmentId"), departmentUpdateSchema.parse(req.body ?? {}), req.get("x-actor-id") ?? null);
+    return res.json({ department });
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
+    return next(error);
+  }
+});
+
+coursesRouter.delete("/bot/:guildId/departments/:departmentId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.json(await deleteCourseDepartment(botId, guildId, routeParam(req, "departmentId"), req.get("x-actor-id") ?? null));
+  } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
+    return next(error);
+  }
+});
+
 coursesRouter.patch("/bot/:guildId/panel-message", requireBot, async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
@@ -651,9 +756,11 @@ coursesRouter.post("/bot/:guildId/publications", requireBot, async (req, res, ne
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
-    const publication = await createCoursePublication(botId, guildId, sanitizePublication(publicationSchema.parse(req.body ?? {})));
+    const parsed = publicationSchema.parse(req.body ?? {});
+    const publication = await createCoursePublication(botId, guildId, await sanitizePublication(botId, guildId, parsed));
     return res.status(201).json({ publication });
   } catch (error) {
+    if (error instanceof CourseDepartmentError) return replyDepartmentError(res, error);
     return next(error);
   }
 });
@@ -926,8 +1033,17 @@ function sanitizeCourse(input: Partial<z.infer<typeof courseSchema>>) {
   };
 }
 
-function sanitizePublication(input: z.infer<typeof publicationSchema>) {
-  return { ...input, notes: input.notes || null };
+async function sanitizePublication(botId: string | null, guildId: string, input: z.infer<typeof publicationSchema>) {
+  if (!input.dpId) return { ...input, dpId: null, dpNameSnapshot: null, legacyLocation: input.legacyLocation || null, notes: input.notes || null };
+  const department = await getActiveCourseDepartment(botId, guildId, input.dpId);
+  return {
+    ...input,
+    dpId: department.id,
+    dpNameSnapshot: department.name,
+    legacyLocation: input.legacyLocation || null,
+    location: department.name,
+    notes: input.notes || null
+  };
 }
 
 function sanitizeSchedule(input: z.infer<typeof scheduleSchema>) {
@@ -936,4 +1052,9 @@ function sanitizeSchedule(input: z.infer<typeof scheduleSchema>) {
 
 function routeParam(req: Request, name: string) {
   return z.string().min(1).parse(req.params[name]);
+}
+
+function replyDepartmentError(res: import("express").Response, error: CourseDepartmentError) {
+  const status = error.code === "not_found" ? 404 : error.code === "invalid_name" ? 400 : 409;
+  return res.status(status).json({ code: error.code, message: error.message });
 }

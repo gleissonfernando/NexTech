@@ -384,6 +384,9 @@ export type MongoCoursePublication = {
   syncError?: string | null;
   instructorId: string;
   location: string;
+  legacyLocation?: string | null;
+  dpId?: string | null;
+  dpNameSnapshot?: string | null;
   scheduledFor: string;
   capacity: number;
   students: string[];
@@ -397,6 +400,19 @@ export type MongoCoursePublication = {
   proofStartedAt?: Date | null;
   finishedBy?: string | null;
   finishedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoCourseDepartment = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  active: boolean;
+  createdBy: string | null;
+  updatedBy?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -3833,6 +3849,7 @@ export async function getMongoCollections() {
     ticketEvents: db.collection<MongoTicketEvent>("ticket_events"),
     courseSettings: db.collection<MongoCourseSettings>("course_settings"),
     courses: db.collection<MongoCourse>("courses"),
+    courseDepartments: db.collection<MongoCourseDepartment>("course_departments"),
     coursePublications: db.collection<MongoCoursePublication>("course_publications"),
     courseEnrollments: db.collection<MongoCourseEnrollment>("course_enrollments"),
     courseScheduleRequests: db.collection<MongoCourseScheduleRequest>("course_schedule_requests"),
@@ -4029,6 +4046,11 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTicketEvent>("ticket_events").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoCourseSettings>("course_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoCourse>("courses").createIndex({ botId: 1, guildId: 1, active: 1, updatedAt: -1 }),
+    db.collection<MongoCourseDepartment>("course_departments").createIndex({ botId: 1, guildId: 1, active: 1, name: 1 }),
+    db.collection<MongoCourseDepartment>("course_departments").createIndex(
+      { botId: 1, guildId: 1, normalizedName: 1 },
+      { unique: true, partialFilterExpression: { active: true } }
+    ),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, messageId: 1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, discordEventId: 1 }),

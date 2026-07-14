@@ -1,16 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { fixedSystemEmojiText } from "../config/systemEmojis";
-import { getMongoCollections, type MongoCourse, type MongoCourseEnrollment, type MongoCourseExamQuestion, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
+import { getMongoCollections, type MongoCourse, type MongoCourseDepartment, type MongoCourseEnrollment, type MongoCourseExamQuestion, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
 const DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS = 24;
+const DEFAULT_COURSE_DEPARTMENTS = ["DP Fronteira", "DP Pier", "DP Juniper"];
+const COURSE_DEPARTMENT_NAME_MIN = 2;
+const COURSE_DEPARTMENT_NAME_MAX = 80;
 
 export type CourseDashboard = {
   courses: CourseDto[];
   publications: CoursePublicationDto[];
   reports: CourseReportDto[];
   scheduleRequests: CourseScheduleRequestDto[];
+  departments: CourseDepartmentDto[];
   settings: CourseSettingsDto;
   logs: CourseLogDto[];
   enrollments: CourseEnrollmentDto[];
@@ -19,6 +23,7 @@ export type CourseDashboard = {
 export type CourseSettingsDto = ReturnType<typeof mapSettings>;
 export type CourseDto = ReturnType<typeof mapCourse>;
 export type CoursePublicationDto = ReturnType<typeof mapPublication>;
+export type CourseDepartmentDto = ReturnType<typeof mapCourseDepartment>;
 export type CourseScheduleRequestDto = ReturnType<typeof mapScheduleRequest>;
 export type CourseReportDto = ReturnType<typeof mapReport>;
 export type CourseLogDto = ReturnType<typeof mapLog>;
@@ -28,20 +33,28 @@ type CourseSettingsUpdate = Partial<Omit<CourseSettingsDto, "id" | "botId" | "gu
   defaultExpirationHours?: number | null;
 };
 
+export class CourseDepartmentError extends Error {
+  constructor(public readonly code: "duplicate" | "invalid_name" | "not_found" | "inactive", message: string) {
+    super(message);
+  }
+}
+
 export async function getCoursesDashboard(botId: string | null, guildId: string): Promise<CourseDashboard> {
   const collections = await getMongoCollections();
   await ensureNpdTabletPrisionalCourse(botId, guildId);
   await ensureNpdModulationCourse(botId, guildId);
   await ensureNpdTrackingCourse(botId, guildId);
   await ensureNpdApproachCourse(botId, guildId);
+  await ensureDefaultCourseDepartments(botId, guildId);
   const settings = await getCourseSettings(botId, guildId);
-  const [courses, publications, scheduleRequests, reports, logs, enrollments] = await Promise.all([
+  const [courses, publications, scheduleRequests, reports, logs, enrollments, departments] = await Promise.all([
     collections.courses.find(scope(botId, guildId)).sort({ updatedAt: -1 }).toArray(),
     collections.coursePublications.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
     collections.courseScheduleRequests.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
     collections.courseReports.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(50).toArray(),
     collections.courseLogs.find(scope(botId, guildId)).sort({ createdAt: -1 }).limit(25).toArray(),
-    collections.courseEnrollments.find(scope(botId, guildId)).sort({ updatedAt: -1 }).limit(500).toArray()
+    collections.courseEnrollments.find(scope(botId, guildId)).sort({ updatedAt: -1 }).limit(500).toArray(),
+    collections.courseDepartments.find(scope(botId, guildId)).sort({ active: -1, name: 1 }).toArray()
   ]);
 
   return {
@@ -49,6 +62,7 @@ export async function getCoursesDashboard(botId: string | null, guildId: string)
     publications: publications.map(mapPublication),
     reports: reports.map(mapReport),
     scheduleRequests: scheduleRequests.map(mapScheduleRequest),
+    departments: departments.map(mapCourseDepartment),
     settings,
     logs: logs.map(mapLog),
     enrollments: enrollments.map(mapEnrollment)
@@ -1169,6 +1183,136 @@ export async function getCourse(botId: string | null, guildId: string, courseId:
   return course ? mapCourse(course) : null;
 }
 
+export async function ensureDefaultCourseDepartments(botId: string | null, guildId: string) {
+  const { courseDepartments } = await getMongoCollections();
+  const now = new Date();
+  await Promise.all(DEFAULT_COURSE_DEPARTMENTS.map(async (name) => {
+    const normalizedName = normalizeCourseDepartmentName(name);
+    await courseDepartments.updateOne(
+      { ...scope(botId, guildId), normalizedName },
+      {
+        $setOnInsert: {
+          _id: randomUUID(),
+          botId,
+          guildId,
+          name,
+          normalizedName,
+          active: true,
+          createdBy: null,
+          createdAt: now,
+          updatedAt: now
+        }
+      },
+      { upsert: true }
+    );
+  }));
+}
+
+export async function listCourseDepartments(botId: string | null, guildId: string, activeOnly = false) {
+  const { courseDepartments } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const query = { ...scope(botId, guildId), ...(activeOnly ? { active: true } : {}) };
+  const departments = await courseDepartments.find(query).sort({ active: -1, name: 1 }).toArray();
+  return departments.map(mapCourseDepartment);
+}
+
+export async function getCourseDepartment(botId: string | null, guildId: string, departmentId: string) {
+  const { courseDepartments } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const department = await courseDepartments.findOne({ _id: departmentId, ...scope(botId, guildId) });
+  return department ? mapCourseDepartment(department) : null;
+}
+
+export async function getActiveCourseDepartment(botId: string | null, guildId: string, departmentId: string) {
+  const { courseDepartments } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const department = await courseDepartments.findOne({ _id: departmentId, ...scope(botId, guildId) });
+  if (!department) throw new CourseDepartmentError("not_found", "DP nao encontrada.");
+  if (!department.active) throw new CourseDepartmentError("inactive", "DP desativada.");
+  return mapCourseDepartment(department);
+}
+
+export async function createCourseDepartment(botId: string | null, guildId: string, input: { name: string }, actorId: string | null) {
+  const { courseDepartments } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const name = sanitizeCourseDepartmentName(input.name);
+  const normalizedName = normalizeCourseDepartmentName(name);
+  if (!normalizedName) throw new CourseDepartmentError("invalid_name", "Nome de DP invalido.");
+  const duplicate = await courseDepartments.findOne({ ...scope(botId, guildId), normalizedName, active: true });
+  if (duplicate) throw new CourseDepartmentError("duplicate", "Ja existe uma DP ativa com esse nome.");
+  const now = new Date();
+  const doc: MongoCourseDepartment = {
+    _id: randomUUID(),
+    active: true,
+    botId,
+    createdAt: now,
+    createdBy: actorId,
+    guildId,
+    name,
+    normalizedName,
+    updatedAt: now,
+    updatedBy: actorId
+  };
+  try {
+    await courseDepartments.insertOne(doc);
+  } catch (error) {
+    if (isDuplicateKeyError(error)) throw new CourseDepartmentError("duplicate", "Ja existe uma DP ativa com esse nome.");
+    throw error;
+  }
+  await logCourseAction(botId, guildId, "course.department_created", actorId, null, null, { departmentId: doc._id, name });
+  return mapCourseDepartment(doc);
+}
+
+export async function updateCourseDepartment(botId: string | null, guildId: string, departmentId: string, input: { active?: boolean; name?: string }, actorId: string | null) {
+  const { courseDepartments } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const current = await courseDepartments.findOne({ _id: departmentId, ...scope(botId, guildId) });
+  if (!current) throw new CourseDepartmentError("not_found", "DP nao encontrada.");
+  const patch: Partial<MongoCourseDepartment> = { updatedAt: new Date(), updatedBy: actorId };
+  if (typeof input.name === "string") {
+    const name = sanitizeCourseDepartmentName(input.name);
+    const normalizedName = normalizeCourseDepartmentName(name);
+    if (!normalizedName) throw new CourseDepartmentError("invalid_name", "Nome de DP invalido.");
+    const duplicate = await courseDepartments.findOne({ _id: { $ne: departmentId }, ...scope(botId, guildId), normalizedName, active: true });
+    if (duplicate && input.active !== false) throw new CourseDepartmentError("duplicate", "Ja existe uma DP ativa com esse nome.");
+    patch.name = name;
+    patch.normalizedName = normalizedName;
+  }
+  if (typeof input.active === "boolean") {
+    if (input.active) {
+      const normalizedName = patch.normalizedName ?? current.normalizedName;
+      const duplicate = await courseDepartments.findOne({ _id: { $ne: departmentId }, ...scope(botId, guildId), normalizedName, active: true });
+      if (duplicate) throw new CourseDepartmentError("duplicate", "Ja existe uma DP ativa com esse nome.");
+    }
+    patch.active = input.active;
+  }
+  try {
+    await courseDepartments.updateOne({ _id: departmentId, ...scope(botId, guildId) }, { $set: patch });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) throw new CourseDepartmentError("duplicate", "Ja existe uma DP ativa com esse nome.");
+    throw error;
+  }
+  const updated = await courseDepartments.findOne({ _id: departmentId, ...scope(botId, guildId) });
+  await logCourseAction(botId, guildId, "course.department_updated", actorId, null, null, { active: patch.active, departmentId, name: patch.name });
+  return mapCourseDepartment(updated ?? { ...current, ...patch });
+}
+
+export async function deleteCourseDepartment(botId: string | null, guildId: string, departmentId: string, actorId: string | null) {
+  const { courseDepartments, coursePublications } = await getMongoCollections();
+  await ensureDefaultCourseDepartments(botId, guildId);
+  const current = await courseDepartments.findOne({ _id: departmentId, ...scope(botId, guildId) });
+  if (!current) throw new CourseDepartmentError("not_found", "DP nao encontrada.");
+  const linkedPublications = await coursePublications.countDocuments({ ...scope(botId, guildId), dpId: departmentId });
+  if (linkedPublications > 0) {
+    const department = await updateCourseDepartment(botId, guildId, departmentId, { active: false }, actorId);
+    await logCourseAction(botId, guildId, "course.department_delete_blocked_deactivated", actorId, null, null, { departmentId, linkedPublications });
+    return { deleted: false, department };
+  }
+  await courseDepartments.deleteOne({ _id: departmentId, ...scope(botId, guildId) });
+  await logCourseAction(botId, guildId, "course.department_deleted", actorId, null, null, { departmentId, name: current.name });
+  return { deleted: true, department: mapCourseDepartment(current) };
+}
+
 export async function createCoursePublication(botId: string | null, guildId: string, input: {
   capacity: number;
   channelId: string;
@@ -1176,6 +1320,9 @@ export async function createCoursePublication(botId: string | null, guildId: str
   discordEventType?: "EXTERNAL" | "VOICE" | "STAGE" | null;
   instructorId: string;
   location: string;
+  legacyLocation?: string | null;
+  dpId?: string | null;
+  dpNameSnapshot?: string | null;
   notes?: string | null;
   scheduledFor: string;
   scheduledStartAt?: string | null;
@@ -1193,6 +1340,9 @@ export async function createCoursePublication(botId: string | null, guildId: str
         discordEventType: input.discordEventType ?? existingOpen.discordEventType ?? "EXTERNAL",
         instructorId: input.instructorId,
         location: input.location,
+        legacyLocation: input.legacyLocation ?? existingOpen.legacyLocation ?? null,
+        dpId: input.dpId ?? existingOpen.dpId ?? null,
+        dpNameSnapshot: input.dpNameSnapshot ?? existingOpen.dpNameSnapshot ?? null,
         notes: input.notes || null,
         scheduledFor: input.scheduledFor,
         scheduledStartAt: parseOptionalDate(input.scheduledStartAt) ?? existingOpen.scheduledStartAt ?? null,
@@ -1223,6 +1373,9 @@ export async function createCoursePublication(botId: string | null, guildId: str
     syncError: null,
     instructorId: input.instructorId,
     location: input.location,
+    legacyLocation: input.legacyLocation ?? null,
+    dpId: input.dpId ?? null,
+    dpNameSnapshot: input.dpNameSnapshot ?? null,
     scheduledFor: input.scheduledFor,
     capacity: Math.max(1, input.capacity),
     students: [],
@@ -1251,14 +1404,15 @@ export async function updateCoursePublicationEvent(botId: string | null, guildId
   syncError?: string | null;
 }) {
   const { coursePublications } = await getMongoCollections();
+  const patch: Record<string, unknown> = {
+    lastSyncAt: new Date(),
+    updatedAt: new Date()
+  };
+  if ("discordEventId" in input) patch.discordEventId = input.discordEventId ?? null;
+  if ("discordEventUrl" in input) patch.discordEventUrl = input.discordEventUrl ?? null;
+  if ("syncError" in input) patch.syncError = input.syncError ?? null;
   await coursePublications.updateOne({ _id: publicationId, ...scope(botId, guildId) }, {
-    $set: {
-      discordEventId: input.discordEventId ?? null,
-      discordEventUrl: input.discordEventUrl ?? null,
-      lastSyncAt: new Date(),
-      syncError: input.syncError ?? null,
-      updatedAt: new Date()
-    }
+    $set: patch
   });
   const publication = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
   return publication ? mapPublication(publication) : null;
@@ -1692,6 +1846,9 @@ function mapPublication(publication: MongoCoursePublication) {
     syncError: publication.syncError ?? null,
     instructorId: publication.instructorId,
     location: publication.location,
+    legacyLocation: publication.legacyLocation ?? null,
+    dpId: publication.dpId ?? null,
+    dpNameSnapshot: publication.dpNameSnapshot ?? null,
     scheduledFor: publication.scheduledFor,
     capacity: publication.capacity,
     students: publication.students,
@@ -1708,6 +1865,21 @@ function mapPublication(publication: MongoCoursePublication) {
     finishedAt: publication.finishedAt?.toISOString() ?? null,
     createdAt: publication.createdAt.toISOString(),
     updatedAt: publication.updatedAt.toISOString()
+  };
+}
+
+function mapCourseDepartment(department: MongoCourseDepartment) {
+  return {
+    id: department._id,
+    botId: department.botId,
+    guildId: department.guildId,
+    name: department.name,
+    normalizedName: department.normalizedName,
+    active: department.active,
+    createdBy: department.createdBy,
+    updatedBy: department.updatedBy ?? null,
+    createdAt: department.createdAt.toISOString(),
+    updatedAt: department.updatedAt.toISOString()
   };
 }
 
@@ -1877,6 +2049,27 @@ function cleanCourse(input: Partial<CourseDto>) {
     if (input[key] !== undefined) (allowed as Record<string, unknown>)[key] = input[key];
   }
   return allowed;
+}
+
+function sanitizeCourseDepartmentName(input: string) {
+  const name = input.replace(/\s+/g, " ").trim();
+  if (name.length < COURSE_DEPARTMENT_NAME_MIN || name.length > COURSE_DEPARTMENT_NAME_MAX) {
+    throw new CourseDepartmentError("invalid_name", `O nome da DP deve ter entre ${COURSE_DEPARTMENT_NAME_MIN} e ${COURSE_DEPARTMENT_NAME_MAX} caracteres.`);
+  }
+  return name;
+}
+
+function normalizeCourseDepartmentName(input: string) {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === 11000;
 }
 
 function scope(botId: string | null, guildId: string) {

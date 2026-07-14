@@ -7,6 +7,7 @@ import {
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
   GuildScheduledEventStatus,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   OverwriteType,
@@ -37,7 +38,7 @@ import type { BotCommand, BotContext } from "../types";
 import { currentRuntimeBotId, env } from "../config/env";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { renderComponentsV2Panel, type PanelVisualConfig } from "./panelVisualRenderer";
-import type { Course, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseSettings } from "./apiClient";
+import type { Course, CourseDepartment, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseSettings } from "./apiClient";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 type CourseActionInteraction = ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
@@ -49,6 +50,14 @@ const IDS = {
   channels: "course_config_channels",
   close: "course_config_close",
   managers: "course_config_managers",
+  departments: "course_config_departments",
+  departmentAdd: "course_department_add",
+  departmentBack: "course_department_back",
+  departmentDeleteCancel: "course_department_delete_cancel",
+  departmentSelect: "course_department_select",
+  departmentCreateModal: "course_department_create_modal",
+  departmentEditModal: "course_department_edit_modal",
+  publicationDepartmentSelect: "course_publication_department_select",
   publishSelect: "course_publish_select",
   scheduleSelect: "course_schedule_select",
   reportSelect: "course_report_select",
@@ -267,6 +276,84 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
     await interaction.update(managersPanel(await context.api.getCourseSettings(interaction.guildId!)));
     return;
   }
+  if (interaction.customId === IDS.departments) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    await interaction.update(departmentsPanel(await context.api.listCourseDepartments(interaction.guildId!)));
+    return;
+  }
+  if (interaction.customId === IDS.departmentAdd) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    await interaction.showModal(new ModalBuilder()
+      .setCustomId(IDS.departmentCreateModal)
+      .setTitle("Cadastrar DP")
+      .addComponents(inputRow("name", "Nome da DP", TextInputStyle.Short, true, 80)));
+    return;
+  }
+  if (interaction.customId === IDS.departmentBack || interaction.customId === IDS.departmentDeleteCancel) {
+    await interaction.update(departmentsPanel(await context.api.listCourseDepartments(interaction.guildId!)));
+    return;
+  }
+  if (interaction.customId.startsWith("course_department_edit:")) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    const departmentId = idFromCustomId(interaction.customId);
+    const department = (await context.api.listCourseDepartments(interaction.guildId!)).find((item) => item.id === departmentId);
+    if (!department) {
+      await interaction.reply(ephemeralText("DP não encontrada."));
+      return;
+    }
+    await interaction.showModal(new ModalBuilder()
+      .setCustomId(`${IDS.departmentEditModal}:${department.id}`)
+      .setTitle("Editar DP")
+      .addComponents(inputRow("name", "Nome da DP", TextInputStyle.Short, true, 80, department.name)));
+    return;
+  }
+  if (interaction.customId.startsWith("course_department_toggle:")) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    const departmentId = idFromCustomId(interaction.customId);
+    const department = (await context.api.listCourseDepartments(interaction.guildId!)).find((item) => item.id === departmentId);
+    if (!department) {
+      await interaction.reply(ephemeralText("DP não encontrada."));
+      return;
+    }
+    await context.api.updateCourseDepartment(interaction.guildId!, department.id, { active: !department.active }, interaction.user.id);
+    await interaction.update(departmentsPanel(await context.api.listCourseDepartments(interaction.guildId!), `DP ${department.active ? "desativada" : "ativada"} com sucesso.`));
+    return;
+  }
+  if (interaction.customId.startsWith("course_department_delete_confirm:")) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    const result = await context.api.deleteCourseDepartment(interaction.guildId!, idFromCustomId(interaction.customId), interaction.user.id);
+    await interaction.update(departmentsPanel(await context.api.listCourseDepartments(interaction.guildId!), result.deleted ? "DP excluída com sucesso." : "DP possui cursos vinculados e foi desativada para preservar o histórico."));
+    return;
+  }
+  if (interaction.customId.startsWith("course_department_delete:")) {
+    if (!(await canOpenCourseConfig(interaction, await context.api.getCourseSettings(interaction.guildId!)))) {
+      await interaction.reply(ephemeral(accessDeniedPanel(await context.api.getCourseSettings(interaction.guildId!), interaction.guild!)));
+      return;
+    }
+    const departmentId = idFromCustomId(interaction.customId);
+    const department = (await context.api.listCourseDepartments(interaction.guildId!)).find((item) => item.id === departmentId);
+    if (!department) {
+      await interaction.reply(ephemeralText("DP não encontrada."));
+      return;
+    }
+    await interaction.update(departmentDeleteConfirmationPanel(department));
+    return;
+  }
   if (interaction.customId === IDS.channels) {
     await interaction.update(channelsPanel(await context.api.getCourseSettings(interaction.guildId!)));
     return;
@@ -400,7 +487,7 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
   }
   if (interaction.customId === IDS.publishSelect) {
     const course = await context.api.getCourse(interaction.guildId!, courseId);
-    await showModalAndResetSelect(interaction, publicationModal(course));
+    await showPublicationModal(interaction, context, course);
     return;
   }
   if (interaction.customId === IDS.editSelect) {
@@ -410,7 +497,12 @@ async function handleStringSelect(interaction: StringSelectMenuInteraction, cont
   }
   if (interaction.customId === IDS.scheduleSelect) {
     const course = await context.api.getCourse(interaction.guildId!, courseId);
-    await showModalAndResetSelect(interaction, publicationModal(course, "agendamento"));
+    await showPublicationModal(interaction, context, course, "agendamento");
+    return;
+  }
+  if (interaction.customId === IDS.departmentSelect) {
+    const departmentId = interaction.values[0] ?? null;
+    await interaction.update(departmentsPanel(await context.api.listCourseDepartments(interaction.guildId!), undefined, departmentId));
     return;
   }
   if (interaction.customId === IDS.reportSelect) {
@@ -490,6 +582,14 @@ async function handleCourseUserSelect(interaction: UserSelectMenuInteraction, co
 }
 
 async function handleModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  if (interaction.customId === IDS.departmentCreateModal) {
+    await saveDepartmentFromModal(interaction, context, "create");
+    return;
+  }
+  if (interaction.customId.startsWith(`${IDS.departmentEditModal}:`)) {
+    await saveDepartmentFromModal(interaction, context, "edit", idFromCustomId(interaction.customId));
+    return;
+  }
   if (interaction.customId === "course_modal_create") {
     const course = await context.api.createCourse(interaction.guildId!, {
       active: /^s/i.test(interaction.fields.getTextInputValue("active")),
@@ -534,6 +634,44 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   }
 }
 
+async function saveDepartmentFromModal(interaction: ModalSubmitInteraction, context: BotContext, mode: "create" | "edit", departmentId?: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const settings = await context.api.getCourseSettings(interaction.guildId!);
+  if (!(await canOpenCourseConfig(interaction, settings))) {
+    await interaction.editReply("Você não possui permissão para gerenciar DPs.");
+    return;
+  }
+  const name = interaction.fields.getTextInputValue("name").replace(/\s+/g, " ").trim();
+  if (name.length < 2 || name.length > 80) {
+    await interaction.editReply("O nome da DP deve ter entre 2 e 80 caracteres.");
+    return;
+  }
+  try {
+    if (mode === "create") await context.api.createCourseDepartment(interaction.guildId!, name, interaction.user.id);
+    else if (departmentId) await context.api.updateCourseDepartment(interaction.guildId!, departmentId, { name }, interaction.user.id);
+  } catch (error) {
+    await interaction.editReply(courseDepartmentApiErrorMessage(error));
+    return;
+  }
+  await interaction.editReply(mode === "create" ? "DP cadastrada com sucesso." : "DP atualizada com sucesso.");
+}
+
+async function showPublicationModal(interaction: StringSelectMenuInteraction, context: BotContext, course: Course, mode: "publicacao" | "agendamento" = "publicacao") {
+  const departments = await context.api.listCourseDepartments(interaction.guildId!, true).catch((error) => {
+    console.error(`[courses] failed to load departments for modal guild=${interaction.guildId} user=${interaction.user.id}:`, error instanceof Error ? error.stack ?? error.message : error);
+    return [];
+  });
+  if (!departments.length) {
+    await interaction.reply(ephemeralText("Nenhuma DP ativa cadastrada. Cadastre uma DP na configuração de cursos antes de agendar."));
+    return;
+  }
+  if (departments.length > 25) {
+    await interaction.reply(ephemeralText("Existem mais de 25 DPs ativas. O select do Discord em modal suporta no máximo 25 opções; desative ou remova DPs antigas antes de agendar."));
+    return;
+  }
+  await showModalAndResetSelect(interaction, publicationModal(course, departments, mode));
+}
+
 async function publishCourse(interaction: ModalSubmitInteraction, context: BotContext, courseId: string) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const [settings, course] = await Promise.all([
@@ -552,19 +690,27 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
   }
   const date = interaction.fields.getTextInputValue("date").trim();
   const time = interaction.fields.getTextInputValue("time").trim();
-  const location = interaction.fields.getTextInputValue("location").trim();
+  const departmentId = selectedModalStringValue(interaction, IDS.publicationDepartmentSelect);
   const capacity = Number(interaction.fields.getTextInputValue("capacity").trim());
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000000) {
     await interaction.editReply("Informe uma quantidade de vagas válida.");
     return;
   }
-  if (!date || !time || !location) {
-    await interaction.editReply("Informe data, horário e local do curso.");
+  if (!date || !time || !departmentId) {
+    await interaction.editReply("Informe data, horário e DP do curso.");
+    return;
+  }
+  const department = (await context.api.listCourseDepartments(interaction.guildId!, true).catch((error) => {
+    console.error(`[courses] failed to validate selected DP guild=${interaction.guildId} user=${interaction.user.id} dpId=${departmentId}:`, error instanceof Error ? error.stack ?? error.message : error);
+    return [];
+  })).find((item) => item.id === departmentId);
+  if (!department) {
+    await interaction.editReply("A DP selecionada não existe mais, está desativada ou pertence a outro servidor. Abra o modal novamente e selecione uma DP ativa.");
     return;
   }
   const scheduleWindow = parseCourseScheduleWindow(date, time);
   if (!scheduleWindow) {
-    await interaction.editReply("Informe data e horário válidos. Use data dd/mm/aaaa e horário HH:mm.");
+    await interaction.editReply("Informe data e horário válidos. Use data DD/MM e horário HH:mm.");
     return;
   }
   if (scheduleWindow.startAt.getTime() <= Date.now()) {
@@ -578,11 +724,14 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     channelId: targetChannelId,
     courseId,
     discordEventType: "EXTERNAL",
+    dpId: department.id,
+    dpNameSnapshot: department.name,
     instructorId: interaction.user.id,
-    location,
+    legacyLocation: null,
+    location: department.name,
     notes: interaction.fields.getTextInputValue("notes") || null,
     scheduledEndAt: scheduleWindow.endAt.toISOString(),
-    scheduledFor: `${date} ${time}`.trim(),
+    scheduledFor: `${scheduleWindow.displayDate} ${time}`.trim(),
     scheduledStartAt: scheduleWindow.startAt.toISOString()
   });
   let publicationWithEvent = publication;
@@ -609,7 +758,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     ? await existingMessage.edit(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!))
     : await (channel as TextChannel).send(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!));
   await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
-  await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publicationWithEvent.scheduledFor}\nLocal: ${publicationWithEvent.location}\nVagas: ${publicationWithEvent.capacity}\nEvento do Discord: ${publicationWithEvent.discordEventId ? "criado" : "não criado"}`);
+  await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nHorário: ${publicationWithEvent.scheduledFor}\nDP: ${publicationWithEvent.dpNameSnapshot ?? publicationWithEvent.location}\nVagas: ${publicationWithEvent.capacity}\nEvento do Discord: ${publicationWithEvent.discordEventId ? "criado" : "não criado"}`);
   await interaction.editReply(publicationWithEvent.discordEventId ? "Curso agendado com sucesso." : "Curso agendado com painel publicado, mas o evento do Discord não foi criado. Verifique os logs.");
 }
 
@@ -678,8 +827,14 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
     return;
   }
   const course = await context.api.getCourse(interaction.guildId!, updated.courseId).catch(() => null);
-  if (course) await syncCourseScheduledEventStatus(interaction.guild!, course, updated).catch(async (error) => {
-    await context.api.updateCoursePublicationEvent(interaction.guildId!, updated.id, { discordEventId: updated.discordEventId, discordEventUrl: updated.discordEventUrl, syncError: error instanceof Error ? error.message : String(error) }).catch(() => null);
+  if (course) await syncCourseScheduledEventStatus(interaction.guild!, course, updated).then(async () => {
+    if (updated.discordEventId) {
+      await context.api.updateCoursePublicationEvent(interaction.guildId!, updated.id, { discordEventId: updated.discordEventId, discordEventUrl: updated.discordEventUrl, syncError: null }).catch(() => null);
+    }
+  }).catch(async (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    await context.api.updateCoursePublicationEvent(interaction.guildId!, updated.id, { discordEventId: updated.discordEventId, discordEventUrl: updated.discordEventUrl, syncError: message }).catch(() => null);
+    await sendPublicationLog(interaction, context, updated, `⚠️ Falha ao sincronizar evento do Discord\nResponsável: <@${interaction.user.id}>\nStatus do curso: ${status}\nEvento: ${updated.discordEventId ?? "não vinculado"}\nErro: ${message}`).catch(() => null);
   });
   await refreshPublicationMessage(interaction, context, updated);
   if (status === "finished") {
@@ -710,26 +865,34 @@ async function lockFinishedCourseChannel(interaction: ButtonInteraction, context
 function parseCourseScheduleWindow(dateInput: string, timeInput: string) {
   const date = dateInput.trim();
   const time = timeInput.trim();
-  let day: string;
-  let month: string;
-  let year: string;
-  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(date)) {
-    const parts = date.split("-");
-    year = parts[0] ?? ""; month = parts[1] ?? ""; day = parts[2] ?? "";
-  } else {
-    const parts = date.split("/");
-    if (parts.length !== 3) return null;
-    day = parts[0] ?? ""; month = parts[1] ?? ""; year = parts[2] ?? "";
-  }
+  const dateMatch = /^(\d{2})\/(\d{2})$/.exec(date);
+  if (!dateMatch) return null;
   const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(time);
   if (!timeMatch) return null;
-  const dd = day.padStart(2, "0");
-  const mm = month.padStart(2, "0");
+
+  const day = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  if (!Number.isInteger(day) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+  const year = new Date().getFullYear();
+  const maxDay = new Date(year, month, 0).getDate();
+  if (day < 1 || day > maxDay) return null;
+
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  const yyyy = String(year);
   const hh = (timeMatch[1] ?? "").padStart(2, "0");
   const min = timeMatch[2] ?? "";
-  const startAt = new Date(`${year}-${mm}-${dd}T${hh}:${min}:00-03:00`);
+  const startAt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:00-03:00`);
   if (Number.isNaN(startAt.getTime())) return null;
-  return { startAt, endAt: new Date(startAt.getTime() + COURSE_EVENT_DURATION_MS) };
+  return {
+    displayDate: `${dd}/${mm}/${yyyy}`,
+    endAt: new Date(startAt.getTime() + COURSE_EVENT_DURATION_MS),
+    startAt
+  };
 }
 
 async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotContext, course: Course, publication: CoursePublication) {
@@ -787,7 +950,7 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
       name: `🟢 Curso iniciado - ${course.name}`.slice(0, 100),
       status: event.status === GuildScheduledEventStatus.Scheduled ? GuildScheduledEventStatus.Active : undefined
     });
-  } else if (publication.status === "finished") {
+  } else if (publication.status === "finished" || publication.status === "closed") {
     let currentEvent = event;
     if (currentEvent.status === GuildScheduledEventStatus.Scheduled) {
       currentEvent = await currentEvent.edit({ status: GuildScheduledEventStatus.Active }).catch(() => currentEvent);
@@ -799,10 +962,15 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
     });
     clearCourseEventLifecycle(publication.id);
   } else if (publication.status === "cancelled") {
+    const terminalStatus = event.status === GuildScheduledEventStatus.Active
+      ? GuildScheduledEventStatus.Completed
+      : event.status === GuildScheduledEventStatus.Canceled
+        ? undefined
+        : GuildScheduledEventStatus.Canceled;
     await event.edit({
       description: courseScheduledEventDescription(course, publication, "Cancelado"),
       name: `Curso cancelado - ${course.name}`.slice(0, 100),
-      status: event.status === GuildScheduledEventStatus.Canceled ? undefined : GuildScheduledEventStatus.Canceled
+      status: terminalStatus
     });
     clearCourseEventLifecycle(publication.id);
   }
@@ -882,12 +1050,16 @@ function courseScheduledEventDescription(course: Course, publication: CoursePubl
     `Curso: ${course.name}`,
     `Instrutor: <@${publication.instructorId}>`,
     `Horario: ${publication.scheduledFor}`,
-    `Local: ${publication.location}`,
+    `DP: ${coursePublicationDepartmentLabel(publication)}`,
     `Vagas: ${publication.capacity}`,
     `Situacao: ${status}`,
     `Agendamento: ${publication.id}`,
     publication.notes ? `Observacoes: ${publication.notes}` : null
   ].filter(Boolean).join("\n").slice(0, 1000);
+}
+
+function coursePublicationDepartmentLabel(publication: CoursePublication) {
+  return publication.dpNameSnapshot || publication.location || "não informado";
 }
 
 function scheduledEventUrl(guildId: string, eventId: string) {
@@ -1807,7 +1979,7 @@ async function getCoursePanelVisual(context: BotContext, guildId: string): Promi
   };
 }
 
-async function canOpenCourseConfig(interaction: ChatInputCommandInteraction | ButtonInteraction, settings: CourseSettings) {
+async function canOpenCourseConfig(interaction: CourseActionInteraction, settings: CourseSettings) {
   if (!interaction.guild) return false;
   if (isGuildOwnerOrAdministrator(interaction)) return true;
   const roleIds = memberRoleIds(interaction.member);
@@ -1884,6 +2056,7 @@ function courseConfigPanel(settings: CourseSettings, panelVisual: PanelVisualCon
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(IDS.sync).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Provas").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.departments).setEmoji(systemComponentEmoji("discord")).setLabel("DPs").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(IDS.managers).setEmoji(systemComponentEmoji("homem")).setLabel("Administradores").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(IDS.close).setEmoji(systemComponentEmoji("porta")).setLabel("Fechar").setStyle(ButtonStyle.Danger)
       )
@@ -1937,6 +2110,67 @@ function managersPanel(settings: CourseSettings, message?: string) {
     ].filter(Boolean),
     moduleId: "courses",
     title: "Gestores da Unidade"
+  });
+}
+
+function departmentsPanel(departments: CourseDepartment[], message?: string, selectedId?: string | null) {
+  const selected = departments.find((department) => department.id === selectedId) ?? null;
+  const visibleDepartments = departments.slice(0, 25);
+  const fields = [
+    message ? `**${message}**` : "",
+    departments.length > 25 ? "**Limite:** há mais de 25 DPs cadastradas. O select do Discord mostra apenas as primeiras 25; reduza ou desative DPs antigas antes de usar no agendamento." : "",
+    departments.length
+      ? departments.map((department) => `${department.active ? "🟢" : "⚫"} ${department.name}`).slice(0, 20).join("\n")
+      : "Nenhuma DP cadastrada.",
+    selected ? `Selecionada: **${selected.name}**\nStatus: ${selected.active ? "ativa" : "desativada"}` : ""
+  ].filter(Boolean);
+  const actions = [
+    visibleDepartments.length ? new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(IDS.departmentSelect)
+        .setPlaceholder("Selecione uma DP para gerenciar")
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(visibleDepartments.map((department) => ({
+          default: department.id === selected?.id,
+          description: department.active ? "Ativa" : "Desativada",
+          label: department.name.slice(0, 100),
+          value: department.id
+        })))
+    ) : null,
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(IDS.departmentAdd).setLabel("Cadastrar DP").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(selected ? `course_department_edit:${selected.id}` : "course_department_edit:none").setLabel("Editar").setStyle(ButtonStyle.Secondary).setDisabled(!selected),
+      new ButtonBuilder().setCustomId(selected ? `course_department_toggle:${selected.id}` : "course_department_toggle:none").setLabel(selected?.active ? "Desativar" : "Ativar").setStyle(ButtonStyle.Secondary).setDisabled(!selected),
+      new ButtonBuilder().setCustomId(selected ? `course_department_delete:${selected.id}` : "course_department_delete:none").setLabel("Excluir").setStyle(ButtonStyle.Danger).setDisabled(!selected)
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+    )
+  ].filter((row): row is ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder> => Boolean(row));
+  return renderComponentsV2Panel({
+    accentColor: 0x2563eb,
+    actions,
+    description: "Gerencie as DPs disponíveis no agendamento de cursos.",
+    fields,
+    moduleId: "courses",
+    title: "DPs dos Cursos"
+  });
+}
+
+function departmentDeleteConfirmationPanel(department: CourseDepartment) {
+  return renderComponentsV2Panel({
+    accentColor: 0xdc2626,
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_department_delete_confirm:${department.id}`).setLabel("Confirmar exclusão").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(IDS.departmentDeleteCancel).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
+      )
+    ],
+    description: "Confirme a exclusão da DP. Se ela estiver vinculada a cursos existentes, o sistema irá desativar em vez de apagar para preservar o histórico.",
+    fields: [`DP: **${department.name}**`, `Status atual: ${department.active ? "ativa" : "desativada"}`],
+    moduleId: "courses",
+    title: "Excluir DP"
   });
 }
 
@@ -2081,7 +2315,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
     fields: [
       [
         `**Instrutor:** <@${publication.instructorId}>`,
-        `**Local:** ${publication.location}`,
+        `**DP:** ${coursePublicationDepartmentLabel(publication)}`,
         `**Horário:** ${publication.scheduledFor}`,
         `**Vagas:** ${publication.students.length}/${publication.capacity}`,
         `**Status:** ${statusText}`
@@ -3096,16 +3330,31 @@ async function persistFinishedExamChannelState(channel: TextChannel, studentId: 
   return false;
 }
 
-function publicationModal(course: Course, mode: "publicacao" | "agendamento" = "publicacao") {
+function publicationModal(course: Course, departments: CourseDepartment[], mode: "publicacao" | "agendamento" = "publicacao") {
   return new ModalBuilder()
     .setCustomId(`course_publish_modal:${course.id}`)
     .setTitle(mode === "agendamento" ? "Agendar Curso" : "Publicar Curso")
-    .addComponents(
-      inputRow("date", "Data do curso (dd/mm/aaaa)", TextInputStyle.Short, true, 40),
-      inputRow("time", "Início (HH:mm)", TextInputStyle.Short, true, 40),
-      inputRow("location", "Local do curso", TextInputStyle.Short, true, 120, course.location ?? ""),
-      inputRow("capacity", "Quantidade de pessoas/vagas", TextInputStyle.Short, true, 10, String(course.maxStudents ?? 30)),
-      inputRow("notes", "Observações", TextInputStyle.Paragraph, false, 900)
+    .addLabelComponents(
+      inputLabel("date", "Data do curso (DD/MM)", TextInputStyle.Short, true, 5),
+      inputLabel("time", "Início (HH:mm)", TextInputStyle.Short, true, 40),
+      new LabelBuilder()
+        .setLabel("DP")
+        .setDescription("Selecione a DP onde o curso será realizado")
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId(IDS.publicationDepartmentSelect)
+            .setPlaceholder("Selecione uma DP")
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(departments.map((department) => ({
+              default: Boolean(course.location && department.name.localeCompare(course.location, "pt-BR", { sensitivity: "accent" }) === 0),
+              description: "DP ativa cadastrada para cursos",
+              label: department.name.slice(0, 100),
+              value: department.id
+            })))
+        ),
+      inputLabel("capacity", "Quantidade de pessoas/vagas", TextInputStyle.Short, true, 10, String(course.maxStudents ?? 30)),
+      inputLabel("notes", "Observações", TextInputStyle.Paragraph, false, 900)
     );
 }
 
@@ -3126,6 +3375,32 @@ function inputRow(customId: string, label: string, style: TextInputStyle, requir
   const input = new TextInputBuilder().setCustomId(customId).setLabel(label).setStyle(style).setRequired(required).setMaxLength(maxLength);
   if (value) input.setValue(value);
   return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+}
+
+function inputLabel(customId: string, label: string, style: TextInputStyle, required: boolean, maxLength: number, value?: string) {
+  const input = new TextInputBuilder().setCustomId(customId).setStyle(style).setRequired(required).setMaxLength(maxLength);
+  if (value) input.setValue(value);
+  return new LabelBuilder().setLabel(label).setTextInputComponent(input);
+}
+
+function selectedModalStringValue(interaction: ModalSubmitInteraction, customId: string) {
+  try {
+    const values = interaction.fields.getStringSelectValues(customId);
+    return values.length === 1 ? values[0] ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
+function courseDepartmentApiErrorMessage(error: unknown) {
+  const status = typeof error === "object" && error !== null && "response" in error
+    ? (error as { response?: { status?: number; data?: { code?: string; message?: string } } }).response
+    : null;
+  if (status?.data?.message) return status.data.message;
+  if (status?.status === 403) return "Você não possui permissão para gerenciar DPs.";
+  if (status?.status === 404) return "DP não encontrada.";
+  if (status?.status === 409) return "Não foi possível salvar: já existe uma DP ativa com esse nome ou a DP está indisponível.";
+  return "Não foi possível salvar a DP. Tente novamente e verifique os logs.";
 }
 
 export function courseExamChannelTopic(publicationId: string, studentId: string) {
@@ -3326,6 +3601,10 @@ function slugPart(value: string) {
 
 function ephemeral<T extends Record<string, unknown>>(payload: T) {
   return { ...payload, flags: Number(payload.flags ?? 0) | MessageFlags.Ephemeral };
+}
+
+function ephemeralText(content: string) {
+  return { content, flags: Number(MessageFlags.Ephemeral) };
 }
 
 async function replyDeactivatedPanel(interaction: ButtonInteraction | ChannelSelectMenuInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction | ModalSubmitInteraction) {

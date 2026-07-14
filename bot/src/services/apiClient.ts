@@ -189,6 +189,9 @@ export type CoursePublication = {
   syncError: string | null;
   instructorId: string;
   location: string;
+  legacyLocation: string | null;
+  dpId: string | null;
+  dpNameSnapshot: string | null;
   scheduledFor: string;
   capacity: number;
   students: string[];
@@ -203,6 +206,19 @@ export type CoursePublication = {
   proofStartedAt: string | null;
   finishedBy: string | null;
   finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CourseDepartment = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  active: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -2117,6 +2133,28 @@ export class ApiClient {
     return data.course;
   }
 
+  async listCourseDepartments(guildId: string, activeOnly = false) {
+    const { data } = await this.http.get<{ departments: CourseDepartment[] }>(`/courses/bot/${guildId}/departments`, {
+      params: activeOnly ? { activeOnly: "true" } : undefined
+    });
+    return data.departments;
+  }
+
+  async createCourseDepartment(guildId: string, name: string, actorId: string) {
+    const { data } = await this.http.post<{ department: CourseDepartment }>(`/courses/bot/${guildId}/departments`, { name }, { headers: { "x-actor-id": actorId } });
+    return data.department;
+  }
+
+  async updateCourseDepartment(guildId: string, departmentId: string, input: { active?: boolean; name?: string }, actorId: string) {
+    const { data } = await this.http.patch<{ department: CourseDepartment }>(`/courses/bot/${guildId}/departments/${departmentId}`, input, { headers: { "x-actor-id": actorId } });
+    return data.department;
+  }
+
+  async deleteCourseDepartment(guildId: string, departmentId: string, actorId: string) {
+    const { data } = await this.http.delete<{ deleted: boolean; department: CourseDepartment }>(`/courses/bot/${guildId}/departments/${departmentId}`, { headers: { "x-actor-id": actorId } });
+    return data;
+  }
+
   async getManageableCourses(guildId: string, input: { isAdministrator?: boolean; roleIds: string[]; userId: string }) {
     const { data } = await this.http.post<{ courses: Course[] }>(`/courses/bot/${guildId}/manageable`, input);
     return data.courses;
@@ -2127,7 +2165,10 @@ export class ApiClient {
     channelId: string;
     courseId: string;
     discordEventType?: "EXTERNAL" | "VOICE" | "STAGE" | null;
+    dpId?: string | null;
+    dpNameSnapshot?: string | null;
     instructorId: string;
+    legacyLocation?: string | null;
     location: string;
     notes?: string | null;
     scheduledFor: string;
