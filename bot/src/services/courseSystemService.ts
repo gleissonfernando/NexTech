@@ -936,6 +936,7 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
         scheduledStartTime: payload.scheduledStartTime
       });
       eventId = editedEvent.id;
+      await assertCourseScheduledEventExists(guild, eventId, publication.id);
     } else {
       eventId = null;
     }
@@ -947,6 +948,7 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
       return guild.scheduledEvents.create(payload);
     });
     eventId = event.id;
+    await assertCourseScheduledEventExists(guild, eventId, publication.id);
   }
   const updated = await context.api.updateCoursePublicationEvent(guild.id, publication.id, {
     discordEventId: eventId,
@@ -955,6 +957,20 @@ async function createOrUpdateCourseScheduledEvent(guild: Guild, context: BotCont
   });
   if (updated) scheduleCourseEventLifecycle(guild, context, updated, course);
   return updated;
+}
+
+async function assertCourseScheduledEventExists(guild: Guild, eventId: string, publicationId: string) {
+  const fetched = await guild.scheduledEvents.fetch(eventId).catch(() => null);
+  if (!fetched) {
+    throw new Error(`Evento do Discord ${eventId} não ficou acessível após a criação da publicação ${publicationId}.`);
+  }
+  console.info(`[courses:scheduled_event_ready]`, {
+    eventId: fetched.id,
+    guildId: guild.id,
+    publicationId,
+    scheduledStartAt: fetched.scheduledStartAt?.toISOString() ?? null,
+    status: fetched.status
+  });
 }
 
 async function assertCourseScheduledEventPermissions(guild: Guild) {
@@ -2309,9 +2325,10 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       `🕒 **Horário:** ${coursePublicationTimeLabel(publication)}`,
       `👥 **Vagas:** ${publication.students.length}/${publication.capacity}`,
       `📌 **Status:** ${statusText}`,
+      publication.discordEventUrl ? `🔗 **Evento:** ${publication.discordEventUrl}` : null,
       "",
       statusNotice
-    ].join("\n")),
+    ].filter((line): line is string => line !== null).join("\n")),
     separator(),
     textBlock(`## 📝 Observações\n\n${publication.notes || "Sem observações."}`),
     separator(),
