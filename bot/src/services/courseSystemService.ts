@@ -1558,9 +1558,13 @@ async function getStudentExamAttempt(interaction: ButtonInteraction, context: Bo
 }
 
 async function reviewExam(interaction: ButtonInteraction, context: BotContext) {
-  const [, , status, attemptId] = interaction.customId.split(":");
+  const [, status, attemptId] = interaction.customId.split(":");
   if (!attemptId) {
     await interaction.reply({ content: "Tentativa de prova inválida.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (status !== "approved" && status !== "rejected") {
+    await interaction.reply({ content: "Ação de avaliação inválida.", flags: MessageFlags.Ephemeral });
     return;
   }
   if (status === "approved") {
@@ -2642,7 +2646,14 @@ function examCorrectionPanel(course: Course, attempt: CourseExamAttempt, questio
 
 function examCorrectionChannelIds(courseSettings: CourseSettings, examSettings: CourseExamSettings) {
   void examSettings;
-  return uniqueIds([courseSettings.evaluationChannelId]);
+  return uniqueIds([
+    courseSettings.evaluationChannelId,
+    courseSettings.resultChannelId,
+    courseSettings.reportChannelId,
+    courseSettings.proofLogChannelId,
+    courseSettings.adminLogChannelId,
+    courseSettings.logChannelId
+  ]);
 }
 
 function withRoleMention<T extends Record<string, unknown>>(payload: T, roleId: string | null | undefined): T {
