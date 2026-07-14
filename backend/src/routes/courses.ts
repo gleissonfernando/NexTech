@@ -46,6 +46,7 @@ import {
   getCourseExamAttemptByChannel,
   getCourseExamDashboard,
   getCourseExamRuntime,
+  listCourseExamAttemptsPendingCorrection,
   reorderCourseExamQuestions,
   reviewCourseExamAttempt,
   saveCourseExamAnswer,
@@ -480,6 +481,14 @@ coursesRouter.get("/bot/:guildId/exam-attempts/channel/:channelId", requireBot, 
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     return res.json({ attempt: await getCourseExamAttemptByChannel(botId, guildId, snowflake.parse(req.params.channelId)) });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/bot/:guildId/exam-attempts/pending-corrections", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    return res.json({ attempts: await listCourseExamAttemptsPendingCorrection(botId, guildId) });
   } catch (error) { return next(error); }
 });
 

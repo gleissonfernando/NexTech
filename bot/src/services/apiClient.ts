@@ -2259,6 +2259,11 @@ export class ApiClient {
     return data;
   }
 
+  async listPendingCourseExamCorrections(guildId: string) {
+    const { data } = await this.http.get<{ attempts: CourseExamAttempt[] }>(`/courses/bot/${guildId}/exam-attempts/pending-corrections`);
+    return data.attempts;
+  }
+
   async updateCourseExamIdentification(guildId: string, attemptId: string, input: {
     discordUsername?: string | null;
     discordDisplayName?: string | null;

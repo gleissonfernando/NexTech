@@ -366,6 +366,16 @@ export async function getCourseExamAttemptBundle(botId: string | null, guildId: 
   return attempt ? { answers: answers.map(mapAnswer), attempt: mapAttempt(attempt), questions: attemptQuestions(attempt).map(mapQuestion) } : null;
 }
 
+export async function listCourseExamAttemptsPendingCorrection(botId: string | null, guildId: string) {
+  const { courseExamAttempts } = await getMongoCollections();
+  const attempts = await courseExamAttempts.find({
+    ...scope(botId, guildId),
+    $or: [{ result: null }, { result: { $exists: false } }],
+    status: { $in: ["finished", "awaiting_review", "manual_reviewed"] }
+  }).sort({ finishedAt: 1, updatedAt: 1 }).limit(100).toArray();
+  return attempts.map(mapAttempt);
+}
+
 export async function saveCourseExamAnswer(botId: string | null, guildId: string, attemptId: string, input: { questionId?: string | null; questionIndex?: number | null; selectedAlternativeId?: string | null; selectedAlternativeIds?: string[] | null; writtenAnswer?: string | null }) {
   const collections = await getMongoCollections();
   const attempt = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" });

@@ -41,6 +41,7 @@ import type { Course, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, Cou
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 type CourseActionInteraction = ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
+type CourseGuildContext = { guild: Guild | null; guildId: string | null };
 
 const IDS = {
   addCourse: "course_config_add",
@@ -134,6 +135,9 @@ export function startCourseSystemService(client: Client, context: BotContext) {
   const refreshExistingPanels = () => {
     void refreshActiveCoursePublicationPanels(client, context).catch((error) => {
       console.error("[courses] failed to refresh active publication panels:", error instanceof Error ? error.message : error);
+    });
+    void restorePendingExamCorrectionPanels(client, context).catch((error) => {
+      console.error("[courses] failed to restore pending exam correction panels:", error instanceof Error ? error.message : error);
     });
     void restoreTemporaryExamChannelCleanup(client, context).catch((error) => {
       console.error("[courses] failed to restore temporary exam channel cleanup:", error instanceof Error ? error.message : error);
@@ -1727,6 +1731,35 @@ async function refreshActiveCoursePublicationPanels(client: Client, context: Bot
   }
 }
 
+async function restorePendingExamCorrectionPanels(client: Client, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    const attempts = await context.api.listPendingCourseExamCorrections(guild.id).catch((error) => {
+      console.error(`[courses] failed to list pending exam corrections for ${guild.id}:`, error instanceof Error ? error.message : error);
+      return [];
+    });
+    if (!attempts.length) continue;
+    logCourseFlow("exam_correction_restore_scan", { attempts: attempts.length, guildId: guild.id });
+    for (const attempt of attempts) {
+      const [course, bundle] = await Promise.all([
+        context.api.getCourse(guild.id, attempt.courseId).catch((error) => {
+          logCourseFlowError("exam_correction_restore_course_failed", error, { attemptId: attempt.id, courseId: attempt.courseId, guildId: guild.id });
+          return null;
+        }),
+        context.api.getCourseExamAttempt(guild.id, attempt.id).catch((error) => {
+          logCourseFlowError("exam_correction_restore_bundle_failed", error, { attemptId: attempt.id, courseId: attempt.courseId, guildId: guild.id });
+          return null;
+        })
+      ]);
+      if (!course || !bundle) continue;
+      const sent = await upsertExamCorrectionPanel({ guild, guildId: guild.id }, context, course, bundle.attempt, bundle.questions, bundle.answers).catch((error) => {
+        logCourseFlowError("exam_correction_restore_send_failed", error, { attemptId: attempt.id, courseId: attempt.courseId, guildId: guild.id });
+        return false;
+      });
+      logCourseFlow(sent ? "exam_correction_restored" : "exam_correction_restore_not_sent", { attemptId: attempt.id, courseId: attempt.courseId, guildId: guild.id });
+    }
+  }
+}
+
 async function restoreTemporaryExamChannelCleanup(client: Client, context: BotContext) {
   for (const guild of client.guilds.cache.values()) {
     const settings = await context.api.getCourseSettings(guild.id).catch(() => null);
@@ -2334,7 +2367,7 @@ async function sendExamCorrectionPanel(interaction: ButtonInteraction, context: 
   return upsertExamCorrectionPanel(interaction, context, course, attempt, questions, answers);
 }
 
-async function upsertExamCorrectionPanel(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
+async function upsertExamCorrectionPanel(interaction: CourseGuildContext, context: BotContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[]) {
   const runtime = await context.api.getCourseExamRuntime(interaction.guildId!, attempt.courseId);
   const courseSettings = await context.api.getCourseSettings(interaction.guildId!);
   const configuredIds = examCorrectionChannelIds(courseSettings, runtime.settings);
@@ -2554,7 +2587,7 @@ async function replyWithResultChunks(interaction: ButtonInteraction, course: Cou
   }
 }
 
-async function sendExamQuestionContinuationMessages(channel: TextChannel, interaction: ButtonInteraction | ModalSubmitInteraction, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], title: string, startIndex: number) {
+async function sendExamQuestionContinuationMessages(channel: TextChannel, interaction: CourseGuildContext, course: Course, attempt: CourseExamAttempt, questions: CourseExamQuestion[], answers: CourseExamAnswer[], title: string, startIndex: number) {
   if (questions.length <= startIndex) return;
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   for (let index = startIndex; index < questions.length; index += 12) {
@@ -2704,7 +2737,7 @@ function examFinalizeFailureMessage(error: unknown) {
   return "Nao foi possivel salvar a finalizacao da prova agora. O painel de aprovacao nao foi enviado; verifique os logs do bot/backend e tente novamente.";
 }
 
-async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInteraction, channelId: string | null | undefined) {
+async function fetchTextChannel(interaction: CourseGuildContext, channelId: string | null | undefined) {
   if (!channelId || !interaction.guild) return null;
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || !("send" in channel)) return null;
@@ -2714,7 +2747,7 @@ async function fetchTextChannel(interaction: ButtonInteraction | ModalSubmitInte
   return channel as TextChannel;
 }
 
-async function diagnoseTextChannels(interaction: ButtonInteraction | ModalSubmitInteraction, channelIds: Array<string | null | undefined>) {
+async function diagnoseTextChannels(interaction: CourseGuildContext, channelIds: Array<string | null | undefined>) {
   const diagnostics: string[] = [];
   if (!interaction.guild) return ["guild indisponível"];
   for (const channelId of channelIds.filter(Boolean)) {
@@ -2745,7 +2778,7 @@ async function diagnoseTextChannels(interaction: ButtonInteraction | ModalSubmit
   return diagnostics;
 }
 
-async function fetchFirstTextChannel(interaction: ButtonInteraction | ModalSubmitInteraction, channelIds: Array<string | null | undefined>) {
+async function fetchFirstTextChannel(interaction: CourseGuildContext, channelIds: Array<string | null | undefined>) {
   for (const channelId of channelIds) {
     const channel = await fetchTextChannel(interaction, channelId);
     if (channel) return channel;
