@@ -19,6 +19,10 @@ const settingsSchema = z.object({
   enabled: z.boolean().optional(), categoryId: snowflake.nullable().optional(), panelChannelId: snowflake.nullable().optional(),
   actionChannelId: snowflake.nullable().optional(), reportChannelId: snowflake.nullable().optional(),
   panelTitle: z.string().min(1).max(120).optional(), panelDescription: z.string().max(1500).optional(),
+  managerRoleIds: z.array(snowflake).max(50).optional(),
+  spreadsheetEnabled: z.boolean().optional(),
+  spreadsheetId: z.string().trim().max(200).nullable().optional(),
+  spreadsheetSheetName: z.string().trim().min(1).max(100).nullable().optional(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), imageUrl: z.string().max(2048).nullable().optional(),
   imagePosition: z.enum(["top", "center", "bottom", "none"]).optional()
 });
@@ -68,7 +72,7 @@ fivemActionsRouter.post("/bot/sessions/:sessionId/join", requireBot, async (req,
 fivemActionsRouter.post("/bot/sessions/:sessionId/leave", requireBot, async (req, res, next) => { try { const botId = await botRuntimeId(req); await requireLicensedSession(botId, req.params.sessionId!); const input = z.object({ userId: snowflake }).parse(req.body); res.json({ session: await leaveFivemActionSession(botId, req.params.sessionId!, input.userId) }); } catch (error) { next(error); } });
 fivemActionsRouter.post("/bot/sessions/:sessionId/start", requireBot, async (req, res, next) => { try { const botId = await botRuntimeId(req); await requireLicensedSession(botId, req.params.sessionId!); const input = z.object({ actorId: snowflake }).parse(req.body); res.json({ session: await startFivemActionSession(botId, req.params.sessionId!, input.actorId) }); } catch (error) { next(error); } });
 fivemActionsRouter.post("/bot/sessions/:sessionId/cancel", requireBot, async (req, res, next) => { try { const botId = await botRuntimeId(req); await requireLicensedSession(botId, req.params.sessionId!); const input = z.object({ actorId: snowflake, reason: z.string().max(500).nullable().optional() }).parse(req.body); res.json({ session: await cancelFivemActionSession(botId, req.params.sessionId!, input.actorId, input.reason ?? null) }); } catch (error) { next(error); } });
-fivemActionsRouter.post("/bot/sessions/:sessionId/finish", requireBot, async (req, res, next) => { try { const botId = await botRuntimeId(req); await requireLicensedSession(botId, req.params.sessionId!); const input = z.object({ actorId: snowflake, result: z.enum(["victory", "defeat"]) }).parse(req.body); res.json({ session: await finishFivemActionSession(botId, req.params.sessionId!, input.actorId, input.result) }); } catch (error) { next(error); } });
+fivemActionsRouter.post("/bot/sessions/:sessionId/finish", requireBot, async (req, res, next) => { try { const botId = await botRuntimeId(req); await requireLicensedSession(botId, req.params.sessionId!); const input = z.object({ actorId: snowflake, result: z.enum(["victory", "defeat", "draw"]), note: z.string().max(1000).nullable().optional(), summary: z.string().max(1000).nullable().optional(), occurrence: z.string().max(1000).nullable().optional() }).parse(req.body); res.json({ session: await finishFivemActionSession(botId, req.params.sessionId!, input.actorId, input.result, { note: input.note ?? null, occurrence: input.occurrence ?? null, summary: input.summary ?? null }) }); } catch (error) { next(error); } });
 
 function params(req: any) { return { guildId: snowflake.parse(req.params.guildId), architecture: architectureSchema.parse(req.params.architecture) }; }
 async function dashboardBotId(req: any) { const id = await resolveRequestBotId(req); if (!id) throw routeError("Selecione um bot DEV.", 400); return id; }

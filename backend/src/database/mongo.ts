@@ -2035,6 +2035,12 @@ export type MongoFivemActionSettings = {
   panelChannelId: string | null;
   actionChannelId: string | null;
   reportChannelId: string | null;
+  managerRoleIds?: string[];
+  spreadsheetEnabled?: boolean;
+  spreadsheetId?: string | null;
+  spreadsheetSheetName?: string | null;
+  spreadsheetLastSyncAt?: Date | null;
+  spreadsheetSyncError?: string | null;
   panelMessageId: string | null;
   panelTitle: string;
   panelDescription: string;
@@ -2090,7 +2096,11 @@ export type MongoFivemActionSession = {
   openerName: string;
   channelId: string | null;
   messageId: string | null;
-  status: "forming" | "active" | "victory" | "defeat" | "cancelled";
+  sheetRow?: number | null;
+  sheetSyncStatus?: "pending" | "synced" | "failed" | null;
+  sheetSyncError?: string | null;
+  sheetLastSyncAt?: Date | null;
+  status: "forming" | "active" | "victory" | "defeat" | "draw" | "cancelled";
   maxParticipants: number;
   participants: MongoFivemActionParticipant[];
   startedAt: Date | null;
@@ -2098,6 +2108,9 @@ export type MongoFivemActionSession = {
   cancelledBy?: string | null;
   cancellationReason?: string | null;
   finishedAt: Date | null;
+  resultNote?: string | null;
+  resultSummary?: string | null;
+  resultOccurrence?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
