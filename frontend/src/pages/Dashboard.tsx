@@ -5923,6 +5923,7 @@ function PoliceIabPanel({
 }) {
   const [draft, setDraft] = useState<GuildSettings["reportSystem"] | null>(settings?.reportSystem ?? null);
   const [options, setOptions] = useState<GuildLiveOptions>({ categories: [], channels: [], roles: [], voiceChannels: [] });
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(settings?.reportSystem?.categories[0]?.id ?? null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -5931,6 +5932,14 @@ function PoliceIabPanel({
   useEffect(() => {
     setDraft(settings?.reportSystem ?? null);
   }, [settings?.guildId, JSON.stringify(settings?.reportSystem ?? null)]);
+
+  useEffect(() => {
+    if (!draft?.categories.length) {
+      setSelectedOrgId(null);
+      return;
+    }
+    setSelectedOrgId((current) => current && draft.categories.some((category) => category.id === current) ? current : draft.categories[0]?.id ?? null);
+  }, [draft?.categories.map((category) => category.id).join("|")]);
 
   useEffect(() => {
     let mounted = true;
@@ -5970,9 +5979,12 @@ function PoliceIabPanel({
   }
 
   function addCategory() {
+    let nextId: string | null = null;
     setDraft((current) => {
       if (!current) return current;
       const index = current.categories.length;
+      const categoryId = `orgao-${index + 1}`;
+      nextId = categoryId;
       return {
         ...current,
         categories: [
@@ -5984,7 +5996,7 @@ function PoliceIabPanel({
             emoji: PANEL_EMOJIS.alerta,
             enabled: true,
             escalateToCategoryId: null,
-            id: `orgao-${index + 1}`,
+            id: categoryId,
             judgeLabel: "Denuncias contra este orgao",
             logChannelId: null,
             name: `Orgao ${index + 1}`,
@@ -5994,14 +6006,18 @@ function PoliceIabPanel({
         ].slice(0, 25)
       };
     });
+    if (nextId) setSelectedOrgId(nextId);
   }
 
   function removeCategory(index: number) {
+    const removedId = draft?.categories[index]?.id ?? null;
+    const nextSelectedId = draft?.categories[index + 1]?.id ?? draft?.categories[index - 1]?.id ?? null;
     setDraft((current) => {
       if (!current) return current;
       const nextCategories = current.categories.filter((_, categoryIndex) => categoryIndex !== index);
       return { ...current, categories: nextCategories.length ? nextCategories.map(normalizeReportCategory) : current.categories };
     });
+    if (removedId && selectedOrgId === removedId) setSelectedOrgId(nextSelectedId);
   }
 
   async function save(nextEnabled?: boolean) {
@@ -6071,6 +6087,8 @@ function PoliceIabPanel({
     ...categories.map((category) => ({ id: category.id, name: category.name })),
     ...channels.map((channel) => ({ id: channel.id, name: channel.name }))
   ];
+  const selectedOrgIndex = Math.max(0, draft.categories.findIndex((category) => category.id === selectedOrgId));
+  const selectedOrg = draft.categories[selectedOrgIndex] ?? draft.categories[0] ?? null;
 
   return (
     <div className="space-y-4">
@@ -6163,35 +6181,96 @@ function PoliceIabPanel({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Orgaos</CardTitle>
-              <CardDescription>Lista unica de orgaos, responsaveis, logs e escalonamento do sistema de denuncias.</CardDescription>
+              <CardTitle>Configuracao dos Orgaos Responsaveis</CardTitle>
+              <CardDescription>Escolha um orgao para configurar cargos, destino do canal, logs e escalonamento sem procurar campos espalhados.</CardDescription>
             </div>
             <Button disabled={disabled || draft.categories.length >= 25} onClick={addCategory} size="sm" type="button" variant="outline">Adicionar orgao</Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {draft.categories.map((category, index) => (
-            <OrgaoCard
-              category={category}
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {draft.categories.map((category, index) => (
+              <OrgaoSummaryCard
+                category={category}
+                channels={channels}
+                index={index}
+                isSelected={selectedOrg?.id === category.id}
+                key={`${category.id}-${index}`}
+                onConfigure={() => setSelectedOrgId(category.id)}
+                roles={options.roles}
+                ticketDestinations={channelAndCategoryOptions}
+              />
+            ))}
+          </div>
+
+          {selectedOrg ? (
+            <OrgaoConfigPanel
+              category={selectedOrg}
               channels={channels}
               disabled={disabled}
-              escalationOptions={reportCategoryOptions.filter((option) => option.id !== category.id)}
-              index={index}
-              key={`${category.id}-${index}`}
-              onPatch={(patchValue) => patchCategory(index, patchValue)}
-              onRemove={() => removeCategory(index)}
+              escalationOptions={reportCategoryOptions.filter((option) => option.id !== selectedOrg.id)}
+              index={selectedOrgIndex}
+              onPatch={(patchValue) => patchCategory(selectedOrgIndex, patchValue)}
+              onRemove={() => removeCategory(selectedOrgIndex)}
               removeDisabled={disabled || draft.categories.length <= 1}
               roles={options.roles}
               ticketDestinations={channelAndCategoryOptions}
             />
-          ))}
+          ) : null}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function OrgaoCard({
+function OrgaoSummaryCard({
+  category,
+  channels,
+  index,
+  isSelected,
+  onConfigure,
+  roles,
+  ticketDestinations
+}: {
+  category: ReportSystemCategory;
+  channels: GuildLiveOptions["channels"];
+  index: number;
+  isSelected: boolean;
+  onConfigure: () => void;
+  roles: GuildLiveOptions["roles"];
+  ticketDestinations: Array<{ id: string; name: string }>;
+}) {
+  const status = reportOrgStatus(category);
+  const responsibleNames = reportOrgResponsibleNames(category, roles);
+  const categoryName = resourceName(ticketDestinations, category.channelOrCategoryId);
+  const logName = resourceName(channels, category.logChannelId, "Logs padrao");
+
+  return (
+    <div className={`flex min-h-[230px] flex-col justify-between rounded-lg border p-4 ${isSelected ? "border-[#FFD500]/45 bg-[#FFD500]/10" : "border-zinc-800 bg-zinc-950"}`}>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-white">{index + 1}. {category.name}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{category.judgeLabel || "Rotulo publico nao configurado"}</p>
+          </div>
+          <Badge variant={status.variant}>{status.label}</Badge>
+        </div>
+        <div className="space-y-2 text-xs text-zinc-300">
+          <p><span className="text-zinc-500">Cargo:</span> {responsibleNames.length ? responsibleNames.slice(0, 2).join(", ") : "Nao configurado"}</p>
+          <p><span className="text-zinc-500">Recebe:</span> {category.judgeLabel || "Nao configurado"}</p>
+          <p><span className="text-zinc-500">Categoria:</span> {categoryName}</p>
+          <p><span className="text-zinc-500">Logs:</span> {logName}</p>
+        </div>
+      </div>
+      <Button className="mt-4 w-full" onClick={onConfigure} size="sm" type="button" variant={isSelected ? "default" : "outline"}>
+        <Edit3 className="mr-2 h-4 w-4" />
+        Configurar
+      </Button>
+    </div>
+  );
+}
+
+function OrgaoConfigPanel({
   category,
   channels,
   disabled,
@@ -6219,15 +6298,19 @@ function OrgaoCard({
   const responsibleSummary = responsibleNames.length
     ? responsibleNames.slice(0, 3).join(", ") + (responsibleNames.length > 3 ? ` +${responsibleNames.length - 3}` : "")
     : "Sem cargos responsaveis";
+  const status = reportOrgStatus(category);
 
   return (
     <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-white">{index + 1}. {category.name}</p>
+          <p className="text-sm font-semibold text-white">Configuracao de {category.name}</p>
           <p className="mt-1 text-xs text-zinc-500">{category.judgeLabel || "Rotulo publico nao configurado"}</p>
         </div>
-        <Badge variant={category.enabled ? "success" : "muted"}>{category.enabled ? "Ativo" : "Inativo"}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={status.variant}>{status.label}</Badge>
+          <Badge variant={category.enabled ? "success" : "muted"}>{category.enabled ? "Ativo" : "Inativo"}</Badge>
+        </div>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
         <div className="rounded-md border border-zinc-800 bg-[#09090b] px-3 py-2">
@@ -6241,7 +6324,7 @@ function OrgaoCard({
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <TicketField disabled={disabled} label="Nome do orgao" onChange={(value) => onPatch({ id: slugTicketOption(value, index), name: value })} value={category.name} />
-        <TicketField disabled={disabled} label="Quem este orgao julga" onChange={(value) => onPatch({ judgeLabel: value })} value={category.judgeLabel ?? ""} />
+        <TicketField disabled={disabled} label="Quais denuncias vao para este orgao" onChange={(value) => onPatch({ judgeLabel: value })} value={category.judgeLabel ?? ""} />
         <TicketField disabled={disabled} label="Descricao" onChange={(value) => onPatch({ description: value })} value={category.description ?? ""} />
         <TicketField disabled={disabled} label="Emoji" onChange={(value) => onPatch({ emoji: value })} value={category.emoji ?? ""} />
         <FivemResourceSelect disabled={disabled} label="Categoria/canal do ticket" onChange={(value) => onPatch({ channelOrCategoryId: value })} options={ticketDestinations} placeholder="Padrao do sistema" value={category.channelOrCategoryId} />
@@ -6262,6 +6345,27 @@ function OrgaoCard({
       </div>
     </div>
   );
+}
+
+function reportOrgStatus(category: ReportSystemCategory): { label: string; variant: "success" | "warning" | "danger" | "muted" } {
+  if (!category.enabled) return { label: "Inativo", variant: "muted" };
+  const hasResponsible = Boolean(category.responsibleRoleIds?.length);
+  const hasDestination = Boolean(category.channelOrCategoryId);
+  const hasPublicLabel = Boolean(category.judgeLabel?.trim());
+  const hasLogs = Boolean(category.logChannelId);
+
+  if (hasResponsible && hasDestination && hasPublicLabel && hasLogs) return { label: "Configurado", variant: "success" };
+  if (hasResponsible || hasDestination || hasPublicLabel || hasLogs) return { label: "Incompleto", variant: "warning" };
+  return { label: "Nao configurado", variant: "danger" };
+}
+
+function reportOrgResponsibleNames(category: ReportSystemCategory, roles: GuildLiveOptions["roles"]) {
+  return (category.responsibleRoleIds ?? []).map((roleId) => roles.find((role) => role.id === roleId)?.name ?? roleId);
+}
+
+function resourceName(resources: Array<{ id: string; name: string }>, resourceId: string | null | undefined, fallback = "Nao configurado") {
+  if (!resourceId) return fallback;
+  return resources.find((resource) => resource.id === resourceId)?.name ?? resourceId;
 }
 
 function normalizeReportCategory(category: ReportSystemCategory, index: number): ReportSystemCategory {
