@@ -303,7 +303,7 @@ async function handlePublicReportSelect(interaction: StringSelectMenuInteraction
       guild: interaction.guild,
       image: report.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.thumbnailUrl } : null,
       moduleId: "iab-mode",
-      title: `${category.emoji ?? systemEmojiText("alerta", interaction.guild)} ${category.name}`
+      title: replaceSystemEmojis(`${category.emoji ?? systemEmojiText("alerta", interaction.guild)} ${category.name}`, interaction.guild)
     }),
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
@@ -1397,7 +1397,7 @@ async function sendReportOpeningInstructions(channel: TextChannel, settings: Gui
     guild,
     image: settings.reportSystem.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.thumbnailUrl } : null,
     moduleId: "iab-report-opened",
-    title: `${settings.reportSystem.panelEmoji ?? systemEmojiText("alerta", guild)} Nova denuncia`
+    title: replaceSystemEmojis(`${settings.reportSystem.panelEmoji ?? systemEmojiText("alerta", guild)} Nova denuncia`, guild)
   })).catch(() => null);
 }
 
@@ -1852,16 +1852,16 @@ async function publishReportPanel(_: TextBasedChannel | null, interaction: Chann
     await interaction.reply({ content: "Selecione um canal de texto valido.", ephemeral: true });
     return;
   }
-  await channel.send(createReportPanelPayload(settings));
+  await channel.send(createReportPanelPayload(settings, interaction.guild));
   await interaction.update(createAdminPayload(settings, "publish"));
 }
 
-function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions {
+function createReportPanelPayload(settings: GuildSettings, guild: Guild | null = null): MessageCreateOptions {
   const report = settings.reportSystem;
   const options = report.categories.filter((item) => item.enabled).slice(0, 25).map((item) => {
     const optionBuilder = new StringSelectMenuOptionBuilder().setLabel((item.judgeLabel || item.name).slice(0, 100)).setValue(item.id);
     if (item.description) optionBuilder.setDescription(item.description.slice(0, 100));
-    if (item.emoji) optionBuilder.setEmoji(replaceSystemEmojis(item.emoji));
+    if (item.emoji) optionBuilder.setEmoji(replaceSystemEmojis(item.emoji, guild));
     return optionBuilder;
   });
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -1870,7 +1870,7 @@ function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions
       .setPlaceholder(reportPanelSelectPlaceholder(report.panelPlaceholder))
       .addOptions(options)
   );
-  const title = replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} ${report.panelTitle}`.trim());
+  const title = replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta", guild)} ${report.panelTitle}`.trim(), guild);
   const components = buildPublicReportPanelComponents(settings, title, action.toJSON());
 
   return {
