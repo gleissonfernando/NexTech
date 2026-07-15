@@ -731,6 +731,12 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     await interaction.editReply("Canal de publicação inválido ou sem permissão de envio.");
     return;
   }
+  try {
+    await assertCoursePanelChannelPermissions(interaction, channel);
+  } catch (error) {
+    await interaction.editReply(error instanceof Error ? error.message : "Canal de publicação inválido ou sem permissão de envio.");
+    return;
+  }
   const date = interaction.fields.getTextInputValue("date").trim();
   const time = interaction.fields.getTextInputValue("time").trim();
   const departmentId = selectedModalStringValue(interaction, IDS.publicationDepartmentSelect);
@@ -794,11 +800,18 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     await interaction.editReply("❌ Não foi possível concluir a publicação do curso. O evento do Discord não foi criado; verifique os logs.");
     return;
   }
-  await deletePreviousCoursePanel(interaction, publication, previousOpen, targetChannelId);
+  let message: Message;
+  try {
+    await deletePreviousCoursePanel(interaction, publication, previousOpen, targetChannelId);
+    message = await sendOrEditCoursePublicationPanel(channel as TextChannel, null, course, publicationWithEvent, settings, interaction.guild!);
+  } catch (error) {
+    await rollbackCoursePublicationAfterPanelFailure(interaction, context, settings, course, publicationWithEvent, error);
+    await interaction.editReply("❌ O evento do Discord foi criado, mas o painel não pôde ser postado. O evento foi encerrado automaticamente; verifique permissões do canal e os logs.");
+    return;
+  }
   await sendCoursePublicationMention(channel as TextChannel, settings).catch((error) => {
-    console.warn(`[courses] failed to send course mention before panel guild=${interaction.guildId} channel=${targetChannelId}:`, error instanceof Error ? error.message : error);
+    console.warn(`[courses] failed to send course mention after panel guild=${interaction.guildId} channel=${targetChannelId}:`, error instanceof Error ? error.message : error);
   });
-  const message = await sendOrEditCoursePublicationPanel(channel as TextChannel, null, course, publicationWithEvent, settings, interaction.guild!);
   const publicationWithPanel = await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
   await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nPainel: ${message.id}\nHorário: ${publicationWithPanel.scheduledFor}\nDP: ${publicationWithPanel.dpNameSnapshot ?? publicationWithPanel.location}\nVagas: ${publicationWithPanel.capacity}\nEvento do Discord: criado`);
   await interaction.editReply("✅ Curso agendado, painel publicado e evento criado com sucesso.");
@@ -2430,6 +2443,61 @@ function separator() {
 
 function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
   return coursePublicationPanel(course, publication, settings, guild);
+}
+
+async function assertCoursePanelChannelPermissions(
+  interaction: ModalSubmitInteraction,
+  channel: { id: string; permissionsFor?: (member: GuildMember) => PermissionsBitField | null }
+) {
+  const me = interaction.guild?.members.me ?? await interaction.guild?.members.fetchMe().catch(() => null);
+  if (!me) throw new Error("Não foi possível validar as permissões do bot no canal de publicação.");
+  const permissions = channel.permissionsFor?.(me);
+  if (!permissions) throw new Error(`Não foi possível validar permissões do bot em <#${channel.id}>.`);
+  const missing: string[] = [];
+  if (!permissions.has(PermissionFlagsBits.ViewChannel)) missing.push("Ver Canal");
+  if (!permissions.has(PermissionFlagsBits.SendMessages)) missing.push("Enviar Mensagens");
+  if (missing.length) throw new Error(`O bot não possui permissão para postar o painel em <#${channel.id}>. Permissões faltando: ${missing.join(", ")}.`);
+}
+
+async function rollbackCoursePublicationAfterPanelFailure(
+  interaction: ModalSubmitInteraction,
+  context: BotContext,
+  settings: CourseSettings,
+  course: Course,
+  publication: CoursePublication,
+  error: unknown
+) {
+  const detail = errorDetails(error).slice(0, 900);
+  logCourseFlowError("publication_panel_send_failed_after_event", error, {
+    channelId: publication.channelId,
+    courseId: course.id,
+    discordEventId: publication.discordEventId,
+    guildId: interaction.guildId,
+    publicationId: publication.id
+  });
+
+  if (publication.discordEventId) {
+    const cancelledPublication: CoursePublication = { ...publication, status: "cancelled" };
+    await syncCourseScheduledEventStatus(interaction.guild!, course, cancelledPublication).catch((eventError) => {
+      logCourseFlowError("publication_panel_failure_event_close_failed", eventError, {
+        courseId: course.id,
+        discordEventId: publication.discordEventId,
+        guildId: interaction.guildId,
+        publicationId: publication.id
+      });
+    });
+  }
+
+  await Promise.allSettled([
+    context.api.setCoursePublicationStatus(interaction.guildId!, publication.id, "cancelled", interaction.user.id),
+    context.api.updateCoursePublicationEvent(interaction.guildId!, publication.id, {
+      discordEventId: publication.discordEventId,
+      discordEventUrl: publication.discordEventUrl,
+      syncError: `Falha ao publicar painel após criar evento: ${detail}`.slice(0, 900)
+    })
+  ]);
+
+  await sendCourseLog(interaction, settings, `Falha ao publicar painel do curso\nCurso: ${course.name}\nPublicação: ${publication.id}\nCanal: <#${publication.channelId}>\nEvento: ${publication.discordEventId ?? "não vinculado"}\nAção automática: evento encerrado/cancelado para evitar evento órfão.\nErro: ${detail}`).catch(() => null);
 }
 
 async function deletePreviousCoursePanel(
