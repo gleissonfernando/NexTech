@@ -827,7 +827,7 @@ function buildHierarchyPanel(guild: Guild, panel: FivemHierarchyPanel, cache: Hi
     description: panel.description ?? "Hierarquia atualizada automaticamente pelos cargos do servidor.",
     extraImages: sanitizedVisuals.slice(1),
     fields: renderHierarchyFields(guild, panel, cache),
-    footer: panel.footerEnabled ? { text: panel.footerText ?? "OrviteK" } : { enabled: false },
+    footer: panel.footerEnabled ? { text: panel.footerText ?? "© NexTech Systems" } : { enabled: false },
     image: sanitizedVisuals[0] ?? null,
     moduleId: "fivem-hierarchy",
     title: panel.title

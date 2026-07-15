@@ -2738,6 +2738,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
       `## 📢 ${course.name}`
     ].filter(Boolean).join("\n")),
     textBlock([
+      `📚 **Curso:** ${course.name}`,
       `👨‍🏫 **Instrutor:** <@${publication.instructorId}>`,
       `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
       `🕘 **Horário:** ${coursePublicationTimeLabel(publication)}`,
@@ -2913,6 +2914,7 @@ function coursePublicationFallbackPanel(course: Course, publication: CoursePubli
       ``,
       `📢 **${course.name}**`,
       ``,
+      `📚 **Curso:** ${course.name}`,
       `👨‍🏫 **Instrutor:** <@${publication.instructorId}>`,
       `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
       `🕘 **Horário:** ${coursePublicationTimeLabel(publication)}`,

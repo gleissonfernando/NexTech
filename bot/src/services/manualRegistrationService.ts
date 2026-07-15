@@ -633,7 +633,7 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     components: [buildV2Container({
       accentColor: parseColor(settings.color),
       components,
-      footer: imageUrl && imagePosition === "footer" ? { image: imageUrl, text: settings.footerText ?? "OrviteK" } : undefined
+      footer: imageUrl && imagePosition === "footer" ? { image: imageUrl, text: settings.footerText ?? "© NexTech Systems" } : undefined
     })],
     flags: MessageFlags.IsComponentsV2 as const
   };

@@ -1721,7 +1721,7 @@ function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions
     actions: [action],
     description: report.panelDescription,
     fields: [report.infoMessage].filter(Boolean),
-    footer: { text: report.footerText ?? "OrviteK" },
+    footer: { text: report.footerText ?? "© NexTech Systems" },
     image: report.imageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.imageUrl } : null,
     moduleId: "iab-panel",
     title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} ${report.panelTitle}`.trim())
