@@ -230,9 +230,13 @@ export type ReportSystemCategory = {
   description: string | null;
   emoji: string | null;
   enabled: boolean;
+  escalateToCategoryId: string | null;
   id: string;
+  judgeLabel: string | null;
+  logChannelId: string | null;
   name: string;
   order: number;
+  responsibleRoleIds: string[];
 };
 
 export type ReportSystemStatus = { color: string; id: string; name: string; order: number };

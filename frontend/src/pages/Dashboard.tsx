@@ -138,11 +138,6 @@ import {
   getXMonitor,
   patchGuildSettings,
   publishReportSystemPanel,
-  listHierarchyForwardingRules,
-  createHierarchyForwardingRule,
-  updateHierarchyForwardingRule,
-  duplicateHierarchyForwardingRule,
-  deleteHierarchyForwardingRule,
   publishFivemGoalPanel,
   publishManualRegistrationPanel,
   publishRulesPanel,
@@ -201,7 +196,6 @@ import type {
   GuildRoleOption,
   GuildSettings,
   GuildVoiceChannelOption,
-  HierarchyForwardingRule,
   ReportSystemCategory,
   EmojiCloneRemoteEmoji,
   EmojiLibraryItem,
@@ -5929,15 +5923,8 @@ function PoliceIabPanel({
 }) {
   const [draft, setDraft] = useState<GuildSettings["reportSystem"] | null>(settings?.reportSystem ?? null);
   const [options, setOptions] = useState<GuildLiveOptions>({ categories: [], channels: [], roles: [], voiceChannels: [] });
-  const [forwardingRules, setForwardingRules] = useState<HierarchyForwardingRule[]>([]);
-  const [forwardingDraft, setForwardingDraft] = useState<{ denouncedRoleId: string; destinationCategoryId: string; enabled: boolean }>({ denouncedRoleId: "", destinationCategoryId: "", enabled: true });
-  const [editingForwardingId, setEditingForwardingId] = useState<string | null>(null);
-  const [forwardingQuery, setForwardingQuery] = useState("");
-  const [forwardingFilter, setForwardingFilter] = useState<"all" | "active" | "inactive" | "missing">("all");
-  const [forwardingSort, setForwardingSort] = useState<"role" | "destination" | "date" | "status">("role");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [savingForwarding, setSavingForwarding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const disabled = !guild || !settings || !draft || !canManage || saving || publishing;
 
@@ -5963,45 +5950,6 @@ function PoliceIabPanel({
 
     return () => {
       mounted = false;
-    };
-  }, [botId, guild]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    if (!guild) {
-      setForwardingRules([]);
-      return;
-    }
-
-    listHierarchyForwardingRules(guild.id, botId)
-      .then((rules) => {
-        if (mounted) setForwardingRules(rules);
-      })
-      .catch(() => {
-        if (mounted) setMessage("Nao foi possivel carregar o encaminhamento hierarquico.");
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [botId, guild]);
-
-  useEffect(() => {
-    if (!guild) return;
-
-    const socket = createDashboardSocket();
-    const refresh = (payload: { botId?: string | null; guildId?: string }) => {
-      if (payload.guildId !== guild.id || (payload.botId ?? null) !== (botId ?? null)) return;
-      void listHierarchyForwardingRules(guild.id, botId)
-        .then(setForwardingRules)
-        .catch(() => undefined);
-    };
-
-    socket.on("corregedoria:forwarding_updated", refresh);
-
-    return () => {
-      socket.disconnect();
     };
   }, [botId, guild]);
 
@@ -6035,9 +5983,13 @@ function PoliceIabPanel({
             description: "Novo orgao de atendimento.",
             emoji: PANEL_EMOJIS.alerta,
             enabled: true,
+            escalateToCategoryId: null,
             id: `orgao-${index + 1}`,
+            judgeLabel: "Denuncias contra este orgao",
+            logChannelId: null,
             name: `Orgao ${index + 1}`,
-            order: index + 1
+            order: index + 1,
+            responsibleRoleIds: []
           }, index)
         ].slice(0, 25)
       };
@@ -6101,82 +6053,6 @@ function PoliceIabPanel({
     }
   }
 
-  async function saveForwardingRule() {
-    if (!guild || disabled || savingForwarding || !forwardingDraft.denouncedRoleId || !forwardingDraft.destinationCategoryId) return;
-
-    setSavingForwarding(true);
-    setMessage(null);
-
-    try {
-      const rule = editingForwardingId
-        ? await updateHierarchyForwardingRule(guild.id, editingForwardingId, forwardingDraft, botId)
-        : await createHierarchyForwardingRule(guild.id, forwardingDraft, botId);
-      setForwardingRules((current) => editingForwardingId
-        ? current.map((item) => item.id === rule.id ? rule : item)
-        : [rule, ...current]);
-      setForwardingDraft({ denouncedRoleId: "", destinationCategoryId: "", enabled: true });
-      setEditingForwardingId(null);
-      setMessage("Encaminhamento hierarquico salvo.");
-    } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel salvar o encaminhamento.");
-    } finally {
-      setSavingForwarding(false);
-    }
-  }
-
-  function editForwardingRule(rule: HierarchyForwardingRule) {
-    setEditingForwardingId(rule.id);
-    setForwardingDraft({
-      denouncedRoleId: rule.denouncedRoleId,
-      destinationCategoryId: rule.destinationCategoryId,
-      enabled: rule.enabled
-    });
-  }
-
-  async function toggleForwardingRule(rule: HierarchyForwardingRule) {
-    if (!guild || disabled || savingForwarding) return;
-    setSavingForwarding(true);
-    setMessage(null);
-    try {
-      const updated = await updateHierarchyForwardingRule(guild.id, rule.id, { enabled: !rule.enabled }, botId);
-      setForwardingRules((current) => current.map((item) => item.id === updated.id ? updated : item));
-    } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel alterar o status do encaminhamento.");
-    } finally {
-      setSavingForwarding(false);
-    }
-  }
-
-  async function duplicateForwarding(rule: HierarchyForwardingRule) {
-    if (!guild || disabled || savingForwarding) return;
-    setSavingForwarding(true);
-    setMessage(null);
-    try {
-      const duplicated = await duplicateHierarchyForwardingRule(guild.id, rule.id, botId);
-      setForwardingRules((current) => [duplicated, ...current]);
-      setMessage("Encaminhamento duplicado como inativo.");
-    } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel duplicar o encaminhamento.");
-    } finally {
-      setSavingForwarding(false);
-    }
-  }
-
-  async function removeForwarding(rule: HierarchyForwardingRule) {
-    if (!guild || disabled || savingForwarding) return;
-    setSavingForwarding(true);
-    setMessage(null);
-    try {
-      await deleteHierarchyForwardingRule(guild.id, rule.id, botId);
-      setForwardingRules((current) => current.filter((item) => item.id !== rule.id));
-      setMessage("Encaminhamento removido.");
-    } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Nao foi possivel remover o encaminhamento.");
-    } finally {
-      setSavingForwarding(false);
-    }
-  }
-
   if (loading || !draft) {
     return (
       <Card>
@@ -6191,18 +6067,6 @@ function PoliceIabPanel({
   const channels = options.channels;
   const categories = options.categories ?? [];
   const reportCategoryOptions = draft.categories.map((category) => ({ id: category.id, name: category.name }));
-  const escalationSteps = reportEscalationSteps(draft);
-  const activeForwardingRoleIds = new Set(forwardingRules.filter((rule) => rule.enabled).map((rule) => rule.denouncedRoleId));
-  const missingForwardingRoles = options.roles.filter((role) => !activeForwardingRoleIds.has(role.id));
-  const visibleForwardingRules = forwardingRules
-    .filter((rule) => {
-      if (forwardingFilter === "active" && !rule.enabled) return false;
-      if (forwardingFilter === "inactive" && rule.enabled) return false;
-      if (forwardingFilter === "missing") return false;
-      const haystack = `${roleName(options.roles, rule.denouncedRoleId)} ${categoryName(reportCategoryOptions, rule.destinationCategoryId)} ${rule.enabled ? "ativo" : "inativo"}`.toLowerCase();
-      return haystack.includes(forwardingQuery.trim().toLowerCase());
-    })
-    .sort((a, b) => compareForwarding(a, b, forwardingSort, options.roles, reportCategoryOptions));
   const channelAndCategoryOptions = [
     ...categories.map((category) => ({ id: category.id, name: category.name })),
     ...channels.map((channel) => ({ id: channel.id, name: channel.name }))
@@ -6252,8 +6116,6 @@ function PoliceIabPanel({
           <TicketArea disabled={disabled} label="Descricao do painel" onChange={(value) => patch({ panelDescription: value })} value={draft.panelDescription} />
           <TicketArea disabled={disabled} label="Mensagem apos abrir denuncia" onChange={(value) => patch({ openMessage: value })} value={draft.openMessage} />
 
-          <ReportEscalationStepper steps={escalationSteps} />
-
           <div className="grid gap-3 md:grid-cols-2">
             <FivemChannelSelect channels={channels} disabled={disabled} label="Canal do painel" onChange={(value) => patch({ panelChannelId: value })} placeholder="Selecionar canal" value={draft.panelChannelId} />
             <FivemResourceSelect disabled={disabled} label="Categoria temporaria dos tickets" onChange={(value) => patch({ categoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="📁" value={draft.categoryId} />
@@ -6272,8 +6134,8 @@ function PoliceIabPanel({
 
           <div className="rounded-lg border border-red-500/10 bg-black/30 p-4">
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-white">Cadeia de Escalonamento</h3>
-              <p className="mt-1 text-xs text-zinc-500">Oficiais vao para IAB; IAB vai para Conselho; Conselho vai para High Command; High Command vai para Alto Comando.</p>
+              <h3 className="text-sm font-semibold text-white">Intimacoes e mensagens institucionais</h3>
+              <p className="mt-1 text-xs text-zinc-500">Configuracoes globais usadas pelos fluxos internos de intimacao e comunicacao.</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <MultiRoleSelect disabled={disabled} label="Quem pode usar /intimacao" onChange={(values) => patch({ competenceCommandRoleIds: values })} roles={options.roles} values={draft.competenceCommandRoleIds} />
@@ -6281,12 +6143,6 @@ function PoliceIabPanel({
               <TicketField disabled={disabled} label="Banner da DM" onChange={(value) => patch({ dmBannerUrl: value || null })} value={draft.dmBannerUrl ?? ""} />
               <TicketField disabled={disabled} label="Banner do painel interno" onChange={(value) => patch({ subpoenaPanelBannerUrl: value || null })} value={draft.subpoenaPanelBannerUrl ?? ""} />
               <TicketArea disabled={disabled} label="Texto padrão da DM" onChange={(value) => patch({ subpoenaDmText: value })} value={draft.subpoenaDmText} />
-            </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} judgesLabel="julga denuncias contra: Oficiais" label="IAB" logChannelId={draft.iabLogChannelId} categoryId={draft.iabCategoryId} onCategory={(iabCategoryId) => patch({ iabCategoryId })} onLog={(iabLogChannelId) => patch({ iabLogChannelId })} onRoles={(iabRoleIds) => patch({ iabRoleIds })} roles={options.roles} roleIds={draft.iabRoleIds} stepId="escalation-iab" stepNumber={1} />
-              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} judgesLabel="julga denuncias contra: IAB" label="Conselho" logChannelId={draft.conselhoLogChannelId} categoryId={draft.conselhoCategoryId} onCategory={(conselhoCategoryId) => patch({ conselhoCategoryId })} onLog={(conselhoLogChannelId) => patch({ conselhoLogChannelId })} onRoles={(conselhoRoleIds) => patch({ conselhoRoleIds })} roles={options.roles} roleIds={draft.conselhoRoleIds} stepId="escalation-conselho" stepNumber={2} />
-              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} judgesLabel="julga denuncias contra: Conselho" label="High Command / HCMD" logChannelId={draft.hcmdLogChannelId} categoryId={draft.hcmdCategoryId} onCategory={(hcmdCategoryId) => patch({ hcmdCategoryId })} onLog={(hcmdLogChannelId) => patch({ hcmdLogChannelId })} onRoles={(hcmdRoleIds) => patch({ hcmdRoleIds })} roles={options.roles} roleIds={draft.hcmdRoleIds} stepId="escalation-hcmd" stepNumber={3} />
-              <CompetenceConfig channels={channels} destinations={channelAndCategoryOptions} disabled={disabled} judgesLabel="julga denuncias contra: High Command" label="Alto Comando" logChannelId={draft.comissarioLogChannelId} categoryId={draft.comissarioCategoryId} onCategory={(comissarioCategoryId) => patch({ comissarioCategoryId })} onLog={(comissarioLogChannelId) => patch({ comissarioLogChannelId })} onRoles={(comissarioRoleIds) => patch({ comissarioRoleIds })} roles={options.roles} roleIds={draft.comissarioRoleIds} stepId="escalation-comissario" stepNumber={4} />
             </div>
           </div>
 
@@ -6307,119 +6163,27 @@ function PoliceIabPanel({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Encaminhamento Hierarquico</CardTitle>
-              <CardDescription>Define qual orgao recebe a denuncia conforme o cargo do denunciado. Regra oficial: Oficial para IAB, IAB para Conselho, Conselho para Alto Comando, Alto Comando para Comissario.</CardDescription>
-            </div>
-            <Badge variant="muted">{forwardingRules.filter((rule) => rule.enabled).length} ativo(s)</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_120px_auto]">
-            <FivemResourceSelect disabled={disabled || savingForwarding} label="Cargo denunciado" onChange={(value) => setForwardingDraft((current) => ({ ...current, denouncedRoleId: value ?? "" }))} options={options.roles.map((role) => ({ id: role.id, name: role.name }))} placeholder="Selecionar cargo" prefix="" value={forwardingDraft.denouncedRoleId || null} />
-            <FivemResourceSelect disabled={disabled || savingForwarding} label="Encaminhar para" onChange={(value) => setForwardingDraft((current) => ({ ...current, destinationCategoryId: value ?? "" }))} options={reportCategoryOptions} placeholder="Selecionar orgao" prefix="" value={forwardingDraft.destinationCategoryId || null} />
-            <label className="flex h-10 items-center gap-2 self-end rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">
-              <input checked={forwardingDraft.enabled} disabled={disabled || savingForwarding} onChange={(event) => setForwardingDraft((current) => ({ ...current, enabled: event.target.checked }))} type="checkbox" />
-              Ativo
-            </label>
-            <Button disabled={disabled || savingForwarding || !forwardingDraft.denouncedRoleId || !forwardingDraft.destinationCategoryId} onClick={() => void saveForwardingRule()} type="button">
-              {savingForwarding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingForwardingId ? <Edit3 className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
-              {editingForwardingId ? "Salvar" : "Novo"}
-            </Button>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <TicketField disabled={disabled || savingForwarding} label="Buscar" onChange={setForwardingQuery} value={forwardingQuery} />
-            <label className="block text-xs font-medium text-zinc-400">
-              Filtro
-              <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none" disabled={disabled || savingForwarding} onChange={(event) => setForwardingFilter(event.target.value as typeof forwardingFilter)} value={forwardingFilter}>
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-                <option value="missing">Sem destino</option>
-              </select>
-            </label>
-            <label className="block text-xs font-medium text-zinc-400">
-              Ordenar por
-              <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none" disabled={disabled || savingForwarding} onChange={(event) => setForwardingSort(event.target.value as typeof forwardingSort)} value={forwardingSort}>
-                <option value="role">Cargo</option>
-                <option value="destination">Destino</option>
-                <option value="date">Data</option>
-                <option value="status">Status</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            {forwardingFilter === "missing"
-              ? missingForwardingRoles
-                  .filter((role) => role.name.toLowerCase().includes(forwardingQuery.trim().toLowerCase()))
-                  .map((role) => (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4" key={role.id}>
-                      <p className="text-xs uppercase text-zinc-500">Cargo denunciado</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{role.name}</p>
-                      <p className="mt-3 text-xs uppercase text-zinc-500">Encaminhar para</p>
-                      <p className="mt-1 text-sm text-amber-200">Sem destino configurado</p>
-                    </div>
-                  ))
-              : visibleForwardingRules.map((rule) => (
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4" key={rule.id}>
-                    <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                      <div>
-                        <p className="text-xs uppercase text-zinc-500">Cargo denunciado</p>
-                        <p className="mt-1 text-sm font-semibold text-white">{roleName(options.roles, rule.denouncedRoleId)}</p>
-                      </div>
-                      <div className="flex items-center justify-center text-zinc-500">↓</div>
-                      <div>
-                        <p className="text-xs uppercase text-zinc-500">Encaminhar para</p>
-                        <p className="mt-1 text-sm font-semibold text-white">{categoryName(reportCategoryOptions, rule.destinationCategoryId)}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                      <Badge variant={rule.enabled ? "success" : "muted"}>{rule.enabled ? "Ativo" : "Inativo"}</Badge>
-                      <div className="flex items-center gap-2">
-                        <Button disabled={disabled || savingForwarding} onClick={() => editForwardingRule(rule)} size="icon" title="Editar" type="button" variant="outline"><Edit3 className="h-4 w-4" /></Button>
-                        <Button disabled={disabled || savingForwarding} onClick={() => void duplicateForwarding(rule)} size="icon" title="Duplicar" type="button" variant="outline"><Copy className="h-4 w-4" /></Button>
-                        <Button disabled={disabled || savingForwarding} onClick={() => void toggleForwardingRule(rule)} size="sm" type="button" variant="outline">{rule.enabled ? "Desativar" : "Ativar"}</Button>
-                        <Button disabled={disabled || savingForwarding} onClick={() => void removeForwarding(rule)} size="icon" title="Excluir" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-red-500/10 bg-zinc-950/70">
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle>Orgaos e setores</CardTitle>
-              <CardDescription>Cada opcao aparece no menu publico e pode apontar para um canal/categoria propria.</CardDescription>
+              <CardTitle>Orgaos</CardTitle>
+              <CardDescription>Lista unica de orgaos, responsaveis, logs e escalonamento do sistema de denuncias.</CardDescription>
             </div>
             <Button disabled={disabled || draft.categories.length >= 25} onClick={addCategory} size="sm" type="button" variant="outline">Adicionar orgao</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {draft.categories.map((category, index) => (
-            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 xl:grid-cols-[90px_1fr_1fr_1fr_120px_auto] " key={`${category.id}-${index}`}>
-              <TicketField disabled={disabled} label="Emoji" onChange={(value) => patchCategory(index, { emoji: value })} value={category.emoji ?? ""} />
-              <div className="space-y-2">
-                <TicketField disabled={disabled} label="Nome" onChange={(value) => patchCategory(index, { id: slugTicketOption(value, index), name: value })} value={category.name} />
-                <Badge variant="muted">{reportCategoryEscalationLabel(category, escalationSteps)}</Badge>
-              </div>
-              <TicketField disabled={disabled} label="Descricao" onChange={(value) => patchCategory(index, { description: value })} value={category.description ?? ""} />
-              <FivemResourceSelect disabled={disabled} label="Canal/categoria" onChange={(value) => patchCategory(index, { channelOrCategoryId: value })} options={channelAndCategoryOptions} placeholder="Padrao do sistema" value={category.channelOrCategoryId} />
-              <TicketField disabled={disabled} label="Cor" onChange={(value) => patchCategory(index, { color: value })} type="color" value={category.color} />
-              <div className="flex items-end gap-2">
-                <label className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">
-                  <input checked={category.enabled} disabled={disabled} onChange={(event) => patchCategory(index, { enabled: event.target.checked })} type="checkbox" />
-                  Ativo
-                </label>
-                <Button disabled={disabled || draft.categories.length <= 1} onClick={() => removeCategory(index)} size="icon" title="Remover orgao" type="button" variant="outline">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+            <OrgaoCard
+              category={category}
+              channels={channels}
+              disabled={disabled}
+              escalationOptions={reportCategoryOptions.filter((option) => option.id !== category.id)}
+              index={index}
+              key={`${category.id}-${index}`}
+              onPatch={(patchValue) => patchCategory(index, patchValue)}
+              onRemove={() => removeCategory(index)}
+              removeDisabled={disabled || draft.categories.length <= 1}
+              roles={options.roles}
+              ticketDestinations={channelAndCategoryOptions}
+            />
           ))}
         </CardContent>
       </Card>
@@ -6427,91 +6191,75 @@ function PoliceIabPanel({
   );
 }
 
-type ReportEscalationStep = {
-  destinationId: string | null;
-  id: string;
-  label: string;
-  target: string;
-};
-
-function reportEscalationSteps(report: GuildSettings["reportSystem"]): ReportEscalationStep[] {
-  return [
-    { destinationId: report.iabCategoryId, id: "iab", label: "I.A.B.", target: "escalation-iab" },
-    { destinationId: report.conselhoCategoryId, id: "conselho", label: "Conselho", target: "escalation-conselho" },
-    { destinationId: report.hcmdCategoryId, id: "hcmd", label: "Alto Comando", target: "escalation-hcmd" },
-    { destinationId: report.comissarioCategoryId, id: "comissario", label: "Comissario", target: "escalation-comissario" }
-  ];
-}
-
-function ReportEscalationStepper({ steps }: { steps: ReportEscalationStep[] }) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-      <p className="text-sm font-semibold text-white">Fluxo de escalonamento</p>
-      <div className="mt-3 grid gap-2 md:grid-cols-5">
-        <button className="rounded-md border border-zinc-800 bg-[#09090b] px-3 py-2 text-left text-xs text-zinc-300" onClick={() => document.getElementById(steps[0]?.target ?? "")?.scrollIntoView({ behavior: "smooth", block: "center" })} type="button">
-          Oficial
-        </button>
-        {steps.map((step) => (
-          <button className="rounded-md border border-zinc-800 bg-[#09090b] px-3 py-2 text-left text-xs text-zinc-300" key={step.id} onClick={() => document.getElementById(step.target)?.scrollIntoView({ behavior: "smooth", block: "center" })} type="button">
-            {step.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function reportCategoryEscalationLabel(category: ReportSystemCategory, steps: ReportEscalationStep[]) {
-  const direct = steps.find((step) => step.destinationId && step.destinationId === category.channelOrCategoryId);
-  if (direct) return `-> ${direct.label}`;
-  const normalized = `${category.id} ${category.name}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (normalized.includes("oficial") || normalized.includes("ouvidoria") || normalized.includes("duvida") || normalized.includes("auditoria")) return "-> I.A.B.";
-  if (normalized.includes("iab")) return "-> Conselho";
-  if (normalized.includes("council") || normalized.includes("conselho")) return "-> Alto Comando";
-  if (normalized.includes("high") || normalized.includes("hcmd") || normalized.includes("alto")) return "-> Comissario";
-  return "Fluxo manual";
-}
-
-function CompetenceConfig({
-  categoryId,
+function OrgaoCard({
+  category,
   channels,
-  destinations,
   disabled,
-  judgesLabel,
-  label,
-  logChannelId,
-  onCategory,
-  onLog,
-  onRoles,
+  escalationOptions,
+  index,
+  onPatch,
+  onRemove,
+  removeDisabled,
   roles,
-  roleIds,
-  stepId,
-  stepNumber
+  ticketDestinations
 }: {
-  categoryId: string | null;
+  category: ReportSystemCategory;
   channels: GuildLiveOptions["channels"];
-  destinations: Array<{ id: string; name: string }>;
   disabled: boolean;
-  judgesLabel: string;
-  label: string;
-  logChannelId: string | null;
-  onCategory: (value: string | null) => void;
-  onLog: (value: string | null) => void;
-  onRoles: (value: string[]) => void;
+  escalationOptions: Array<{ id: string; name: string }>;
+  index: number;
+  onPatch: (patchValue: Partial<ReportSystemCategory>) => void;
+  onRemove: () => void;
+  removeDisabled: boolean;
   roles: GuildLiveOptions["roles"];
-  roleIds: string[];
-  stepId: string;
-  stepNumber: number;
+  ticketDestinations: Array<{ id: string; name: string }>;
 }) {
+  const escalationTarget = escalationOptions.find((option) => option.id === category.escalateToCategoryId);
+  const responsibleNames = (category.responsibleRoleIds ?? []).map((roleId) => roles.find((role) => role.id === roleId)?.name ?? roleId);
+  const responsibleSummary = responsibleNames.length
+    ? responsibleNames.slice(0, 3).join(", ") + (responsibleNames.length > 3 ? ` +${responsibleNames.length - 3}` : "")
+    : "Sem cargos responsaveis";
+
   return (
-    <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3" id={stepId}>
+    <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-white">{stepNumber}. {label}</p>
-        <Badge variant="muted">{judgesLabel}</Badge>
+        <div>
+          <p className="text-sm font-semibold text-white">{index + 1}. {category.name}</p>
+          <p className="mt-1 text-xs text-zinc-500">{category.judgeLabel || "Rotulo publico nao configurado"}</p>
+        </div>
+        <Badge variant={category.enabled ? "success" : "muted"}>{category.enabled ? "Ativo" : "Inativo"}</Badge>
       </div>
-      <MultiRoleSelect disabled={disabled} label={`Cargos ${label}`} onChange={onRoles} roles={roles} values={roleIds} />
-      <FivemResourceSelect disabled={disabled} label={`Canal/categoria ${label}`} onChange={onCategory} options={destinations} placeholder="Destino padrão" value={categoryId} />
-      <FivemChannelSelect channels={channels} disabled={disabled} label={`Logs ${label}`} onChange={onLog} placeholder="Canal padrão de logs" value={logChannelId} />
+      <div className="grid gap-2 md:grid-cols-2">
+        <div className="rounded-md border border-zinc-800 bg-[#09090b] px-3 py-2">
+          <p className="text-[11px] uppercase text-zinc-500">Cargos responsaveis</p>
+          <p className="mt-1 truncate text-xs text-zinc-300">{responsibleSummary}</p>
+        </div>
+        <div className="rounded-md border border-zinc-800 bg-[#09090b] px-3 py-2">
+          <p className="text-[11px] uppercase text-zinc-500">Escalonamento</p>
+          <p className="mt-1 truncate text-xs text-zinc-300">{category.name} -&gt; {escalationTarget?.name ?? "Sem escalonamento"}</p>
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <TicketField disabled={disabled} label="Nome do orgao" onChange={(value) => onPatch({ id: slugTicketOption(value, index), name: value })} value={category.name} />
+        <TicketField disabled={disabled} label="Quem este orgao julga" onChange={(value) => onPatch({ judgeLabel: value })} value={category.judgeLabel ?? ""} />
+        <TicketField disabled={disabled} label="Descricao" onChange={(value) => onPatch({ description: value })} value={category.description ?? ""} />
+        <TicketField disabled={disabled} label="Emoji" onChange={(value) => onPatch({ emoji: value })} value={category.emoji ?? ""} />
+        <FivemResourceSelect disabled={disabled} label="Categoria/canal do ticket" onChange={(value) => onPatch({ channelOrCategoryId: value })} options={ticketDestinations} placeholder="Padrao do sistema" value={category.channelOrCategoryId} />
+        <FivemChannelSelect channels={channels} disabled={disabled} label="Canal de logs" onChange={(value) => onPatch({ logChannelId: value })} placeholder="Canal padrao de logs" value={category.logChannelId} />
+        <MultiRoleSelect disabled={disabled} label="Cargos responsaveis" onChange={(values) => onPatch({ responsibleRoleIds: values })} roles={roles} values={category.responsibleRoleIds ?? []} />
+        <FivemResourceSelect disabled={disabled} label="Escalar denuncia contra este orgao para" onChange={(value) => onPatch({ escalateToCategoryId: value })} options={escalationOptions} placeholder="Sem escalonamento" value={category.escalateToCategoryId} />
+        <TicketField disabled={disabled} label="Cor" onChange={(value) => onPatch({ color: value })} type="color" value={category.color} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">
+          <input checked={category.enabled} disabled={disabled} onChange={(event) => onPatch({ enabled: event.target.checked })} type="checkbox" />
+          Ativo
+        </label>
+        <Button disabled={removeDisabled} onClick={onRemove} size="sm" title="Remover orgao" type="button" variant="outline">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Remover
+        </Button>
+      </div>
     </div>
   );
 }
@@ -6524,31 +6272,14 @@ function normalizeReportCategory(category: ReportSystemCategory, index: number):
     description: category.description?.trim() || null,
     emoji: category.emoji?.trim() || null,
     enabled: category.enabled !== false,
+    escalateToCategoryId: category.escalateToCategoryId || null,
     id: category.id?.trim() || slugTicketOption(name, index),
+    judgeLabel: category.judgeLabel?.trim() || null,
+    logChannelId: category.logChannelId || null,
     name,
-    order: Number(category.order) || index + 1
+    order: Number(category.order) || index + 1,
+    responsibleRoleIds: category.responsibleRoleIds ?? []
   };
-}
-
-function roleName(roles: GuildRoleOption[], roleId: string) {
-  return roles.find((role) => role.id === roleId)?.name ?? roleId;
-}
-
-function categoryName(categories: Array<{ id: string; name: string }>, categoryId: string) {
-  return categories.find((category) => category.id === categoryId)?.name ?? categoryId;
-}
-
-function compareForwarding(
-  a: HierarchyForwardingRule,
-  b: HierarchyForwardingRule,
-  sort: "role" | "destination" | "date" | "status",
-  roles: GuildRoleOption[],
-  categories: Array<{ id: string; name: string }>
-) {
-  if (sort === "date") return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-  if (sort === "status") return Number(b.enabled) - Number(a.enabled);
-  if (sort === "destination") return categoryName(categories, a.destinationCategoryId).localeCompare(categoryName(categories, b.destinationCategoryId));
-  return roleName(roles, a.denouncedRoleId).localeCompare(roleName(roles, b.denouncedRoleId));
 }
 
 type TicketPanelDraft = Pick<

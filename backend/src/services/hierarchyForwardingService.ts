@@ -180,7 +180,7 @@ export async function resolveHierarchyForwarding(
   );
 
   if (!rule) {
-    throw serviceError("Nao existe um destino configurado para este cargo. Acesse Dashboard -> Corregedoria -> Encaminhamento Hierarquico.", 400);
+    throw serviceError("Nao existe um destino configurado para este cargo. Acesse Dashboard -> Corregedoria -> Orgaos e configure os cargos responsaveis e o campo Escalar para.", 400);
   }
 
   return toDto(rule);

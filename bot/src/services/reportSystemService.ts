@@ -218,7 +218,7 @@ export async function handleReportSystemMessage(message: Message, context: BotCo
   const isReporter = message.author.id === topic.openerId;
   const isStaff = !isReporter && (
     Boolean(message.member?.permissions.has(PermissionFlagsBits.Administrator))
-    || reportCompetenceRoleIds(report, topic.competence).some((roleId) => message.member?.roles.cache.has(roleId))
+    || reportCategoryResponsibleRoleIds(report, topic.categoryId, topic.competence).some((roleId) => message.member?.roles.cache.has(roleId))
   );
   const shouldRelay = topic.mode === "anonymous"
     ? isReporter || isStaff
@@ -395,7 +395,7 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
   }
 
   const ticket = await context.api.createTicket({
-    allowedRoleIds: reportCompetenceRoleIds(report, reportCompetence(category.id, category.name)),
+    allowedRoleIds: reportCategoryResponsibleRoleIds(report, category.id, reportCompetence(category.id, category.name)),
     categoryId: category.id,
     categoryName: category.name,
     channelId: channel.id,
@@ -418,6 +418,7 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
 
   await sendReportOpeningInstructions(channel, settings, topic, interaction.guild);
   await sendReportLog(interaction.guild!, settings, {
+    categoryId: category.id,
     categoryName: category.name,
     channelId: channel.id,
     competence: reportCompetence(category.id, category.name),
@@ -528,7 +529,7 @@ async function handleReportTicketButton(interaction: ButtonInteraction, context:
 async function submitAnonymousReport(interaction: ButtonInteraction, context: BotContext, settings: GuildSettings, channel: TextChannel, ticket: TicketRecord, topic: ReportTopic, preparationPanelMessageId?: string) {
   await interaction.deferUpdate();
   const report = settings.reportSystem;
-  const staffRoleIds = reportCompetenceRoleIds(report, topic.competence);
+  const staffRoleIds = reportCategoryResponsibleRoleIds(report, topic.categoryId, topic.competence);
   const preparationPanel = preparationPanelMessageId
     ? await channel.messages.fetch(preparationPanelMessageId).catch(() => null)
     : null;
@@ -580,7 +581,7 @@ async function claimReport(interaction: ButtonInteraction, context: BotContext, 
     return;
   }
   const updated = claim.ticket ?? { ...ticket, responsibleUserId: interaction.user.id, status: "IN_ANALYSIS" };
-  const staffRoleIds = reportCompetenceRoleIds(settings.reportSystem, topic.competence);
+  const staffRoleIds = reportCategoryResponsibleRoleIds(settings.reportSystem, topic.categoryId, topic.competence);
   const supervisorRoleIds = reportSupervisorRoleIds(settings.reportSystem);
   for (const roleId of staffRoleIds) {
     if (supervisorRoleIds.includes(roleId)) continue;
@@ -648,7 +649,7 @@ async function archiveReport(interaction: ButtonInteraction, context: BotContext
   if (archiveCategoryId) await channel.setParent(archiveCategoryId).catch(() => null);
   await channel.permissionOverwrites.edit(topic.openerId, { ViewChannel: false, SendMessages: false, AttachFiles: false }).catch(() => null);
   await channel.permissionOverwrites.edit(channel.guild.roles.everyone.id, { SendMessages: false, AttachFiles: false, CreatePrivateThreads: false, CreatePublicThreads: false }).catch(() => null);
-  const staffRoleIds = reportCompetenceRoleIds(settings.reportSystem, topic.competence);
+  const staffRoleIds = reportCategoryResponsibleRoleIds(settings.reportSystem, topic.categoryId, topic.competence);
   for (const roleId of staffRoleIds) {
     await channel.permissionOverwrites.edit(roleId, { AttachFiles: false, ReadMessageHistory: true, SendMessages: false, ViewChannel: true }).catch(() => null);
   }
@@ -1231,7 +1232,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     }
     destinationCategory = configuredCategory;
   } catch (error) {
-    await interaction.editReply(errorMessage(error) ?? "Nao existe um destino configurado para este cargo. Acesse Dashboard -> Corregedoria -> Encaminhamento Hierarquico.");
+    await interaction.editReply(errorMessage(error) ?? "Nao existe um destino configurado para este cargo. Acesse Dashboard -> Corregedoria -> Orgaos e configure os cargos responsaveis e o campo Escalar para.");
     return;
   }
 
@@ -1249,7 +1250,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
   }
 
   const ticket = await context.api.createTicket({
-    allowedRoleIds: reportCompetenceRoleIds(report, reportCompetence(destinationCategory.id, destinationCategory.name)),
+    allowedRoleIds: reportCategoryResponsibleRoleIds(report, destinationCategory.id, reportCompetence(destinationCategory.id, destinationCategory.name)),
     categoryId: destinationCategory.id,
     categoryName: destinationCategory.name,
     channelId: channel.id,
@@ -1281,6 +1282,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
   await sendReportControlPanel(channel, context, settings, ticket.ticket, topic, mode === "anonymous" ? "Preparacao" : "Aberto", interaction.guild);
 
   await sendReportLog(interaction.guild!, settings, {
+    categoryId: destinationCategory.id,
     categoryName: destinationCategory.name,
     channelId: channel.id,
     competence: reportCompetence(destinationCategory.id, destinationCategory.name),
@@ -1339,9 +1341,10 @@ async function createReportChannel(guild: Guild, settings: GuildSettings, input:
 
   const report = settings.reportSystem;
   const competence = reportCompetence(input.categoryId, input.categoryName);
-  const staffRoleIds = reportCompetenceRoleIds(report, competence);
+  const category = reportCategoryById(report, input.categoryId);
+  const staffRoleIds = reportCategoryResponsibleRoleIds(report, input.categoryId, competence);
   const otherRoleIds = allReportCompetenceRoleIds(report).filter((roleId) => !staffRoleIds.includes(roleId));
-  const parent = reportCompetenceCategoryId(report, competence) ?? report.categoryId ?? undefined;
+  const parent = category?.channelOrCategoryId ?? reportCompetenceCategoryId(report, competence) ?? report.categoryId ?? undefined;
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
@@ -1417,9 +1420,9 @@ function createOpenedReportPayload(settings: GuildSettings, input: { categoryNam
   });
 }
 
-async function sendReportLog(guild: Guild, settings: GuildSettings, input: { categoryName: string; channelId: string; competence: "iab" | "conselho" | "hcmd" | "comissario"; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
+async function sendReportLog(guild: Guild, settings: GuildSettings, input: { categoryId?: string | null; categoryName: string; channelId: string; competence: "iab" | "conselho" | "hcmd" | "comissario"; mode: "anonymous" | "identified"; openerId: string; summary: string }) {
   const report = settings.reportSystem;
-  const logChannelId = reportCompetenceLogChannelId(report, input.competence);
+  const logChannelId = reportCategoryById(report, input.categoryId ?? "")?.logChannelId ?? reportCompetenceLogChannelId(report, input.competence);
   if (!logChannelId || !report.logs.opened) return;
   const channel = await guild.channels.fetch(logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
@@ -1440,7 +1443,7 @@ function canFinalizeReport(member: GuildMember | null, report: ReportSystemSetti
   if (userId === topic.openerId) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (ticket.responsibleUserId && ticket.responsibleUserId === userId) return true;
-  const authorizedRoleIds = [...report.adminRoleIds, ...report.closeRoleIds, ...reportCompetenceRoleIds(report, topic.competence)];
+  const authorizedRoleIds = [...report.adminRoleIds, ...report.closeRoleIds, ...reportCategoryResponsibleRoleIds(report, topic.categoryId, topic.competence)];
   return authorizedRoleIds.some((roleId) => member.roles.cache.has(roleId));
 }
 
@@ -1457,7 +1460,7 @@ function canUseReportManagementAction(member: GuildMember | null, report: Report
     ...report.closeRoleIds,
     ...report.reopenRoleIds,
     ...report.statusRoleIds,
-    ...reportCompetenceRoleIds(report, topic.competence)
+    ...reportCategoryResponsibleRoleIds(report, topic.categoryId, topic.competence)
   ];
   return [...new Set(authorizedRoleIds)].some((roleId) => member.roles.cache.has(roleId));
 }
@@ -1469,6 +1472,16 @@ function reportCompetence(categoryId: string, categoryName: string): "iab" | "co
   if (value.includes("conselho") || value.includes("concil") || value.includes("council")) return "hcmd";
   if (!value.includes("denuncias-iab") && !value.includes("denuncias iab") && value.includes("iab")) return "conselho";
   return "iab";
+}
+
+function reportCategoryById(report: ReportSystemSettings, categoryId: string | null | undefined) {
+  return report.categories.find((category) => category.id === categoryId) ?? null;
+}
+
+function reportCategoryResponsibleRoleIds(report: ReportSystemSettings, categoryId: string | null | undefined, competence: "iab" | "conselho" | "hcmd" | "comissario") {
+  const categoryRoleIds = reportCategoryById(report, categoryId)?.responsibleRoleIds ?? [];
+  if (categoryRoleIds.length) return [...new Set(categoryRoleIds)];
+  return reportCompetenceRoleIds(report, competence);
 }
 
 function reportCompetenceRoleIds(report: ReportSystemSettings, competence: "iab" | "conselho" | "hcmd" | "comissario") {
@@ -1489,6 +1502,7 @@ function reportSupervisorRoleIds(report: ReportSystemSettings) {
 
 function allReportCompetenceRoleIds(report: ReportSystemSettings) {
   return [...new Set([
+    ...report.categories.flatMap((category) => category.responsibleRoleIds ?? []),
     ...reportCompetenceRoleIds(report, "iab"),
     ...reportCompetenceRoleIds(report, "conselho"),
     ...reportCompetenceRoleIds(report, "hcmd"),
@@ -1706,7 +1720,7 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   }
   if (action === "category-new") {
     const name = value("name");
-    await saveAndRefresh(interaction, context, settings, { categories: [...report.categories, { channelOrCategoryId: value("channelOrCategoryId") || null, color: value("color") || "#dc2626", description: value("description") || null, emoji: value("emoji") || null, enabled: true, id: slug(name), name, order: report.categories.length + 1 }] }, "categories");
+    await saveAndRefresh(interaction, context, settings, { categories: [...report.categories, { channelOrCategoryId: value("channelOrCategoryId") || null, color: value("color") || "#dc2626", description: value("description") || null, emoji: value("emoji") || null, enabled: true, escalateToCategoryId: null, id: slug(name), judgeLabel: value("description") || null, logChannelId: null, name, order: report.categories.length + 1, responsibleRoleIds: [] }] }, "categories");
     return;
   }
   if (action.startsWith("category-edit-")) {
@@ -1809,8 +1823,8 @@ async function publishReportPanel(_: TextBasedChannel | null, interaction: Chann
 function createReportPanelPayload(settings: GuildSettings): MessageCreateOptions {
   const report = settings.reportSystem;
   const options = report.categories.filter((item) => item.enabled).slice(0, 25).map((item) => {
-    const optionBuilder = new StringSelectMenuOptionBuilder().setLabel(item.name).setValue(item.id);
-    if (item.description) optionBuilder.setDescription(item.description);
+    const optionBuilder = new StringSelectMenuOptionBuilder().setLabel((item.judgeLabel || item.name).slice(0, 100)).setValue(item.id);
+    if (item.description) optionBuilder.setDescription(item.description.slice(0, 100));
     if (item.emoji) optionBuilder.setEmoji(replaceSystemEmojis(item.emoji));
     return optionBuilder;
   });

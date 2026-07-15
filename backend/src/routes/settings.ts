@@ -91,9 +91,13 @@ const settingsSchema = z.object({
       description: z.string().max(100).nullable().optional(),
       emoji: z.string().max(80).nullable().optional(),
       enabled: z.boolean().optional(),
+      escalateToCategoryId: z.string().max(80).nullable().optional(),
       id: z.string().min(1).max(80),
+      judgeLabel: z.string().max(100).nullable().optional(),
+      logChannelId: z.string().nullable().optional(),
       name: z.string().min(1).max(80),
-      order: z.coerce.number().int().min(1).max(1000).optional()
+      order: z.coerce.number().int().min(1).max(1000).optional(),
+      responsibleRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional()
     })).max(25).optional(),
     categoryId: z.string().nullable().optional(),
     closeRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
@@ -1160,6 +1164,7 @@ async function validateGuildResources(
     input.reportSystem?.conselhoLogChannelId,
     input.reportSystem?.hcmdLogChannelId,
     input.reportSystem?.comissarioLogChannelId,
+    ...(input.reportSystem?.categories ?? []).map((category) => category.logChannelId),
     input.globalLogConfig?.transcriptChannelId
   ].filter((channelId): channelId is string => Boolean(channelId));
 
@@ -1218,7 +1223,8 @@ async function validateGuildResources(
     input.reportSystem?.iabCategoryId,
     input.reportSystem?.conselhoCategoryId,
     input.reportSystem?.hcmdCategoryId,
-    input.reportSystem?.comissarioCategoryId
+    input.reportSystem?.comissarioCategoryId,
+    ...(input.reportSystem?.categories ?? []).map((category) => category.channelOrCategoryId)
   ].filter((categoryId): categoryId is string => Boolean(categoryId));
 
   if (reportCategoryIds.length) {
@@ -1251,6 +1257,7 @@ async function validateGuildResources(
     ...(input.reportSystem?.conselhoRoleIds ?? []),
     ...(input.reportSystem?.hcmdRoleIds ?? []),
     ...(input.reportSystem?.comissarioRoleIds ?? []),
+    ...(input.reportSystem?.categories ?? []).flatMap((category) => category.responsibleRoleIds ?? []),
     ...(input.reportSystem?.competenceCommandRoleIds ?? []),
     input.globalLogConfig?.logViewRoleId,
     input.globalLogConfig?.transcriptViewRoleId,

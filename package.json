@@ -34,6 +34,7 @@
     "db:reset-bot-system": "node scripts/reset-bot-system-database.mjs",
     "seed:panel-emojis": "npm run build --workspace backend && node scripts/seed-default-panel-emojis.mjs",
     "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",
+    "migrate:report-system-orgs": "node scripts/migrate-report-system-orgs.mjs",
     "release:discloud": "node scripts/release-discloud.mjs",
     "load:test": "node scripts/load-test.mjs",
     "validate:anti-spam": "node scripts/validate-anti-spam.cjs",

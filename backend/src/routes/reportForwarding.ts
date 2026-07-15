@@ -13,6 +13,7 @@ import {
   updateHierarchyForwardingRule
 } from "../services/hierarchyForwardingService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
+import { getGuildSettings, type ReportSystemCategoryDto } from "../services/settingsService";
 
 export const reportForwardingRouter = Router();
 
@@ -124,6 +125,10 @@ reportForwardingRouter.post("/bot/:guildId/resolve", requireBot, async (req, res
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
     const input = resolveSchema.parse(req.body ?? {});
+    const settings = await getGuildSettings(guildId, botId);
+    const categoryRule = resolveCategoryEscalation(guildId, botId, settings.reportSystem.categories, input.denouncedRoleIds);
+    if (categoryRule) return res.json({ rule: categoryRule });
+
     const rule = await resolveHierarchyForwarding(guildId, botId, input.denouncedRoleIds);
 
     return res.json({ rule });
@@ -152,6 +157,41 @@ async function canManage(req: any, res: any, guildId: string, botId: string | nu
 
 function actorId(res: { locals: { dashboardAuth?: { user?: { discordId?: string | null; id?: string | null } } } }) {
   return res.locals.dashboardAuth?.user?.discordId ?? res.locals.dashboardAuth?.user?.id ?? null;
+}
+
+function resolveCategoryEscalation(
+  guildId: string,
+  botId: string | null,
+  categories: ReportSystemCategoryDto[],
+  denouncedRoleIds: string[]
+) {
+  const roleIds = new Set(denouncedRoleIds);
+  const orderedCategories = [...categories].sort((left, right) => left.order - right.order);
+
+  for (const category of orderedCategories) {
+    if (!category.enabled) continue;
+    const denouncedRoleId = category.responsibleRoleIds.find((roleId) => roleIds.has(roleId));
+    if (!denouncedRoleId || !category.escalateToCategoryId) continue;
+
+    const destination = categories.find((item) => item.enabled && item.id === category.escalateToCategoryId);
+    if (!destination) continue;
+
+    const now = new Date().toISOString();
+    return {
+      botId,
+      createdAt: now,
+      createdById: null,
+      denouncedRoleId,
+      destinationCategoryId: destination.id,
+      enabled: true,
+      guildId,
+      id: `report-category:${category.id}:${destination.id}`,
+      updatedAt: now,
+      updatedById: null
+    };
+  }
+
+  return null;
 }
 
 async function emitForwardingUpdate(guildId: string, botId: string | null) {

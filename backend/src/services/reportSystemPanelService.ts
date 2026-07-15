@@ -33,7 +33,7 @@ export async function publishReportSystemPanelToDiscord(settings: GuildSettingsD
     .filter((category) => category.enabled)
     .slice(0, 25)
     .map((category) => ({
-      label: category.name.slice(0, 100),
+      label: (category.judgeLabel || category.name).slice(0, 100),
       value: category.id.slice(0, 100),
       ...(category.description ? { description: category.description.slice(0, 100) } : {}),
       ...(category.emoji ? { emoji: parseEmoji(normalizePanelEmoji(category.emoji)) } : {})
