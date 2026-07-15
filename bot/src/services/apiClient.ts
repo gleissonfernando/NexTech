@@ -567,10 +567,11 @@ export type MaintenanceState = {
 };
 
 export type FivemActionArchitecture = "fac" | "police";
+export type FivemActionMode = "shootout" | "escape";
 export type FivemActionSettings = { id: string; botId: string; guildId: string; architecture: FivemActionArchitecture; enabled: boolean; categoryId: string | null; panelChannelId: string | null; actionChannelId: string | null; reportChannelId: string | null; panelMessageId: string | null; panelTitle: string; panelDescription: string; color: string; imageUrl: string | null; imagePosition: "top" | "center" | "bottom" | "none"; lastPanelRequestedAt: string | null; updatedAt: string };
 export type FivemActionDefinition = { id: string; architecture: FivemActionArchitecture; name: string; description: string; emoji: string | null; imageUrl: string | null; color: string; maxParticipants: number; enabled: boolean; order: number };
 export type FivemActionParticipant = { userId: string; username: string; roleIds: string[]; position: "confirmed" | "reserve"; joinedAt: string; leftAt: string | null };
-export type FivemActionSession = { id: string; botId: string; guildId: string; architecture: FivemActionArchitecture; actionId: string; actionName: string; actionDescription: string; actionEmoji: string | null; actionImageUrl: string | null; actionColor: string; openerId: string; openerName: string; channelId: string | null; messageId: string | null; status: "active" | "victory" | "defeat"; maxParticipants: number; participants: FivemActionParticipant[]; startedAt: string; finishedAt: string | null };
+export type FivemActionSession = { id: string; botId: string; guildId: string; architecture: FivemActionArchitecture; actionId: string; actionName: string; actionDescription: string; actionEmoji: string | null; actionImageUrl: string | null; actionColor: string; mode: FivemActionMode | null; openerId: string; openerName: string; channelId: string | null; messageId: string | null; status: "active" | "victory" | "defeat"; maxParticipants: number; participants: FivemActionParticipant[]; startedAt: string; finishedAt: string | null };
 export type PolicePatrolSettings = { id: string; botId: string; guildId: string; enabled: boolean; creatorRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; supervisorRoleIds: string[]; logChannelId: string | null; temporaryCategoryId: string | null; deleteDelayMinutes: number; defaultExportFormat: "html" | "pdf" | "json" };
 export type PolicePatrolReport = { id: string; botId: string; guildId: string; officerId: string; officerName: string; authorId: string; authorName: string; patrolType: string | null; initialNotes: string | null; patrolStart: string | null; patrolEnd: string | null; durationMinutes: number | null; channelId: string | null; panelMessageId: string | null; lastAuthorMessageId: string | null; messageCount: number; attachmentCount: number; status: "draft" | "active" | "finished" | "cancelled"; createdAt: string; startedAt: string | null; finishedAt: string | null; deleteAt: string | null };
 export type PolicePatrolMessage = { id: string; discordMessageId: string; authorId: string; content: string; attachments: Array<{ id: string; name: string; url: string; contentType: string | null; size: number }>; embeds: unknown[]; stickers: Array<{ id: string; name: string; format: number }>; emojis: string[]; createdAt: string };
@@ -3278,7 +3279,7 @@ export class ApiClient {
     const { data } = await this.http.post<{ settings: FivemActionSettings }>("/fivem-actions/bot/panel-state", input); return data.settings;
   }
 
-  async createFivemActionSession(input: { guildId: string; architecture: FivemActionArchitecture; actionId: string; openerId: string; openerName: string }) {
+  async createFivemActionSession(input: { guildId: string; architecture: FivemActionArchitecture; actionId: string; mode?: FivemActionMode | null; openerId: string; openerName: string }) {
     const { data } = await this.http.post<{ session: FivemActionSession }>("/fivem-actions/bot/sessions", input); return data.session;
   }
 

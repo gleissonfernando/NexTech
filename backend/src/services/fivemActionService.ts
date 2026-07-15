@@ -3,6 +3,7 @@ import {
   getMongoCollections,
   type MongoFivemActionArchitecture,
   type MongoFivemActionDefinition,
+  type MongoFivemActionMode,
   type MongoFivemActionParticipant,
   type MongoFivemActionSettings
 } from "../database/mongo";
@@ -100,12 +101,12 @@ export async function listActiveFivemActionSettings(botId: string, architectures
   return (await fivemActionSettings.find(query).toArray()).map(settingsDto);
 }
 
-export async function createFivemActionSession(input: { botId: string; guildId: string; architecture: MongoFivemActionArchitecture; actionId: string; openerId: string; openerName: string }) {
+export async function createFivemActionSession(input: { botId: string; guildId: string; architecture: MongoFivemActionArchitecture; actionId: string; mode?: MongoFivemActionMode | null; openerId: string; openerName: string }) {
   const { fivemActionDefinitions, fivemActionSessions } = await getMongoCollections();
   const action = await fivemActionDefinitions.findOne({ _id: input.actionId, botId: input.botId, guildId: input.guildId, architecture: input.architecture, enabled: true });
   if (!action) throw serviceError("Ação não encontrada ou desativada.", 404);
   const now = new Date();
-  const session = { _id: randomUUID(), ...input, actionName: action.name, actionDescription: action.description, actionEmoji: action.emoji, actionImageUrl: action.imageUrl, actionColor: action.color, channelId: null, messageId: null, status: "active" as const, maxParticipants: action.maxParticipants, participants: [], startedAt: now, finishedAt: null, createdAt: now, updatedAt: now };
+  const session = { _id: randomUUID(), ...input, mode: input.mode ?? null, actionName: action.name, actionDescription: action.description, actionEmoji: action.emoji, actionImageUrl: action.imageUrl, actionColor: action.color, channelId: null, messageId: null, status: "active" as const, maxParticipants: action.maxParticipants, participants: [], startedAt: now, finishedAt: null, createdAt: now, updatedAt: now };
   await fivemActionSessions.insertOne(session);
   emitActionUpdated(input.botId, input.guildId, input.architecture, "session");
   return sessionDto(session);
@@ -179,7 +180,7 @@ export async function getFivemActionSession(botId: string, sessionId: string) {
 
 function settingsDto(value: MongoFivemActionSettings) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastPanelRequestedAt: value.lastPanelRequestedAt?.toISOString() ?? null }; }
 function actionDto(value: MongoFivemActionDefinition) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString() }; }
-function sessionDto(value: any) { return { ...value, id: value._id, startedAt: value.startedAt.toISOString(), finishedAt: value.finishedAt?.toISOString() ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), participants: value.participants.map((item: MongoFivemActionParticipant) => ({ ...item, position: participantPosition(item), joinedAt: item.joinedAt.toISOString(), leftAt: item.leftAt?.toISOString() ?? null })) }; }
+function sessionDto(value: any) { return { ...value, id: value._id, mode: value.mode ?? null, startedAt: value.startedAt.toISOString(), finishedAt: value.finishedAt?.toISOString() ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), participants: value.participants.map((item: MongoFivemActionParticipant) => ({ ...item, position: participantPosition(item), joinedAt: item.joinedAt.toISOString(), leftAt: item.leftAt?.toISOString() ?? null })) }; }
 function serviceError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }
 function participantPosition(item: Pick<MongoFivemActionParticipant, "position">) { return item.position === "reserve" ? "reserve" : "confirmed"; }
 function emitActionUpdated(botId: string, guildId: string, architecture: MongoFivemActionArchitecture, scope: "action" | "session" | "settings") {

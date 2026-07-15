@@ -1951,6 +1951,7 @@ export type MongoFivemModule = {
 
 export type MongoFivemActionArchitecture = "fac" | "police";
 export type MongoFivemActionImagePosition = "top" | "center" | "bottom" | "none";
+export type MongoFivemActionMode = "shootout" | "escape";
 
 export type MongoFivemActionSettings = {
   _id: string;
@@ -2012,6 +2013,7 @@ export type MongoFivemActionSession = {
   actionEmoji: string | null;
   actionImageUrl: string | null;
   actionColor: string;
+  mode?: MongoFivemActionMode | null;
   openerId: string;
   openerName: string;
   channelId: string | null;

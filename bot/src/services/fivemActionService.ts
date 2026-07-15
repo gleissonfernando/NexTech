@@ -6,7 +6,7 @@ import {
 import { isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import { resetSelectMenuMessage } from "../utils/selectMenuReset";
-import type { FivemActionArchitecture, FivemActionSession, FivemActionSettings } from "./apiClient";
+import type { FivemActionArchitecture, FivemActionMode, FivemActionSession, FivemActionSettings } from "./apiClient";
 import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
@@ -28,6 +28,7 @@ export async function handleFivemActionInteraction(interaction: Interaction, con
   if (!interaction.guildId || !interaction.guild) { await interaction.reply({ content: "Use este sistema dentro de um servidor.", ephemeral: true }); return true; }
   const [, action, id] = interaction.customId.split(":");
   if (interaction.isStringSelectMenu() && action === "open") await openAction(interaction, context);
+  else if (interaction.isButton() && action === "mode") await createActionWithMode(interaction, context, id!);
   else if (interaction.isButton() && action === "join") await changeParticipant(interaction, context, id!, true);
   else if (interaction.isButton() && action === "leave") await changeParticipant(interaction, context, id!, false);
   else if (interaction.isButton() && action === "result") await chooseResult(interaction, context, id!);
@@ -87,14 +88,47 @@ async function openAction(interaction: StringSelectMenuInteraction, context: Bot
   if (!actionId || !["fac", "police"].includes(architecture)) return void await interaction.editReply("Ação inválida.");
   if (!isFivemActionRuntimeEnabled(architecture)) return void await interaction.editReply(architecture === "police" ? "Acoes policiais nao liberadas para este bot." : "Acoes FAC nao liberadas para este bot.");
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
+  const action = dashboard.actions.find((item) => item.id === actionId);
+  if (!action) return void await interaction.editReply("Ação não encontrada.");
+  const modeButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|shootout`).setEmoji("🔫").setLabel("No tiro").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|escape`).setEmoji("🚗").setLabel("Na fuga").setStyle(ButtonStyle.Primary)
+  );
+  await interaction.editReply({
+    components: [{
+      type: 17,
+      accent_color: parseColor(action.color),
+      components: [
+        { type: 10, content: [
+          `# ${systemEmojiText("arma", interaction.guild)} Central de Operações`,
+          `## ${replaceSystemEmojis(`${action.emoji ?? ""} ${action.name}`.trim(), interaction.guild)}`,
+          "Escolha o modo da ação antes de iniciar a operação.",
+          "",
+          `**Responsável:** <@${interaction.user.id}>`
+        ].join("\n") },
+        modeButtons
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  });
+}
+
+async function createActionWithMode(interaction: any, context: BotContext, token: string) {
+  await interaction.deferUpdate();
+  const [architectureRaw, actionId, modeRaw] = token.split("|");
+  const architecture = architectureRaw as FivemActionArchitecture;
+  const mode = modeRaw as FivemActionMode;
+  if (!actionId || !["fac", "police"].includes(architecture) || !["shootout", "escape"].includes(mode)) return void await interaction.editReply("Ação inválida.");
+  if (!isFivemActionRuntimeEnabled(architecture)) return void await interaction.editReply(architecture === "police" ? "Acoes policiais nao liberadas para este bot." : "Acoes FAC nao liberadas para este bot.");
+  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
   const channelId = dashboard.settings.actionChannelId;
   if (!channelId) return void await interaction.editReply("Canal de ações não configurado.");
   const channel = await interaction.guild!.channels.fetch(channelId);
   if (!channel?.isTextBased() || channel.isDMBased()) return void await interaction.editReply("Canal de ações inválido.");
-  const session = await context.api.createFivemActionSession({ guildId: interaction.guildId!, architecture, actionId, openerId: interaction.user.id, openerName: displayName(interaction.member) });
+  const session = await context.api.createFivemActionSession({ guildId: interaction.guildId!, architecture, actionId, mode, openerId: interaction.user.id, openerName: displayName(interaction.member) });
   const message = await channel.send(sessionPayload(session, interaction.guild));
   await context.api.updateFivemActionSessionMessage(session.id, { channelId: channel.id, messageId: message.id });
-  await interaction.editReply(`Painel de **${session.actionName}** criado em <#${channel.id}>.`);
+  await interaction.editReply({ content: `Painel de **${session.actionName}** criado em <#${channel.id}> com modo **${actionModeLabel(session.mode)}**.`, components: [] });
 }
 
 async function showActionPage(interaction: any, context: BotContext, token: string) {
@@ -168,6 +202,9 @@ async function sendReport(interaction: StringSelectMenuInteraction, context: Bot
     `## ${systemEmojiText("arma", interaction.guild)} Ação`,
     session.actionName,
     "",
+    `## ${systemEmojiText("acessar", interaction.guild)} Modo`,
+    actionModeLabel(session.mode),
+    "",
     `## ${systemEmojiText("homem", interaction.guild)} Participantes`,
     String(active.filter((item) => item.position === "confirmed").length),
     "",
@@ -208,6 +245,8 @@ function sessionPayload(session: FivemActionSession, guild: Parameters<typeof sy
     "━━━━━━━━━━━━━━━━━━━━━━",
     `## ${systemEmojiText("prancheta", guild)} Detalhes`,
     replaceSystemEmojis(`${session.actionEmoji ?? systemEmojiText("arma", guild)} Ação: ${session.actionName}`, guild),
+    `${systemEmojiText("acessar", guild)} Modo: ${actionModeLabel(session.mode)}`,
+    `${systemEmojiText("homem", guild)} Comando: <@${session.openerId}>`,
     `${systemEmojiText("calendario", guild)} Data: ${startedAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
     `${systemEmojiText("homem", guild)} Limite: ${session.maxParticipants}`,
     `${systemStatusEmoji(session.status === "active" ? "pending" : session.status === "victory" ? "success" : "danger", guild)} Status: ${status}`,
@@ -240,6 +279,12 @@ function numberedList(items: FivemActionSession["participants"], limit: number) 
     return `${index + 1}. ${participant ? participant.username : ""}`;
   });
   return rows.join("\n") || "Nenhum";
+}
+
+function actionModeLabel(mode: FivemActionMode | null | undefined) {
+  if (mode === "shootout") return "No tiro";
+  if (mode === "escape") return "Na fuga";
+  return "Não informado";
 }
 
 async function getPanelVisualSlots(context: BotContext, guildId: string, basePanelId: string) {
