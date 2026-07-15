@@ -6083,10 +6083,7 @@ function PoliceIabPanel({
   const channels = options.channels;
   const categories = options.categories ?? [];
   const reportCategoryOptions = draft.categories.map((category) => ({ id: category.id, name: category.name }));
-  const channelAndCategoryOptions = [
-    ...categories.map((category) => ({ id: category.id, name: category.name })),
-    ...channels.map((channel) => ({ id: channel.id, name: channel.name }))
-  ];
+  const categoryDestinationOptions = categories.map((category) => ({ id: category.id, name: category.name }));
   const selectedOrgIndex = Math.max(0, draft.categories.findIndex((category) => category.id === selectedOrgId));
   const selectedOrg = draft.categories[selectedOrgIndex] ?? draft.categories[0] ?? null;
 
@@ -6200,7 +6197,7 @@ function PoliceIabPanel({
                 onRemove={() => removeCategory(index)}
                 removeDisabled={disabled || draft.categories.length <= 1}
                 roles={options.roles}
-                ticketDestinations={channelAndCategoryOptions}
+                ticketDestinations={categoryDestinationOptions}
               />
             ))}
           </div>
@@ -6218,7 +6215,7 @@ function PoliceIabPanel({
               removeDisabled={disabled || draft.categories.length <= 1}
               roles={options.roles}
               saving={saving}
-              ticketDestinations={channelAndCategoryOptions}
+              ticketDestinations={categoryDestinationOptions}
             />
           ) : null}
         </CardContent>
@@ -6344,7 +6341,7 @@ function OrgaoConfigPanel({
         <TicketField disabled={disabled} label="Quais denuncias vao para este orgao" onChange={(value) => onPatch({ judgeLabel: value })} value={category.judgeLabel ?? ""} />
         <TicketField disabled={disabled} label="Descricao" onChange={(value) => onPatch({ description: value })} value={category.description ?? ""} />
         <TicketField disabled={disabled} label="Emoji" onChange={(value) => onPatch({ emoji: value })} value={category.emoji ?? ""} />
-        <FivemResourceSelect disabled={disabled} label="Categoria/canal do ticket" onChange={(value) => onPatch({ channelOrCategoryId: value })} options={ticketDestinations} placeholder="Padrao do sistema" value={category.channelOrCategoryId} />
+        <FivemResourceSelect disabled={disabled} label="Categoria onde o canal sera criado" onChange={(value) => onPatch({ channelOrCategoryId: value })} options={ticketDestinations} placeholder="Categoria padrao do sistema" value={category.channelOrCategoryId} />
         <FivemChannelSelect channels={channels} disabled={disabled} label="Canal de logs" onChange={(value) => onPatch({ logChannelId: value })} placeholder="Canal padrao de logs" value={category.logChannelId} />
         <MultiRoleSelect disabled={disabled} label="Cargos responsaveis" onChange={(values) => onPatch({ responsibleRoleIds: values })} roles={roles} values={category.responsibleRoleIds ?? []} />
         <FivemResourceSelect disabled={disabled} label="Escalar denuncia contra este orgao para" onChange={(value) => onPatch({ escalateToCategoryId: value })} options={escalationOptions} placeholder="Sem escalonamento" value={category.escalateToCategoryId} />

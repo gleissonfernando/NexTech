@@ -394,8 +394,9 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
     return;
   }
 
+  const competence = reportCategoryCompetence(report, category.id, category.name);
   const ticket = await context.api.createTicket({
-    allowedRoleIds: reportCategoryResponsibleRoleIds(report, category.id, reportCompetence(category.id, category.name)),
+    allowedRoleIds: reportCategoryResponsibleRoleIds(report, category.id, competence),
     categoryId: category.id,
     categoryName: category.name,
     channelId: channel.id,
@@ -408,7 +409,7 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
     categoryId: category.id,
     categoryName: category.name,
     channelId: channel.id,
-    competence: reportCompetence(category.id, category.name),
+    competence,
     mode,
     openerId: interaction.user.id,
     status: mode === "anonymous" ? "preparing" : "open",
@@ -421,7 +422,7 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
     categoryId: category.id,
     categoryName: category.name,
     channelId: channel.id,
-    competence: reportCompetence(category.id, category.name),
+    competence,
     mode,
     openerId: interaction.user.id,
     summary: category.name
@@ -1249,8 +1250,9 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     return;
   }
 
+  const competence = reportCategoryCompetence(report, destinationCategory.id, destinationCategory.name);
   const ticket = await context.api.createTicket({
-    allowedRoleIds: reportCategoryResponsibleRoleIds(report, destinationCategory.id, reportCompetence(destinationCategory.id, destinationCategory.name)),
+    allowedRoleIds: reportCategoryResponsibleRoleIds(report, destinationCategory.id, competence),
     categoryId: destinationCategory.id,
     categoryName: destinationCategory.name,
     channelId: channel.id,
@@ -1263,7 +1265,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     categoryId: destinationCategory.id,
     categoryName: destinationCategory.name,
     channelId: channel.id,
-    competence: reportCompetence(destinationCategory.id, destinationCategory.name),
+    competence,
     mode,
     openerId: interaction.user.id,
     status: mode === "anonymous" ? "preparing" : "open",
@@ -1285,7 +1287,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     categoryId: destinationCategory.id,
     categoryName: destinationCategory.name,
     channelId: channel.id,
-    competence: reportCompetence(destinationCategory.id, destinationCategory.name),
+    competence,
     mode,
     openerId: interaction.user.id,
     summary
@@ -1340,11 +1342,11 @@ async function createReportChannel(guild: Guild, settings: GuildSettings, input:
   }
 
   const report = settings.reportSystem;
-  const competence = reportCompetence(input.categoryId, input.categoryName);
+  const competence = reportCategoryCompetence(report, input.categoryId, input.categoryName);
   const category = reportCategoryById(report, input.categoryId);
   const staffRoleIds = reportCategoryResponsibleRoleIds(report, input.categoryId, competence);
   const otherRoleIds = allReportCompetenceRoleIds(report).filter((roleId) => !staffRoleIds.includes(roleId));
-  const parent = category?.channelOrCategoryId ?? reportCompetenceCategoryId(report, competence) ?? report.categoryId ?? undefined;
+  const parent = await resolveReportParentCategoryId(guild, report, category, competence);
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
@@ -1474,8 +1476,38 @@ function reportCompetence(categoryId: string, categoryName: string): "iab" | "co
   return "iab";
 }
 
+function reportCategoryCompetence(report: ReportSystemSettings, categoryId: string, categoryName: string): "iab" | "conselho" | "hcmd" | "comissario" {
+  const category = reportCategoryById(report, categoryId);
+  const value = `${category?.id ?? categoryId} ${category?.name ?? categoryName}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (value.includes("comiss")) return "comissario";
+  if (value.includes("alto-comando") || value.includes("alto comando") || value.includes("high-command") || value.includes("high command") || value.includes("hcmd")) return "hcmd";
+  if (value.includes("conselho") || value.includes("concil") || value.includes("council")) return "conselho";
+  if (value.includes("iab") || value.includes("i.a.b")) return "iab";
+  return reportCompetence(categoryId, categoryName);
+}
+
 function reportCategoryById(report: ReportSystemSettings, categoryId: string | null | undefined) {
   return report.categories.find((category) => category.id === categoryId) ?? null;
+}
+
+async function resolveReportParentCategoryId(
+  guild: Guild,
+  report: ReportSystemSettings,
+  category: ReportSystemSettings["categories"][number] | null,
+  competence: "iab" | "conselho" | "hcmd" | "comissario"
+) {
+  const candidates = [
+    category?.channelOrCategoryId,
+    reportCompetenceCategoryId(report, competence),
+    report.categoryId
+  ].filter((channelId): channelId is string => Boolean(channelId));
+
+  for (const channelId of [...new Set(candidates)]) {
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
+    if (channel?.type === ChannelType.GuildCategory) return channel.id;
+  }
+
+  return undefined;
 }
 
 function reportCategoryResponsibleRoleIds(report: ReportSystemSettings, categoryId: string | null | undefined, competence: "iab" | "conselho" | "hcmd" | "comissario") {

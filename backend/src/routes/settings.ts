@@ -1223,14 +1223,24 @@ async function validateGuildResources(
     input.reportSystem?.iabCategoryId,
     input.reportSystem?.conselhoCategoryId,
     input.reportSystem?.hcmdCategoryId,
-    input.reportSystem?.comissarioCategoryId,
-    ...(input.reportSystem?.categories ?? []).map((category) => category.channelOrCategoryId)
+    input.reportSystem?.comissarioCategoryId
   ].filter((categoryId): categoryId is string => Boolean(categoryId));
 
   if (reportCategoryIds.length) {
     const categoryChecks = await Promise.all([...new Set(reportCategoryIds)].map((categoryId) => isGuildTextOrCategoryChannel(guildId, categoryId, botToken)));
     if (!categoryChecks.every(Boolean)) {
       throw createSettingsError("Um dos canais ou categorias de competencia nao pertence a este servidor.");
+    }
+  }
+
+  const reportOrganCategoryIds = [
+    ...(input.reportSystem?.categories ?? []).map((category) => category.channelOrCategoryId)
+  ].filter((categoryId): categoryId is string => Boolean(categoryId));
+
+  if (reportOrganCategoryIds.length) {
+    const categoryChecks = await Promise.all([...new Set(reportOrganCategoryIds)].map((categoryId) => isGuildCategoryChannel(guildId, categoryId, botToken)));
+    if (!categoryChecks.every(Boolean)) {
+      throw createSettingsError("A categoria configurada no orgao da denuncia precisa ser uma categoria do Discord.");
     }
   }
 
