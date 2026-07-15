@@ -794,24 +794,11 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     await interaction.editReply("❌ Não foi possível concluir a publicação do curso. O evento do Discord não foi criado; verifique os logs.");
     return;
   }
-  let existingMessage = publication.messageId && "messages" in channel
-    ? await channel.messages.fetch(publication.messageId).catch(() => null)
-    : null;
-  if (!existingMessage && previousOpen?.messageId && previousOpen.channelId !== targetChannelId) {
-    const oldChannel = await interaction.guild!.channels.fetch(previousOpen.channelId).catch(() => null);
-    if (oldChannel?.isTextBased() && "messages" in oldChannel) {
-      const oldMessage = await oldChannel.messages.fetch(previousOpen.messageId).catch(() => null);
-      await oldMessage?.delete().catch(() => null);
-    }
-  } else if (!existingMessage && previousOpen?.messageId && previousOpen.channelId === targetChannelId && "messages" in channel) {
-    existingMessage = await channel.messages.fetch(previousOpen.messageId).catch(() => null);
-  }
-  if (!existingMessage) {
-    await sendCoursePublicationMention(channel as TextChannel, settings).catch((error) => {
-      console.warn(`[courses] failed to send course mention before panel guild=${interaction.guildId} channel=${targetChannelId}:`, error instanceof Error ? error.message : error);
-    });
-  }
-  const message = await sendOrEditCoursePublicationPanel(channel as TextChannel, existingMessage, course, publicationWithEvent, settings, interaction.guild!);
+  await deletePreviousCoursePanel(interaction, publication, previousOpen, targetChannelId);
+  await sendCoursePublicationMention(channel as TextChannel, settings).catch((error) => {
+    console.warn(`[courses] failed to send course mention before panel guild=${interaction.guildId} channel=${targetChannelId}:`, error instanceof Error ? error.message : error);
+  });
+  const message = await sendOrEditCoursePublicationPanel(channel as TextChannel, null, course, publicationWithEvent, settings, interaction.guild!);
   const publicationWithPanel = await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
   await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nPainel: ${message.id}\nHorário: ${publicationWithPanel.scheduledFor}\nDP: ${publicationWithPanel.dpNameSnapshot ?? publicationWithPanel.location}\nVagas: ${publicationWithPanel.capacity}\nEvento do Discord: criado`);
   await interaction.editReply("✅ Curso agendado, painel publicado e evento criado com sucesso.");
@@ -1067,6 +1054,10 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
       status: event.status === GuildScheduledEventStatus.Scheduled ? GuildScheduledEventStatus.Active : undefined
     });
   } else if (publication.status === "finished" || publication.status === "closed") {
+    if (event.status === GuildScheduledEventStatus.Completed || event.status === GuildScheduledEventStatus.Canceled) {
+      clearCourseEventLifecycle(publication.id);
+      return;
+    }
     let currentEvent = event;
     if (currentEvent.status === GuildScheduledEventStatus.Scheduled) {
       currentEvent = await currentEvent.edit({ status: GuildScheduledEventStatus.Active }).catch(() => currentEvent);
@@ -1078,11 +1069,13 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
     });
     clearCourseEventLifecycle(publication.id);
   } else if (publication.status === "cancelled") {
+    if (event.status === GuildScheduledEventStatus.Completed || event.status === GuildScheduledEventStatus.Canceled) {
+      clearCourseEventLifecycle(publication.id);
+      return;
+    }
     const terminalStatus = event.status === GuildScheduledEventStatus.Active
       ? GuildScheduledEventStatus.Completed
-      : event.status === GuildScheduledEventStatus.Canceled
-        ? undefined
-        : GuildScheduledEventStatus.Canceled;
+      : GuildScheduledEventStatus.Canceled;
     await event.edit({
       description: courseScheduledEventDescription(course, publication, "Cancelado"),
       name: `Curso cancelado - ${course.name}`.slice(0, 100),
@@ -2437,6 +2430,35 @@ function separator() {
 
 function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
   return coursePublicationPanel(course, publication, settings, guild);
+}
+
+async function deletePreviousCoursePanel(
+  interaction: ModalSubmitInteraction,
+  publication: CoursePublication,
+  previousOpen: CoursePublication | null,
+  targetChannelId: string
+) {
+  const seen = new Set<string>();
+  const candidates = [
+    publication.messageId ? { channelId: publication.channelId, messageId: publication.messageId } : null,
+    previousOpen?.messageId ? { channelId: previousOpen.channelId, messageId: previousOpen.messageId } : null
+  ].filter((item): item is { channelId: string; messageId: string } => Boolean(item?.channelId && item?.messageId));
+
+  for (const candidate of candidates) {
+    const key = `${candidate.channelId}:${candidate.messageId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const oldChannel = await interaction.guild!.channels.fetch(candidate.channelId).catch(() => null);
+    if (!oldChannel?.isTextBased() || !("messages" in oldChannel)) continue;
+
+    const oldMessage = await oldChannel.messages.fetch(candidate.messageId).catch(() => null);
+    if (!oldMessage) continue;
+
+    await oldMessage.delete().catch((error) => {
+      console.warn(`[courses] failed to delete previous course panel guild=${interaction.guildId} targetChannel=${targetChannelId} oldChannel=${candidate.channelId} message=${candidate.messageId}:`, error instanceof Error ? error.message : error);
+    });
+  }
 }
 
 async function sendOrEditCoursePublicationPanel(
