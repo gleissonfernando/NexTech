@@ -811,9 +811,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
       console.warn(`[courses] failed to send course mention before panel guild=${interaction.guildId} channel=${targetChannelId}:`, error instanceof Error ? error.message : error);
     });
   }
-  const message = existingMessage
-    ? await existingMessage.edit(coursePublicationPanel(course, publicationWithEvent, settings, interaction.guild!))
-    : await (channel as TextChannel).send(coursePublicationInitialPost(course, publicationWithEvent, settings, interaction.guild!));
+  const message = await sendOrEditCoursePublicationPanel(channel as TextChannel, existingMessage, course, publicationWithEvent, settings, interaction.guild!);
   const publicationWithPanel = await context.api.updateCoursePublicationMessage(interaction.guildId!, publication.id, message.id);
   await sendCourseLog(interaction, settings, `Curso agendado\nCurso: ${course.name}${course.code ? ` (${course.code})` : ""}\nInstrutor: <@${interaction.user.id}>\nCanal: <#${targetChannelId}>\nPainel: ${message.id}\nHorário: ${publicationWithPanel.scheduledFor}\nDP: ${publicationWithPanel.dpNameSnapshot ?? publicationWithPanel.location}\nVagas: ${publicationWithPanel.capacity}\nEvento do Discord: criado`);
   await interaction.editReply("✅ Curso agendado, painel publicado e evento criado com sucesso.");
@@ -2439,6 +2437,72 @@ function separator() {
 
 function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }) {
   return coursePublicationPanel(course, publication, settings, guild);
+}
+
+async function sendOrEditCoursePublicationPanel(
+  channel: TextChannel,
+  existingMessage: Message | null,
+  course: Course,
+  publication: CoursePublication,
+  settings: CourseSettings,
+  guild: { members: { cache: Map<string, GuildMember> } }
+) {
+  const payload = coursePublicationInitialPost(course, publication, settings, guild);
+  try {
+    return existingMessage ? await existingMessage.edit(payload) : await channel.send(payload);
+  } catch (error) {
+    console.error(`[courses] failed to ${existingMessage ? "edit" : "send"} course panel publication=${publication.id} channel=${channel.id}; falling back to legacy panel:`, error instanceof Error ? error.stack ?? error.message : error);
+    const fallback = coursePublicationFallbackPanel(course, publication);
+    if (existingMessage) {
+      return existingMessage.edit(fallback).catch(() => channel.send(fallback));
+    }
+    return channel.send(fallback);
+  }
+}
+
+function coursePublicationFallbackPanel(course: Course, publication: CoursePublication) {
+  const full = publication.students.length >= publication.capacity;
+  const canJoin = publication.status === "open" && !full;
+  const canLeave = publication.status === "open";
+  const canStartClass = publication.status === "open";
+  const canStartExam = publication.status === "started" || publication.status === "proof";
+  const canFinishClass = publication.status === "started" || publication.status === "proof";
+  const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
+  const students = publication.students.map((id, index) => `${index + 1}. <@${id}>`).join("\n") || "Nenhum aluno confirmado.";
+  return {
+    allowedMentions: { parse: [] as never[] },
+    content: [
+      `🛡 **North Police Department • Instructor Team**`,
+      ``,
+      `📢 **${course.name}**`,
+      ``,
+      `👨‍🏫 **Instrutor:** <@${publication.instructorId}>`,
+      `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
+      `🕘 **Horário:** ${coursePublicationTimeLabel(publication)}`,
+      `📍 **Local:** ${coursePublicationDepartmentLabel(publication)}`,
+      `📌 **Status:** ${coursePublicationStatusDot(publication, full)} ${coursePublicationPlainStatusLabel(publication, full)}`,
+      `🎟 **Vagas:** ${publication.students.length}/${publication.capacity}`,
+      ``,
+      `✅ **Confirmados (${publication.students.length}/${publication.capacity})**`,
+      students,
+      ``,
+      `📌 Clique em Entrar para participar.`
+    ].join("\n"),
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji("🟢").setLabel("Entrar").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
+        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji("⚫").setLabel("Sair").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
+      ),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji("🟦").setLabel("Iniciar").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+        new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji("🟢").setLabel("Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam)
+      ),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji("🟠").setLabel("Finalizar").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
+        new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji("🔴").setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
+      )
+    ]
+  };
 }
 
 async function sendCoursePublicationMention(channel: TextChannel, settings: CourseSettings) {
