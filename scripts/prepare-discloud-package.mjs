@@ -57,7 +57,6 @@ writeFileSync(path.join(target, "discloud.config"), [
 writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   name: "nextech-discloud-runtime",
   version: "1.0.0",
-  description: "Prebuilt NexTech runtime package for Discloud.",
   main: "index.js",
   scripts: {
     start: "node scripts/start-production.mjs",
@@ -91,9 +90,6 @@ writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
     ws: "^8.21.0",
     yauzl: "^3.2.0",
     zod: "^3.24.1"
-  },
-  engines: {
-    node: ">=20"
   }
 }, null, 2)}\n`);
 
