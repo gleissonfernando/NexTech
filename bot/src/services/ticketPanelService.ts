@@ -28,7 +28,7 @@ import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
-import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
+import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
@@ -559,6 +559,8 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
   const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const createdAt = new Date(ticket.createdAt);
   const closedAt = transcript.transcript.closedAt ? new Date(transcript.transcript.closedAt) : new Date();
+  const temporaryPassword = resolveTranscriptTemporaryPassword(transcript);
+  const luaCommand = buildTranscriptLuaCommand(transcript);
   await (logChannel as TextChannel).send(renderComponentsV2Panel({
     accentColor: 0xf2b84b,
     actions: [
@@ -575,7 +577,7 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
       `**Informacoes do Ticket**\n**Ticket:** #${transcript.transcript.ticketId ?? transcript.transcript.id}\n**Canal:** ${transcript.transcript.channelName ? `#${transcript.transcript.channelName}` : "-"}\n**Tipo:** ${transcript.transcript.type}\n**Status:** ${formatTranscriptStatus(ticket.finalResult ?? transcript.transcript.status, guild)}`,
       `**Envolvidos**\n**Aberto por:** <@${ticket.openerId}>\n**Finalizado por:** <@${closedById}>\n**Responsavel:** ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nao assumido"}\n**Categoria:** ${ticket.categoryName ?? ticket.subject}`,
       `**Dados do Caso**\n**Criado em:** <t:${Math.floor(createdAt.getTime() / 1000)}:F>\n**Fechado em:** <t:${Math.floor(closedAt.getTime() / 1000)}:F>\n**Tempo total:** ${formatElapsed(createdAt, closedAt)}\n**Resumo:** ${transcript.transcript.messageCount ?? 0} mensagens, ${transcript.transcript.attachmentCount ?? 0} anexos, ${transcript.transcript.participantCount ?? 0} participantes`,
-      `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha temporaria:** gerada e mantida oculta\n**Expira em:** ${transcript.temporaryPasswordExpiresAt ? `<t:${Math.floor(Date.parse(transcript.temporaryPasswordExpiresAt) / 1000)}:D>` : "configuracao padrao"}`
+      `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha temporaria:** ${temporaryPassword ? `\`${temporaryPassword}\`` : "nao gerada"}\n**Expira em:** ${transcript.temporaryPasswordExpiresAt ? `<t:${Math.floor(Date.parse(transcript.temporaryPasswordExpiresAt) / 1000)}:D>` : "configuracao padrao"}\n**ComandoLua:** \`${luaCommand}\``
     ],
     guild,
     image: null,

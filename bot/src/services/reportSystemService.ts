@@ -33,7 +33,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
-import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
+import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const PREFIX = "iab_admin";
 const PANEL_SELECT_ID = "iab_report_select";
@@ -1015,6 +1015,8 @@ async function sendTranscriptPanel(guild: Guild, settings: GuildSettings, topic:
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
   const participants = new Set(messages.map((message) => message.authorId).filter(Boolean));
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt;
+  const temporaryPassword = resolveTranscriptTemporaryPassword(transcript);
+  const luaCommand = buildTranscriptLuaCommand(transcript);
   await (channel as TextChannel).send(reportComponentsV2Panel({
     accentColor: 0xf2b84b,
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1027,7 +1029,7 @@ async function sendTranscriptPanel(guild: Guild, settings: GuildSettings, topic:
       `**Informacoes do Ticket**\n**Ticket:** ${ticket.id}\n**Canal:** <#${topic.channelId}>\n**Tipo:** ${topic.mode === "anonymous" ? "Denuncia Anonima" : "Denuncia Identificada"}\n**Status:** ${formatTranscriptStatus(status, guild)}`,
       `**Envolvidos**\n**Denunciante real:** <@${topic.openerId}> (${topic.openerId})\n**Responsavel:** ${ticket.responsibleUserId ? `<@${ticket.responsibleUserId}>` : "Nao assumido"}\n**Orgao:** ${topic.categoryName}`,
       `**Dados do Caso**\n**Criado em:** ${createdAt ? `<t:${Math.floor(createdAt.getTime() / 1000)}:F>` : "-"}\n**Fechado em:** <t:${Math.floor(closedAt.getTime() / 1000)}:F>\n**Tempo total:** ${createdAt ? formatElapsed(createdAt, closedAt) : "-"}\n**Resumo:** ${messages.length} mensagens, ${attachmentCount} anexos, ${participants.size} participantes`,
-      `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha:** temporaria gerada e mantida oculta\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuracao padrao"}`
+      `**Transcript e Seguranca**\n**Link:** ${url}\n**Protecao:** Senha obrigatoria\n**Senha temporaria:** ${temporaryPassword ? `\`${temporaryPassword}\`` : "nao gerada"}\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuracao padrao"}\n**ComandoLua:** \`${luaCommand}\``
     ],
     guild,
     image: report.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.thumbnailUrl } : null,

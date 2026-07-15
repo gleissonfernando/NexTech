@@ -30,7 +30,7 @@ import type { BotCommand, BotContext, GuildSettings, ReportSystemSettings } from
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
-import { resolveTranscriptDownloadUrl, resolveTranscriptUrl } from "./transcriptUrlService";
+import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 type Competence = "iab" | "conselho" | "hcmd" | "comissario";
 type Draft = {
@@ -546,6 +546,8 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
   const participants = new Set(messages.map((message) => message.authorId).filter(Boolean));
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt;
+  const temporaryPassword = resolveTranscriptTemporaryPassword(transcript);
+  const luaCommand = buildTranscriptLuaCommand(transcript);
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
     new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl)
@@ -558,7 +560,7 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
       `**Intimação**\n**Canal:** ${state.channelId}\n**Status:** ${status}\n**Órgão:** ${COMPETENCE_LABEL[state.finalCompetence]}`,
       `**Envolvidos**\n**Intimado:** <@${state.targetId}> (${state.targetId})\n**Criada por:** <@${state.createdById}>\n**Responsável:** <@${state.responsibleId}>`,
       `**Resumo**\n**Criada em:** <t:${Math.floor(new Date(state.createdAt).getTime() / 1000)}:F>\n**Mensagens:** ${messages.length}\n**Anexos:** ${attachmentCount}\n**Participantes:** ${participants.size}`,
-      `**Acesso**\n**Link:** ${url}\n**Senha:** temporária gerada e mantida oculta\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuração padrão"}`
+      `**Acesso**\n**Link:** ${url}\n**Senha temporária:** ${temporaryPassword ? `\`${temporaryPassword}\`` : "não gerada"}\n**Expira em:** ${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "configuração padrão"}\n**ComandoLua:** \`${luaCommand}\``
     ],
     guild,
     image: settings.reportSystem.subpoenaPanelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.reportSystem.subpoenaPanelBannerUrl } : null,

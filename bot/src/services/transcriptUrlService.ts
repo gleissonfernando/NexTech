@@ -27,3 +27,19 @@ export function resolveTranscriptUrl(transcript: TranscriptCreateResult) {
 export function resolveTranscriptDownloadUrl(transcript: TranscriptCreateResult) {
   return buildTranscriptDownloadUrl(transcript.transcript.id);
 }
+
+export function resolveTranscriptTemporaryPassword(transcript: TranscriptCreateResult) {
+  return transcript.temporaryPassword || null;
+}
+
+export function buildTranscriptLuaCommand(transcript: TranscriptCreateResult) {
+  const url = resolveTranscriptUrl(transcript);
+  const password = resolveTranscriptTemporaryPassword(transcript);
+  return password
+    ? `ComandoLua("${escapeLuaString(url)}", "${escapeLuaString(password)}")`
+    : `ComandoLua("${escapeLuaString(url)}")`;
+}
+
+function escapeLuaString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
+}
