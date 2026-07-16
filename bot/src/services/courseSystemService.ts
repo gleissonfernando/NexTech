@@ -3379,7 +3379,11 @@ async function sendExamResultPanel(
   }
 
   await sendCourseLog(interaction, courseSettings, `Canal de resultado localizado\nTentativa: ${attempt.id}\nCanal: <#${channel.id}>\nCurso: ${course.name}\nAluno: <@${attempt.studentId}>`).catch(() => null);
-  const payload = withRoleMention(await examResultPanel(interaction, course, attempt, questions, answers, courseSettings.resultMentionRoleId), courseSettings.resultMentionRoleId);
+  const payload = withRoleMention(
+    await examResultPanel(interaction, course, attempt, questions, answers, courseSettings.resultMentionRoleId),
+    courseSettings.resultMentionRoleId,
+    [attempt.studentId, attempt.instructorId]
+  );
   const sent = await channel.send(payload).catch(async (error) => {
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[courses] failed to send exam result panel ${attempt.id}:`, reason);
@@ -3409,10 +3413,10 @@ async function examResultPanel(interaction: ButtonInteraction | ModalSubmitInter
     description: "Resultado final da avaliação.",
     fields: [
       [
-        `**Aluno**\n${member?.displayName ?? `<@${attempt.studentId}>`}`,
+        `**Aluno**\n<@${attempt.studentId}>${member?.displayName ? `\n${member.displayName}` : ""}`,
         `**ID do aluno**\n${attempt.studentId}`,
         `**Nome RP**\n${rpName}`,
-        `**Instrutor**\n${instructor?.displayName ?? `<@${attempt.instructorId}>`}`,
+        `**Instrutor**\n<@${attempt.instructorId}>${instructor?.displayName ? `\n${instructor.displayName}` : ""}`,
         `**ID do instrutor**\n${attempt.instructorId}`,
         `**Curso**\n${course.name}`,
         `**ID da prova**\n${attempt.id}`,
@@ -3640,11 +3644,16 @@ function examCorrectionChannelIds(courseSettings: CourseSettings, examSettings: 
   ]);
 }
 
-function withRoleMention<T extends Record<string, unknown>>(payload: T, roleId: string | null | undefined): T {
-  if (!roleId) return payload;
+function withRoleMention<T extends Record<string, unknown>>(payload: T, roleId: string | null | undefined, userIds: Array<string | null | undefined> = []): T {
+  const roles = uniqueIds([roleId]);
+  const users = uniqueIds(userIds);
+  if (!roles.length && !users.length) return payload;
   return {
     ...payload,
-    allowedMentions: { roles: [roleId] }
+    allowedMentions: {
+      ...(roles.length ? { roles } : {}),
+      ...(users.length ? { users } : {})
+    }
   };
 }
 
