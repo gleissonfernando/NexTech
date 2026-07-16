@@ -1,6 +1,9 @@
 import {
+  ActionRowBuilder,
   ActivityType,
   AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ContainerBuilder,
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
@@ -21,17 +24,18 @@ type MessageChannelWithMessages = Message["channel"] & {
   send: (payload: Parameters<Extract<Message["channel"], { send: unknown }>["send"]>[0]) => Promise<Message>;
 };
 
-export const MAINTENANCE_INTERACTION_MESSAGE = "Os bots estão em manutenção no momento. Aguarde a equipe finalizar para utilizar novamente.";
+export const MAINTENANCE_INTERACTION_MESSAGE = "O sistema entrou em manutenção. Entre em contato com o suporte em caso de dúvida.";
+const MAINTENANCE_SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
 
 const MAINTENANCE_ALERT_MESSAGE = [
-  "MANUTENCAO INICIADA",
-  "O sistema entrou em modo de manutenção global.",
+  "MANUTENÇÃO INICIADA",
+  "O sistema entrou em manutenção global.",
   "Todos os serviços estão temporariamente indisponíveis.",
   "Aguarde a liberação oficial da equipe de desenvolvimento."
 ].join("\n");
-const MAINTENANCE_PANEL_TITLE = "MANUTENCAO INICIADA";
+const MAINTENANCE_PANEL_TITLE = "MANUTENÇÃO INICIADA";
 const MAINTENANCE_PANEL_DESCRIPTION = [
-  "O sistema entrou em modo de manutenção global.",
+  "O sistema entrou em manutenção global.",
   "Todos os serviços do bot estão temporariamente indisponíveis.",
   "Aguarde a equipe finalizar a manutenção para utilizar novamente."
 ].join("\n");
@@ -311,10 +315,19 @@ function maintenancePanelComponent(message: string, includeMedia = true) {
     );
   }
 
-  return container.addTextDisplayComponents(
+  container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`## ${MAINTENANCE_PANEL_TITLE}`),
     new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
     new TextDisplayBuilder().setContent(message)
+  );
+
+  return container.addActionRowComponents(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel("Servidor de suporte")
+        .setStyle(ButtonStyle.Link)
+        .setURL(MAINTENANCE_SUPPORT_URL)
+    )
   );
 }
 
@@ -395,6 +408,7 @@ function isMaintenancePanelMessage(message: Message) {
 
   const serialized = serializedMessageComponents(message);
   return serialized.includes(MAINTENANCE_PANEL_TITLE)
+    || serialized.includes("MANUTENÇÃO INICIADA")
     || serialized.includes("MANUTENCAO INICIADA")
     || message.content.includes("MANUTENCAO INICIADA");
 }
