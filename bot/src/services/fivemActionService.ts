@@ -242,15 +242,20 @@ async function saveActionDefinition(interaction: ModalSubmitInteraction, context
     await interaction.editReply("Informe uma quantidade máxima entre 1 e 100.");
     return;
   }
-  const action = await context.api.createFivemActionDefinition(interaction.guildId!, architecture, {
-    color: dashboard.settings.color,
-    description: interaction.fields.getTextInputValue("description").trim(),
-    enabled: true,
-    maxParticipants,
-    name: interaction.fields.getTextInputValue("name").trim(),
-    order: dashboard.actions.length
-  }, interaction.user.id);
-  await interaction.editReply(`Ação **${action.name}** cadastrada e sincronizada com a dashboard.`);
+  try {
+    const action = await context.api.createFivemActionDefinition(interaction.guildId!, architecture, {
+      color: dashboard.settings.color,
+      description: interaction.fields.getTextInputValue("description").trim(),
+      enabled: true,
+      maxParticipants,
+      name: interaction.fields.getTextInputValue("name").trim(),
+      order: dashboard.actions.length
+    }, interaction.user.id);
+    await interaction.editReply(`Ação **${action.name}** cadastrada e sincronizada com a dashboard.`);
+  } catch (error) {
+    console.warn("[fivem-actions] falha ao cadastrar ação:", errorMessage(error));
+    await interaction.editReply(`Não consegui cadastrar a ação: ${publicErrorMessage(error)}`);
+  }
 }
 
 async function showActionSheetModal(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {

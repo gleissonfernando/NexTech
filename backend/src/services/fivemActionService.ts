@@ -88,15 +88,32 @@ export async function saveFivemActionDefinition(botId: string, guildId: string, 
   const { fivemActionDefinitions, fivemActionSettings } = await getMongoCollections();
   const now = new Date();
   const id = actionId ?? randomUUID();
+  const patch = { ...input };
   const nextName = input.name?.trim();
   if (nextName) {
     const duplicate = await fivemActionDefinitions.findOne({ _id: { $ne: id }, botId, guildId, architecture, name: { $regex: `^${escapeRegExp(nextName)}$`, $options: "i" } });
     if (duplicate) throw serviceError("Já existe uma ação com esse nome nesta organização.", 409);
-    input.name = nextName;
+    patch.name = nextName;
   }
+  const insertDefaults: Partial<MongoFivemActionDefinition> = {
+    _id: id,
+    botId,
+    guildId,
+    architecture,
+    createdAt: now,
+    createdBy: actorId
+  };
+  if (!("name" in patch)) insertDefaults.name = "Nova ação";
+  if (!("description" in patch)) insertDefaults.description = "";
+  if (!("emoji" in patch)) insertDefaults.emoji = null;
+  if (!("imageUrl" in patch)) insertDefaults.imageUrl = null;
+  if (!("color" in patch)) insertDefaults.color = "#7c3aed";
+  if (!("maxParticipants" in patch)) insertDefaults.maxParticipants = 6;
+  if (!("enabled" in patch)) insertDefaults.enabled = true;
+  if (!("order" in patch)) insertDefaults.order = 0;
   await fivemActionDefinitions.updateOne({ _id: id, botId, guildId, architecture }, {
-    $set: { ...input, updatedAt: now },
-    $setOnInsert: { _id: id, botId, guildId, architecture, name: input.name ?? "Nova ação", description: input.description ?? "", emoji: input.emoji ?? null, imageUrl: input.imageUrl ?? null, color: input.color ?? "#7c3aed", maxParticipants: input.maxParticipants ?? 6, enabled: input.enabled ?? true, order: input.order ?? 0, createdAt: now, createdBy: actorId }
+    $set: { ...patch, updatedAt: now },
+    $setOnInsert: insertDefaults
   }, { upsert: true });
   await fivemActionSettings.updateOne({ botId, guildId, architecture, enabled: true, panelMessageId: { $ne: null } }, { $set: { lastPanelRequestedAt: now, updatedAt: now } });
   const saved = actionDto((await fivemActionDefinitions.findOne({ _id: id, botId, guildId, architecture }))!);
