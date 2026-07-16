@@ -67,7 +67,24 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
   const lastSync = settings.spreadsheetLastSyncAt ?? settings.updatedAt;
   const serviceAccountEmail = settings.googleSheetsServiceAccountEmail;
 
-  async function saveSettings() { setBusy("settings"); setMessage(null); try { const saved = await saveFivemActionSettings(guild!.id, architecture, botId!, settings); patchSettings(saved); setMessage("Configurações salvas."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
+  async function saveSettings() {
+    setBusy("settings");
+    setMessage(null);
+    try {
+      const payload = {
+        ...settings,
+        spreadsheetSheetName: settings.spreadsheetSheetName?.trim() || (architecture === "police" ? "Ações Polícia" : "Ações"),
+        spreadsheetId: settings.spreadsheetId?.trim() || null
+      };
+      const saved = await saveFivemActionSettings(guild!.id, architecture, botId!, payload);
+      patchSettings(saved);
+      setMessage("Configurações salvas.");
+    } catch (error) {
+      setMessage(readMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
   async function publish() { setBusy("publish"); setMessage(null); try { const saved = await publishFivemActionsPanel(guild!.id, architecture, botId!); patchSettings(saved); setMessage("Publicação solicitada ao bot."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   async function uploadImage(file: File) { setBusy("image"); try { const image = await uploadPanelImage(guild!.id, `fivem-actions-${architecture}`, file, botId); patchSettings({ imageUrl: image.imageUrl, imagePosition: settings.imagePosition === "none" ? "top" : settings.imagePosition }); setMessage("Imagem enviada. Salve as configurações para aplicar."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   function openActionDraft() { setMessage(null); setDraftAction({ color: "#FFD500", description: "", emoji: "", imageUrl: "", maxParticipants: 6, name: "" }); }
@@ -129,7 +146,7 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
           </div> : <p className="mt-3 text-sm text-red-300">Conta de serviço do Google não configurada no backend.</p>}
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="text-sm text-zinc-300">Link ou ID da Google Planilhas<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" placeholder="https://docs.google.com/spreadsheets/d/..." value={settings.spreadsheetId ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetId: e.target.value || null })} /></label>
-            <label className="text-sm text-zinc-300">Nome da aba<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.spreadsheetSheetName ?? "Ações Polícia"} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetSheetName: e.target.value || "Ações Polícia" })} /></label>
+            <label className="text-sm text-zinc-300">Nome da aba<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" placeholder="Ações Polícia" value={settings.spreadsheetSheetName ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetSheetName: e.target.value })} /></label>
           </div>
           {settings.spreadsheetEnabled && settings.spreadsheetId && !settings.spreadsheetSyncError ? <p className="mt-3 flex items-center gap-2 text-sm text-emerald-300"><CheckCircle2 className="h-4 w-4" />Google conectado</p> : null}
           {settings.spreadsheetSyncError ? <p className="mt-3 text-sm text-red-300">Erro da planilha: {settings.spreadsheetSyncError}</p> : null}
