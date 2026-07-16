@@ -16,6 +16,7 @@ import {
 import { isBotModuleEnabled } from "../config/env";
 import type { PoliceHiddenChannelSettings } from "./apiClient";
 import type { BotCommand, BotContext } from "../types";
+import { isUserInVisibleMode } from "./visibleModeService";
 
 const MODULE_ID = "police-hidden-channel";
 const PREFIX = "police_hidden_channel";
@@ -91,6 +92,7 @@ export async function handlePoliceHiddenChannelMessage(message: Message, context
 
   const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member?.roles.cache.has(settings.allowedRoleId)) return false;
+  if (await isUserInVisibleMode(context, message.guild.id, message.author.id)) return false;
 
   const channel = message.channel;
   if (!("permissionsFor" in channel) || !("send" in channel)) {

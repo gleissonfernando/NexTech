@@ -98,6 +98,7 @@ export const DEV_MODULES = [
   { id: "police-courses", label: "Policia - Cursos Policiais" },
   { id: "police-patrol-reports", label: "Policia - Relatorios de Patrulhamento" },
   { id: "police-hidden-channel", label: "Policia - Canal Oculto" },
+  { id: "visible-mode", label: "Policia - Modo Visivel" },
   { id: "police-dm", label: "Policia - DM Policial" },
   { id: "rh-admin", label: "Policia - RH Administrativo" },
   { id: "police-subpoenas", label: "Policia - Intimacao" },
@@ -107,7 +108,7 @@ export const DEV_MODULES = [
 ] as const;
 
 const DEV_MODULE_IDS = new Set(DEV_MODULES.map((module) => module.id));
-const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools"] as const;
+const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools", "visible-mode"] as const;
 const LEGACY_MODULE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
   "fivem-fac": "fivem-absences",
   "image-anti-spam": "safe-bot",

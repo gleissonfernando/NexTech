@@ -169,7 +169,7 @@ const envSchema = z
   });
 
 export const env = envSchema.parse(process.env);
-const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools"] as const;
+const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools", "visible-mode"] as const;
 const enabledModules = new Set(
   env.BOT_ENABLED_MODULES.split(",")
     .map((moduleId) => moduleId.trim())

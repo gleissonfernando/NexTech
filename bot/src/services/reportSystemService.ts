@@ -33,6 +33,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
+import { isUserInVisibleMode } from "./visibleModeService";
 import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const PREFIX = "iab_admin";
@@ -228,6 +229,7 @@ export async function handleReportSystemMessage(message: Message, context: BotCo
     ? isReporter || isStaff
     : isStaff;
   if (!shouldRelay) return false;
+  if (await isUserInVisibleMode(context, message.guild.id, message.author.id)) return false;
 
   const displayName = isReporter && topic.mode === "anonymous" ? report.anonymousReporterName : report.anonymousInvestigatorName;
   const files = message.attachments.map((attachment) => attachment.url);
@@ -539,7 +541,7 @@ async function submitAnonymousReport(interaction: ButtonInteraction, context: Bo
     ? await channel.messages.fetch(preparationPanelMessageId).catch(() => null)
     : null;
   const preparationId = preparationPanel?.id ?? interaction.message.id;
-  const stats = await anonymizePreparedReporterMessages(channel, settings, topic, preparationId);
+  const stats = await anonymizePreparedReporterMessages(channel, context, settings, topic, preparationId);
   await channel.permissionOverwrites.edit(topic.openerId, { ViewChannel: false, SendMessages: false }).catch(() => null);
   for (const roleId of staffRoleIds) {
     await channel.permissionOverwrites.edit(roleId, { AttachFiles: false, CreatePublicThreads: false, CreatePrivateThreads: false, ReadMessageHistory: true, SendMessages: false, ViewChannel: true }).catch(() => null);
@@ -758,7 +760,11 @@ function createReporterCalledPayload(settings: GuildSettings, ticket: TicketReco
   });
 }
 
-async function anonymizePreparedReporterMessages(channel: TextChannel, settings: GuildSettings, topic: ReportTopic, panelMessageId: string) {
+async function anonymizePreparedReporterMessages(channel: TextChannel, context: BotContext, settings: GuildSettings, topic: ReportTopic, panelMessageId: string) {
+  if (await isUserInVisibleMode(context, channel.guild.id, topic.openerId)) {
+    return { attachmentCount: 0, messageCount: 0 };
+  }
+
   const collected: Message[] = [];
   let before: string | undefined;
   do {

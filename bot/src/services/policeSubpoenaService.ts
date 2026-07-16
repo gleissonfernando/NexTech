@@ -31,6 +31,7 @@ import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
+import { isUserInVisibleMode } from "./visibleModeService";
 
 type Competence = "iab" | "conselho" | "hcmd" | "comissario";
 type Draft = {
@@ -266,6 +267,7 @@ export async function handlePoliceSubpoenaMessage(message: Message, context: Bot
     }
     return true;
   }
+  if (await isUserInVisibleMode(context, message.guild.id, message.author.id)) return false;
   if (!permissions?.has(PermissionFlagsBits.ManageMessages) || !permissions.has(PermissionFlagsBits.SendMessages)) {
     return false;
   }
