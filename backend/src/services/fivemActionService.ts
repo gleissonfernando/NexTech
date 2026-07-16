@@ -9,7 +9,7 @@ import {
   type MongoFivemActionSettings
 } from "../database/mongo";
 import { dashboardLogRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
-import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, getGoogleSheetsServiceAccountEmail, googleSheetsConfigured, updateSheetRow } from "./googleSheetsService";
+import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, getGoogleSheetsServiceAccountEmail, googleSheetsConfigured, setSheetColumnWidths, updateSheetRow } from "./googleSheetsService";
 
 export const FIVEM_ACTIONS_MODULE_ID = "fivem-actions";
 export const POLICE_ACTIONS_MODULE_ID = "police-actions";
@@ -264,6 +264,7 @@ export async function getFivemActionSession(botId: string, sessionId: string) {
 const POLICE_ACTION_SHEET_HEADERS = [
   "Data", "Tipo da Ação", "Horário da Criação", "Responsável", "Horário de Início", "Duração", "Resultado"
 ];
+const POLICE_ACTION_SHEET_COLUMN_WIDTHS = [120, 220, 190, 240, 180, 140, 160];
 const GOOGLE_SHEET_CLEAR_WIDTH = 26;
 
 async function syncFivemActionSessionToSheet(botId: string, sessionId: string, reason: string) {
@@ -278,7 +279,7 @@ async function syncFivemActionSessionToSheet(botId: string, sessionId: string, r
   }
   const sheetName = settings.spreadsheetSheetName?.trim() || "Ações Polícia";
   try {
-    await ensureSheetHeaders({ headers: padSheetHeader(POLICE_ACTION_SHEET_HEADERS), sheetName, spreadsheetId: settings.spreadsheetId });
+    await ensurePoliceActionSheetLayout(settings.spreadsheetId, sheetName);
     const row = sessionRow(session);
     const now = new Date();
     if (session.sheetRow) {
@@ -338,7 +339,7 @@ async function testFivemActionSpreadsheet(settings: MongoFivemActionSettings) {
     return;
   }
   try {
-    await ensureSheetHeaders({ headers: padSheetHeader(POLICE_ACTION_SHEET_HEADERS), sheetName, spreadsheetId: settings.spreadsheetId! });
+    await ensurePoliceActionSheetLayout(settings.spreadsheetId!, sheetName);
     await fivemActionSettings.updateOne(
       { _id: settings._id },
       { $set: { spreadsheetLastSyncAt: new Date(), spreadsheetSyncError: null, updatedAt: new Date() } }
@@ -381,6 +382,11 @@ function padSheetRow(values: unknown[]) {
 
 function padSheetHeader(values: string[]) {
   return [...values, ...Array(Math.max(0, GOOGLE_SHEET_CLEAR_WIDTH - values.length)).fill("")];
+}
+
+async function ensurePoliceActionSheetLayout(spreadsheetId: string, sheetName: string) {
+  await ensureSheetHeaders({ headers: padSheetHeader(POLICE_ACTION_SHEET_HEADERS), sheetName, spreadsheetId });
+  await setSheetColumnWidths({ sheetName, spreadsheetId, widths: POLICE_ACTION_SHEET_COLUMN_WIDTHS });
 }
 
 function formatDate(value: Date) {

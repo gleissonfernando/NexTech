@@ -58,6 +58,34 @@ export async function ensureSheetHeaders(input: { spreadsheetId: string; sheetNa
   if (!response.ok) throw new Error(await googleError(response));
 }
 
+export async function setSheetColumnWidths(input: { spreadsheetId: string; sheetName: string; widths: number[] }) {
+  const token = await getAccessToken();
+  const sheetId = await getSheetId(token, input.spreadsheetId, input.sheetName);
+  const requests = input.widths.map((pixelSize, index) => ({
+    updateDimensionProperties: {
+      fields: "pixelSize",
+      properties: { pixelSize },
+      range: { dimension: "COLUMNS", endIndex: index + 1, sheetId, startIndex: index }
+    }
+  }));
+  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}:batchUpdate`, {
+    body: JSON.stringify({ requests }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await googleError(response));
+}
+
+async function getSheetId(token: string, spreadsheetId: string, sheetName: string) {
+  const url = `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets(properties(sheetId,title))`;
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error(await googleError(response));
+  const data = await response.json() as { sheets?: Array<{ properties?: { sheetId?: number; title?: string } }> };
+  const sheet = data.sheets?.find((item) => item.properties?.title === sheetName);
+  if (typeof sheet?.properties?.sheetId === "number") return sheet.properties.sheetId;
+  throw new Error("Não consegui encontrar a aba informada na planilha. Confira se o nome da aba no painel é exatamente igual ao nome da guia no Google Planilhas.");
+}
+
 async function getAccessToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.accessToken;
   const account = loadServiceAccount();
