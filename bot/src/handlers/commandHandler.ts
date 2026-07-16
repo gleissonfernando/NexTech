@@ -13,3 +13,15 @@ export async function registerGuildCommands(commands: BotCommand[], clientId: st
     body: commands.map((command) => command.data.toJSON())
   });
 }
+
+export async function clearGlobalCommands(clientId: string) {
+  if (!env.DISCORD_BOT_TOKEN) {
+    throw new Error("DISCORD_BOT_TOKEN nao configurado.");
+  }
+
+  const rest = new REST({ version: "10" }).setToken(env.DISCORD_BOT_TOKEN);
+
+  await rest.put(Routes.applicationCommands(clientId), {
+    body: []
+  });
+}

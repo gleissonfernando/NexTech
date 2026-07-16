@@ -5,7 +5,7 @@ import {
   isBotModuleEnabled,
   setRuntimeEnabledModules
 } from "../config/env";
-import { registerGuildCommands } from "../handlers/commandHandler";
+import { clearGlobalCommands, registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
 import { startDiscordLogDelivery } from "../services/discordLogDeliveryService";
 import { startDatabaseMaintenanceService } from "../services/databaseMaintenanceService";
@@ -290,6 +290,13 @@ async function syncVisibleGuildCommandsNow(client: Client<true>, context: BotCon
   const commandGuildIds = commandRegistrationGuildIds(client);
   const commands = visibleCommands([...context.commands.values()]);
   const commandNames = commands.map((command) => command.data.name).join(", ") || "nenhum comando";
+
+  try {
+    await clearGlobalCommands(client.user.id);
+    console.log(`[bot] comandos globais limpos (${reason}).`);
+  } catch (error) {
+    console.warn(`[bot] falha ao limpar comandos globais (${reason}):`, error instanceof Error ? error.message : error);
+  }
 
   for (const commandGuildId of commandGuildIds) {
     try {
