@@ -413,10 +413,7 @@ async function cancelAction(interaction: any, context: BotContext, sessionId: st
   await interaction.editReply("Ação cancelada.");
 }
 
-async function chooseResult(interaction: any, context: BotContext, sessionId: string) {
-  const session = await context.api.getFivemActionSession(sessionId);
-  if (session.openerId !== interaction.user.id) { await interaction.reply({ content: "Você não é o responsável por esta ação.", ephemeral: true }); return; }
-  if (session.status !== "active") { await interaction.reply({ content: "O resultado só pode ser informado depois que a ação for iniciada.", ephemeral: true }); return; }
+async function chooseResult(interaction: any, _context: BotContext, sessionId: string) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|victory`).setLabel("Vitória").setEmoji(systemComponentEmoji("visto", interaction.guild)).setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|defeat`).setLabel("Derrota").setEmoji(systemComponentEmoji("exclamacao", interaction.guild)).setStyle(ButtonStyle.Danger)
@@ -424,12 +421,12 @@ async function chooseResult(interaction: any, context: BotContext, sessionId: st
   await interaction.reply({
     components: [{
       type: 17,
-      accent_color: parseColor(session.actionColor),
+      accent_color: 0x7c3aed,
       components: [
         { type: 10, content: [
           `## ${systemEmojiText("trofeu", interaction.guild)} Resultado da ação`,
-          `${systemEmojiText("arma", interaction.guild)} **Ação:** ${session.actionName}`,
-          `${systemEmojiText("homem", interaction.guild)} Selecione o resultado final. O relatório será enviado automaticamente no canal configurado.`
+          `${systemEmojiText("homem", interaction.guild)} Selecione o resultado final. O sistema vai validar se você é o responsável e se a ação está iniciada.`,
+          `${systemEmojiText("folha", interaction.guild)} O relatório será enviado automaticamente no canal configurado.`
         ].join("\n") },
         row
       ]
