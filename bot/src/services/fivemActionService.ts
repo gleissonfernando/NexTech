@@ -444,14 +444,30 @@ async function finishAction(interaction: ModalSubmitInteraction, context: BotCon
   const [sessionId, resultRaw] = token.split("|");
   const result = resultRaw as "victory" | "defeat" | "draw";
   if (!sessionId || !["victory", "defeat", "draw"].includes(result)) return void await interaction.editReply("Resultado inválido.");
-  const session = await context.api.finishFivemActionSession(sessionId, interaction.user.id, result, {
-    note: interaction.fields.getTextInputValue("note") || null,
-    occurrence: interaction.fields.getTextInputValue("occurrence") || null,
-    summary: interaction.fields.getTextInputValue("summary") || null
+  let session: FivemActionSession;
+  try {
+    session = await context.api.finishFivemActionSession(sessionId, interaction.user.id, result, {
+      note: interaction.fields.getTextInputValue("note") || null,
+      occurrence: interaction.fields.getTextInputValue("occurrence") || null,
+      summary: interaction.fields.getTextInputValue("summary") || null
+    });
+  } catch (error) {
+    await interaction.editReply(`Não foi possível salvar o resultado: ${publicErrorMessage(error)}`);
+    return;
+  }
+
+  const postSaveErrors: string[] = [];
+  await refreshSessionMessage(interaction, session).catch((error) => {
+    console.warn("[fivem-actions] resultado salvo, mas falhou ao atualizar painel:", errorMessage(error));
+    postSaveErrors.push("não consegui atualizar o painel da ação");
   });
-  await refreshSessionMessage(interaction, session);
-  await sendReport(interaction, context, session);
-  await interaction.editReply(`Ação encerrada com ${resultLabel(result).toLowerCase()}.`);
+  await sendReport(interaction, context, session).catch((error) => {
+    console.warn("[fivem-actions] resultado salvo, mas falhou ao enviar relatório:", errorMessage(error));
+    postSaveErrors.push("não consegui enviar o relatório");
+  });
+
+  const warning = postSaveErrors.length ? ` Aviso: ${postSaveErrors.join(" e ")}.` : "";
+  await interaction.editReply(`Ação encerrada com ${resultLabel(result).toLowerCase()}.${warning}`);
 }
 
 async function refreshSessionMessage(interaction: any, session: FivemActionSession) {
