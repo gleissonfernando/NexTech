@@ -47,9 +47,9 @@ export const acaoCommand: BotCommand = {
         return;
       }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await context.api.requestFivemActionPanelPublish(interaction.guildId, "police", interaction.user.id);
-      await processPanelRequests(interaction.client, context);
-      await interaction.editReply("Painel de ações policiais publicado/atualizado.");
+      const settings = await context.api.requestFivemActionPanelPublish(interaction.guildId, "police", interaction.user.id);
+      await publishRequestedPanel(interaction.client, context, settings);
+      await interaction.editReply(`Painel de ações policiais publicado/atualizado em <#${settings.panelChannelId}>.`);
     } catch (error) {
       console.warn("[fivem-actions] falha no comando /acao:", errorMessage(error));
       await replyCommandError(interaction, `Erro no Sistema de Ações: ${publicErrorMessage(error)}`);
@@ -101,25 +101,36 @@ async function processPanelRequests(client: Client, context: BotContext) {
     const configs = await context.api.getActiveFivemActionConfigs();
     for (const config of configs) {
       if (!config.lastPanelRequestedAt) continue;
-      const key = `${config.botId}:${config.guildId}:${config.architecture}`;
+      const key = panelRequestKey(config);
       if (handledRequests.get(key) === config.lastPanelRequestedAt) continue;
-      await publishMainPanel(client, context, config);
-      handledRequests.set(key, config.lastPanelRequestedAt);
+      await publishRequestedPanel(client, context, config).catch((error) => {
+        console.warn(`[fivem-actions] falha ao publicar painel pendente ${key}:`, errorMessage(error));
+      });
     }
   } catch (error) { console.warn("[fivem-actions] falha ao processar painéis:", errorMessage(error)); }
   finally { polling = false; }
+}
+
+async function publishRequestedPanel(client: Client, context: BotContext, config: FivemActionSettings) {
+  await publishMainPanel(client, context, config);
+  if (config.lastPanelRequestedAt) handledRequests.set(panelRequestKey(config), config.lastPanelRequestedAt);
+}
+
+function panelRequestKey(config: Pick<FivemActionSettings, "botId" | "guildId" | "architecture">) {
+  return `${config.botId}:${config.guildId}:${config.architecture}`;
 }
 
 function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getFivemActionDashboard"]>>, architecture: FivemActionArchitecture, ephemeral = false) {
   const { settings, actions } = dashboard;
   const label = architecture === "police" ? "Polícia" : "FAC";
   const configuredChannels = [settings.panelChannelId, settings.actionChannelId, settings.reportChannelId].filter(Boolean).length;
+  const enabledActions = actions.filter((action) => action.enabled).length;
   const content = [
     `# Sistema de Ações - ${label}`,
     "Configurações feitas aqui usam o mesmo banco da dashboard.",
     "",
     `**Canais configurados:** ${configuredChannels}/3`,
-    `**Ações cadastradas:** ${actions.filter((action) => action.enabled).length}`,
+    `**Ações cadastradas:** ${enabledActions}`,
     `**Painel publicado:** ${settings.panelMessageId ? "Sim" : "Não"}`,
     `**Status:** ${settings.enabled ? "Ativo" : "Inativo"}`
   ].join("\n");
@@ -131,7 +142,7 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
     new ButtonBuilder().setCustomId(`${PREFIX}:config_channels:${architecture}`).setLabel("Configurar painel").setEmoji("📺").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`${PREFIX}:config_actions:${architecture}`).setLabel("Cadastrar ações").setEmoji("➕").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${PREFIX}:config_sheet:${architecture}`).setLabel("Cadastro da planilha").setEmoji("📄").setStyle(ButtonStyle.Secondary).setDisabled(architecture !== "police"),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_publish:${architecture}`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji("📌").setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId || !settings.actionChannelId || !actions.length),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_publish:${architecture}`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji("📌").setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId || !settings.actionChannelId || !enabledActions),
     new ButtonBuilder().setCustomId(`${PREFIX}:config_refresh:${architecture}`).setLabel("Atualizar visão").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
   );
 
@@ -197,10 +208,15 @@ async function requestActionPanelPublish(interaction: any, context: BotContext, 
   const current = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
   if (!canManageActionsFromDiscord(interaction, current.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para publicar painéis.", ephemeral: true });
   await interaction.deferUpdate();
-  await context.api.requestFivemActionPanelPublish(interaction.guildId, architecture, interaction.user.id);
-  await processPanelRequests(interaction.client, context);
-  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
-  await interaction.editReply(actionConfigPanel(dashboard, architecture, false));
+  try {
+    const settings = await context.api.requestFivemActionPanelPublish(interaction.guildId, architecture, interaction.user.id);
+    await publishRequestedPanel(interaction.client, context, settings);
+    const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+    await interaction.editReply(actionConfigPanel(dashboard, architecture, false));
+  } catch (error) {
+    console.warn("[fivem-actions] falha ao publicar painel pelo botão:", errorMessage(error));
+    await interaction.followUp({ content: `Não consegui publicar o painel: ${publicErrorMessage(error)}`, ephemeral: true }).catch(() => null);
+  }
 }
 
 async function showActionCreateModal(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
@@ -644,6 +660,10 @@ function publicErrorMessage(error: unknown) {
 async function replyCommandError(interaction: ChatInputCommandInteraction, content: string) {
   const payload = { content, ephemeral: true };
   if (interaction.deferred || interaction.replied) {
+    if (interaction.deferred && !interaction.replied) {
+      await interaction.editReply({ content }).catch(() => null);
+      return;
+    }
     await interaction.followUp(payload).catch(() => null);
     return;
   }
