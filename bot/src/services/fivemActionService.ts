@@ -115,7 +115,7 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
   const label = architecture === "police" ? "Polícia" : "FAC";
   const configuredChannels = [settings.panelChannelId, settings.actionChannelId, settings.reportChannelId].filter(Boolean).length;
   const content = [
-    `**Sistema de Ações - ${label}**`,
+    `# Sistema de Ações - ${label}`,
     "Configurações feitas aqui usam o mesmo banco da dashboard.",
     "",
     `**Canais configurados:** ${configuredChannels}/3`,
@@ -136,9 +136,8 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
   );
 
   return {
-    components: [architectureRow, actionRow],
-    content,
-    ...(ephemeral ? { ephemeral: true } : {})
+    components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content }, architectureRow, actionRow] }],
+    flags: (ephemeral ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
   };
 }
 
