@@ -17,7 +17,7 @@ export const POLICE_ACTIONS_MODULE_ID = "police-actions";
 export type ActionSettingsInput = Partial<Pick<MongoFivemActionSettings,
   "enabled" | "categoryId" | "panelChannelId" | "actionChannelId" | "reportChannelId" |
   "panelTitle" | "panelDescription" | "color" | "imageUrl" | "imagePosition" |
-  "managerRoleIds" | "spreadsheetEnabled" | "spreadsheetId" | "spreadsheetSheetName"
+  "managerRoleIds" | "spreadsheetEnabled" | "spreadsheetId" | "spreadsheetSheetName" | "reportBannerUrls"
 >>;
 
 export type ActionDefinitionInput = Partial<Pick<MongoFivemActionDefinition,
@@ -46,7 +46,7 @@ export async function getFivemActionSettings(botId: string, guildId: string, arc
     panelDescription: "Escolha uma ação no menu abaixo para iniciar.", color: "#7c3aed",
     managerRoleIds: [], spreadsheetEnabled: false, spreadsheetId: null, spreadsheetSheetName: architecture === "police" ? "Ações Polícia" : "Ações",
     spreadsheetLastSyncAt: null, spreadsheetSyncError: null,
-    imageUrl: null, imagePosition: "none", lastPanelRequestedAt: null,
+    imageUrl: null, imagePosition: "none", reportBannerUrls: [], lastPanelRequestedAt: null,
     createdAt: now, updatedAt: now, updatedBy: null
   };
   await fivemActionSettings.updateOne({ botId, guildId, architecture }, { $setOnInsert: settings }, { upsert: true });
@@ -307,6 +307,9 @@ function normalizeActionSettingsInput(input: ActionSettingsInput): ActionSetting
   if ("spreadsheetSheetName" in patch && typeof patch.spreadsheetSheetName === "string") {
     patch.spreadsheetSheetName = patch.spreadsheetSheetName.trim() || "Ações Polícia";
   }
+  if ("reportBannerUrls" in patch && Array.isArray(patch.reportBannerUrls)) {
+    patch.reportBannerUrls = patch.reportBannerUrls.map((url) => typeof url === "string" ? url.trim() : "").filter(Boolean).slice(0, 2);
+  }
   return patch;
 }
 
@@ -429,7 +432,7 @@ function resultText(status: MongoFivemActionSession["status"]) {
   return "Pendente";
 }
 
-function settingsDto(value: MongoFivemActionSettings) { return { ...value, id: value._id, googleSheetsServiceAccountEmail: getGoogleSheetsServiceAccountEmail(), managerRoleIds: value.managerRoleIds ?? [], spreadsheetEnabled: value.spreadsheetEnabled ?? false, spreadsheetId: value.spreadsheetId ?? null, spreadsheetSheetName: value.spreadsheetSheetName ?? null, spreadsheetLastSyncAt: value.spreadsheetLastSyncAt?.toISOString() ?? null, spreadsheetSyncError: value.spreadsheetSyncError ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastPanelRequestedAt: value.lastPanelRequestedAt?.toISOString() ?? null }; }
+function settingsDto(value: MongoFivemActionSettings) { return { ...value, id: value._id, googleSheetsServiceAccountEmail: getGoogleSheetsServiceAccountEmail(), managerRoleIds: value.managerRoleIds ?? [], reportBannerUrls: (value.reportBannerUrls ?? []).slice(0, 2), spreadsheetEnabled: value.spreadsheetEnabled ?? false, spreadsheetId: value.spreadsheetId ?? null, spreadsheetSheetName: value.spreadsheetSheetName ?? null, spreadsheetLastSyncAt: value.spreadsheetLastSyncAt?.toISOString() ?? null, spreadsheetSyncError: value.spreadsheetSyncError ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastPanelRequestedAt: value.lastPanelRequestedAt?.toISOString() ?? null }; }
 function actionDto(value: MongoFivemActionDefinition) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString() }; }
 function sessionDto(value: any) { return { ...value, id: value._id, mode: value.mode ?? null, sheetRow: value.sheetRow ?? null, sheetSyncStatus: value.sheetSyncStatus ?? null, sheetSyncError: value.sheetSyncError ?? null, sheetLastSyncAt: value.sheetLastSyncAt?.toISOString() ?? null, startedAt: value.startedAt?.toISOString() ?? null, cancelledAt: value.cancelledAt?.toISOString() ?? null, cancelledBy: value.cancelledBy ?? null, cancellationReason: value.cancellationReason ?? null, finishedAt: value.finishedAt?.toISOString() ?? null, resultNote: value.resultNote ?? null, resultSummary: value.resultSummary ?? null, resultOccurrence: value.resultOccurrence ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), participants: value.participants.map((item: MongoFivemActionParticipant) => ({ ...item, position: participantPosition(item), joinedAt: item.joinedAt.toISOString(), leftAt: item.leftAt?.toISOString() ?? null })) }; }
 function serviceError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

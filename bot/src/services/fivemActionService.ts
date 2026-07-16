@@ -526,11 +526,16 @@ async function sendReport(interaction: { guild: any }, context: BotContext, sess
   let channel = dashboard.settings.reportChannelId ? await interaction.guild!.channels.fetch(dashboard.settings.reportChannelId).catch(() => null) : null;
   if (!channel) channel = await interaction.guild!.channels.create({ name: "relatorio-de-acoes", type: ChannelType.GuildText, parent: dashboard.settings.categoryId ?? undefined, reason: "Relatórios do Sistema de Ações" });
   if (!channel.isTextBased() || channel.isDMBased()) return;
+  const reportMedia = (dashboard.settings.reportBannerUrls ?? [])
+    .map((url) => resolvePanelImageUrl(url))
+    .filter((url): url is string => Boolean(url))
+    .slice(0, 2)
+    .map((url) => mediaBlock(url, "Banner do resultado da ação"));
   const active = session.participants.filter((item) => !item.leftAt);
   const duration = Math.max(0, Math.round(((session.finishedAt ? Date.parse(session.finishedAt) : Date.now()) - Date.parse(session.startedAt ?? session.createdAt)) / 60000));
   const members = active.length ? active.filter((item) => item.position === "confirmed").map((item) => `• ${item.username} (<@${item.userId}>)`).join("\n") : "Nenhum participante.";
   const finishedAt = session.finishedAt ? new Date(session.finishedAt) : new Date();
-  await channel.send({ components: [{ type: 17, accent_color: session.status === "victory" ? 0x22c55e : session.status === "draw" ? 0xf59e0b : 0xef4444, components: [{ type: 10, content: [
+  await channel.send({ components: [{ type: 17, accent_color: session.status === "victory" ? 0x22c55e : session.status === "draw" ? 0xf59e0b : 0xef4444, components: [...reportMedia, { type: 10, content: [
     `# ${systemEmojiText("bandeira", interaction.guild)} Resultado da Ação`,
     "━━━━━━━━━━━━━━━━━━━━━━",
     `## ${systemEmojiText("arma", interaction.guild)} Ação`,

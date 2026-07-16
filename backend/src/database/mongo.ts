@@ -2061,6 +2061,7 @@ export type MongoFivemActionSettings = {
   color: string;
   imageUrl: string | null;
   imagePosition: MongoFivemActionImagePosition;
+  reportBannerUrls?: string[];
   lastPanelRequestedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

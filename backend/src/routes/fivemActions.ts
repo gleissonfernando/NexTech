@@ -23,6 +23,7 @@ const settingsSchema = z.object({
   spreadsheetEnabled: z.boolean().optional(),
   spreadsheetId: z.string().trim().max(512).nullable().optional(),
   spreadsheetSheetName: z.string().trim().min(1).max(100).nullable().optional(),
+  reportBannerUrls: z.array(z.string().trim().max(2048)).max(2).optional(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), imageUrl: z.string().max(2048).nullable().optional(),
   imagePosition: z.enum(["top", "center", "bottom", "none"]).optional()
 });
