@@ -9,7 +9,7 @@ import {
   type MongoFivemActionSettings
 } from "../database/mongo";
 import { dashboardLogRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
-import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, getGoogleSheetsServiceAccountEmail, googleSheetsConfigured, setSheetColumnWidths, updateSheetRow } from "./googleSheetsService";
+import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, getGoogleSheetsServiceAccountEmail, googleSheetsConfigured, setSheetColumnWidths, setSheetRowBackground, updateSheetRow } from "./googleSheetsService";
 
 export const FIVEM_ACTIONS_MODULE_ID = "fivem-actions";
 export const POLICE_ACTIONS_MODULE_ID = "police-actions";
@@ -284,9 +284,11 @@ async function syncFivemActionSessionToSheet(botId: string, sessionId: string, r
     const now = new Date();
     if (session.sheetRow) {
       await updateSheetRow({ row: session.sheetRow, sheetName, spreadsheetId: settings.spreadsheetId, values: row });
+      await applyPoliceActionSheetRowStyle(settings.spreadsheetId, sheetName, session.sheetRow, session);
       await fivemActionSessions.updateOne({ _id: sessionId, botId }, { $set: { sheetLastSyncAt: now, sheetSyncError: null, sheetSyncStatus: "synced", updatedAt: now } });
     } else {
       const sheetRow = await appendSheetRow({ sheetName, spreadsheetId: settings.spreadsheetId, values: row });
+      if (sheetRow) await applyPoliceActionSheetRowStyle(settings.spreadsheetId, sheetName, sheetRow, session);
       await fivemActionSessions.updateOne({ _id: sessionId, botId }, { $set: { sheetLastSyncAt: now, sheetRow, sheetSyncError: null, sheetSyncStatus: "synced", updatedAt: now } });
     }
     await fivemActionSettings.updateOne({ botId, guildId: session.guildId, architecture: "police" }, { $set: { spreadsheetLastSyncAt: now, spreadsheetSyncError: null, updatedAt: now } });
@@ -387,6 +389,18 @@ function padSheetHeader(values: string[]) {
 async function ensurePoliceActionSheetLayout(spreadsheetId: string, sheetName: string) {
   await ensureSheetHeaders({ headers: padSheetHeader(POLICE_ACTION_SHEET_HEADERS), sheetName, spreadsheetId });
   await setSheetColumnWidths({ sheetName, spreadsheetId, widths: POLICE_ACTION_SHEET_COLUMN_WIDTHS });
+}
+
+async function applyPoliceActionSheetRowStyle(spreadsheetId: string, sheetName: string, row: number, session: MongoFivemActionSession) {
+  const color = policeActionResultColor(session.status);
+  if (!color) return;
+  await setSheetRowBackground({ color, endColumnIndex: POLICE_ACTION_SHEET_HEADERS.length, row, sheetName, spreadsheetId });
+}
+
+function policeActionResultColor(status: MongoFivemActionSession["status"]) {
+  if (status === "victory") return { red: 0.71, green: 0.88, blue: 0.74 };
+  if (status === "defeat") return { red: 0.96, green: 0.70, blue: 0.70 };
+  return null;
 }
 
 function formatDate(value: Date) {

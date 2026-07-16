@@ -76,6 +76,32 @@ export async function setSheetColumnWidths(input: { spreadsheetId: string; sheet
   if (!response.ok) throw new Error(await googleError(response));
 }
 
+export async function setSheetRowBackground(input: { color: { blue: number; green: number; red: number }; endColumnIndex: number; row: number; sheetName: string; spreadsheetId: string }) {
+  const token = await getAccessToken();
+  const sheetId = await getSheetId(token, input.spreadsheetId, input.sheetName);
+  const startRowIndex = Math.max(0, input.row - 1);
+  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}:batchUpdate`, {
+    body: JSON.stringify({
+      requests: [{
+        repeatCell: {
+          cell: { userEnteredFormat: { backgroundColor: input.color } },
+          fields: "userEnteredFormat.backgroundColor",
+          range: {
+            endColumnIndex: input.endColumnIndex,
+            endRowIndex: startRowIndex + 1,
+            sheetId,
+            startColumnIndex: 0,
+            startRowIndex
+          }
+        }
+      }]
+    }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await googleError(response));
+}
+
 async function getSheetId(token: string, spreadsheetId: string, sheetName: string) {
   const url = `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets(properties(sheetId,title))`;
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
