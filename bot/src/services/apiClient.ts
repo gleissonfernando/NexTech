@@ -618,8 +618,25 @@ export type LiveEventInput = {
   guildId: string;
   type: "started" | "ended";
   streamer: string;
+  userId?: string | null;
   title?: string;
   url?: string;
+  roleId?: string | null;
+  roleApplied?: boolean;
+  roleRemoved?: boolean;
+  durationMs?: number | null;
+  error?: string | null;
+};
+
+export type LiveDetectionSettings = {
+  botId: string | null;
+  guildId: string;
+  enabled: boolean;
+  liveRoleId: string | null;
+  logChannelId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
 };
 
 export type BotCommandAuthorization = {
@@ -2029,6 +2046,29 @@ export class ApiClient {
   async notifyLive(input: LiveEventInput) {
     const { data } = await this.http.post("/lives/events", input);
     return data;
+  }
+
+  async getLiveDetectionSettings(guildId: string) {
+    const { data } = await this.http.get<{ settings: LiveDetectionSettings }>("/lives/settings", {
+      params: { guildId }
+    });
+    return data.settings;
+  }
+
+  async saveLiveDetectionSettings(input: {
+    actorId?: string | null;
+    enabled: boolean;
+    guildId: string;
+    liveRoleId?: string | null;
+    logChannelId?: string | null;
+  }) {
+    const { data } = await this.http.put<{ settings: LiveDetectionSettings }>("/lives/settings", input);
+    return data.settings;
+  }
+
+  async removeLiveDetectionSettings(guildId: string) {
+    const { data } = await this.http.delete<{ settings: LiveDetectionSettings }>(`/lives/settings/${guildId}`);
+    return data.settings;
   }
 
   async authorizeCommand(input: { channelId?: string | null; commandName: string; guildId: string; userId?: string | null }) {

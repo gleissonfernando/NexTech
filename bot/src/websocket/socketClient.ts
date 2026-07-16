@@ -188,6 +188,15 @@ export type SelfBotEnsureSetupAck = (response: { error?: string; ok: boolean }) 
 
 export type SettingsUpdatedEvent = GuildSettings;
 
+export type LiveDetectionSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+  enabled: boolean;
+  liveRoleId: string | null;
+  logChannelId: string | null;
+  updatedAt?: string;
+};
+
 export type DiscordLogDispatchEvent = {
   id: string;
   botId: string | null;
@@ -290,6 +299,7 @@ export class BotSocketClient {
   private selfBotProtectionSettingsHandler: ((payload: SelfBotProtectionSettingsEvent) => void) | null = null;
   private selfBotEnsureSetupHandler: ((payload: SelfBotEnsureSetupEvent, ack?: SelfBotEnsureSetupAck) => void) | null = null;
   private settingsUpdatedHandlers = new Set<(payload: SettingsUpdatedEvent) => void>();
+  private liveDetectionSettingsHandler: ((payload: LiveDetectionSettingsEvent) => void) | null = null;
   private discordLogDispatchHandler: ((payload: DiscordLogDispatchEvent) => void) | null = null;
   private devModuleUpdatedHandler: ((payload: DevModuleUpdatedEvent) => void) | null = null;
   private tagVerificationConfigUpdatedHandler: ((payload: TagVerificationScopeEvent) => void) | null = null;
@@ -437,6 +447,10 @@ export class BotSocketClient {
 
     for (const handler of this.settingsUpdatedHandlers) {
       this.socket.on("settings:updated", handler);
+    }
+
+    if (this.liveDetectionSettingsHandler) {
+      this.socket.on("live-detection:settings_updated", this.liveDetectionSettingsHandler);
     }
 
     if (this.discordLogDispatchHandler) {
@@ -701,6 +715,11 @@ export class BotSocketClient {
   onSettingsUpdated(handler: (payload: SettingsUpdatedEvent) => void) {
     this.settingsUpdatedHandlers.add(handler);
     this.socket?.on("settings:updated", handler);
+  }
+
+  onLiveDetectionSettingsUpdated(handler: (payload: LiveDetectionSettingsEvent) => void) {
+    this.liveDetectionSettingsHandler = handler;
+    this.socket?.on("live-detection:settings_updated", handler);
   }
 
   onDiscordLogDispatch(handler: (payload: DiscordLogDispatchEvent) => void) {

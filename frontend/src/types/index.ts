@@ -838,9 +838,26 @@ export type LiveEvent = {
   guildId: string;
   type: "started" | "ended";
   streamer: string;
+  userId?: string | null;
   title?: string;
   url?: string;
+  roleId?: string | null;
+  roleApplied?: boolean;
+  roleRemoved?: boolean;
+  durationMs?: number | null;
+  error?: string | null;
   createdAt: string;
+};
+
+export type LiveDetectionSettings = {
+  botId: string | null;
+  guildId: string;
+  enabled: boolean;
+  liveRoleId: string | null;
+  logChannelId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
 };
 
 export type Ticket = {

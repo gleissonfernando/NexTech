@@ -279,7 +279,7 @@ export function registerEvents(client: Client, context: BotContext) {
     });
   }
 
-  if (env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) {
+  if (managedRuntimeBot || isBotModuleEnabled("live")) {
     client.on(Events.PresenceUpdate, (oldPresence, newPresence) => {
       if (isMaintenanceModeActive()) return;
       runEvent("presenceUpdate", () => handlePresenceEvent(oldPresence, newPresence, context));

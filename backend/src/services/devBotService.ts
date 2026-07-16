@@ -36,7 +36,7 @@ const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
 
 export const DEV_MODULES = [
-  { id: "live", label: "Sistema de Live" },
+  { id: "live", label: "Sistema Detecta Lives" },
   { id: "kick-integration", label: "Kick Integration" },
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },

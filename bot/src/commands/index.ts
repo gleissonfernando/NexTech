@@ -29,6 +29,7 @@ import { courseCommand, cursosHistoricoCommand, instrutoresCommand, publicarCurs
 import { rhAdminCommand } from "../services/rhAdminService";
 import { removerCommand } from "./remover";
 import { visibleMessageCommand } from "../services/visibleMessageService";
+import { livesCommand } from "../services/liveService";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -68,6 +69,7 @@ export function createCommandCollection() {
     rhAdminCommand,
     removerCommand,
     visibleMessageCommand,
+    livesCommand,
     sistemaCommand,
     iabCommand,
     serverClonerCommand,

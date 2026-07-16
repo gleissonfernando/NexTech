@@ -5,7 +5,13 @@ import { isBotRequest, requireAuthOrBot } from "../middleware/auth";
 import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
 import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
-import { createLiveEvent, listLiveEvents } from "../services/liveService";
+import {
+  createLiveEvent,
+  getLiveDetectionSettings,
+  listLiveEvents,
+  removeLiveDetectionSettings,
+  saveLiveDetectionSettings
+} from "../services/liveService";
 import { createLog } from "../services/logService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
@@ -13,8 +19,22 @@ const liveEventSchema = z.object({
   guildId: z.string().min(1),
   type: z.enum(["started", "ended"]),
   streamer: z.string().min(1),
+  userId: z.string().min(1).nullable().optional(),
   title: z.string().optional(),
-  url: z.string().url().optional()
+  url: z.string().url().optional(),
+  roleId: z.string().min(1).nullable().optional(),
+  roleApplied: z.boolean().optional(),
+  roleRemoved: z.boolean().optional(),
+  durationMs: z.number().int().nonnegative().nullable().optional(),
+  error: z.string().nullable().optional()
+});
+
+const liveSettingsSchema = z.object({
+  guildId: z.string().min(1),
+  enabled: z.boolean().optional(),
+  liveRoleId: z.string().min(1).nullable().optional(),
+  logChannelId: z.string().min(1).nullable().optional(),
+  actorId: z.string().min(1).nullable().optional()
 });
 
 export const livesRouter = Router();
@@ -45,6 +65,93 @@ livesRouter.get("/", async (req, res) => {
   return res.json({
     lives: guildId ? lives : lives.filter((event) => allowedGuildIds.has(event.guildId))
   });
+});
+
+livesRouter.get("/settings", async (req, res, next) => {
+  try {
+    const guildId = z.string().min(1).parse(req.query.guildId);
+    const botId = await resolveRequestBotId(req);
+
+    if (!isBotRequest(req) && !(await canReadScopedGuild(req, guildId, botId))) {
+      return res.status(403).json({
+        message: "Servidor não encontrado ou sem o bot."
+      });
+    }
+
+    const settings = await getLiveDetectionSettings(botId, guildId);
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+livesRouter.put("/settings", async (req, res, next) => {
+  try {
+    const input = liveSettingsSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+
+    if (!isBotRequest(req) && !(await canManageScopedGuild(req, input.guildId, botId))) {
+      return res.status(403).json({
+        message: "Servidor não encontrado ou sem o bot."
+      });
+    }
+
+    const actorId = isBotRequest(req) ? input.actorId ?? null : res.locals.dashboardAuth.user.discordId;
+    const settings = await saveLiveDetectionSettings(botId, input.guildId, input, actorId);
+
+    if (botId) {
+      const log = await createLog({
+        botId,
+        guildId: input.guildId,
+        type: "audit.lives",
+        userId: actorId,
+        module: "lives",
+        action: "live_detection_settings_updated",
+        message: "Configuração do Sistema Detecta Lives atualizada.",
+        metadata: settings
+      });
+
+      emitRealtime("logs:new", log);
+    }
+
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+livesRouter.delete("/settings/:guildId", async (req, res, next) => {
+  try {
+    const guildId = z.string().min(1).parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+
+    if (!isBotRequest(req) && !(await canManageScopedGuild(req, guildId, botId))) {
+      return res.status(403).json({
+        message: "Servidor não encontrado ou sem o bot."
+      });
+    }
+
+    const actorId = isBotRequest(req) ? null : res.locals.dashboardAuth.user.discordId;
+    const settings = await removeLiveDetectionSettings(botId, guildId, actorId);
+    if (botId) {
+      const log = await createLog({
+        botId,
+        guildId,
+        type: "audit.lives",
+        userId: actorId,
+        module: "lives",
+        action: "live_detection_settings_removed",
+        message: "Configuração do Sistema Detecta Lives removida.",
+        metadata: settings
+      });
+
+      emitRealtime("logs:new", log);
+    }
+
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 livesRouter.post("/events", async (req, res, next) => {

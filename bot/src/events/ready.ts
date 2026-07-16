@@ -23,6 +23,7 @@ import { startGiveawayService } from "../services/giveawayService";
 import { startGuildSettingsCache } from "../services/guildSettingsCache";
 import { startImageAntiSpamService } from "../services/imageAntiSpamService";
 import { startKickNotificationMonitor } from "../services/kickNotificationMonitor";
+import { startLiveDetectionService } from "../services/liveService";
 import { startMaintenanceService } from "../services/maintenanceService";
 import { startMissionToolsService } from "../services/missionToolsService";
 import { startNexTechSalesDeliveryService } from "../services/nexTechSalesDeliveryService";
@@ -84,6 +85,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     const wereLogsEnabled = isBotModuleEnabled("logs");
     const wasFivemHierarchyEnabled = isBotModuleEnabled("fivem-hierarchy");
     const wasTagVerificationEnabled = isBotModuleEnabled("tag-verification");
+    const wasLiveEnabled = isBotModuleEnabled("live");
     setRuntimeEnabledModules(payload.enabledModules);
     lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
     clearRuntimeModuleAuthorization();
@@ -114,6 +116,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     if (!wereLogsEnabled && isBotModuleEnabled("logs")) startAutomatedLogService(client, context);
     if (!wasTagVerificationEnabled && isBotModuleEnabled("tag-verification")) void startTagVerificationService(client, context);
     if (wasTagVerificationEnabled && !isBotModuleEnabled("tag-verification")) stopTagVerificationService();
+    if (!wasLiveEnabled && isBotModuleEnabled("live")) startLiveDetectionService(client, context);
   });
   context.socket.onSelfBotEnsureSetup(async (payload, acknowledge) => {
     if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) {
@@ -169,6 +172,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   await syncVisibleGuildCommands(client, context, "ready");
 
   if (isBotModuleEnabled("live")) {
+    startLiveDetectionService(client, context);
     startSocialNotificationMonitor(client, context.api);
   }
   if (isBotModuleEnabled("live") || isBotModuleEnabled("kick-integration")) {

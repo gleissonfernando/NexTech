@@ -1628,6 +1628,18 @@ export type MongoSocialNotification = {
   updatedAt: Date;
 };
 
+export type MongoLiveDetectionSettings = {
+  _id?: string;
+  botId: string | null;
+  guildId: string;
+  enabled: boolean;
+  liveRoleId: string | null;
+  logChannelId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
 export type MongoKickApiConfig = {
   _id: string;
   botId?: string | null;
@@ -4050,6 +4062,7 @@ export async function getMongoCollections() {
     backgroundJobs: db.collection<MongoBackgroundJob>("background_jobs"),
     serviceHeartbeats: db.collection<MongoServiceHeartbeat>("service_heartbeats"),
     logEntries: db.collection<MongoLogEntry>("LogEntry"),
+    liveDetectionSettings: db.collection<MongoLiveDetectionSettings>("live_detection_settings"),
     socialNotifications: db.collection<MongoSocialNotification>("social_notifications"),
     kickApiConfigs: db.collection<MongoKickApiConfig>("kick_api_configs"),
     socialMembers: db.collection<MongoSocialMember>("social_members"),
@@ -4331,6 +4344,8 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, module: 1, action: 1, createdAt: -1 }),
     db.collection<MongoLogEntry>("LogEntry").createIndex({ botId: 1, guildId: 1, caseId: 1, createdAt: -1 }),
+    db.collection<MongoLiveDetectionSettings>("live_detection_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoLiveDetectionSettings>("live_detection_settings").createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
     db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, ticketId: 1 }),
     db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, type: 1, status: 1, createdAt: -1 }),

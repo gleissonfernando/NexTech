@@ -111,6 +111,7 @@ import {
   deleteFivemGoalConfig,
   deleteGuildChannels,
   deleteFivemHierarchyPanel,
+  deleteLiveDetectionSettings,
   fetchEmojiCloneBotTokenEmojis,
   getAdvancedModuleConfig,
   getApplicationEmojiSettings,
@@ -130,6 +131,7 @@ import {
   getGuildSettings,
   getEmojiLibrary,
   getKickNotifications,
+  getLiveDetectionSettings,
   getLives,
   getLogs,
   getManualRegistrationDashboard,
@@ -152,6 +154,7 @@ import {
   saveFivemGoalSettings,
   saveFivemHierarchyPanel,
   saveGlobalBlacklistSettings,
+  saveLiveDetectionSettings,
   saveManualRegistrationSettings,
   saveServerBackupSettings,
   syncApplicationEmojis,
@@ -202,6 +205,7 @@ import type {
   EmojiCloneRemoteEmoji,
   EmojiLibraryItem,
   KickNotification,
+  LiveDetectionSettings,
   LiveEvent,
   LogEntry,
   LogCategory,
@@ -285,8 +289,8 @@ const emptyEnabledModules: string[] = [];
 const moduleCatalog: ModuleDefinition[] = [
   {
     id: "live",
-    title: "Sistema de Lives",
-    description: "Detecta transmissoes na Twitch e envia alertas no Discord.",
+    title: "Sistema Detecta Lives",
+    description: "Detecta transmissões pelo status do Discord e aplica cargo automaticamente.",
     icon: Radio,
     view: "lives"
   },
@@ -776,6 +780,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lives, setLives] = useState<LiveEvent[]>([]);
+  const [liveDetectionRefresh, setLiveDetectionRefresh] = useState(0);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [clipsRefreshSignal, setClipsRefreshSignal] = useState(0);
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
@@ -1094,6 +1099,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         setLives((current) => [event, ...current].slice(0, 50));
       }
     });
+    socket.on("live-detection:settings_updated", (event: LiveDetectionSettings) => {
+      if (event.guildId === selectedGuildId && (event.botId ?? null) === activeBotId) {
+        setLiveDetectionRefresh((current) => current + 1);
+      }
+    });
     socket.on("tickets:new", (ticket: Ticket) => {
       if (ticket.guildId === selectedGuildId && (ticket.botId ?? null) === activeBotId) {
         setTickets((current) => [ticket, ...current].slice(0, 50));
@@ -1272,6 +1282,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             botId={activeBotId}
             canManageKick={canManageModule(selectedBot, "live", canManageDashboard) || canManageModule(selectedBot, "kick-integration", canManageDashboard)}
             canManageTwitch={canManageModule(selectedBot, "live", canManageDashboard)}
+            liveDetectionRefresh={liveDetectionRefresh}
             guild={selectedGuild}
             lives={lives}
             showKick={liveModulesEnabled(enabledModules)}
@@ -4576,6 +4587,7 @@ function LiveView({
   botId,
   canManageKick,
   canManageTwitch,
+  liveDetectionRefresh,
   guild,
   lives,
   showKick,
@@ -4584,6 +4596,7 @@ function LiveView({
   botId?: string | null;
   canManageKick: boolean;
   canManageTwitch: boolean;
+  liveDetectionRefresh: number;
   guild: DashboardGuild | null;
   lives: LiveEvent[];
   showKick: boolean;
@@ -4591,6 +4604,16 @@ function LiveView({
 }) {
   return (
     <div className="space-y-5">
+      {showTwitch ? (
+        <LiveDetectionPanel botId={botId} canManage={canManageTwitch} guild={guild} refreshSignal={liveDetectionRefresh} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sistema Detecta Lives</CardTitle>
+            <CardDescription>Este módulo ainda não foi liberado para este bot pelo painel DEV.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
       {showTwitch ? (
         <LiveNotificationsPanel botId={botId} canManage={canManageTwitch} guild={guild} />
       ) : null}
@@ -4631,6 +4654,157 @@ function LiveView({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function LiveDetectionPanel({
+  botId,
+  canManage,
+  guild,
+  refreshSignal
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  refreshSignal: number;
+}) {
+  const [settings, setSettings] = useState<LiveDetectionSettings | null>(null);
+  const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!guild) {
+      setSettings(null);
+      return;
+    }
+
+    setLoading(true);
+    Promise.all([
+      getLiveDetectionSettings(guild.id, botId),
+      getGuildLiveOptions(guild.id, botId).catch(() => ({ channels: [], roles: [], voiceChannels: [], categories: [] }))
+    ])
+      .then(([nextSettings, options]) => {
+        if (!mounted) return;
+        setSettings(nextSettings);
+        setRoles(options.roles);
+        setChannels(options.channels);
+      })
+      .catch((error) => {
+        if (mounted) setMessage(readResponseMessage(error) ?? "Não foi possível carregar o Sistema Detecta Lives.");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, guild, refreshSignal]);
+
+  async function savePatch(patch: Partial<Pick<LiveDetectionSettings, "enabled" | "liveRoleId" | "logChannelId">>) {
+    if (!guild || !settings) return;
+
+    const nextPayload = {
+      enabled: patch.enabled ?? settings.enabled,
+      liveRoleId: patch.liveRoleId !== undefined ? patch.liveRoleId : settings.liveRoleId,
+      logChannelId: patch.logChannelId !== undefined ? patch.logChannelId : settings.logChannelId
+    };
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const nextSettings = await saveLiveDetectionSettings(guild.id, nextPayload, botId);
+      setSettings(nextSettings);
+      setMessage("Configuração salva.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar o Sistema Detecta Lives.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resetSettings() {
+    if (!guild) return;
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const nextSettings = await deleteLiveDetectionSettings(guild.id, botId);
+      setSettings(nextSettings);
+      setMessage("Configuração removida.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível remover a configuração.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const disabled = !guild || !settings || !canManage || saving;
+  const configured = Boolean(settings?.liveRoleId);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Sistema Detecta Lives</CardTitle>
+            <CardDescription>Aplica um cargo automaticamente quando o Discord detectar uma transmissão ativa.</CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin text-zinc-400" /> : null}
+            <span className="text-sm font-medium text-zinc-300">{settings?.enabled ? "Ativo" : "Desativado"}</span>
+            <Switch checked={Boolean(settings?.enabled)} disabled={disabled || !configured} onCheckedChange={(checked) => void savePatch({ enabled: checked })} />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {message ? (
+          <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white">
+            {message}
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <RoleSelect
+            disabled={disabled}
+            label="Cargo aplicado durante a live"
+            onChange={(value) => void savePatch({ liveRoleId: value || null })}
+            roles={roles.filter((role) => !role.managed)}
+            value={settings?.liveRoleId ?? ""}
+          />
+          <FivemChannelSelect
+            channels={channels}
+            disabled={disabled}
+            label="Canal de logs"
+            onChange={(value) => void savePatch({ logChannelId: value || null })}
+            placeholder="Sem logs"
+            value={settings?.logChannelId ?? ""}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={settings?.enabled ? "success" : "muted"}>{settings?.enabled ? "Detecção ativa" : "Detecção pausada"}</Badge>
+          <Badge variant={configured ? "success" : "danger"}>{configured ? "Cargo configurado" : "Cargo obrigatório"}</Badge>
+          <Badge variant={settings?.logChannelId ? "success" : "muted"}>{settings?.logChannelId ? "Logs configurados" : "Logs opcionais"}</Badge>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button disabled={!canManage || saving || !settings} onClick={() => void savePatch({ enabled: !settings?.enabled })} variant={settings?.enabled ? "outline" : "default"}>
+            {settings?.enabled ? "Desativar" : "Ativar"}
+          </Button>
+          <Button disabled={!canManage || saving} onClick={() => void resetSettings()} variant="outline">
+            Remover configuração
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

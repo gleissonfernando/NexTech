@@ -68,6 +68,7 @@ import type {
   EmojiCloneRemoteEmoji,
   ImageAntiSpamResponse,
   ImageAntiSpamSettings,
+  LiveDetectionSettings,
   LiveEvent,
   LogEntry,
   ManualPaymentsDashboard,
@@ -1010,6 +1011,39 @@ export async function getLives(guildId?: string, botId?: string | null) {
     }
   });
   return data.lives;
+}
+
+export async function getLiveDetectionSettings(guildId: string, botId?: string | null) {
+  const { data } = await api.get<{ settings: LiveDetectionSettings }>("/lives/settings", {
+    params: {
+      guildId,
+      ...botParams(botId)
+    }
+  });
+  return data.settings;
+}
+
+export async function saveLiveDetectionSettings(
+  guildId: string,
+  payload: Pick<LiveDetectionSettings, "enabled" | "liveRoleId" | "logChannelId">,
+  botId?: string | null
+) {
+  const { data } = await api.put<{ settings: LiveDetectionSettings }>("/lives/settings", {
+    guildId,
+    enabled: payload.enabled,
+    liveRoleId: payload.liveRoleId,
+    logChannelId: payload.logChannelId
+  }, {
+    params: botParams(botId)
+  });
+  return data.settings;
+}
+
+export async function deleteLiveDetectionSettings(guildId: string, botId?: string | null) {
+  const { data } = await api.delete<{ settings: LiveDetectionSettings }>(`/lives/settings/${guildId}`, {
+    params: botParams(botId)
+  });
+  return data.settings;
 }
 
 export async function getTickets(guildId?: string, botId?: string | null) {

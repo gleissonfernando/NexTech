@@ -18,6 +18,7 @@ const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
 const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
 const needsTagVerification = isBotModuleEnabled("tag-verification") || managedRuntimeBot;
+const needsLivePresence = isBotModuleEnabled("live") || managedRuntimeBot;
 const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
 const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeBot;
 const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "fivem-hierarchy", "account-age-security", "anti-ban", "tag-verification"].some(isBotModuleEnabled)
@@ -54,7 +55,7 @@ if (needsMessageEvents) {
   }
 }
 
-if ((env.BOT_PRESENCE_MONITOR_ENABLED && isBotModuleEnabled("live")) || needsTagVerification) {
+if (needsLivePresence || needsTagVerification) {
   intents.push(GatewayIntentBits.GuildPresences);
 }
 
@@ -84,7 +85,7 @@ const client = new Client({
     GuildStickerManager: 0,
     GuildTextThreadManager: 0,
     MessageManager: needsMessageLogs ? env.BOT_CACHE_MESSAGES_PER_CHANNEL : 0,
-    PresenceManager: needsTagVerification ? Math.max(env.BOT_CACHE_PRESENCES_MAX, env.BOT_CACHE_MEMBERS_MAX) : env.BOT_PRESENCE_MONITOR_ENABLED ? env.BOT_CACHE_PRESENCES_MAX : 0,
+    PresenceManager: needsTagVerification || needsLivePresence ? Math.max(env.BOT_CACHE_PRESENCES_MAX, env.BOT_CACHE_MEMBERS_MAX) : 0,
     ReactionManager: 0,
     ReactionUserManager: 0,
     StageInstanceManager: 0,

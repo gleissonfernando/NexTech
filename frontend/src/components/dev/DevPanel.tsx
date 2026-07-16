@@ -117,7 +117,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Switch } from "../ui/switch";
 
 const fallbackModules: DevModuleDefinition[] = [
-  { id: "live", label: "Sistema de Live" },
+  { id: "live", label: "Sistema Detecta Lives" },
   { id: "kick-integration", label: "Kick Integration" },
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
