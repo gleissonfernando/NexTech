@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Dashboard } from "./pages/Dashboard";
 import { BotRegistrationPage } from "./pages/BotRegistration";
 import { DevDashboard } from "./pages/DevDashboard";
@@ -25,6 +25,7 @@ export function App() {
     verifying
   } = useAuth();
   const path = window.location.pathname;
+  const [accessDeniedError, setAccessDeniedError] = useState<string | null>(null);
   const publicLandingPath = path === "/";
   const docsPath = path === "/docs" || path.startsWith("/docs/");
   const plansPath = path === "/planos" || path.startsWith("/planos/");
@@ -38,6 +39,20 @@ export function App() {
   const dashboardPath = isDashboardRoutePath(path);
   const devPanelPath = path === "/dev" || path.startsWith("/dev/");
   const protectedPanelPath = dashboardPath || devPanelPath;
+
+  useEffect(() => {
+    function onAccessDenied(event: Event) {
+      const detail = (event as CustomEvent<{ message?: unknown }>).detail;
+      setAccessDeniedError(
+        typeof detail?.message === "string" && detail.message.trim()
+          ? detail.message
+          : "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."
+      );
+    }
+
+    window.addEventListener("dashboard:access-denied", onAccessDenied);
+    return () => window.removeEventListener("dashboard:access-denied", onAccessDenied);
+  }, []);
 
   useEffect(() => {
     if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
@@ -54,12 +69,12 @@ export function App() {
       return;
     }
 
-    if (loading || !protectedPanelPath || error || routeError || auth) {
+    if (loading || !protectedPanelPath || error || routeError || accessDeniedError || auth) {
       return;
     }
 
     loginDiscord();
-  }, [auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken]);
+  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken]);
 
   useEffect(() => {
     if (rouletteToken || productRoute || docsPath || plansPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
@@ -101,11 +116,11 @@ export function App() {
     return <NexTechProductPage slug={productRoute.slug} status={productRoute.status} storeId={productRoute.storeId} />;
   }
 
-  if (routeError && !auth?.access.verified) {
+  if ((routeError || accessDeniedError) && (!auth?.access.verified || protectedPanelPath)) {
     return (
       <Login
         auth={auth}
-        error={error ?? routeError}
+        error={accessDeniedError ?? error ?? routeError}
         onLoginDiscord={loginDiscord}
         onVerify={verify}
         verifying={verifying}

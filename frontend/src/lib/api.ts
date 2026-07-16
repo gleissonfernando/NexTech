@@ -205,8 +205,23 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config as RetryRequestConfig | undefined;
+    const responseStatus = error.response?.status;
+    const responseData = error.response?.data as { message?: unknown; supportUrl?: unknown } | undefined;
+    const responseMessage = typeof responseData?.message === "string" ? responseData.message : "";
 
-    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
+    if (
+      responseStatus === 403
+      && typeof window !== "undefined"
+      && (typeof responseData?.supportUrl === "string" || responseMessage.includes("Você não possui acesso a esta dashboard"))
+    ) {
+      window.dispatchEvent(new CustomEvent("dashboard:access-denied", {
+        detail: {
+          message: responseMessage || "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."
+        }
+      }));
+    }
+
+    if (!originalRequest || responseStatus !== 401 || originalRequest._retry) {
       throw error;
     }
 
