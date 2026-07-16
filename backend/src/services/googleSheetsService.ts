@@ -22,7 +22,8 @@ export function getGoogleSheetsServiceAccountEmail() {
 
 export async function appendSheetRow(input: { spreadsheetId: string; sheetName: string; values: unknown[] }) {
   const token = await getAccessToken();
-  const url = `${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}/values/${encodeURIComponent(input.sheetName)}!A:Z:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&includeValuesInResponse=false`;
+  const range = sheetRange(input.sheetName, "A:Z");
+  const url = `${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&includeValuesInResponse=false`;
   const response = await fetch(url, {
     body: JSON.stringify({ majorDimension: "ROWS", values: [input.values] }),
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -35,7 +36,7 @@ export async function appendSheetRow(input: { spreadsheetId: string; sheetName: 
 
 export async function updateSheetRow(input: { spreadsheetId: string; sheetName: string; row: number; values: unknown[] }) {
   const token = await getAccessToken();
-  const range = `${input.sheetName}!A${input.row}:Z${input.row}`;
+  const range = sheetRange(input.sheetName, `A${input.row}:Z${input.row}`);
   const url = `${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
   const response = await fetch(url, {
     body: JSON.stringify({ majorDimension: "ROWS", values: [input.values] }),
@@ -47,7 +48,7 @@ export async function updateSheetRow(input: { spreadsheetId: string; sheetName: 
 
 export async function ensureSheetHeaders(input: { spreadsheetId: string; sheetName: string; headers: string[] }) {
   const token = await getAccessToken();
-  const range = `${input.sheetName}!A1:Z1`;
+  const range = sheetRange(input.sheetName, "A1:Z1");
   const url = `${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
   const response = await fetch(url, {
     body: JSON.stringify({ majorDimension: "ROWS", values: [input.headers] }),
@@ -132,6 +133,10 @@ function base64Url(value: string) {
   return Buffer.from(value).toString("base64url");
 }
 
+function sheetRange(sheetName: string, range: string) {
+  return `'${sheetName.replace(/'/g, "''")}'!${range}`;
+}
+
 function parseUpdatedRow(range: string | null) {
   if (!range) return null;
   const match = /![A-Z]+(\d+):/i.exec(range);
@@ -150,6 +155,10 @@ async function googleError(response: Response) {
 }
 
 function friendlyGoogleSheetsError(message: string, status: number) {
+  if (/unable to parse range/i.test(message)) {
+    return "Não consegui encontrar a aba informada na planilha. Confira se o nome da aba no painel é exatamente igual ao nome da guia no Google Planilhas.";
+  }
+
   if (status === 404 || /requested entity was not found/i.test(message)) {
     return "Planilha Google não encontrada ou sem acesso. Use um link do Google Planilhas e compartilhe a planilha com o e-mail da conta de serviço.";
   }
