@@ -34,12 +34,14 @@ export const acaoCommand: BotCommand = {
     if (!canManageActionsFromDiscord(interaction, dashboard.settings)) {
       return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para gerenciar ações.", flags: MessageFlags.Ephemeral });
     }
-    const subcommand = interaction.options.getSubcommand();
-    if (subcommand === "config") {
+    const subcommand = interaction.options.getSubcommand(false);
+    const legacyMode = interaction.options.getString("modo", false);
+    const action = subcommand ?? legacyMode;
+    if (action === "config") {
       await interaction.reply(actionConfigPanel(dashboard, "police", true));
       return;
     }
-    if (subcommand !== "publicar") {
+    if (action !== "publicar" && action !== "publish") {
       await interaction.reply({ content: "Subcomando inválido.", flags: MessageFlags.Ephemeral });
       return;
     }
