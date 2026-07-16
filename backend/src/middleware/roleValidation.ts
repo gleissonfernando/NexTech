@@ -1,8 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
+import { ACCESS_DENIED_MESSAGE, SUPPORT_DISCORD_URL } from "./auth";
 import { evaluateDashboardAccess } from "../services/accessControlService";
 import type { DashboardAuth } from "../services/tokenService";
-
-const ACCESS_DENIED_MESSAGE = "Sem acesso ao painel. Se seu usuario foi liberado agora, saia e entre novamente pelo Discord.";
 
 export async function requireDashboardAccessValidation(req: Request, res: Response, next: NextFunction) {
   const auth = res.locals.dashboardAuth as DashboardAuth | undefined;
@@ -25,6 +24,7 @@ export async function requireDashboardAccessValidation(req: Request, res: Respon
   if (!validation.allowed) {
     return res.status(403).json({
       message: ACCESS_DENIED_MESSAGE,
+      supportUrl: SUPPORT_DISCORD_URL,
       validation
     });
   }

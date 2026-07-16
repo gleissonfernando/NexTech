@@ -101,6 +101,18 @@ export function App() {
     return <NexTechProductPage slug={productRoute.slug} status={productRoute.status} storeId={productRoute.storeId} />;
   }
 
+  if (routeError && !auth?.access.verified) {
+    return (
+      <Login
+        auth={auth}
+        error={error ?? routeError}
+        onLoginDiscord={loginDiscord}
+        onVerify={verify}
+        verifying={verifying}
+      />
+    );
+  }
+
   if (loading) {
     return <LoadingScreen />;
   }
