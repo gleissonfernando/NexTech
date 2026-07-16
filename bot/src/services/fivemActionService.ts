@@ -47,14 +47,24 @@ export const acoesConfigCommand: BotCommand = {
 export const acaoCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("acao")
-    .setDescription("Publica ou atualiza o painel de ações da Polícia.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDescription("Publica, atualiza ou configura o painel de ações da Polícia.")
+    .addStringOption((option) => option
+      .setName("modo")
+      .setDescription("Escolha o que deseja fazer.")
+      .addChoices({ name: "Publicar painel", value: "publish" }, { name: "Configurar", value: "config" })),
   moduleId: "police-actions",
   async execute(interaction: ChatInputCommandInteraction, context: BotContext) {
     if (!interaction.guildId || !interaction.guild) return void await interaction.reply({ content: "Use este comando dentro de um servidor.", ephemeral: true });
-    if (!canManageActionsFromDiscord(interaction)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor para publicar o painel de ações.", ephemeral: true });
     await refreshFivemActionRuntimeModules(context).catch(() => null);
     if (!isFivemActionRuntimeEnabled("police")) return void await interaction.reply({ content: "Ações policiais não liberadas para este bot.", flags: MessageFlags.Ephemeral });
+    const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, "police");
+    if (!canManageActionsFromDiscord(interaction, dashboard.settings)) {
+      return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para gerenciar ações.", flags: MessageFlags.Ephemeral });
+    }
+    if (interaction.options.getString("modo") === "config") {
+      await interaction.reply(actionConfigPanel(dashboard, "police", true));
+      return;
+    }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await context.api.requestFivemActionPanelPublish(interaction.guildId, "police", interaction.user.id);
     await processPanelRequests(interaction.client, context);
@@ -80,8 +90,12 @@ export async function handleFivemActionInteraction(interaction: Interaction, con
   }
   if (interaction.isButton() && action === "config") await showActionConfig(interaction, context, id as FivemActionArchitecture);
   else if (interaction.isButton() && action === "config_channels") await showActionChannelConfig(interaction, context, id as FivemActionArchitecture);
+  else if (interaction.isButton() && action === "config_actions") await showActionCreateModal(interaction, context, id as FivemActionArchitecture);
+  else if (interaction.isButton() && action === "config_sheet") await showActionSheetModal(interaction, context, id as FivemActionArchitecture);
   else if (interaction.isButton() && action === "config_publish") await requestActionPanelPublish(interaction, context, id as FivemActionArchitecture);
   else if (interaction.isChannelSelectMenu() && action.startsWith("channel_")) await saveActionChannel(interaction, context, action, id as FivemActionArchitecture);
+  else if (interaction.isModalSubmit() && action === "action_modal") await saveActionDefinition(interaction, context, id as FivemActionArchitecture);
+  else if (interaction.isModalSubmit() && action === "sheet_modal") await saveActionSheet(interaction, context, id as FivemActionArchitecture);
   else if (interaction.isStringSelectMenu() && action === "open") await openAction(interaction, context);
   else if (interaction.isButton() && action === "mode") await createActionWithMode(interaction, context, id!);
   else if (interaction.isButton() && action === "join") await changeParticipant(interaction, context, id!, true);
@@ -128,7 +142,9 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
     new ButtonBuilder().setCustomId(`${PREFIX}:config:police`).setLabel("Polícia").setStyle(architecture === "police" ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(!isFivemActionRuntimeEnabled("police"))
   );
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_channels:${architecture}`).setLabel("Configurar canais").setEmoji("📺").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_channels:${architecture}`).setLabel("Configurar painel").setEmoji("📺").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_actions:${architecture}`).setLabel("Cadastrar ações").setEmoji("➕").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_sheet:${architecture}`).setLabel("Cadastro da planilha").setEmoji("📄").setStyle(ButtonStyle.Secondary).setDisabled(architecture !== "police"),
     new ButtonBuilder().setCustomId(`${PREFIX}:config_publish:${architecture}`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji("📌").setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId || !settings.actionChannelId || !actions.length),
     new ButtonBuilder().setCustomId(`${PREFIX}:config:${architecture}`).setLabel("Atualizar visão").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
   );
@@ -140,16 +156,16 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
 }
 
 async function showActionConfig(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
-  if (!canManageActionsFromDiscord(interaction)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor para configurar o Sistema de Ações.", ephemeral: true });
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para configurar o Sistema de Ações.", ephemeral: true });
   const payload = actionConfigPanel(dashboard, architecture, true);
   if (interaction.replied || interaction.deferred) await interaction.editReply(payload);
   else await interaction.update(payload);
 }
 
 async function showActionChannelConfig(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
-  if (!canManageActionsFromDiscord(interaction)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor para configurar canais.", ephemeral: true });
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para configurar canais.", ephemeral: true });
   const { settings } = dashboard;
   const content = [
     `# 📺 Canais - ${architecture === "police" ? "Polícia" : "FAC"}`,
@@ -177,7 +193,8 @@ async function showActionChannelConfig(interaction: any, context: BotContext, ar
 }
 
 async function saveActionChannel(interaction: ChannelSelectMenuInteraction, context: BotContext, action: string, architecture: FivemActionArchitecture) {
-  if (!canManageActionsFromDiscord(interaction)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor para configurar canais.", ephemeral: true });
+  const current = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
+  if (!canManageActionsFromDiscord(interaction, current.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para configurar canais.", ephemeral: true });
   await interaction.deferUpdate();
   const channelId = interaction.values[0] ?? null;
   const patch = action === "channel_panel"
@@ -191,12 +208,71 @@ async function saveActionChannel(interaction: ChannelSelectMenuInteraction, cont
 }
 
 async function requestActionPanelPublish(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
-  if (!canManageActionsFromDiscord(interaction)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor para publicar painéis.", ephemeral: true });
+  const current = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+  if (!canManageActionsFromDiscord(interaction, current.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para publicar painéis.", ephemeral: true });
   await interaction.deferUpdate();
   await context.api.requestFivemActionPanelPublish(interaction.guildId, architecture, interaction.user.id);
   await processPanelRequests(interaction.client, context);
   const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
   await interaction.editReply(actionConfigPanel(dashboard, architecture, true));
+}
+
+async function showActionCreateModal(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
+  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para cadastrar ações.", ephemeral: true });
+  const modal = new ModalBuilder()
+    .setCustomId(`${PREFIX}:action_modal:${architecture}`)
+    .setTitle("Cadastrar Ação")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("name").setLabel("Nome da ação").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("maxParticipants").setLabel("Quantidade máxima de participantes").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3).setValue("6")),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("description").setLabel("Descrição").setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000))
+    );
+  await interaction.showModal(modal);
+}
+
+async function saveActionDefinition(interaction: ModalSubmitInteraction, context: BotContext, architecture: FivemActionArchitecture) {
+  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para cadastrar ações.", ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const maxParticipants = Number.parseInt(interaction.fields.getTextInputValue("maxParticipants").trim(), 10);
+  if (!Number.isInteger(maxParticipants) || maxParticipants < 1 || maxParticipants > 100) {
+    await interaction.editReply("Informe uma quantidade máxima entre 1 e 100.");
+    return;
+  }
+  const action = await context.api.createFivemActionDefinition(interaction.guildId!, architecture, {
+    color: dashboard.settings.color,
+    description: interaction.fields.getTextInputValue("description").trim(),
+    enabled: true,
+    maxParticipants,
+    name: interaction.fields.getTextInputValue("name").trim(),
+    order: dashboard.actions.length
+  }, interaction.user.id);
+  await interaction.editReply(`Ação **${action.name}** cadastrada e sincronizada com a dashboard.`);
+}
+
+async function showActionSheetModal(interaction: any, context: BotContext, architecture: FivemActionArchitecture) {
+  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para configurar a planilha.", ephemeral: true });
+  if (architecture !== "police") return void await interaction.reply({ content: "Cadastro de planilha disponível apenas em Ações Policiais.", ephemeral: true });
+  const modal = new ModalBuilder()
+    .setCustomId(`${PREFIX}:sheet_modal:${architecture}`)
+    .setTitle("Cadastro da Planilha")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("spreadsheet").setLabel("Link ou ID da Google Sheets").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(512).setValue(dashboard.settings.spreadsheetId ?? "")),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("sheetName").setLabel("Nome da aba").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(100).setValue(dashboard.settings.spreadsheetSheetName ?? "Ações Polícia"))
+    );
+  await interaction.showModal(modal);
+}
+
+async function saveActionSheet(interaction: ModalSubmitInteraction, context: BotContext, architecture: FivemActionArchitecture) {
+  const dashboard = await context.api.getFivemActionDashboard(interaction.guildId!, architecture);
+  if (!canManageActionsFromDiscord(interaction, dashboard.settings)) return void await interaction.reply({ content: "Você precisa de Gerenciar Servidor ou de um cargo autorizado para configurar a planilha.", ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const spreadsheetId = interaction.fields.getTextInputValue("spreadsheet").trim();
+  const spreadsheetSheetName = interaction.fields.getTextInputValue("sheetName").trim() || "Ações Polícia";
+  const settings = await context.api.saveFivemActionSettings(interaction.guildId!, architecture, { spreadsheetEnabled: true, spreadsheetId, spreadsheetSheetName }, interaction.user.id);
+  await interaction.editReply(settings.spreadsheetSyncError ? `Planilha salva com erro: ${settings.spreadsheetSyncError}` : "Planilha salva e conectada.");
 }
 
 async function publishMainPanel(client: Client, context: BotContext, config: FivemActionSettings) {
@@ -525,8 +601,13 @@ function sheetStatus(session: FivemActionSession) {
   return "criando/atualizando";
 }
 
-function canManageActionsFromDiscord(interaction: { memberPermissions?: { has(permission: bigint): boolean } | null }) {
-  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
+function canManageActionsFromDiscord(interaction: { member?: unknown; memberPermissions?: { has(permission: bigint): boolean } | null }, settings?: Pick<FivemActionSettings, "managerRoleIds"> | null) {
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return true;
+  const allowed = settings?.managerRoleIds?.filter(Boolean) ?? [];
+  if (!allowed.length) return false;
+  const roles = (interaction.member as { roles?: { cache?: { has(id: string): boolean }; includes?(id: string): boolean } | string[] } | null)?.roles;
+  if (Array.isArray(roles)) return allowed.some((roleId) => roles.includes(roleId));
+  return allowed.some((roleId) => roles?.cache?.has(roleId) || roles?.includes?.(roleId));
 }
 
 async function refreshFivemActionRuntimeModules(context: BotContext) {

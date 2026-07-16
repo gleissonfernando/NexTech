@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Loader2, Plus, Save, Send, Shield, Trash2 } from "lucide-react";
+import { Activity, CheckCircle2, Database, FileSpreadsheet, Loader2, Plus, Save, Send, Settings, Shield, Trash2, type LucideIcon } from "lucide-react";
 import { createFivemAction, deleteFivemAction, getFivemActions, getGuildLiveOptions, publishFivemActionsPanel, saveFivemActionSettings, updateFivemAction, uploadPanelImage } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
 import type { DashboardGuild, FivemActionArchitecture, FivemActionDashboard, FivemActionDefinition, GuildCategoryOption, GuildChannelOption } from "../../types";
@@ -60,6 +60,10 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
   const scopedDescription = architecture === "police" ? "Sistema policial separado, com painel, acoes e relatorios proprios." : "Sistema FAC separado, com painel, acoes e relatorios proprios.";
   const HeaderIcon = architecture === "police" ? Shield : Activity;
   const patchSettings = (patch: Partial<typeof settings>) => setDashboard((current) => current ? { ...current, settings: { ...current.settings, ...patch } } : current);
+  const activeSessions = dashboard.history.filter((session) => session.status === "forming" || session.status === "active").length;
+  const configuredChannels = [settings.panelChannelId, settings.actionChannelId, settings.reportChannelId].filter(Boolean).length;
+  const sheetStatus = !settings.spreadsheetEnabled ? "Desativada" : settings.spreadsheetSyncError ? "Erro" : settings.spreadsheetId ? "Conectada" : "Pendente";
+  const lastSync = settings.spreadsheetLastSyncAt ?? settings.updatedAt;
 
   async function saveSettings() { setBusy("settings"); setMessage(null); try { const saved = await saveFivemActionSettings(guild!.id, architecture, botId!, settings); patchSettings(saved); setMessage("Configurações salvas."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   async function publish() { setBusy("publish"); setMessage(null); try { const saved = await publishFivemActionsPanel(guild!.id, architecture, botId!); patchSettings(saved); setMessage("Publicação solicitada ao bot."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
@@ -72,6 +76,12 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
   return <div className="space-y-5">
     <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><HeaderIcon className="h-5 w-5 text-[#FFEA70]" />{scopedTitle}</CardTitle><CardDescription>{scopedDescription}</CardDescription></div>{fixedArchitecture ? null : <div className="flex gap-2"><Button variant={architecture === "fac" ? "default" : "outline"} onClick={() => setArchitecture("fac")}><Activity className="h-4 w-4" />FAC</Button><Button variant={architecture === "police" ? "default" : "outline"} onClick={() => setArchitecture("police")}><Shield className="h-4 w-4" />Polícia</Button></div>}</div></CardHeader></Card>
     {message ? <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 p-3 text-sm text-white">{message}</div> : null}
+    <div className="grid gap-4 md:grid-cols-4">
+      <StatusCard icon={Settings} title="Configuração" value={`${configuredChannels}/3 canais`} detail={settings.enabled ? "Sistema ativo" : "Sistema inativo"} />
+      <StatusCard icon={Shield} title="Cadastro de Ações" value={`${dashboard.actions.length} ações`} detail={`${activeSessions} em andamento`} />
+      <StatusCard icon={FileSpreadsheet} title="Cadastro da Planilha" value={sheetStatus} detail={settings.spreadsheetSheetName ?? "Ações Polícia"} danger={Boolean(settings.spreadsheetSyncError)} />
+      <StatusCard icon={Database} title="Status" value="Banco conectado" detail={`Última sincronização: ${new Date(lastSync).toLocaleString("pt-BR")}`} />
+    </div>
     <Card><CardHeader><CardTitle>Configuração {architecture === "fac" ? "FAC" : "Polícia"}</CardTitle><CardDescription>Painel principal, painel da ação e relatórios.</CardDescription></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">
       <label className="text-sm text-zinc-300">Título<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.panelTitle} disabled={!canManage} onChange={(e) => patchSettings({ panelTitle: e.target.value })} /></label>
       <label className="text-sm text-zinc-300">Cor<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" type="color" value={settings.color} disabled={!canManage} onChange={(e) => patchSettings({ color: e.target.value })} /></label>
@@ -94,9 +104,10 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
             <label className="flex items-center gap-2 text-sm"><Switch checked={settings.spreadsheetEnabled ?? false} disabled={!canManage} onCheckedChange={(spreadsheetEnabled) => patchSettings({ spreadsheetEnabled })} />Sincronizar</label>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="text-sm text-zinc-300">ID da planilha<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.spreadsheetId ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetId: e.target.value || null })} /></label>
+            <label className="text-sm text-zinc-300">Link ou ID da Google Sheets<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" placeholder="https://docs.google.com/spreadsheets/d/..." value={settings.spreadsheetId ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetId: e.target.value || null })} /></label>
             <label className="text-sm text-zinc-300">Nome da aba<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.spreadsheetSheetName ?? "Ações Polícia"} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetSheetName: e.target.value || "Ações Polícia" })} /></label>
           </div>
+          {settings.spreadsheetEnabled && settings.spreadsheetId && !settings.spreadsheetSyncError ? <p className="mt-3 flex items-center gap-2 text-sm text-emerald-300"><CheckCircle2 className="h-4 w-4" />Google conectado</p> : null}
           {settings.spreadsheetSyncError ? <p className="mt-3 text-sm text-red-300">Erro da planilha: {settings.spreadsheetSyncError}</p> : null}
           {settings.spreadsheetLastSyncAt ? <p className="mt-3 text-xs text-zinc-500">Última sincronização: {new Date(settings.spreadsheetLastSyncAt).toLocaleString("pt-BR")}</p> : null}
         </div>
@@ -106,6 +117,21 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
     <Card><CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle>Ações cadastradas</CardTitle><CardDescription>Sem ações fixas: o menu do Discord é gerado deste cadastro.</CardDescription></div><Button disabled={!canManage || busy !== null} onClick={() => void addAction()}><Plus className="h-4 w-4" />Nova ação</Button></div></CardHeader><CardContent className="space-y-3">{dashboard.actions.map((action) => <div className="grid gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 md:grid-cols-[90px_minmax(0,1fr)_160px_auto]" key={action.id}><div className="space-y-2"><input className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3" value={action.emoji ?? ""} placeholder="Emoji" disabled={!canManage} onChange={(e) => updateAction(action.id, { emoji: e.target.value || null })} /><input className="h-10 w-full rounded-lg border border-zinc-800 bg-black p-1" type="color" value={action.color} disabled={!canManage} onChange={(e) => updateAction(action.id, { color: e.target.value })} /></div><div className="space-y-2"><input className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 font-semibold" value={action.name} disabled={!canManage} onChange={(e) => updateAction(action.id, { name: e.target.value })} /><textarea className="min-h-16 w-full rounded-lg border border-zinc-800 bg-black p-3 text-sm" value={action.description} disabled={!canManage} onChange={(e) => updateAction(action.id, { description: e.target.value })} /><input className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm" value={action.imageUrl ?? ""} placeholder="URL da imagem da ação" disabled={!canManage} onChange={(e) => updateAction(action.id, { imageUrl: e.target.value || null })} /></div><div className="space-y-3"><label className="block text-xs text-zinc-400">Limite<input className="mt-2 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3" type="number" min={1} max={100} value={action.maxParticipants} disabled={!canManage} onChange={(e) => updateAction(action.id, { maxParticipants: Number(e.target.value) })} /></label><label className="block text-xs text-zinc-400">Ordem<input className="mt-2 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3" type="number" min={0} value={action.order} disabled={!canManage} onChange={(e) => updateAction(action.id, { order: Number(e.target.value) })} /></label><label className="flex items-center gap-2 text-xs text-zinc-300"><Switch checked={action.enabled} disabled={!canManage} onCheckedChange={(enabled) => updateAction(action.id, { enabled })} />Ativa</label></div><div className="flex items-start gap-2"><Button size="icon" disabled={!canManage || busy !== null} onClick={() => void saveAction(action)}>{busy === action.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}</Button><Button size="icon" variant="destructive" disabled={!canManage || busy !== null} onClick={() => void removeAction(action)}><Trash2 className="h-4 w-4" /></Button></div></div>)}{!dashboard.actions.length ? <p className="py-8 text-center text-sm text-zinc-500">Nenhuma ação cadastrada nesta arquitetura.</p> : null}</CardContent></Card>
     <Card><CardHeader><CardTitle>Histórico</CardTitle><CardDescription>Últimas 100 ações persistidas.</CardDescription></CardHeader><CardContent className="space-y-2">{dashboard.history.map((session) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 p-3" key={session.id}><div><p className="font-semibold text-white">{session.actionName}</p><p className="text-xs text-zinc-500">{new Date(session.createdAt).toLocaleString("pt-BR")} · {session.openerName} · {actionModeLabel(session.mode)}</p></div><Badge variant={session.status === "victory" ? "success" : session.status === "defeat" || session.status === "cancelled" ? "danger" : "muted"}>{actionStatusLabel(session.status)}</Badge></div>)}</CardContent></Card>
   </div>;
+}
+
+function StatusCard({ danger = false, detail, icon: Icon, title, value }: { danger?: boolean; detail: string; icon: LucideIcon; title: string; value: string }) {
+  return <Card>
+    <CardContent className="flex min-h-28 flex-col justify-between p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <Icon className={`h-4 w-4 ${danger ? "text-red-300" : "text-[#FFEA70]"}`} />
+      </div>
+      <div>
+        <p className={`text-lg font-semibold ${danger ? "text-red-300" : "text-white"}`}>{value}</p>
+        <p className="mt-1 text-xs text-zinc-500">{detail}</p>
+      </div>
+    </CardContent>
+  </Card>;
 }
 
 function Empty({ text, loading = false }: { text: string; loading?: boolean }) { return <Card><CardContent className="flex min-h-48 items-center justify-center gap-2 p-6 text-zinc-400">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}{text}</CardContent></Card>; }

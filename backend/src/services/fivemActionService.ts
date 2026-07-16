@@ -57,15 +57,21 @@ export async function saveFivemActionSettings(botId: string, guildId: string, ar
   const current = await getFivemActionSettings(botId, guildId, architecture);
   const { fivemActionSettings } = await getMongoCollections();
   const now = new Date();
+  const patch = normalizeActionSettingsInput(input);
   const shouldRefreshPanel = current.enabled && Boolean(current.panelMessageId);
-  const spreadsheetPatch = input.spreadsheetEnabled || input.spreadsheetId || input.spreadsheetSheetName
+  const spreadsheetPatch = "spreadsheetEnabled" in patch || "spreadsheetId" in patch || "spreadsheetSheetName" in patch
     ? { spreadsheetLastSyncAt: null, spreadsheetSyncError: null }
     : {};
   await fivemActionSettings.updateOne(
     { botId, guildId, architecture },
-    { $set: { ...input, ...spreadsheetPatch, ...(shouldRefreshPanel ? { lastPanelRequestedAt: now } : {}), updatedAt: now, updatedBy: actorId } }
+    { $set: { ...patch, ...spreadsheetPatch, ...(shouldRefreshPanel ? { lastPanelRequestedAt: now } : {}), updatedAt: now, updatedBy: actorId } }
   );
-  const saved = settingsDto((await fivemActionSettings.findOne({ botId, guildId, architecture }))!);
+  let savedRaw = (await fivemActionSettings.findOne({ botId, guildId, architecture }))!;
+  if (architecture === "police" && shouldTestSpreadsheetConnection(patch, savedRaw)) {
+    await testFivemActionSpreadsheet(savedRaw);
+    savedRaw = (await fivemActionSettings.findOne({ botId, guildId, architecture }))!;
+  }
+  const saved = settingsDto(savedRaw);
   emitActionUpdated(botId, guildId, architecture, "settings");
   return saved;
 }
@@ -130,7 +136,9 @@ export async function createFivemActionSession(input: { botId: string; guildId: 
 export async function updateFivemActionSessionMessage(botId: string, sessionId: string, channelId: string, messageId: string) {
   const { fivemActionSessions } = await getMongoCollections();
   await fivemActionSessions.updateOne({ _id: sessionId, botId }, { $set: { channelId, messageId, updatedAt: new Date() } });
-  return sessionDto((await fivemActionSessions.findOne({ _id: sessionId, botId }))!);
+  const session = (await fivemActionSessions.findOne({ _id: sessionId, botId }))!;
+  emitActionUpdated(session.botId, session.guildId, session.architecture, "session");
+  return sessionDto(session);
 }
 
 export async function joinFivemActionSession(botId: string, sessionId: string, participant: Omit<MongoFivemActionParticipant, "joinedAt" | "leftAt">) {
@@ -268,6 +276,58 @@ async function syncFivemActionSessionToSheet(botId: string, sessionId: string, r
     const message = error instanceof Error ? error.message : String(error);
     await setSheetSyncFailure(botId, sessionId, `${reason}: ${message}`);
     await fivemActionSettings.updateOne({ botId, guildId: session.guildId, architecture: "police" }, { $set: { spreadsheetSyncError: message, updatedAt: new Date() } });
+  }
+}
+
+function normalizeActionSettingsInput(input: ActionSettingsInput): ActionSettingsInput {
+  const patch = { ...input };
+  if ("spreadsheetId" in patch) {
+    patch.spreadsheetId = normalizeSpreadsheetId(patch.spreadsheetId);
+  }
+  if ("spreadsheetSheetName" in patch && typeof patch.spreadsheetSheetName === "string") {
+    patch.spreadsheetSheetName = patch.spreadsheetSheetName.trim() || "Ações Polícia";
+  }
+  return patch;
+}
+
+function normalizeSpreadsheetId(value: string | null | undefined) {
+  if (value == null) return value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const urlMatch = /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/.exec(trimmed);
+  const candidate = urlMatch?.[1] ?? trimmed;
+  if (!/^[a-zA-Z0-9_-]{20,}$/.test(candidate)) {
+    throw serviceError("Link ou ID da Google Sheets inválido.", 400);
+  }
+  return candidate;
+}
+
+function shouldTestSpreadsheetConnection(input: ActionSettingsInput, settings: MongoFivemActionSettings) {
+  if (!settings.spreadsheetEnabled || !settings.spreadsheetId) return false;
+  return "spreadsheetEnabled" in input || "spreadsheetId" in input || "spreadsheetSheetName" in input;
+}
+
+async function testFivemActionSpreadsheet(settings: MongoFivemActionSettings) {
+  const { fivemActionSettings } = await getMongoCollections();
+  const sheetName = settings.spreadsheetSheetName?.trim() || "Ações Polícia";
+  if (!googleSheetsConfigured()) {
+    await fivemActionSettings.updateOne(
+      { _id: settings._id },
+      { $set: { spreadsheetLastSyncAt: null, spreadsheetSyncError: "Credenciais do Google Sheets não configuradas.", updatedAt: new Date() } }
+    );
+    return;
+  }
+  try {
+    await ensureSheetHeaders({ headers: POLICE_ACTION_SHEET_HEADERS, sheetName, spreadsheetId: settings.spreadsheetId! });
+    await fivemActionSettings.updateOne(
+      { _id: settings._id },
+      { $set: { spreadsheetLastSyncAt: new Date(), spreadsheetSyncError: null, updatedAt: new Date() } }
+    );
+  } catch (error) {
+    await fivemActionSettings.updateOne(
+      { _id: settings._id },
+      { $set: { spreadsheetLastSyncAt: null, spreadsheetSyncError: error instanceof Error ? error.message : String(error), updatedAt: new Date() } }
+    );
   }
 }
 
