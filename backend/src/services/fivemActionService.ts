@@ -9,7 +9,7 @@ import {
   type MongoFivemActionSettings
 } from "../database/mongo";
 import { dashboardLogRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
-import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, googleSheetsConfigured, updateSheetRow } from "./googleSheetsService";
+import { MISSING_GOOGLE_SHEETS_CREDENTIALS_MESSAGE, appendSheetRow, ensureSheetHeaders, getGoogleSheetsServiceAccountEmail, googleSheetsConfigured, updateSheetRow } from "./googleSheetsService";
 
 export const FIVEM_ACTIONS_MODULE_ID = "fivem-actions";
 export const POLICE_ACTIONS_MODULE_ID = "police-actions";
@@ -311,10 +311,10 @@ function normalizeSpreadsheetId(value: string | null | undefined) {
   if (value == null) return value;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed) && !/^https:\/\/docs\.google\.com\/spreadsheets\/d\//i.test(trimmed)) {
+  if (/^https?:\/\//i.test(trimmed) && !/^https:\/\/docs\.google\.com\/spreadsheets\//i.test(trimmed)) {
     throw serviceError("Use um link do Google Planilhas. Links do OneDrive/Excel não são compatíveis com a integração Google Sheets.", 400);
   }
-  const urlMatch = /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/.exec(trimmed);
+  const urlMatch = /\/spreadsheets\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/.exec(trimmed);
   const candidate = urlMatch?.[1] ?? trimmed;
   if (!/^[a-zA-Z0-9_-]{20,}$/.test(candidate)) {
     throw serviceError("Link ou ID da Google Sheets inválido.", 400);
@@ -414,7 +414,7 @@ function resultText(status: MongoFivemActionSession["status"]) {
   return "Pendente";
 }
 
-function settingsDto(value: MongoFivemActionSettings) { return { ...value, id: value._id, managerRoleIds: value.managerRoleIds ?? [], spreadsheetEnabled: value.spreadsheetEnabled ?? false, spreadsheetId: value.spreadsheetId ?? null, spreadsheetSheetName: value.spreadsheetSheetName ?? null, spreadsheetLastSyncAt: value.spreadsheetLastSyncAt?.toISOString() ?? null, spreadsheetSyncError: value.spreadsheetSyncError ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastPanelRequestedAt: value.lastPanelRequestedAt?.toISOString() ?? null }; }
+function settingsDto(value: MongoFivemActionSettings) { return { ...value, id: value._id, googleSheetsServiceAccountEmail: getGoogleSheetsServiceAccountEmail(), managerRoleIds: value.managerRoleIds ?? [], spreadsheetEnabled: value.spreadsheetEnabled ?? false, spreadsheetId: value.spreadsheetId ?? null, spreadsheetSheetName: value.spreadsheetSheetName ?? null, spreadsheetLastSyncAt: value.spreadsheetLastSyncAt?.toISOString() ?? null, spreadsheetSyncError: value.spreadsheetSyncError ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastPanelRequestedAt: value.lastPanelRequestedAt?.toISOString() ?? null }; }
 function actionDto(value: MongoFivemActionDefinition) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString() }; }
 function sessionDto(value: any) { return { ...value, id: value._id, mode: value.mode ?? null, sheetRow: value.sheetRow ?? null, sheetSyncStatus: value.sheetSyncStatus ?? null, sheetSyncError: value.sheetSyncError ?? null, sheetLastSyncAt: value.sheetLastSyncAt?.toISOString() ?? null, startedAt: value.startedAt?.toISOString() ?? null, cancelledAt: value.cancelledAt?.toISOString() ?? null, cancelledBy: value.cancelledBy ?? null, cancellationReason: value.cancellationReason ?? null, finishedAt: value.finishedAt?.toISOString() ?? null, resultNote: value.resultNote ?? null, resultSummary: value.resultSummary ?? null, resultOccurrence: value.resultOccurrence ?? null, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), participants: value.participants.map((item: MongoFivemActionParticipant) => ({ ...item, position: participantPosition(item), joinedAt: item.joinedAt.toISOString(), leftAt: item.leftAt?.toISOString() ?? null })) }; }
 function serviceError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

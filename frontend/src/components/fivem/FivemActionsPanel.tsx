@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, CheckCircle2, Database, FileSpreadsheet, Loader2, Plus, Save, Send, Settings, Shield, Trash2, type LucideIcon } from "lucide-react";
+import { Activity, CheckCircle2, Copy, Database, FileSpreadsheet, Loader2, Plus, Save, Send, Settings, Shield, Trash2, type LucideIcon } from "lucide-react";
 import { createFivemAction, deleteFivemAction, getFivemActions, getGuildLiveOptions, publishFivemActionsPanel, saveFivemActionSettings, updateFivemAction, uploadPanelImage } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
 import type { DashboardGuild, FivemActionArchitecture, FivemActionDashboard, FivemActionDefinition, GuildCategoryOption, GuildChannelOption } from "../../types";
@@ -65,6 +65,7 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
   const configuredChannels = [settings.panelChannelId, settings.actionChannelId, settings.reportChannelId].filter(Boolean).length;
   const sheetStatus = !settings.spreadsheetEnabled ? "Desativada" : settings.spreadsheetSyncError ? "Erro" : settings.spreadsheetId ? "Conectada" : "Pendente";
   const lastSync = settings.spreadsheetLastSyncAt ?? settings.updatedAt;
+  const serviceAccountEmail = settings.googleSheetsServiceAccountEmail;
 
   async function saveSettings() { setBusy("settings"); setMessage(null); try { const saved = await saveFivemActionSettings(guild!.id, architecture, botId!, settings); patchSettings(saved); setMessage("Configurações salvas."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   async function publish() { setBusy("publish"); setMessage(null); try { const saved = await publishFivemActionsPanel(guild!.id, architecture, botId!); patchSettings(saved); setMessage("Publicação solicitada ao bot."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
@@ -85,6 +86,11 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
   async function saveAction(action: FivemActionDefinition) { setBusy(action.id); try { const saved = await updateFivemAction(guild!.id, architecture, botId!, action.id, action); setDashboard((current) => current ? { ...current, actions: current.actions.map((item) => item.id === saved.id ? saved : item) } : current); setMessage(`${saved.name} salva.`); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   async function removeAction(action: FivemActionDefinition) { if (!confirm(`Excluir ${action.name}?`)) return; setBusy(action.id); try { await deleteFivemAction(guild!.id, architecture, botId!, action.id); setDashboard((current) => current ? { ...current, actions: current.actions.filter((item) => item.id !== action.id) } : current); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   const updateAction = (id: string, patch: Partial<FivemActionDefinition>) => setDashboard((current) => current ? { ...current, actions: current.actions.map((item) => item.id === id ? { ...item, ...patch } : item) } : current);
+  async function copyServiceAccountEmail() {
+    if (!serviceAccountEmail) return;
+    await navigator.clipboard.writeText(serviceAccountEmail);
+    setMessage("E-mail da conta de serviço copiado.");
+  }
 
   return <div className="space-y-5">
     <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><HeaderIcon className="h-5 w-5 text-[#FFEA70]" />{scopedTitle}</CardTitle><CardDescription>{scopedDescription}</CardDescription></div>{fixedArchitecture ? null : <div className="flex gap-2"><Button variant={architecture === "fac" ? "default" : "outline"} onClick={() => setArchitecture("fac")}><Activity className="h-4 w-4" />FAC</Button><Button variant={architecture === "police" ? "default" : "outline"} onClick={() => setArchitecture("police")}><Shield className="h-4 w-4" />Polícia</Button></div>}</div></CardHeader></Card>
@@ -112,10 +118,15 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="font-semibold text-white">Google Planilhas</p>
-              <p className="mt-1 text-sm text-zinc-500">Use uma Google Sheets compartilhada com a conta de serviço. Links do OneDrive/Excel não são compatíveis.</p>
+              <p className="mt-1 text-sm text-zinc-500">Use uma Google Sheets compartilhada com a conta de serviço como Editor. Links do OneDrive/Excel não são compatíveis.</p>
             </div>
             <label className="flex items-center gap-2 text-sm"><Switch checked={settings.spreadsheetEnabled ?? false} disabled={!canManage} onCheckedChange={(spreadsheetEnabled) => patchSettings({ spreadsheetEnabled })} />Sincronizar</label>
           </div>
+          {serviceAccountEmail ? <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm text-zinc-300">
+            <span className="text-zinc-500">E-mail para compartilhar:</span>
+            <code className="break-all text-[#FFEA70]">{serviceAccountEmail}</code>
+            <Button size="icon" variant="outline" type="button" onClick={() => void copyServiceAccountEmail()} title="Copiar e-mail"><Copy className="h-4 w-4" /></Button>
+          </div> : <p className="mt-3 text-sm text-red-300">Conta de serviço do Google não configurada no backend.</p>}
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="text-sm text-zinc-300">Link ou ID da Google Planilhas<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" placeholder="https://docs.google.com/spreadsheets/d/..." value={settings.spreadsheetId ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetId: e.target.value || null })} /></label>
             <label className="text-sm text-zinc-300">Nome da aba<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.spreadsheetSheetName ?? "Ações Polícia"} disabled={!canManage} onChange={(e) => patchSettings({ spreadsheetSheetName: e.target.value || "Ações Polícia" })} /></label>

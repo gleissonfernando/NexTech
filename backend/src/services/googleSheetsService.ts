@@ -16,6 +16,10 @@ export function googleSheetsConfigured() {
   return Boolean(loadServiceAccount());
 }
 
+export function getGoogleSheetsServiceAccountEmail() {
+  return loadServiceAccount()?.client_email ?? null;
+}
+
 export async function appendSheetRow(input: { spreadsheetId: string; sheetName: string; values: unknown[] }) {
   const token = await getAccessToken();
   const url = `${SHEETS_API}/${encodeURIComponent(input.spreadsheetId)}/values/${encodeURIComponent(input.sheetName)}!A:Z:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&includeValuesInResponse=false`;
