@@ -377,7 +377,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       NODE_ENV: env.NODE_ENV,
       DISCORD_BOT_TOKEN: bot.token,
       DASHBOARD_BOT_ID: bot.id,
-      BOT_DATABASE_NAME: bot.databaseName,
+      ...(bot.databaseName ? { BOT_DATABASE_NAME: bot.databaseName } : {}),
       BOT_MAIN_GUILD_ID: bot.mainGuildId,
       BOT_COMMAND_GUILD_IDS: bot.guildIds.join(","),
       BOT_ENABLED_MODULES: bot.enabledModules.join(","),
@@ -395,7 +395,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
   };
 
   runningBots.set(bot.id, runtime);
-  child.stdout.on("data", (chunk) => {
+  child.stdout.on("data", (chunk: Buffer) => {
     const message = writeBotLog(bot.id, chunk);
 
     if (message.includes("[bot] conectado como")) {
@@ -406,7 +406,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       void updateDevBotRuntimeStatus(bot.id, "degraded", "Bot online, mas o banco esta bloqueando escritas por limite de armazenamento.");
     }
   });
-  child.stderr.on("data", (chunk) => {
+  child.stderr.on("data", (chunk: Buffer) => {
     const message = writeBotLog(bot.id, chunk, true);
     const runtimeError = botRuntimeError(message);
 
@@ -415,11 +415,11 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       void updateDevBotRuntimeStatus(bot.id, runtimeError.status, runtimeError.message);
     }
   });
-  child.on("error", (error) => {
+  child.on("error", (error: Error) => {
     runtime.lastError = `Falha ao iniciar processo: ${error.message}`;
     void updateDevBotRuntimeStatus(bot.id, "error", `Falha ao iniciar processo: ${error.message}`);
   });
-  child.on("exit", (code, signal) => {
+  child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
     const current = runningBots.get(bot.id);
 
     if (current?.child === child) {

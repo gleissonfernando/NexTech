@@ -2,7 +2,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 import axios from "axios";
 import { env } from "../config/env";
 import {
-  botDatabaseName,
   getMongoCollections,
   type MongoBotGuildConfig,
   type MongoBotGuildModuleConfig,
@@ -32,7 +31,6 @@ import { createLog } from "./logService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
 import { canAccessDevDashboard } from "./devPermissionService";
-import { queueDefaultPanelEmojiSeed } from "./defaultPanelEmojiService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
@@ -103,7 +101,7 @@ export const DEV_MODULES = [
   { id: "police-dm", label: "Policia - DM Policial" },
   { id: "rh-admin", label: "Policia - RH Administrativo" },
   { id: "police-subpoenas", label: "Policia - Intimacao" },
-  { id: "police-open-duty", label: "Polícia - Notificar / Ponto Aberto" },
+  { id: "police-open-duty", label: "Policia - Notificar / Ponto Aberto" },
   { id: "fivem-fac", label: "FiveM - FAC Ausencia" },
   { id: "avisos", label: "Mensagens e Personalizacao" }
 ] as const;
@@ -134,7 +132,6 @@ const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
   "police-hr": ["rh-admin"]
 };
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
-const RUNTIME_CONNECTED_BOT_STATUSES = new Set<MongoDevBotStatus>(["online", "syncing_config", "ready", "degraded"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);
 const RUNTIME_EXPIRED_LICENSE_STATUSES = new Set(["expired", "expirado", "expirada"]);
 const RUNTIME_BLOCKED_LICENSE_STATUSES = new Set([
@@ -291,7 +288,7 @@ export type DevBotDto = {
   slug: string;
   dashboardUrl: string;
   clientId: string;
-  databaseName: string;
+  databaseName: string | null;
   tokenMasked: string;
   secretConfigured: boolean;
   avatarUrl: string | null;
@@ -322,7 +319,6 @@ export type DashboardBotDto = Pick<
   | "slug"
   | "dashboardUrl"
   | "clientId"
-  | "databaseName"
   | "avatarUrl"
   | "ownerId"
   | "mainGuildId"
@@ -344,8 +340,8 @@ export type DashboardBotDto = Pick<
 export type DevBotRuntimeConfig = {
   id: string;
   clientId: string;
+  databaseName: string | null;
   name: string;
-  databaseName: string;
   token: string;
   mainGuildId: string;
   guildIds: string[];
@@ -802,7 +798,6 @@ export async function createDevBot(input: CreateDevBotInput) {
     name: botName,
     slug: await generateUniqueDevBotSlug(botName),
     clientId,
-    databaseName: botDatabaseName(clientId),
     tokenEncrypted: encryptSecret(token),
     tokenPrefix: tokenPrefix(token),
     tokenLast4: tokenLast4(token),
@@ -872,7 +867,6 @@ export async function createDevBot(input: CreateDevBotInput) {
     )
   ]);
   emitRealtime("dev:bot_created", toDashboardBotDto(toDevBotDto(bot)));
-  queueDefaultPanelEmojiSeed(bot._id);
 
   return toDevBotDto(bot);
 }
@@ -1002,7 +996,7 @@ export async function ensurePrimaryDevBotListed(input: EnsurePrimaryDevBotListed
   }
 
   return registerPrimaryDevBot({
-    name: connection.username || "Bot NexTech Systems",
+    name: connection.username || "Bot NexTechK",
     ownerName: input.ownerName,
     ownerId: input.ownerId,
     mainGuildId,
@@ -1408,41 +1402,28 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
     },
     {
       projection: {
-        desiredOnline: 1,
         status: 1,
         statusMessage: 1
       }
     }
   );
 
-  if (RUNTIME_CONNECTED_BOT_STATUSES.has(status) && current?.desiredOnline === false) {
-    return getDevBot(botId);
-  }
-
   if (current?.status === status && current.statusMessage === safeStatusMessage) {
     return getDevBot(botId);
   }
 
-  try {
-    await devBots.updateOne(
-      {
-        _id: botId
-      },
-      {
-        $set: {
-          status,
-          statusMessage: safeStatusMessage,
-          updatedAt: new Date()
-        }
+  await devBots.updateOne(
+    {
+      _id: botId
+    },
+    {
+      $set: {
+        status,
+        statusMessage: safeStatusMessage,
+        updatedAt: new Date()
       }
-    );
-  } catch (error) {
-    if (!isMongoWriteBlockedError(error)) {
-      throw error;
     }
-
-    console.warn(`[dev-bot:${botId}] MongoDB bloqueou escrita de status; mantendo processo em execucao sem persistir "${status}".`);
-  }
+  );
 
   const bot = await getDevBot(botId);
 
@@ -1530,26 +1511,18 @@ export async function syncDevBotProfile(
 
   const now = new Date();
 
-  try {
-    await devBots.updateOne(
-      {
-        _id: botId
-      },
-      {
-        $set: {
-          name: username,
-          avatarUrl,
-          updatedAt: now
-        }
+  await devBots.updateOne(
+    {
+      _id: botId
+    },
+    {
+      $set: {
+        name: username,
+        avatarUrl,
+        updatedAt: now
       }
-    );
-  } catch (error) {
-    if (!isMongoWriteBlockedError(error)) {
-      throw error;
     }
-
-    console.warn(`[dev-bot:${botId}] MongoDB bloqueou sincronizacao de perfil; mantendo runtime ativo.`);
-  }
+  );
 
   const updated = await devBots.findOne({ _id: botId });
   const dto = updated ? toDevBotDto(updated) : toDevBotDto({
@@ -1605,80 +1578,64 @@ export async function syncDevBotGuilds(botId: string, guilds: Array<{ id: string
   const uniqueGuilds = [...new Map(guilds.map((guild) => [guild.id, guild])).values()];
 
   if (uniqueGuilds.length) {
-    try {
-      await Promise.all([
-        guildCollection.bulkWrite(
-          uniqueGuilds.map((guild) => ({
-            updateOne: {
-              filter: {
-                _id: guild.id
+    await Promise.all([
+      guildCollection.bulkWrite(
+        uniqueGuilds.map((guild) => ({
+          updateOne: {
+            filter: {
+              _id: guild.id
+            },
+            update: {
+              $set: {
+                name: guild.name,
+                botEnabled: true,
+                updatedAt: now
               },
-              update: {
-                $set: {
-                  name: guild.name,
-                  botEnabled: true,
-                  updatedAt: now
-                },
-                $setOnInsert: {
-                  _id: guild.id,
-                  icon: null,
-                  ownerId: null,
-                  createdAt: now
-                }
+              $setOnInsert: {
+                _id: guild.id,
+                icon: null,
+                ownerId: null,
+                createdAt: now
+              }
+            },
+            upsert: true
+          }
+        }))
+      ),
+      botGuildConfigs.bulkWrite(
+        uniqueGuilds.map((guild) => ({
+          updateOne: {
+            filter: {
+              botId,
+              guildId: guild.id
+            },
+            update: {
+              $set: {
+                guildName: guild.name,
+                updatedAt: now
               },
-              upsert: true
-            }
-          }))
-        ),
-        botGuildConfigs.bulkWrite(
-          uniqueGuilds.map((guild) => ({
-            updateOne: {
-              filter: {
+              $setOnInsert: {
+                _id: randomUUID(),
                 botId,
-                guildId: guild.id
-              },
-              update: {
-                $set: {
-                  guildName: guild.name,
-                  updatedAt: now
-                },
-                $setOnInsert: {
-                  _id: randomUUID(),
-                  botId,
-                  guildId: guild.id,
-                  modules: {},
-                  createdAt: now
-                }
-              },
-              upsert: true
-            }
-          }))
-        )
-      ]);
-    } catch (error) {
-      if (!isMongoWriteBlockedError(error)) {
-        throw error;
-      }
-
-      console.warn(`[dev-bot:${botId}] MongoDB bloqueou sincronizacao de guilds; mantendo runtime ativo com dados ja persistidos.`);
-    }
+                guildId: guild.id,
+                modules: {},
+                createdAt: now
+              }
+            },
+            upsert: true
+          }
+        }))
+      )
+    ]);
   }
 
   const retainedGuildIds = [...new Set([bot.mainGuildId, ...uniqueGuilds.map((guild) => guild.id)])];
-  try {
-    await botGuildConfigs.deleteMany({
-      botId,
-      guildId: {
-        $nin: retainedGuildIds
-      }
-    });
-  } catch (error) {
-    if (!isMongoWriteBlockedError(error)) {
-      throw error;
+  await botGuildConfigs.deleteMany({
+    botId,
+    guildId: {
+      $nin: retainedGuildIds
     }
-
-    console.warn(`[dev-bot:${botId}] MongoDB bloqueou limpeza de guilds antigas; mantendo runtime ativo.`);
-  }
+  });
 }
 
 export async function listBotGuildConfigs(botId: string) {
@@ -2631,7 +2588,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     slug,
     dashboardUrl: buildDashboardUrl(slug),
     clientId: bot.clientId,
-    databaseName: bot.databaseName || botDatabaseName(bot.clientId || bot._id),
+    databaseName: bot.databaseName ?? null,
     tokenMasked: bot.tokenEncrypted ? maskedToken(bot) : "",
     secretConfigured: Boolean(bot.secretEncrypted),
     avatarUrl: bot.avatarUrl ?? null,
@@ -2747,8 +2704,8 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
   return {
     id: bot._id,
     clientId: bot.clientId,
+    databaseName: bot.databaseName ?? null,
     name: bot.name,
-    databaseName: bot.databaseName || botDatabaseName(bot.clientId || bot._id),
     token: decryptSecret(bot.tokenEncrypted),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),
@@ -2764,7 +2721,6 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     slug: bot.slug,
     dashboardUrl: bot.dashboardUrl,
     clientId: bot.clientId,
-    databaseName: bot.databaseName,
     avatarUrl: bot.avatarUrl,
     ownerId: bot.ownerId,
     mainGuildId: bot.mainGuildId,
@@ -2897,11 +2853,6 @@ function createDevBotError(message: string, statusCode: number) {
 
 function isDevBotError(error: unknown): error is Error & { statusCode: number } {
   return error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number";
-}
-
-function isMongoWriteBlockedError(error: unknown) {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return message.includes("over your space quota") || message.includes("writes are blocked");
 }
 
 function normalizeDiscordBotToken(value: string) {
