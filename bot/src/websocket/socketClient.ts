@@ -139,6 +139,10 @@ export type PoliceHiddenChannelSettingsEvent = {
   botId?: string | null;
   guildId: string;
 };
+export type VisibleMessageUsersEvent = {
+  botId?: string | null;
+  guildId: string;
+};
 export type DmBarSettingsEvent = {
   botId?: string | null;
   guildId: string;
@@ -290,6 +294,7 @@ export class BotSocketClient {
   private fivemHierarchyPanelUpdateHandler: ((payload: FivemHierarchyPanelUpdateEvent, ack?: FivemHierarchyPanelUpdateAck) => void) | null = null;
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
   private policeHiddenChannelSettingsHandler: ((payload: PoliceHiddenChannelSettingsEvent) => void) | null = null;
+  private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
   private missionToolsSettingsHandler: ((payload: MissionToolsSettingsEvent) => void) | null = null;
   private missionToolsPanelPublishHandler: ((payload: MissionToolsPanelPublishEvent) => void) | null = null;
@@ -412,6 +417,9 @@ export class BotSocketClient {
 
     if (this.policeHiddenChannelSettingsHandler) {
       this.socket.on("police-hidden-channel:settings_updated", this.policeHiddenChannelSettingsHandler);
+    }
+    if (this.visibleMessageUsersHandler) {
+      this.socket.on("visible-message:users_updated", this.visibleMessageUsersHandler);
     }
     if (this.dmBarSettingsHandler) {
       this.socket.on("dm-bar:settings_updated", this.dmBarSettingsHandler);
@@ -662,6 +670,12 @@ export class BotSocketClient {
     this.policeHiddenChannelSettingsHandler = handler;
     this.socket?.off("police-hidden-channel:settings_updated");
     this.socket?.on("police-hidden-channel:settings_updated", handler);
+  }
+
+  onVisibleMessageUsersUpdated(handler: (payload: VisibleMessageUsersEvent) => void) {
+    this.visibleMessageUsersHandler = handler;
+    this.socket?.off("visible-message:users_updated");
+    this.socket?.on("visible-message:users_updated", handler);
   }
 
   onDmBarSettingsUpdated(handler: (payload: DmBarSettingsEvent) => void) {

@@ -52,6 +52,7 @@ import { transcriptsRouter } from "./transcripts";
 import { temporaryVoiceRouter } from "./temporaryVoice";
 import { usersRouter } from "./users";
 import { voiceRecorderRouter } from "./voiceRecorder";
+import { visibleMessageRouter } from "./visibleMessage";
 import { xMonitorRouter } from "./xMonitor";
 import { xWebhookRouter } from "./xWebhook";
 
@@ -110,6 +111,7 @@ apiRouter.use("/tickets", ticketsRouter);
 apiRouter.use("/transcripts", transcriptsRouter);
 apiRouter.use("/temporary-voice", temporaryVoiceRouter);
 apiRouter.use("/voice-recorder", voiceRecorderRouter);
+apiRouter.use("/visible-message", visibleMessageRouter);
 apiRouter.use("/logs", logsRouter);
 apiRouter.use("/manual-registration", manualRegistrationRouter);
 apiRouter.use("/manual-payments", manualPaymentsRouter);

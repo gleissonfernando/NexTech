@@ -144,6 +144,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Mensagens de usuários cadastrados reenviadas com nome e avatar do próprio membro via webhook.",
+    id: "visible-message",
+    permissions: "Admin Polícia, Liderança",
+    title: "Mensagem Visível"
+  },
+  {
+    builtIn: true,
     description: "Atendimento por DM policial com registro, encaminhamento e histórico.",
     id: "police-dm",
     permissions: "Admin Polícia, Atendimento",

@@ -1,166 +1,283 @@
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   GuildMember,
-  ModalBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  TextInputBuilder,
-  TextInputStyle,
+  UserSelectMenuBuilder,
   type ChatInputCommandInteraction,
   type Interaction,
-  type ModalSubmitInteraction,
+  type Message,
   type TextBasedChannel,
   type TextChannel
 } from "discord.js";
+import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
+import type { VisibleMessageUser } from "./apiClient";
 
+const MODULE_ID = "visible-message";
 const WEBHOOK_NAME = "NexTech Mensagem Visível";
-const MODAL_PREFIX = "visible_message_once";
-const MESSAGE_INPUT_ID = "message";
+const PREFIX = "visible_message";
+const CACHE_TTL_MS = 30_000;
+const activeUserCache = new Map<string, { enabled: boolean; expiresAt: number }>();
 
-export const visibleMessageCommand: BotCommand = {
+export const visibleMessageActivateCommand: BotCommand = {
   data: new SlashCommandBuilder()
-    .setName("mensagem")
-    .setDescription("Envia uma única mensagem visível com seu nome e avatar."),
+    .setName("mensagem-ativar")
+    .setDescription("Abre o painel para ativar mensagens visíveis para usuários.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  moduleId: MODULE_ID,
   async execute(interaction, context) {
-    await openVisibleMessageModal(interaction, context);
+    await openVisibleMessagePanel(interaction, context);
   }
 };
 
-export async function handleVisibleMessageInteraction(interaction: Interaction, _context: BotContext) {
-  if (!interaction.isModalSubmit() || !interaction.customId.startsWith(`${MODAL_PREFIX}:`)) {
+export const visibleMessageDeactivateCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("mensagem-desativar")
+    .setDescription("Abre o painel para remover usuários da Mensagem Visível.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  moduleId: MODULE_ID,
+  async execute(interaction, context) {
+    await openVisibleMessagePanel(interaction, context, "remove");
+  }
+};
+
+export async function handleVisibleMessageInteraction(interaction: Interaction, context: BotContext) {
+  if (!interaction.guild || !interaction.isRepliable() || !("customId" in interaction)) return false;
+  const customId = String(interaction.customId);
+  if (!customId.startsWith(`${PREFIX}:`)) return false;
+
+  if (!interaction.member || !canManage(interaction.member as GuildMember)) {
+    await interaction.reply({ content: "Você não tem permissão para gerenciar a Mensagem Visível.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (interaction.isButton() && customId === `${PREFIX}:add`) {
+    await interaction.update(panelPayload(await context.api.listVisibleMessageUsers(interaction.guild.id), "add"));
+    return true;
+  }
+
+  if (interaction.isButton() && customId === `${PREFIX}:remove`) {
+    await interaction.update(panelPayload(await context.api.listVisibleMessageUsers(interaction.guild.id), "remove"));
+    return true;
+  }
+
+  if (interaction.isButton() && customId === `${PREFIX}:refresh`) {
+    await interaction.update(panelPayload(await context.api.listVisibleMessageUsers(interaction.guild.id)));
+    return true;
+  }
+
+  if (interaction.isButton() && customId === `${PREFIX}:clear`) {
+    await context.api.clearVisibleMessageUsers(interaction.guild.id, interaction.user.id);
+    clearVisibleMessageCache(interaction.guild.id);
+    await interaction.update(panelPayload([]));
+    return true;
+  }
+
+  if (interaction.isUserSelectMenu() && customId === `${PREFIX}:select_add`) {
+    const userId = interaction.values[0];
+    const member = userId ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
+    const user = member?.user ?? (userId ? await interaction.client.users.fetch(userId).catch(() => null) : null);
+    if (!userId || !user) {
+      await interaction.reply({ content: "Não foi possível identificar o usuário selecionado.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+
+    await context.api.addVisibleMessageUser(interaction.guild.id, {
+      avatarUrl: member?.displayAvatarURL({ forceStatic: false, size: 128 }) ?? user.displayAvatarURL({ forceStatic: false, size: 128 }),
+      userId,
+      username: member?.displayName ?? user.globalName ?? user.username
+    }, interaction.user.id);
+    clearVisibleMessageCache(interaction.guild.id, userId);
+    await interaction.update(panelPayload(await context.api.listVisibleMessageUsers(interaction.guild.id)));
+    return true;
+  }
+
+  if (interaction.isUserSelectMenu() && customId === `${PREFIX}:select_remove`) {
+    const userId = interaction.values[0];
+    if (userId) {
+      await context.api.removeVisibleMessageUser(interaction.guild.id, userId, interaction.user.id);
+      clearVisibleMessageCache(interaction.guild.id, userId);
+    }
+    await interaction.update(panelPayload(await context.api.listVisibleMessageUsers(interaction.guild.id)));
+    return true;
+  }
+
+  return false;
+}
+
+export async function handleVisibleMessageMessage(message: Message, context: BotContext) {
+  if (!isBotModuleEnabled(MODULE_ID) || !message.guild || message.author.bot || message.webhookId) return false;
+
+  const enabled = await isActiveVisibleUser(message.guild.id, message.author.id, context).catch((error) => {
+    console.warn("[visible-message] falha ao consultar usuário:", error instanceof Error ? error.message : error);
+    return false;
+  });
+  if (!enabled) return false;
+
+  if (!message.channel.isTextBased() || message.channel.isDMBased() || !("permissionsFor" in message.channel)) return false;
+  const channel = message.channel as TextBasedChannel & TextChannel;
+  const me = message.guild.members.me ?? await message.guild.members.fetchMe().catch(() => null);
+  const permissions = me ? channel.permissionsFor(me) : null;
+  if (!permissions?.has(PermissionFlagsBits.SendMessages) || !permissions.has(PermissionFlagsBits.ManageMessages) || !permissions.has(PermissionFlagsBits.ManageWebhooks)) {
+    console.warn(`[visible-message] permissões insuficientes guild=${message.guild.id} channel=${message.channelId}`);
     return false;
   }
 
-  await sendVisibleMessageFromModal(interaction);
-  return true;
-}
+  const payload = relayPayload(message);
+  if (!payload.content && !payload.files?.length && !payload.embeds?.length) return false;
 
-async function openVisibleMessageModal(interaction: ChatInputCommandInteraction, _context: BotContext) {
-  if (!interaction.guild || !interaction.channel || interaction.channel.isDMBased()) {
-    await interaction.reply({ content: "Use este comando dentro de um canal de texto do servidor.", ephemeral: true });
-    return;
-  }
-
-  if (!interaction.channel.isTextBased() || !("permissionsFor" in interaction.channel)) {
-    await interaction.reply({ content: "Este canal não aceita envio de mensagens visíveis.", ephemeral: true });
-    return;
-  }
-
-  const interactionMember = interaction.member instanceof GuildMember ? interaction.member : null;
-  const member = await interaction.guild.members.fetch({ force: true, user: interaction.user.id }).catch(() => interactionMember);
-  const channel = interaction.channel as TextBasedChannel & TextChannel;
-  const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
-  const botPermissions = me ? channel.permissionsFor(me) : null;
-
-  if (!botPermissions?.has(PermissionFlagsBits.SendMessages) || !botPermissions.has(PermissionFlagsBits.ManageWebhooks)) {
-    await interaction.reply({
-      content: "Não consigo enviar a mensagem visível neste canal. Preciso das permissões Enviar Mensagens e Gerenciar Webhooks.",
-      ephemeral: true
-    });
-    return;
-  }
-
-  const memberPermissions = member ? channel.permissionsFor(member) : null;
-  if (!memberPermissions?.has(PermissionFlagsBits.SendMessages)) {
-    await interaction.reply({ content: "Você não tem permissão para enviar mensagens neste canal.", ephemeral: true });
-    return;
-  }
-
-  const modal = new ModalBuilder()
-    .setCustomId(buildModalId(interaction.guild.id, channel.id, interaction.user.id))
-    .setTitle("Mensagem visível");
-
-  modal.addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(
-      new TextInputBuilder()
-        .setCustomId(MESSAGE_INPUT_ID)
-        .setLabel("Digite sua mensagem")
-        .setMaxLength(1900)
-        .setRequired(true)
-        .setStyle(TextInputStyle.Paragraph)
-    )
-  );
-
-  await interaction.showModal(modal);
-}
-
-async function sendVisibleMessageFromModal(interaction: ModalSubmitInteraction) {
-  const parsed = parseModalId(interaction.customId);
-  if (!parsed) {
-    await interaction.reply({ content: "Não foi possível identificar o envio da mensagem.", ephemeral: true });
-    return;
-  }
-
-  if (parsed.userId !== interaction.user.id) {
-    await interaction.reply({ content: "Este envio pertence a outro usuário.", ephemeral: true });
-    return;
-  }
-
-  if (!interaction.guild || interaction.guild.id !== parsed.guildId) {
-    await interaction.reply({ content: "Use este recurso dentro do servidor correto.", ephemeral: true });
-    return;
-  }
-
-  const text = interaction.fields.getTextInputValue(MESSAGE_INPUT_ID).trim();
-  if (!text) {
-    await interaction.reply({ content: "Digite uma mensagem para enviar.", ephemeral: true });
-    return;
-  }
-
-  const fetchedChannel = await interaction.guild.channels.fetch(parsed.channelId).catch(() => null);
-  if (!fetchedChannel?.isTextBased() || fetchedChannel.isDMBased() || !("permissionsFor" in fetchedChannel)) {
-    await interaction.reply({ content: "O canal onde o comando foi usado não está disponível para envio.", ephemeral: true });
-    return;
-  }
-
-  const channel = fetchedChannel as TextBasedChannel & TextChannel;
-  const interactionMember = interaction.member instanceof GuildMember ? interaction.member : null;
-  const member = await interaction.guild.members.fetch({ force: true, user: interaction.user.id }).catch(() => interactionMember);
-  const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
-  const botPermissions = me ? channel.permissionsFor(me) : null;
-
-  if (!botPermissions?.has(PermissionFlagsBits.SendMessages) || !botPermissions.has(PermissionFlagsBits.ManageWebhooks)) {
-    await interaction.reply({
-      content: "Não consigo enviar a mensagem visível neste canal. Preciso das permissões Enviar Mensagens e Gerenciar Webhooks.",
-      ephemeral: true
-    });
-    return;
-  }
-
-  const memberPermissions = member ? channel.permissionsFor(member) : null;
-  if (!memberPermissions?.has(PermissionFlagsBits.SendMessages)) {
-    await interaction.reply({ content: "Você não tem permissão para enviar mensagens neste canal.", ephemeral: true });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
+  const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+  const identity = resolveVisibleIdentity(message, member);
 
   try {
-    const visibleIdentity = resolveVisibleIdentity(interaction, member);
     const webhook = await getOrCreateVisibleWebhook(channel);
+    await message.delete();
     await webhook.send({
       allowedMentions: { parse: [] },
-      avatarURL: visibleIdentity.avatarURL,
-      content: text,
-      username: visibleIdentity.username
+      avatarURL: identity.avatarURL,
+      content: payload.content,
+      embeds: payload.embeds,
+      files: payload.files,
+      username: identity.username
     });
-
-    await interaction.editReply(`Mensagem visível enviada como ${visibleIdentity.username}.`);
-    setTimeout(() => {
-      void interaction.deleteReply().catch(() => undefined);
-    }, 5_000).unref();
+    return true;
   } catch (error) {
-    console.error("[visible-message] falha ao enviar:", error instanceof Error ? error.message : error);
-    await interaction.editReply("Não foi possível enviar a mensagem visível neste canal.");
+    console.error("[visible-message] falha ao retransmitir:", error instanceof Error ? error.message : error);
+    return false;
   }
 }
 
-function resolveVisibleIdentity(interaction: ChatInputCommandInteraction | ModalSubmitInteraction, member: GuildMember | null) {
-  const displayName = resolveServerDisplayName(interaction, member);
+export function clearVisibleMessageCache(guildId?: string | null, userId?: string | null) {
+  if (!guildId) {
+    activeUserCache.clear();
+    return;
+  }
+
+  if (userId) {
+    activeUserCache.delete(cacheKey(guildId, userId));
+    return;
+  }
+
+  for (const key of activeUserCache.keys()) {
+    if (key.startsWith(`${guildId}:`)) activeUserCache.delete(key);
+  }
+}
+
+async function openVisibleMessagePanel(interaction: ChatInputCommandInteraction, context: BotContext, mode?: "remove") {
+  if (!interaction.guild || !interaction.member) {
+    await interaction.reply({ content: "Use este comando dentro de um servidor.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!canManage(interaction.member as GuildMember)) {
+    await interaction.reply({ content: "Apenas Administrador ou Gerenciar Servidor pode gerenciar a Mensagem Visível.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const users = await context.api.listVisibleMessageUsers(interaction.guild.id);
+  await interaction.reply(panelPayload(users, mode));
+}
+
+function panelPayload(users: VisibleMessageUser[], mode?: "add" | "remove") {
+  const components: any[] = [
+    {
+      type: 17,
+      accent_color: 0x22c55e,
+      components: [
+        { type: 10, content: panelText(users) },
+        actionRow()
+      ]
+    }
+  ];
+
+  if (mode === "add") {
+    components[0].components.push(
+      new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId(`${PREFIX}:select_add`)
+          .setPlaceholder("Selecione o usuário para cadastrar")
+          .setMinValues(1)
+          .setMaxValues(1)
+      )
+    );
+  }
+
+  if (mode === "remove") {
+    components[0].components.push(removeSelect(users));
+  }
+
+  return {
+    components,
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  };
+}
+
+function panelText(users: VisibleMessageUser[]) {
+  const lines = users.slice(0, 40).map((user) => `• ${user.username || `<@${user.userId}>`}`);
+  const hidden = users.length > 40 ? `\n• ... mais ${users.length - 40} usuário(s)` : "";
+  return [
+    "# Mensagem Visível",
+    "━━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "## Usuários ativos",
+    lines.length ? lines.join("\n") + hidden : "Nenhum usuário cadastrado.",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `**Total:** ${users.length} usuário(s)`
+  ].join("\n");
+}
+
+function actionRow() {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Cadastrar Pessoa").setEmoji("➕").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover Pessoa").setEmoji("➖").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar").setEmoji("🔄").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:clear`).setLabel("Limpar Todos").setEmoji("🗑️").setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function removeSelect(users: VisibleMessageUser[]) {
+  const select = new UserSelectMenuBuilder()
+    .setCustomId(`${PREFIX}:select_remove`)
+    .setPlaceholder(users.length ? "Selecione o usuário para remover" : "Nenhum usuário cadastrado")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .setDisabled(!users.length);
+
+  return new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select);
+}
+
+async function isActiveVisibleUser(guildId: string, userId: string, context: BotContext) {
+  const key = cacheKey(guildId, userId);
+  const cached = activeUserCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.enabled;
+
+  const enabled = await context.api.isVisibleMessageUserEnabled(guildId, userId);
+  activeUserCache.set(key, { enabled, expiresAt: Date.now() + CACHE_TTL_MS });
+  return enabled;
+}
+
+function relayPayload(message: Message) {
+  return {
+    content: message.content ? message.content.slice(0, 2000) : undefined,
+    embeds: message.embeds.map((embed) => embed.toJSON()).slice(0, 10),
+    files: message.attachments.map((attachment) => ({
+      attachment: attachment.url,
+      name: attachment.name ?? `arquivo-${attachment.id}`
+    })).slice(0, 10)
+  };
+}
+
+function resolveVisibleIdentity(message: Message, member: GuildMember | null) {
+  const displayName = member?.displayName || message.author.globalName || message.author.username;
   const avatarURL = member?.avatarURL({ forceStatic: false, size: 256 })
     ?? member?.displayAvatarURL({ forceStatic: false, size: 256 })
-    ?? interaction.user.displayAvatarURL({ forceStatic: false, size: 256 });
+    ?? message.author.displayAvatarURL({ forceStatic: false, size: 256 });
 
   return {
     avatarURL,
@@ -168,24 +285,11 @@ function resolveVisibleIdentity(interaction: ChatInputCommandInteraction | Modal
   };
 }
 
-function resolveServerDisplayName(interaction: ChatInputCommandInteraction | ModalSubmitInteraction, member: GuildMember | null) {
-  const rawMember = interaction.member;
-  const interactionNick = rawMember && typeof rawMember === "object" && "nick" in rawMember && typeof rawMember.nick === "string"
-    ? rawMember.nick
-    : null;
-
-  return interactionNick
-    || member?.nickname
-    || member?.displayName
-    || interaction.user.globalName
-    || interaction.user.username;
-}
-
 async function getOrCreateVisibleWebhook(channel: TextChannel) {
   const webhooks = await channel.fetchWebhooks();
   const existing = webhooks.find((webhook) => webhook.name === WEBHOOK_NAME && webhook.owner?.id === channel.client.user?.id);
   if (existing) return existing;
-  return channel.createWebhook({ name: WEBHOOK_NAME, reason: "Envio de mensagens visíveis pelo comando /mensagem" });
+  return channel.createWebhook({ name: WEBHOOK_NAME, reason: "Mensagem Visível" });
 }
 
 function sanitizeWebhookUsername(username: string) {
@@ -198,12 +302,10 @@ function sanitizeWebhookUsername(username: string) {
   return normalized || "Usuário";
 }
 
-function buildModalId(guildId: string, channelId: string, userId: string) {
-  return `${MODAL_PREFIX}:${guildId}:${channelId}:${userId}`;
+function canManage(member: GuildMember) {
+  return member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild);
 }
 
-function parseModalId(customId: string) {
-  const [prefix, guildId, channelId, userId] = customId.split(":");
-  if (prefix !== MODAL_PREFIX || !guildId || !channelId || !userId) return null;
-  return { channelId, guildId, userId };
+function cacheKey(guildId: string, userId: string) {
+  return `${guildId}:${userId}`;
 }

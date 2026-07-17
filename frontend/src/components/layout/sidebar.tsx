@@ -19,6 +19,7 @@ import {
   ListTree,
   ListChecks,
   LockKeyhole,
+  MessageCircle,
   Mic2,
   Music2,
   Radio,
@@ -90,6 +91,7 @@ export type ViewId =
   | "police-subpoenas"
   | "police-patrol-reports"
   | "police-hidden-channel"
+  | "visible-message"
   | "police-dm"
   | "police-open-duty"
   | "police-time-clock"
@@ -176,6 +178,7 @@ const navItems: NavItem[] = [
   { id: "police-subpoenas", label: "Intimação", icon: ScrollText, moduleId: "police-subpoenas" },
   { id: "police-patrol-reports", label: "Relatórios Políciais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
   { id: "police-hidden-channel", label: "Canal Oculto", icon: EyeOff, moduleId: "police-hidden-channel" },
+  { id: "visible-message", label: "Mensagem Visível", icon: MessageCircle, moduleId: "visible-message" },
   { id: "police-dm", label: "Barra DM", icon: UserPlus, moduleId: "police-dm" },
   { id: "police-open-duty", label: "Notificar / Ponto", icon: Bell, moduleId: "police-open-duty" },
   { id: "police-time-clock", label: "Relógio de Ponto", icon: CalendarClock, moduleId: "police-time-clock" },
@@ -207,6 +210,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.id === "police-subpoenas"
     || item.id === "police-patrol-reports"
     || item.id === "police-hidden-channel"
+    || item.id === "visible-message"
     || item.id === "police-dm"
     || item.id === "police-open-duty"
     || item.id === "police-time-clock"
@@ -220,6 +224,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.moduleId === "police-subpoenas"
     || item.moduleId === "police-patrol-reports"
     || item.moduleId === "police-hidden-channel"
+    || item.moduleId === "visible-message"
     || item.moduleId === "police-dm"
     || item.moduleId === "police-open-duty"
     || item.moduleId === "police-time-clock"

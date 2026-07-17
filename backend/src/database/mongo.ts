@@ -2379,6 +2379,20 @@ export type MongoPoliceHiddenChannelLog = {
   createdAt: Date;
 };
 
+export type MongoVisibleMessageUser = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string | null;
+  avatarUrl: string | null;
+  enabled: boolean;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedBy: string | null;
+  updatedAt: Date;
+};
+
 export type MongoDmBarConfig = {
   _id: string;
   accentColor: string;
@@ -4228,6 +4242,7 @@ export async function getMongoCollections() {
     policePatrolFiles: db.collection<MongoPolicePatrolFile>("police_patrol_files"),
     policeHiddenChannelSettings: db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings"),
     policeHiddenChannelLogs: db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs"),
+    visibleMessageUsers: db.collection<MongoVisibleMessageUser>("visible_message_users"),
     dmBarConfigs: db.collection<MongoDmBarConfig>("dm_bar_configs"),
     dmBarLogs: db.collection<MongoDmBarLog>("dm_bar_logs"),
     fivemFacSettings: db.collection<MongoFivemFacSettings>("fivem_fac_settings"),
@@ -4971,6 +4986,8 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs").createIndex({ botId: 1, originalMessageId: 1 }, { unique: true }),
+    db.collection<MongoVisibleMessageUser>("visible_message_users").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    db.collection<MongoVisibleMessageUser>("visible_message_users").createIndex({ botId: 1, guildId: 1, enabled: 1, updatedAt: -1 }),
     db.collection<MongoDmBarConfig>("dm_bar_configs").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDmBarLog>("dm_bar_logs").createIndex({ botId: 1, guildId: 1, sentAt: -1 }),
     db.collection<MongoDmBarLog>("dm_bar_logs").createIndex({ botId: 1, senderId: 1, sentAt: -1 })

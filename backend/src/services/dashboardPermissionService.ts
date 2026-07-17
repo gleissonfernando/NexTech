@@ -25,7 +25,7 @@ const ACCESS_LEVEL_RANK: Record<DashboardAccessLevel, number> = {
   admin: 4
 };
 
-const PREMIUM_MODULE_IDS = new Set(["live", "kick-integration", "clips", "kick-clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "server-generator", "rules", "account-age-security", "safe-bot", "anti-abuse", "anti-disconnect", "courses", "rh-admin", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-washing", "fivem-drugs", "fivem-ammo", "fivem-finance", "fivem-goals", "fivem-hierarchy", "police-absences", "police-actions", "police-iab", "police-hr", "police-daf-roster", "police-courses", "police-patrol-reports", "police-hidden-channel", "police-dm", "police-subpoenas", "police-open-duty", "fivem-fac"]);
+const PREMIUM_MODULE_IDS = new Set(["live", "kick-integration", "clips", "kick-clips", "giveaway", "network", "x-monitor", "mission-tools", "voice-recorder", "emoji-cloner", "server-cloner", "server-generator", "rules", "account-age-security", "safe-bot", "anti-abuse", "anti-disconnect", "courses", "rh-admin", "fivem", "fivem-factions", "fivem-corporations", "fivem-absences", "fivem-orders", "fivem-washing", "fivem-drugs", "fivem-ammo", "fivem-finance", "fivem-goals", "fivem-hierarchy", "police-absences", "police-actions", "police-iab", "police-hr", "police-daf-roster", "police-courses", "police-patrol-reports", "police-hidden-channel", "visible-message", "police-dm", "police-subpoenas", "police-open-duty", "fivem-fac"]);
 const BASIC_READ_MODULE_IDS = new Set(["logs", "tickets"]);
 const CRITICAL_MODULE_IDS = new Set(["verification"]);
 
