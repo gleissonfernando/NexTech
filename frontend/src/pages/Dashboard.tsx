@@ -7131,6 +7131,7 @@ function PoliceIabPanel({
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <MultiRoleSelect disabled={disabled} label="Quem pode usar /intimacao" onChange={(values) => patch({ competenceCommandRoleIds: values })} roles={options.roles} values={draft.competenceCommandRoleIds} />
+              <FivemResourceSelect disabled={disabled} label="Categoria das Intimações" onChange={(value) => patch({ subpoenaCategoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="📁" value={draft.subpoenaCategoryId} />
               <TicketField disabled={disabled} label="Prazo padrão" onChange={(value) => patch({ defaultDeadline: value })} value={draft.defaultDeadline} />
               <TicketField disabled={disabled} label="Banner da DM" onChange={(value) => patch({ dmBannerUrl: value || null })} value={draft.dmBannerUrl ?? ""} />
               <TicketField disabled={disabled} label="Banner do painel interno" onChange={(value) => patch({ subpoenaPanelBannerUrl: value || null })} value={draft.subpoenaPanelBannerUrl ?? ""} />

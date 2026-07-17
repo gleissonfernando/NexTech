@@ -197,6 +197,7 @@ export type ReportSystemSettings = {
   panelEmoji: string | null;
   panelPlaceholder: string;
   panelTitle: string;
+  subpoenaCategoryId: string | null;
   subpoenaDmText: string;
   subpoenaPanelBannerUrl: string | null;
   permissionRoleIds: string[];

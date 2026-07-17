@@ -133,6 +133,7 @@ const settingsSchema = z.object({
     panelEmoji: z.string().max(80).nullable().optional(),
     panelPlaceholder: z.string().max(120).optional(),
     panelTitle: z.string().max(120).optional(),
+    subpoenaCategoryId: z.string().nullable().optional(),
     subpoenaDmText: z.string().max(1000).optional(),
     subpoenaPanelBannerUrl: z.string().url().max(2048).nullable().optional(),
     permissionRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
@@ -1226,6 +1227,13 @@ async function validateGuildResources(
     && !(await isGuildCategoryChannel(guildId, input.reportSystem.categoryId, botToken))
   ) {
     throw createSettingsError("A categoria de denuncias não pertence a este servidor.");
+  }
+
+  if (
+    input.reportSystem?.subpoenaCategoryId
+    && !(await isGuildCategoryChannel(guildId, input.reportSystem.subpoenaCategoryId, botToken))
+  ) {
+    throw createSettingsError("A categoria de intimações não pertence a este servidor.");
   }
 
   const reportCategoryIds = [

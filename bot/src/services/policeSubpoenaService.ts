@@ -412,7 +412,10 @@ async function createSubpoenaChannel(guild: Guild, settings: GuildSettings, stat
   }
 
   const report = settings.reportSystem;
-  const parent = await resolveSubpoenaParent(guild, report, state.finalCompetence);
+  const parent = await resolveSubpoenaParent(guild, report);
+  if (!parent) {
+    return { channel: null, error: "Configure a Categoria das Intimações na dashboard antes de criar intimações." };
+  }
   const roleIds = filterExistingRoles(guild, orgRoleIds(report, state.finalCompetence));
   if (!roleIds.length) {
     return { channel: null, error: `Configure pelo menos um cargo responsável para o órgão ${COMPETENCE_LABEL[state.finalCompetence]} antes de criar intimações.` };
@@ -590,7 +593,7 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
 }
 
 async function sendCompetenceDestinationNotice(guild: Guild, settings: GuildSettings, state: CaseState, executorId: string, subpoenaChannel: TextChannel) {
-  const destinationId = categoryFor(settings.reportSystem, state.finalCompetence);
+  const destinationId = logFor(settings.reportSystem, state.finalCompetence);
   if (!destinationId || destinationId === subpoenaChannel.id) return;
   const destination = await guild.channels.fetch(destinationId).catch(() => null);
   if (!destination?.isTextBased() || !("send" in destination)) return;
@@ -732,13 +735,10 @@ function canManageCase(member: GuildMember, report: ReportSystemSettings, state:
 function subpoenaStaffDisplayName(report: ReportSystemSettings, state: CaseState) { return state.finalCompetence === "iab" ? report.anonymousInvestigatorName || "Equipe IAB" : `Equipe ${COMPETENCE_LABEL[state.finalCompetence]}`; }
 function orgRoleIds(report: ReportSystemSettings, competence: Competence) { const fallback = competence === "iab" ? [...report.viewRoleIds, ...report.replyRoleIds, ...report.adminRoleIds] : []; return [...new Set((competence === "iab" ? report.iabRoleIds : competence === "conselho" ? report.conselhoRoleIds : competence === "hcmd" ? report.hcmdRoleIds : report.comissarioRoleIds).concat(fallback))]; }
 function allOrgRoleIds(report: ReportSystemSettings) { return [...new Set([...orgRoleIds(report, "iab"), ...orgRoleIds(report, "conselho"), ...orgRoleIds(report, "hcmd"), ...orgRoleIds(report, "comissario")])]; }
-function categoryFor(report: ReportSystemSettings, competence: Competence) { return competence === "iab" ? report.iabCategoryId ?? report.categoryId : competence === "conselho" ? report.conselhoCategoryId ?? report.categoryId : competence === "hcmd" ? report.hcmdCategoryId ?? report.categoryId : report.comissarioCategoryId ?? report.categoryId; }
-async function resolveSubpoenaParent(guild: Guild, report: ReportSystemSettings, competence: Competence) {
-  const destinationId = categoryFor(report, competence);
-  const destination = destinationId ? await guild.channels.fetch(destinationId).catch(() => null) : null;
-  if (destination?.type === ChannelType.GuildCategory) return destination.id;
-  const fallback = report.categoryId && report.categoryId !== destinationId ? await guild.channels.fetch(report.categoryId).catch(() => null) : null;
-  return fallback?.type === ChannelType.GuildCategory ? fallback.id : undefined;
+async function resolveSubpoenaParent(guild: Guild, report: ReportSystemSettings) {
+  if (!report.subpoenaCategoryId) return null;
+  const category = await guild.channels.fetch(report.subpoenaCategoryId).catch(() => null);
+  return category?.type === ChannelType.GuildCategory ? category.id : null;
 }
 function filterExistingRoles(guild: Guild, roleIds: string[]) { return [...new Set(roleIds)].filter((roleId) => guild.roles.cache.has(roleId)); }
 function logFor(report: ReportSystemSettings, competence: Competence) { return competence === "iab" ? report.iabLogChannelId ?? report.logChannelId : competence === "conselho" ? report.conselhoLogChannelId ?? report.logChannelId : competence === "hcmd" ? report.hcmdLogChannelId ?? report.logChannelId : report.comissarioLogChannelId ?? report.logChannelId; }

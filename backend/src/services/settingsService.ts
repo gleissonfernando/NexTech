@@ -203,6 +203,7 @@ export type ReportSystemSettingsDto = {
   panelEmoji: string | null;
   panelPlaceholder: string;
   panelTitle: string;
+  subpoenaCategoryId: string | null;
   subpoenaDmText: string;
   subpoenaPanelBannerUrl: string | null;
   permissionRoleIds: string[];
@@ -1321,6 +1322,7 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     panelEmoji: fixedSystemEmojiText("alerta"),
     panelPlaceholder: "Selecione o órgão competente",
     panelTitle: "Denúncias IAB",
+    subpoenaCategoryId: null,
     subpoenaDmText: "Você recebeu uma intimacao institucional. Acesse o canal indicado e responda dentro do prazo.",
     subpoenaPanelBannerUrl: null,
     permissionRoleIds: [],
@@ -1383,6 +1385,7 @@ function normalizeReportSystemSettings(value: unknown, fallback = defaultReportS
     panelEmoji: normalizeNullableSystemEmojiText(record.panelEmoji),
     panelPlaceholder: normalizeNullableText(record.panelPlaceholder, 120) ?? fallback.panelPlaceholder,
     panelTitle: normalizeNullableText(record.panelTitle, 120) ?? fallback.panelTitle,
+    subpoenaCategoryId: normalizeSnowflake(String(record.subpoenaCategoryId ?? "")),
     subpoenaDmText: normalizeNullableText(record.subpoenaDmText, 1000) ?? fallback.subpoenaDmText,
     subpoenaPanelBannerUrl: normalizeUrl(record.subpoenaPanelBannerUrl),
     permissionRoleIds: normalizeSnowflakes(asArray(record.permissionRoleIds)),
