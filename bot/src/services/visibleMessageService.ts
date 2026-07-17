@@ -69,8 +69,8 @@ async function sendVisibleMessage(interaction: ChatInputCommandInteraction, _con
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const webhook = await getOrCreateVisibleWebhook(channel);
     const visibleIdentity = resolveVisibleIdentity(interaction, member);
+    const webhook = await getOrCreateVisibleWebhook(channel);
     await webhook.send({
       allowedMentions: { parse: [] },
       avatarURL: visibleIdentity.avatarURL,
@@ -87,9 +87,13 @@ async function sendVisibleMessage(interaction: ChatInputCommandInteraction, _con
 }
 
 function resolveVisibleIdentity(interaction: ChatInputCommandInteraction, member: GuildMember | null) {
+  const displayName = member?.displayName || interaction.user.globalName || interaction.user.username;
+  const avatarURL = member?.displayAvatarURL({ forceStatic: false, size: 256 })
+    ?? interaction.user.displayAvatarURL({ forceStatic: false, size: 256 });
+
   return {
-    avatarURL: member?.displayAvatarURL({ size: 256 }) ?? interaction.user.displayAvatarURL({ size: 256 }),
-    username: (member?.displayName || interaction.user.globalName || interaction.user.username).slice(0, 80)
+    avatarURL,
+    username: sanitizeWebhookUsername(displayName)
   };
 }
 
@@ -105,4 +109,14 @@ function attachmentToFile(attachment: Attachment) {
     attachment: attachment.url,
     name: attachment.name ?? `arquivo-${attachment.id}`
   };
+}
+
+function sanitizeWebhookUsername(username: string) {
+  const normalized = username
+    .replace(/@everyone/gi, "everyone")
+    .replace(/@here/gi, "here")
+    .trim()
+    .slice(0, 80);
+
+  return normalized || "Usuário";
 }
