@@ -82,7 +82,7 @@ type FiveMModuleView = FivemModuleDefinition & {
 
 const MAINTENANCE_GIF_URL = "/maintenance/nft-coding.gif";
 
-export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashboardProps) {
+export function DevDashboard({ auth, initialView = "bots" }: DevDashboardProps) {
   const [profile, setProfile] = useState<DashboardMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -183,26 +183,6 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
         activeView={activeView}
         onChangeView={handleChangeView}
       />
-      <header className="sticky top-0 z-20 border-b border-[#FFD500]/15 bg-[#050505]/88 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl lg:px-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#FFEA70]/45 bg-[#FFD500]/15 text-[#FFEA70] shadow-[0_0_34px_rgba(255,213,0,0.28)]">
-              <Code2 className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold text-white">Painel DEV</h1>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
-            <Button className="shrink-0" onClick={() => window.location.replace("/dashboard")} variant="outline">
-              <LayoutDashboard className="h-4 w-4" />
-              Dashboard
-            </Button>
-            <DevHeaderUser user={auth.user} onLogout={onLogout} />
-          </div>
-        </div>
-      </header>
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
         {!isBotManagerView(activeView) ? <DevUserCard user={auth.user} canViewDev={profile.canViewDev} /> : null}
@@ -336,26 +316,6 @@ function DevSidebar({
         ))}
       </nav>
     </aside>
-  );
-}
-
-function DevHeaderUser({ onLogout, user }: { onLogout: () => void; user: AuthResponse["user"] }) {
-  return (
-    <button
-      className="group flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-left shadow-[0_16px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl transition duration-300 hover:border-[#FFEA70]/35 hover:bg-[#FFD500]/10 hover:shadow-[0_0_34px_rgba(255,213,0,0.18)]"
-      onClick={onLogout}
-      title="Sair"
-      type="button"
-    >
-      <div className="relative shrink-0">
-        <Avatar className="h-10 w-10 rounded-full border border-[#FFEA70]/40 sm:h-11 sm:w-11" fallback={user.globalName || user.username} src={user.avatarUrl ?? user.avatar} />
-        <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#111114] bg-emerald-400" />
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-white">{user.globalName || user.username}</p>
-        <p className="hidden truncate text-xs font-medium text-zinc-300 sm:block">@{user.username}</p>
-      </div>
-    </button>
   );
 }
 
