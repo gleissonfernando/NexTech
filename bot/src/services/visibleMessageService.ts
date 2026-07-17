@@ -1,9 +1,9 @@
 import {
+  GuildMember,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type Attachment,
   type ChatInputCommandInteraction,
-  type GuildMember,
   type TextBasedChannel,
   type TextChannel
 } from "discord.js";
@@ -39,7 +39,8 @@ async function sendVisibleMessage(interaction: ChatInputCommandInteraction, _con
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => interaction.member as GuildMember | null);
+  const interactionMember = interaction.member instanceof GuildMember ? interaction.member : null;
+  const member = await interaction.guild.members.fetch({ force: true, user: interaction.user.id }).catch(() => interactionMember);
   const channel = interaction.channel as TextBasedChannel & TextChannel;
   const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
   const botPermissions = me ? channel.permissionsFor(me) : null;
@@ -80,6 +81,9 @@ async function sendVisibleMessage(interaction: ChatInputCommandInteraction, _con
     });
 
     await interaction.editReply(`Mensagem visível enviada como ${visibleIdentity.username}.`);
+    setTimeout(() => {
+      void interaction.deleteReply().catch(() => undefined);
+    }, 5_000).unref();
   } catch (error) {
     console.error("[visible-message] falha ao enviar:", error instanceof Error ? error.message : error);
     await interaction.editReply("Não foi possível enviar a mensagem visível neste canal.");
@@ -87,14 +91,28 @@ async function sendVisibleMessage(interaction: ChatInputCommandInteraction, _con
 }
 
 function resolveVisibleIdentity(interaction: ChatInputCommandInteraction, member: GuildMember | null) {
-  const displayName = member?.displayName || interaction.user.globalName || interaction.user.username;
-  const avatarURL = member?.displayAvatarURL({ forceStatic: false, size: 256 })
+  const displayName = resolveServerDisplayName(interaction, member);
+  const avatarURL = member?.avatarURL({ forceStatic: false, size: 256 })
+    ?? member?.displayAvatarURL({ forceStatic: false, size: 256 })
     ?? interaction.user.displayAvatarURL({ forceStatic: false, size: 256 });
 
   return {
     avatarURL,
     username: sanitizeWebhookUsername(displayName)
   };
+}
+
+function resolveServerDisplayName(interaction: ChatInputCommandInteraction, member: GuildMember | null) {
+  const rawMember = interaction.member;
+  const interactionNick = rawMember && typeof rawMember === "object" && "nick" in rawMember && typeof rawMember.nick === "string"
+    ? rawMember.nick
+    : null;
+
+  return interactionNick
+    || member?.nickname
+    || member?.displayName
+    || interaction.user.globalName
+    || interaction.user.username;
 }
 
 async function getOrCreateVisibleWebhook(channel: TextChannel) {
