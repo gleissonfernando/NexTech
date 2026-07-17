@@ -1105,7 +1105,30 @@ export function DevPanel({
   }
 
   if (activeDashboardSection === "sales") {
-    return null;
+    return (
+      <div className="space-y-7">
+        <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
+        {message ? (
+          <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
+            {message}
+          </div>
+        ) : null}
+        {selectedBot ? (
+          <NexTechSalesWorkspace
+            bot={selectedBot}
+            enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
+            guilds={guilds}
+            onToggle={(checked) => void handleToggleModule(selectedBot, "nex-tech-sales", checked)}
+          />
+        ) : (
+          <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)]">
+            <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
+              Selecione um bot para abrir o Sistema de Vendas e configurar pagamentos.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
   }
 
   return (
