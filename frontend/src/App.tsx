@@ -266,7 +266,7 @@ function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "clo
     return "cloning";
   }
 
-  if (path.startsWith("/dev/vendas-nex-tech")) {
+  if (path.startsWith("/dev/sistema-de-vendas") || path.startsWith("/dev/vendas-nex-tech")) {
     return "sales";
   }
 

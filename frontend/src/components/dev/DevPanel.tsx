@@ -122,7 +122,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
-  { id: "nex-tech-sales", label: "Nex Tech - Sistema de Vendas" },
+  { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },
@@ -434,8 +434,8 @@ const botMenuItems: BotMenuItem[] = [
   },
   {
     id: "sales",
-    label: "Vendas Nex Tech",
-    description: "Planos, pagamentos e liberacoes do bot Nex Tech",
+    label: "Sistema de Vendas",
+    description: "Produtos, tickets, pagamentos e fila de vendas",
     icon: CreditCard,
     moduleIds: ["nex-tech-sales"]
   },
@@ -3200,6 +3200,21 @@ function NexTechSalesWorkspace({
     setSettingsForm(settingsToForm(data.settings));
   }
 
+  useEffect(() => {
+    if (!enabled || !guildId) return;
+
+    const socket = createDashboardSocket();
+    const refreshSalesDashboard = (payload: { botId?: string | null; guildId?: string | null } = {}) => {
+      if (payload.botId === bot.id && payload.guildId === guildId) void refreshDashboard();
+    };
+
+    socket.on("nex-tech-sales:sale_paid", refreshSalesDashboard);
+    return () => {
+      socket.off("nex-tech-sales:sale_paid", refreshSalesDashboard);
+      socket.disconnect();
+    };
+  }, [bot.id, enabled, guildId]);
+
   async function handleSaveSettings() {
     if (!guildId) return;
     setSaving("settings");
@@ -3402,6 +3417,9 @@ function NexTechSalesWorkspace({
   }
 
   const stats = dashboard?.stats;
+  const scrollToSalesSection = (sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div className="space-y-6">
@@ -3411,10 +3429,10 @@ function NexTechSalesWorkspace({
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2 text-white">
                 <CreditCard className="h-5 w-5 text-[#FFEA70]" />
-                Vendas Nex Tech
+                Sistema de Vendas
               </CardTitle>
               <CardDescription className="mt-2 font-medium text-zinc-300">
-                Bot principal: 1492325134550302952. Planos, pagamentos, imagens e vendas por servidor.
+                Central de produtos, tickets de compra, pagamentos, fila e histórico para qualquer bot da NextTech.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -3436,13 +3454,23 @@ function NexTechSalesWorkspace({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-3 p-5 pt-0 sm:grid-cols-2 lg:grid-cols-6 sm:p-6 sm:pt-0">
-          <SalesMetric label="Receita paga" value={formatMoney(stats?.revenueCents ?? 0, dashboard?.settings.currency ?? "BRL")} />
-          <SalesMetric label="Clientes" value={String(stats?.customers ?? 0)} />
-          <SalesMetric label="Pagas" value={String(stats?.paidSales ?? 0)} />
-          <SalesMetric label="Pendentes" value={String(stats?.pendingSales ?? 0)} />
-          <SalesMetric label="Planos ativos" value={String(stats?.activePlans ?? 0)} />
-          <SalesMetric label="Assinaturas" value={String(stats?.subscriptions ?? 0)} />
+        <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SalesMetric label="Total de Tickets" value={String(stats?.totalSales ?? 0)} />
+            <SalesMetric label="Tickets Hoje" value={String(stats?.salesToday ?? 0)} />
+            <SalesMetric label="Vendas Hoje" value={String(stats?.salesToday ?? 0)} />
+            <SalesMetric label="Receita Hoje" value={formatMoney(stats?.revenueTodayCents ?? 0, dashboard?.settings.currency ?? "BRL")} />
+            <SalesMetric label="Produtos Ativos" value={String(stats?.activeProducts ?? 0)} />
+            <SalesMetric label="Produtos Inativos" value={String(stats?.inactiveProducts ?? 0)} />
+            <SalesMetric label="QR Codes aguardando pagamento" value={String(stats?.pendingSales ?? 0)} />
+            <SalesMetric label="Compras concluídas" value={String(stats?.paidSales ?? 0)} />
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-[#FFD500]/10 pt-4">
+            <Button onClick={() => scrollToSalesSection("sales-products")}><Plus className="h-4 w-4" />Novo Produto</Button>
+            <Button onClick={() => scrollToSalesSection("sales-settings")} variant="outline"><Settings className="h-4 w-4" />Configurar Sistema</Button>
+            <Button onClick={() => scrollToSalesSection("sales-tickets")} variant="outline"><Ticket className="h-4 w-4" />Visualizar Tickets</Button>
+            <Button onClick={() => scrollToSalesSection("sales-history")} variant="outline"><ScrollText className="h-4 w-4" />Histórico</Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -3461,7 +3489,7 @@ function NexTechSalesWorkspace({
             <div>
               <p className="text-base font-bold text-white">Sistema de vendas bloqueado neste bot</p>
               <p className="mt-1 max-w-xl text-sm font-medium text-zinc-300">
-                Libere o módulo Nex Tech - Sistema de Vendas para o bot selecionado antes de configurar planos, pagamentos e vendas.
+                Libere o módulo Sistema de Vendas para o bot selecionado antes de configurar produtos, tickets, pagamentos e fila.
               </p>
             </div>
             <Button onClick={onEnable}>
@@ -3478,10 +3506,10 @@ function NexTechSalesWorkspace({
         </Card>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-settings">
             <CardHeader>
-              <CardTitle className="text-white">Configuração publica</CardTitle>
-              <CardDescription>Textos, canais, URL e imagens dos paineis de venda.</CardDescription>
+              <CardTitle className="text-white">Configurar Sistema</CardTitle>
+              <CardDescription>Textos, canais, URL, permissões e imagens dos painéis de venda.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3571,9 +3599,9 @@ function NexTechSalesWorkspace({
             </Card>
           </div>
 
-          <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0 xl:col-span-2">
+          <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0 xl:col-span-2" id="sales-products">
             <CardHeader>
-              <CardTitle className="text-white">Produtos</CardTitle>
+              <CardTitle className="text-white">Cadastro de Produtos</CardTitle>
               <CardDescription>Paginas de venda com banner, planos mensal/vitalicio, benefícios e checkout vinculado ao gateway da loja.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
@@ -3751,10 +3779,10 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
-          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-tickets">
             <CardHeader>
-              <CardTitle className="text-white">Planos de venda</CardTitle>
-              <CardDescription>Produtos vendidos pelo bot principal Nex Tech.</CardDescription>
+              <CardTitle className="text-white">Visualizar Tickets</CardTitle>
+              <CardDescription>Planos usados nos tickets de compra e no checkout dos clientes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3798,10 +3826,10 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
-          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-history">
             <CardHeader>
-              <CardTitle className="text-white">Vendas e liberacoes</CardTitle>
-              <CardDescription>Registro manual ou confirmação de pagamentos recebidos.</CardDescription>
+              <CardTitle className="text-white">Histórico</CardTitle>
+              <CardDescription>Tickets, vendas, pagamentos recebidos e liberações entregues.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">

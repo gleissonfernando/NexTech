@@ -16,7 +16,7 @@ import type {
 import { getMongoCollections } from "../database/mongo";
 import { env } from "../config/env";
 import { createMercadoPagoPreference as createMercadoPagoCheckoutPreference } from "./mercadoPagoService";
-import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { decryptSecret, encryptSecret } from "./secretCryptoService";
 
 export const NEX_TECH_SALES_MODULE_ID = "nex-tech-sales";
@@ -73,10 +73,14 @@ export type NexTechSalesDashboardDto = {
   lifetimeLicenses: NexTechLifetimeLicenseDto[];
   stats: {
     activePlans: number;
+    activeProducts: number;
     customers: number;
+    inactiveProducts: number;
     paidSales: number;
     pendingSales: number;
     revenueCents: number;
+    revenueTodayCents: number;
+    salesToday: number;
     subscriptions: number;
     salesThisMonth: number;
     totalSales: number;
@@ -225,16 +229,46 @@ export async function getNexTechSalesDashboard(botId: string, guildId: string, o
   const settings = await ensureNexTechSalesSettings(botId, guildId, ownerUserId);
   const scope = tenantScope(botId, guildId, ownerUserId, settings.storeId);
   await reconcileLifetimeHostingCharges(settings);
-  const [plans, products, sales, customers, subscriptions, lifetimeLicenses] = await Promise.all([
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const [plans, products, sales, customers, subscriptions, lifetimeLicenses, totalSales, paidSales, pendingSales, salesToday, salesThisMonth, activeProducts, inactiveProducts, revenueRows, revenueTodayRows] = await Promise.all([
     nexTechSalesPlans.find(scope).sort({ createdAt: -1 }).toArray(),
     nexTechProducts.find(scope).sort({ updatedAt: -1 }).toArray(),
     nexTechSales.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
     nexTechCustomers.countDocuments(scope),
     nexTechSubscriptions.countDocuments({ ...scope, status: "active" }),
-    nexTechSubscriptions.find({ ...scope, productPlanType: "lifetime" }).sort({ createdAt: -1 }).toArray()
+    nexTechSubscriptions.find({ ...scope, productPlanType: "lifetime" }).sort({ createdAt: -1 }).toArray(),
+    nexTechSales.countDocuments(scope),
+    nexTechSales.countDocuments({ ...scope, status: "paid" }),
+    nexTechSales.countDocuments({ ...scope, status: "pending" }),
+    nexTechSales.countDocuments({ ...scope, createdAt: { $gte: todayStart } }),
+    nexTechSales.countDocuments({ ...scope, createdAt: { $gte: monthStart } }),
+    nexTechProducts.countDocuments({ ...scope, active: true }),
+    nexTechProducts.countDocuments({ ...scope, active: false }),
+    nexTechSales.aggregate<{ total: number }>([
+      { $match: { ...scope, status: "paid" } },
+      { $group: { _id: null, total: { $sum: "$amountCents" } } }
+    ]).toArray(),
+    nexTechSales.aggregate<{ total: number }>([
+      { $match: { ...scope, status: "paid", paidAt: { $gte: todayStart } } },
+      { $group: { _id: null, total: { $sum: "$amountCents" } } }
+    ]).toArray()
   ]);
 
-  return toDashboardDto(settings, plans, products, sales, customers, subscriptions, lifetimeLicenses);
+  return toDashboardDto(settings, plans, products, sales, customers, subscriptions, lifetimeLicenses, {
+    activeProducts,
+    inactiveProducts,
+    paidSales,
+    pendingSales,
+    revenueCents: revenueRows[0]?.total ?? 0,
+    revenueTodayCents: revenueTodayRows[0]?.total ?? 0,
+    salesThisMonth,
+    salesToday,
+    totalSales
+  });
 }
 
 export async function ensureNexTechSalesSettings(botId: string, guildId: string, ownerUserId: string) {
@@ -984,12 +1018,19 @@ function toDashboardDto(
   sales: MongoNexTechSale[],
   customers: number,
   subscriptions: number,
-  lifetimeLicenses: MongoNexTechSubscription[]
+  lifetimeLicenses: MongoNexTechSubscription[],
+  totals?: {
+    activeProducts: number;
+    inactiveProducts: number;
+    paidSales: number;
+    pendingSales: number;
+    revenueCents: number;
+    revenueTodayCents: number;
+    salesThisMonth: number;
+    salesToday: number;
+    totalSales: number;
+  }
 ): NexTechSalesDashboardDto {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
   return {
     settings: toSettingsDto(settings),
     plans: plans.map(toPlanDto),
@@ -998,13 +1039,17 @@ function toDashboardDto(
     lifetimeLicenses: lifetimeLicenses.map(toLifetimeLicenseDto),
     stats: {
       activePlans: plans.filter((plan) => plan.enabled).length,
+      activeProducts: totals?.activeProducts ?? products.filter((product) => product.active).length,
       customers,
-      paidSales: sales.filter((sale) => sale.status === "paid").length,
-      pendingSales: sales.filter((sale) => sale.status === "pending").length,
-      revenueCents: sales.filter((sale) => sale.status === "paid").reduce((total, sale) => total + sale.amountCents, 0),
-      salesThisMonth: sales.filter((sale) => sale.createdAt >= monthStart).length,
+      inactiveProducts: totals?.inactiveProducts ?? products.filter((product) => !product.active).length,
+      paidSales: totals?.paidSales ?? sales.filter((sale) => sale.status === "paid").length,
+      pendingSales: totals?.pendingSales ?? sales.filter((sale) => sale.status === "pending").length,
+      revenueCents: totals?.revenueCents ?? sales.filter((sale) => sale.status === "paid").reduce((total, sale) => total + sale.amountCents, 0),
+      revenueTodayCents: totals?.revenueTodayCents ?? 0,
+      salesThisMonth: totals?.salesThisMonth ?? sales.length,
+      salesToday: totals?.salesToday ?? 0,
       subscriptions,
-      totalSales: sales.length
+      totalSales: totals?.totalSales ?? sales.length
     }
   };
 }
@@ -1481,7 +1526,7 @@ async function queueNexTechSaleDelivery(
     }
   );
 
-  emitRealtimeToRoom(devBotRealtimeRoom(settings.botId), "nex-tech-sales:sale_paid", {
+  const payload = {
     amountCents: sale.amountCents,
     botId: settings.botId,
     buyerId,
@@ -1496,7 +1541,9 @@ async function queueNexTechSaleDelivery(
     purchasedRoleId,
     saleChannelId: normalizeSnowflake(settings.saleChannelId) ?? normalizeSnowflake(settings.logChannelId),
     saleId: sale._id
-  });
+  };
+  emitRealtime("nex-tech-sales:sale_paid", payload);
+  emitRealtimeToRoom(devBotRealtimeRoom(settings.botId), "nex-tech-sales:sale_paid", payload);
 }
 
 async function renewLifetimeHosting(settings: MongoNexTechSalesSettings, sale: MongoNexTechSale, now: Date) {

@@ -220,7 +220,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
             { id: "connected" as const, label: "Bots conectados" },
             { id: "bot-menu" as const, label: "Menu do Bot" },
             { id: "cloning" as const, label: "Clonagem" },
-            { id: "sales" as const, label: "Vendas" },
+            { id: "sales" as const, label: "Sistema de Vendas" },
             { id: "plans" as const, label: "Planos" },
             { id: "discloud" as const, label: "DisCloud" },
             { id: "fivem" as const, label: "FiveM" },
@@ -292,7 +292,7 @@ function devPathForView(view: DevView) {
   if (view === "connected") return "/dev/bots-conectados";
   if (view === "bot-menu") return "/dev/menu-do-bot";
   if (view === "cloning") return "/dev/clonagem";
-  if (view === "sales") return "/dev/vendas-nex-tech";
+  if (view === "sales") return "/dev/sistema-de-vendas";
   if (view === "plans") return "/dev/planos";
   if (view === "discloud") return "/dev/discloud";
   if (view === "fivem") return "/dev/fivem";
@@ -327,7 +327,7 @@ function DevSidebar({
     { icon: Boxes, id: "connected", label: "Bots conectados" },
     { icon: Settings, id: "bot-menu", label: "Menu do Bot" },
     { icon: Copy, id: "cloning", label: "Clonagem" },
-    { icon: CreditCard, id: "sales", label: "Vendas Nex Tech" },
+    { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
     { icon: PackagePlus, id: "plans", label: "Planos" },
     { icon: Activity, id: "discloud", label: "Monitoramento DisCloud" },
     { icon: Building2, id: "fivem", label: "FiveM" },

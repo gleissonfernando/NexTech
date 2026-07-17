@@ -3039,10 +3039,14 @@ export type NexTechSalesDashboard = {
   settings: NexTechSalesSettings;
   stats: {
     activePlans: number;
+    activeProducts: number;
     customers: number;
+    inactiveProducts: number;
     paidSales: number;
     pendingSales: number;
     revenueCents: number;
+    revenueTodayCents: number;
+    salesToday: number;
     subscriptions: number;
     salesThisMonth: number;
     totalSales: number;

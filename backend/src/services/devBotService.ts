@@ -41,7 +41,7 @@ export const DEV_MODULES = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
-  { id: "nex-tech-sales", label: "Nex Tech - Sistema de Vendas" },
+  { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "manual-payments", label: "Sistema de Pagamentos" },
   { id: "price-tables", label: "Tabela de Precos" },
   { id: "network", label: "Rede Social dos Membros" },
