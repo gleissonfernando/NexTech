@@ -135,18 +135,22 @@ async function sendDraft(interaction: ButtonInteraction, context: BotContext, dr
     : await context.api.getOpenDutySettings(draft.guildId);
   const target = await interaction.client.users.fetch(draft.targetId).catch(() => null);
   if (!target) return interaction.followUp({ content: "Usuário não encontrado.", ephemeral: true });
+  const finalMessage = draft.edited
+    ? ensureMentionTargets(draft.message, target, settings)
+    : renderMessage(settings.defaultMessage, target, settings);
+  const finalDraft = { ...draft, message: finalMessage };
 
   try {
-    await target.send(dmPayload(settings, target, draft.message));
+    await target.send(dmPayload(settings, target, finalMessage));
     drafts.delete(draftId);
     const result = await context.api.recordOpenDutyDelivery(draft.guildId, {
       edited: draft.edited,
       executorId: draft.executorId,
-      message: draft.message,
+      message: finalMessage,
       status: "sent",
       targetId: draft.targetId
     });
-    await sendLog(interaction, settings, target, draft, "sent", null, result.counterTotal);
+    await sendLog(interaction, settings, target, finalDraft, "sent", null, result.counterTotal);
     if (result.alertTriggered) await sendAlert(interaction, settings, target, result.counterTotal);
     return interaction.followUp({ content: `Notificação enviada com sucesso para ${target}.`, ephemeral: true });
   } catch {
@@ -154,11 +158,11 @@ async function sendDraft(interaction: ButtonInteraction, context: BotContext, dr
       edited: draft.edited,
       errorReason: "DM fechada ou bloqueada.",
       executorId: draft.executorId,
-      message: draft.message,
+      message: finalMessage,
       status: "failed",
       targetId: draft.targetId
     }).catch(() => null);
-    await sendLog(interaction, settings, target, draft, "failed", "DM fechada ou bloqueada.", 0);
+    await sendLog(interaction, settings, target, finalDraft, "failed", "DM fechada ou bloqueada.", 0);
     return interaction.followUp({ content: `Não foi possível enviar DM para ${target}.`, ephemeral: true });
   }
 }
@@ -187,12 +191,13 @@ async function submitEdit(interaction: ModalSubmitInteraction, context: BotConte
     : await context.api.getOpenDutySettings(draft.guildId);
   const target = await interaction.client.users.fetch(draft.targetId).catch(() => null);
   const message = interaction.fields.getTextInputValue("message");
-  drafts.set(draftId, { ...draft, edited: true, message });
+  const previewMessage = target ? ensureMentionTargets(message, target, settings) : message;
+  drafts.set(draftId, { ...draft, edited: true, message: previewMessage });
   await interaction.reply({
     ...panel(settings, {
       actions: [confirmEditedRow(draftId, settings)],
       description: `Previa editada para ${target ? `${target}` : `<@${draft.targetId}>`}:`,
-      fields: [message],
+      fields: [previewMessage],
       title: "Confirmar Envio"
     }),
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
