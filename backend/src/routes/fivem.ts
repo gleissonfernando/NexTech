@@ -75,6 +75,8 @@ const optionalSnowflakeSchema = z.union([snowflakeSchema, z.literal(""), z.null(
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const facSettingsSchema = z.object({
   enabled: z.boolean().optional(),
+  categoryId: optionalSnowflakeSchema,
+  channelCloseMode: z.enum(["keep", "lock", "delete"]).optional(),
   panelChannelId: optionalSnowflakeSchema,
   absenceRoleId: optionalSnowflakeSchema,
   autoApproveEnabled: z.boolean().optional(),
@@ -1247,6 +1249,10 @@ async function validateFacResources(guildId: string, botId: string, input: z.inf
     await assertPanelChannelReady(guildId, botId, input.panelChannelId);
   }
 
+  if (input.categoryId && !(await isGuildCategoryChannel(guildId, input.categoryId, botToken))) {
+    throw createRouteError("A categoria de ausências FiveM não pertence a este servidor.", 400);
+  }
+
   const roleIds = [
     input.absenceRoleId,
     ...(input.autoApproveRoleIds ?? []),
@@ -1367,6 +1373,10 @@ function normalizeFacSettingsInput(input: z.infer<typeof facSettingsSchema>) {
 
   if ("absenceRoleId" in input) {
     normalized.absenceRoleId = normalizeOptionalId(input.absenceRoleId);
+  }
+
+  if ("categoryId" in input) {
+    normalized.categoryId = normalizeOptionalId(input.categoryId);
   }
 
   if ("logChannelId" in input) {

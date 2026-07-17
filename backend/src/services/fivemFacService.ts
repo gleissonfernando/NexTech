@@ -24,6 +24,8 @@ export type FivemFacSettingsDto = {
   botId: string;
   guildId: string;
   enabled: boolean;
+  categoryId: string | null;
+  channelCloseMode: "keep" | "lock" | "delete";
   panelChannelId: string | null;
   panelMessageId: string | null;
   absenceRoleId: string | null;
@@ -103,6 +105,8 @@ export type FivemFacHistoryResetResult = {
 
 export type SaveFivemFacSettingsInput = {
   enabled?: boolean;
+  categoryId?: string | null;
+  channelCloseMode?: "keep" | "lock" | "delete";
   panelChannelId?: string | null;
   absenceRoleId?: string | null;
   autoApproveEnabled?: boolean;
@@ -146,8 +150,8 @@ const FAC_PHOTO_MIME_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp"
 };
 const DEFAULT_MESSAGES: MongoFivemFacMessages = {
-  panelTitle: `${fixedSystemEmojiText("calendario")} Solicitar Ausência`,
-  panelDescription: "Informe a data de retorno e o motivo da sua ausência.",
+  panelTitle: `${fixedSystemEmojiText("calendario")} Sistema de Ausências`,
+  panelDescription: "Informe nome RP, data de início, data de retorno e motivo da sua ausência.",
   requestCreated: "Sua solicitação de ausência foi enviada para aprovação.",
   approved: "Sua ausência foi aprovada.",
   rejected: "Sua ausência foi reprovada.",
@@ -199,6 +203,8 @@ export function defaultFivemFacSettings(botId: string, guildId: string): FivemFa
     botId,
     guildId,
     enabled: false,
+    categoryId: null,
+    channelCloseMode: "lock",
     panelChannelId: null,
     panelMessageId: null,
     absenceRoleId: null,
@@ -260,6 +266,8 @@ export async function saveFivemFacSettings(guildId: string, botId: string, input
   const now = new Date();
   const next = {
     enabled: input.enabled ?? current.enabled,
+    categoryId: normalizeNullableSnowflake(input.categoryId, current.categoryId),
+    channelCloseMode: input.channelCloseMode ?? current.channelCloseMode,
     panelChannelId: normalizeNullableSnowflake(input.panelChannelId, current.panelChannelId),
     absenceRoleId: normalizeNullableSnowflake(input.absenceRoleId, current.absenceRoleId),
     autoApproveEnabled: input.autoApproveEnabled ?? current.autoApproveEnabled,
@@ -312,7 +320,7 @@ export async function saveFivemFacSettings(guildId: string, botId: string, input
     guildId,
     type: "fivem.fac.settings_updated",
     userId: actorId,
-    message: "Configuração do FAC atualizada.",
+    message: "Configuração do Sistema de Ausências FiveM atualizada.",
     metadata: {
       action: "settings_updated",
       changedKeys: Object.keys(input),
@@ -1430,6 +1438,8 @@ function toSettingsDto(settings: MongoFivemFacSettings): FivemFacSettingsDto {
     guildId: settings.guildId,
     enabled: settings.enabled === true,
     panelChannelId: settings.panelChannelId ?? null,
+    categoryId: settings.categoryId ?? null,
+    channelCloseMode: settings.channelCloseMode ?? "lock",
     panelMessageId: settings.panelMessageId ?? null,
     absenceRoleId: settings.absenceRoleId ?? null,
     autoApproveEnabled: settings.autoApproveEnabled === true,

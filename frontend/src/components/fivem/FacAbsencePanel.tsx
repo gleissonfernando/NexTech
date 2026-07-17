@@ -12,7 +12,8 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
-  UserCheck
+  UserCheck,
+  type LucideIcon
 } from "lucide-react";
 import {
   getFivemFac,
@@ -28,6 +29,7 @@ import type {
   FivemFacAbsenceStatus,
   FivemFacMessages,
   FivemFacSettings,
+  GuildCategoryOption,
   GuildChannelOption,
   GuildLiveOptions,
   GuildRoleOption
@@ -46,8 +48,8 @@ type FacAbsencePanelProps = {
 };
 
 const defaultMessages: FivemFacMessages = {
-  panelTitle: "<:calendario:1525682184948547724> Solicitar Ausência",
-  panelDescription: "Informe a data de retorno e o motivo da sua ausência.",
+  panelTitle: "<:calendario:1525682184948547724> Sistema de Ausências",
+  panelDescription: "Informe nome RP, data de início, data de retorno e motivo da sua ausência.",
   requestCreated: "Sua solicitação de ausência foi enviada para aprovação.",
   approved: "Sua ausência foi aprovada.",
   rejected: "Sua ausência foi reprovada.",
@@ -60,6 +62,8 @@ const emptySettings: FivemFacSettings = {
   botId: "",
   guildId: "",
   enabled: false,
+  categoryId: null,
+  channelCloseMode: "lock",
   panelChannelId: null,
   panelMessageId: null,
   absenceRoleId: null,
@@ -81,6 +85,7 @@ const FAC_PHOTO_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/
 export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: FacAbsencePanelProps) {
   const [settings, setSettings] = useState<FivemFacSettings>(emptySettings);
   const [absences, setAbsences] = useState<FivemFacAbsence[]>([]);
+  const [categories, setCategories] = useState<GuildCategoryOption[]>([]);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,14 +107,14 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
         saveSuccess: "Configuração de ausência policial salva."
       }
     : {
-        description: "Ausências para facções e organizações.",
-        empty: "Selecione um bot e um servidor para configurar o FiveM FAC.",
-        loadError: "Não foi possível carregar o FAC.",
-        panelTitle: "FiveM FAC",
-        publishError: "Não foi possível publicar o painel FAC.",
-        saveButton: "Salvar FAC",
-        saveError: "Não foi possível salvar o FAC.",
-        saveSuccess: "Configuração do FAC salva."
+        description: "Ausências FiveM para facções, organizações ou qualquer servidor RP.",
+        empty: "Selecione um bot e um servidor para configurar o Sistema de Ausências FiveM.",
+        loadError: "Não foi possível carregar o Sistema de Ausências FiveM.",
+        panelTitle: "Sistema de Ausências",
+        publishError: "Não foi possível publicar o painel de ausências FiveM.",
+        saveButton: "Salvar Ausências",
+        saveError: "Não foi possível salvar o Sistema de Ausências FiveM.",
+        saveSuccess: "Configuração do Sistema de Ausências FiveM salva."
       };
   const assignableRoles = useMemo(() => roles.filter((role) => role.assignable), [roles]);
   const regularRoles = useMemo(() => roles.filter((role) => role.id !== guild?.id), [roles, guild?.id]);
@@ -135,6 +140,7 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
 
       setSettings(fac.settings);
       setAbsences(fac.absences);
+      setCategories(options.categories ?? []);
       setChannels(options.channels);
       setRoles(options.roles);
     }
@@ -209,6 +215,8 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
         autoApproveEnabled: settings.autoApproveEnabled,
         autoApproveMaxDays: settings.autoApproveMaxDays,
         autoApproveRoleIds: settings.autoApproveRoleIds,
+        categoryId: settings.categoryId,
+        channelCloseMode: settings.channelCloseMode,
         enabled: settings.enabled,
         logChannelId: settings.logChannelId,
         memberRoleIds: settings.memberRoleIds,
@@ -251,6 +259,7 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     try {
       const options = await getFivemFacOptions(guild.id, botId);
 
+      setCategories(options.categories ?? []);
       setChannels(options.channels);
       setRoles(options.roles);
       setSettings((current) => pruneSettingsForOptions(current, options));
@@ -312,6 +321,15 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
             <div className="grid gap-4 md:grid-cols-2">
               <SelectField
                 disabled={!canManage}
+                icon={Building2}
+                label="Categoria dos canais temporários"
+                onChange={(value) => updateSetting("categoryId", value)}
+                options={categories.map((category) => ({ label: category.name, value: category.id }))}
+                prefix=""
+                value={settings.categoryId}
+              />
+              <SelectField
+                disabled={!canManage}
                 icon={Hash}
                 label="Canal do painel"
                 onChange={(value) => updateSetting("panelChannelId", value)}
@@ -334,6 +352,19 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
                 options={channels.map((channel) => ({ label: `#${channel.name}`, value: channel.id }))}
                 value={settings.logChannelId}
               />
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-zinc-200">Ao finalizar ausência</span>
+                <select
+                  className="social-input h-11"
+                  disabled={!canManage}
+                  onChange={(event) => updateSetting("channelCloseMode", event.target.value as FivemFacSettings["channelCloseMode"])}
+                  value={settings.channelCloseMode}
+                >
+                  <option value="lock">Arquivar / bloquear canal</option>
+                  <option value="delete">Excluir canal temporário</option>
+                  <option value="keep">Manter canal aberto</option>
+                </select>
+              </label>
             </div>
 
             <RoleChecklist
@@ -458,18 +489,20 @@ function SelectField({
   label,
   onChange,
   options,
+  prefix,
   value
 }: {
   disabled: boolean;
-  icon: typeof Hash;
+  icon: LucideIcon;
   label: string;
   onChange: (value: string | null) => void;
   options: Array<{ label: string; value: string }>;
+  prefix?: string;
   value: string | null;
 }) {
   void Icon;
-  const prefix = options[0]?.label.startsWith("#") ? "#" : "@";
-  return <FivemResourceSelect disabled={disabled} label={label} onChange={onChange} options={options.map((option) => ({ id: option.value, name: option.label.replace(/^[@#]/, "") }))} placeholder="Não selecionado" prefix={prefix} value={value} />;
+  const resolvedPrefix = prefix ?? (options[0]?.label.startsWith("#") ? "#" : "@");
+  return <FivemResourceSelect disabled={disabled} label={label} onChange={onChange} options={options.map((option) => ({ id: option.value, name: option.label.replace(/^[@#]/, "") }))} placeholder="Não selecionado" prefix={resolvedPrefix} value={value} />;
 }
 
 function RoleChecklist({
@@ -704,6 +737,7 @@ function pruneSettingsForOptions(settings: FivemFacSettings, options: GuildLiveO
     absenceRoleId: settings.absenceRoleId && roleIds.has(settings.absenceRoleId) ? settings.absenceRoleId : null,
     approverRoleIds: settings.approverRoleIds.filter((roleId) => roleIds.has(roleId)),
     autoApproveRoleIds: settings.autoApproveRoleIds.filter((roleId) => roleIds.has(roleId)),
+    categoryId: settings.categoryId && (options.categories ?? []).some((category) => category.id === settings.categoryId) ? settings.categoryId : null,
     logChannelId: settings.logChannelId && channelIds.has(settings.logChannelId) ? settings.logChannelId : null,
     memberRoleIds: settings.memberRoleIds.filter((roleId) => roleIds.has(roleId)),
     panelChannelId: settings.panelChannelId && channelIds.has(settings.panelChannelId) ? settings.panelChannelId : null,

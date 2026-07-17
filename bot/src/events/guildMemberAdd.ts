@@ -6,6 +6,7 @@ import { isMaintenanceModeActive } from "../services/maintenanceService";
 import { applyAutomaticRoles } from "../services/roleService";
 import { handleSelfBotProtectionMemberAdd } from "../services/selfBotProtectionService";
 import { scheduleHierarchyRefreshForMember } from "../services/fivemHierarchyService";
+import { handleFivemFacMemberAdd } from "../services/fivemFacService";
 import { sendWelcomeMessage } from "../services/welcomeService";
 import type { BotContext } from "../types";
 
@@ -40,6 +41,7 @@ export async function handleGuildMemberAdd(member: GuildMember, context: BotCont
   if (isBotModuleEnabled("logs")) tasks.push(logMemberJoin(context, member));
   if (automaticRolesTask) tasks.push(automaticRolesTask);
   if (welcomeEnabled) tasks.push(sendWelcomeMessage(context, member));
+  if (isBotModuleEnabled("fivem-fac")) tasks.push(handleFivemFacMemberAdd(member, context));
   if (isBotModuleEnabled("fivem-hierarchy")) scheduleHierarchyRefreshForMember(member, context);
 
   await Promise.allSettled(tasks);

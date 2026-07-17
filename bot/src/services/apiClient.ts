@@ -1717,6 +1717,8 @@ export type FivemFacSettings = {
   botId: string;
   guildId: string;
   enabled: boolean;
+  categoryId: string | null;
+  channelCloseMode: "keep" | "lock" | "delete";
   panelChannelId: string | null;
   panelMessageId: string | null;
   absenceRoleId: string | null;
