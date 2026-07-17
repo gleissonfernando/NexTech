@@ -52,10 +52,11 @@ export async function handleMessageCreate(message: Message, context: BotContext)
     return;
   }
 
+  const safeBotBlocked = await handleSafeBotMessage(message, context);
+  if (safeBotBlocked) return;
+
   const moderation = await canModerateMessage(message, context, "message-create");
   if (!moderation.ignored) {
-    const safeBotBlocked = await handleSafeBotMessage(message, context);
-    if (safeBotBlocked) return;
     const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
     if (selfBotBlocked) return;
   }

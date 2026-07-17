@@ -111,7 +111,6 @@ export const DEV_MODULES = [
 ] as const;
 
 const DEV_MODULE_IDS = new Set(DEV_MODULES.map((module) => module.id));
-const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools"] as const;
 const LEGACY_MODULE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
   "fivem-fac": "fivem-absences",
   "image-anti-spam": "safe-bot",
@@ -2504,7 +2503,7 @@ function normalizeRuntimeStatus(value: string | null) {
 
 function sanitizeModules(modules: string[]) {
   return [...new Set(
-    [...modules, ...ALWAYS_ENABLED_MODULE_IDS]
+    modules
       .map((module) => LEGACY_MODULE_ALIASES[module] ?? module)
       .filter((module) => DEV_MODULE_IDS.has(module as (typeof DEV_MODULES)[number]["id"]) || isCustomFivemModuleId(module))
   )];

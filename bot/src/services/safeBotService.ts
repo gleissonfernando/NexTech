@@ -299,9 +299,23 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
   if (!shouldCheckSelfBotRuntime() || !message.guild || message.author.bot) {
     return false;
   }
-  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
 
   if (!(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
+    return false;
+  }
+
+  const runtime = await getSafeBotRuntime(message.guild, context).catch((error) => {
+    console.warn("[safe-bot] não foi possível carregar runtime:", errorMessage(error));
+    return null;
+  });
+
+  if (!runtime?.settings.safeBotEnabled) {
+    return false;
+  }
+
+  const isFilterChannelMessage = message.channelId === runtime.filterChannelId;
+
+  if ((await canModerateMessage(message, context, MODULE_ID)).ignored && !isFilterChannelMessage) {
     return false;
   }
 
@@ -309,7 +323,7 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
   const previous = processingQueues.get(key) ?? Promise.resolve(false);
   const next = previous
     .catch(() => false)
-    .then(() => processSafeBotMessage(message, context))
+    .then(() => processSafeBotMessage(message, context, runtime))
     .catch((error) => {
       console.warn("[safe-bot] falha ao processar mensagem:", errorMessage(error));
       return false;
@@ -356,14 +370,14 @@ export async function restoreSelfBotWarningAfterDelete(message: Message | { chan
   return true;
 }
 
-async function processSafeBotMessage(message: Message, context: BotContext) {
+async function processSafeBotMessage(message: Message, context: BotContext, knownRuntime?: SafeBotRuntime | null) {
   const guild = message.guild;
 
   if (!guild) {
     return false;
   }
 
-  const runtime = await getSafeBotRuntime(guild, context);
+  const runtime = knownRuntime ?? await getSafeBotRuntime(guild, context);
 
   if (!runtime?.settings.safeBotEnabled) {
     return false;
@@ -376,14 +390,13 @@ async function processSafeBotMessage(message: Message, context: BotContext) {
   }
 
   if (message.channelId === runtime.filterChannelId) {
-    const punishment = await applyProgressivePunishment(message, context, "filter-channel", "Canal exclusivo do SafeBot", "Mensagem enviada no canal exclusivo do SafeBot.")
-      ?? await applyFilterChannelPunishment(context, member, message, runtime);
+    const punishment = await applyFilterChannelPunishment(context, member, message, runtime);
     await Promise.allSettled([
       sendFilterLog(message, runtime, punishment),
       recordSafeBotIncident(context, message, runtime, {
         actionError: punishment.error,
         actions: punishment.actions,
-        details: "Mensagem enviada no canal de filtro. Cargo Self Bot aplicado.",
+        details: "Mensagem enviada no canal exclusivo do SafeBot.",
         moduleId: "anti-auto-spam",
         punishmentSucceeded: punishment.succeeded,
         type: "Canal de filtro acionado"
@@ -487,14 +500,85 @@ async function applyFilterChannelPunishment(
   message: Message,
   runtime: SafeBotRuntime
 ): Promise<SequencePunishmentOutcome> {
-  return applyConfiguredPunishment(
+  const reason = "SafeBot: mensagem enviada no canal de filtro.";
+  const deleteOutcome = await forceDeleteFilterChannelMessage(context, message, reason);
+  const alertOutcome = await sendPrivateFilterChannelAlert(member, message);
+  const progressive = await applyProgressivePunishment(message, context, "filter-channel", "Canal exclusivo do SafeBot", "Mensagem enviada no canal exclusivo do SafeBot.");
+
+  if (progressive) {
+    return mergePunishmentOutcomes(deleteOutcome, alertOutcome, progressive);
+  }
+
+  const configured = await applyConfiguredPunishment(
     context,
     member,
     message,
     runtime,
     "anti-auto-spam",
-    "SafeBot: mensagem enviada no canal de filtro."
+    reason,
+    deleteOutcome.succeeded ? [] : [message]
   );
+
+  return mergePunishmentOutcomes(deleteOutcome, alertOutcome, configured);
+}
+
+async function forceDeleteFilterChannelMessage(context: BotContext, message: Message, reason: string): Promise<SequencePunishmentOutcome> {
+  try {
+    await deleteMessagesOrThrow(context, [message], "anti-auto-spam", reason);
+    return {
+      actions: ["delete_message"],
+      error: null,
+      step: null,
+      succeeded: true
+    };
+  } catch (error) {
+    return {
+      actions: [],
+      error: `delete_message: ${errorMessage(error)}`,
+      step: null,
+      succeeded: false
+    };
+  }
+}
+
+async function sendPrivateFilterChannelAlert(member: GuildMember, message: Message): Promise<SequencePunishmentOutcome> {
+  try {
+    await member.send({
+      allowedMentions: {
+        parse: []
+      },
+      content: [
+        `Sua mensagem em ${message.guild?.name ?? "este servidor"} foi removida.`,
+        "",
+        "O canal do SafeBot é exclusivo para detectar spam automatizado. Não envie mensagens ali."
+      ].join("\n")
+    });
+
+    return {
+      actions: ["warn"],
+      error: null,
+      step: null,
+      succeeded: true
+    };
+  } catch (error) {
+    return {
+      actions: [],
+      error: `private_alert: ${errorMessage(error)}`,
+      step: null,
+      succeeded: false
+    };
+  }
+}
+
+function mergePunishmentOutcomes(...outcomes: SequencePunishmentOutcome[]): SequencePunishmentOutcome {
+  const errors = outcomes.map((outcome) => outcome.error).filter((error): error is string => Boolean(error));
+
+  return {
+    actions: [...new Set(outcomes.flatMap((outcome) => outcome.actions))],
+    error: errors.length ? errors.join(" | ") : null,
+    step: outcomes.find((outcome) => outcome.step)?.step ?? null,
+    succeeded: outcomes.every((outcome) => outcome.succeeded)
+  };
 }
 
 async function applyConfiguredPunishment(
