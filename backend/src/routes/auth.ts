@@ -573,15 +573,34 @@ authRouter.get("/me", async (req, res, next) => {
     }
 
     const refreshedUser = await withAuthTimeout("auth_user_guild_refresh", refreshAuthUserGuilds(req, auth.user));
-    const currentAuth = refreshedUser === auth.user ? auth : issueAuthCookies(res, refreshedUser, auth.verified);
+    let currentAuth = refreshedUser === auth.user ? auth : issueAuthCookies(res, refreshedUser, auth.verified);
+    let validation: Awaited<ReturnType<typeof evaluateDashboardAccess>> | null = null;
+
+    if (!currentAuth.verified) {
+      validation = await withAuthTimeout("dashboard_access_check", evaluateDashboardAccess(currentAuth.user, accessValidationOptions(req)));
+
+      if (validation.allowed) {
+        currentAuth = issueAuthCookies(res, applyDashboardAccessValidation(currentAuth.user, validation), true);
+      } else {
+        currentAuth = issueAuthCookies(res, createDeniedAccessUser(currentAuth.user), false);
+      }
+
+      req.session.accessValidatedAt = Date.now();
+    }
 
     req.session.user = currentAuth.user;
     if (currentAuth.verified) {
       req.session.verified = true;
+    } else {
+      req.session.verified = false;
     }
     await saveSession(req);
 
-    return res.json(createAuthResponse(currentAuth));
+    return res.json({
+      ...createAuthResponse(currentAuth),
+      validation: validation ?? undefined,
+      verificationToken: currentAuth.verified ? issueVerificationToken(currentAuth.user) : undefined
+    });
   } catch (error) {
     return next(error);
   }

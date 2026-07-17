@@ -88,6 +88,7 @@ export type AuthResponse = {
   };
   validation?: AccessValidationResult;
   redirectTo?: string;
+  verificationToken?: string;
 };
 
 export type BotStatus = {

@@ -421,6 +421,11 @@ export function clearTabVerification() {
 }
 
 function synchronizeTabVerification(auth: AuthResponse) {
+  if (auth.access.verified && typeof auth.verificationToken === "string" && auth.verificationToken.trim()) {
+    storeTabVerification(auth.verificationToken);
+    return;
+  }
+
   if (!auth.access.verified) {
     clearTabVerification();
   }

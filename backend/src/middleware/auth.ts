@@ -49,16 +49,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ message: "Sessão não autenticada." });
     }
 
-    if (!auth.verified) {
-      await recordAccessAttempt(req, {
-        userId: auth.user.discordId,
-        username: auth.user.username,
-        result: "denied",
-        reason: "Verificação obrigatória para acessar o painel."
-      });
-      return res.status(403).json({ message: "Verificação obrigatória para acessar o painel." });
-    }
-
     const freshAuth = await ensureVerifiedRoleAccess(req, res, auth);
 
     if (!freshAuth) {
@@ -69,6 +59,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         reason: ACCESS_DENIED_MESSAGE
       });
       return res.status(403).json({ message: ACCESS_DENIED_MESSAGE, supportUrl: SUPPORT_DISCORD_URL });
+    }
+
+    if (!freshAuth.verified) {
+      await recordAccessAttempt(req, {
+        userId: auth.user.discordId,
+        username: auth.user.username,
+        result: "denied",
+        reason: "Verificação obrigatória para acessar o painel."
+      });
+      return res.status(403).json({ message: "Verificação obrigatória para acessar o painel." });
     }
 
     req.session.user = freshAuth.user;
@@ -115,7 +115,7 @@ async function ensureBotGuildsLoaded() {
 async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: DashboardAuth) {
   const lastValidation = typeof req.session.accessValidatedAt === "number" ? req.session.accessValidatedAt : 0;
 
-  if (Date.now() - lastValidation < VERIFIED_ACCESS_RECHECK_MS) {
+  if (auth.verified && Date.now() - lastValidation < VERIFIED_ACCESS_RECHECK_MS) {
     return auth;
   }
 
