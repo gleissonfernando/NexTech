@@ -1057,13 +1057,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       getTickets(selectedGuildId, activeBotId),
       enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
       liveModulesEnabled(enabledModules) ? getKickNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
-      enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId) : Promise.resolve(null),
+      enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId, "twitch") : Promise.resolve(null),
+      enabledModules.includes("kick-clips") ? getClipsConfig(selectedGuildId, activeBotId, "kick") : Promise.resolve(null),
       enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null),
       enabledModules.includes("safe-bot") && activeBotId
         ? getSelfBotProtection(selectedGuildId, activeBotId)
         : Promise.resolve(null)
     ])
-      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, kickResult, clipsResult, xResult, selfBotResult]) => {
+      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, kickResult, clipsResult, kickClipsResult, xResult, selfBotResult]) => {
         if (!mounted) return;
 
         setSettings(settingsResult.status === "fulfilled" ? settingsResult.value : null);
@@ -1074,7 +1075,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           selfBotProtectionSettings: selfBotResult.status === "fulfilled" && selfBotResult.value
             ? selfBotResult.value.settings
             : null,
-          kickClipsConfig: null,
+          kickClipsConfig: kickClipsResult.status === "fulfilled" ? kickClipsResult.value : null,
           liveNotifications: liveResult.status === "fulfilled" && liveResult.value ? liveResult.value.notifications : [],
           kickNotifications: kickResult.status === "fulfilled" && kickResult.value ? kickResult.value.notifications : [],
           clipsConfig: clipsResult.status === "fulfilled" ? clipsResult.value : null,
@@ -1329,7 +1330,10 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
         {activeView === "clips" ? (
-          <ClipsPanel botId={activeBotId} canManage={canManageModule(selectedBot, "clips", canManageDashboard)} guild={selectedGuild} refreshSignal={clipsRefreshSignal} />
+          <ClipsPanel botId={activeBotId} canManage={canManageModule(selectedBot, "clips", canManageDashboard)} guild={selectedGuild} platform="twitch" refreshSignal={clipsRefreshSignal} />
+        ) : null}
+        {activeView === "kick-clips" ? (
+          <ClipsPanel botId={activeBotId} canManage={canManageModule(selectedBot, "kick-clips", canManageDashboard)} guild={selectedGuild} platform="kick" refreshSignal={clipsRefreshSignal} />
         ) : null}
         {activeView === "giveaway" ? (
           <div className="space-y-5">
@@ -9864,6 +9868,14 @@ function moduleState(moduleId: string, settings: GuildSettings | null, details: 
       active: Boolean(details.clipsConfig?.enabled),
       configured: Boolean(details.clipsConfig?.discordChannelId),
       configuredText: details.clipsConfig?.discordChannelId ? "Canal configurado" : "Falta canal"
+    };
+  }
+
+  if (moduleId === "kick-clips") {
+    return {
+      active: Boolean(details.kickClipsConfig?.enabled),
+      configured: Boolean(details.kickClipsConfig?.discordChannelId),
+      configuredText: details.kickClipsConfig?.discordChannelId ? "Canal configurado" : "Falta canal"
     };
   }
 
