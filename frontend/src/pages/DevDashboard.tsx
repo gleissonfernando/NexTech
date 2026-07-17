@@ -205,6 +205,15 @@ export function DevDashboard({ auth, initialView = "bots" }: DevDashboardProps) 
           />
         ) : null}
 
+        {activeView === "sales" ? (
+          <DevSalesManager
+            bots={profile.bots}
+            onBotUpdated={handleBotUpdated}
+            selectedBotId={selectedBotId}
+            onSelectBot={setSelectedBotId}
+          />
+        ) : null}
+
         {activeView === "fivem" ? (
           <DevFiveMManager
             bots={profile.bots}
@@ -251,7 +260,7 @@ function devPathForView(view: DevView) {
 }
 
 function isBotManagerView(view: DevView) {
-  return view === "bots" || view === "connected" || view === "bot-menu" || view === "cloning" || view === "sales";
+  return view === "bots" || view === "connected" || view === "bot-menu" || view === "cloning";
 }
 
 function dashboardSectionForView(view: DevView): DevDashboardSection | null {
@@ -1067,6 +1076,174 @@ function formatDuration(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+const SALES_MANAGER_MODULES: Array<{
+  description: string;
+  icon: LucideIcon;
+  id: string;
+  permissions: string;
+  title: string;
+}> = [
+  {
+    description: "Produtos, planos, checkout, tickets de compra, fila e histórico de vendas.",
+    icon: CreditCard,
+    id: "nex-tech-sales",
+    permissions: "Dono do bot, Gerente de vendas",
+    title: "Sistema de Vendas"
+  },
+  {
+    description: "Mercado Pago isolado por bot, credenciais próprias, PIX, cartão e webhook automático.",
+    icon: CreditCard,
+    id: "payment-gateway",
+    permissions: "Dono do bot, Financeiro",
+    title: "Pagamento Automático"
+  },
+  {
+    description: "Pix manual, envio de comprovantes, aprovação por equipe e atendimento por canais.",
+    icon: BriefcaseBusiness,
+    id: "manual-payments",
+    permissions: "Dono do bot, Financeiro manual",
+    title: "Pagamento Manual"
+  },
+  {
+    description: "Tabelas de preços, itens, preview e publicação de painéis comerciais no Discord.",
+    icon: ScrollText,
+    id: "price-tables",
+    permissions: "Dono do bot, Vendas",
+    title: "Painel de Vendas"
+  }
+];
+
+function DevSalesManager({
+  bots,
+  onBotUpdated,
+  onSelectBot,
+  selectedBotId
+}: {
+  bots: DashboardBot[];
+  onBotUpdated: (bot: DashboardBot) => void;
+  onSelectBot: (botId: string | null) => void;
+  selectedBotId: string | null;
+}) {
+  const [savingModuleId, setSavingModuleId] = useState<string | null>(null);
+  const [botList, setBotList] = useState<DashboardBot[]>(bots);
+  const [message, setMessage] = useState<string | null>(null);
+  const selectedBot = botList.find((bot) => bot.id === selectedBotId) ?? botList[0] ?? null;
+  const enabled = new Set(selectedBot?.enabledModules ?? []);
+  const activeModuleCount = SALES_MANAGER_MODULES.filter((module) => enabled.has(module.id)).length;
+  const stats = {
+    active: activeModuleCount,
+    automatic: enabled.has("payment-gateway") ? 1 : 0,
+    disabled: SALES_MANAGER_MODULES.length - activeModuleCount,
+    manual: enabled.has("manual-payments") ? 1 : 0,
+    total: SALES_MANAGER_MODULES.length,
+    users: botList.reduce((total, bot) => total + (bot.enabledModules.some((moduleId) => SALES_MANAGER_MODULES.some((module) => module.id === moduleId)) ? 1 : 0), 0)
+  };
+
+  useEffect(() => {
+    setBotList(bots);
+    onSelectBot(selectedBotId ?? bots[0]?.id ?? null);
+  }, [bots]);
+
+  async function handleToggle(moduleId: string, checked: boolean) {
+    if (!selectedBot) return;
+
+    const previousBot = selectedBot;
+    const nextModules = checked
+      ? [...new Set([...selectedBot.enabledModules, moduleId])]
+      : selectedBot.enabledModules.filter((currentModuleId) => currentModuleId !== moduleId);
+    const optimisticBot = {
+      ...selectedBot,
+      enabledModules: nextModules
+    };
+
+    setSavingModuleId(moduleId);
+    setMessage(null);
+    setBotList((current) => current.map((bot) => bot.id === optimisticBot.id ? optimisticBot : bot));
+    onBotUpdated(optimisticBot);
+
+    try {
+      const updated = await updateDevBotModules(selectedBot.id, nextModules);
+      setBotList((current) => current.map((bot) => bot.id === updated.id ? updated : bot));
+      onBotUpdated(updated);
+      setMessage(`${checked ? "Liberado" : "Desativado"}: ${SALES_MANAGER_MODULES.find((module) => module.id === moduleId)?.title ?? moduleId}.`);
+    } catch {
+      setBotList((current) => current.map((bot) => bot.id === previousBot.id ? previousBot : bot));
+      onBotUpdated(previousBot);
+      setMessage("Não foi possível salvar a ativacao do módulo.");
+    } finally {
+      setSavingModuleId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold text-white">Sistema de Vendas Manager</h2>
+          <p className="mt-1 text-sm text-zinc-500">Libere vendas, Mercado Pago e pagamentos por bot, separados igual aos módulos FiveM.</p>
+        </div>
+        <select
+          className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+          onChange={(event) => onSelectBot(event.target.value || null)}
+          value={selectedBot?.id ?? ""}
+        >
+          {botList.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
+        </select>
+      </section>
+
+      {message ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+          {message}
+        </div>
+      ) : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <FiveMStat icon={Boxes} label="Total de módulos" value={String(stats.total)} />
+        <FiveMStat icon={Activity} label="Módulos ativos" value={String(stats.active)} />
+        <FiveMStat icon={ShieldAlert} label="Desativados" value={String(stats.disabled)} />
+        <FiveMStat icon={Users} label="Bots com acesso" value={String(stats.users)} />
+        <FiveMStat icon={CreditCard} label="Automático" value={String(stats.automatic)} />
+        <FiveMStat icon={BriefcaseBusiness} label="Manual" value={String(stats.manual)} />
+      </section>
+
+      <Card className="border-zinc-800/80 bg-zinc-950/75">
+        <CardHeader className="p-5 sm:p-6">
+          <CardTitle>Módulos de Vendas e Pagamentos</CardTitle>
+          <CardDescription>Sistemas comerciais independentes. Liberar Mercado Pago não libera automaticamente o Sistema de Vendas.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-5 pt-0 sm:p-6 sm:pt-0 lg:grid-cols-2">
+          {SALES_MANAGER_MODULES.map((module) => {
+            const active = enabled.has(module.id);
+
+            return (
+              <div className="flex min-h-[112px] flex-col gap-4 rounded-lg border border-zinc-900 bg-black/35 p-4 sm:flex-row" key={module.id}>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
+                  <module.icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{module.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">{module.description}</p>
+                      <p className="mt-2 truncate text-xs text-zinc-400">Permissões: {module.permissions}</p>
+                    </div>
+                    <ModuleActivationButton
+                      active={active}
+                      disabled={!selectedBot || savingModuleId === module.id}
+                      loading={savingModuleId === module.id}
+                      onToggle={(checked) => void handleToggle(module.id, checked)}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function DevFiveMManager({
