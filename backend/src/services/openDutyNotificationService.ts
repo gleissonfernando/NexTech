@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { getMongoCollections, type MongoOpenDutyNotification, type MongoOpenDutySettings } from "../database/mongo";
-import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 
 export const OPEN_DUTY_MODULE_ID = "police-open-duty";
 
@@ -136,10 +136,13 @@ export async function saveOpenDutySettings(botId: string | null, guildId: string
       guildId
     }
   }, { upsert: true });
+  const settings = await getOpenDutySettings(botId, guildId);
   if (botId) {
-    emitRealtimeToRoom(devBotRealtimeRoom(botId), "open-duty:settings_updated", { botId, guildId });
+    const payload = { botId, guildId, settings };
+    emitRealtimeToRoom(devBotRealtimeRoom(botId), "open-duty:settings_updated", payload);
+    emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, botId), "open-duty:settings_updated", payload);
   }
-  return getOpenDutySettings(botId, guildId);
+  return settings;
 }
 
 export async function recordOpenDutyDelivery(botId: string | null, guildId: string, input: OpenDutyDeliveryInput) {
@@ -255,17 +258,25 @@ function mapNotification(notification: MongoOpenDutyNotification) {
 }
 
 function cleanSettings(input: Partial<Omit<OpenDutySettingsDto, "id" | "botId" | "guildId" | "updatedAt">>) {
-  return {
-    ...input,
-    logChannelId: normalizeNullable(input.logChannelId),
-    alertChannelId: normalizeNullable(input.alertChannelId),
-    mentionChannelId: normalizeNullable(input.mentionChannelId),
-    dmBannerUrl: normalizeNullable(input.dmBannerUrl),
-    panelBannerUrl: normalizeNullable(input.panelBannerUrl),
-    footerImageUrl: normalizeNullable(input.footerImageUrl),
-    footerText: normalizeNullable(input.footerText),
-    footerIconUrl: normalizeNullable(input.footerIconUrl)
-  };
+  const cleaned = { ...input };
+  const nullableKeys = [
+    "logChannelId",
+    "alertChannelId",
+    "mentionChannelId",
+    "dmBannerUrl",
+    "panelBannerUrl",
+    "footerImageUrl",
+    "footerText",
+    "footerIconUrl"
+  ] as const;
+
+  for (const key of nullableKeys) {
+    if (input[key] !== undefined) {
+      cleaned[key] = normalizeNullable(input[key]) as never;
+    }
+  }
+
+  return cleaned;
 }
 
 function normalizeNullable(value: string | null | undefined) {

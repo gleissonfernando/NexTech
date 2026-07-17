@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BellRing, Loader2, RotateCcw, Save, Search } from "lucide-react";
 import { getGuildLiveOptions, getGuildMemberOptions, getGuildRoleOptions, getOpenDutyDashboard, resetOpenDutyCounter, saveOpenDutySettings } from "../../lib/api";
+import { createDashboardSocket } from "../../lib/socket";
 import type { DashboardGuild, GuildChannelOption, GuildMemberOption, GuildRoleOption, OpenDutyDashboard, OpenDutySettings } from "../../types";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -55,6 +56,34 @@ export function OpenDutyNotificationsPanel({ botId, canManage, guild }: Props) {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [botId, guild, memberQuery]);
+
+  useEffect(() => {
+    if (!guild || !botId) return;
+    const socket = createDashboardSocket();
+
+    socket.emit("logs:subscribe", { botId, guildId: guild.id });
+    socket.on("open-duty:settings_updated", (payload: { botId: string | null; guildId: string; settings?: OpenDutySettings }) => {
+      if (payload.guildId !== guild.id || payload.botId !== botId) return;
+
+      if (payload.settings) {
+        setSettings(payload.settings);
+        setDashboard((current) => current ? { ...current, settings: payload.settings! } : current);
+        return;
+      }
+
+      void getOpenDutyDashboard(guild.id, botId)
+        .then((nextDashboard) => {
+          setDashboard(nextDashboard);
+          setSettings(nextDashboard.settings);
+        })
+        .catch(() => undefined);
+    });
+
+    return () => {
+      socket.off("open-duty:settings_updated");
+      socket.disconnect();
+    };
+  }, [botId, guild?.id]);
 
   const selectedCounter = useMemo(() => dashboard?.counters.find((counter) => counter.userId === counterUserId) ?? null, [counterUserId, dashboard?.counters]);
   const disabled = !settings || !guild || !botId || !canManage || loading || saving;
