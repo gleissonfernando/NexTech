@@ -202,6 +202,24 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     )));
   }
 
+  function currentSettingsPayload() {
+    return {
+      absenceRoleId: settings.absenceRoleId,
+      approverRoleIds: settings.approverRoleIds,
+      autoApproveEnabled: settings.autoApproveEnabled,
+      autoApproveMaxDays: settings.autoApproveMaxDays,
+      autoApproveRoleIds: settings.autoApproveRoleIds,
+      categoryId: settings.categoryId,
+      channelCloseMode: settings.channelCloseMode,
+      enabled: settings.enabled,
+      logChannelId: settings.logChannelId,
+      memberRoleIds: settings.memberRoleIds,
+      messages: settings.messages,
+      panelChannelId: settings.panelChannelId,
+      viewerRoleIds: settings.viewerRoleIds
+    };
+  }
+
   async function handleSave() {
     if (!botId || !guild) return;
 
@@ -209,21 +227,7 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     setMessage(null);
 
     try {
-      const saved = await saveFivemFacSettings(guild.id, botId, {
-        absenceRoleId: settings.absenceRoleId,
-        approverRoleIds: settings.approverRoleIds,
-        autoApproveEnabled: settings.autoApproveEnabled,
-        autoApproveMaxDays: settings.autoApproveMaxDays,
-        autoApproveRoleIds: settings.autoApproveRoleIds,
-        categoryId: settings.categoryId,
-        channelCloseMode: settings.channelCloseMode,
-        enabled: settings.enabled,
-        logChannelId: settings.logChannelId,
-        memberRoleIds: settings.memberRoleIds,
-        messages: settings.messages,
-        panelChannelId: settings.panelChannelId,
-        viewerRoleIds: settings.viewerRoleIds
-      });
+      const saved = await saveFivemFacSettings(guild.id, botId, currentSettingsPayload());
       setSettings(saved);
       setMessage(copy.saveSuccess);
     } catch (error) {
@@ -240,6 +244,8 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     setMessage(null);
 
     try {
+      const savedSettings = await saveFivemFacSettings(guild.id, botId, currentSettingsPayload());
+      setSettings(savedSettings);
       const saved = await publishFivemFacPanel(guild.id, botId);
       setSettings(saved);
       setMessage("Publicação do painel solicitada ao bot.");
