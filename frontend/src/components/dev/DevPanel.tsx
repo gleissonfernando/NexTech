@@ -650,7 +650,7 @@ type DevPanelProps = {
   user?: AuthUser;
 };
 
-export type DevDashboardSection = "connected" | "bot-menu" | "cloning" | "sales";
+export type DevDashboardSection = "connected" | "bot-menu" | "cloning";
 
 export function DevPanel({
   activeDashboardSection = null,
@@ -1109,33 +1109,6 @@ export function DevPanel({
     );
   }
 
-  if (activeDashboardSection === "sales") {
-    return (
-      <div className="space-y-7">
-        <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
-        {message ? (
-          <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
-            {message}
-          </div>
-        ) : null}
-        {selectedBot ? (
-          <NexTechSalesWorkspace
-            bot={selectedBot}
-            enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
-            guilds={guilds}
-            onEnable={() => void handleToggleModule(selectedBot, "nex-tech-sales", true)}
-          />
-        ) : (
-          <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)]">
-            <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
-              Selecione um bot para abrir as vendas Nex Tech.
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-7">
       <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
@@ -1329,13 +1302,6 @@ export function DevPanel({
                 )}
               </CardContent>
             </Card>
-          ) : activeDashboardSection === "sales" && selectedBot ? (
-            <NexTechSalesWorkspace
-              bot={selectedBot}
-              enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
-              guilds={guilds}
-              onEnable={() => void handleToggleModule(selectedBot, "nex-tech-sales", true)}
-            />
           ) : selectedBot ? (
             <BotModuleWorkspace
               activeMenuId={activeBotMenuId}
@@ -2235,6 +2201,15 @@ function BotModuleWorkspace({
               />
             ) : null}
 
+            {activeMenuId === "sales" && !normalizedQuery ? (
+              <NexTechSalesWorkspace
+                bot={bot}
+                enabled={enabledSet.has("nex-tech-sales")}
+                guilds={guilds}
+                onToggle={(checked) => onToggle("nex-tech-sales", checked)}
+              />
+            ) : null}
+
             {activeMenuId === "database-maintenance" && !normalizedQuery ? (
               <DatabaseMaintenancePanel bot={bot} guilds={guilds} />
             ) : null}
@@ -2247,7 +2222,7 @@ function BotModuleWorkspace({
               <PoliceServerReleasePanel bot={bot} guilds={guilds} />
             ) : null}
 
-            {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis") && !normalizedQuery ? null : filteredModules.length ? (
+            {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis" || activeMenuId === "sales") && !normalizedQuery ? null : filteredModules.length ? (
               <div className="space-y-7">
                 {moduleSections.map((section) => (
                   <section className="scroll-mt-6 space-y-3" id={`bot-menu-section-${section.id}`} key={section.id}>
@@ -3312,12 +3287,12 @@ function NexTechSalesWorkspace({
   bot,
   enabled,
   guilds,
-  onEnable
+  onToggle
 }: {
   bot: DevBot;
   enabled: boolean;
   guilds: DashboardMeGuild[];
-  onEnable: () => void;
+  onToggle: (checked: boolean) => void;
 }) {
   const guildOptions = useMemo(() => buildBotGuildOptions(bot, guilds), [bot, guilds]);
   const [guildId, setGuildId] = useState(bot.mainGuildId || guildOptions[0]?.id || "");
@@ -3622,12 +3597,15 @@ function NexTechSalesWorkspace({
                 {guildOptions.map((guild) => <option key={guild.id} value={guild.id}>{guild.name}</option>)}
               </select>
               {!enabled ? (
-                <Button onClick={onEnable} variant="outline">
+                <Button onClick={() => onToggle(true)} variant="outline">
                   <Power className="h-4 w-4" />
                   Liberar módulo
                 </Button>
               ) : (
-                <Badge className="border-emerald-400/30 bg-emerald-500/15 text-emerald-100" variant="muted">Módulo liberado</Badge>
+                <Button onClick={() => onToggle(false)} variant="outline">
+                  <Power className="h-4 w-4" />
+                  Desativar módulo
+                </Button>
               )}
             </div>
           </div>
@@ -3670,7 +3648,7 @@ function NexTechSalesWorkspace({
                 Libere o módulo Sistema de Vendas para o bot selecionado antes de configurar produtos, tickets, pagamentos e fila.
               </p>
             </div>
-            <Button onClick={onEnable}>
+            <Button onClick={() => onToggle(true)}>
               <Power className="h-4 w-4" />
               Liberar para este bot
             </Button>
