@@ -2285,6 +2285,39 @@ export async function deleteNexTechPaymentProvider(botId: string, guildId: strin
   return data.settings;
 }
 
+export async function getPaymentGatewayDashboard(guildId: string, botId: string) {
+  const { data } = await api.get<NexTechSalesDashboard>(`/payment-gateway/${encodeURIComponent(guildId)}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function savePaymentGatewayProvider(guildId: string, botId: string, payload: SaveNexTechPaymentProviderPayload) {
+  const { data } = await api.post<{ settings: NexTechSalesSettings }>(
+    `/payment-gateway/${encodeURIComponent(guildId)}/providers`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function testPaymentGatewayProvider(guildId: string, botId: string, payload: SaveNexTechPaymentProviderPayload) {
+  const { data } = await api.post<{ result: MercadoPagoConnectionTest }>(
+    `/payment-gateway/${encodeURIComponent(guildId)}/providers/test`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.result;
+}
+
+export async function deletePaymentGatewayProvider(guildId: string, botId: string, providerId: string) {
+  const { data } = await api.delete<{ settings: NexTechSalesSettings }>(
+    `/payment-gateway/${encodeURIComponent(guildId)}/providers/${encodeURIComponent(providerId)}`,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
 export async function createNexTechProduct(botId: string, guildId: string, payload: SaveNexTechProductPayload) {
   const { data } = await api.post<{ product: NexTechProduct }>(
     `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/products`,

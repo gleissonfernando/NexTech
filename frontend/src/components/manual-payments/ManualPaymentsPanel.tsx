@@ -56,7 +56,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
         setDraft(toPayload(data.settings));
         setOrders(data.orders);
       })
-      .catch((error) => setMessage(readError(error, "Não foi possível carregar pagamentos.")))
+      .catch((error) => setMessage(readError(error, "Não foi possível carregar o pagamento manual.")))
       .finally(() => setLoading(false));
   }, [botId, guild]);
 
@@ -88,9 +88,9 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
       const saved = await saveManualPaymentSettings(botId, guild.id, draft);
       setSettings(saved);
       setDraft(toPayload(saved));
-      setMessage("Configurações salvas.");
+      setMessage("Configurações do pagamento manual salvas.");
     } catch (error) {
-      setMessage(readError(error, "Não foi possível salvar pagamentos."));
+      setMessage(readError(error, "Não foi possível salvar o pagamento manual."));
     } finally {
       setSaving(false);
     }
@@ -113,7 +113,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
   }
 
   if (!botId || !guild) {
-    return <Card><CardContent className="p-6 text-sm text-zinc-500">Selecione um bot e servidor para configurar pagamentos.</CardContent></Card>;
+    return <Card><CardContent className="p-6 text-sm text-zinc-500">Selecione um bot e servidor para configurar o pagamento manual.</CardContent></Card>;
   }
 
   return (
@@ -121,8 +121,8 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
           <CardHeader>
-            <CardTitle>Pagamentos</CardTitle>
-            <CardDescription>{loading ? "Carregando..." : "Pix manual, canais temporarios, aprovação e atendimento."}</CardDescription>
+            <CardTitle>Pagamento Manual</CardTitle>
+            <CardDescription>{loading ? "Carregando..." : "Pix manual, comprovantes, canais temporarios e aprovação humana. Não confirma automaticamente."}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-3 md:grid-cols-2">

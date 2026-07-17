@@ -124,6 +124,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
+  { id: "payment-gateway", label: "Pagamento Automático" },
   { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "network", label: "Rede Social dos Membros" },
@@ -3404,7 +3405,7 @@ function NexTechSalesWorkspace({
       const settings = await saveNexTechPaymentProvider(bot.id, guildId, providerForm);
       setDashboard((current) => current ? { ...current, settings } : current);
       setProviderForm(defaultProviderForm);
-      setMessage("Forma de pagamento salva.");
+      setMessage("Gateway automático salvo.");
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Não foi possível salvar o pagamento.");
     } finally {
@@ -3693,7 +3694,7 @@ function NexTechSalesWorkspace({
             <div>
               <p className="text-base font-bold text-white">Sistema de vendas bloqueado neste bot</p>
               <p className="mt-1 max-w-xl text-sm font-medium text-zinc-300">
-                Libere o módulo Sistema de Vendas para o bot selecionado antes de configurar produtos, tickets, pagamentos e fila.
+                Libere o módulo Sistema de Vendas para o bot selecionado antes de configurar produtos, checkout automático, tickets e fila.
               </p>
             </div>
             <Button onClick={() => onToggle(true)}>
@@ -3761,8 +3762,8 @@ function NexTechSalesWorkspace({
           <div className="space-y-6">
             <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
               <CardHeader>
-                <CardTitle className="text-white">Pagamentos</CardTitle>
-                <CardDescription>Mercado Pago isolado por bot/servidor. O Access Token fica criptografado no backend e nunca volta para a dashboard.</CardDescription>
+                <CardTitle className="text-white">Pagamento Automático | Mercado Pago</CardTitle>
+                <CardDescription>Gateway separado do Pagamento Manual. Usa as credenciais do bot, cria checkout Mercado Pago e confirma automaticamente via webhook assinado.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -4119,8 +4120,8 @@ function NexTechSalesWorkspace({
               <div className="rounded-lg border border-zinc-800 bg-black/30 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-white">Logs de Pagamentos</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Webhooks recebidos, assinatura, processamento e venda vinculada.</p>
+                    <p className="text-sm font-bold text-white">Logs do Pagamento Automático</p>
+                    <p className="mt-1 text-xs font-medium text-zinc-500">Webhooks Mercado Pago recebidos, assinatura, processamento e venda vinculada.</p>
                   </div>
                   <select
                     className="h-10 rounded-lg border border-zinc-800 bg-black/40 px-3 text-xs font-bold text-white outline-none"
@@ -4153,7 +4154,7 @@ function NexTechSalesWorkspace({
                   ))}
                   {!filteredPaymentLogs.length ? (
                     <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm font-medium text-zinc-500">
-                      Nenhum log de pagamento neste período.
+                      Nenhum log de pagamento automático neste período.
                     </div>
                   ) : null}
                 </div>

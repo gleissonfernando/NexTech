@@ -41,6 +41,7 @@ export const DEV_MODULES = [
   { id: "clips", label: "Sistema de Clips" },
   { id: "kick-clips", label: "Clipes Kick" },
   { id: "giveaway", label: "Sistema de Sorteio" },
+  { id: "payment-gateway", label: "Pagamento Automático" },
   { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "price-tables", label: "Tabela de Precos" },
@@ -130,6 +131,7 @@ const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number
 };
 const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
   courses: ["police-courses"],
+  "payment-gateway": ["nex-tech-sales"],
   "police-courses": ["courses"],
   "rh-admin": ["police-hr"],
   "police-hr": ["rh-admin"]

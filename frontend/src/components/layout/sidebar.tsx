@@ -55,6 +55,7 @@ export type ViewId =
   | "x-monitor"
   | "moderation"
   | "rules"
+  | "payment-gateway"
   | "manual-payments"
   | "price-tables"
   | "courses"
@@ -144,6 +145,7 @@ const navItems: NavItem[] = [
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
   { id: "rules", label: "Regras", icon: ScrollText, moduleId: "rules" },
+  { id: "payment-gateway", label: "Pagamento Automático", icon: CreditCard, moduleId: "payment-gateway" },
   { id: "manual-payments", label: "Pagamento Manual", icon: CreditCard, moduleId: "manual-payments" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },
   { id: "courses", label: "Cursos", icon: BookOpen, moduleIds: ["courses", "police-courses"] },

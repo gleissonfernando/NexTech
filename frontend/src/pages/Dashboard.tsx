@@ -76,6 +76,7 @@ import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { PanelImageSettings } from "../components/panels/PanelImageSettings";
 import { ManualPaymentsPanel } from "../components/manual-payments/ManualPaymentsPanel";
+import { PaymentGatewayPanel } from "../components/payments/PaymentGatewayPanel";
 import { PriceTablesPanel } from "../components/price-tables/PriceTablesPanel";
 import { RhAdminPanel } from "../components/rh-admin/RhAdminPanel";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
@@ -358,6 +359,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Publica um painel de regras com botão para liberar cargo aos membros.",
     icon: ScrollText,
     view: "rules"
+  },
+  {
+    id: "payment-gateway",
+    title: "Pagamento Automático",
+    description: "Configura Mercado Pago do dono do bot para checkout e confirmação automática.",
+    icon: CreditCard,
+    view: "payment-gateway"
   },
   {
     id: "manual-payments",
@@ -789,6 +797,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "first-lady": "first-lady",
   moderation: "moderation",
   rules: "rules",
+  "payment-gateway": "payment-gateway",
   "manual-payments": "manual-payments",
   "price-tables": "price-tables",
   courses: "courses",
@@ -811,6 +820,7 @@ const policeTranscriptViews = new Set<ViewId>([
 ]);
 const moduleReleaseAliases: Record<string, string[]> = {
   courses: ["police-courses"],
+  "payment-gateway": ["nex-tech-sales"],
   "police-courses": ["courses"],
   "rh-admin": ["police-hr"],
   "police-hr": ["rh-admin"]
@@ -1430,6 +1440,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             loading={settingsLoading}
             onSettingsChange={setSettings}
             settings={settings}
+          />
+        ) : null}
+        {activeView === "payment-gateway" ? (
+          <PaymentGatewayPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "payment-gateway", canManageDashboard)}
+            guild={selectedGuild}
           />
         ) : null}
         {activeView === "manual-payments" ? (
@@ -4357,6 +4374,8 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "kick-integration",
       "clips",
       "giveaway",
+      "payment-gateway",
+      "manual-payments",
       "network",
       "x-monitor",
       "mission-tools",
