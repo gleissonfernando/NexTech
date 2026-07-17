@@ -555,13 +555,13 @@ function renderOperationalPanel(dashboard: AutoActivityClockPanelState) {
     const startedAt = Date.parse(item.startedAt);
     const elapsed = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
     const rows = [
-      `👮 <@${item.userId}>`,
+      `👮 ${item.username || `<@${item.userId}>`}`,
       `🕒 Entrada: ${formatClockTime(item.startedAt)}`,
       `⏱ Tempo em Serviço: ${formatDurationLong(elapsed)}`
     ];
 
     if (index < Math.min(dashboard.active.length, 16) - 1) {
-      rows.push("────────────────────────────────────");
+      rows.push("──────────────────────────────────────────────────────");
     }
 
     return rows;
@@ -572,23 +572,22 @@ function renderOperationalPanel(dashboard: AutoActivityClockPanelState) {
 
   return [
     "```",
-    "╔════════════════════════════════════╗",
-    "        Sistema de ponto",
-    "   🚔 POLICIAIS EM SERVIÇO",
-    "   Central Operacional • Tempo Real",
-    "════════════════════════════════════",
+    "╔════════════════════════════════════════════════════╗",
+    "             Sistema de ponto    🚔 POLICIAIS EM SERVIÇO",
+    "            Central Operacional  • Tempo Real",
+    "══════════════════════════════════════════════════════",
     "",
-    `🟢 Em Serviço Agora: ${dashboard.active.length} Policial(is)`,
+    `🟢 Em Serviço Agora: ${dashboard.active.length} ${dashboard.active.length === 1 ? "Policial" : "Policiais"}`,
     "",
-    "════════════════════════════════════",
+    "══════════════════════════════════════════════════════",
     "```",
     activeRows.length ? activeRows.join("\n") : "Nenhum policial em serviço no momento.",
     ...overflow,
     "```",
-    "════════════════════════════════════",
+    "══════════════════════════════════════════════════════",
     "🟢 Entrar em Serviço",
     "🔴 Encerrar Serviço",
-    "╚════════════════════════════════════╝",
+    "╚════════════════════════════════════════════════════╝",
     "```"
   ].join("\n");
 }
