@@ -25,6 +25,7 @@ import {
   Wrench,
   UserCog,
   Bell,
+  CreditCard,
   Cpu,
   Download,
   EyeOff,
@@ -73,7 +74,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "plans" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "sales" | "plans" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -219,6 +220,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
             { id: "connected" as const, label: "Bots conectados" },
             { id: "bot-menu" as const, label: "Menu do Bot" },
             { id: "cloning" as const, label: "Clonagem" },
+            { id: "sales" as const, label: "Sistema de Vendas" },
             { id: "plans" as const, label: "Planos" },
             { id: "discloud" as const, label: "DisCloud" },
             { id: "fivem" as const, label: "FiveM" },
@@ -290,6 +292,7 @@ function devPathForView(view: DevView) {
   if (view === "connected") return "/dev/bots-conectados";
   if (view === "bot-menu") return "/dev/menu-do-bot";
   if (view === "cloning") return "/dev/clonagem";
+  if (view === "sales") return "/dev/sistema-de-vendas";
   if (view === "plans") return "/dev/planos";
   if (view === "discloud") return "/dev/discloud";
   if (view === "fivem") return "/dev/fivem";
@@ -301,11 +304,11 @@ function devPathForView(view: DevView) {
 }
 
 function isBotManagerView(view: DevView) {
-  return view === "bots" || view === "connected" || view === "bot-menu" || view === "cloning";
+  return view === "bots" || view === "connected" || view === "bot-menu" || view === "cloning" || view === "sales";
 }
 
 function dashboardSectionForView(view: DevView): DevDashboardSection | null {
-  if (view === "connected" || view === "bot-menu" || view === "cloning") {
+  if (view === "connected" || view === "bot-menu" || view === "cloning" || view === "sales") {
     return view;
   }
 
@@ -324,6 +327,7 @@ function DevSidebar({
     { icon: Boxes, id: "connected", label: "Bots conectados" },
     { icon: Settings, id: "bot-menu", label: "Menu do Bot" },
     { icon: Copy, id: "cloning", label: "Clonagem" },
+    { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
     { icon: PackagePlus, id: "plans", label: "Planos" },
     { icon: Activity, id: "discloud", label: "Monitoramento DisCloud" },
     { icon: Building2, id: "fivem", label: "FiveM" },

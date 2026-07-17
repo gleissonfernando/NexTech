@@ -220,7 +220,6 @@ type BotMenuId =
   | "bio-url-verification"
   | "first-lady"
   | "economy"
-  | "sales"
   | "discord"
   | "select-menu"
   | "fivem"
@@ -449,13 +448,6 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: []
   },
   {
-    id: "sales",
-    label: "Sistema de Vendas",
-    description: "Produtos, tickets, pagamentos e fila de vendas",
-    icon: CreditCard,
-    moduleIds: ["nex-tech-sales"]
-  },
-  {
     id: "discord",
     label: "Discord",
     description: "Cargos, boas-vindas e mensagens",
@@ -650,7 +642,7 @@ type DevPanelProps = {
   user?: AuthUser;
 };
 
-export type DevDashboardSection = "connected" | "bot-menu" | "cloning";
+export type DevDashboardSection = "connected" | "bot-menu" | "cloning" | "sales";
 
 export function DevPanel({
   activeDashboardSection = null,
@@ -1102,6 +1094,33 @@ export function DevPanel({
           <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)]">
             <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
               Selecione um bot para abrir a Clonagem de Servidor.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  if (activeDashboardSection === "sales") {
+    return (
+      <div className="space-y-7">
+        <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
+        {message ? (
+          <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
+            {message}
+          </div>
+        ) : null}
+        {selectedBot ? (
+          <NexTechSalesWorkspace
+            bot={selectedBot}
+            enabled={selectedBot.enabledModules.includes("nex-tech-sales")}
+            guilds={guilds}
+            onToggle={(checked) => void handleToggleModule(selectedBot, "nex-tech-sales", checked)}
+          />
+        ) : (
+          <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.90),rgba(9,9,11,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.08)]">
+            <CardContent className="flex min-h-40 items-center justify-center p-6 text-center text-sm font-medium text-zinc-300">
+              Selecione um bot para abrir as vendas Nex Tech.
             </CardContent>
           </Card>
         )}
@@ -2201,15 +2220,6 @@ function BotModuleWorkspace({
               />
             ) : null}
 
-            {activeMenuId === "sales" && !normalizedQuery ? (
-              <NexTechSalesWorkspace
-                bot={bot}
-                enabled={enabledSet.has("nex-tech-sales")}
-                guilds={guilds}
-                onToggle={(checked) => onToggle("nex-tech-sales", checked)}
-              />
-            ) : null}
-
             {activeMenuId === "database-maintenance" && !normalizedQuery ? (
               <DatabaseMaintenancePanel bot={bot} guilds={guilds} />
             ) : null}
@@ -2222,7 +2232,7 @@ function BotModuleWorkspace({
               <PoliceServerReleasePanel bot={bot} guilds={guilds} />
             ) : null}
 
-            {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis" || activeMenuId === "sales") && !normalizedQuery ? null : filteredModules.length ? (
+            {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis") && !normalizedQuery ? null : filteredModules.length ? (
               <div className="space-y-7">
                 {moduleSections.map((section) => (
                   <section className="scroll-mt-6 space-y-3" id={`bot-menu-section-${section.id}`} key={section.id}>
