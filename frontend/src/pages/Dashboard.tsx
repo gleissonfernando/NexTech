@@ -156,6 +156,7 @@ import {
   refreshApplicationEmojis,
   removeAllApplicationEmojis,
   removePanelImage,
+  releaseDashboardBotGuildModule,
   resendEmojiFromLibrary,
   saveAdvancedModuleConfig,
   saveAutoActivityClockCity,
@@ -849,6 +850,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [overviewDetails, setOverviewDetails] = useState<OverviewDetails>(emptyOverviewDetails);
   const [fivemModules, setFivemModules] = useState<FivemModuleDefinition[]>([]);
   const [botGuildConfig, setBotGuildConfig] = useState<BotGuildConfig | null>(null);
+  const [releasingServerModuleId, setReleasingServerModuleId] = useState<string | null>(null);
 
   const panelBots = dashboardProfile?.bots ?? emptyPanelBots;
   const dashboardProfileGuilds = dashboardProfile?.guilds ?? null;
@@ -894,6 +896,8 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const canManageOwnerDevModule = (moduleId: string) => canManageOwnerDevSettings && (
     selectedBot ? hasReleasedModule(selectedBot.enabledModules, moduleId) : canManageDashboard
   );
+  const canReleaseServerModule = (moduleId: string) => canManageModule(selectedBot, moduleId, canManageDashboard);
+  const isServerModuleReleased = (moduleId: string) => botGuildConfig?.modules?.[moduleId]?.enabled === true;
   const availableModules = useMemo(
     () => moduleCatalog.filter((module) => hasReleasedModule(enabledModules, module.id)),
     [enabledModulesKey]
@@ -1270,6 +1274,18 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     } catch {
       setSelectedGuildId(previousGuildId);
       setDashboardProfile((current) => (current ? { ...current, selectedGuildId: previousGuildId } : current));
+    }
+  }
+
+  async function handleReleaseServerModule(moduleId: string) {
+    if (!activeBotId || !selectedGuild) return;
+
+    setReleasingServerModuleId(moduleId);
+    try {
+      const config = await releaseDashboardBotGuildModule(activeBotId, selectedGuild.id, moduleId, selectedGuild.name);
+      setBotGuildConfig(config);
+    } finally {
+      setReleasingServerModuleId(null);
     }
   }
 
@@ -1655,14 +1671,34 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
         {activeView === "visible-message" ? (
-          <VisibleMessagePanel
-            botId={activeBotId}
-            canManage={canManageModule(selectedBot, "visible-message", canManageDashboard)}
-            guild={selectedGuild}
-          />
+          isServerModuleReleased("visible-message") ? (
+            <VisibleMessagePanel
+              botId={activeBotId}
+              canManage={canManageModule(selectedBot, "visible-message", canManageDashboard)}
+              guild={selectedGuild}
+            />
+          ) : (
+            <ServerModuleReleasePanel
+              canRelease={canReleaseServerModule("visible-message")}
+              moduleId="visible-message"
+              onRelease={() => void handleReleaseServerModule("visible-message")}
+              releasing={releasingServerModuleId === "visible-message"}
+              title="Mensagem Visível"
+            />
+          )
         ) : null}
         {activeView === "message-control" ? (
-          <MessageControlPanel bot={selectedBot} guild={selectedGuild} />
+          isServerModuleReleased("message-control") ? (
+            <MessageControlPanel bot={selectedBot} guild={selectedGuild} serverReleased />
+          ) : (
+            <ServerModuleReleasePanel
+              canRelease={canReleaseServerModule("message-control")}
+              moduleId="message-control"
+              onRelease={() => void handleReleaseServerModule("message-control")}
+              releasing={releasingServerModuleId === "message-control"}
+              title="Controle de Mensagem"
+            />
+          )
         ) : null}
         {activeView === "police-dm" ? (
           <DmBarPanel
@@ -1686,7 +1722,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
         {activeView === "police-daf-roster" ? (
-          <DafRosterPanel bot={selectedBot} guild={selectedGuild} />
+          <DafRosterPanel
+            bot={selectedBot}
+            canRelease={canReleaseServerModule("police-daf-roster")}
+            guild={selectedGuild}
+            onRelease={() => void handleReleaseServerModule("police-daf-roster")}
+            releasing={releasingServerModuleId === "police-daf-roster"}
+            serverReleased={isServerModuleReleased("police-daf-roster")}
+          />
         ) : null}
         {activeView === "auto-activity-clock" ? (
           <AutoActivityClockPanel
@@ -4342,12 +4385,14 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "police-actions",
       "police-iab",
       "police-hr",
+      "police-daf-roster",
       "police-courses",
       "rh-admin",
       "police-subpoenas",
       "police-patrol-reports",
       "police-hidden-channel",
       "visible-message",
+      "message-control",
       "police-dm",
       "police-open-duty",
       "fivem-fac"
@@ -4537,7 +4582,21 @@ function UserDashboardHeader({
   );
 }
 
-function DafRosterPanel({ bot, guild }: { bot: DashboardBot | null; guild: DashboardGuild | null }) {
+function DafRosterPanel({
+  bot,
+  canRelease,
+  guild,
+  onRelease,
+  releasing,
+  serverReleased
+}: {
+  bot: DashboardBot | null;
+  canRelease: boolean;
+  guild: DashboardGuild | null;
+  onRelease: () => void;
+  releasing: boolean;
+  serverReleased: boolean;
+}) {
   const commandItems = [
     { command: "/daf config", description: "Configurar cargos, canal e permissões da escala." },
     { command: "/daf painel", description: "Publicar ou atualizar o painel DAF no Discord." }
@@ -4553,10 +4612,12 @@ function DafRosterPanel({ bot, guild }: { bot: DashboardBot | null; guild: Dashb
               <CardTitle>Escala DAF</CardTitle>
             </div>
             <CardDescription className="mt-2">
-              Sistema liberado para o bot selecionado. A configuração e publicação do painel continuam pelo Discord.
+              {serverReleased
+                ? "Sistema liberado para este bot e servidor. A configuração e publicação do painel continuam pelo Discord."
+                : "Sistema liberado para o bot, mas ainda bloqueado neste servidor."}
             </CardDescription>
           </div>
-          <Badge variant="success">Liberado</Badge>
+          <Badge variant={serverReleased ? "success" : "warning"}>{serverReleased ? "Liberado" : "Bloqueado no servidor"}</Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -4584,13 +4645,19 @@ function DafRosterPanel({ bot, guild }: { bot: DashboardBot | null; guild: Dashb
             <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
             <p className="mt-1 font-mono text-sm text-zinc-300">police-daf-roster</p>
           </div>
+          {!serverReleased ? (
+            <Button disabled={!canRelease || releasing} onClick={onRelease} type="button">
+              {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Liberar neste servidor
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function MessageControlPanel({ bot, guild }: { bot: DashboardBot | null; guild: DashboardGuild | null }) {
+function MessageControlPanel({ bot, guild, serverReleased }: { bot: DashboardBot | null; guild: DashboardGuild | null; serverReleased: boolean }) {
   const commandItems = [
     { command: "/mensagem config", description: "Abrir o painel de usuários, permissões e modos individuais." },
     { command: "/mensagem ativar", description: "Reativar o modo oculto para as mensagens do usuário cadastrado." },
@@ -4607,10 +4674,12 @@ function MessageControlPanel({ bot, guild }: { bot: DashboardBot | null; guild: 
               <CardTitle>Controle de Mensagem</CardTitle>
             </div>
             <CardDescription className="mt-2">
-              Sistema liberado para o bot selecionado. O gerenciamento operacional fica no painel do Discord.
+              {serverReleased
+                ? "Sistema liberado para este bot e servidor. O gerenciamento operacional fica no painel do Discord."
+                : "Sistema liberado para o bot, mas ainda bloqueado neste servidor."}
             </CardDescription>
           </div>
-          <Badge variant="success">Liberado</Badge>
+          <Badge variant={serverReleased ? "success" : "warning"}>{serverReleased ? "Liberado" : "Bloqueado no servidor"}</Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -4639,6 +4708,46 @@ function MessageControlPanel({ bot, guild }: { bot: DashboardBot | null; guild: 
             <p className="mt-1 font-mono text-sm text-zinc-300">message-control</p>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ServerModuleReleasePanel({
+  canRelease,
+  moduleId,
+  onRelease,
+  releasing,
+  title
+}: {
+  canRelease: boolean;
+  moduleId: string;
+  onRelease: () => void;
+  releasing: boolean;
+  title: string;
+}) {
+  return (
+    <Card className="border-amber-500/30 bg-[#0b0b0b]">
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription className="mt-2">
+              O módulo está liberado no bot, mas ainda não está ativado para este servidor.
+            </CardDescription>
+          </div>
+          <Badge variant="warning">Bloqueado no servidor</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-zinc-800 bg-black/25 p-4">
+          <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
+          <p className="mt-1 font-mono text-sm text-zinc-300">{moduleId}</p>
+        </div>
+        <Button disabled={!canRelease || releasing} onClick={onRelease} type="button">
+          {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          Liberar neste servidor
+        </Button>
       </CardContent>
     </Card>
   );

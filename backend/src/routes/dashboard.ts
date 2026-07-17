@@ -5,7 +5,7 @@ import { recordAccessAttempt } from "../services/accessAuditService";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { fetchBotProfile } from "../services/botProfileService";
 import { canAccessDevPanel } from "../services/devAccessService";
-import { canAccessDevBotGuild, getAccessibleDashboardBotBySlug, getBotGuildConfig, listAccessibleDashboardBots } from "../services/devBotService";
+import { canAccessDevBotGuild, canManageDevBotGuild, getAccessibleDashboardBotBySlug, getBotGuildConfig, getDevBot, listAccessibleDashboardBots, updateBotGuildConfig } from "../services/devBotService";
 import { getMaintenanceState } from "../services/maintenanceService";
 import { mergeAuthorizedBotGuilds } from "../services/statsService";
 import { issueAuthCookies, type DashboardAuth } from "../services/tokenService";
@@ -109,6 +109,67 @@ dashboardRouter.get("/bots/:botId/guilds/:guildId/config", async (req, res, next
     return res.json({
       config: await getBotGuildConfig(input.botId, input.guildId)
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+const dashboardServerReleaseModules = new Set(["police-daf-roster", "visible-message", "message-control"]);
+
+dashboardRouter.post("/bots/:botId/guilds/:guildId/modules/:moduleId/release", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = z.object({
+      botId: z.string().min(1),
+      guildId: z.string().regex(/^\d{5,32}$/),
+      moduleId: z.string().min(1)
+    }).parse(req.params);
+    const body = z.object({
+      guildName: z.string().min(1).max(120).optional()
+    }).parse(req.body ?? {});
+
+    if (!dashboardServerReleaseModules.has(input.moduleId)) {
+      return res.status(400).json({
+        message: "Este módulo não aceita liberação pela dashboard do servidor."
+      });
+    }
+
+    if (!(await canManageDevBotGuild(auth.user, input.botId, input.guildId))) {
+      return res.status(403).json({
+        message: ACCESS_DENIED_MESSAGE,
+        supportUrl: SUPPORT_DISCORD_URL
+      });
+    }
+
+    const bot = await getDevBot(input.botId);
+    if (!bot) {
+      return res.status(404).json({
+        message: "Bot não encontrado."
+      });
+    }
+
+    if (!bot.enabledModules.includes(input.moduleId)) {
+      return res.status(403).json({
+        message: "Módulo não foi liberado para este bot."
+      });
+    }
+
+    const current = await getBotGuildConfig(input.botId, input.guildId);
+    const modules = current.modules as Record<string, Record<string, unknown>>;
+    const config = await updateBotGuildConfig({
+      botId: input.botId,
+      guildId: input.guildId,
+      guildName: body.guildName ?? current.guildName,
+      modules: {
+        ...modules,
+        [input.moduleId]: {
+          ...(modules[input.moduleId] ?? {}),
+          enabled: true
+        }
+      }
+    });
+
+    return res.json({ config });
   } catch (error) {
     return next(error);
   }
