@@ -11,7 +11,8 @@ import type {
   MongoNexTechSalesPlan,
   MongoNexTechSalesSettings,
   MongoNexTechSaleStatus,
-  MongoNexTechSubscription
+  MongoNexTechSubscription,
+  MongoNexTechWebhookLog
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { env } from "../config/env";
@@ -65,6 +66,11 @@ export type NexTechSaleDto = Omit<MongoNexTechSale, "_id" | "createdAt" | "updat
   expiresAt: string | null;
 };
 
+export type NexTechPaymentLogDto = Omit<MongoNexTechWebhookLog, "_id" | "createdAt"> & {
+  id: string;
+  createdAt: string;
+};
+
 export type NexTechSaleDeliveryResultInput = {
   deliveredRoleIds?: string[];
   error?: string | null;
@@ -74,6 +80,7 @@ export type NexTechSaleDeliveryResultInput = {
 };
 
 export type NexTechSalesDashboardDto = {
+  paymentLogs: NexTechPaymentLogDto[];
   plans: NexTechSalesPlanDto[];
   products: NexTechProductDto[];
   sales: NexTechSaleDto[];
@@ -250,7 +257,7 @@ export type ProcessWebhookInput = {
 };
 
 export async function getNexTechSalesDashboard(botId: string, guildId: string, ownerUserId: string) {
-  const { nexTechCustomers, nexTechProducts, nexTechSales, nexTechSalesPlans, nexTechSubscriptions } = await getMongoCollections();
+  const { nexTechCustomers, nexTechProducts, nexTechSales, nexTechSalesPlans, nexTechSubscriptions, nexTechWebhookLogs } = await getMongoCollections();
   const settings = await ensureNexTechSalesSettings(botId, guildId, ownerUserId);
   const scope = tenantScope(botId, guildId, ownerUserId, settings.storeId);
   await reconcileLifetimeHostingCharges(settings);
@@ -259,10 +266,11 @@ export async function getNexTechSalesDashboard(botId: string, guildId: string, o
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
-  const [plans, products, sales, customers, subscriptions, lifetimeLicenses, totalSales, paidSales, pendingSales, salesToday, salesThisMonth, activeProducts, inactiveProducts, revenueRows, revenueTodayRows] = await Promise.all([
+  const [plans, products, sales, paymentLogs, customers, subscriptions, lifetimeLicenses, totalSales, paidSales, pendingSales, salesToday, salesThisMonth, activeProducts, inactiveProducts, revenueRows, revenueTodayRows] = await Promise.all([
     nexTechSalesPlans.find(scope).sort({ createdAt: -1 }).toArray(),
     nexTechProducts.find(scope).sort({ updatedAt: -1 }).toArray(),
     nexTechSales.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
+    nexTechWebhookLogs.find(scope).sort({ createdAt: -1 }).limit(100).toArray(),
     nexTechCustomers.countDocuments(scope),
     nexTechSubscriptions.countDocuments({ ...scope, status: "active" }),
     nexTechSubscriptions.find({ ...scope, productPlanType: "lifetime" }).sort({ createdAt: -1 }).toArray(),
@@ -283,7 +291,7 @@ export async function getNexTechSalesDashboard(botId: string, guildId: string, o
     ]).toArray()
   ]);
 
-  return toDashboardDto(settings, plans, products, sales, customers, subscriptions, lifetimeLicenses, {
+  return toDashboardDto(settings, plans, products, sales, paymentLogs, customers, subscriptions, lifetimeLicenses, {
     activeProducts,
     inactiveProducts,
     paidSales,
@@ -1139,6 +1147,7 @@ function toDashboardDto(
   plans: MongoNexTechSalesPlan[],
   products: MongoNexTechProduct[],
   sales: MongoNexTechSale[],
+  paymentLogs: MongoNexTechWebhookLog[],
   customers: number,
   subscriptions: number,
   lifetimeLicenses: MongoNexTechSubscription[],
@@ -1156,6 +1165,7 @@ function toDashboardDto(
 ): NexTechSalesDashboardDto {
   return {
     settings: toSettingsDto(settings),
+    paymentLogs: paymentLogs.map(toPaymentLogDto),
     plans: plans.map(toPlanDto),
     products: products.map(toProductDto),
     sales: sales.map(toSaleDto),
@@ -1293,6 +1303,14 @@ export function toSaleDto(sale: MongoNexTechSale): NexTechSaleDto {
     expiresAt: sale.expiresAt?.toISOString() ?? null,
     createdAt: sale.createdAt.toISOString(),
     updatedAt: sale.updatedAt.toISOString()
+  };
+}
+
+function toPaymentLogDto(log: MongoNexTechWebhookLog): NexTechPaymentLogDto {
+  return {
+    ...log,
+    id: log._id,
+    createdAt: log.createdAt.toISOString()
   };
 }
 

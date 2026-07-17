@@ -3050,8 +3050,24 @@ export type NexTechSale = {
   updatedAt: string;
 };
 
+export type NexTechPaymentLog = {
+  id: string;
+  botId: string;
+  guildId: string;
+  ownerUserId: string;
+  storeId: string;
+  paymentGatewayId: string;
+  eventId: string | null;
+  eventType: string;
+  signatureValid: boolean;
+  processed: boolean;
+  saleId: string | null;
+  createdAt: string;
+};
+
 export type NexTechSalesDashboard = {
   lifetimeLicenses: NexTechLifetimeLicense[];
+  paymentLogs: NexTechPaymentLog[];
   plans: NexTechSalesPlan[];
   products: NexTechProduct[];
   sales: NexTechSale[];

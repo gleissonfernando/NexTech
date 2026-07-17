@@ -3303,6 +3303,20 @@ function NexTechSalesWorkspace({
     () => dashboard?.products.find((product) => product.id === editingProductId) ?? null,
     [dashboard?.products, editingProductId]
   );
+  const [paymentLogFilter, setPaymentLogFilter] = useState<"today" | "7d" | "30d" | "all">("7d");
+  const filteredPaymentLogs = useMemo(() => {
+    const logs = dashboard?.paymentLogs ?? [];
+    if (paymentLogFilter === "all") return logs;
+
+    const now = new Date();
+    const start = new Date(now);
+    if (paymentLogFilter === "today") {
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start.setDate(start.getDate() - (paymentLogFilter === "7d" ? 7 : 30));
+    }
+    return logs.filter((log) => new Date(log.createdAt) >= start);
+  }, [dashboard?.paymentLogs, paymentLogFilter]);
 
   useEffect(() => {
     setGuildId(bot.mainGuildId || guildOptions[0]?.id || "");
@@ -4100,6 +4114,48 @@ function NexTechSalesWorkspace({
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/30 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-white">Logs de Pagamentos</p>
+                    <p className="mt-1 text-xs font-medium text-zinc-500">Webhooks recebidos, assinatura, processamento e venda vinculada.</p>
+                  </div>
+                  <select
+                    className="h-10 rounded-lg border border-zinc-800 bg-black/40 px-3 text-xs font-bold text-white outline-none"
+                    onChange={(event) => setPaymentLogFilter(event.target.value as typeof paymentLogFilter)}
+                    value={paymentLogFilter}
+                  >
+                    <option value="today">Hoje</option>
+                    <option value="7d">Últimos 7 dias</option>
+                    <option value="30d">Últimos 30 dias</option>
+                    <option value="all">Todos</option>
+                  </select>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {filteredPaymentLogs.map((log) => (
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3" key={log.id}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-white">{log.eventType}</p>
+                          <p className="mt-1 text-xs font-medium text-zinc-500">
+                            {formatDate(log.createdAt)} · gateway {log.paymentGatewayId}{log.saleId ? ` · venda ${log.saleId}` : ""}
+                          </p>
+                          {log.eventId ? <p className="mt-1 truncate text-xs font-medium text-zinc-600">Evento {log.eventId}</p> : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant={log.processed ? "success" : "muted"}>{log.processed ? "Processado" : "Recebido"}</Badge>
+                          <Badge variant={log.signatureValid ? "success" : "danger"}>{log.signatureValid ? "Assinatura ok" : "Assinatura inválida"}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!filteredPaymentLogs.length ? (
+                    <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm font-medium text-zinc-500">
+                      Nenhum log de pagamento neste período.
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </CardContent>
           </Card>
