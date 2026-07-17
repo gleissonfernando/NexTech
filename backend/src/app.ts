@@ -87,8 +87,17 @@ app.use("/transcripts", publicTranscriptsRouter);
 app.use("/api", apiRouter);
 
 if (fs.existsSync(frontendIndexPath)) {
-  app.use(express.static(frontendDistPath));
+  app.use(express.static(frontendDistPath, {
+    setHeaders(res, filePath) {
+      if (path.basename(filePath) === "index.html") {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    }
+  }));
   app.get("*", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.sendFile(frontendIndexPath);
   });
 } else {
