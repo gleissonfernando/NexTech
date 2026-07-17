@@ -43,7 +43,12 @@ export type NexTechSalesPlanDto = Omit<MongoNexTechSalesPlan, "_id" | "createdAt
   updatedAt: string;
 };
 
-export type NexTechProductDto = Omit<MongoNexTechProduct, "_id" | "createdAt" | "updatedAt"> & {
+export type NexTechProductDto = Omit<MongoNexTechProduct, "_id" | "bannerExtension" | "bannerIsAnimated" | "bannerMimeType" | "bannerSizeBytes" | "bannerUploadedAt" | "createdAt" | "updatedAt"> & {
+  bannerExtension: string | null;
+  bannerIsAnimated: boolean;
+  bannerMimeType: string | null;
+  bannerSizeBytes: number | null;
+  bannerUploadedAt: string | null;
   id: string;
   publicUrl: string;
   createdAt: string;
@@ -604,16 +609,23 @@ export async function saveNexTechProductBannerUpload(input: {
   await fs.writeFile(filePath, input.buffer);
 
   const bannerUrl = `/uploads/nex-tech-products/${filename}`;
+  const now = new Date();
   await nexTechProducts.updateOne(
     { _id: input.productId, ...scope },
     {
       $set: {
+        bannerExtension: extension,
+        bannerIsAnimated: mimeType === "image/gif" && isAnimatedGif(input.buffer),
+        bannerMimeType: mimeType,
+        bannerSizeBytes: input.buffer.length,
+        bannerUploadedAt: now,
         bannerUrl,
-        updatedAt: new Date(),
+        updatedAt: now,
         updatedBy: input.actorId
       }
     }
   );
+  await removeLocalProductBanner(product.bannerUrl).catch(() => null);
 
   return nexTechProducts.findOne({ _id: input.productId, ...scope });
 }
@@ -1100,13 +1112,64 @@ export function toPlanDto(plan: MongoNexTechSalesPlan): NexTechSalesPlanDto {
 }
 
 export function toProductDto(product: MongoNexTechProduct): NexTechProductDto {
+  const inferred = inferImageMetadataFromUrl(product.bannerUrl);
   return {
     ...product,
+    bannerExtension: product.bannerExtension ?? inferred.extension,
+    bannerIsAnimated: product.bannerIsAnimated ?? inferred.animated,
+    bannerMimeType: product.bannerMimeType ?? inferred.mimeType,
+    bannerSizeBytes: product.bannerSizeBytes ?? null,
+    bannerUploadedAt: product.bannerUploadedAt?.toISOString() ?? null,
     id: product._id,
     publicUrl: `/nex-tech/${product.storeId}/${product.slug}`,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString()
   };
+}
+
+async function removeLocalProductBanner(bannerUrl: string | null | undefined) {
+  const filePath = resolveProductUploadPath(bannerUrl);
+  if (!filePath) return;
+  await fs.rm(filePath, { force: true });
+}
+
+function resolveProductUploadPath(bannerUrl: string | null | undefined) {
+  const normalized = bannerUrl?.trim() ?? "";
+  if (!normalized.startsWith("/uploads/nex-tech-products/")) return null;
+
+  const relative = decodeURIComponent(normalized.replace(/^\/uploads\/nex-tech-products\/+/, "").split(/[?#]/, 1)[0] ?? "");
+  const resolved = path.resolve(PRODUCT_UPLOAD_DIR, relative);
+  const root = path.resolve(PRODUCT_UPLOAD_DIR);
+  return resolved.startsWith(root + path.sep) || resolved === root ? resolved : null;
+}
+
+function inferImageMetadataFromUrl(url: string | null | undefined) {
+  const extension = url?.match(/\.([a-z0-9]+)(?:[?#].*)?$/i)?.[1]?.toLowerCase() ?? null;
+  const mimeType = extension === "gif" ? "image/gif"
+    : extension === "jpg" || extension === "jpeg" ? "image/jpeg"
+      : extension === "png" ? "image/png"
+        : extension === "webp" ? "image/webp"
+          : null;
+
+  return {
+    animated: extension === "gif",
+    extension,
+    mimeType
+  };
+}
+
+function isAnimatedGif(buffer: Buffer) {
+  if (buffer.length < 10 || buffer.toString("ascii", 0, 3) !== "GIF") return false;
+
+  let frames = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    if (buffer[index] === 0x2c) {
+      frames += 1;
+      if (frames > 1) return true;
+    }
+  }
+
+  return false;
 }
 
 export function toSaleDto(sale: MongoNexTechSale): NexTechSaleDto {

@@ -2962,6 +2962,11 @@ export type NexTechProduct = {
   id: string;
   active: boolean;
   additionalInfo: string;
+  bannerExtension: string | null;
+  bannerIsAnimated: boolean;
+  bannerMimeType: string | null;
+  bannerSizeBytes: number | null;
+  bannerUploadedAt: string | null;
   bannerUrl: string | null;
   botId: string;
   category: string;
@@ -3321,7 +3326,21 @@ export type SaveNexTechSalesPlanPayload = {
 
 export type SaveNexTechProductPayload = Omit<
   NexTechProduct,
-  "botId" | "createdAt" | "createdBy" | "guildId" | "id" | "ownerUserId" | "publicUrl" | "storeId" | "updatedAt" | "updatedBy"
+  | "bannerExtension"
+  | "bannerIsAnimated"
+  | "bannerMimeType"
+  | "bannerSizeBytes"
+  | "bannerUploadedAt"
+  | "botId"
+  | "createdAt"
+  | "createdBy"
+  | "guildId"
+  | "id"
+  | "ownerUserId"
+  | "publicUrl"
+  | "storeId"
+  | "updatedAt"
+  | "updatedBy"
 >;
 
 export type SaveNexTechSalePayload = {

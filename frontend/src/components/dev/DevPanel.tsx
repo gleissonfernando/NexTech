@@ -3294,6 +3294,10 @@ function NexTechSalesWorkspace({
   const [saving, setSaving] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const editingProduct = useMemo(
+    () => dashboard?.products.find((product) => product.id === editingProductId) ?? null,
+    [dashboard?.products, editingProductId]
+  );
 
   useEffect(() => {
     setGuildId(bot.mainGuildId || guildOptions[0]?.id || "");
@@ -3764,12 +3768,16 @@ function NexTechSalesWorkspace({
                       <p className="mt-1 text-xs font-medium text-zinc-400">Disponível após salvar/criar o produto.</p>
                     </div>
                     <input
-                      accept="image/gif,image/jpeg,image/png,image/webp"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
                       className="max-w-full text-sm text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-[#E5C000] file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
                       disabled={!editingProductId || saving === "product-banner"}
                       onChange={(event) => void handleUploadProductBanner(event.target.files?.[0] ?? null)}
                       type="file"
                     />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-500">PNG • JPG • JPEG • WEBP • GIF</span>
+                    <ProductBannerFormatBadge imageUrl={productForm.bannerUrl} product={editingProduct} />
                   </div>
                 </div>
 
@@ -3839,7 +3847,10 @@ function NexTechSalesWorkspace({
                     {productForm.bannerUrl ? <img alt="Preview" className="h-full w-full object-cover" src={productForm.bannerUrl} /> : null}
                   </div>
                   <div className="p-4">
-                    <Badge variant={productForm.active ? "success" : "muted"}>{productForm.active ? "Ativo" : "Inativo"}</Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={productForm.active ? "success" : "muted"}>{productForm.active ? "Ativo" : "Inativo"}</Badge>
+                      <ProductBannerFormatBadge imageUrl={productForm.bannerUrl} product={editingProduct} />
+                    </div>
                     <h3 className="mt-3 text-lg font-bold text-white">{productForm.name}</h3>
                     <p className="mt-1 text-sm font-medium text-zinc-400">{productForm.shortDescription}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -3857,7 +3868,10 @@ function NexTechSalesWorkspace({
                           <p className="truncate text-sm font-bold text-white">{product.name}</p>
                           <p className="truncate text-xs font-medium text-zinc-400">{product.publicUrl}</p>
                         </div>
-                        <Badge variant={product.active ? "success" : "muted"}>{product.active ? "Ativo" : "Off"}</Badge>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <ProductBannerFormatBadge product={product} />
+                          <Badge variant={product.active ? "success" : "muted"}>{product.active ? "Ativo" : "Off"}</Badge>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button onClick={() => editProduct(product)} size="sm" variant="outline"><Settings className="h-4 w-4" />Editar</Button>
@@ -4159,6 +4173,58 @@ function formatMoney(cents: number, currency: "BRL" | "USD" | "EUR") {
     currency,
     style: "currency"
   }).format(cents / 100);
+}
+
+function ProductBannerFormatBadge({
+  imageUrl,
+  product
+}: {
+  imageUrl?: string | null;
+  product?: NexTechProduct | null;
+}) {
+  const inferred = inferImageMetadataFromUrl(imageUrl ?? product?.bannerUrl);
+  const extension = (product?.bannerExtension ?? inferred.extension)?.toLowerCase() ?? null;
+  const mimeType = product?.bannerMimeType ?? inferred.mimeType;
+  const isGif = extension === "gif" || mimeType === "image/gif";
+
+  if (!extension && !mimeType) return null;
+
+  const label = isGif ? "GIF Animado" : extension ? extension.toUpperCase() : "Imagem";
+  const details = [
+    mimeType,
+    formatBytes(product?.bannerSizeBytes),
+    product?.bannerUploadedAt ? `Atualizado ${formatDate(product.bannerUploadedAt)}` : null
+  ].filter(Boolean).join(" · ");
+
+  return (
+    <span
+      className="inline-flex items-center rounded-md border border-zinc-800 bg-black/60 px-2 py-1 text-xs font-semibold text-zinc-300"
+      title={details || undefined}
+    >
+      {isGif ? "🎞️" : "🖼️"} {label}
+    </span>
+  );
+}
+
+function inferImageMetadataFromUrl(value: string | null | undefined) {
+  const extension = value?.match(/\.([a-z0-9]+)(?:[?#].*)?$/i)?.[1]?.toLowerCase() ?? null;
+  const mimeType = extension === "gif" ? "image/gif"
+    : extension === "jpg" || extension === "jpeg" ? "image/jpeg"
+      : extension === "png" ? "image/png"
+        : extension === "webp" ? "image/webp"
+          : null;
+
+  return {
+    extension,
+    mimeType
+  };
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function saleStatusLabel(status: NexTechSaleStatus) {

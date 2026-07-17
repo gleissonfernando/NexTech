@@ -3057,6 +3057,11 @@ export type MongoNexTechProductPlanConfig = {
 export type MongoNexTechProduct = {
   _id: string;
   active: boolean;
+  bannerExtension?: string | null;
+  bannerIsAnimated?: boolean;
+  bannerMimeType?: string | null;
+  bannerSizeBytes?: number | null;
+  bannerUploadedAt?: Date | null;
   additionalInfo: string;
   bannerUrl: string | null;
   botId: string;
