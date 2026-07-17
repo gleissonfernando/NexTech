@@ -601,38 +601,43 @@ async function panelPayload(guild: Guild, context: BotContext, dashboard: AutoAc
 }
 
 function renderOperationalPanel(dashboard: AutoActivityClockPanelState) {
+  const separator = "──────────────────────────────────────────────────────";
+  const divider = "══════════════════════════════════════════════════════";
   const activeRows = dashboard.active.slice(0, 16).flatMap((item, index) => {
     const startedAt = Date.parse(item.startedAt);
     const elapsed = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
     const rows = [
+      "",
       `👮 ${item.username || `<@${item.userId}>`}`,
       `🕒 Entrada: ${formatClockTime(item.startedAt)}`,
-      `⏱ Tempo em Serviço: ${formatDurationLong(elapsed)}`
+      `⏱ Tempo em Serviço: ${formatDurationLong(elapsed)}`,
+      ""
     ];
 
     if (index < Math.min(dashboard.active.length, 16) - 1) {
-      rows.push("──────────────────────────────────────────────────────");
+      rows.push(separator);
     }
 
     return rows;
   });
   const overflow = dashboard.active.length > 16
-    ? [``, `+ ${dashboard.active.length - 16} policial(is) em serviço não exibidos nesta página.`]
+    ? ["", `+ ${dashboard.active.length - 16} policial(is) em serviço não exibidos nesta página.`, ""]
     : [];
+  const activeContent = activeRows.length ? activeRows.join("\n") : "\nNenhum policial em serviço no momento.\n";
 
   return [
     "```",
     "╔════════════════════════════════════════════════════╗",
     "                 🚔 POLICIAIS EM SERVIÇO",
     "            Central Operacional • Tempo Real",
-    "══════════════════════════════════════════════════════",
+    divider,
     "",
     `🟢 Em Serviço Agora: ${dashboard.active.length} ${dashboard.active.length === 1 ? "Policial" : "Policiais"}`,
     "",
-    "══════════════════════════════════════════════════════",
-    activeRows.length ? activeRows.join("\n") : "Nenhum policial em serviço no momento.",
+    divider,
+    activeContent,
     ...overflow,
-    "══════════════════════════════════════════════════════",
+    divider,
     "",
     "🟢 Entrar em Serviço",
     "🔴 Encerrar Serviço",
