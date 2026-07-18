@@ -628,6 +628,7 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
     } else {
       await notifyAbsenceUser(guild, absence, settings.messages.started);
     }
+    await deleteAbsenceDecisionChannel(guild, absence, `Solicitação de ausência aprovada por ${interaction.user.tag}`);
     await interaction.editReply(facNoticePayload({
       accentColor: 0x22c55e,
       description: absence.status === "active"
@@ -684,6 +685,7 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
     await updateAbsenceMessage(interaction, settings, absence);
     await sendFacLog(guild, settings, "Solicitação reprovada", absence, interaction.user.id, reason);
     await notifyAbsenceUser(guild, absence, `${settings.messages.rejected}\nMotivo: ${reason}`);
+    await deleteAbsenceDecisionChannel(guild, absence, `Solicitação de ausência reprovada por ${interaction.user.tag}`);
     await interaction.editReply(facNoticePayload({
       accentColor: 0xef4444,
       description: `A solicitação foi reprovada e o usuário foi notificado.\n\n**Motivo:** ${truncate(reason, 500)}`,
@@ -1059,6 +1061,22 @@ async function settleAbsenceChannel(guild: Guild, settings: FivemFacSettings, ab
   if ("setName" in channel && typeof channel.name === "string" && !channel.name.startsWith("finalizada-")) {
     await channel.setName(`finalizada-${channel.name}`.slice(0, 100), reason).catch(() => null);
   }
+}
+
+async function deleteAbsenceDecisionChannel(guild: Guild, absence: FivemFacAbsence, reason: string) {
+  if (!absence.privateChannelId) {
+    return;
+  }
+
+  const channel = await guild.channels.fetch(absence.privateChannelId).catch(() => null);
+
+  if (!channel || !("delete" in channel)) {
+    return;
+  }
+
+  await channel.delete(reason).catch((error) => {
+    console.warn(`[fivem-fac] falha ao deletar canal da ausência ${absence.id}:`, errorMessage(error));
+  });
 }
 
 async function updateFivemFacAbsenceMessage(client: Client, absence: FivemFacAbsence) {
