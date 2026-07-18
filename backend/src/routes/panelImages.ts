@@ -37,7 +37,7 @@ const settingsSchema = z.object({
   useGlobalDefault: z.boolean().optional()
 });
 const panelImageUpload = raw({
-  limit: "10mb",
+  limit: "15mb",
   type: () => true
 });
 

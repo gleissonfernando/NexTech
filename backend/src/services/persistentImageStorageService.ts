@@ -18,11 +18,21 @@ export type StoredImageDto = {
 };
 
 export const PERSISTENT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export const PERSISTENT_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
 export const PERSISTENT_IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp"
+};
+export const PERSISTENT_VIDEO_MIME_EXTENSIONS: Record<string, string> = {
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm"
+};
+const PERSISTENT_MEDIA_MIME_EXTENSIONS: Record<string, string> = {
+  ...PERSISTENT_IMAGE_MIME_EXTENSIONS,
+  ...PERSISTENT_VIDEO_MIME_EXTENSIONS
 };
 
 export async function savePersistentImage(input: {
@@ -40,7 +50,7 @@ export async function savePersistentImage(input: {
   const mimeType = detectSupportedImageMimeType(input.buffer, input.mimeType);
 
   const id = randomUUID();
-  const extension = PERSISTENT_IMAGE_MIME_EXTENSIONS[mimeType];
+  const extension = PERSISTENT_MEDIA_MIME_EXTENSIONS[mimeType];
   const animated = mimeType === "image/gif" && isAnimatedGif(input.buffer);
   const fileName = `${sanitizePathPart(input.guildId)}-${sanitizePathPart(input.moduleId)}-${sanitizePathPart(input.imageType)}-${Date.now()}-${id}.${extension}`;
   const publicUrl = publicImageUrl(id);
@@ -234,16 +244,19 @@ export function detectSupportedImageMimeType(buffer: Buffer, mimeType: string) {
     throw Object.assign(new Error("Arquivo de imagem obrigatório."), { statusCode: 400 });
   }
 
-  if (buffer.length > PERSISTENT_IMAGE_MAX_BYTES) {
-    throw Object.assign(new Error("Imagem muito grande. Envie um arquivo de até 10MB."), { statusCode: 413 });
+  const normalizedMimeType = mimeType.trim().toLowerCase();
+  const detectedMimeType = detectMediaMimeType(buffer);
+  const resolvedMimeType = PERSISTENT_MEDIA_MIME_EXTENSIONS[normalizedMimeType] ? normalizedMimeType : detectedMimeType;
+
+  if (!resolvedMimeType || !PERSISTENT_MEDIA_MIME_EXTENSIONS[resolvedMimeType]) {
+    throw Object.assign(new Error("Formato inválido. Envie PNG, JPG, WEBP, GIF, MP4, MOV ou WEBM."), { statusCode: 400 });
   }
 
-  const normalizedMimeType = mimeType.trim().toLowerCase();
-  const detectedMimeType = detectImageMimeType(buffer);
-  const resolvedMimeType = PERSISTENT_IMAGE_MIME_EXTENSIONS[normalizedMimeType] ? normalizedMimeType : detectedMimeType;
-
-  if (!resolvedMimeType || !PERSISTENT_IMAGE_MIME_EXTENSIONS[resolvedMimeType]) {
-    throw Object.assign(new Error("Formato inválido. Envie GIF, PNG, JPG ou WEBP."), { statusCode: 400 });
+  const maxBytes = resolvedMimeType.startsWith("video/") ? PERSISTENT_VIDEO_MAX_BYTES : PERSISTENT_IMAGE_MAX_BYTES;
+  if (buffer.length > maxBytes) {
+    throw Object.assign(new Error(resolvedMimeType.startsWith("video/")
+      ? "Vídeo muito grande. Envie um arquivo de até 15MB."
+      : "Imagem muito grande. Envie um arquivo de até 10MB."), { statusCode: 413 });
   }
 
   if (resolvedMimeType === "image/gif" && !isGif(buffer)) {
@@ -295,7 +308,10 @@ function mimeTypeFromExtension(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".gif") return "image/gif";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".mp4") return "video/mp4";
   if (ext === ".png") return "image/png";
+  if (ext === ".webm") return "video/webm";
   if (ext === ".webp") return "image/webp";
   return null;
 }
@@ -314,11 +330,14 @@ function isAnimatedGif(buffer: Buffer) {
   return false;
 }
 
-function detectImageMimeType(buffer: Buffer) {
+function detectMediaMimeType(buffer: Buffer) {
   if (isGif(buffer)) return "image/gif";
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
   if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  if (isWebm(buffer)) return "video/webm";
+  const mp4Like = detectIsoBmffVideoMimeType(buffer);
+  if (mp4Like) return mp4Like;
   return null;
 }
 
@@ -326,12 +345,24 @@ function isGif(buffer: Buffer) {
   return buffer.length >= 6 && (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a");
 }
 
+function isWebm(buffer: Buffer) {
+  return buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+}
+
+function detectIsoBmffVideoMimeType(buffer: Buffer) {
+  if (buffer.length < 12 || buffer.toString("ascii", 4, 8) !== "ftyp") return null;
+  const header = buffer.toString("ascii", 8, Math.min(buffer.length, 40));
+  if (header.includes("qt  ")) return "video/quicktime";
+  if (/(isom|iso2|mp41|mp42|avc1|dash|M4V )/.test(header)) return "video/mp4";
+  return null;
+}
+
 function sanitizePathPart(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "image";
 }
 
 function toDto(image: MongoPersistentImage): StoredImageDto {
-  const extension = image.extension || PERSISTENT_IMAGE_MIME_EXTENSIONS[image.mimeType] || fileExtension(image.fileName);
+  const extension = image.extension || PERSISTENT_MEDIA_MIME_EXTENSIONS[image.mimeType] || fileExtension(image.fileName);
   return {
     animated: Boolean(image.animated ?? image.mimeType === "image/gif"),
     extension,

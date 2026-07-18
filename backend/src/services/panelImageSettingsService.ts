@@ -126,7 +126,7 @@ export async function savePanelImageSettings(
   actorId: string | null
 ) {
   if (input.imageEnabled === true && input.imageUrl !== undefined && !normalizeImageUrl(input.imageUrl)) {
-    throw Object.assign(new Error("URL de imagem inválida. Use HTTPS ou envie um arquivo suportado."), { statusCode: 400 });
+    throw Object.assign(new Error("URL de mídia inválida. Use HTTPS ou envie um arquivo suportado."), { statusCode: 400 });
   }
   const current = await getPanelImageSettings(guildId, botId, panelId);
   const next = normalizeSettings({
@@ -430,7 +430,10 @@ function mimeTypeFromUrl(value: string) {
   const extension = extensionFromUrl(value);
   if (extension === "gif") return "image/gif";
   if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "mov") return "video/quicktime";
+  if (extension === "mp4") return "video/mp4";
   if (extension === "png") return "image/png";
+  if (extension === "webm") return "video/webm";
   if (extension === "webp") return "image/webp";
   return null;
 }

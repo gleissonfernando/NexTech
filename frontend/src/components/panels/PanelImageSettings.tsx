@@ -252,11 +252,11 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       return;
     }
 
-    const allowedMime = ["image/gif", "image/jpeg", "image/png", "image/webp"].includes(file.type);
-    const allowedExtension = /\.(gif|jpe?g|png|webp)$/i.test(file.name);
+    const allowedMime = ["image/gif", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"].includes(file.type);
+    const allowedExtension = /\.(gif|jpe?g|mov|mp4|png|webm|webp)$/i.test(file.name);
     if (!allowedMime && !allowedExtension) {
       setStatus(null);
-      setError("Envie uma imagem GIF, PNG, JPG ou WEBP.");
+      setError("Envie uma imagem PNG, JPG, WEBP, GIF ou um vídeo MP4, MOV ou WEBM.");
       return;
     }
 
@@ -271,9 +271,9 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
         [saved.panelId]: saved
       }));
       setDraft(saved);
-      setStatus("Imagem enviada e salva no painel.");
+      setStatus("Mídia enviada e salva no painel.");
     } catch (requestError) {
-      setError(readErrorMessage(requestError, "Não foi possível enviar a imagem."));
+      setError(readErrorMessage(requestError, "Não foi possível enviar a mídia."));
     } finally {
       setUploading(false);
     }
@@ -376,9 +376,9 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <label className="flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-medium text-zinc-200 transition hover:border-zinc-600">
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {uploading ? "Enviando..." : "Enviar arquivo"}
+                    {uploading ? "Enviando..." : "Enviar mídia"}
                     <input
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm"
                       className="hidden"
                       disabled={disabled}
                       onChange={(event) => {
@@ -393,7 +393,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                     className="min-h-11 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]/60"
                     disabled={disabled}
                     onChange={(event) => updateImageUrl(event.target.value)}
-                    placeholder="Cole uma URL HTTPS ou envie um arquivo"
+                    placeholder="Cole uma URL HTTPS ou envie uma mídia"
                     type="url"
                     value={draft.imageUrl}
                   />
@@ -446,7 +446,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
             <div className="rounded-lg border border-zinc-900 bg-black p-4">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 {draft.imageEnabled && draft.imageUrl && ["top", "banner"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
                 ) : null}
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
@@ -456,27 +456,27 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                     </p>
                   </div>
                   {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "thumbnail" ? (
-                    <img alt="" className="h-20 w-20 shrink-0 rounded-md border border-zinc-800 object-cover" src={dashboardImageUrl(draft.imageUrl)} />
+                    <InlineMediaPreview className="h-20 w-20" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} />
                   ) : null}
-                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <img alt="" className="h-28 w-36 shrink-0 rounded-md border border-zinc-800 object-cover" src={dashboardImageUrl(draft.imageUrl)} /> : null}
+                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <InlineMediaPreview className="h-28 w-36" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} /> : null}
                 </div>
                 {draft.imageEnabled && draft.imageUrl && ["below_title", "below_text"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} /></> : null}
+                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} /></> : null}
                 {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão principal</span>
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão secundario</span>
                 </div>
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "bottom" ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
-                    <img alt="" className="h-5 w-5 rounded-full object-cover" src={dashboardImageUrl(draft.imageUrl)} />
+                    <InlineMediaPreview className="h-5 w-5 rounded-full" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} />
                     Rodapé do painel
                   </div>
                 ) : null}
@@ -628,12 +628,28 @@ function NumberField({
 function PreviewImage({
   alt,
   imageUrl,
+  mimeType,
   style
 }: {
   alt: string;
   imageUrl: string;
+  mimeType?: string | null;
   style: { height: string; maxWidth: string; width: string };
 }) {
+  if (isVideoMedia(imageUrl, mimeType)) {
+    return (
+      <video
+        className="mt-4 rounded-md border border-zinc-800 object-cover"
+        controls
+        loop
+        muted
+        playsInline
+        src={dashboardImageUrl(imageUrl)}
+        style={style}
+      />
+    );
+  }
+
   return (
     <img
       alt={alt}
@@ -644,11 +660,20 @@ function PreviewImage({
   );
 }
 
+function InlineMediaPreview({ className, imageUrl, mimeType }: { className: string; imageUrl: string; mimeType?: string | null }) {
+  const classes = `${className} shrink-0 rounded-md border border-zinc-800 object-cover`;
+  if (isVideoMedia(imageUrl, mimeType)) {
+    return <video className={classes} loop muted playsInline src={dashboardImageUrl(imageUrl)} />;
+  }
+  return <img alt="" className={classes} src={dashboardImageUrl(imageUrl)} />;
+}
+
 function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
   const extension = (settings.imageExtension || extensionFromUrl(settings.imageUrl) || "").toLowerCase();
+  const isVideo = isVideoMedia(settings.imageUrl, settings.imageMimeType);
   const isGif = settings.imageIsAnimated || settings.imageMimeType === "image/gif" || extension === "gif";
-  const label = isGif ? (settings.imageIsAnimated ? "GIF Animado" : "GIF") : extension ? extension.toUpperCase() : "Imagem";
-  const icon = isGif ? "🎞️" : "🖼️";
+  const label = isVideo ? `Vídeo ${extension ? extension.toUpperCase() : ""}`.trim() : isGif ? (settings.imageIsAnimated ? "GIF Animado" : "GIF") : extension ? extension.toUpperCase() : "Imagem";
+  const icon = isVideo || isGif ? "🎞️" : "🖼️";
   const details = [
     settings.imageMimeType,
     settings.imageSizeBytes ? formatBytes(settings.imageSizeBytes) : null
@@ -659,6 +684,11 @@ function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
       {icon} {label}
     </span>
   );
+}
+
+function isVideoMedia(imageUrl: string, mimeType?: string | null) {
+  if (mimeType?.startsWith("video/")) return true;
+  return /\.(mov|mp4|webm)(?:$|[?#])/i.test(imageUrl);
 }
 
 function dashboardImageUrl(imageUrl: string) {
