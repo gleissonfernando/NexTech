@@ -269,14 +269,20 @@ export function fixedSystemEmojiText(key: SystemEmojiKey) {
 }
 
 export function normalizeFixedSystemEmojiText(input: string) {
-  return input.replace(/<a?:([a-zA-Z0-9_]{2,32}):(\d{5,32})>/g, (match, _name: string, emojiId: string) => {
+  const emojiTokens: string[] = [];
+  const repaired = input.replace(/<(<a?:[a-zA-Z0-9_]{2,32}:(\d{5,32})>)\2>/g, "$1");
+  const protectedInput = repaired.replace(/<a?:([a-zA-Z0-9_]{2,32}):(\d{5,32})>/g, (match, _name: string, emojiId: string) => {
     const fixed = FIXED_SYSTEM_EMOJI_BY_ID.get(emojiId);
-    if (!fixed) return match;
-    return `<${fixed.animated ? "a" : ""}:${fixed.name}:${fixed.emojiId}>`;
-  }).replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => {
+    const normalized = fixed ? `<${fixed.animated ? "a" : ""}:${fixed.name}:${fixed.emojiId}>` : match;
+    const token = `\u0000SYSTEM_EMOJI_${emojiTokens.length}\u0000`;
+    emojiTokens.push(normalized);
+    return token;
+  });
+  const normalized = protectedInput.replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => {
     const key = SYSTEM_EMOJI_KEY_BY_ALIAS.get(alias);
     return key ? fixedSystemEmojiText(key) : match;
   });
+  return emojiTokens.reduce((text, emoji, index) => text.split(`\u0000SYSTEM_EMOJI_${index}\u0000`).join(emoji), normalized);
 }
 
 export function isSystemEmojiKey(value: string): value is SystemEmojiKey {
