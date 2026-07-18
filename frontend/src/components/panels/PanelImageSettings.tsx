@@ -40,6 +40,9 @@ const PANELS: PanelDefinition[] = [
   { id: "social-network", label: "Redes sociais" },
   { id: "logs", label: "Avisos e logs" }
 ];
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 15 * 1024 * 1024;
+const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
 
 const positionOptions: Array<{ label: string; value: PanelImagePosition }> = [
   { label: "Sem imagem", value: "none" },
@@ -259,6 +262,13 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       setError("Envie uma imagem PNG, JPG, WEBP, GIF ou um vídeo MP4, MOV ou WEBM.");
       return;
     }
+    const isVideo = file.type.startsWith("video/") || /\.(mov|mp4|webm)$/i.test(file.name);
+    const maxBytes = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
+    if (file.size > maxBytes) {
+      setStatus(null);
+      setError(isVideo ? "Vídeo muito grande. Comprima para até 15MB antes de enviar." : "Imagem muito grande. Envie até 10MB.");
+      return;
+    }
 
     setUploading(true);
     setStatus(null);
@@ -378,7 +388,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                     {uploading ? "Enviando..." : "Enviar mídia"}
                     <input
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm"
+                      accept={PANEL_MEDIA_ACCEPT}
                       className="hidden"
                       disabled={disabled}
                       onChange={(event) => {

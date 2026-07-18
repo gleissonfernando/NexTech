@@ -10,6 +10,8 @@ import { Switch } from "../ui/switch";
 import { FivemResourceSelect } from "./FivemResourceSelect";
 
 const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
+const PANEL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const PANEL_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
 
 type FivemActionsPanelProps = {
   botId?: string | null;
@@ -90,13 +92,14 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
     }
   }
   async function publish() { setBusy("publish"); setMessage(null); try { const saved = await publishFivemActionsPanel(guild!.id, architecture, botId!); patchSettings(saved); setMessage("Publicação solicitada ao bot."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
-  async function uploadImage(file: File) { setBusy("image"); try { const image = await uploadPanelImage(guild!.id, `fivem-actions-${architecture}`, file, botId); patchSettings({ imageUrl: image.imageUrl, imagePosition: settings.imagePosition === "none" ? "top" : settings.imagePosition }); setMessage("Mídia enviada. Salve as configurações para aplicar."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
+  async function uploadImage(file: File) { if (!validatePanelMediaFile(file, setMessage)) return; setBusy("image"); try { const image = await uploadPanelImage(guild!.id, `fivem-actions-${architecture}`, file, botId); patchSettings({ imageUrl: image.imageUrl, imagePosition: settings.imagePosition === "none" ? "top" : settings.imagePosition }); setMessage("Mídia enviada. Salve as configurações para aplicar."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   function updateReportBanner(index: number, value: string) {
     const next = [...reportBannerUrls];
     next[index] = value;
     patchSettings({ reportBannerUrls: next.slice(0, 2) });
   }
   async function uploadReportBanner(index: number, file: File) {
+    if (!validatePanelMediaFile(file, setMessage)) return;
     const key = `report-banner-${index}`;
     setBusy(key);
     try {
@@ -210,5 +213,12 @@ function StatusCard({ danger = false, detail, icon: Icon, title, value }: { dang
 function Empty({ text, loading = false }: { text: string; loading?: boolean }) { return <Card><CardContent className="flex min-h-48 items-center justify-center gap-2 p-6 text-zinc-400">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}{text}</CardContent></Card>; }
 function actionModeLabel(mode: FivemActionDashboard["history"][number]["mode"]) { return mode === "shootout" ? "No tiro" : mode === "escape" ? "Na fuga" : "Sem modo"; }
 function actionStatusLabel(status: FivemActionDashboard["history"][number]["status"]) { return status === "forming" ? "Aguardando" : status === "active" ? "Em andamento" : status === "victory" ? "Vitória" : status === "defeat" ? "Derrota" : status === "draw" ? "Empate" : "Cancelada"; }
+function validatePanelMediaFile(file: File, setMessage: (message: string | null) => void) {
+  const isVideo = file.type.startsWith("video/") || /\.(mov|mp4|webm)$/i.test(file.name);
+  const maxBytes = isVideo ? PANEL_VIDEO_MAX_BYTES : PANEL_IMAGE_MAX_BYTES;
+  if (file.size <= maxBytes) return true;
+  setMessage(isVideo ? "Vídeo muito grande. Comprima para até 15MB antes de enviar." : "Imagem muito grande. Envie até 10MB.");
+  return false;
+}
 function splitIds(value: string) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
 function readMessage(error: unknown) { return (error as any)?.response?.data?.message ?? "Não foi possível concluir a operação."; }

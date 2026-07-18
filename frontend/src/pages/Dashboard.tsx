@@ -94,6 +94,8 @@ const PANEL_EMOJIS = {
 } as const;
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
 const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
+const PANEL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const PANEL_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
@@ -5329,14 +5331,20 @@ function AutoActivityClockPanel({ botId, canManage, guild }: { botId?: string | 
 
   async function uploadImageBlock(index: number, file: File | null) {
     if (!guild || !botId || !file) return;
+    const isVideo = isPanelVideoFile(file);
+    const maxBytes = isVideo ? PANEL_VIDEO_MAX_BYTES : PANEL_IMAGE_MAX_BYTES;
+    if (file.size > maxBytes) {
+      setMessage(isVideo ? "Vídeo muito grande. Comprima para até 15MB antes de enviar." : "Imagem muito grande. Envie até 10MB.");
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
       await uploadPanelImage(guild.id, autoActivityImagePanelId(index), file, botId);
       setImageBlocks(await loadAutoActivityImageBlocks(guild.id, botId));
-      setMessage("Imagem enviada.");
+      setMessage("Mídia enviada.");
     } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Não foi possível enviar a imagem.");
+      setMessage(readResponseMessage(error) ?? "Não foi possível enviar a mídia.");
     } finally {
       setSaving(false);
     }
@@ -5503,6 +5511,10 @@ function PanelMediaPreview({ imageUrl, mimeType }: { imageUrl: string; mimeType?
   const isVideo = mimeType?.startsWith("video/") || /\.(mov|mp4|webm)(?:$|[?#])/i.test(imageUrl);
   if (isVideo) return <video className="mt-3 h-28 w-full rounded-md object-cover" controls muted playsInline src={imageUrl} />;
   return <img className="mt-3 h-28 w-full rounded-md object-cover" src={imageUrl} />;
+}
+
+function isPanelVideoFile(file: File) {
+  return file.type.startsWith("video/") || /\.(mov|mp4|webm)$/i.test(file.name);
 }
 
 async function loadAutoActivityImageBlocks(guildId: string, botId: string) {
