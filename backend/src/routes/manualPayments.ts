@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, raw, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { MongoManualPaymentService } from "../database/mongo";
@@ -14,7 +14,8 @@ import {
   requestManualPaymentPanelPublish,
   saveManualPaymentSettings,
   updateManualPaymentOrder,
-  updateManualPaymentPanelState
+  updateManualPaymentPanelState,
+  uploadManualPaymentQrCode
 } from "../services/manualPaymentService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
@@ -61,6 +62,10 @@ const settingsSchema = z.object({
   salePanelTitle: z.string().max(120).optional(),
   services: z.array(serviceSchema).max(50).optional(),
   supportPanelChannelId: optionalSnowflake
+});
+const qrCodeUpload = raw({
+  limit: "10mb",
+  type: () => true
 });
 const orderCreateSchema = z.object({
   serviceId: z.string().min(1).max(120),
@@ -111,6 +116,27 @@ manualPaymentsRouter.post("/:guildId/panel", async (req, res, next) => {
     const botId = await resolveRequestBotId(req);
     if (isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para publicar painel de vendas." });
     return res.json({ settings: await requestManualPaymentPanelPublish(guildId, botId, res.locals.dashboardAuth.user.discordId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualPaymentsRouter.put("/:guildId/qr-code", qrCodeUpload, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para configurar pagamentos." });
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: "Envie a imagem do QR Code." });
+    const mimeType = req.header("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    return res.json({
+      settings: await uploadManualPaymentQrCode({
+        actorId: res.locals.dashboardAuth.user.discordId,
+        botId,
+        buffer: req.body,
+        guildId,
+        mimeType
+      })
+    });
   } catch (error) {
     return next(error);
   }

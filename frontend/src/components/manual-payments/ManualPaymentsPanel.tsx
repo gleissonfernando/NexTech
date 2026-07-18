@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
-import { getGuildLiveOptions, getManualPaymentsDashboard, publishManualPaymentPanel, saveManualPaymentSettings } from "../../lib/api";
+import { ArrowDown, ArrowUp, Plus, RefreshCw, Save, Send, Trash2, Upload } from "lucide-react";
+import { API_URL, getGuildLiveOptions, getManualPaymentsDashboard, publishManualPaymentPanel, saveManualPaymentSettings, uploadManualPaymentQrCode } from "../../lib/api";
 import type {
   DashboardGuild,
   GuildCategoryOption,
@@ -56,6 +56,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const services = useMemo(() => [...(draft.services ?? [])].sort((a, b) => a.order - b.order), [draft.services]);
   const todayOrders = useMemo(() => {
@@ -150,6 +151,36 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
     }
   }
 
+  async function uploadQrCode(file: File | null | undefined) {
+    if (!botId || !guild || !file) return;
+    setUploadingQr(true);
+    try {
+      const saved = await uploadManualPaymentQrCode(botId, guild.id, file);
+      setSettings(saved);
+      setDraft((current) => ({ ...current, pixQrCodeUrl: saved.pixQrCodeUrl }));
+      setMessage("QR Code enviado e salvo com armazenamento persistente.");
+    } catch (error) {
+      setMessage(readError(error, "Não foi possível enviar o QR Code."));
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
+  async function removeQrCode() {
+    if (!botId || !guild) return;
+    setSaving(true);
+    try {
+      const saved = await saveManualPaymentSettings(botId, guild.id, { ...draft, pixQrCodeUrl: null });
+      setSettings(saved);
+      setDraft(toPayload(saved));
+      setMessage("QR Code removido.");
+    } catch (error) {
+      setMessage(readError(error, "Não foi possível remover o QR Code."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!botId || !guild) {
     return <Card><CardContent className="p-6 text-sm text-zinc-500">Selecione um bot e servidor para configurar o pagamento manual.</CardContent></Card>;
   }
@@ -185,7 +216,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
               <Field disabled={!canManage} label="Código Pix Copia e Cola" onChange={(value) => patch({ pixCopyPasteCode: value || null })} value={draft.pixCopyPasteCode ?? ""} />
               <Field disabled={!canManage} label="Nome do recebedor" onChange={(value) => patch({ receiverName: value || null })} value={draft.receiverName ?? ""} />
               <Field disabled={!canManage} label="Banco" onChange={(value) => patch({ receiverBank: value || null })} value={draft.receiverBank ?? ""} />
-              <Field disabled={!canManage} label="URL do QR Code" onChange={(value) => patch({ pixQrCodeUrl: value || null })} value={draft.pixQrCodeUrl ?? ""} />
+              <QrCodeUploadControl disabled={!canManage || uploadingQr || saving} imageUrl={draft.pixQrCodeUrl ?? null} onRemove={() => void removeQrCode()} onUpload={(file) => void uploadQrCode(file)} uploading={uploadingQr} />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -293,6 +324,41 @@ function ValueSelect({ disabled, label, onChange, options, value }: { disabled?:
   return <label className="block text-xs font-medium text-zinc-500">{label}<select className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]/50" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
 }
 
+function QrCodeUploadControl({ disabled, imageUrl, onRemove, onUpload, uploading }: { disabled?: boolean; imageUrl: string | null; onRemove: () => void; onUpload: (file: File | null) => void; uploading: boolean }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-zinc-500">QR Code Pix</p>
+          <p className="mt-1 text-xs text-zinc-600">Upload validado e salvo de forma persistente.</p>
+        </div>
+        {imageUrl ? <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">Salvo</span> : null}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[96px,minmax(0,1fr)]">
+        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-black">
+          {imageUrl ? <img alt="QR Code Pix" className="h-full w-full object-contain" src={dashboardImageUrl(imageUrl)} /> : <Upload className="h-5 w-5 text-zinc-600" />}
+        </div>
+        <div className="space-y-2">
+          <input
+            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+            className="block w-full text-xs text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-[#FFD500] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-black disabled:opacity-50"
+            disabled={disabled}
+            onChange={(event) => {
+              onUpload(event.target.files?.[0] ?? null);
+              event.currentTarget.value = "";
+            }}
+            type="file"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={disabled || !imageUrl} onClick={onRemove} size="sm" type="button" variant="outline"><Trash2 className="mr-2 h-4 w-4" />Remover QR</Button>
+            {uploading ? <span className="px-2 py-1 text-xs text-zinc-500">Enviando...</span> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChannelSelect({ channels, disabled, label, onChange, value }: { channels: GuildChannelOption[]; disabled?: boolean; label: string; onChange: (value: string | null) => void; value: string | null }) {
   return (
     <label className="block text-xs font-medium text-zinc-500">
@@ -380,6 +446,20 @@ function statusLabel(status: ManualPaymentOrder["status"]) {
     WAITING_CUSTOMER: "Aguardando cliente",
     WAITING_STAFF_APPROVAL: "Aguardando equipe"
   }[status];
+}
+
+function dashboardImageUrl(imageUrl: string) {
+  try {
+    const url = new URL(imageUrl);
+    if (url.pathname.startsWith("/api/persistent-images/")) return `${url.pathname}${url.search}`;
+  } catch {
+    if (imageUrl.startsWith("/api/")) return imageUrl;
+  }
+  if (imageUrl.startsWith("/api/")) {
+    const apiOrigin = new URL(API_URL, window.location.origin).origin;
+    return `${apiOrigin}${imageUrl}`;
+  }
+  return imageUrl;
 }
 
 function readError(error: unknown, fallback: string) {

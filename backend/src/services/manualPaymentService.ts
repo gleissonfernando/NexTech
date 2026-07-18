@@ -8,6 +8,7 @@ import type {
 import { getMongoCollections } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 import { createLog } from "./logService";
+import { savePersistentImage } from "./persistentImageStorageService";
 
 export const MANUAL_PAYMENTS_MODULE_ID = "manual-payments";
 
@@ -145,6 +146,35 @@ export async function updateManualPaymentPanelState(guildId: string, botId: stri
   const { manualPaymentSettings } = await getMongoCollections();
   await manualPaymentSettings.updateOne({ _id: settings._id }, { $set: { salePanelMessageId: messageId, updatedAt: new Date() } });
   return toSettingsDto((await manualPaymentSettings.findOne({ _id: settings._id })) ?? settings);
+}
+
+export async function uploadManualPaymentQrCode(input: {
+  actorId: string | null;
+  botId: string | null;
+  buffer: Buffer;
+  guildId: string;
+  mimeType: string;
+}) {
+  const current = await ensureManualPaymentSettings(input.guildId, input.botId);
+  const stored = await savePersistentImage({
+    actorId: input.actorId,
+    botId: current.botId,
+    buffer: input.buffer,
+    guildId: input.guildId,
+    imageType: "qr-code",
+    metadata: { field: "pixQrCodeUrl" },
+    mimeType: input.mimeType,
+    moduleId: MANUAL_PAYMENTS_MODULE_ID,
+    previousUrl: current.pixQrCodeUrl
+  });
+  const { manualPaymentSettings } = await getMongoCollections();
+  await manualPaymentSettings.updateOne(
+    { _id: current._id },
+    { $set: { pixQrCodeUrl: stored.publicUrl, updatedAt: new Date(), updatedBy: input.actorId } }
+  );
+  const settings = (await manualPaymentSettings.findOne({ _id: current._id })) ?? current;
+  await writeAudit(settings, input.actorId, "qr_code_uploaded", "QR Code Pix enviado para armazenamento persistente.");
+  return toSettingsDto(settings);
 }
 
 export async function createManualPaymentOrder(guildId: string, botId: string | null, input: CreateManualPaymentOrderInput) {

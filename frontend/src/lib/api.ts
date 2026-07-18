@@ -2639,6 +2639,21 @@ export async function saveManualPaymentSettings(botId: string, guildId: string, 
   return data.settings;
 }
 
+export async function uploadManualPaymentQrCode(botId: string, guildId: string, file: File) {
+  const { data } = await api.put<{ settings: ManualPaymentsDashboard["settings"] }>(
+    `/manual-payments/${encodeURIComponent(guildId)}/qr-code`,
+    file,
+    {
+      headers: {
+        "Content-Type": file.type || "application/octet-stream"
+      },
+      params: botParams(botId),
+      timeout: 30000
+    }
+  );
+  return data.settings;
+}
+
 export async function publishManualPaymentPanel(botId: string, guildId: string) {
   const { data } = await api.post<{ settings: ManualPaymentsDashboard["settings"] }>(
     `/manual-payments/${encodeURIComponent(guildId)}/panel`,
