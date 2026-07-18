@@ -367,7 +367,7 @@ async function handlePublicReportButton(interaction: ButtonInteraction, context:
     const settings = await getFreshGuildSettings(context, interaction.guildId!, interaction.client.user?.id);
     const category = settings.reportSystem.categories.find((item) => item.enabled && item.id === categoryId);
     if (!category) return safeReply(interaction, "Opção de denúncia inválida.");
-    await openReportFromPanel(interaction, context, category.id, mode === "anonymous" ? "anonymous" : "identified");
+    await interaction.showModal(createPublicReportModal(category.id, mode === "anonymous" ? "anonymous" : "identified", category.name));
     return;
   }
 
@@ -1247,20 +1247,7 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     return;
   }
 
-  let destinationCategory = category;
-  try {
-    const denouncedRoleIds = await resolveDenouncedRoleIds(interaction, reported);
-    const forwarding = await context.api.resolveHierarchyForwarding(interaction.guildId!, denouncedRoleIds);
-    const configuredCategory = report.categories.find((item) => item.enabled && item.id === forwarding.destinationCategoryId);
-    if (!configuredCategory) {
-      await interaction.editReply("O destino configurado para este cargo não está ativo nos órgãos da Corregedoria.");
-      return;
-    }
-    destinationCategory = configuredCategory;
-  } catch (error) {
-    await interaction.editReply(errorMessage(error) ?? "Não existe um destino configurado para este cargo. Acesse Dashboard -> Corregedoria -> Órgãos e configure os cargos responsáveis e o campo Escalar para.");
-    return;
-  }
+  const destinationCategory = await resolveReportDestinationCategory(interaction, context, report, category, reported);
 
   const channel = await createReportChannel(interaction.guild!, settings, {
     categoryId: destinationCategory.id,
@@ -1323,6 +1310,24 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
       ? `Canal privado criado para preparar sua denúncia: <#${channel.id}>`
       : `Sua denúncia foi aberta: <#${channel.id}>`
   );
+}
+
+async function resolveReportDestinationCategory(
+  interaction: ModalSubmitInteraction,
+  context: BotContext,
+  report: ReportSystemSettings,
+  selectedCategory: ReportSystemSettings["categories"][number],
+  reported: string
+) {
+  try {
+    const denouncedRoleIds = await resolveDenouncedRoleIds(interaction, reported);
+    const forwarding = await context.api.resolveHierarchyForwarding(interaction.guildId!, denouncedRoleIds);
+    return report.categories.find((item) => item.enabled && item.id === forwarding.destinationCategoryId) ?? selectedCategory;
+  } catch (error) {
+    const message = errorMessage(error) ?? "sem regra de encaminhamento";
+    console.warn(`[iab] usando órgão selecionado por falta de encaminhamento específico guild=${interaction.guildId} category=${selectedCategory.id}: ${message}`);
+    return selectedCategory;
+  }
 }
 
 async function resolveDenouncedRoleIds(interaction: ModalSubmitInteraction, reported: string) {

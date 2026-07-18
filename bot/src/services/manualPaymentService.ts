@@ -180,14 +180,18 @@ function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymen
   const visual = paymentStatusVisual(order);
   const canAct = ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(order.status);
   const pixKey = settings.pixKey?.trim() || null;
-  const pixCopyCode = getPixCopyCode(settings);
+  const explicitPixCopyCode = getExplicitPixCopyCode(settings);
+  const shouldShowPixCopyCode = Boolean(explicitPixCopyCode && !isSamePixValue(explicitPixCopyCode, pixKey));
   const category = serviceCategoryLabel(service);
+  const paymentActionButtons = [
+    new ButtonBuilder().setCustomId(`${PREFIX}:copy_key:${order.id}`).setEmoji("🔵").setLabel("Copiar Chave Pix").setStyle(ButtonStyle.Primary).setDisabled(!pixKey),
+    ...(shouldShowPixCopyCode
+      ? [new ButtonBuilder().setCustomId(`${PREFIX}:copy_code:${order.id}`).setEmoji("🟣").setLabel("Copiar Código Pix").setStyle(ButtonStyle.Secondary)]
+      : []),
+    new ButtonBuilder().setCustomId(`${PREFIX}:paid:${order.id}`).setEmoji("🟢").setLabel("Já fiz o pagamento").setStyle(ButtonStyle.Success).setDisabled(!canAct)
+  ];
   const actions = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:copy_key:${order.id}`).setEmoji("🔵").setLabel("Copiar Chave Pix").setStyle(ButtonStyle.Primary).setDisabled(!pixKey),
-      new ButtonBuilder().setCustomId(`${PREFIX}:copy_code:${order.id}`).setEmoji("🟣").setLabel("Copiar Código Pix").setStyle(ButtonStyle.Secondary).setDisabled(!pixCopyCode),
-      new ButtonBuilder().setCustomId(`${PREFIX}:paid:${order.id}`).setEmoji("🟢").setLabel("Já fiz o pagamento").setStyle(ButtonStyle.Success).setDisabled(!canAct)
-    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(paymentActionButtons),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`${PREFIX}:refresh_payment:${order.id}`).setEmoji("🟠").setLabel("Atualizar Status").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`${PREFIX}:cancel_customer:${order.id}`).setEmoji("🔴").setLabel("Cancelar Pedido").setStyle(ButtonStyle.Danger).setDisabled(!canAct)
@@ -209,7 +213,7 @@ function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymen
     description: `Seu pedido foi criado com sucesso!\n\nFinalize o pagamento para que nossa equipe possa iniciar o processamento.\n\n**${visual.label}**\n${visual.description}`,
     fields: [
       `## 📦 Informações do Pedido\n🆔 Pedido: **${formatOrderNumber(order)}**\n👤 Cliente: <@${order.userId}>\n🛒 Produto: **${limitText(order.serviceName, 120)}**\n🏷️ Categoria: **${category}**\n💰 Valor: **${money(order.amount)}**\n📅 Criado em: ${formatDate(order.createdAt)}\n⏳ Status: **${visual.label}**`,
-      `## 💸 Dados para Pagamento\n🏦 Método: **${paymentMethodLabel(order)}**\n\n👤 Recebedor:\n**${settings.receiverName?.trim() || "Não informado"}**\n\n🏛 Banco:\n**${settings.receiverBank?.trim() || "Não informado"}**\n\n🔑 Chave Pix:\n\`${pixKey ?? "Não configurada"}\`\n\n🧾 Código Pix Copia e Cola:\n\`${pixCopyCode ?? "Não configurado"}\``,
+      createPaymentDataSection(settings, order, pixKey, shouldShowPixCopyCode ? explicitPixCopyCode : null),
       ...(qrSection ? [qrSection] : []),
       `## 📋 Instruções\n1️⃣ Faça o pagamento utilizando a chave Pix.\n\n2️⃣ Após realizar o pagamento, clique em **Já fiz o pagamento**.\n\n3️⃣ Envie o comprovante neste canal.\n\n4️⃣ Aguarde a conferência da equipe.\n\n⚠️ A aprovação é manual.\n\n${limitText(paymentInstructions, 900)}`,
       "## 🔔 Avisos\n• Não altere o valor.\n\n• Não feche este ticket.\n\n• Caso o pagamento não seja identificado, o pedido permanecerá pendente.\n\n• Após aprovado, o sistema atualizará automaticamente o status.",
@@ -536,8 +540,33 @@ function paymentStatusVisual(order: ManualPaymentOrder) {
   };
 }
 
+function createPaymentDataSection(settings: ManualPaymentSettings, order: ManualPaymentOrder, pixKey: string | null, pixCopyCode: string | null) {
+  return [
+    "## 💸 Dados para Pagamento",
+    `🏦 Método: **${paymentMethodLabel(order)}**`,
+    "",
+    "👤 Recebedor:",
+    `**${settings.receiverName?.trim() || "Não informado"}**`,
+    "",
+    "🏛 Banco:",
+    `**${settings.receiverBank?.trim() || "Não informado"}**`,
+    "",
+    "🔑 Chave Pix:",
+    `\`${pixKey ?? "Não configurada"}\``,
+    ...(pixCopyCode ? ["", "🧾 Código Pix Copia e Cola:", `\`${pixCopyCode}\``] : [])
+  ].join("\n");
+}
+
+function getExplicitPixCopyCode(settings: ManualPaymentSettings) {
+  return settings.pixCopyPasteCode?.trim() || null;
+}
+
 function getPixCopyCode(settings: ManualPaymentSettings) {
-  return settings.pixCopyPasteCode?.trim() || settings.pixKey?.trim() || null;
+  return getExplicitPixCopyCode(settings) || settings.pixKey?.trim() || null;
+}
+
+function isSamePixValue(left: string | null | undefined, right: string | null | undefined) {
+  return Boolean(left && right && left.trim() === right.trim());
 }
 
 function copyablePixMessage(label: string, value: string | null | undefined) {

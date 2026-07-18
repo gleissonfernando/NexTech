@@ -20,6 +20,7 @@ import type { MessageControlStatus, MessageControlUser } from "./apiClient";
 import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./deletedMessageLogService";
 import { getActiveTicketForMessageChannel } from "./ticketChannelGuard";
 
+const MODULE_ID = "message-control";
 const PREFIX = "message_control";
 const WEBHOOK_NAME = "NexTech Equipe";
 const CACHE_TTL_MS = 30_000;
@@ -42,7 +43,7 @@ export const messageControlCommand: BotCommand = {
     .addSubcommand((subcommand) => subcommand
       .setName("reativar")
       .setDescription("Atalho para reativar o modo oculto para suas mensagens.")),
-  moduleId: undefined,
+  moduleId: MODULE_ID,
   async execute(interaction, context) {
     if (!isMessageControlEnabled()) {
       await interaction.reply({ content: "O sistema /mensagem não está liberado para este bot.", flags: MessageFlags.Ephemeral });
@@ -70,7 +71,7 @@ export const messageControlActivateAliasCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("mensagem-ativar")
     .setDescription("Legado: reativa o modo oculto para suas mensagens."),
-  moduleId: undefined,
+  moduleId: MODULE_ID,
   async execute(interaction, context) {
     await setOwnMessageControlStatus(interaction, context, "equipe");
   }
@@ -80,7 +81,7 @@ export const messageControlDeactivateAliasCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("mensagem-desativar")
     .setDescription("Legado: deixa suas mensagens passarem pela sua própria conta Discord."),
-  moduleId: undefined,
+  moduleId: MODULE_ID,
   async execute(interaction, context) {
     await setOwnMessageControlStatus(interaction, context, "pessoal");
   }

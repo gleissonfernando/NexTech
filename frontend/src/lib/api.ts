@@ -77,6 +77,10 @@ import type {
   ManualRegistrationDashboard,
   ManualRegistrationSettings,
   ManualRegistrationSubmission,
+  MessageControlDashboard,
+  MessageControlSettings,
+  MessageControlStatus,
+  MessageControlUser,
   MercadoPagoConnectionTest,
   MissionToolsResponse,
   MissionToolsSettings,
@@ -1700,6 +1704,12 @@ export async function getVisibleMessageDashboard(guildId: string, botId: string)
 export async function addVisibleMessageUser(guildId: string, botId: string, payload: { avatarUrl?: string | null; userId: string; username?: string | null }) { const { data } = await api.post<{ user: import("../types").VisibleMessageUser }>(`/visible-message/${guildId}/users`, payload, { params: botParams(botId) }); return data.user; }
 export async function removeVisibleMessageUser(guildId: string, botId: string, userId: string) { const { data } = await api.delete<{ user: import("../types").VisibleMessageUser | null }>(`/visible-message/${guildId}/users/${userId}`, { params: botParams(botId) }); return data.user; }
 export async function clearVisibleMessageUsers(guildId: string, botId: string) { const { data } = await api.delete<{ users: import("../types").VisibleMessageUser[] }>(`/visible-message/${guildId}/users`, { params: botParams(botId) }); return data.users; }
+export async function getMessageControlDashboard(guildId: string, botId: string) { const { data } = await api.get<MessageControlDashboard>(`/message-control/${guildId}`, { params: botParams(botId) }); return data; }
+export async function addMessageControlUser(guildId: string, botId: string, payload: { avatarUrl?: string | null; discordId: string; username?: string | null }) { const { data } = await api.post<{ user: MessageControlUser }>(`/message-control/${guildId}/users`, payload, { params: botParams(botId) }); return data.user; }
+export async function removeMessageControlUser(guildId: string, botId: string, discordId: string) { const { data } = await api.delete<{ user: MessageControlUser | null }>(`/message-control/${guildId}/users/${discordId}`, { params: botParams(botId) }); return data.user; }
+export async function clearMessageControlUsers(guildId: string, botId: string) { const { data } = await api.delete<{ users: MessageControlUser[] }>(`/message-control/${guildId}/users`, { params: botParams(botId) }); return data.users; }
+export async function saveMessageControlSettings(guildId: string, botId: string, payload: Partial<Pick<MessageControlSettings, "managerRoleIds" | "managerUserIds">>) { const { data } = await api.patch<{ settings: MessageControlSettings }>(`/message-control/${guildId}/settings`, payload, { params: botParams(botId) }); return data.settings; }
+export async function setMessageControlUserStatus(guildId: string, botId: string, discordId: string, status: MessageControlStatus) { const { data } = await api.patch<{ user: MessageControlUser }>(`/message-control/${guildId}/users/${discordId}/status`, { status }, { params: botParams(botId) }); return data.user; }
 export async function getDmBarDashboard(guildId: string, botId: string) { const { data } = await api.get<import("../types").DmBarDashboard>(`/dm-bar/${guildId}`, { params: botParams(botId) }); return data; }
 export async function saveDmBarConfig(guildId: string, botId: string, payload: Partial<import("../types").DmBarConfig>) { const { data } = await api.patch<{ config: import("../types").DmBarConfig }>(`/dm-bar/${guildId}/config`, payload, { params: botParams(botId) }); return data.config; }
 export async function resetDmBarConfig(guildId: string, botId: string) { const { data } = await api.post<{ config: import("../types").DmBarConfig }>(`/dm-bar/${guildId}/reset`, undefined, { params: botParams(botId) }); return data.config; }

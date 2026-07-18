@@ -111,6 +111,8 @@ import {
   downloadEmojiZip,
   cloneEmojiToGuild,
   cloneSelectedEmojiCloneBotToken,
+  addMessageControlUser,
+  clearMessageControlUsers,
   createFivemGoalConfig,
   createManualRegistrationSubmission,
   deleteManualRegistrationSubmission,
@@ -143,6 +145,7 @@ import {
   getLives,
   getLogs,
   getManualRegistrationDashboard,
+  getMessageControlDashboard,
   getPoliceTimeClockDashboard,
   getSelfBotProtection,
   getServerBackupDashboard,
@@ -170,6 +173,7 @@ import {
   saveGlobalBlacklistSettings,
   saveLiveDetectionSettings,
   saveManualRegistrationSettings,
+  saveMessageControlSettings,
   savePoliceTimeClockSettings,
   saveServerBackupSettings,
   syncApplicationEmojis,
@@ -177,6 +181,8 @@ import {
   updateSelectedDashboardGuild,
   updateApplicationEmojiSettings,
   updateBotGuildConfig,
+  removeMessageControlUser,
+  setMessageControlUserStatus,
   uploadPanelImage,
   createServerBackup,
   deleteServerBackup,
@@ -233,6 +239,9 @@ import type {
   ManualRegistrationSetRole,
   ManualRegistrationSubmission,
   MaintenanceState,
+  MessageControlDashboard,
+  MessageControlStatus,
+  MessageControlUser,
   PanelImageSettings as PanelImageSettingsType,
   PoliceTimeClockDashboard,
   SelfBotProtectionSettings,
@@ -1711,7 +1720,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
         {activeView === "message-control" ? (
           isServerModuleReleased("message-control") ? (
-            <MessageControlPanel bot={selectedBot} guild={selectedGuild} serverReleased />
+            <MessageControlPanel bot={selectedBot} canManage={canManageModule(selectedBot, "message-control", canManageDashboard)} guild={selectedGuild} serverReleased />
           ) : (
             <ServerModuleReleasePanel
               canRelease={canReleaseServerModule("message-control")}
@@ -4681,12 +4690,187 @@ function DafRosterPanel({
   );
 }
 
-function MessageControlPanel({ bot, guild, serverReleased }: { bot: DashboardBot | null; guild: DashboardGuild | null; serverReleased: boolean }) {
+function MessageControlPanel({ bot, canManage, guild, serverReleased }: { bot: DashboardBot | null; canManage: boolean; guild: DashboardGuild | null; serverReleased: boolean }) {
+  const botId = bot?.id ?? null;
+  const guildId = guild?.id ?? null;
+  const [dashboard, setDashboard] = useState<MessageControlDashboard | null>(null);
+  const [roles, setRoles] = useState<GuildRoleOption[]>([]);
+  const [members, setMembers] = useState<GuildMemberOption[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [manualUserId, setManualUserId] = useState("");
+  const [manualUsername, setManualUsername] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const commandItems = [
     { command: "/mensagem config", description: "Abrir o painel de usuários, permissões e modos individuais." },
     { command: "/mensagem ativar", description: "Reativar o modo oculto para as mensagens do usuário cadastrado." },
     { command: "/mensagem desativar", description: "Permitir que as mensagens passem pela própria conta Discord." }
   ];
+  const memberOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const member of members) byId.set(member.id, { id: member.id, name: member.displayName || member.username || member.id });
+    for (const user of dashboard?.users ?? []) byId.set(user.discordId, { id: user.discordId, name: user.username ?? user.discordId });
+    for (const id of dashboard?.settings.managerUserIds ?? []) {
+      if (!byId.has(id)) byId.set(id, { id, name: id });
+    }
+    return [...byId.values()];
+  }, [dashboard?.settings.managerUserIds, dashboard?.users, members]);
+  const roleOptions = useMemo(() => roles.map((role) => ({ color: role.color, disabled: role.managed, id: role.id, name: role.name })), [roles]);
+
+  useEffect(() => {
+    if (!botId || !guildId || !serverReleased) {
+      setDashboard(null);
+      return;
+    }
+
+    let mounted = true;
+    setBusy("load");
+    setMessage(null);
+
+    Promise.all([
+      getMessageControlDashboard(guildId, botId),
+      getGuildLiveOptions(guildId, botId),
+      getGuildMemberOptions(guildId, "", botId).catch(() => [])
+    ])
+      .then(([data, options, memberData]) => {
+        if (!mounted) return;
+        setDashboard(data);
+        setRoles(options.roles ?? []);
+        setMembers(memberData);
+      })
+      .catch((error) => {
+        if (mounted) setMessage(readResponseMessage(error) ?? "Não foi possível carregar o Controle de Mensagem.");
+      })
+      .finally(() => {
+        if (mounted) setBusy(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, guildId, serverReleased]);
+
+  async function searchMembers() {
+    if (!botId || !guildId) return;
+    setBusy("search");
+    setMessage(null);
+    try {
+      setMembers(await getGuildMemberOptions(guildId, memberQuery, botId));
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível buscar usuários.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addMember(member: GuildMemberOption) {
+    if (!botId || !guildId) return;
+    setBusy(`add:${member.id}`);
+    setMessage(null);
+    try {
+      const user = await addMessageControlUser(guildId, botId, {
+        avatarUrl: member.avatarUrl,
+        discordId: member.id,
+        username: member.displayName || member.username
+      });
+      setDashboard((current) => current ? { ...current, users: upsertMessageControlUser(current.users, user) } : current);
+      setMessage("Usuário cadastrado no /mensagem.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível cadastrar o usuário.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addManualMember() {
+    if (!botId || !guildId) return;
+    const discordId = manualUserId.trim();
+    if (!/^\d{5,32}$/.test(discordId)) {
+      setMessage("Informe um Discord ID válido.");
+      return;
+    }
+
+    setBusy("add-manual");
+    setMessage(null);
+    try {
+      const user = await addMessageControlUser(guildId, botId, {
+        discordId,
+        username: manualUsername.trim() || null
+      });
+      setDashboard((current) => current ? { ...current, users: upsertMessageControlUser(current.users, user) } : current);
+      setManualUserId("");
+      setManualUsername("");
+      setMessage("Usuário cadastrado no /mensagem.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível cadastrar o usuário.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateStatus(user: MessageControlUser, status: MessageControlStatus) {
+    if (!botId || !guildId || user.status === status) return;
+    setBusy(`status:${user.discordId}`);
+    setMessage(null);
+    try {
+      const updated = await setMessageControlUserStatus(guildId, botId, user.discordId, status);
+      setDashboard((current) => current ? { ...current, users: upsertMessageControlUser(current.users, updated) } : current);
+      setMessage(status === "pessoal" ? "Modo pessoal ativado para o usuário." : "Modo oculto ativado para o usuário.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível alterar o modo do usuário.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeUser(user: MessageControlUser) {
+    if (!botId || !guildId) return;
+    setBusy(`remove:${user.discordId}`);
+    setMessage(null);
+    try {
+      await removeMessageControlUser(guildId, botId, user.discordId);
+      setDashboard((current) => current ? { ...current, users: current.users.filter((item) => item.discordId !== user.discordId) } : current);
+      setMessage("Usuário removido do /mensagem.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível remover o usuário.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function clearUsers() {
+    if (!botId || !guildId) return;
+    setBusy("clear");
+    setMessage(null);
+    try {
+      const users = await clearMessageControlUsers(guildId, botId);
+      setDashboard((current) => current ? { ...current, users } : current);
+      setMessage("Lista de usuários limpa.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível limpar os usuários.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveManagers(payload: Partial<MessageControlDashboard["settings"]>) {
+    if (!botId || !guildId || !dashboard) return;
+    const previous = dashboard.settings;
+    const optimistic = { ...dashboard.settings, ...payload };
+    setDashboard({ ...dashboard, settings: optimistic });
+    setBusy("settings");
+    setMessage(null);
+    try {
+      const settings = await saveMessageControlSettings(guildId, botId, payload);
+      setDashboard((current) => current ? { ...current, settings } : current);
+      setMessage("Permissões do /mensagem config salvas.");
+    } catch (error) {
+      setDashboard((current) => current ? { ...current, settings: previous } : current);
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar as permissões.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <Card className="border-[#FFD500]/25 bg-[#0b0b0b]">
@@ -4706,35 +4890,138 @@ function MessageControlPanel({ bot, guild, serverReleased }: { bot: DashboardBot
           <Badge variant={serverReleased ? "success" : "warning"}>{serverReleased ? "Liberado" : "Bloqueado no servidor"}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-3">
-          {commandItems.map((item) => (
-            <div key={item.command} className="rounded-lg border border-zinc-800 bg-black/30 p-4">
-              <code className="rounded-md border border-[#FFD500]/25 bg-[#FFD500]/10 px-2 py-1 text-sm font-semibold text-[#FFEA70]">
-                {item.command}
-              </code>
-              <p className="mt-3 text-sm text-zinc-300">{item.description}</p>
+      <CardContent className="space-y-5">
+        {message ? <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 py-2 text-sm font-medium text-[#FFEA70]">{message}</div> : null}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-3 md:grid-cols-3">
+            {commandItems.map((item) => (
+              <div key={item.command} className="rounded-lg border border-zinc-800 bg-black/30 p-4">
+                <code className="rounded-md border border-[#FFD500]/25 bg-[#FFD500]/10 px-2 py-1 text-sm font-semibold text-[#FFEA70]">
+                  {item.command}
+                </code>
+                <p className="mt-3 text-sm text-zinc-300">{item.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Bot</p>
+              <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{bot?.name ?? "Bot selecionado"}</p>
             </div>
-          ))}
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Servidor</p>
+              <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{guild?.name ?? bot?.mainGuildName ?? "Servidor configurado"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
+              <p className="mt-1 font-mono text-sm text-zinc-300">message-control</p>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Bot</p>
-            <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{bot?.name ?? "Bot selecionado"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Servidor</p>
-            <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{guild?.name ?? bot?.mainGuildName ?? "Servidor configurado"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
-            <p className="mt-1 font-mono text-sm text-zinc-300">message-control</p>
-          </div>
-        </div>
+        {serverReleased ? (
+          <>
+            <section className="grid gap-4 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]">
+              <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">Cadastrar usuário</p>
+                    <p className="mt-1 text-xs text-zinc-500">Usuários cadastrados podem alternar entre modo oculto e pessoal.</p>
+                  </div>
+                  {busy === "load" ? <Loader2 className="h-4 w-4 animate-spin text-zinc-400" /> : null}
+                </div>
+                <div className="flex gap-2">
+                  <input className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-[#FFEA70]" disabled={!canManage || busy !== null} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Buscar membro por nome ou ID" value={memberQuery} />
+                  <Button disabled={!canManage || busy !== null} onClick={() => void searchMembers()} type="button" variant="outline">
+                    {busy === "search" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="discord-scrollbar max-h-72 space-y-2 overflow-y-auto">
+                  {members.map((member) => {
+                    const registered = dashboard?.users.some((user) => user.discordId === member.id) ?? false;
+                    return (
+                      <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3" key={member.id}>
+                        <Avatar className="h-9 w-9 rounded-lg" fallback={member.displayName} src={member.avatarUrl} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-zinc-100">{member.displayName}</p>
+                          <p className="truncate font-mono text-xs text-zinc-500">{member.id}</p>
+                        </div>
+                        <Button disabled={!canManage || busy !== null || registered} onClick={() => void addMember(member)} size="sm" type="button">
+                          {busy === `add:${member.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                          {registered ? "Cadastrado" : "Adicionar"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  {!members.length ? <p className="rounded-lg border border-zinc-800 bg-black/30 p-4 text-sm text-zinc-500">Nenhum usuário encontrado.</p> : null}
+                </div>
+                <div className="grid gap-2 border-t border-zinc-800 pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-[#FFEA70]" disabled={!canManage || busy !== null} inputMode="numeric" onChange={(event) => setManualUserId(event.target.value.replace(/\D/g, ""))} placeholder="Discord ID" value={manualUserId} />
+                  <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-[#FFEA70]" disabled={!canManage || busy !== null} onChange={(event) => setManualUsername(event.target.value)} placeholder="Nome opcional" value={manualUsername} />
+                  <Button disabled={!canManage || busy !== null} onClick={() => void addManualMember()} type="button">
+                    {busy === "add-manual" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">Usuários do /mensagem</p>
+                    <p className="mt-1 text-xs text-zinc-500">{dashboard?.users.length ?? 0} usuário(s) cadastrado(s)</p>
+                  </div>
+                  <Button disabled={!canManage || busy !== null || !dashboard?.users.length} onClick={() => void clearUsers()} size="sm" type="button" variant="destructive">
+                    {busy === "clear" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Limpar
+                  </Button>
+                </div>
+                <div className="discord-scrollbar max-h-[30rem] space-y-2 overflow-y-auto">
+                  {(dashboard?.users ?? []).map((user) => (
+                    <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 md:grid-cols-[minmax(0,1fr)_auto]" key={user.discordId}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar className="h-10 w-10 rounded-lg" fallback={user.username ?? user.discordId} src={user.avatarUrl} />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-zinc-100">{user.username ?? user.discordId}</p>
+                            <Badge variant={user.status === "pessoal" ? "warning" : "success"}>{user.status === "pessoal" ? "Pessoal" : "Oculto"}</Badge>
+                          </div>
+                          <p className="mt-1 truncate font-mono text-xs text-zinc-500">{user.discordId}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Button disabled={!canManage || busy !== null || user.status === "equipe"} onClick={() => void updateStatus(user, "equipe")} size="sm" type="button" variant="outline">Oculto</Button>
+                        <Button disabled={!canManage || busy !== null || user.status === "pessoal"} onClick={() => void updateStatus(user, "pessoal")} size="sm" type="button" variant="outline">Pessoal</Button>
+                        <Button disabled={!canManage || busy !== null} onClick={() => void removeUser(user)} size="icon" type="button" variant="destructive">
+                          {busy === `remove:${user.discordId}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {dashboard && !dashboard.users.length ? <p className="rounded-lg border border-zinc-800 bg-black/30 p-4 text-sm text-zinc-500">Nenhum usuário cadastrado.</p> : null}
+                </div>
+              </div>
+            </section>
+
+            {dashboard ? (
+              <section className="grid gap-4 rounded-lg border border-zinc-800 bg-black/25 p-4 lg:grid-cols-2">
+                <FivemResourceMultiSelect disabled={!canManage || busy !== null} label="Cargos que podem abrir /mensagem config" onChange={(managerRoleIds) => void saveManagers({ managerRoleIds })} options={roleOptions} prefix="@" values={dashboard.settings.managerRoleIds} />
+                <FivemResourceMultiSelect disabled={!canManage || busy !== null} label="Usuários que podem abrir /mensagem config" onChange={(managerUserIds) => void saveManagers({ managerUserIds })} options={memberOptions} prefix="@" values={dashboard.settings.managerUserIds} />
+              </section>
+            ) : null}
+          </>
+        ) : null}
       </CardContent>
     </Card>
   );
+}
+
+function upsertMessageControlUser(users: MessageControlUser[], user: MessageControlUser) {
+  const exists = users.some((item) => item.discordId === user.discordId);
+  return exists
+    ? users.map((item) => item.discordId === user.discordId ? user : item)
+    : [user, ...users];
 }
 
 function ServerModuleReleasePanel({

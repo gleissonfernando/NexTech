@@ -1,4 +1,5 @@
 import {
+    Activity,
     Bot,
     CalendarDays,
     CheckCircle2,
@@ -180,7 +181,9 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-daf-roster", label: "Polícia - Escalacao DAF" },
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
-  { id: "message-control", label: "Sistema de Controle de Mensagem Individual" },
+  { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
+  { id: "visible-message", label: "Polícia - Mensagem Visível" },
+  { id: "message-control", label: "Polícia - Controle de Mensagem Individual" },
   { id: "police-dm", label: "Polícia - DM Policial" },
   { id: "police-subpoenas", label: "Polícia - Intimacao" },
   { id: "police-open-duty", label: "Polícia - Notificar / Ponto Aberto" },
@@ -246,9 +249,14 @@ type BotMenuId =
   | "police-daf-roster"
   | "police-courses"
   | "police-patrol-reports"
+  | "police-hidden-channel"
+  | "visible-message"
+  | "message-control"
   | "police-dm"
   | "police-subpoenas"
   | "police-open-duty"
+  | "police-time-clock"
+  | "auto-activity-clock"
   | "fivem-production"
   | "integrations";
 
@@ -633,6 +641,27 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-patrol-reports"]
       },
       {
+        id: "police-hidden-channel",
+        label: "Canal Oculto",
+        description: "Canal policial oculto com retransmissão e auditoria",
+        icon: EyeOff,
+        moduleIds: ["police-hidden-channel"]
+      },
+      {
+        id: "visible-message",
+        label: "Mensagem Visível",
+        description: "Mensagens com nome e avatar do usuário autorizado",
+        icon: MessageSquare,
+        moduleIds: ["visible-message"]
+      },
+      {
+        id: "message-control",
+        label: "Controle de Mensagem",
+        description: "Modo individual oculto/pessoal para tickets policiais",
+        icon: MessageSquare,
+        moduleIds: ["message-control"]
+      },
+      {
         id: "police-dm",
         label: "DM Policial",
         description: "Atendimento por DM com registro e histórico",
@@ -652,6 +681,20 @@ const botMenuItems: BotMenuItem[] = [
         description: "DM policial, canal mencionado e contador de avisos",
         icon: CheckCircle2,
         moduleIds: ["police-open-duty"]
+      },
+      {
+        id: "police-time-clock",
+        label: "Relógio de Ponto",
+        description: "Controle manual de ponto policial",
+        icon: CalendarDays,
+        moduleIds: ["police-time-clock"]
+      },
+      {
+        id: "auto-activity-clock",
+        label: "Ponto Automático",
+        description: "Controle automático por atividade do Discord",
+        icon: Activity,
+        moduleIds: ["auto-activity-clock"]
       }
     ]
   },

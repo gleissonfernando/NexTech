@@ -82,6 +82,44 @@ messageControlRouter.delete("/:guildId/users", requireAuth, async (req, res, nex
   }
 });
 
+messageControlRouter.patch("/:guildId/settings", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json({
+      settings: await saveMessageControlSettings(
+        botId,
+        guildId,
+        settingsSchema.parse(req.body),
+        res.locals.dashboardAuth.user.discordId
+      )
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+messageControlRouter.patch("/:guildId/users/:discordId/status", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const discordId = snowflake.parse(req.params.discordId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json({
+      user: await setMessageControlUserStatus(
+        botId,
+        guildId,
+        discordId,
+        statusSchema.parse(req.body).status,
+        res.locals.dashboardAuth.user.discordId
+      )
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 messageControlRouter.get("/bot/:guildId/users", requireBot, async (req, res, next) => {
   try {
     const botId = await botIdFor(req);
