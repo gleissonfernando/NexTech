@@ -93,6 +93,7 @@ const PANEL_EMOJIS = {
   prancheta: "<:prancheta:1525682244893544489>"
 } as const;
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
+const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
@@ -5449,9 +5450,9 @@ function AutoActivityClockPanel({ botId, canManage, guild }: { botId?: string | 
             {imageBlocks.map((block) => (
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3" key={block.index}>
                 <p className="text-sm font-semibold text-white">Imagem {block.index}</p>
-                {block.settings?.imageEnabled && block.settings.imageUrl ? <img className="mt-3 h-28 w-full rounded-md object-cover" src={block.settings.imageUrl} /> : <div className="mt-3 flex h-28 items-center justify-center rounded-md bg-black text-zinc-600"><ImageIcon className="h-6 w-6" /></div>}
+                {block.settings?.imageEnabled && block.settings.imageUrl ? <PanelMediaPreview imageUrl={block.settings.imageUrl} mimeType={block.settings.imageMimeType} /> : <div className="mt-3 flex h-28 items-center justify-center rounded-md bg-black text-zinc-600"><ImageIcon className="h-6 w-6" /></div>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <input accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" className="max-w-full text-xs text-zinc-400" disabled={disabled} onChange={(event) => void uploadImageBlock(block.index, event.target.files?.[0] ?? null)} type="file" />
+                  <input accept={PANEL_MEDIA_ACCEPT} className="max-w-full text-xs text-zinc-400" disabled={disabled} onChange={(event) => void uploadImageBlock(block.index, event.target.files?.[0] ?? null)} type="file" />
                   <Button disabled={disabled || !block.settings?.imageUrl} onClick={() => void removeImageBlock(block.index)} size="sm" variant="outline"><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
@@ -5496,6 +5497,12 @@ function AutoActivityClockPanel({ botId, canManage, guild }: { botId?: string | 
 
 function autoActivityImagePanelId(index: number) {
   return index <= 1 ? "auto-activity-clock" : `auto-activity-clock-banner-${index}`;
+}
+
+function PanelMediaPreview({ imageUrl, mimeType }: { imageUrl: string; mimeType?: string | null }) {
+  const isVideo = mimeType?.startsWith("video/") || /\.(mov|mp4|webm)(?:$|[?#])/i.test(imageUrl);
+  if (isVideo) return <video className="mt-3 h-28 w-full rounded-md object-cover" controls muted playsInline src={imageUrl} />;
+  return <img className="mt-3 h-28 w-full rounded-md object-cover" src={imageUrl} />;
 }
 
 async function loadAutoActivityImageBlocks(guildId: string, botId: string) {

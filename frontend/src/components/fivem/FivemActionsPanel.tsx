@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Switch } from "../ui/switch";
 import { FivemResourceSelect } from "./FivemResourceSelect";
 
+const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
+
 type FivemActionsPanelProps = {
   botId?: string | null;
   canManage: boolean;
@@ -88,7 +90,7 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
     }
   }
   async function publish() { setBusy("publish"); setMessage(null); try { const saved = await publishFivemActionsPanel(guild!.id, architecture, botId!); patchSettings(saved); setMessage("Publicação solicitada ao bot."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
-  async function uploadImage(file: File) { setBusy("image"); try { const image = await uploadPanelImage(guild!.id, `fivem-actions-${architecture}`, file, botId); patchSettings({ imageUrl: image.imageUrl, imagePosition: settings.imagePosition === "none" ? "top" : settings.imagePosition }); setMessage("Imagem enviada. Salve as configurações para aplicar."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
+  async function uploadImage(file: File) { setBusy("image"); try { const image = await uploadPanelImage(guild!.id, `fivem-actions-${architecture}`, file, botId); patchSettings({ imageUrl: image.imageUrl, imagePosition: settings.imagePosition === "none" ? "top" : settings.imagePosition }); setMessage("Mídia enviada. Salve as configurações para aplicar."); } catch (error) { setMessage(readMessage(error)); } finally { setBusy(null); } }
   function updateReportBanner(index: number, value: string) {
     const next = [...reportBannerUrls];
     next[index] = value;
@@ -148,14 +150,14 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
       <FivemResourceSelect disabled={!canManage} label="Categoria para relatórios automáticos" options={categories} value={settings.categoryId} onChange={(categoryId) => patchSettings({ categoryId })} />
       <label className="text-sm text-zinc-300">Imagem URL<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.imageUrl ?? ""} disabled={!canManage} onChange={(e) => patchSettings({ imageUrl: e.target.value || null })} /></label>
       <label className="text-sm text-zinc-300">Posição da imagem<select className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={settings.imagePosition} disabled={!canManage} onChange={(e) => patchSettings({ imagePosition: e.target.value as typeof settings.imagePosition })}><option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Rodapé</option><option value="none">Sem imagem</option></select></label>
-      <label className="md:col-span-2 text-sm text-zinc-300">Enviar imagem<input className="mt-2 block w-full rounded-lg border border-zinc-800 bg-black p-2" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={!canManage || busy !== null} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadImage(file); }} /></label>
+      <label className="md:col-span-2 text-sm text-zinc-300">Enviar mídia<input className="mt-2 block w-full rounded-lg border border-zinc-800 bg-black p-2" type="file" accept={PANEL_MEDIA_ACCEPT} disabled={!canManage || busy !== null} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadImage(file); }} /></label>
       <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-black/30 p-4">
         <p className="font-semibold text-white">Banners do relatório</p>
         <p className="mt-1 text-sm text-zinc-500">Até 2 banners aparecem acima do resultado final da ação.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {[0, 1].map((index) => <div className="space-y-2" key={index}>
             <label className="text-sm text-zinc-300">Banner {index + 1} URL<input className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black px-3" value={reportBannerUrls[index] ?? ""} disabled={!canManage} onChange={(event) => updateReportBanner(index, event.target.value)} /></label>
-            <input className="block w-full rounded-lg border border-zinc-800 bg-black p-2 text-sm" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={!canManage || busy !== null} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadReportBanner(index, file); }} />
+            <input className="block w-full rounded-lg border border-zinc-800 bg-black p-2 text-sm" type="file" accept={PANEL_MEDIA_ACCEPT} disabled={!canManage || busy !== null} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadReportBanner(index, file); }} />
           </div>)}
         </div>
       </div>
