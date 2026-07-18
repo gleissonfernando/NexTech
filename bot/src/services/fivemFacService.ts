@@ -62,6 +62,12 @@ const panelPublishPromises = new Map<string, Promise<FivemFacSettings>>();
 const panelRequestErrorLogAt = new Map<string, number>();
 const pendingAbsenceRequests = new Map<string, PendingAbsenceRequest>();
 
+type InteractionAccess = {
+  canManageGuild: boolean;
+  isAdministrator: boolean;
+  roleIds: string[];
+};
+
 export function startFivemFacService(client: Client, context: BotContext) {
   if (!isBotModuleEnabled("fivem-fac")) {
     return;
@@ -395,9 +401,9 @@ async function submitAbsenceRequest(interaction: ModalSubmitInteraction, context
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    const requesterRoleIds = await interactionRoleIds(interaction);
+    const requesterAccess = await interactionAccess(interaction);
 
-    if (!hasMemberRole(requesterRoleIds, settings)) {
+    if (!hasMemberAccess(requesterAccess, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você não possui um cargo autorizado para solicitar ausência pelo FAC.",
@@ -465,9 +471,9 @@ async function confirmAbsenceRequest(interaction: ButtonInteraction, context: Bo
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    const requesterRoleIds = await interactionRoleIds(interaction);
+    const requesterAccess = await interactionAccess(interaction);
 
-    if (!hasMemberRole(requesterRoleIds, settings)) {
+    if (!hasMemberAccess(requesterAccess, settings)) {
       await interaction.editReply({
         ...facNoticePayload({
           accentColor: 0xef4444,
@@ -486,7 +492,7 @@ async function confirmAbsenceRequest(interaction: ButtonInteraction, context: Bo
       endDate: pending.endDate,
       userId: pending.userId,
       username: pending.username,
-      requesterRoleIds
+      requesterRoleIds: requesterAccess.roleIds
     });
     const channelResult = await createAbsenceChannel(guild, settings, absence);
 
@@ -597,9 +603,9 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    const moderatorRoleIds = await interactionRoleIds(interaction);
+    const moderatorAccess = await interactionAccess(interaction);
 
-    if (!hasApproverRole(moderatorRoleIds, settings)) {
+    if (!hasApproverAccess(moderatorAccess, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para aprovar ausências.",
@@ -610,7 +616,7 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
 
     let absence = await context.api.approveFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds
+      moderatorRoleIds: moderatorAccess.roleIds
     });
 
     const startedResult = await startApprovedAbsenceIfDue(guild, context, settings, absence, interaction.user.id);
@@ -657,9 +663,9 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    const moderatorRoleIds = await interactionRoleIds(interaction);
+    const moderatorAccess = await interactionAccess(interaction);
 
-    if (!hasApproverRole(moderatorRoleIds, settings)) {
+    if (!hasApproverAccess(moderatorAccess, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para reprovar ausências.",
@@ -671,7 +677,7 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
     const reason = interaction.fields.getTextInputValue("reason");
     const absence = await context.api.rejectFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds,
+      moderatorRoleIds: moderatorAccess.roleIds,
       reason
     });
 
@@ -711,9 +717,9 @@ async function closeAbsence(interaction: ButtonInteraction, context: BotContext,
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    const moderatorRoleIds = await interactionRoleIds(interaction);
+    const moderatorAccess = await interactionAccess(interaction);
 
-    if (!hasApproverRole(moderatorRoleIds, settings)) {
+    if (!hasApproverAccess(moderatorAccess, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para encerrar ausências.",
@@ -726,7 +732,7 @@ async function closeAbsence(interaction: ButtonInteraction, context: BotContext,
     const roleRemoved = await removeAbsenceRole(guild, settings, current);
     const absence = await context.api.closeFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds,
+      moderatorRoleIds: moderatorAccess.roleIds,
       roleRemoved
     });
 
@@ -1291,19 +1297,27 @@ function buildAbsenceReviewPayload(absence: FivemFacAbsence, guild: Guild | null
   };
 }
 
-function hasApproverRole(roleIds: string[], settings: FivemFacSettings) {
+function hasApproverAccess(access: InteractionAccess, settings: FivemFacSettings) {
+  if (access.isAdministrator || access.canManageGuild) {
+    return true;
+  }
+
   const allowed = new Set(settings.approverRoleIds);
-  return roleIds.some((roleId) => allowed.has(roleId));
+  return access.roleIds.some((roleId) => allowed.has(roleId));
 }
 
-function hasMemberRole(roleIds: string[], settings: FivemFacSettings) {
+function hasMemberAccess(access: InteractionAccess, settings: FivemFacSettings) {
+  if (access.isAdministrator || access.canManageGuild) {
+    return true;
+  }
+
   const allowed = new Set(settings.memberRoleIds ?? []);
 
   if (!allowed.size) {
     return true;
   }
 
-  return roleIds.some((roleId) => allowed.has(roleId));
+  return access.roleIds.some((roleId) => allowed.has(roleId));
 }
 
 function buildRequestSummaryPayload(
@@ -1368,9 +1382,11 @@ function cleanupPendingAbsenceRequests() {
   }
 }
 
-async function interactionRoleIds(interaction: ButtonInteraction | ModalSubmitInteraction) {
+async function interactionAccess(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<InteractionAccess> {
   const member = interaction.member;
   const roleIds = new Set<string>();
+  let canManageGuild = false;
+  let isAdministrator = false;
 
   if (interaction.guildId) {
     roleIds.add(interaction.guildId);
@@ -1381,10 +1397,12 @@ async function interactionRoleIds(interaction: ButtonInteraction | ModalSubmitIn
     : null;
   if (fetchedMember) {
     fetchedMember.roles.cache.forEach((_, roleId) => roleIds.add(roleId));
+    canManageGuild ||= fetchedMember.permissions.has(PermissionFlagsBits.ManageGuild);
+    isAdministrator ||= fetchedMember.permissions.has(PermissionFlagsBits.Administrator);
   }
 
   if (!member) {
-    return [...roleIds];
+    return { canManageGuild, isAdministrator, roleIds: [...roleIds] };
   }
 
   if (member instanceof Object && "roles" in member) {
@@ -1397,7 +1415,27 @@ async function interactionRoleIds(interaction: ButtonInteraction | ModalSubmitIn
     }
   }
 
-  return [...roleIds];
+  if (member instanceof Object && "permissions" in member) {
+    const permissions = (member as { permissions?: unknown }).permissions;
+    canManageGuild ||= hasInteractionPermission(permissions, PermissionFlagsBits.ManageGuild);
+    isAdministrator ||= hasInteractionPermission(permissions, PermissionFlagsBits.Administrator);
+  }
+
+  return { canManageGuild, isAdministrator, roleIds: [...roleIds] };
+}
+
+function hasInteractionPermission(permissions: unknown, flag: bigint) {
+  if (!permissions) return false;
+
+  if (typeof permissions === "object" && "has" in permissions && typeof (permissions as { has?: unknown }).has === "function") {
+    return Boolean((permissions as { has: (permission: bigint) => boolean }).has(flag));
+  }
+
+  try {
+    return (BigInt(String(permissions)) & flag) === flag;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeDateInput(value: string, pivotDate: string) {
