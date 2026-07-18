@@ -1551,12 +1551,7 @@ function resolveEnabledReportCategory(
     if (fuzzy) return fuzzy;
   }
 
-  if (
-    fallbackIndex !== null
-    && fallbackIndex >= 0
-    && fallbackOptionCount === enabledCategories.length
-    && enabledCategories[fallbackIndex]
-  ) {
+  if (fallbackIndex !== null && fallbackIndex >= 0 && fallbackOptionCount !== null && enabledCategories[fallbackIndex]) {
     return enabledCategories[fallbackIndex];
   }
 
@@ -1564,28 +1559,46 @@ function resolveEnabledReportCategory(
 }
 
 function resolveLegacyReportCategoryKey(enabledCategories: ReportSystemSettings["categories"], categoryKey: string) {
-  if (categoryKey === "iab") {
-    return enabledCategories.find((category) =>
-      reportCategoryLookupKeys(category).some((key) => key.includes("oficial") || key === "iab")
-    ) ?? null;
+  const matchByKeyword = (keywords: string[], preferredIndex: number | null = null) => {
+    const match = enabledCategories.find((category) =>
+      reportCategoryLookupKeys(category).some((key) => keywords.some((keyword) => key.includes(keyword)))
+    );
+    if (match) return match;
+    return preferredIndex !== null ? enabledCategories[preferredIndex] ?? null : null;
+  };
+
+  if (categoryKey === "iab" || categoryKey.includes("oficial") || categoryKey.includes("official") || categoryKey.includes("officer")) {
+    return matchByKeyword(["oficial", "official", "officer", "iab"], 0);
   }
 
-  if (categoryKey === "conselho") {
-    return enabledCategories.find((category) =>
-      reportCategoryLookupKeys(category).some((key) => key.includes("conselho") || key.includes("membrosiab"))
-    ) ?? null;
+  if (
+    categoryKey.includes("membrosiab")
+    || categoryKey.includes("membroiab")
+    || categoryKey.includes("membrosdaiab")
+    || categoryKey.includes("membrodaiab")
+    || categoryKey.includes("iabmember")
+    || (categoryKey.includes("membro") && categoryKey.includes("iab"))
+  ) {
+    return matchByKeyword(["membrosiab", "membroiab", "iab"], 1);
   }
 
-  if (["altocomando", "hcmd", "highcommand"].includes(categoryKey)) {
-    return enabledCategories.find((category) =>
-      reportCategoryLookupKeys(category).some((key) => key.includes("altocomando") || key.includes("hcmd") || key.includes("highcommand"))
-    ) ?? null;
+  if (categoryKey === "conselho" || categoryKey.includes("conselho") || categoryKey.includes("council")) {
+    return matchByKeyword(["conselho", "council"], 2);
   }
 
-  if (!categoryKey.includes("comiss")) return null;
-  return enabledCategories.find((category) =>
-    reportCategoryLookupKeys(category).some((key) => key.includes("comiss"))
-  ) ?? null;
+  if (["altocomando", "hcmd", "highcommand"].includes(categoryKey) || categoryKey.includes("altocomando") || categoryKey.includes("highcommand")) {
+    return matchByKeyword(["altocomando", "hcmd", "highcommand"], 4);
+  }
+
+  if (categoryKey.includes("comiss") || categoryKey.includes("commissioner")) {
+    return matchByKeyword(["comiss", "commissioner"], 7);
+  }
+
+  if (categoryKey.includes("assuntosinternos") || categoryKey.includes("internal") || categoryKey.includes("auditoria") || categoryKey.includes("duvidas")) {
+    return matchByKeyword(["assuntosinternos", "internal", "auditoria", "duvidas"], 3);
+  }
+
+  return null;
 }
 
 function selectedReportOptionHints(interaction: StringSelectMenuInteraction, selectedValue: string) {
