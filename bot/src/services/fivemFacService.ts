@@ -395,7 +395,9 @@ async function submitAbsenceRequest(interaction: ModalSubmitInteraction, context
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    if (!hasMemberRole(interaction, settings)) {
+    const requesterRoleIds = await interactionRoleIds(interaction);
+
+    if (!hasMemberRole(requesterRoleIds, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você não possui um cargo autorizado para solicitar ausência pelo FAC.",
@@ -463,7 +465,9 @@ async function confirmAbsenceRequest(interaction: ButtonInteraction, context: Bo
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    if (!hasMemberRole(interaction, settings)) {
+    const requesterRoleIds = await interactionRoleIds(interaction);
+
+    if (!hasMemberRole(requesterRoleIds, settings)) {
       await interaction.editReply({
         ...facNoticePayload({
           accentColor: 0xef4444,
@@ -482,7 +486,7 @@ async function confirmAbsenceRequest(interaction: ButtonInteraction, context: Bo
       endDate: pending.endDate,
       userId: pending.userId,
       username: pending.username,
-      requesterRoleIds: interactionRoleIds(interaction)
+      requesterRoleIds
     });
     const channelResult = await createAbsenceChannel(guild, settings, absence);
 
@@ -593,7 +597,9 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    if (!hasApproverRole(interaction, settings)) {
+    const moderatorRoleIds = await interactionRoleIds(interaction);
+
+    if (!hasApproverRole(moderatorRoleIds, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para aprovar ausências.",
@@ -604,7 +610,7 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
 
     let absence = await context.api.approveFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds: interactionRoleIds(interaction)
+      moderatorRoleIds
     });
 
     const startedResult = await startApprovedAbsenceIfDue(guild, context, settings, absence, interaction.user.id);
@@ -651,7 +657,9 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    if (!hasApproverRole(interaction, settings)) {
+    const moderatorRoleIds = await interactionRoleIds(interaction);
+
+    if (!hasApproverRole(moderatorRoleIds, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para reprovar ausências.",
@@ -663,7 +671,7 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
     const reason = interaction.fields.getTextInputValue("reason");
     const absence = await context.api.rejectFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds: interactionRoleIds(interaction),
+      moderatorRoleIds,
       reason
     });
 
@@ -703,7 +711,9 @@ async function closeAbsence(interaction: ButtonInteraction, context: BotContext,
   try {
     const settings = await context.api.getFivemFacSettings(guild.id);
 
-    if (!hasApproverRole(interaction, settings)) {
+    const moderatorRoleIds = await interactionRoleIds(interaction);
+
+    if (!hasApproverRole(moderatorRoleIds, settings)) {
       await interaction.editReply(facNoticePayload({
         accentColor: 0xef4444,
         description: "Você precisa de um cargo aprovador configurado no FAC para encerrar ausências.",
@@ -716,7 +726,7 @@ async function closeAbsence(interaction: ButtonInteraction, context: BotContext,
     const roleRemoved = await removeAbsenceRole(guild, settings, current);
     const absence = await context.api.closeFivemFacAbsence(absenceId, {
       moderatorId: interaction.user.id,
-      moderatorRoleIds: interactionRoleIds(interaction),
+      moderatorRoleIds,
       roleRemoved
     });
 
@@ -1281,19 +1291,19 @@ function buildAbsenceReviewPayload(absence: FivemFacAbsence, guild: Guild | null
   };
 }
 
-function hasApproverRole(interaction: ButtonInteraction | ModalSubmitInteraction, settings: FivemFacSettings) {
+function hasApproverRole(roleIds: string[], settings: FivemFacSettings) {
   const allowed = new Set(settings.approverRoleIds);
-  return interactionRoleIds(interaction).some((roleId) => allowed.has(roleId));
+  return roleIds.some((roleId) => allowed.has(roleId));
 }
 
-function hasMemberRole(interaction: ButtonInteraction | ModalSubmitInteraction, settings: FivemFacSettings) {
+function hasMemberRole(roleIds: string[], settings: FivemFacSettings) {
   const allowed = new Set(settings.memberRoleIds ?? []);
 
   if (!allowed.size) {
     return true;
   }
 
-  return interactionRoleIds(interaction).some((roleId) => allowed.has(roleId));
+  return roleIds.some((roleId) => allowed.has(roleId));
 }
 
 function buildRequestSummaryPayload(
@@ -1358,12 +1368,19 @@ function cleanupPendingAbsenceRequests() {
   }
 }
 
-function interactionRoleIds(interaction: ButtonInteraction | ModalSubmitInteraction) {
+async function interactionRoleIds(interaction: ButtonInteraction | ModalSubmitInteraction) {
   const member = interaction.member;
   const roleIds = new Set<string>();
 
   if (interaction.guildId) {
     roleIds.add(interaction.guildId);
+  }
+
+  const fetchedMember = interaction.guild
+    ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
+    : null;
+  if (fetchedMember) {
+    fetchedMember.roles.cache.forEach((_, roleId) => roleIds.add(roleId));
   }
 
   if (!member) {
