@@ -404,16 +404,30 @@ async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"
 function qruPanelPayload(settings: PoliceQruSettings): MessageCreateOptions {
   const components: any[] = [
     { type: 10, content: `# ${clip(settings.panelTitle, 200)}\n${clip(settings.panelDescription, 1200)}` },
-    { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: clip(settings.panelMessage, 1200) }
   ];
   if (settings.panelImageUrl) {
     components.push({ type: 12, items: [{ media: { url: settings.panelImageUrl }, description: "Imagem do painel de QRU" }] });
   }
+  components.push(
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: qruPanelExplanation() },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `**Iniciar registro**\n${clip(settings.panelMessage, 1200)}` }
+  );
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${PREFIX}:open`).setEmoji("✅").setLabel("Registrar QRU").setStyle(ButtonStyle.Success)
   ));
   return { allowedMentions: { parse: [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components }], flags: MessageFlags.IsComponentsV2 };
+}
+
+function qruPanelExplanation() {
+  return [
+    "## Modo explicativo",
+    "**1. Abra o atendimento:** clique em **Registrar QRU** para criar um canal temporário privado.",
+    "**2. Informe os dados:** mencione os oficiais envolvidos, a data, o número do B.O. e o tipo da QRU.",
+    "**3. Envie o comprovante:** anexe a foto ou print do B.O. para validar o registro.",
+    "**4. Revise e confirme:** o sistema salva a QRU, publica no canal configurado e atualiza o ranking automaticamente."
+  ].join("\n");
 }
 
 function qruIntroPayload(user: User, settings: PoliceQruSettings): MessageCreateOptions {
