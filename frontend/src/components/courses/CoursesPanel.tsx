@@ -1127,12 +1127,23 @@ function getProofStats(questions: CourseExamQuestion[]) {
 function QuestionCard({ onDelete, onEdit, question }: { onDelete: () => void; onEdit: () => void; question: CourseExamQuestion }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-semibold text-white">Pergunta {question.questionNumber ?? question.order + 1}: {question.prompt}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words font-semibold text-white">Pergunta {question.questionNumber ?? question.order + 1}: {question.prompt}</p>
+          {question.description ? <p className="mt-2 whitespace-pre-wrap break-words text-xs text-zinc-400">{question.description}</p> : null}
+        </div>
         <Badge variant={question.type === "written" ? "warning" : "success"}>{question.type === "written" ? "Discursiva" : question.type === "multiple" ? "Múltipla escolha" : "Objetiva"}</Badge>
       </div>
       <p className="mt-1 text-xs text-zinc-500">Pontuação máxima: {formatScoreValue(questionMaxScore(question))} ponto(s)</p>
-      {question.type !== "written" ? <p className="mt-2 text-xs text-zinc-400">{question.alternatives.map((option) => `${option.id}) ${option.text}${isCorrectAlternative(question, option.id) ? ` - correta (${formatScoreValue(alternativeScoreValue(question, option))} pts)` : ""}`).join(" | ")}</p> : <p className="mt-2 text-xs text-zinc-400">Resposta correta: {question.correctText || "não configurada"}</p>}
+      {question.type !== "written" ? (
+        <div className="mt-2 space-y-1 text-xs text-zinc-400">
+          {question.alternatives.map((option) => (
+            <p className="whitespace-pre-wrap break-words" key={option.id}>
+              {option.id}) {option.text}{isCorrectAlternative(question, option.id) ? ` - correta (${formatScoreValue(alternativeScoreValue(question, option))} pts)` : ""}
+            </p>
+          ))}
+        </div>
+      ) : <p className="mt-2 whitespace-pre-wrap break-words text-xs text-zinc-400">Resposta correta: {question.correctText || "não configurada"}</p>}
       <div className="mt-3 flex gap-2">
         <Button onClick={onEdit} size="sm" type="button" variant="outline">Editar</Button>
         <Button onClick={onDelete} size="sm" type="button" variant="destructive">Excluir</Button>

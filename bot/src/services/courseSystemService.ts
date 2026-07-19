@@ -3212,7 +3212,8 @@ function selectionQuestionPanel(course: Course, attempt: CourseExamAttempt, ques
     fields: [
       `Curso: ${course.name}\nQuestão ${index} de ${total}\n${questionScoreLine(question)}`,
       `**${question.prompt}**`,
-      question.alternatives.map((alternative) => `( ) ${alternative.text}`).join("\n")
+      ...questionDescriptionFields(question),
+      ...questionAlternativeFields(question)
     ],
     moduleId: "courses",
     title: `Questão ${String(index).padStart(2, "0")}`
@@ -3230,7 +3231,8 @@ function pendingSelectionQuestionPanel(course: Course, attempt: CourseExamAttemp
     fields: [
       `Curso: ${course.name}\nQuestão ${index} de ${total}\n${questionScoreLine(question)}`,
       `**${question.prompt}**`,
-      question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
+      ...questionDescriptionFields(question),
+      ...questionAlternativeFields(question, selectedIds)
     ],
     moduleId: "courses",
     title: "Confirmar resposta"
@@ -3245,7 +3247,8 @@ function answeredSelectionQuestionPanel(attempt: CourseExamAttempt, question: Co
     fields: [
       `Pergunta ${index}/${total}\n${questionScoreLine(question)}`,
       `**${question.prompt}**`,
-      question.alternatives.map((alternative) => `${selectedIds.includes(alternative.id) ? "(X)" : "( )"} ${alternative.text}`).join("\n")
+      ...questionDescriptionFields(question),
+      ...questionAlternativeFields(question, selectedIds)
     ],
     moduleId: "courses",
     title: "Questão Respondida"
@@ -3262,7 +3265,8 @@ function writtenQuestionPanel(course: Course, attempt: CourseExamAttempt, questi
     fields: [
       `Pergunta ${index}/${total}\n${questionScoreLine(question)}`,
       `**${question.prompt}**`,
-      question.description || question.placeholder || "Envie sua resposta em uma mensagem abaixo."
+      ...questionDescriptionFields(question),
+      question.placeholder || "Envie sua resposta em uma mensagem abaixo."
     ],
     moduleId: "courses",
     title: "Questão Discursiva"
@@ -3276,7 +3280,8 @@ function answeredWrittenQuestionPanel(attempt: CourseExamAttempt, question: Cour
     description: "Resposta registrada com sucesso. Continue para a próxima questão.",
     fields: [
       `Pergunta ${index}/${total}\n${questionScoreLine(question)}`,
-      `**${question.prompt}**`
+      `**${question.prompt}**`,
+      ...questionDescriptionFields(question)
     ],
     moduleId: "courses",
     title: "Questão Respondida"
@@ -3909,15 +3914,26 @@ function displayTextLength(value: string) {
   return [...String(value ?? "")].length;
 }
 
+function questionDescriptionFields(question: CourseExamQuestion) {
+  return question.description?.trim() ? [`**Descrição:**\n${question.description.trim()}`] : [];
+}
+
+function questionAlternativeFields(question: CourseExamQuestion, selectedIds: string[] = []) {
+  const selected = new Set(selectedIds);
+  const text = question.alternatives.map((alternative) => `${selected.has(alternative.id) ? "(X)" : "( )"} ${alternative.id}) ${alternative.text}`).join("\n");
+  return splitDisplayText(text || "Sem alternativas configuradas.", 3200);
+}
+
 function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAnswer | undefined, index: number, accumulatedScore?: number) {
   if (!answer) {
     return [
       `QUESTÃO ${String(index).padStart(2, "0")}`,
       questionScoreLine(question),
       question.prompt,
+      ...questionDescriptionFields(question),
       "",
       "Status: aguardando resposta"
-    ].join("\n").slice(0, 1900);
+    ].join("\n");
   }
   const pointsEarned = Number(answer?.pointsEarned ?? 0);
   const maxScore = Number(answer?.maxScore ?? questionMaxScore(question));
@@ -3927,13 +3943,14 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
       `QUESTÃO ${String(index).padStart(2, "0")}`,
       questionScoreLine(question),
       question.prompt,
+      ...questionDescriptionFields(question),
       "",
-      `Resposta do aluno: ${answer?.writtenAnswer ? answer.writtenAnswer.slice(0, 900) : "Sem resposta salva."}`,
+      `Resposta do aluno: ${answer?.writtenAnswer || "Sem resposta salva."}`,
       `Resposta correta: ${question.correctText || "não configurada"}`,
       `Status: ${status}`,
       `Pontuação obtida: ${formatScore(pointsEarned)} de ${formatScore(maxScore)}`,
       accumulatedScore !== undefined ? `Total acumulado: ${formatScore(accumulatedScore)} de ${formatScore(EXAM_TOTAL_SCORE)}` : null
-    ].join("\n").slice(0, 1900);
+    ].filter(Boolean).join("\n");
   }
   const alternatives = answer?.alternativesSnapshot?.length ? answer.alternativesSnapshot : question.alternatives;
   const selectedIds = answer?.selectedAlternativeIds?.length ? answer.selectedAlternativeIds : answer?.selectedAlternativeId ? [answer.selectedAlternativeId] : [];
@@ -3945,13 +3962,14 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
     `QUESTÃO ${String(index).padStart(2, "0")}`,
     questionScoreLine(question),
     answer?.questionText || question.prompt,
+    ...questionDescriptionFields(question),
     "",
     `Resposta do aluno: ${selectedTexts.length ? selectedTexts.join(" | ") : "Sem resposta salva."}`,
     `Resposta correta: ${expectedTexts.length ? expectedTexts.join(" | ") : expectedIds.length ? expectedIds.join(", ") : "não configurada"}`,
     `Status: ${status}`,
     `Pontuação obtida: ${formatScore(pointsEarned)} de ${formatScore(maxScore)}`,
     accumulatedScore !== undefined ? `Total acumulado: ${formatScore(accumulatedScore)} de ${formatScore(EXAM_TOTAL_SCORE)}` : null
-  ].join("\n").slice(0, 1900);
+  ].filter(Boolean).join("\n");
 }
 
 function questionScoreLine(question: CourseExamQuestion) {
