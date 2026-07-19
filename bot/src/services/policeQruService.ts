@@ -16,6 +16,7 @@ import {
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
+import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./apiClient";
 
 const MODULE_ID = "police-qru";
@@ -127,7 +128,7 @@ export async function handlePoliceQruInteraction(interaction: Interaction, conte
   }
 
   if (action === "rank_refresh") {
-    await interaction.update(rankingPayload(await context.api.getPoliceQruRanking(interaction.guild.id, 20), settings, false) as any);
+    await interaction.update(rankingPayload(await context.api.getPoliceQruRanking(interaction.guild.id, 20), settings, false, interaction.guild, context.client) as any);
     await rememberRankingPanel(context, interaction.guild.id, interaction.message.channelId, interaction.message.id);
     return true;
   }
@@ -386,7 +387,7 @@ function rankingCommand(name: "rank" | "ranking"): BotCommand {
         return;
       }
       const ranking = await context.api.getPoliceQruRanking(interaction.guild.id, 20);
-      await interaction.reply(rankingPayload(ranking, settings, false) as any);
+      await interaction.reply(rankingPayload(ranking, settings, false, interaction.guild, context.client) as any);
       const message = await interaction.fetchReply().catch(() => null);
       if (message) await rememberRankingPanel(context, interaction.guild.id, message.channelId, message.id);
     },
@@ -408,7 +409,7 @@ async function openFullRankingChannel(interaction: ButtonInteraction<"cached">, 
     ],
     type: ChannelType.GuildText
   });
-  await channel.send(rankingPayload(ranking, settings, true) as any);
+  await channel.send(rankingPayload(ranking, settings, true, interaction.guild, context.client) as any);
   scheduleChannelDelete(channel, 300);
   await interaction.reply({ content: `📄 Ranking completo aberto em ${channel}.`, ephemeral: true });
 }
@@ -434,7 +435,8 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
   }
 
   const ranking = await context.api.getPoliceQruRanking(guildId, 20);
-  await message.edit(rankingPayload(ranking, settings, false) as any).catch(() => null);
+  const guild = context.client.guilds.cache.get(guildId) ?? null;
+  await message.edit(rankingPayload(ranking, settings, false, guild, context.client) as any).catch(() => null);
 }
 
 async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"cached">["guild"]>, settings: PoliceQruSettings) {
@@ -555,10 +557,15 @@ function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): Me
   };
 }
 
-function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPoliceQruRanking"]>>, settings: PoliceQruSettings, full: boolean): MessageCreateOptions {
+function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPoliceQruRanking"]>>, settings: PoliceQruSettings, full: boolean, guild?: NonNullable<ButtonInteraction<"cached">["guild"]> | null, client?: BotContext["client"] | null): MessageCreateOptions {
+  const trophy = systemEmojiText("trofeu", guild, client);
+  const clock = systemEmojiText("relogio", guild, client);
+  const officersIcon = systemEmojiText("homem", guild, client);
+  const checklist = systemEmojiText("prancheta_acertos", guild, client);
+  const listIcon = systemEmojiText("prancheta", guild, client);
   const visibleRanking = ranking.slice(0, full ? 50 : 10);
-  const podium = visibleRanking.slice(0, 3).map((entry) => `${medal(entry.position)} <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n") || "Nenhuma QRU registrada.";
-  const others = visibleRanking.slice(3).map((entry) => `**${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
+  const podium = visibleRanking.slice(0, 3).map((entry) => `${medal(entry.position, guild, client)} <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n") || "Nenhuma QRU registrada.";
+  const others = visibleRanking.slice(3).map((entry) => `${systemEmojiText("VORTEX1505360210200049", guild, client)} **${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
   const totalVisible = visibleRanking.reduce((total, entry) => total + entry.total, 0);
   const updatedAt = Math.floor(Date.now() / 1000);
   return {
@@ -568,20 +575,20 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
       accent_color: parseColor(settings.color),
       components: [
         { type: 10, content: [
-          "# 🏆 Ranking de QRUs",
+          `# ${trophy} Ranking de QRUs`,
           full ? "Ranking completo temporário." : "Painel oficial com atualização automática após cada QRU confirmada.",
           "",
-          `**Última atualização:** <t:${updatedAt}:f>`,
-          `**Oficiais listados:** ${visibleRanking.length}`,
-          `**QRUs no recorte:** ${totalVisible}`,
+          `**${clock} Última atualização:** <t:${updatedAt}:f>`,
+          `**${officersIcon} Oficiais listados:** ${visibleRanking.length}`,
+          `**${checklist} QRUs no recorte:** ${totalVisible}`,
           "",
-          "## Pódio",
+          `## ${trophy} Pódio`,
           podium,
-          ...(others ? ["", "## Demais posições", others] : [])
+          ...(others ? ["", `## ${listIcon} Demais posições`, others] : [])
         ].join("\n") },
         ...(full ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:rank_refresh`).setEmoji("🔄").setLabel("Atualizar").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId(`${PREFIX}:rank_full`).setEmoji("📄").setLabel("Ver Completo").setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId(`${PREFIX}:rank_refresh`).setEmoji(systemComponentEmoji("relogio", guild, client)).setLabel("Atualizar").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`${PREFIX}:rank_full`).setEmoji(systemComponentEmoji("folha", guild, client)).setLabel("Ver Completo").setStyle(ButtonStyle.Primary)
         )])
       ]
     }],
@@ -690,10 +697,10 @@ function sanitizeChannelName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "usuario";
 }
 
-function medal(position: number) {
-  if (position === 1) return "🥇";
-  if (position === 2) return "🥈";
-  if (position === 3) return "🥉";
+function medal(position: number, guild?: NonNullable<ButtonInteraction<"cached">["guild"]> | null, client?: BotContext["client"] | null) {
+  if (position === 1) return systemEmojiText("CHATBlack_Crown", guild, client);
+  if (position === 2) return systemEmojiText("trofeu_alt", guild, client);
+  if (position === 3) return systemEmojiText("trofeu", guild, client);
   return `${position}°`;
 }
 
