@@ -466,30 +466,40 @@ function confirmationPayload(session: QruSession): MessageCreateOptions {
 }
 
 function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): MessageCreateOptions {
+  const officerMentions = record.officers.map((officer) => officer.mention).join("\n") || "-";
+  const mentionUserIds = [...new Set([record.authorId, ...record.officers.map((officer) => officer.id)].filter(Boolean))];
+  const headerContent = [
+    "# 🚔 REGISTRO DE QRU",
+    `**${escapeMarkdown(record.qruType)}** | **B.O:** \`${escapeInlineCode(record.boNumber)}\``,
+    `**Registrado por** <@${record.authorId}>  •  **Registrado em** ${formatDate(record.createdAt)}`
+  ].join("\n");
+  const headerComponent = settings.panelImageUrl
+    ? { type: 9, components: [{ type: 10, content: headerContent }], accessory: { type: 11, media: { url: settings.panelImageUrl }, description: "Imagem do painel de QRU" } }
+    : { type: 10, content: headerContent };
   return {
-    allowedMentions: { users: record.officers.map((officer) => officer.id) },
+    allowedMentions: { users: mentionUserIds },
     components: [{
       type: 17,
       accent_color: parseColor(settings.color),
       components: [
+        headerComponent,
+        { type: 14, divider: true, spacing: 1 },
         { type: 10, content: [
-          "# 🚔 REGISTRO DE QRU",
-          "## 📅 Data",
+          "### 📅 Data da ocorrência",
           escapeMarkdown(record.occurrenceDate),
           "",
-          "## 📄 B.O",
-          `\`${escapeInlineCode(record.boNumber)}\``,
-          "",
-          "## 🚓 QRU",
+          "### 🚓 QRU",
           escapeMarkdown(record.qruType),
           "",
-          "## 👮 Oficiais",
-          record.officers.map((officer) => officer.mention).join("\n"),
-          "",
-          "## Registrado por",
-          `<@${record.authorId}>`
+          "### 👮 Oficiais envolvidos",
+          officerMentions
         ].join("\n") },
         { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: [
+          "### 📄 Comprovante / B.O",
+          `\`${escapeInlineCode(record.boNumber)}\``,
+          record.evidenceUrl
+        ].join("\n") },
         { type: 12, items: [{ media: { url: record.evidenceUrl }, description: "Evidência do B.O." }] },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: `-# ID do registro: ${record.id} • ${formatDate(record.createdAt)}` }
