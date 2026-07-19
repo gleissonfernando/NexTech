@@ -39,7 +39,7 @@ const DEFAULT_PANEL_EMOJIS: DefaultEmojiAssetDefinition[] = [
   { fileName: "prancheta caneta.webp", name: "prancheta_caneta" },
   { fileName: "prancheta.webp", name: "prancheta" },
   { fileName: "relogio.webp", name: "relogio" },
-  { fileName: "robo.webp", name: "robo" },
+  { fileName: "robo.png", name: "robo" },
   { fileName: "trofel.png", name: "trofeu" },
   { fileName: "trofel.webp", name: "trofeu_alt" },
   { fileName: "visto.webp", name: "visto" }

@@ -805,6 +805,15 @@ export type PanelImageSettings = {
   imageUploadedAt: string | null;
   imageUrl: string;
   layoutMode: PanelImageLayoutMode;
+  mediaAutoplay: boolean;
+  mediaControls: boolean;
+  mediaFit: "cover" | "contain";
+  mediaLoop: boolean;
+  mediaMuted: boolean;
+  mediaPosterUrl: string | null;
+  mediaPreload: "none" | "metadata" | "auto";
+  mediaThumbnailUrl: string | null;
+  mediaVolume: number;
   panelId: string;
   updatedAt: string | null;
   useGlobalDefault: boolean;
@@ -812,7 +821,7 @@ export type PanelImageSettings = {
 
 export type SavePanelImageSettingsPayload = Partial<Pick<
   PanelImageSettings,
-  "blocks" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "useGlobalDefault"
+  "blocks" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >>;
 
 export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<
@@ -3598,6 +3607,9 @@ export type FivemActionDashboard = { settings: FivemActionSettings; actions: Fiv
 export type PolicePatrolSettings = { id: string; botId: string; guildId: string; enabled: boolean; creatorRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; supervisorRoleIds: string[]; logChannelId: string | null; temporaryCategoryId: string | null; deleteDelayMinutes: number; defaultExportFormat: "html" | "pdf" | "json"; createdAt: string; updatedAt: string };
 export type PolicePatrolReport = { id: string; officerId: string; officerName: string; authorId: string; authorName: string; patrolType: string | null; initialNotes: string | null; patrolStart: string | null; patrolEnd: string | null; durationMinutes: number | null; channelId: string | null; messageCount: number; attachmentCount: number; status: "draft" | "active" | "finished" | "cancelled"; createdAt: string; finishedAt: string | null };
 export type PolicePatrolDashboard = { settings: PolicePatrolSettings; reports: PolicePatrolReport[] };
+export type VehicleAbandonmentSettings = { id: string; botId: string; guildId: string; enabled: boolean; systemChannelId: string | null; recordChannelId: string | null; logChannelId: string | null; allowedRoleIds: string[]; mentionRoleId: string | null; color: string; emoji: string; systemName: string; embedTitle: string; footerText: string; thumbnailUrl: string | null; defaultImageUrl: string | null; successMessage: string; errorMessage: string; deleteOriginalMessage: boolean; logsEnabled: boolean; allowMultipleAttachments: boolean; maxImages: number; allowRecordEditing: boolean; confirmationBeforeSend: boolean; explanatoryPanelAllowedRoleIds: string[]; explanatoryPanelButtonEnabled: boolean; explanatoryPanelChannelId: string | null; explanatoryPanelColor: string; explanatoryPanelCommandEnabled: boolean; explanatoryPanelCommonErrorsText: string; explanatoryPanelDescription: string; explanatoryPanelEmoji: string; explanatoryPanelExampleText: string; explanatoryPanelFinalText: string; explanatoryPanelHowItWorksText: string; explanatoryPanelImageUrl: string | null; explanatoryPanelModalContent: string; explanatoryPanelModalTitle: string; explanatoryPanelNotesText: string; explanatoryPanelRequiredFieldsText: string; explanatoryPanelThumbnailUrl: string | null; explanatoryPanelTitle: string; createdAt: string; updatedAt: string };
+export type VehicleAbandonmentRecord = { id: string; botId: string; guildId: string; systemChannelId: string; recordChannelId: string; sourceMessageId: string; recordMessageId: string | null; authorId: string; authorName: string; model: string; plate: string; report: string; imageUrls: string[]; status: "registered" | "failed"; errorMessage: string | null; createdAt: string; updatedAt: string };
+export type VehicleAbandonmentDashboard = { settings: VehicleAbandonmentSettings; records: VehicleAbandonmentRecord[] };
 export type PoliceHiddenChannelSettings = { id: string; botId: string; guildId: string; enabled: boolean; channelId: string | null; allowedRoleId: string | null; logChannelId: string | null; createdBy: string | null; createdAt: string; updatedBy: string | null; updatedAt: string };
 export type PoliceHiddenChannelLog = { id: string; botId: string; guildId: string; channelId: string; logChannelId: string | null; originalMessageId: string; relayedMessageId: string | null; authorId: string; authorTag: string; content: string; attachmentUrls: string[]; stickerIds: string[]; embedCount: number; status: "relayed" | "failed"; errorMessage: string | null; createdAt: string };
 export type PoliceHiddenChannelDashboard = { settings: PoliceHiddenChannelSettings; logs: PoliceHiddenChannelLog[] };

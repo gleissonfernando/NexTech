@@ -99,6 +99,7 @@ export const DEV_MODULES = [
   { id: "police-daf-roster", label: "Polícia - Escalacao DAF" },
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
+  { id: "vehicle-abandonment", label: "Polícia - Abandono de Veículo" },
   { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
   { id: "visible-message", label: "Polícia - Mensagem Visível" },
   { id: "message-control", label: "Sistema de Controle de Mensagem Individual" },
@@ -2168,6 +2169,10 @@ export function runtimeModuleIdForLogType(type: string) {
 
   if (normalized.startsWith("moderation.")) {
     return "moderation";
+  }
+
+  if (normalized.startsWith("vehicle_abandonment.")) {
+    return "vehicle-abandonment";
   }
 
   if (

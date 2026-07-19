@@ -9,6 +9,7 @@ import {
   Boxes,
   Building2,
   CalendarClock,
+  Car,
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
@@ -60,6 +61,7 @@ import { CoursesPanel } from "../components/courses/CoursesPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
 import { PolicePatrolReportsPanel } from "../components/fivem/PolicePatrolReportsPanel";
+import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
 import { PoliceHiddenChannelPanel } from "../components/fivem/PoliceHiddenChannelPanel";
 import { VisibleMessagePanel } from "../components/fivem/VisibleMessagePanel";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
@@ -93,9 +95,7 @@ const PANEL_EMOJIS = {
   prancheta: "<:prancheta:1525682244893544489>"
 } as const;
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
-const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
-const PANEL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const PANEL_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
+const PANEL_MEDIA_ACCEPT = "image/png,image/apng,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/mp2t,video/x-flv,video/x-ms-wmv,video/ogg,.png,.apng,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.avi,.mkv,.webm,.m4v,.mpeg,.mpg,.flv,.wmv,.ts,.mts,.3gp,.ogv,.asf,.f4v,.vob,.rmvb,.mxf";
 import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
 import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
 import { XMonitorPanel } from "../components/social/XMonitorPanel";
@@ -583,6 +583,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-patrol-reports"
   },
   {
+    id: "vehicle-abandonment",
+    title: "Abandono de Veículo",
+    description: "Registra veículos abandonados por imagem com parser automático.",
+    icon: Car,
+    view: "vehicle-abandonment"
+  },
+  {
     id: "police-hidden-channel",
     title: "Canal Oculto",
     description: "Canal anonimo policial com retransmissao pelo bot e logs administrativos.",
@@ -767,6 +774,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-absence": "police-absences",
   "police-actions": "police-actions",
   "police-patrol-reports": "police-patrol-reports",
+  "vehicle-abandonment": "vehicle-abandonment",
   "police-hidden-channel": "police-hidden-channel",
   "visible-message": "visible-message",
   "message-control": "message-control",
@@ -1691,6 +1699,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PolicePatrolReportsPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "police-patrol-reports", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "vehicle-abandonment" ? (
+          <VehicleAbandonmentPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "vehicle-abandonment", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -4278,6 +4293,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Solicitacoes e aprovação de ausências para oficiais.", id: "police-absences", permissions: "Admin Polícia", title: "Ausência Policial" },
     { builtIn: true, description: "Operações policiais com painel, participantes e relatórios separados.", id: "police-actions", permissions: "Admin Polícia", title: "Ações Políciais" },
     { builtIn: true, description: "Relatórios de patrulhamento exclusivos para oficiais.", id: "police-patrol-reports", permissions: "Admin Polícia", title: "Relatórios Políciais" },
+    { builtIn: true, description: "Registros automáticos de veículos abandonados por imagem.", id: "vehicle-abandonment", permissions: "Admin Polícia", title: "Abandono de Veículo" },
     { builtIn: true, description: "Canal anonimo policial com logs administrativos.", id: "police-hidden-channel", permissions: "Admin Polícia", title: "Canal Oculto" },
     { builtIn: true, description: "Mensagens com nome e avatar do usuário autorizado via webhook.", id: "visible-message", permissions: "Admin Polícia", title: "Mensagem Visível" },
     { builtIn: true, description: "Envio de mensagens privadas com painel visual e logs.", id: "police-dm", permissions: "Admin Polícia", title: "Barra DM" },
@@ -4293,7 +4309,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     .filter((module) => {
       if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports" && module.id !== "police-hidden-channel" && module.id !== "visible-message" && module.id !== "police-dm" && module.id !== "police-iab" && module.id !== "police-subpoenas" && module.id !== "police-open-duty";
+      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports" && module.id !== "vehicle-abandonment" && module.id !== "police-hidden-channel" && module.id !== "visible-message" && module.id !== "police-dm" && module.id !== "police-iab" && module.id !== "police-subpoenas" && module.id !== "police-open-duty";
     })
     .map((module) => ({
       description: module.description,
@@ -4318,6 +4334,7 @@ function fivemIconForModule(moduleId: string) {
     "fivem-orders": ListChecks,
     "police-absences": CalendarClock,
     "police-actions": Activity,
+    "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,
     "police-dm": UserPlus,
@@ -4423,6 +4440,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "rh-admin",
       "police-subpoenas",
       "police-patrol-reports",
+      "vehicle-abandonment",
       "police-hidden-channel",
       "visible-message",
       "message-control",
@@ -5618,12 +5636,6 @@ function AutoActivityClockPanel({ botId, canManage, guild }: { botId?: string | 
 
   async function uploadImageBlock(index: number, file: File | null) {
     if (!guild || !botId || !file) return;
-    const isVideo = isPanelVideoFile(file);
-    const maxBytes = isVideo ? PANEL_VIDEO_MAX_BYTES : PANEL_IMAGE_MAX_BYTES;
-    if (file.size > maxBytes) {
-      setMessage(isVideo ? "Vídeo muito grande. Comprima para até 15MB antes de enviar." : "Imagem muito grande. Envie até 10MB.");
-      return;
-    }
     setSaving(true);
     setMessage(null);
     try {
@@ -5795,13 +5807,9 @@ function autoActivityImagePanelId(index: number) {
 }
 
 function PanelMediaPreview({ imageUrl, mimeType }: { imageUrl: string; mimeType?: string | null }) {
-  const isVideo = mimeType?.startsWith("video/") || /\.(mov|mp4|webm)(?:$|[?#])/i.test(imageUrl);
+  const isVideo = mimeType?.startsWith("video/") || /\.(3gp|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(imageUrl);
   if (isVideo) return <video className="mt-3 h-28 w-full rounded-md object-cover" controls muted playsInline src={imageUrl} />;
   return <img className="mt-3 h-28 w-full rounded-md object-cover" src={imageUrl} />;
-}
-
-function isPanelVideoFile(file: File) {
-  return file.type.startsWith("video/") || /\.(mov|mp4|webm)$/i.test(file.name);
 }
 
 async function loadAutoActivityImageBlocks(guildId: string, botId: string) {

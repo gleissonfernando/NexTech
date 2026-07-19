@@ -1,10 +1,34 @@
 import { Router } from "express";
 import { z } from "zod";
-import { getPersistentImage } from "../services/persistentImageStorageService";
+import { getPersistentImage, openPersistentImageStream, readPersistentPosterBuffer } from "../services/persistentImageStorageService";
 
 const imageIdSchema = z.string().uuid();
 
 export const persistentImagesRouter = Router();
+
+persistentImagesRouter.get("/:imageId/poster", async (req, res, next) => {
+  try {
+    const imageId = imageIdSchema.parse(req.params.imageId);
+    const image = await getPersistentImage(imageId);
+
+    if (!image) {
+      return res.status(404).json({ message: "Miniatura não encontrada para esta mídia." });
+    }
+
+    const buffer = await readPersistentPosterBuffer(image);
+    if (!buffer.length) {
+      return res.status(404).json({ message: "Miniatura não encontrada para esta mídia." });
+    }
+
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Content-Type", image.posterMimeType || "image/jpeg");
+    res.setHeader("Content-Length", String(buffer.length));
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.end(buffer);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 persistentImagesRouter.get("/:imageId", async (req, res, next) => {
   try {
@@ -12,13 +36,13 @@ persistentImagesRouter.get("/:imageId", async (req, res, next) => {
     const image = await getPersistentImage(imageId);
 
     if (!image) {
-      return res.status(404).json({ message: "Imagem não encontrada." });
+      return res.status(404).json({ message: "Mídia não encontrada." });
     }
 
-    const buffer = toImageBuffer(image.buffer);
+    const size = image.size;
 
-    if (!buffer.length) {
-      return res.status(404).json({ message: "Arquivo da imagem vazio ou inválido." });
+    if (!size) {
+      return res.status(404).json({ message: "Arquivo da mídia vazio ou inválido." });
     }
 
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -26,21 +50,28 @@ persistentImagesRouter.get("/:imageId", async (req, res, next) => {
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("X-Content-Type-Options", "nosniff");
 
-    const range = parseRangeHeader(req.headers.range, buffer.length);
+    const range = parseRangeHeader(req.headers.range, size);
     if (range === "invalid") {
-      res.setHeader("Content-Range", `bytes */${buffer.length}`);
+      res.setHeader("Content-Range", `bytes */${size}`);
       return res.status(416).end();
     }
 
-    if (range) {
-      const chunk = buffer.subarray(range.start, range.end + 1);
-      res.setHeader("Content-Length", String(chunk.length));
-      res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${buffer.length}`);
-      return res.status(206).end(chunk);
+    const payload = await openPersistentImageStream(image, range);
+    if (!payload) {
+      return res.status(404).json({ message: "Arquivo da mídia não encontrado no armazenamento." });
     }
 
-    res.setHeader("Content-Length", String(buffer.length));
-    return res.end(buffer);
+    if (range) {
+      res.setHeader("Content-Length", String(payload.length));
+      res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${size}`);
+      res.status(206);
+      payload.stream.pipe(res);
+      return;
+    }
+
+    res.setHeader("Content-Length", String(payload.length));
+    payload.stream.pipe(res);
+    return;
   } catch (error) {
     return next(error);
   }
@@ -65,28 +96,4 @@ function parseRangeHeader(value: string | undefined, size: number) {
 
   if (start < 0 || end < start || start >= size) return "invalid" as const;
   return { end: Math.min(end, size - 1), start };
-}
-
-function toImageBuffer(value: unknown) {
-  if (Buffer.isBuffer(value)) {
-    return value;
-  }
-
-  if (value instanceof Uint8Array) {
-    return Buffer.from(value);
-  }
-
-  if (value && typeof value === "object" && "buffer" in value) {
-    const nested = (value as { buffer?: unknown }).buffer;
-
-    if (Buffer.isBuffer(nested)) {
-      return nested;
-    }
-
-    if (nested instanceof Uint8Array || Array.isArray(nested)) {
-      return Buffer.from(nested);
-    }
-  }
-
-  return Buffer.alloc(0);
 }

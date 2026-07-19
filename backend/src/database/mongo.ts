@@ -2411,6 +2411,85 @@ export type MongoPolicePatrolAudit = {
 };
 export type MongoPolicePatrolFile = { _id: string; reportId: string; botId: string; guildId: string; discordAttachmentId: string; name: string; mimeType: string; size: number; buffer: Buffer; createdAt: Date };
 
+export type MongoVehicleAbandonmentSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  systemChannelId: string | null;
+  recordChannelId: string | null;
+  logChannelId: string | null;
+  allowedRoleIds: string[];
+  mentionRoleId: string | null;
+  color: string;
+  emoji: string;
+  systemName: string;
+  embedTitle: string;
+  footerText: string;
+  thumbnailUrl: string | null;
+  defaultImageUrl: string | null;
+  successMessage: string;
+  errorMessage: string;
+  deleteOriginalMessage: boolean;
+  logsEnabled: boolean;
+  allowMultipleAttachments: boolean;
+  maxImages: number;
+  allowRecordEditing: boolean;
+  confirmationBeforeSend: boolean;
+  explanatoryPanelAllowedRoleIds: string[];
+  explanatoryPanelButtonEnabled: boolean;
+  explanatoryPanelChannelId: string | null;
+  explanatoryPanelColor: string;
+  explanatoryPanelCommandEnabled: boolean;
+  explanatoryPanelCommonErrorsText: string;
+  explanatoryPanelDescription: string;
+  explanatoryPanelEmoji: string;
+  explanatoryPanelExampleText: string;
+  explanatoryPanelFinalText: string;
+  explanatoryPanelHowItWorksText: string;
+  explanatoryPanelImageUrl: string | null;
+  explanatoryPanelModalContent: string;
+  explanatoryPanelModalTitle: string;
+  explanatoryPanelNotesText: string;
+  explanatoryPanelRequiredFieldsText: string;
+  explanatoryPanelThumbnailUrl: string | null;
+  explanatoryPanelTitle: string;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoVehicleAbandonmentRecord = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  systemChannelId: string;
+  recordChannelId: string;
+  sourceMessageId: string;
+  recordMessageId: string | null;
+  authorId: string;
+  authorName: string;
+  model: string;
+  plate: string;
+  report: string;
+  imageUrls: string[];
+  status: "registered" | "failed";
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoVehicleAbandonmentLog = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  recordId: string | null;
+  actorId: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+};
+
 export type MongoPoliceHiddenChannelSettings = {
   _id: string;
   botId: string;
@@ -4158,6 +4237,15 @@ export type MongoPanelImageSettings = {
   customWidth: number | null;
   customHeight: number | null;
   layoutMode: MongoGlobalPanelImageLayoutMode;
+  mediaAutoplay?: boolean;
+  mediaControls?: boolean;
+  mediaFit?: "cover" | "contain";
+  mediaLoop?: boolean;
+  mediaMuted?: boolean;
+  mediaPosterUrl?: string | null;
+  mediaPreload?: "none" | "metadata" | "auto";
+  mediaThumbnailUrl?: string | null;
+  mediaVolume?: number;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -4169,19 +4257,27 @@ export type MongoPersistentImage = {
   _id: string;
   animated?: boolean;
   botId: string | null;
-  buffer: Buffer;
+  buffer?: Buffer | null;
   createdAt: Date;
   extension?: string;
   fileName: string;
+  fileId?: string | null;
   guildId: string;
   imageType: string;
   metadata?: Record<string, unknown>;
   mimeType: string;
   moduleId: string;
   originalName: string | null;
+  originalMimeType?: string | null;
+  originalSize?: number | null;
+  posterBuffer?: Buffer | null;
+  posterFileId?: string | null;
+  posterMimeType?: string | null;
+  processingError?: string | null;
+  processingStatus?: "stored" | "converted" | "failed";
   publicUrl: string;
   size: number;
-  storageProvider: "mongodb";
+  storageProvider: "mongodb" | "gridfs";
   uploadedAt: Date;
   uploadedBy: string | null;
 };
@@ -4353,6 +4449,9 @@ export async function getMongoCollections() {
     policePatrolMessages: db.collection<MongoPolicePatrolMessage>("police_patrol_messages"),
     policePatrolAudits: db.collection<MongoPolicePatrolAudit>("police_patrol_audits"),
     policePatrolFiles: db.collection<MongoPolicePatrolFile>("police_patrol_files"),
+    vehicleAbandonmentSettings: db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings"),
+    vehicleAbandonmentRecords: db.collection<MongoVehicleAbandonmentRecord>("vehicle_abandonment_records"),
+    vehicleAbandonmentLogs: db.collection<MongoVehicleAbandonmentLog>("vehicle_abandonment_logs"),
     policeHiddenChannelSettings: db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings"),
     policeHiddenChannelLogs: db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs"),
     visibleMessageUsers: db.collection<MongoVisibleMessageUser>("visible_message_users"),
@@ -5103,6 +5202,11 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoPolicePatrolAudit>("police_patrol_audits").createIndex({ reportId: 1, createdAt: 1 }),
     db.collection<MongoPolicePatrolFile>("police_patrol_files").createIndex({ botId: 1, discordAttachmentId: 1 }, { unique: true }),
     db.collection<MongoPolicePatrolFile>("police_patrol_files").createIndex({ reportId: 1, createdAt: 1 }),
+    db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings").createIndex({ botId: 1, guildId: 1, systemChannelId: 1 }),
+    db.collection<MongoVehicleAbandonmentRecord>("vehicle_abandonment_records").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoVehicleAbandonmentRecord>("vehicle_abandonment_records").createIndex({ botId: 1, sourceMessageId: 1 }, { unique: true }),
+    db.collection<MongoVehicleAbandonmentLog>("vehicle_abandonment_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),

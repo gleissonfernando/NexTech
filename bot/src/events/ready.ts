@@ -19,6 +19,7 @@ import { startFactionChestService } from "../services/factionChestService";
 import { startFivemPd7Service } from "../services/fivemPd7Service";
 import { startPolicePatrolReportService } from "../services/policePatrolReportService";
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
+import { clearVehicleAbandonmentSettingsCache } from "../services/vehicleAbandonmentService";
 import { clearMessageControlCache } from "../services/messageControlService";
 import { clearVisibleMessageCache } from "../services/visibleMessageService";
 import { clearDmBarConfigCache } from "../services/dmBarService";
@@ -142,6 +143,11 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   context.socket.onPoliceHiddenChannelSettingsUpdated((payload) => {
     if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
       clearPoliceHiddenChannelSettingsCache(payload.guildId);
+    }
+  });
+  context.socket.onVehicleAbandonmentSettingsUpdated((payload) => {
+    if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
+      clearVehicleAbandonmentSettingsCache(payload.guildId);
     }
   });
   context.socket.onVisibleMessageUsersUpdated((payload) => {

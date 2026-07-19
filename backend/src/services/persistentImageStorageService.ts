@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { GridFSBucket, ObjectId } from "mongodb";
 import { env } from "../config/env";
-import { getMongoCollections, type MongoPersistentImage } from "../database/mongo";
+import { getMongoCollections, getMongoDb, type MongoPersistentImage } from "../database/mongo";
 import { createLog } from "./logService";
+import { PANEL_MEDIA_MIME_EXTENSIONS, processPanelMedia } from "./panelMediaProcessor";
 
 export type StoredImageDto = {
   animated: boolean;
@@ -11,29 +14,18 @@ export type StoredImageDto = {
   fileName: string;
   id: string;
   mimeType: string;
+  posterUrl: string | null;
+  processingError: string | null;
+  processingStatus: "stored" | "converted" | "failed";
   publicUrl: string;
   size: number;
-  storageProvider: "mongodb";
+  storageProvider: "mongodb" | "gridfs";
   uploadedAt: string;
 };
 
+const PERSISTENT_MEDIA_MIME_EXTENSIONS = PANEL_MEDIA_MIME_EXTENSIONS;
 export const PERSISTENT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const PERSISTENT_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
-export const PERSISTENT_IMAGE_MIME_EXTENSIONS: Record<string, string> = {
-  "image/gif": "gif",
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp"
-};
-export const PERSISTENT_VIDEO_MIME_EXTENSIONS: Record<string, string> = {
-  "video/mp4": "mp4",
-  "video/quicktime": "mov",
-  "video/webm": "webm"
-};
-const PERSISTENT_MEDIA_MIME_EXTENSIONS: Record<string, string> = {
-  ...PERSISTENT_IMAGE_MIME_EXTENSIONS,
-  ...PERSISTENT_VIDEO_MIME_EXTENSIONS
-};
 
 export async function savePersistentImage(input: {
   actorId: string | null;
@@ -47,31 +39,53 @@ export async function savePersistentImage(input: {
   originalName?: string | null;
   previousUrl?: string | null;
 }) {
-  const mimeType = detectSupportedImageMimeType(input.buffer, input.mimeType);
+  const processed = await processPanelMedia({ buffer: input.buffer, mimeType: input.mimeType, originalName: input.originalName });
 
   const id = randomUUID();
-  const extension = PERSISTENT_MEDIA_MIME_EXTENSIONS[mimeType];
-  const animated = mimeType === "image/gif" && isAnimatedGif(input.buffer);
+  const { animated, extension, mimeType } = processed;
   const fileName = `${sanitizePathPart(input.guildId)}-${sanitizePathPart(input.moduleId)}-${sanitizePathPart(input.imageType)}-${Date.now()}-${id}.${extension}`;
   const publicUrl = publicImageUrl(id);
   const now = new Date();
+  const fileId = await saveGridFsFile({
+    buffer: processed.buffer,
+    contentType: mimeType,
+    fileName,
+    metadata: { botId: input.botId?.trim() || null, guildId: input.guildId, imageType: input.imageType, moduleId: input.moduleId, persistentImageId: id }
+  });
+  const posterFileId = processed.posterBuffer?.length ? await saveGridFsFile({
+    buffer: processed.posterBuffer,
+    contentType: processed.posterMimeType || "image/jpeg",
+    fileName: `${path.parse(fileName).name}-poster.jpg`,
+    metadata: { botId: input.botId?.trim() || null, guildId: input.guildId, imageType: "poster", moduleId: input.moduleId, persistentImageId: id }
+  }) : null;
   const doc: MongoPersistentImage = {
     _id: id,
     animated,
     botId: input.botId?.trim() || null,
-    buffer: input.buffer,
+    buffer: null,
     createdAt: now,
     extension,
+    fileId,
     fileName,
     guildId: input.guildId,
     imageType: input.imageType,
-    metadata: input.metadata,
+    metadata: {
+      ...(input.metadata ?? {}),
+      inputHash: processed.inputHash
+    },
     mimeType,
     moduleId: input.moduleId,
     originalName: input.originalName ?? null,
+    originalMimeType: processed.originalMimeType,
+    originalSize: processed.originalSize,
+    posterBuffer: null,
+    posterFileId,
+    posterMimeType: processed.posterMimeType,
+    processingError: processed.processingError,
+    processingStatus: processed.processingStatus,
     publicUrl,
-    size: input.buffer.length,
-    storageProvider: "mongodb",
+    size: processed.buffer.length,
+    storageProvider: "gridfs",
     uploadedAt: now,
     uploadedBy: input.actorId
   };
@@ -102,7 +116,7 @@ export async function savePersistentImage(input: {
         throw retryError;
       }
 
-      await persistentImages.deleteOne({ _id: previousId, guildId: doc.guildId });
+      await deletePersistentImageDocument(previousId, doc.guildId);
       previousDeletedBeforeInsert = true;
       await persistentImages.insertOne(doc);
     }
@@ -130,7 +144,9 @@ export async function savePersistentImage(input: {
         newUrl: publicUrl,
         oldUrl: input.previousUrl ?? null,
         previousDeletedBeforeInsert,
-        size: input.buffer.length,
+        processingError: processed.processingError,
+        processingStatus: processed.processingStatus,
+        size: processed.buffer.length,
         storageProvider: "mongodb",
         status: "uploaded"
       },
@@ -151,7 +167,7 @@ export async function getPersistentImageMetadataByUrl(url: string | null | undef
   const id = parsePersistentImageId(url ?? "");
   if (!id) return null;
   const { persistentImages } = await getMongoCollections();
-  const image = await persistentImages.findOne({ _id: id }, { projection: { animated: 1, extension: 1, fileName: 1, mimeType: 1, size: 1, storageProvider: 1, uploadedAt: 1 } });
+  const image = await persistentImages.findOne({ _id: id }, { projection: { animated: 1, extension: 1, fileName: 1, mimeType: 1, posterBuffer: 1, posterFileId: 1, processingError: 1, processingStatus: 1, size: 1, storageProvider: 1, uploadedAt: 1 } });
   return image ? toDto(image as MongoPersistentImage) : null;
 }
 
@@ -165,8 +181,7 @@ export async function removePersistentImageByUrl(input: {
 }) {
   const id = parsePersistentImageId(input.url);
   if (id) {
-    const { persistentImages } = await getMongoCollections();
-    await persistentImages.deleteOne({ _id: id, guildId: input.guildId });
+    await deletePersistentImageDocument(id, input.guildId);
   }
 
   if (input.botId) {
@@ -194,13 +209,16 @@ async function deletePersistentImageHistory(input: {
   moduleId: string;
 }) {
   const { persistentImages } = await getMongoCollections();
-  await persistentImages.deleteMany({
+  const rows = await persistentImages.find({
     botId: input.botId,
     guildId: input.guildId,
     imageType: input.imageType,
     moduleId: input.moduleId,
     ...(input.keepIds.length ? { _id: { $nin: input.keepIds } } : {})
-  });
+  }, { projection: { _id: 1, fileId: 1, posterFileId: 1 } }).toArray();
+  if (!rows.length) return;
+  await persistentImages.deleteMany({ _id: { $in: rows.map((row) => row._id) }, guildId: input.guildId });
+  await Promise.all(rows.flatMap((row) => [deleteGridFsFile(row.fileId), deleteGridFsFile(row.posterFileId)]));
 }
 
 export async function migrateLocalImageToPersistent(input: {
@@ -241,29 +259,9 @@ export function validatePersistentImage(buffer: Buffer, mimeType: string) {
 
 export function detectSupportedImageMimeType(buffer: Buffer, mimeType: string) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
-    throw Object.assign(new Error("Arquivo de imagem obrigatório."), { statusCode: 400 });
+    throw Object.assign(new Error("Arquivo de mídia obrigatório."), { statusCode: 400 });
   }
-
-  const normalizedMimeType = mimeType.trim().toLowerCase();
-  const detectedMimeType = detectMediaMimeType(buffer);
-  const resolvedMimeType = PERSISTENT_MEDIA_MIME_EXTENSIONS[normalizedMimeType] ? normalizedMimeType : detectedMimeType;
-
-  if (!resolvedMimeType || !PERSISTENT_MEDIA_MIME_EXTENSIONS[resolvedMimeType]) {
-    throw Object.assign(new Error("Formato inválido. Envie PNG, JPG, WEBP, GIF, MP4, MOV ou WEBM."), { statusCode: 400 });
-  }
-
-  const maxBytes = resolvedMimeType.startsWith("video/") ? PERSISTENT_VIDEO_MAX_BYTES : PERSISTENT_IMAGE_MAX_BYTES;
-  if (buffer.length > maxBytes) {
-    throw Object.assign(new Error(resolvedMimeType.startsWith("video/")
-      ? "Vídeo muito grande. Envie um arquivo de até 15MB."
-      : "Imagem muito grande. Envie um arquivo de até 10MB."), { statusCode: 413 });
-  }
-
-  if (resolvedMimeType === "image/gif" && !isGif(buffer)) {
-    throw Object.assign(new Error("Arquivo GIF inválido."), { statusCode: 400 });
-  }
-
-  return resolvedMimeType;
+  return mimeType.trim().toLowerCase() || "application/octet-stream";
 }
 
 export function isPersistentImageUrl(value: string | null | undefined) {
@@ -279,9 +277,80 @@ export function isLocalUploadUrl(value: string | null | undefined) {
   return /^\/uploads\//.test(value?.trim() ?? "");
 }
 
+export async function readPersistentImageBuffer(image: MongoPersistentImage) {
+  if (image.buffer) return toBuffer(image.buffer);
+  if (!image.fileId) return Buffer.alloc(0);
+  return readGridFsFile(image.fileId);
+}
+
+export async function readPersistentPosterBuffer(image: MongoPersistentImage) {
+  if (image.posterBuffer) return toBuffer(image.posterBuffer);
+  if (!image.posterFileId) return Buffer.alloc(0);
+  return readGridFsFile(image.posterFileId);
+}
+
+export async function openPersistentImageStream(image: MongoPersistentImage, range?: { end: number; start: number } | null) {
+  if (image.buffer) {
+    const buffer = toBuffer(image.buffer);
+    const start = range?.start ?? 0;
+    const end = range?.end ?? buffer.length - 1;
+    return { length: end - start + 1, stream: Readable.from(buffer.subarray(start, end + 1)) };
+  }
+  if (!image.fileId) return null;
+  const bucket = new GridFSBucket(await getMongoDb(), { bucketName: "persistent_media" });
+  return {
+    length: range ? range.end - range.start + 1 : image.size,
+    stream: bucket.openDownloadStream(new ObjectId(image.fileId), range ? { end: range.end + 1, start: range.start } : undefined)
+  };
+}
+
 function publicImageUrl(id: string) {
   const baseUrl = env.SITE_ORIGIN || env.FRONTEND_URL;
   return `${baseUrl}/api/persistent-images/${encodeURIComponent(id)}`;
+}
+
+async function saveGridFsFile(input: { buffer: Buffer; contentType: string; fileName: string; metadata: Record<string, unknown> }) {
+  const bucket = new GridFSBucket(await getMongoDb(), { bucketName: "persistent_media" });
+  const id = new ObjectId();
+  await new Promise<void>((resolve, reject) => {
+    const stream = bucket.openUploadStreamWithId(id, input.fileName, {
+      contentType: input.contentType,
+      metadata: input.metadata
+    });
+    stream.on("error", reject);
+    stream.on("finish", () => resolve());
+    stream.end(input.buffer);
+  });
+  return id.toHexString();
+}
+
+async function readGridFsFile(fileId: string) {
+  const bucket = new GridFSBucket(await getMongoDb(), { bucketName: "persistent_media" });
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const stream = bucket.openDownloadStream(new ObjectId(fileId));
+    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+async function deleteGridFsFile(fileId: string | null | undefined) {
+  if (!fileId || !ObjectId.isValid(fileId)) return;
+  const bucket = new GridFSBucket(await getMongoDb(), { bucketName: "persistent_media" });
+  await bucket.delete(new ObjectId(fileId)).catch(() => null);
+}
+
+async function deletePersistentImageDocument(id: string, guildId: string) {
+  const { persistentImages } = await getMongoCollections();
+  const existing = await persistentImages.findOne({ _id: id, guildId }, { projection: { fileId: 1, posterFileId: 1 } });
+  await persistentImages.deleteOne({ _id: id, guildId });
+  await Promise.all([deleteGridFsFile(existing?.fileId), deleteGridFsFile(existing?.posterFileId)]);
+}
+
+function publicPosterUrl(id: string) {
+  const baseUrl = env.SITE_ORIGIN || env.FRONTEND_URL;
+  return `${baseUrl}/api/persistent-images/${encodeURIComponent(id)}/poster`;
 }
 
 function parsePersistentImageId(value: string) {
@@ -306,6 +375,22 @@ function resolveLocalUploadPath(localUrl: string, uploadsRoot: string) {
 
 function mimeTypeFromExtension(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".apng") return "image/apng";
+  if (ext === ".3gp") return "video/3gpp";
+  if (ext === ".avi") return "video/x-msvideo";
+  if (ext === ".mkv") return "video/x-matroska";
+  if (ext === ".m4v") return "video/x-m4v";
+  if (ext === ".mpeg" || ext === ".mpg") return "video/mpeg";
+  if (ext === ".flv") return "video/x-flv";
+  if (ext === ".wmv") return "video/x-ms-wmv";
+  if (ext === ".ts") return "video/mp2t";
+  if (ext === ".mts") return "video/vnd.dlna.mpeg-tts";
+  if (ext === ".ogv") return "video/ogg";
+  if (ext === ".asf") return "video/x-ms-asf";
+  if (ext === ".f4v") return "video/x-f4v";
+  if (ext === ".vob") return "video/x-ms-vob";
+  if (ext === ".rmvb") return "video/vnd.rn-realvideo";
+  if (ext === ".mxf") return "application/mxf";
   if (ext === ".gif") return "image/gif";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".mov") return "video/quicktime";
@@ -313,47 +398,6 @@ function mimeTypeFromExtension(filePath: string) {
   if (ext === ".png") return "image/png";
   if (ext === ".webm") return "video/webm";
   if (ext === ".webp") return "image/webp";
-  return null;
-}
-
-function isAnimatedGif(buffer: Buffer) {
-  if (buffer.length < 10 || buffer.toString("ascii", 0, 3) !== "GIF") return false;
-
-  let frames = 0;
-  for (let index = 0; index < buffer.length; index += 1) {
-    if (buffer[index] === 0x2c) {
-      frames += 1;
-      if (frames > 1) return true;
-    }
-  }
-
-  return false;
-}
-
-function detectMediaMimeType(buffer: Buffer) {
-  if (isGif(buffer)) return "image/gif";
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "image/webp";
-  if (isWebm(buffer)) return "video/webm";
-  const mp4Like = detectIsoBmffVideoMimeType(buffer);
-  if (mp4Like) return mp4Like;
-  return null;
-}
-
-function isGif(buffer: Buffer) {
-  return buffer.length >= 6 && (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a");
-}
-
-function isWebm(buffer: Buffer) {
-  return buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
-}
-
-function detectIsoBmffVideoMimeType(buffer: Buffer) {
-  if (buffer.length < 12 || buffer.toString("ascii", 4, 8) !== "ftyp") return null;
-  const header = buffer.toString("ascii", 8, Math.min(buffer.length, 40));
-  if (header.includes("qt  ")) return "video/quicktime";
-  if (/(isom|iso2|mp41|mp42|avc1|dash|M4V )/.test(header)) return "video/mp4";
   return null;
 }
 
@@ -369,11 +413,25 @@ function toDto(image: MongoPersistentImage): StoredImageDto {
     fileName: image.fileName,
     id: image._id,
     mimeType: image.mimeType,
+    posterUrl: image.posterBuffer?.length || image.posterFileId ? publicPosterUrl(image._id) : null,
+    processingError: image.processingError ?? null,
+    processingStatus: image.processingStatus ?? "stored",
     publicUrl: publicImageUrl(image._id),
     size: image.size,
     storageProvider: image.storageProvider ?? "mongodb",
     uploadedAt: image.uploadedAt.toISOString()
   };
+}
+
+function toBuffer(value: unknown) {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (value && typeof value === "object" && "buffer" in value) {
+    const nested = (value as { buffer?: unknown }).buffer;
+    if (Buffer.isBuffer(nested)) return nested;
+    if (nested instanceof Uint8Array || Array.isArray(nested)) return Buffer.from(nested);
+  }
+  return Buffer.alloc(0);
 }
 
 function fileExtension(fileName: string) {

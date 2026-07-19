@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarClock,
+  Car,
   Code2,
   Copy,
   LayoutDashboard,
@@ -1605,6 +1606,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "police-daf-roster": CalendarClock,
     "police-courses": ScrollText,
     "police-patrol-reports": ShieldCheck,
+    "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,
     "message-control": MessageCircle,
@@ -1618,7 +1620,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
 }
 
 function isPoliceModule(moduleId: string) {
-  return moduleId === "fivem-hierarchy" || moduleId === "rh-admin" || moduleId.startsWith("police-");
+  return moduleId === "fivem-hierarchy" || moduleId === "rh-admin" || moduleId === "vehicle-abandonment" || moduleId.startsWith("police-");
 }
 
 function isFiveMManagerModule(moduleId: string) {

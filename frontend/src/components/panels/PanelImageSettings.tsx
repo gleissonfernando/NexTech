@@ -40,9 +40,11 @@ const PANELS: PanelDefinition[] = [
   { id: "social-network", label: "Redes sociais" },
   { id: "logs", label: "Avisos e logs" }
 ];
-const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const VIDEO_MAX_BYTES = 15 * 1024 * 1024;
-const PANEL_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm";
+const PANEL_MEDIA_ACCEPT = [
+  "image/png", "image/apng", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+  "video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/x-matroska", "video/mpeg", "video/mp2t", "video/x-flv", "video/x-ms-wmv", "video/ogg",
+  ".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".flv", ".wmv", ".ts", ".mts", ".3gp", ".ogv", ".asf", ".f4v", ".vob", ".rmvb", ".mxf"
+].join(",");
 
 const positionOptions: Array<{ label: string; value: PanelImagePosition }> = [
   { label: "Sem imagem", value: "none" },
@@ -84,6 +86,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fixedPanel = fixedPanels?.length === 1 ? fixedPanels[0] : null;
@@ -255,37 +258,37 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       return;
     }
 
-    const allowedMime = ["image/gif", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"].includes(file.type);
-    const allowedExtension = /\.(gif|jpe?g|mov|mp4|png|webm|webp)$/i.test(file.name);
+    const allowedMime = isPanelMediaMime(file.type);
+    const allowedExtension = isPanelMediaName(file.name);
     if (!allowedMime && !allowedExtension) {
       setStatus(null);
-      setError("Envie uma imagem PNG, JPG, WEBP, GIF ou um vídeo MP4, MOV ou WEBM.");
-      return;
-    }
-    const isVideo = file.type.startsWith("video/") || /\.(mov|mp4|webm)$/i.test(file.name);
-    const maxBytes = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
-    if (file.size > maxBytes) {
-      setStatus(null);
-      setError(isVideo ? "Vídeo muito grande. Comprima para até 15MB antes de enviar." : "Imagem muito grande. Envie até 10MB.");
+      setError("Formato não reconhecido. Envie imagem, GIF/animação ou vídeo comum como MP4, MOV, AVI, MKV, WEBM, M4V, MPEG, FLV, WMV, TS, 3GP, OGV, ASF, F4V, VOB, RMVB ou MXF.");
       return;
     }
 
     setUploading(true);
+    setUploadProgress(0);
     setStatus(null);
     setError(null);
 
     try {
-      const saved = await uploadPanelImage(guildId, selectedPanelId, file, botId);
+      setStatus("Enviando...\n░░░░░░░░░░ 0%");
+      const saved = await uploadPanelImage(guildId, selectedPanelId, file, botId, (percent) => {
+        setUploadProgress(percent);
+        setStatus(`Enviando...\n${progressBar(percent)} ${percent}%`);
+      });
+      setStatus("Convertendo e gerando miniatura...\n██████████");
       setSettingsByPanel((current) => ({
         ...current,
         [saved.panelId]: saved
       }));
       setDraft(saved);
-      setStatus("Mídia enviada e salva no painel.");
+      setStatus("Concluído.");
     } catch (requestError) {
       setError(readErrorMessage(requestError, "Não foi possível enviar a mídia."));
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   }
 
@@ -453,10 +456,27 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
               </div>
             ) : null}
 
+            <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-4">
+              <p className="text-sm font-semibold text-zinc-100">Reprodução de mídia</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <ToggleField disabled={disabled} label="Loop" onChange={(value) => updateDraft("mediaLoop", value)} value={draft.mediaLoop} />
+                <ToggleField disabled={disabled} label="Autoplay" onChange={(value) => updateDraft("mediaAutoplay", value)} value={draft.mediaAutoplay} />
+                <ToggleField disabled={disabled} label="Silenciar" onChange={(value) => updateDraft("mediaMuted", value)} value={draft.mediaMuted} />
+                <ToggleField disabled={disabled} label="Mostrar controles" onChange={(value) => updateDraft("mediaControls", value)} value={draft.mediaControls} />
+                <SelectField disabled={disabled} label="Pré-carregamento" onChange={(value) => updateDraft("mediaPreload", value as PanelImageSettingsDto["mediaPreload"])} options={[{ label: "Metadados", value: "metadata" }, { label: "Automático", value: "auto" }, { label: "Nenhum", value: "none" }]} value={draft.mediaPreload} />
+                <SelectField disabled={disabled} label="Ajuste" onChange={(value) => updateDraft("mediaFit", value as PanelImageSettingsDto["mediaFit"])} options={[{ label: "Cobrir painel", value: "cover" }, { label: "Conter painel", value: "contain" }]} value={draft.mediaFit} />
+                <NumberField disabled={disabled} label="Volume inicial %" max={100} min={0} onChange={(value) => updateDraft("mediaVolume", Math.min(1, Math.max(0, value / 100)))} value={Math.round((draft.mediaVolume ?? 0) * 100)} />
+                <label className="grid gap-2 text-sm">
+                  <span className="font-medium text-zinc-200">Poster / Miniatura</span>
+                  <input className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]/60" disabled={disabled} onChange={(event) => updateDraft("mediaPosterUrl", event.target.value || null)} placeholder="Gerado automaticamente ou URL" value={draft.mediaPosterUrl ?? draft.mediaThumbnailUrl ?? ""} />
+                </label>
+              </div>
+            </div>
+
             <div className="rounded-lg border border-zinc-900 bg-black p-4">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 {draft.imageEnabled && draft.imageUrl && ["top", "banner"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
@@ -466,27 +486,27 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                     </p>
                   </div>
                   {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "thumbnail" ? (
-                    <InlineMediaPreview className="h-20 w-20" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} />
+                    <InlineMediaPreview className="h-20 w-20" imageUrl={draft.imageUrl} settings={draft} />
                   ) : null}
-                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <InlineMediaPreview className="h-28 w-36" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} /> : null}
+                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <InlineMediaPreview className="h-28 w-36" imageUrl={draft.imageUrl} settings={draft} /> : null}
                 </div>
                 {draft.imageEnabled && draft.imageUrl && ["below_title", "below_text"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} /></> : null}
+                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} /></> : null}
                 {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(draft.imagePosition) ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão principal</span>
                   <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão secundario</span>
                 </div>
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "bottom" ? (
-                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} style={previewStyle} />
+                  <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
-                    <InlineMediaPreview className="h-5 w-5 rounded-full" imageUrl={draft.imageUrl} mimeType={draft.imageMimeType} />
+                    <InlineMediaPreview className="h-5 w-5 rounded-full" imageUrl={draft.imageUrl} settings={draft} />
                     Rodapé do painel
                   </div>
                 ) : null}
@@ -611,11 +631,15 @@ function SelectField({
 function NumberField({
   disabled,
   label,
+  max = 2000,
+  min = 16,
   onChange,
   value
 }: {
   disabled: boolean;
   label: string;
+  max?: number;
+  min?: number;
   onChange: (value: number) => void;
   value: number;
 }) {
@@ -625,9 +649,9 @@ function NumberField({
       <input
         className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60"
         disabled={disabled}
-        max={2000}
-        min={16}
-        onChange={(event) => onChange(Math.min(2000, Math.max(16, Number(event.target.value) || 16)))}
+        max={max}
+        min={min}
+        onChange={(event) => onChange(Math.min(max, Math.max(min, Number(event.target.value) || min)))}
         type="number"
         value={value}
       />
@@ -635,27 +659,37 @@ function NumberField({
   );
 }
 
+function ToggleField({ disabled, label, onChange, value }: { disabled: boolean; label: string; onChange: (value: boolean) => void; value: boolean }) {
+  return <label className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-200"><span>{label}</span><Switch checked={value} disabled={disabled} onCheckedChange={onChange} /></label>;
+}
+
 function PreviewImage({
   alt,
   imageUrl,
-  mimeType,
+  settings,
   style
 }: {
   alt: string;
   imageUrl: string;
-  mimeType?: string | null;
+  settings: PanelImageSettingsDto;
   style: { height: string; maxWidth: string; width: string };
 }) {
-  if (isVideoMedia(imageUrl, mimeType)) {
+  if (isVideoMedia(imageUrl, settings.imageMimeType)) {
     return (
       <video
         className="mt-4 rounded-md border border-zinc-800 object-cover"
-        controls
-        loop
-        muted
+        autoPlay={settings.mediaAutoplay}
+        controls={settings.mediaControls}
+        loop={settings.mediaLoop}
+        muted={settings.mediaMuted}
+        onLoadedMetadata={(event) => {
+          event.currentTarget.volume = Math.min(1, Math.max(0, settings.mediaVolume ?? 0));
+        }}
         playsInline
+        poster={settings.mediaPosterUrl ? dashboardImageUrl(settings.mediaPosterUrl) : settings.mediaThumbnailUrl ? dashboardImageUrl(settings.mediaThumbnailUrl) : undefined}
+        preload={settings.mediaPreload}
         src={dashboardImageUrl(imageUrl)}
-        style={style}
+        style={{ ...style, objectFit: settings.mediaFit }}
       />
     );
   }
@@ -663,19 +697,20 @@ function PreviewImage({
   return (
     <img
       alt={alt}
-      className="mt-4 rounded-md border border-zinc-800 object-cover"
+      className="mt-4 rounded-md border border-zinc-800"
       src={dashboardImageUrl(imageUrl)}
-      style={style}
+      style={{ ...style, objectFit: settings.mediaFit }}
     />
   );
 }
 
-function InlineMediaPreview({ className, imageUrl, mimeType }: { className: string; imageUrl: string; mimeType?: string | null }) {
-  const classes = `${className} shrink-0 rounded-md border border-zinc-800 object-cover`;
-  if (isVideoMedia(imageUrl, mimeType)) {
-    return <video className={classes} loop muted playsInline src={dashboardImageUrl(imageUrl)} />;
+function InlineMediaPreview({ className, imageUrl, settings }: { className: string; imageUrl: string; settings: PanelImageSettingsDto }) {
+  const classes = `${className} shrink-0 rounded-md border border-zinc-800`;
+  const style = { objectFit: settings.mediaFit };
+  if (isVideoMedia(imageUrl, settings.imageMimeType)) {
+    return <video autoPlay={settings.mediaAutoplay} className={classes} controls={settings.mediaControls} loop={settings.mediaLoop} muted={settings.mediaMuted} onLoadedMetadata={(event) => { event.currentTarget.volume = Math.min(1, Math.max(0, settings.mediaVolume ?? 0)); }} playsInline poster={settings.mediaPosterUrl ?? settings.mediaThumbnailUrl ?? undefined} preload={settings.mediaPreload} src={dashboardImageUrl(imageUrl)} style={style} />;
   }
-  return <img alt="" className={classes} src={dashboardImageUrl(imageUrl)} />;
+  return <img alt="" className={classes} src={dashboardImageUrl(imageUrl)} style={style} />;
 }
 
 function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
@@ -698,7 +733,7 @@ function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
 
 function isVideoMedia(imageUrl: string, mimeType?: string | null) {
   if (mimeType?.startsWith("video/")) return true;
-  return /\.(mov|mp4|webm)(?:$|[?#])/i.test(imageUrl);
+  return /\.(3gp|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(imageUrl);
 }
 
 function dashboardImageUrl(imageUrl: string) {
@@ -725,6 +760,20 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function isPanelMediaMime(value: string) {
+  if (!value) return false;
+  return /^(image\/(apng|gif|jpe?g|png|webp)|video\/(3gpp2?|avi|mp2t|mp4|mpeg|ogg|quicktime|vnd\.dlna\.mpeg-tts|vnd\.rn-realvideo|webm|x-f4v|x-flv|x-m4v|x-matroska|x-ms-asf|x-ms-vob|x-ms-wmv|x-msvideo|x-mxf)|application\/mxf|application\/octet-stream)$/i.test(value);
+}
+
+function isPanelMediaName(value: string) {
+  return /\.(apng|gif|jpe?g|png|webp|3gp|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)$/i.test(value);
+}
+
+function progressBar(percent: number) {
+  const filled = Math.max(0, Math.min(10, Math.round(percent / 10)));
+  return `${"█".repeat(filled)}${"░".repeat(10 - filled)}`;
+}
+
 function defaultSettings(guildId: string, botId: string, panelId: string): PanelImageSettingsDto {
   return {
     botId,
@@ -742,6 +791,15 @@ function defaultSettings(guildId: string, botId: string, panelId: string): Panel
     imageUploadedAt: null,
     imageUrl: "",
     layoutMode: "embed",
+    mediaAutoplay: true,
+    mediaControls: false,
+    mediaFit: "cover",
+    mediaLoop: true,
+    mediaMuted: true,
+    mediaPosterUrl: null,
+    mediaPreload: "metadata",
+    mediaThumbnailUrl: null,
+    mediaVolume: 0,
     panelId,
     updatedAt: null,
     useGlobalDefault: panelId !== "global-default"
@@ -778,6 +836,15 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
     imageSize: settings.imageSize,
     imageUrl: imageEnabled ? imageUrl : "",
     layoutMode,
+    mediaAutoplay: settings.mediaAutoplay,
+    mediaControls: settings.mediaControls,
+    mediaFit: settings.mediaFit,
+    mediaLoop: settings.mediaLoop,
+    mediaMuted: settings.mediaMuted,
+    mediaPosterUrl: settings.mediaPosterUrl,
+    mediaPreload: settings.mediaPreload,
+    mediaThumbnailUrl: settings.mediaThumbnailUrl,
+    mediaVolume: settings.mediaVolume,
     useGlobalDefault: settings.useGlobalDefault
   };
 }

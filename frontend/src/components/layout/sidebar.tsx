@@ -8,6 +8,7 @@ import {
   BookOpen,
   Building2,
   CalendarClock,
+  Car,
   CircleDollarSign,
   ChevronLeft,
   ChevronRight,
@@ -91,6 +92,7 @@ export type ViewId =
   | "police-iab"
   | "police-subpoenas"
   | "police-patrol-reports"
+  | "vehicle-abandonment"
   | "police-hidden-channel"
   | "visible-message"
   | "message-control"
@@ -181,6 +183,7 @@ const navItems: NavItem[] = [
   { id: "police-iab", label: "Denúncias Corregedoria", icon: ShieldAlert, moduleId: "police-iab" },
   { id: "police-subpoenas", label: "Intimação", icon: ScrollText, moduleId: "police-subpoenas" },
   { id: "police-patrol-reports", label: "Relatórios Políciais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
+  { id: "vehicle-abandonment", label: "Abandono de Veículo", icon: Car, moduleId: "vehicle-abandonment" },
   { id: "police-hidden-channel", label: "Canal Oculto", icon: EyeOff, moduleId: "police-hidden-channel" },
   { id: "visible-message", label: "Mensagem Visível", icon: MessageCircle, moduleId: "visible-message" },
   { id: "message-control", label: "Controle de Mensagem", icon: MessageCircle, moduleId: "message-control" },
@@ -215,6 +218,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.id === "police-iab"
     || item.id === "police-subpoenas"
     || item.id === "police-patrol-reports"
+    || item.id === "vehicle-abandonment"
     || item.id === "police-hidden-channel"
     || item.id === "visible-message"
     || item.id === "message-control"
@@ -231,6 +235,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.moduleId === "police-iab"
     || item.moduleId === "police-subpoenas"
     || item.moduleId === "police-patrol-reports"
+    || item.moduleId === "vehicle-abandonment"
     || item.moduleId === "police-hidden-channel"
     || item.moduleId === "visible-message"
     || item.moduleId === "message-control"

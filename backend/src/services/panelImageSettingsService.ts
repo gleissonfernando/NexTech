@@ -42,6 +42,15 @@ export type PanelImageSettingsDto = {
   imageIsAnimated: boolean;
   imageUploadedAt: string | null;
   layoutMode: PanelImageLayoutMode;
+  mediaAutoplay: boolean;
+  mediaControls: boolean;
+  mediaFit: "cover" | "contain";
+  mediaLoop: boolean;
+  mediaMuted: boolean;
+  mediaPosterUrl: string | null;
+  mediaPreload: "none" | "metadata" | "auto";
+  mediaThumbnailUrl: string | null;
+  mediaVolume: number;
   panelId: string;
   updatedAt: string | null;
   useGlobalDefault: boolean;
@@ -49,7 +58,7 @@ export type PanelImageSettingsDto = {
 
 export type SavePanelImageSettingsInput = Partial<Pick<
   PanelImageSettingsDto,
-  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "useGlobalDefault"
+  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >> & { blocks?: MongoPanelBlock[] };
 
 const IMAGE_POSITIONS = new Set<PanelImagePosition>([
@@ -83,6 +92,15 @@ const DEFAULT_SETTINGS = {
   imageIsAnimated: false,
   imageUploadedAt: null,
   layoutMode: "embed" as PanelImageLayoutMode,
+  mediaAutoplay: true,
+  mediaControls: false,
+  mediaFit: "cover" as const,
+  mediaLoop: true,
+  mediaMuted: true,
+  mediaPosterUrl: null,
+  mediaPreload: "metadata" as const,
+  mediaThumbnailUrl: null,
+  mediaVolume: 0,
   useGlobalDefault: true
 };
 
@@ -137,7 +155,7 @@ export async function savePanelImageSettings(
     panelId
   });
   const now = new Date();
-  const changed = (["customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
+  const changed = (["customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "mediaAutoplay", "mediaControls", "mediaFit", "mediaLoop", "mediaMuted", "mediaPosterUrl", "mediaPreload", "mediaThumbnailUrl", "mediaVolume", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
   const blocksChanged = JSON.stringify(current.blocks) !== JSON.stringify(next.blocks);
   const { panelImageSettings } = await getMongoCollections();
 
@@ -156,6 +174,15 @@ export async function savePanelImageSettings(
         imageSize: next.imageSize,
         imageUrl: next.imageUrl,
         layoutMode: next.layoutMode,
+        mediaAutoplay: next.mediaAutoplay,
+        mediaControls: next.mediaControls,
+        mediaFit: next.mediaFit,
+        mediaLoop: next.mediaLoop,
+        mediaMuted: next.mediaMuted,
+        mediaPosterUrl: next.mediaPosterUrl,
+        mediaPreload: next.mediaPreload,
+        mediaThumbnailUrl: next.mediaThumbnailUrl,
+        mediaVolume: next.mediaVolume,
         panelId,
         updatedAt: now,
         updatedBy: actorId,
@@ -235,6 +262,7 @@ export async function savePanelImageUpload(input: {
   buffer: Buffer;
   guildId: string;
   mimeType: string;
+  originalName?: string | null;
   panelId: string;
 }) {
   const current = await getPanelImageSettings(input.guildId, input.botId, input.panelId);
@@ -247,6 +275,7 @@ export async function savePanelImageUpload(input: {
     metadata: { panelId: input.panelId },
     mimeType: input.mimeType,
     moduleId: input.panelId,
+    originalName: input.originalName,
     previousUrl: current.imageUrl || null
   });
 
@@ -256,6 +285,8 @@ export async function savePanelImageUpload(input: {
     imageSize: current.imageSize,
     imageUrl: stored.publicUrl,
     layoutMode: current.layoutMode,
+    mediaPosterUrl: stored.posterUrl ?? current.mediaPosterUrl,
+    mediaThumbnailUrl: stored.posterUrl ?? current.mediaThumbnailUrl,
     useGlobalDefault: false
   }, input.actorId);
 }
@@ -294,6 +325,8 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
   );
   const imageUrl = normalizeImageUrl(settings.imageUrl);
   const imageEnabled = settings.imageEnabled === true && Boolean(imageUrl) && imagePosition !== "none";
+  const mediaPosterUrl = normalizeImageUrl(settings.mediaPosterUrl);
+  const mediaThumbnailUrl = normalizeImageUrl(settings.mediaThumbnailUrl);
 
   return {
     ...settings,
@@ -304,7 +337,16 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
     imagePosition: imageEnabled ? imagePosition : "none",
     imageSize,
     imageUrl: imageEnabled ? imageUrl : "",
-    layoutMode
+    layoutMode,
+    mediaAutoplay: settings.mediaAutoplay !== false,
+    mediaControls: settings.mediaControls === true,
+    mediaFit: settings.mediaFit === "contain" ? "contain" : "cover",
+    mediaLoop: settings.mediaLoop !== false,
+    mediaMuted: settings.mediaMuted !== false,
+    mediaPosterUrl: mediaPosterUrl || null,
+    mediaPreload: settings.mediaPreload === "none" || settings.mediaPreload === "auto" ? settings.mediaPreload : "metadata",
+    mediaThumbnailUrl: mediaThumbnailUrl || null,
+    mediaVolume: Math.min(1, Math.max(0, Number(settings.mediaVolume) || 0))
   };
 }
 
@@ -391,7 +433,9 @@ async function toDtoWithImageMetadata(settings: MongoPanelImageSettings): Promis
     imageMimeType: metadata.mimeType,
     imageSizeBytes: metadata.size,
     imageIsAnimated: metadata.animated,
-    imageUploadedAt: metadata.uploadedAt
+    imageUploadedAt: metadata.uploadedAt,
+    mediaThumbnailUrl: metadata.posterUrl ?? dto.mediaThumbnailUrl,
+    mediaPosterUrl: dto.mediaPosterUrl ?? metadata.posterUrl
   };
 }
 
@@ -415,6 +459,15 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
     imageIsAnimated: /\.gif(?:$|[?#])/i.test(legacyImageUrl),
     imageUploadedAt: null,
     layoutMode: settings.layoutMode ?? DEFAULT_SETTINGS.layoutMode,
+    mediaAutoplay: settings.mediaAutoplay ?? DEFAULT_SETTINGS.mediaAutoplay,
+    mediaControls: settings.mediaControls ?? DEFAULT_SETTINGS.mediaControls,
+    mediaFit: settings.mediaFit ?? DEFAULT_SETTINGS.mediaFit,
+    mediaLoop: settings.mediaLoop ?? DEFAULT_SETTINGS.mediaLoop,
+    mediaMuted: settings.mediaMuted ?? DEFAULT_SETTINGS.mediaMuted,
+    mediaPosterUrl: settings.mediaPosterUrl ?? DEFAULT_SETTINGS.mediaPosterUrl,
+    mediaPreload: settings.mediaPreload ?? DEFAULT_SETTINGS.mediaPreload,
+    mediaThumbnailUrl: settings.mediaThumbnailUrl ?? DEFAULT_SETTINGS.mediaThumbnailUrl,
+    mediaVolume: settings.mediaVolume ?? DEFAULT_SETTINGS.mediaVolume,
     panelId: settings.panelId,
     updatedAt: settings.updatedAt?.toISOString() ?? null,
     useGlobalDefault: settings.useGlobalDefault ?? false

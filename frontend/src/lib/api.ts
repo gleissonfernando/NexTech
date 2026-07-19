@@ -526,16 +526,20 @@ export async function savePanelImageSettings(
   return data.settings;
 }
 
-export async function uploadPanelImage(guildId: string, panelId: string, file: File, botId?: string | null) {
+export async function uploadPanelImage(guildId: string, panelId: string, file: File, botId?: string | null, onProgress?: (percent: number) => void) {
   const { data } = await api.put<{ settings: PanelImageSettings }>(
     `/panel-images/${guildId}/${encodeURIComponent(panelId)}/upload`,
     file,
     {
       headers: {
-        "Content-Type": file.type || "application/octet-stream"
+        "Content-Type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name)
+      },
+      onUploadProgress: (event) => {
+        if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100));
       },
       params: botParams(botId),
-      timeout: 30000
+      timeout: 0
     }
   );
   return data.settings;
@@ -1697,6 +1701,8 @@ export async function publishFivemActionsPanel(guildId: string, architecture: im
 export async function getPolicePatrolDashboard(guildId: string, botId: string) { const { data } = await api.get<import("../types").PolicePatrolDashboard>(`/police-patrol-reports/${guildId}`, { params: botParams(botId) }); return data; }
 export async function savePolicePatrolSettings(guildId: string, botId: string, payload: Partial<import("../types").PolicePatrolSettings>) { const { data } = await api.patch<{ settings: import("../types").PolicePatrolSettings }>(`/police-patrol-reports/${guildId}/settings`, payload, { params: botParams(botId) }); return data.settings; }
 export async function deletePolicePatrolReport(guildId: string, botId: string, reportId: string) { await api.delete(`/police-patrol-reports/${guildId}/reports/${reportId}`, { params: botParams(botId) }); }
+export async function getVehicleAbandonmentDashboard(guildId: string, botId: string) { const { data } = await api.get<import("../types").VehicleAbandonmentDashboard>(`/vehicle-abandonment/${guildId}`, { params: botParams(botId) }); return data; }
+export async function saveVehicleAbandonmentSettings(guildId: string, botId: string, payload: Partial<import("../types").VehicleAbandonmentSettings>) { const { data } = await api.patch<{ settings: import("../types").VehicleAbandonmentSettings }>(`/vehicle-abandonment/${guildId}/settings`, payload, { params: botParams(botId) }); return data.settings; }
 export async function getPoliceHiddenChannelDashboard(guildId: string, botId: string) { const { data } = await api.get<import("../types").PoliceHiddenChannelDashboard>(`/police-hidden-channel/${guildId}`, { params: botParams(botId) }); return data; }
 export async function savePoliceHiddenChannelSettings(guildId: string, botId: string, payload: Partial<import("../types").PoliceHiddenChannelSettings>) { const { data } = await api.patch<{ settings: import("../types").PoliceHiddenChannelSettings }>(`/police-hidden-channel/${guildId}/settings`, payload, { params: botParams(botId) }); return data.settings; }
 export async function removePoliceHiddenChannelSettings(guildId: string, botId: string) { const { data } = await api.delete<{ settings: import("../types").PoliceHiddenChannelSettings }>(`/police-hidden-channel/${guildId}/settings`, { params: botParams(botId) }); return data.settings; }

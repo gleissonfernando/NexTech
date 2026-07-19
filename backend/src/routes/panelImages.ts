@@ -34,10 +34,19 @@ const settingsSchema = z.object({
   imageSize: z.enum(["small", "medium", "large", "full_banner", "custom"]).optional(),
   imageUrl: z.string().max(2048).optional(),
   layoutMode: z.enum(["embed", "components_v2"]).optional(),
+  mediaAutoplay: z.boolean().optional(),
+  mediaControls: z.boolean().optional(),
+  mediaFit: z.enum(["cover", "contain"]).optional(),
+  mediaLoop: z.boolean().optional(),
+  mediaMuted: z.boolean().optional(),
+  mediaPosterUrl: z.string().max(2048).nullable().optional(),
+  mediaPreload: z.enum(["none", "metadata", "auto"]).optional(),
+  mediaThumbnailUrl: z.string().max(2048).nullable().optional(),
+  mediaVolume: z.coerce.number().min(0).max(1).optional(),
   useGlobalDefault: z.boolean().optional()
 });
 const panelImageUpload = raw({
-  limit: "15mb",
+  limit: process.env.PANEL_MEDIA_UPLOAD_LIMIT || "2gb",
   type: () => true
 });
 
@@ -107,7 +116,7 @@ panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload
     await assertCanManage(user, guildId, botId, moduleIdForPanel(panelId));
 
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      throw createRouteError("Envie uma imagem para o painel.", 400);
+      throw createRouteError("Envie uma mídia para o painel.", 400);
     }
 
     return res.json({
@@ -117,6 +126,7 @@ panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload
         buffer: req.body,
         guildId,
         mimeType,
+        originalName: decodeHeader(req.header("x-file-name")),
         panelId
       })
     });
@@ -196,4 +206,13 @@ function createRouteError(message: string, statusCode: number) {
   return Object.assign(new Error(message), {
     statusCode
   });
+}
+
+function decodeHeader(value: string | undefined) {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value).slice(0, 255);
+  } catch {
+    return value.slice(0, 255);
+  }
 }

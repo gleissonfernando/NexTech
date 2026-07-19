@@ -139,6 +139,10 @@ export type PoliceHiddenChannelSettingsEvent = {
   botId?: string | null;
   guildId: string;
 };
+export type VehicleAbandonmentSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+};
 export type VisibleMessageUsersEvent = {
   botId?: string | null;
   guildId: string;
@@ -303,6 +307,7 @@ export class BotSocketClient {
   private fivemHierarchyPanelUpdateHandler: ((payload: FivemHierarchyPanelUpdateEvent, ack?: FivemHierarchyPanelUpdateAck) => void) | null = null;
   private fivemFacAbsenceUpdateHandler: ((payload: FivemFacAbsenceUpdateEvent) => void) | null = null;
   private policeHiddenChannelSettingsHandler: ((payload: PoliceHiddenChannelSettingsEvent) => void) | null = null;
+  private vehicleAbandonmentSettingsHandler: ((payload: VehicleAbandonmentSettingsEvent) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
   private messageControlUsersHandler: ((payload: MessageControlUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
@@ -428,6 +433,9 @@ export class BotSocketClient {
 
     if (this.policeHiddenChannelSettingsHandler) {
       this.socket.on("police-hidden-channel:settings_updated", this.policeHiddenChannelSettingsHandler);
+    }
+    if (this.vehicleAbandonmentSettingsHandler) {
+      this.socket.on("vehicle-abandonment:settings_updated", this.vehicleAbandonmentSettingsHandler);
     }
     if (this.visibleMessageUsersHandler) {
       this.socket.on("visible-message:users_updated", this.visibleMessageUsersHandler);
@@ -688,6 +696,12 @@ export class BotSocketClient {
     this.policeHiddenChannelSettingsHandler = handler;
     this.socket?.off("police-hidden-channel:settings_updated");
     this.socket?.on("police-hidden-channel:settings_updated", handler);
+  }
+
+  onVehicleAbandonmentSettingsUpdated(handler: (payload: VehicleAbandonmentSettingsEvent) => void) {
+    this.vehicleAbandonmentSettingsHandler = handler;
+    this.socket?.off("vehicle-abandonment:settings_updated");
+    this.socket?.on("vehicle-abandonment:settings_updated", handler);
   }
 
   onVisibleMessageUsersUpdated(handler: (payload: VisibleMessageUsersEvent) => void) {
