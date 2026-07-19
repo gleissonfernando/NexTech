@@ -226,9 +226,10 @@ async function openQruChannel(interaction: ButtonInteraction<"cached">, context:
     return;
   }
 
+  const temporaryCategoryId = await resolveTemporaryCategoryId(interaction.guild, settings);
   const channel = await interaction.guild.channels.create({
     name: `qru-${sanitizeChannelName(interaction.user.username)}`,
-    parent: settings.temporaryCategoryId ?? undefined,
+    parent: temporaryCategoryId ?? undefined,
     permissionOverwrites: [
       { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -377,9 +378,10 @@ function rankingCommand(name: "rank" | "ranking"): BotCommand {
 
 async function openFullRankingChannel(interaction: ButtonInteraction<"cached">, context: BotContext, settings: PoliceQruSettings) {
   const ranking = await context.api.getPoliceQruRanking(interaction.guildId!, 500);
+  const temporaryCategoryId = await resolveTemporaryCategoryId(interaction.guild!, settings);
   const channel = await interaction.guild!.channels.create({
     name: `ranking-qru-${sanitizeChannelName(interaction.user.username)}`,
-    parent: settings.temporaryCategoryId ?? undefined,
+    parent: temporaryCategoryId ?? undefined,
     permissionOverwrites: [
       { id: interaction.guild!.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] },
@@ -391,6 +393,12 @@ async function openFullRankingChannel(interaction: ButtonInteraction<"cached">, 
   await channel.send(rankingPayload(ranking, settings, true) as any);
   scheduleChannelDelete(channel, 300);
   await interaction.reply({ content: `📄 Ranking completo aberto em ${channel}.`, ephemeral: true });
+}
+
+async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"cached">["guild"]>, settings: PoliceQruSettings) {
+  if (!settings.temporaryCategoryId) return null;
+  const channel = await guild.channels.fetch(settings.temporaryCategoryId).catch(() => null);
+  return channel?.type === ChannelType.GuildCategory ? channel.id : null;
 }
 
 function qruPanelPayload(settings: PoliceQruSettings): MessageCreateOptions {

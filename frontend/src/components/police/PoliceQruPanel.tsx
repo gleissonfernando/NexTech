@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Clock3, Loader2, Save, ShieldCheck, Trophy } from "lucide-react";
 import { getGuildLiveOptions, getPoliceQruDashboard, savePoliceQruSettings } from "../../lib/api";
-import type { DashboardGuild, GuildChannelOption, GuildRoleOption, PoliceQruDashboard, PoliceQruSettings } from "../../types";
+import type { DashboardGuild, GuildCategoryOption, GuildChannelOption, GuildRoleOption, PoliceQruDashboard, PoliceQruSettings } from "../../types";
 import { Badge } from "../ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
@@ -10,6 +10,7 @@ import { FivemResourceMultiSelect, FivemResourceSelect } from "../fivem/FivemRes
 export function PoliceQruPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
   const [data, setData] = useState<PoliceQruDashboard | null>(null);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [categories, setCategories] = useState<GuildCategoryOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,6 +35,7 @@ export function PoliceQruPanel({ botId, canManage, guild }: { botId?: string | n
       setData(dashboard);
       settingsRef.current = dashboard.settings;
       setChannels(options.channels ?? []);
+      setCategories(options.categories ?? []);
       setRoles(options.roles ?? []);
     } catch (error) {
       setMessage(readMessage(error));
@@ -112,7 +114,7 @@ export function PoliceQruPanel({ botId, canManage, guild }: { botId?: string | n
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <FivemResourceSelect disabled={disabled} label="Canal de Registros" options={channels} prefix="#" value={data.settings.recordChannelId} onChange={(recordChannelId) => patch({ recordChannelId })} />
           <FivemResourceSelect disabled={disabled} label="Canal de Logs" options={channels} prefix="#" value={data.settings.logChannelId} onChange={(logChannelId) => patch({ logChannelId })} />
-          <FivemResourceSelect disabled={disabled} label="Categoria dos canais temporários" options={channels} prefix="#" value={data.settings.temporaryCategoryId} onChange={(temporaryCategoryId) => patch({ temporaryCategoryId })} />
+          <FivemResourceSelect disabled={disabled} label="Categoria dos canais temporários" options={categories} value={data.settings.temporaryCategoryId} onChange={(temporaryCategoryId) => patch({ temporaryCategoryId })} />
           <FivemResourceSelect disabled={disabled} label="Cargo da equipe" options={roles} prefix="@" value={data.settings.teamRoleId} onChange={(teamRoleId) => patch({ teamRoleId })} />
           <div className="lg:col-span-2">
             <FivemResourceMultiSelect disabled={disabled} label="Cargos permitidos usar /qru" options={roles} prefix="@" values={data.settings.allowedRoleIds} onChange={(allowedRoleIds) => patch({ allowedRoleIds })} />
