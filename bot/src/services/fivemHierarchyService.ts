@@ -1232,7 +1232,7 @@ async function deleteOfficialHierarchyPanelMessage(
 function sanitizeSingleHierarchyVisual(visual: PanelVisualConfig | null): PanelVisualConfig | null {
   if (!visual?.imageEnabled || !visual.imageUrl) return null;
   return {
-    blocks: visual.blocks ?? [],
+    blocks: [],
     imageEnabled: true,
     imagePosition: visual.imagePosition,
     imageUrl: visual.imageUrl
