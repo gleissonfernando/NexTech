@@ -176,14 +176,14 @@ export async function handlePoliceQruMessage(message: Message, context: BotConte
   if (session.step === "type") {
     session.qruType = clip(message.content, 120);
     session.step = "evidence";
-    await sendStepMessage(message.channel, "Envie o print do B.O. São aceitas imagens `jpg`, `jpeg`, `png` e `webp`.");
+    await sendStepMessage(message.channel, "Envie o print do B.O. como anexo ou link direto. São aceitas imagens `jpg`, `jpeg`, `png` e `webp`.");
     return true;
   }
 
   if (session.step === "evidence") {
-    const evidenceUrl = imageUrl(message);
+    const evidenceUrl = resolveEvidenceImageUrl(message);
     if (!evidenceUrl) {
-      await sendStepMessage(message.channel, "Envie uma imagem válida do B.O. (`jpg`, `jpeg`, `png` ou `webp`).");
+      await sendStepMessage(message.channel, "Envie uma imagem válida do B.O. como anexo ou link direto (`jpg`, `jpeg`, `png` ou `webp`).");
       return true;
     }
 
@@ -577,13 +577,33 @@ function isComplete(session: QruSession): session is QruSession & { boNumber: st
   return Boolean(session.boNumber && session.evidenceUrl && session.occurrenceDate && session.qruType && session.officers.length);
 }
 
-function imageUrl(message: Message) {
+function resolveEvidenceImageUrl(message: Message) {
   const attachment = message.attachments.find((item) => {
     const type = item.contentType?.toLowerCase() ?? "";
     const extension = item.name?.split(".").pop()?.toLowerCase() ?? item.url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
     return (type.startsWith("image/") && IMAGE_EXTENSIONS.has(type.slice("image/".length))) || IMAGE_EXTENSIONS.has(extension);
   });
-  return attachment?.url ?? null;
+  return attachment?.url ?? directImageUrlFromText(message.content);
+}
+
+function directImageUrlFromText(content: string) {
+  const matches = content.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
+  for (const match of matches) {
+    const url = match.replace(/[.,;!?]+$/g, "");
+    if (isDirectImageUrl(url)) return url;
+  }
+  return null;
+}
+
+function isDirectImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const extension = url.pathname.split("/").pop()?.split(".").pop()?.toLowerCase() ?? "";
+    return IMAGE_EXTENSIONS.has(extension);
+  } catch {
+    return false;
+  }
 }
 
 function userToOfficer(user: User): PoliceQruOfficer {
