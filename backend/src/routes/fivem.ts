@@ -331,7 +331,7 @@ fivemRouter.get("/:guildId/goals", requireAuth, async (req, res, next) => {
   }
 });
 
-fivemRouter.get("/:guildId/hierarchy", requireAuth, async (req, res, next) => {
+fivemRouter.get("/:guildId(\\d{5,32})/hierarchy", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
@@ -349,7 +349,7 @@ fivemRouter.get("/:guildId/hierarchy", requireAuth, async (req, res, next) => {
   }
 });
 
-fivemRouter.post("/:guildId/hierarchy/panels", requireAuth, async (req, res, next) => {
+fivemRouter.post("/:guildId(\\d{5,32})/hierarchy/panels", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
@@ -371,7 +371,7 @@ fivemRouter.post("/:guildId/hierarchy/panels", requireAuth, async (req, res, nex
   }
 });
 
-fivemRouter.patch("/:guildId/hierarchy/panels/:panelId", requireAuth, async (req, res, next) => {
+fivemRouter.patch("/:guildId(\\d{5,32})/hierarchy/panels/:panelId", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const panelId = z.string().min(1).max(80).parse(req.params.panelId);
@@ -395,7 +395,7 @@ fivemRouter.patch("/:guildId/hierarchy/panels/:panelId", requireAuth, async (req
   }
 });
 
-fivemRouter.delete("/:guildId/hierarchy/panels/:panelId", requireAuth, async (req, res, next) => {
+fivemRouter.delete("/:guildId(\\d{5,32})/hierarchy/panels/:panelId", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const panelId = z.string().min(1).max(80).parse(req.params.panelId);
@@ -411,7 +411,7 @@ fivemRouter.delete("/:guildId/hierarchy/panels/:panelId", requireAuth, async (re
   }
 });
 
-fivemRouter.post("/:guildId/hierarchy/panels/:panelId/publish", requireAuth, async (req, res, next) => {
+fivemRouter.post("/:guildId(\\d{5,32})/hierarchy/panels/:panelId/publish", requireAuth, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const panelId = z.string().min(1).max(80).parse(req.params.panelId);
