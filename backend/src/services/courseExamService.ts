@@ -842,11 +842,11 @@ function correctIds(question: Pick<MongoCourseExamQuestion, "alternatives" | "co
   return question.correctAlternativeId ? [question.correctAlternativeId] : [];
 }
 
-function calculateMultipleChoiceScore(question: MongoCourseExamQuestion, selectedAlternativeIds: string[]) {
+export function calculateMultipleChoiceScore(question: MongoCourseExamQuestion, selectedAlternativeIds: string[]) {
   return capQuestionScore(question, decimalSum(selectedAlternativeIds.map((id) => selectedAlternativeScore(question, question.alternatives.find((item) => item.id === id)))));
 }
 
-function calculateSelectionScore(question: MongoCourseExamQuestion, selectedAlternative: MongoCourseExamQuestion["alternatives"][number] | undefined) {
+export function calculateSelectionScore(question: MongoCourseExamQuestion, selectedAlternative: MongoCourseExamQuestion["alternatives"][number] | undefined) {
   return capQuestionScore(question, selectedAlternativeScore(question, selectedAlternative));
 }
 
@@ -885,15 +885,28 @@ function questionMaxScore(question: MongoCourseExamQuestion) {
 
 function selectedAlternativeScore(question: MongoCourseExamQuestion, alternative: MongoCourseExamQuestion["alternatives"][number] | undefined) {
   if (!alternative) return 0;
-  const score = parseDecimalNumber(alternative.score, 0);
-  // Objective questions score from the selected correct alternatives only; question.points is not a fallback for alternatives.
-  if (isExpectedAlternative(question, alternative)) return Math.max(0, score);
+  if (isExpectedAlternative(question, alternative)) return expectedAlternativePointValue(question, alternative);
   return 0;
 }
 
 function alternativePointValue(alternative: MongoCourseExamQuestion["alternatives"][number] | undefined, fallback: number) {
   if (!alternative) return fallback;
   return Math.max(0, parseDecimalNumber(alternative.score, fallback));
+}
+
+function expectedAlternativePointValue(question: MongoCourseExamQuestion, alternative: MongoCourseExamQuestion["alternatives"][number]) {
+  const explicitScore = alternativePointValue(alternative, 0);
+  if (explicitScore > 0) return explicitScore;
+  if (question.type === "selection") return questionMaxScore(question);
+  const expectedIds = correctIds(question);
+  const expectedAlternatives = expectedIds
+    .map((id) => question.alternatives.find((item) => item.id === id))
+    .filter((item): item is MongoCourseExamQuestion["alternatives"][number] => Boolean(item));
+  const explicitTotal = decimalSum(expectedAlternatives.map((item) => alternativePointValue(item, 0)).filter((score) => score > 0));
+  const missingScoreCount = expectedAlternatives.filter((item) => alternativePointValue(item, 0) <= 0).length;
+  if (missingScoreCount <= 0) return 0;
+  const remaining = Math.max(0, questionMaxScore(question) - explicitTotal);
+  return remaining / missingScoreCount;
 }
 
 function capQuestionScore(question: MongoCourseExamQuestion, score: number) {
@@ -924,6 +937,14 @@ function normalizeQuestionScoring<T extends MongoCourseExamQuestion>(question: T
   const expectedIds = correctIds({ ...question, alternatives });
   const limitedExpectedIds = type === "selection" ? expectedIds.slice(0, 1) : expectedIds;
   const expected = new Set(limitedExpectedIds);
+  const scoringQuestion = {
+    ...question,
+    type,
+    points,
+    alternatives,
+    correctAlternativeId: type === "selection" ? limitedExpectedIds[0] ?? null : null,
+    correctAlternativeIds: type === "multiple" ? limitedExpectedIds : []
+  };
   return {
     ...question,
     type,
@@ -931,7 +952,9 @@ function normalizeQuestionScoring<T extends MongoCourseExamQuestion>(question: T
     alternatives: alternatives.map((alternative) => ({
       ...alternative,
       isCorrect: expected.has(alternative.id),
-      score: expected.has(alternative.id) ? alternativePointValue(alternative, 0) : 0
+      score: expected.has(alternative.id)
+        ? expectedAlternativePointValue(scoringQuestion, alternative)
+        : 0
     })),
     correctAlternativeId: type === "selection" ? limitedExpectedIds[0] ?? null : null,
     correctAlternativeIds: type === "multiple" ? limitedExpectedIds : [],
@@ -941,7 +964,10 @@ function normalizeQuestionScoring<T extends MongoCourseExamQuestion>(question: T
 
 function validateAlternativeScoreLimit(question: MongoCourseExamQuestion) {
   if (question.type === "written") return;
-  const total = decimalSum(correctIds(question).map((id) => alternativePointValue(question.alternatives.find((item) => item.id === id), 0)));
+  const total = decimalSum(correctIds(question).map((id) => {
+    const alternative = question.alternatives.find((item) => item.id === id);
+    return alternative ? expectedAlternativePointValue(question, alternative) : 0;
+  }));
   const maxScore = questionMaxScore(question);
   if (total > maxScore + 1e-9) {
     throw Object.assign(new Error("A soma das alternativas corretas excede o valor permitido para esta questão."), { statusCode: 400 });
