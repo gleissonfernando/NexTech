@@ -35,6 +35,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
     console.error("[police-patrol] falha ao salvar mensagem:", error instanceof Error ? error.message : error);
   });
 
+  if (await handleManualPaymentMessage(message, context)) {
+    return;
+  }
+
   if (await handleMessageControlMessage(message, context)) {
     return;
   }
@@ -79,10 +83,6 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handleFivemGoalMessage(message, context)) {
-    return;
-  }
-
-  if (await handleManualPaymentMessage(message, context)) {
     return;
   }
 

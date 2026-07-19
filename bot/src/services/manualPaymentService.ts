@@ -9,6 +9,7 @@ import {
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
+  type Attachment,
   type ButtonInteraction,
   type Client,
   type Guild,
@@ -56,8 +57,13 @@ export async function handleManualPaymentInteraction(interaction: Interaction, c
 export async function handleManualPaymentMessage(message: Message, context: BotContext) {
   if (!message.guild || message.author.bot || !message.attachments.size) return false;
   const runtime = await context.api.getManualPaymentRuntime(message.guild.id).catch(() => null);
-  const order = runtime?.orders.find((item) => item.paymentChannelId === message.channelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(item.status));
-  if (!runtime || !order || order.userId !== message.author.id) return false;
+  if (!runtime) return false;
+  const order = runtime.orders.find((item) => item.paymentChannelId === message.channelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(item.status));
+  if (!order) return false;
+  if (order.userId !== message.author.id) {
+    await message.reply("Somente quem solicitou este pagamento pode enviar o comprovante neste canal.").catch(() => null);
+    return true;
+  }
   const attachment = message.attachments.find(isValidProofAttachment);
   if (!attachment) {
     await message.reply("Não consegui reconhecer esse arquivo como comprovante. Envie uma imagem ou PDF como anexo neste canal.").catch(() => null);
@@ -71,14 +77,16 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
     status: "WAITING_STAFF_APPROVAL"
   });
   await message.react("✅").catch(() => null);
+  await message.reply("Comprovante capturado. A equipe já pode validar o pagamento.").catch(() => null);
   await refreshPaymentPanel(message.guild, context, runtime.settings, updated);
   await sendStaffApprovalLog(message.guild, context, runtime.settings, updated);
   return true;
 }
 
-function isValidProofAttachment(item: { contentType?: string | null; name?: string | null; url: string }) {
-  const contentType = item.contentType?.toLowerCase() ?? "";
+function isValidProofAttachment(item: Attachment) {
+  const contentType = item.contentType?.split(";")[0]?.toLowerCase() ?? "";
   if (contentType.startsWith("image/") || contentType === "application/pdf") return true;
+  if (item.width || item.height) return true;
   return hasProofFileExtension(item.name ?? "") || hasProofFileExtension(getUrlPathname(item.url));
 }
 
@@ -161,19 +169,28 @@ async function startPurchase(interaction: ButtonInteraction, context: BotContext
 
 async function createPaymentChannel(guild: Guild, settings: ManualPaymentSettings, order: ManualPaymentOrder, userId: string) {
   const member = await guild.members.fetch(userId).catch(() => null);
-  const staffRoleIds = [...new Set([...settings.approveRoleIds, ...settings.rejectRoleIds, ...settings.logViewRoleIds])];
-  return guild.channels.create({
+  const botUserId = guild.members.me?.id ?? guild.client.user.id;
+  const staffRoleIds = paymentStaffRoleIds(guild, settings);
+  const permissionOverwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
+    { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+    ...staffRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }))
+  ];
+  const channel = await guild.channels.create({
     name: `pagamento-${slug(member?.displayName ?? order.username ?? userId)}-${String(order.orderNumber).padStart(3, "0")}`.slice(0, 90),
     parent: settings.paymentCategoryId ?? undefined,
-    permissionOverwrites: [
-      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
-      { id: guild.members.me?.id ?? guild.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
-      ...staffRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
-    ],
+    permissionOverwrites,
     reason: `Pagamento manual pedido ${order.orderNumber}`,
     type: ChannelType.GuildText
-  }) as Promise<TextChannel>;
+  }) as TextChannel;
+  await channel.permissionOverwrites.set(permissionOverwrites, "Canal privado de pagamento manual: cliente, equipe e bot.").catch(() => null);
+  return channel;
+}
+
+function paymentStaffRoleIds(guild: Guild, settings: ManualPaymentSettings) {
+  const roleIds = [...settings.approveRoleIds, ...settings.rejectRoleIds, ...settings.logViewRoleIds];
+  return [...new Set(roleIds)].filter((id) => id !== guild.roles.everyone.id && guild.roles.cache.has(id));
 }
 
 function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymentOrder, service?: ManualPaymentService | null) {
