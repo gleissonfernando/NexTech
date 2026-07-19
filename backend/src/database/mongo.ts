@@ -2507,6 +2507,8 @@ export type MongoPoliceQruSettings = {
   panelDescription: string;
   panelImageUrl: string | null;
   panelMessage: string;
+  rankingChannelId?: string | null;
+  rankingMessageId?: string | null;
   createdAt: Date;
   updatedAt: Date;
   updatedBy: string | null;

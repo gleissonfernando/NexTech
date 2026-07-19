@@ -36,6 +36,8 @@ const settingsSchema = z.object({
   panelMessage: z.string().max(1200).optional(),
   panelTitle: z.string().max(200).optional(),
   recordChannelId: nullableSnowflake.optional(),
+  rankingChannelId: nullableSnowflake.optional(),
+  rankingMessageId: nullableSnowflake.optional(),
   supervisorRoleIds: z.array(snowflake).max(100).optional(),
   teamRoleId: nullableSnowflake.optional(),
   temporaryCategoryId: nullableSnowflake.optional()
@@ -120,6 +122,17 @@ policeQruRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next)
     const botId = await botIdFor(req);
     await licensed(botId);
     res.json({ settings: await getPoliceQruSettings(botId, snowflake.parse(req.params.guildId)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policeQruRouter.patch("/bot/:guildId/settings", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    const guildId = snowflake.parse(req.params.guildId);
+    await licensed(botId);
+    res.json({ settings: await savePoliceQruSettings(botId, guildId, settingsSchema.parse(req.body), null) });
   } catch (error) {
     next(error);
   }

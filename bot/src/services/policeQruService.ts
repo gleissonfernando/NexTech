@@ -128,6 +128,7 @@ export async function handlePoliceQruInteraction(interaction: Interaction, conte
 
   if (action === "rank_refresh") {
     await interaction.update(rankingPayload(await context.api.getPoliceQruRanking(interaction.guild.id, 20), settings, false) as any);
+    await rememberRankingPanel(context, interaction.guild.id, interaction.message.channelId, interaction.message.id);
     return true;
   }
 
@@ -301,6 +302,7 @@ async function confirmQru(interaction: ButtonInteraction<"cached">, context: Bot
   const sent = await recordChannel.send(recordPayload(record, session.settings) as any);
   await context.api.updatePoliceQruRecordMessage(record.id, { recordChannelId: recordChannel.id, recordMessageId: sent.id }).catch(() => null);
   await sendLog(interaction, context, session.settings, "qru.confirmed", record);
+  await updateOfficialRankingPanel(context, interaction.guild.id, session.settings);
   await interaction.update(successPayload(record) as any);
   scheduleChannelDelete(interaction.channel, session.settings.deleteChannelSeconds);
   sessions.delete(interaction.channelId);
@@ -385,6 +387,8 @@ function rankingCommand(name: "rank" | "ranking"): BotCommand {
       }
       const ranking = await context.api.getPoliceQruRanking(interaction.guild.id, 20);
       await interaction.reply(rankingPayload(ranking, settings, false) as any);
+      const message = await interaction.fetchReply().catch(() => null);
+      if (message) await rememberRankingPanel(context, interaction.guild.id, message.channelId, message.id);
     },
     moduleId: MODULE_ID
   };
@@ -407,6 +411,30 @@ async function openFullRankingChannel(interaction: ButtonInteraction<"cached">, 
   await channel.send(rankingPayload(ranking, settings, true) as any);
   scheduleChannelDelete(channel, 300);
   await interaction.reply({ content: `📄 Ranking completo aberto em ${channel}.`, ephemeral: true });
+}
+
+async function rememberRankingPanel(context: BotContext, guildId: string, channelId: string | null, messageId: string | null) {
+  const settings = await context.api.savePoliceQruSettings(guildId, { rankingChannelId: channelId, rankingMessageId: messageId }).catch(() => null);
+  if (settings) settingsCache.set(`${MODULE_ID}:${guildId}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings });
+}
+
+async function updateOfficialRankingPanel(context: BotContext, guildId: string, fallbackSettings: PoliceQruSettings) {
+  const settings = fallbackSettings.rankingChannelId && fallbackSettings.rankingMessageId
+    ? fallbackSettings
+    : await context.api.getPoliceQruSettings(guildId).catch(() => fallbackSettings);
+  if (!settings.rankingChannelId || !settings.rankingMessageId) return;
+
+  const channel = await context.client.channels.fetch(settings.rankingChannelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return;
+
+  const message = await channel.messages.fetch(settings.rankingMessageId).catch(() => null);
+  if (!message) {
+    await rememberRankingPanel(context, guildId, null, null).catch(() => null);
+    return;
+  }
+
+  const ranking = await context.api.getPoliceQruRanking(guildId, 20);
+  await message.edit(rankingPayload(ranking, settings, false) as any).catch(() => null);
 }
 
 async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"cached">["guild"]>, settings: PoliceQruSettings) {
@@ -528,13 +556,29 @@ function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): Me
 }
 
 function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPoliceQruRanking"]>>, settings: PoliceQruSettings, full: boolean): MessageCreateOptions {
-  const lines = ranking.map((entry) => `${medal(entry.position)} ${escapeMarkdown(entry.officerName)} — **${entry.total} QRUs**`).join("\n") || "Nenhuma QRU registrada.";
+  const visibleRanking = ranking.slice(0, full ? 50 : 10);
+  const podium = visibleRanking.slice(0, 3).map((entry) => `${medal(entry.position)} <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n") || "Nenhuma QRU registrada.";
+  const others = visibleRanking.slice(3).map((entry) => `**${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
+  const totalVisible = visibleRanking.reduce((total, entry) => total + entry.total, 0);
+  const updatedAt = Math.floor(Date.now() / 1000);
   return {
+    allowedMentions: { parse: [] },
     components: [{
       type: 17,
       accent_color: parseColor(settings.color),
       components: [
-        { type: 10, content: `# 🏆 Ranking de QRUs\nTop oficiais com mais participações.\n\n${lines}` },
+        { type: 10, content: [
+          "# 🏆 Ranking de QRUs",
+          full ? "Ranking completo temporário." : "Painel oficial com atualização automática após cada QRU confirmada.",
+          "",
+          `**Última atualização:** <t:${updatedAt}:f>`,
+          `**Oficiais listados:** ${visibleRanking.length}`,
+          `**QRUs no recorte:** ${totalVisible}`,
+          "",
+          "## Pódio",
+          podium,
+          ...(others ? ["", "## Demais posições", others] : [])
+        ].join("\n") },
         ...(full ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(`${PREFIX}:rank_refresh`).setEmoji("🔄").setLabel("Atualizar").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(`${PREFIX}:rank_full`).setEmoji("📄").setLabel("Ver Completo").setStyle(ButtonStyle.Primary)

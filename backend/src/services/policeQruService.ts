@@ -53,6 +53,8 @@ export type SavePoliceQruSettingsInput = Partial<Pick<
   | "panelMessage"
   | "panelTitle"
   | "recordChannelId"
+  | "rankingChannelId"
+  | "rankingMessageId"
   | "supervisorRoleIds"
   | "teamRoleId"
   | "temporaryCategoryId"
@@ -330,6 +332,8 @@ function defaultSettings(botId: string, guildId: string): MongoPoliceQruSettings
     panelImageUrl: null,
     panelMessage: "Clique no botão abaixo para iniciar o atendimento da ocorrência.",
     panelTitle: "🚔 Sistema de Registro de QRU",
+    rankingChannelId: null,
+    rankingMessageId: null,
     recordChannelId: null,
     supervisorRoleIds: [],
     teamRoleId: null,
@@ -341,7 +345,7 @@ function defaultSettings(botId: string, guildId: string): MongoPoliceQruSettings
 
 function settingsDto(row: MongoPoliceQruSettings): PoliceQruSettingsDto {
   const { _id, createdAt, updatedAt, ...rest } = row;
-  return { ...rest, id: _id, createdAt: createdAt.toISOString(), updatedAt: updatedAt.toISOString() };
+  return { ...rest, id: _id, createdAt: createdAt.toISOString(), rankingChannelId: row.rankingChannelId ?? null, rankingMessageId: row.rankingMessageId ?? null, updatedAt: updatedAt.toISOString() };
 }
 
 function recordDto(row: MongoPoliceQruRecord): PoliceQruRecordDto {
@@ -355,6 +359,8 @@ function sanitizeSettingsInput(input: SavePoliceQruSettingsInput) {
   if (next.supervisorRoleIds !== undefined) next.supervisorRoleIds = uniqueStrings(next.supervisorRoleIds).slice(0, 100);
   if (next.recordChannelId !== undefined) next.recordChannelId = normalizeSnowflake(next.recordChannelId);
   if (next.logChannelId !== undefined) next.logChannelId = normalizeSnowflake(next.logChannelId);
+  if (next.rankingChannelId !== undefined) next.rankingChannelId = normalizeSnowflake(next.rankingChannelId);
+  if (next.rankingMessageId !== undefined) next.rankingMessageId = normalizeSnowflake(next.rankingMessageId);
   if (next.temporaryCategoryId !== undefined) next.temporaryCategoryId = normalizeSnowflake(next.temporaryCategoryId);
   if (next.teamRoleId !== undefined) next.teamRoleId = normalizeSnowflake(next.teamRoleId);
   if (next.color !== undefined) next.color = /^#[0-9a-f]{6}$/i.test(next.color) ? next.color : "#2563eb";
