@@ -581,7 +581,7 @@ coursesRouter.post("/:guildId/courses/:courseId/exam/attempts/:attemptId/review"
     const parsed = reviewSchema.parse({ ...(req.body ?? {}), actorId: res.locals.dashboardAuth.user.discordId });
     const attempt = await reviewCourseExamAttempt(botId, guildId, attemptId, parsed.actorId, parsed.status, parsed.rejectionReason, parsed.manualScore);
     if (!attempt) return res.status(404).json({ message: "Tentativa não encontrada." });
-    emitRealtime("courses:exam_reviewed", { actorId: parsed.actorId, attemptId, botId, courseId, guildId, status: parsed.status });
+    emitRealtime("courses:exam_reviewed", { actorId: parsed.actorId, attemptId, botId, courseId, guildId, status: attempt.result ?? parsed.status });
     return res.json({ attempt });
   } catch (error) { return next(error); }
 });

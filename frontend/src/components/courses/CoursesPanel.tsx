@@ -546,7 +546,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
       setExam((current) => current && current.settings.courseId === selectedCourse.id
         ? { ...current, attempts: current.attempts.map((item) => item.id === attempt.id ? attempt : item) }
         : current);
-      showSuccess(status === "approved" ? "Prova aprovada pela dashboard." : "Prova reprovada pela dashboard.");
+      showSuccess(attempt.result === "approved" || attempt.status === "approved" ? "Prova aprovada pela nota final." : "Prova reprovada pela nota final.");
       await loadExam(selectedCourse.id);
     } catch (err) {
       showError(readApiError(err, "Não foi possível corrigir a prova."));

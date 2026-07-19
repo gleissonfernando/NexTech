@@ -2016,7 +2016,7 @@ async function reviewExam(interaction: ButtonInteraction, context: BotContext) {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const reviewed = await completeExamReview(interaction, context, attemptId, status, 0);
-  if (reviewed) await interaction.editReply(status === "approved" ? "Prova aprovada automaticamente, sem nota manual." : "Prova reprovada e painel atualizado.");
+  if (reviewed) await interaction.editReply(reviewed.result === "approved" ? "Prova aprovada pela nota final e painel atualizado." : "Prova reprovada pela nota final e painel atualizado.");
 }
 
 async function approveExamWithManualScore(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -2049,14 +2049,10 @@ async function completeExamReview(interaction: ButtonInteraction | ModalSubmitIn
       context.api.getCourseSettings(interaction.guildId!)
     ]);
     await editExamCorrectionPanel(interaction, context, course, courseSettings, runtime.settings, bundle.attempt, bundle.questions, bundle.answers);
-    let resultPanelFailed = false;
-    if (!bundle.attempt.resultMessageId) {
-      const resultDelivery = await sendExamResultPanel(interaction, courseSettings, course, bundle.attempt, bundle.questions, bundle.answers);
-      if (resultDelivery.ok && resultDelivery.channelId && resultDelivery.messageId) {
-        await context.api.setCourseExamResultDelivery(interaction.guildId!, bundle.attempt.id, { channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }).catch((error) => logCourseFlowError("exam_result_delivery_persist_failed", error, { attemptId: bundle.attempt.id, channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }));
-      } else {
-        resultPanelFailed = true;
-      }
+    const resultDelivery = await sendExamResultPanel(interaction, courseSettings, course, bundle.attempt, bundle.questions, bundle.answers);
+    const resultPanelFailed = !resultDelivery.ok;
+    if (resultDelivery.ok && resultDelivery.channelId && resultDelivery.messageId) {
+      await context.api.setCourseExamResultDelivery(interaction.guildId!, bundle.attempt.id, { channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }).catch((error) => logCourseFlowError("exam_result_delivery_persist_failed", error, { attemptId: bundle.attempt.id, channelId: resultDelivery.channelId, messageId: resultDelivery.messageId }));
     }
     await interaction.editReply(resultPanelFailed
       ? "Esta prova já foi corrigida, mas não consegui enviar o painel no canal de resultado configurado."
@@ -3832,7 +3828,7 @@ function automaticExamStatus(attempt: CourseExamAttempt, settings: CourseExamSet
   const maxScore = attempt.maxScore || EXAM_TOTAL_SCORE;
   const configuredMinimum = Number(settings.minScore ?? 0);
   const minimumScore = configuredMinimum > maxScore ? (configuredMinimum / 100) * maxScore : configuredMinimum;
-  return score >= minimumScore ? "approved" : "rejected";
+  return score + 1e-9 >= minimumScore ? "approved" : "rejected";
 }
 
 function examResultLogMessage(guildId: string, course: Course, attempt: CourseExamAttempt, actorId: string | null, source: string) {

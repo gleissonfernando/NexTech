@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { MongoCourseExamQuestion } from "../database/mongo";
-import { calculateMultipleChoiceScore, calculateSelectionScore } from "./courseExamService";
+import { calculateMultipleChoiceScore, calculateSelectionScore, decideCourseExamResult } from "./courseExamService";
 
 function objectiveQuestion(overrides: Partial<MongoCourseExamQuestion> = {}): MongoCourseExamQuestion {
   const now = new Date("2026-07-19T00:00:00.000Z");
@@ -57,4 +57,11 @@ test("multipla escolha divide os pontos restantes entre corretas sem score", () 
 
   assert.equal(calculateMultipleChoiceScore(question, ["a", "b", "c"]), 1);
   assert.equal(calculateMultipleChoiceScore(question, ["b"]), 0.375);
+});
+
+test("resultado da prova segue a nota minima configurada", () => {
+  assert.equal(decideCourseExamResult(5.99, { minScore: 6 }, 10), "rejected");
+  assert.equal(decideCourseExamResult(6, { minScore: 6 }, 10), "approved");
+  assert.equal(decideCourseExamResult(9.8, { minScore: 6 }, 10), "approved");
+  assert.equal(decideCourseExamResult(9.8, { minScore: 98 }, 10), "approved");
 });
