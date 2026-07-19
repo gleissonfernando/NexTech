@@ -10,8 +10,15 @@ export type PoliceQruSettingsDto = Omit<MongoPoliceQruSettings, "_id" | "created
   updatedAt: string;
 };
 
-export type PoliceQruRecordDto = Omit<MongoPoliceQruRecord, "_id" | "createdAt" | "updatedAt"> & {
+export type PoliceQruRecordDto = Omit<MongoPoliceQruRecord, "_id" | "approvedAt" | "createdAt" | "rejections" | "updatedAt"> & {
+  approvedAt: string | null;
   id: string;
+  rejections: Array<{
+    reason: string;
+    rejectedAt: string;
+    supervisorId: string;
+    supervisorName: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,6 +51,7 @@ export type PoliceQruDashboardDto = {
 export type SavePoliceQruSettingsInput = Partial<Pick<
   MongoPoliceQruSettings,
   | "allowedRoleIds"
+  | "approvalChannelId"
   | "color"
   | "deleteChannelSeconds"
   | "enabled"
@@ -63,14 +71,19 @@ export type SavePoliceQruSettingsInput = Partial<Pick<
 export type CreatePoliceQruRecordInput = {
   authorId: string;
   authorName: string;
+  approvalChannelId?: string | null;
+  approvalMessageId?: string | null;
   boNumber: string;
   evidenceUrl: string;
   guildId: string;
+  notes?: string | null;
   occurrenceDate: string;
   officers: MongoPoliceQruOfficer[];
   qruType: string;
   recordChannelId?: string | null;
   recordMessageId?: string | null;
+  seizures?: string | null;
+  status?: "pending" | "approved";
   temporaryChannelId?: string | null;
   vehicle: string;
 };
@@ -138,6 +151,11 @@ export async function createPoliceQruRecord(botId: string, input: CreatePoliceQr
   const now = new Date();
   const row: MongoPoliceQruRecord = {
     _id: randomUUID(),
+    approvalChannelId: input.approvalChannelId ?? null,
+    approvalMessageId: input.approvalMessageId ?? null,
+    approvedAt: input.status === "approved" ? now : null,
+    approvedById: null,
+    approvedByName: null,
     authorId: input.authorId,
     authorName: input.authorName.trim().slice(0, 100),
     boNumber: normalizeText(input.boNumber, 80),
@@ -145,11 +163,16 @@ export async function createPoliceQruRecord(botId: string, input: CreatePoliceQr
     createdAt: now,
     evidenceUrl: input.evidenceUrl,
     guildId: input.guildId,
+    notes: normalizeText(input.notes ?? "", 1000) || null,
     occurrenceDate: normalizeText(input.occurrenceDate, 20),
     officers: uniqueOfficers(input.officers),
     qruType: normalizeText(input.qruType, 120),
     recordChannelId: input.recordChannelId ?? null,
     recordMessageId: input.recordMessageId ?? null,
+    rejectionCount: 0,
+    rejections: [],
+    seizures: normalizeText(input.seizures ?? "", 500) || null,
+    status: input.status ?? "pending",
     temporaryChannelId: input.temporaryChannelId ?? null,
     updatedAt: now,
     vehicle: normalizeText(input.vehicle, 120)
@@ -164,12 +187,124 @@ export async function createPoliceQruRecord(botId: string, input: CreatePoliceQr
       boNumber: row.boNumber,
       officerIds: row.officers.map((officer) => officer.id),
       qruType: row.qruType,
+      status: row.status,
       vehicle: row.vehicle
     },
     recordId: row._id
   });
   emitRealtime("police-qru:record_created", { botId, guildId: input.guildId, record: recordDto(row) });
   return recordDto(row);
+}
+
+export async function updatePoliceQruApprovalMessage(botId: string, recordId: string, input: { approvalChannelId?: string | null; approvalMessageId?: string | null }) {
+  const { policeQruRecords } = await getMongoCollections();
+  const now = new Date();
+  await policeQruRecords.updateOne({ _id: recordId, botId }, {
+    $set: {
+      ...(input.approvalChannelId !== undefined ? { approvalChannelId: input.approvalChannelId } : {}),
+      ...(input.approvalMessageId !== undefined ? { approvalMessageId: input.approvalMessageId } : {}),
+      updatedAt: now
+    }
+  });
+  const updated = await policeQruRecords.findOne({ _id: recordId, botId });
+  if (!updated) throw Object.assign(new Error("Registro QRU não encontrado."), { statusCode: 404 });
+  return recordDto(updated);
+}
+
+export async function approvePoliceQruRecord(botId: string, recordId: string, input: { supervisorId: string; supervisorName: string }) {
+  const { policeQruRecords } = await getMongoCollections();
+  const now = new Date();
+  const updated = await policeQruRecords.findOneAndUpdate(
+    { _id: recordId, botId, status: "pending" },
+    {
+      $set: {
+        approvedAt: now,
+        approvedById: input.supervisorId,
+        approvedByName: normalizeText(input.supervisorName, 100),
+        status: "approved",
+        updatedAt: now
+      }
+    },
+    { returnDocument: "after" }
+  );
+  if (!updated) throw Object.assign(new Error("QRU já foi concluída por outro supervisor."), { statusCode: 409 });
+  await createPoliceQruLog(botId, updated.guildId, {
+    action: "qru.approved",
+    actorId: input.supervisorId,
+    actorName: input.supervisorName,
+    metadata: { boNumber: updated.boNumber, qruType: updated.qruType },
+    recordId: updated._id
+  });
+  return recordDto(updated);
+}
+
+export async function rejectPoliceQruRecord(botId: string, recordId: string, input: { reason: string; supervisorId: string; supervisorName: string }) {
+  const { policeQruRecords } = await getMongoCollections();
+  const now = new Date();
+  const reason = normalizeText(input.reason, 1000);
+  const updated = await policeQruRecords.findOneAndUpdate(
+    { _id: recordId, botId, status: "pending" },
+    {
+      $inc: { rejectionCount: 1 },
+      $push: {
+        rejections: {
+          reason,
+          rejectedAt: now,
+          supervisorId: input.supervisorId,
+          supervisorName: normalizeText(input.supervisorName, 100)
+        }
+      },
+      $set: {
+        status: "rejected",
+        updatedAt: now
+      }
+    },
+    { returnDocument: "after" }
+  );
+  if (!updated) throw Object.assign(new Error("QRU já foi concluída por outro supervisor."), { statusCode: 409 });
+  await createPoliceQruLog(botId, updated.guildId, {
+    action: "qru.rejected",
+    actorId: input.supervisorId,
+    actorName: input.supervisorName,
+    metadata: { boNumber: updated.boNumber, reason },
+    recordId: updated._id
+  });
+  return recordDto(updated);
+}
+
+export async function resubmitPoliceQruRecord(botId: string, recordId: string, input: CreatePoliceQruRecordInput) {
+  const { policeQruRecords } = await getMongoCollections();
+  const now = new Date();
+  const updated = await policeQruRecords.findOneAndUpdate(
+    { _id: recordId, botId, status: "rejected", authorId: input.authorId },
+    {
+      $set: {
+        approvalChannelId: input.approvalChannelId ?? null,
+        approvalMessageId: input.approvalMessageId ?? null,
+        boNumber: normalizeText(input.boNumber, 80),
+        evidenceUrl: input.evidenceUrl,
+        notes: normalizeText(input.notes ?? "", 1000) || null,
+        occurrenceDate: normalizeText(input.occurrenceDate, 20),
+        officers: uniqueOfficers(input.officers),
+        qruType: normalizeText(input.qruType, 120),
+        seizures: normalizeText(input.seizures ?? "", 500) || null,
+        status: "pending",
+        temporaryChannelId: input.temporaryChannelId ?? null,
+        updatedAt: now,
+        vehicle: normalizeText(input.vehicle, 120)
+      }
+    },
+    { returnDocument: "after" }
+  );
+  if (!updated) throw Object.assign(new Error("QRU não está disponível para reenvio."), { statusCode: 409 });
+  await createPoliceQruLog(botId, updated.guildId, {
+    action: "qru.resubmitted",
+    actorId: input.authorId,
+    actorName: input.authorName,
+    metadata: { boNumber: updated.boNumber, qruType: updated.qruType },
+    recordId: updated._id
+  });
+  return recordDto(updated);
 }
 
 export async function updatePoliceQruRecordMessage(botId: string, recordId: string, input: { recordChannelId?: string | null; recordMessageId?: string | null }) {
@@ -189,7 +324,7 @@ export async function updatePoliceQruRecordMessage(botId: string, recordId: stri
 
 export async function listPoliceQruRecords(botId: string, guildId: string, search: PoliceQruSearchInput = {}, limit = 50) {
   const { policeQruRecords } = await getMongoCollections();
-  const query: Record<string, unknown> = { botId, guildId };
+  const query: Record<string, unknown> = { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] };
   if (search.boNumber) query.boNumber = { $regex: escapeRegex(search.boNumber), $options: "i" };
   if (search.qruType) query.qruType = { $regex: escapeRegex(search.qruType), $options: "i" };
   if (search.occurrenceDate) query.occurrenceDate = search.occurrenceDate;
@@ -208,7 +343,7 @@ export async function getPoliceQruRanking(botId: string, guildId: string, limit 
     officerName: string;
     total: number;
   }>([
-    { $match: { botId, guildId } },
+    { $match: { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
     { $unwind: "$officers" },
     {
       $group: {
@@ -236,10 +371,10 @@ export async function getPoliceQruRanking(botId: string, guildId: string, limit 
 export async function getPoliceQruProfile(botId: string, guildId: string, officerId: string) {
   const { policeQruRecords } = await getMongoCollections();
   const [records, ranking] = await Promise.all([
-    policeQruRecords.find({ botId, guildId, "officers.id": officerId }).sort({ createdAt: 1 }).toArray(),
+    policeQruRecords.find({ botId, guildId, "officers.id": officerId, $or: [{ status: "approved" }, { status: { $exists: false } }] }).sort({ createdAt: 1 }).toArray(),
     getPoliceQruRanking(botId, guildId, 500)
   ]);
-  const registeredBos = await policeQruRecords.countDocuments({ botId, guildId, authorId: officerId });
+  const registeredBos = await policeQruRecords.countDocuments({ botId, guildId, authorId: officerId, $or: [{ status: "approved" }, { status: { $exists: false } }] });
   const position = ranking.find((entry) => entry.officerId === officerId)?.position ?? null;
   const officer = records.at(-1)?.officers.find((item) => item.id === officerId) ?? null;
 
@@ -281,13 +416,13 @@ async function getPoliceQruStats(botId: string, guildId: string) {
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
 
   const [total, qrusToday, qrusWeek, qrusMonth, officerCount, topAuthorRows] = await Promise.all([
-    policeQruRecords.countDocuments({ botId, guildId }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: todayStart } }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: weekStart } }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: monthStart } }),
-    policeQruRecords.distinct("officers.id", { botId, guildId }).then((ids) => ids.length),
+    policeQruRecords.countDocuments({ botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
+    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: todayStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
+    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: weekStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
+    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: monthStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
+    policeQruRecords.distinct("officers.id", { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] }).then((ids) => ids.length),
     policeQruRecords.aggregate<{ _id: string; name: string; total: number }>([
-      { $match: { botId, guildId } },
+      { $match: { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
       { $group: { _id: "$authorId", name: { $last: "$authorName" }, total: { $sum: 1 } } },
       { $sort: { total: -1, name: 1 } },
       { $limit: 1 }
@@ -321,6 +456,7 @@ function defaultSettings(botId: string, guildId: string): MongoPoliceQruSettings
   return {
     _id: `${botId}:${guildId}`,
     allowedRoleIds: [],
+    approvalChannelId: null,
     botId,
     color: "#2563eb",
     createdAt: now,
@@ -345,17 +481,42 @@ function defaultSettings(botId: string, guildId: string): MongoPoliceQruSettings
 
 function settingsDto(row: MongoPoliceQruSettings): PoliceQruSettingsDto {
   const { _id, createdAt, updatedAt, ...rest } = row;
-  return { ...rest, id: _id, createdAt: createdAt.toISOString(), rankingChannelId: row.rankingChannelId ?? null, rankingMessageId: row.rankingMessageId ?? null, updatedAt: updatedAt.toISOString() };
+  return {
+    ...rest,
+    approvalChannelId: row.approvalChannelId ?? null,
+    id: _id,
+    createdAt: createdAt.toISOString(),
+    rankingChannelId: row.rankingChannelId ?? null,
+    rankingMessageId: row.rankingMessageId ?? null,
+    updatedAt: updatedAt.toISOString()
+  };
 }
 
 function recordDto(row: MongoPoliceQruRecord): PoliceQruRecordDto {
   const { _id, createdAt, updatedAt, ...rest } = row;
-  return { ...rest, id: _id, createdAt: createdAt.toISOString(), updatedAt: updatedAt.toISOString(), vehicle: row.vehicle ?? null };
+  return {
+    ...rest,
+    approvalChannelId: row.approvalChannelId ?? null,
+    approvalMessageId: row.approvalMessageId ?? null,
+    approvedAt: row.approvedAt?.toISOString() ?? null,
+    approvedById: row.approvedById ?? null,
+    approvedByName: row.approvedByName ?? null,
+    createdAt: createdAt.toISOString(),
+    id: _id,
+    notes: row.notes ?? null,
+    rejectionCount: row.rejectionCount ?? 0,
+    rejections: (row.rejections ?? []).map((item) => ({ ...item, rejectedAt: item.rejectedAt.toISOString() })),
+    seizures: row.seizures ?? null,
+    status: row.status ?? "approved",
+    updatedAt: updatedAt.toISOString(),
+    vehicle: row.vehicle ?? null
+  };
 }
 
 function sanitizeSettingsInput(input: SavePoliceQruSettingsInput) {
   const next: SavePoliceQruSettingsInput = { ...input };
   if (next.allowedRoleIds !== undefined) next.allowedRoleIds = uniqueStrings(next.allowedRoleIds).slice(0, 100);
+  if (next.approvalChannelId !== undefined) next.approvalChannelId = normalizeSnowflake(next.approvalChannelId);
   if (next.supervisorRoleIds !== undefined) next.supervisorRoleIds = uniqueStrings(next.supervisorRoleIds).slice(0, 100);
   if (next.recordChannelId !== undefined) next.recordChannelId = normalizeSnowflake(next.recordChannelId);
   if (next.logChannelId !== undefined) next.logChannelId = normalizeSnowflake(next.logChannelId);

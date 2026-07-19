@@ -2497,6 +2497,7 @@ export type MongoPoliceQruSettings = {
   enabled: boolean;
   recordChannelId: string | null;
   logChannelId: string | null;
+  approvalChannelId?: string | null;
   temporaryCategoryId: string | null;
   allowedRoleIds: string[];
   supervisorRoleIds: string[];
@@ -2528,13 +2529,28 @@ export type MongoPoliceQruRecord = {
   qruType: string;
   occurrenceDate: string;
   evidenceUrl: string;
+  seizures?: string | null;
+  notes?: string | null;
   vehicle?: string | null;
+  status?: "pending" | "approved" | "rejected";
   authorId: string;
   authorName: string;
   officers: MongoPoliceQruOfficer[];
   temporaryChannelId: string | null;
   recordChannelId: string | null;
   recordMessageId: string | null;
+  approvalChannelId?: string | null;
+  approvalMessageId?: string | null;
+  approvedById?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: Date | null;
+  rejectionCount?: number;
+  rejections?: Array<{
+    reason: string;
+    rejectedAt: Date;
+    supervisorId: string;
+    supervisorName: string;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -5273,6 +5289,7 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoVehicleAbandonmentLog>("vehicle_abandonment_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPoliceQruSettings>("police_qru_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, boNumber: 1 }),
     db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, occurrenceDate: 1 }),
     db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, qruType: 1 }),

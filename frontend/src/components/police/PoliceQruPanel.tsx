@@ -165,6 +165,7 @@ export function PoliceQruPanel({ botId, canManage, guild }: { botId?: string | n
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <FivemResourceSelect disabled={disabled} label="Canal de Registros" options={channels} prefix="#" value={data.settings.recordChannelId} onChange={(recordChannelId) => patch({ recordChannelId })} />
+          <FivemResourceSelect disabled={disabled} label="Canal de Aprovação" options={channels} prefix="#" value={data.settings.approvalChannelId} onChange={(approvalChannelId) => patch({ approvalChannelId })} />
           <FivemResourceSelect disabled={disabled} label="Canal de Logs" options={channels} prefix="#" value={data.settings.logChannelId} onChange={(logChannelId) => patch({ logChannelId })} />
           <FivemResourceSelect disabled={disabled} label="Categoria dos canais temporários" options={categories} value={data.settings.temporaryCategoryId} onChange={(temporaryCategoryId) => patch({ temporaryCategoryId })} />
           <FivemResourceSelect disabled={disabled} label="Cargo da equipe" options={roles} prefix="@" value={data.settings.teamRoleId} onChange={(teamRoleId) => patch({ teamRoleId })} />

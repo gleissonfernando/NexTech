@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions } from "../services/devBotService";
 import {
+  approvePoliceQruRecord,
   createPoliceQruLog,
   createPoliceQruRecord,
   getPoliceQruDashboard,
@@ -11,7 +12,10 @@ import {
   getPoliceQruSettings,
   listPoliceQruRecords,
   POLICE_QRU_MODULE_ID,
+  rejectPoliceQruRecord,
+  resubmitPoliceQruRecord,
   savePoliceQruSettings,
+  updatePoliceQruApprovalMessage,
   updatePoliceQruRecordMessage
 } from "../services/policeQruService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
@@ -30,6 +34,7 @@ const settingsSchema = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   deleteChannelSeconds: z.coerce.number().int().min(0).max(3600).optional(),
   enabled: z.boolean().optional(),
+  approvalChannelId: nullableSnowflake.optional(),
   logChannelId: nullableSnowflake.optional(),
   panelDescription: z.string().max(1200).optional(),
   panelImageUrl: httpUrl.optional(),
@@ -45,20 +50,34 @@ const settingsSchema = z.object({
 const recordSchema = z.object({
   authorId: snowflake,
   authorName: z.string().max(100),
+  approvalChannelId: snowflake.nullable().optional(),
+  approvalMessageId: snowflake.nullable().optional(),
   boNumber: z.string().min(1).max(80),
   evidenceUrl: z.string().url().max(2048),
   guildId: snowflake,
+  notes: z.string().max(1000).nullable().optional(),
   occurrenceDate: z.string().min(1).max(20),
   officers: z.array(officerSchema).min(1).max(100),
   qruType: z.string().min(1).max(120),
   recordChannelId: snowflake.nullable().optional(),
   recordMessageId: snowflake.nullable().optional(),
+  seizures: z.string().max(500).nullable().optional(),
+  status: z.enum(["pending", "approved"]).optional(),
   temporaryChannelId: snowflake.nullable().optional(),
   vehicle: z.string().trim().min(1).max(120)
+});
+const approvalMessageSchema = z.object({
+  approvalChannelId: snowflake.nullable().optional(),
+  approvalMessageId: snowflake.nullable().optional()
 });
 const recordMessageSchema = z.object({
   recordChannelId: snowflake.nullable().optional(),
   recordMessageId: snowflake.nullable().optional()
+});
+const supervisorActionSchema = z.object({
+  reason: z.string().min(1).max(1000).optional(),
+  supervisorId: snowflake,
+  supervisorName: z.string().min(1).max(100)
 });
 
 export const policeQruRouter = Router();
@@ -143,6 +162,48 @@ policeQruRouter.post("/bot/records", requireBot, async (req, res, next) => {
     const botId = await botIdFor(req);
     await licensed(botId);
     res.status(201).json({ record: await createPoliceQruRecord(botId, recordSchema.parse(req.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policeQruRouter.put("/bot/records/:recordId", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    res.json({ record: await resubmitPoliceQruRecord(botId, id.parse(req.params.recordId), recordSchema.parse(req.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policeQruRouter.patch("/bot/records/:recordId/approval-message", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    res.json({ record: await updatePoliceQruApprovalMessage(botId, id.parse(req.params.recordId), approvalMessageSchema.parse(req.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policeQruRouter.post("/bot/records/:recordId/approve", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    const input = supervisorActionSchema.parse(req.body);
+    res.json({ record: await approvePoliceQruRecord(botId, id.parse(req.params.recordId), input) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policeQruRouter.post("/bot/records/:recordId/reject", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    const input = supervisorActionSchema.required({ reason: true }).parse(req.body);
+    res.json({ record: await rejectPoliceQruRecord(botId, id.parse(req.params.recordId), input as { reason: string; supervisorId: string; supervisorName: string }) });
   } catch (error) {
     next(error);
   }

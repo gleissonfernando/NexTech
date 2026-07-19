@@ -5,13 +5,17 @@ import {
   ButtonStyle,
   ChannelType,
   MessageFlags,
+  ModalBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type ChatInputCommandInteraction,
   type GuildMember,
   type Interaction,
   type Message,
   type MessageCreateOptions,
+  type ModalSubmitInteraction,
   type User
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
@@ -24,7 +28,7 @@ const PREFIX = "police_qru";
 const SETTINGS_TTL_MS = 30_000;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
-type QruStep = "officers" | "date" | "bo" | "type" | "vehicle" | "evidence" | "confirm";
+type QruStep = "officers" | "date" | "bo" | "type" | "vehicle" | "evidence" | "seizures" | "notes" | "confirm";
 
 type QruSession = {
   authorId: string;
@@ -36,9 +40,12 @@ type QruSession = {
   guildId: string;
   occurrenceDate: string | null;
   officers: PoliceQruOfficer[];
+  recordId: string | null;
   qruType: string | null;
+  seizures: string | null;
   settings: PoliceQruSettings;
   step: QruStep;
+  notes: string | null;
   vehicle: string | null;
 };
 
@@ -55,6 +62,7 @@ export const qruCommand: BotCommand = {
       .setRequired(false)
       .addChoices(
         { name: "Publicar painel", value: "painel" },
+        { name: "Registrar QRU", value: "registrar" },
         { name: "Perfil individual", value: "perfil" },
         { name: "Pesquisar registros", value: "pesquisar" }
       ))
@@ -86,6 +94,11 @@ export const qruCommand: BotCommand = {
       return;
     }
 
+    if (action === "registrar") {
+      await openQruChannel(interaction, context, settings);
+      return;
+    }
+
     await publishQruPanel(interaction, settings);
   },
   moduleId: MODULE_ID
@@ -95,9 +108,16 @@ export const rankCommand: BotCommand = rankingCommand("rank");
 export const rankingCommandQru: BotCommand = rankingCommand("ranking");
 
 export async function handlePoliceQruInteraction(interaction: Interaction, context: BotContext) {
-  if (!isBotModuleEnabled(MODULE_ID) || !interaction.isButton() || !interaction.customId.startsWith(`${PREFIX}:`)) {
+  if (!isBotModuleEnabled(MODULE_ID)) {
     return false;
   }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:reject_modal:`)) {
+    await handleRejectModal(interaction, context);
+    return true;
+  }
+
+  if (!interaction.isButton() || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
 
   if (!interaction.guild || !interaction.inCachedGuild()) {
     await interaction.reply({ content: "Interação inválida.", ephemeral: true });
@@ -118,7 +138,26 @@ export async function handlePoliceQruInteraction(interaction: Interaction, conte
   }
 
   if (action === "confirm") {
-    await confirmQru(interaction, context);
+    await submitQruForApproval(interaction, context);
+    return true;
+  }
+
+  if (action === "approve") {
+    await approveQru(interaction, context);
+    return true;
+  }
+
+  if (action === "reject") {
+    if (!canApproveQru(member, settings)) {
+      await interaction.reply({ content: "❌ Você não possui permissão para recusar QRU.", ephemeral: true });
+      return true;
+    }
+    await openRejectModal(interaction);
+    return true;
+  }
+
+  if (action === "resubmit") {
+    await resubmitQru(interaction, context);
     return true;
   }
 
@@ -202,6 +241,28 @@ export async function handlePoliceQruMessage(message: Message, context: BotConte
     }
 
     session.evidenceUrl = evidenceUrl;
+    session.step = "seizures";
+    await sendStepMessage(message.channel, "Informe as apreensões da QRU.\n\nExemplo: `2 armas, 15 munições, R$ 5.000`.\nSe não houver, responda `Nenhuma`.");
+    return true;
+  }
+
+  if (session.step === "seizures") {
+    session.seizures = clip(message.content, 500);
+    if (!session.seizures) {
+      await sendStepMessage(message.channel, "Informe as apreensões. Se não houver, responda `Nenhuma`.");
+      return true;
+    }
+    session.step = "notes";
+    await sendStepMessage(message.channel, "Informe as observações da QRU.\n\nSe não houver, responda `Nenhuma`.");
+    return true;
+  }
+
+  if (session.step === "notes") {
+    session.notes = clip(message.content, 1000);
+    if (!session.notes) {
+      await sendStepMessage(message.channel, "Informe as observações. Se não houver, responda `Nenhuma`.");
+      return true;
+    }
     session.step = "confirm";
     if ("send" in message.channel) {
       await message.channel.send(confirmationPayload(session) as any);
@@ -233,10 +294,14 @@ async function publishQruPanel(interaction: ChatInputCommandInteraction, setting
   await interaction.reply({ content: "✅ Painel de QRU publicado.", ephemeral: true });
 }
 
-async function openQruChannel(interaction: ButtonInteraction<"cached">, context: BotContext, settings: PoliceQruSettings) {
+async function openQruChannel(interaction: ButtonInteraction<"cached"> | ChatInputCommandInteraction<"cached">, context: BotContext, settings: PoliceQruSettings) {
   if (!interaction.guild || !interaction.inCachedGuild()) return;
   if (!settings.recordChannelId) {
     await interaction.reply({ content: "❌ Configure o canal de registros antes de usar o QRU.", ephemeral: true });
+    return;
+  }
+  if (!settings.approvalChannelId) {
+    await interaction.reply({ content: "❌ Configure o canal de aprovação antes de usar o QRU.", ephemeral: true });
     return;
   }
 
@@ -263,9 +328,12 @@ async function openQruChannel(interaction: ButtonInteraction<"cached">, context:
     guildId: interaction.guild.id,
     occurrenceDate: null,
     officers: [],
+    recordId: null,
     qruType: null,
+    seizures: null,
     settings,
     step: "officers",
+    notes: null,
     vehicle: null
   });
 
@@ -274,39 +342,144 @@ async function openQruChannel(interaction: ButtonInteraction<"cached">, context:
   await interaction.reply({ content: `✅ Canal criado: ${channel}`, ephemeral: true });
 }
 
-async function confirmQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
+async function submitQruForApproval(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const session = sessions.get(interaction.channelId);
   if (!session || session.authorId !== interaction.user.id || !isComplete(session)) {
     await interaction.reply({ content: "Sessão de QRU inválida ou incompleta.", ephemeral: true });
     return;
   }
 
-  const recordChannel = await interaction.guild?.channels.fetch(session.settings.recordChannelId!).catch(() => null);
-  if (!recordChannel?.isTextBased() || recordChannel.isDMBased()) {
-    await interaction.reply({ content: "Canal de registros inválido.", ephemeral: true });
+  const approvalChannel = await interaction.guild?.channels.fetch(session.settings.approvalChannelId!).catch(() => null);
+  if (!approvalChannel?.isTextBased() || approvalChannel.isDMBased()) {
+    await interaction.reply({ content: "Canal de aprovação inválido.", ephemeral: true });
     return;
   }
 
-  const record = await context.api.createPoliceQruRecord({
+  const payload = {
+    approvalChannelId: approvalChannel.id,
     authorId: session.authorId,
     authorName: session.authorName,
     boNumber: session.boNumber,
     evidenceUrl: session.evidenceUrl,
     guildId: session.guildId,
+    notes: session.notes,
     occurrenceDate: session.occurrenceDate,
     officers: session.officers,
     qruType: session.qruType,
-    recordChannelId: session.settings.recordChannelId,
+    seizures: session.seizures,
     temporaryChannelId: session.channelId,
     vehicle: session.vehicle
-  });
-  const sent = await recordChannel.send(recordPayload(record, session.settings) as any);
+  };
+  const record = session.recordId
+    ? await context.api.resubmitPoliceQruRecord(session.recordId, payload)
+    : await context.api.createPoliceQruRecord(payload);
+
+  session.recordId = record.id;
+  const sent = await approvalChannel.send(approvalPayload(record, session.settings) as any);
+  const saved = await context.api.updatePoliceQruApprovalMessage(record.id, { approvalChannelId: approvalChannel.id, approvalMessageId: sent.id }).catch(() => record);
+  await lockTemporaryChannel(interaction, session);
+  await context.api.createPoliceQruLog({ action: record.status === "rejected" ? "qru.resubmitted" : "qru.submitted", actorId: interaction.user.id, actorName: interaction.user.username, guildId: session.guildId, metadata: { channelId: session.channelId }, recordId: saved.id }).catch(() => null);
+  await interaction.update(submittedPayload(saved) as any);
+}
+
+async function approveQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
+  const recordId = interaction.customId.split(":")[2];
+  if (!recordId) return;
+  const settings = await getSettings(context, interaction.guild.id);
+  if (!canApproveQru(interaction.member as GuildMember, settings)) {
+    await interaction.reply({ content: "❌ Você não possui permissão para aprovar QRU.", ephemeral: true });
+    return;
+  }
+
+  if (!settings.recordChannelId) {
+    await interaction.reply({ content: "❌ Configure o canal oficial de registros antes de aprovar QRUs.", ephemeral: true });
+    return;
+  }
+  const recordChannel = await interaction.guild.channels.fetch(settings.recordChannelId).catch(() => null);
+  if (!recordChannel?.isTextBased() || recordChannel.isDMBased()) {
+    await interaction.reply({ content: "❌ Canal oficial de registros inválido.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  let record: PoliceQruRecord;
+  try {
+    record = await context.api.approvePoliceQruRecord(recordId, { supervisorId: interaction.user.id, supervisorName: displayName(interaction.member as GuildMember, interaction.user) });
+  } catch (error) {
+    await interaction.followUp({ content: readApiError(error, "Não foi possível aprovar esta QRU."), ephemeral: true });
+    return;
+  }
+
+  const sent = await recordChannel.send(recordPayload(record, settings) as any);
   await context.api.updatePoliceQruRecordMessage(record.id, { recordChannelId: recordChannel.id, recordMessageId: sent.id }).catch(() => null);
-  await sendLog(interaction, context, session.settings, "qru.confirmed", record);
-  await updateOfficialRankingPanel(context, interaction.guild.id, session.settings);
-  await interaction.update(successPayload(record) as any);
-  scheduleChannelDelete(interaction.channel, session.settings.deleteChannelSeconds);
-  sessions.delete(interaction.channelId);
+
+  await interaction.message.edit(approvalPayload(record, settings, "approved") as any).catch(() => null);
+  await updateOfficialRankingPanel(context, interaction.guild.id, settings);
+  await closeTemporaryQruChannel(interaction, record, settings);
+}
+
+async function openRejectModal(interaction: ButtonInteraction<"cached">) {
+  const recordId = interaction.customId.split(":")[2];
+  if (!recordId) return;
+  const modal = new ModalBuilder()
+    .setCustomId(`${PREFIX}:reject_modal:${recordId}`)
+    .setTitle("Recusar QRU");
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+    new TextInputBuilder()
+      .setCustomId("reason")
+      .setLabel("Motivo da recusa")
+      .setMaxLength(1000)
+      .setMinLength(3)
+      .setRequired(true)
+      .setStyle(TextInputStyle.Paragraph)
+  ));
+  await interaction.showModal(modal);
+}
+
+async function handleRejectModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  if (!interaction.guild || !interaction.inCachedGuild()) {
+    await interaction.reply({ content: "Interação inválida.", ephemeral: true });
+    return;
+  }
+  const recordId = interaction.customId.split(":")[2];
+  if (!recordId) return;
+  const settings = await getSettings(context, interaction.guild.id);
+  if (!canApproveQru(interaction.member as GuildMember, settings)) {
+    await interaction.reply({ content: "❌ Você não possui permissão para recusar QRU.", ephemeral: true });
+    return;
+  }
+  const reason = interaction.fields.getTextInputValue("reason");
+  let record: PoliceQruRecord;
+  try {
+    record = await context.api.rejectPoliceQruRecord(recordId, { reason, supervisorId: interaction.user.id, supervisorName: displayName(interaction.member as GuildMember, interaction.user) });
+  } catch (error) {
+    await interaction.reply({ content: readApiError(error, "Não foi possível recusar esta QRU."), ephemeral: true });
+    return;
+  }
+
+  await interaction.reply({ content: "QRU recusada e devolvida para correção.", ephemeral: true });
+  if (interaction.message) await interaction.message.edit(approvalPayload(record, settings, "rejected") as any).catch(() => null);
+  await reopenTemporaryQruChannel(interaction, record, settings, reason);
+}
+
+async function resubmitQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
+  const recordId = interaction.customId.split(":")[2];
+  if (!recordId) return;
+  const session = sessions.get(interaction.channelId);
+  if (!session || session.authorId !== interaction.user.id || session.recordId !== recordId) {
+    await interaction.reply({ content: "Sessão de QRU inválida para reenvio.", ephemeral: true });
+    return;
+  }
+  session.step = "officers";
+  session.officers = [];
+  session.occurrenceDate = null;
+  session.boNumber = null;
+  session.qruType = null;
+  session.vehicle = null;
+  session.evidenceUrl = null;
+  session.seizures = null;
+  session.notes = null;
+  await interaction.update(qruIntroPayload(interaction.user, session.settings) as any);
 }
 
 async function cancelQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
@@ -468,9 +641,10 @@ function qruPanelExplanation() {
   return [
     "## Modo explicativo",
     "**1. Abra o atendimento:** clique em **Registrar QRU** para criar um canal temporário privado.",
-    "**2. Informe os dados:** mencione os oficiais envolvidos, a data, o número do B.O., o tipo da QRU e o veículo.",
-    "**3. Envie o comprovante:** anexe a foto ou print do B.O. para validar o registro.",
-    "**4. Revise e confirme:** o sistema salva a QRU, publica no canal configurado e atualiza o ranking automaticamente."
+    "**2. Informe os dados:** mencione os oficiais envolvidos, a data, o número do B.O., o tipo da QRU, o veículo, as apreensões e as observações.",
+    "**3. Envie o comprovante:** anexe a foto ou print do B.O. ou informe um link direto de imagem.",
+    "**4. Aguarde aprovação:** ao confirmar, o canal fica bloqueado para o registrante e a QRU vai para análise da supervisão.",
+    "**5. Correção:** se for recusada, o acesso ao canal volta para ajustes e reenvio."
   ].join("\n");
 }
 
@@ -497,14 +671,61 @@ function confirmationPayload(session: QruSession): MessageCreateOptions {
           `**📄 B.O:** \`${escapeInlineCode(session.boNumber ?? "-")}\``,
           `**🚓 QRU:** ${escapeMarkdown(session.qruType ?? "-")}`,
           `**🚗 Veículo:** ${escapeMarkdown(session.vehicle ?? "-")}`,
+          `**📦 Apreensões:** ${escapeMarkdown(session.seizures ?? "-")}`,
+          `**📝 Observações:** ${escapeMarkdown(session.notes ?? "-")}`,
           `**👮 Oficiais:** ${session.officers.map((officer) => officer.mention).join(" ") || "-"}`
         ].join("\n") },
         { type: 12, items: [{ media: { url: session.evidenceUrl! }, description: "Print do B.O." }] },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:confirm`).setEmoji("✅").setLabel("Registrar QRU").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:confirm`).setEmoji("✅").setLabel("Enviar para aprovação").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`${PREFIX}:cancel`).setEmoji("❌").setLabel("Cancelar").setStyle(ButtonStyle.Danger)
         )
       ]
+    }],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+function approvalPayload(record: PoliceQruRecord, settings: PoliceQruSettings, state: "pending" | "approved" | "rejected" = "pending"): MessageCreateOptions {
+  const disabled = state !== "pending";
+  const statusText = state === "approved" ? "Aprovada" : state === "rejected" ? "Recusada" : "Aguardando aprovação";
+  return {
+    allowedMentions: { parse: [] },
+    components: [{
+      type: 17,
+      accent_color: state === "approved" ? 0x22c55e : state === "rejected" ? 0xef4444 : parseColor(settings.color),
+      components: [
+        { type: 10, content: [
+          "# Sistema de Aprovação de QRU",
+          `**Status:** ${statusText}`,
+          `**Registrante:** <@${record.authorId}>`,
+          `**Data:** ${escapeMarkdown(record.occurrenceDate)}`,
+          `**Tipo da QRU:** ${escapeMarkdown(record.qruType)}`,
+          `**Oficiais envolvidos:** ${record.officers.map((officer) => officer.mention).join(" ") || "-"}`,
+          `**Apreensões:** ${escapeMarkdown(record.seizures ?? "Nenhuma")}`,
+          `**Observações:** ${escapeMarkdown(record.notes ?? "Nenhuma")}`,
+          `**B.O:** \`${escapeInlineCode(record.boNumber)}\``,
+          `**Horário:** ${formatDate(record.createdAt)}`,
+          `**ID da ocorrência:** \`${record.id}\``,
+          record.rejectionCount ? `**Recusas:** ${record.rejectionCount}` : null
+        ].filter(Boolean).join("\n") },
+        { type: 12, items: [{ media: { url: record.evidenceUrl }, description: "Imagem do B.O." }] },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${PREFIX}:approve:${record.id}`).setEmoji("🟢").setLabel("Aceitar QRU").setStyle(ButtonStyle.Success).setDisabled(disabled),
+          new ButtonBuilder().setCustomId(`${PREFIX}:reject:${record.id}`).setEmoji("🔴").setLabel("Recusar QRU").setStyle(ButtonStyle.Danger).setDisabled(disabled)
+        )
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+function submittedPayload(record: PoliceQruRecord): MessageCreateOptions {
+  return {
+    components: [{
+      type: 17,
+      accent_color: 0xf59e0b,
+      components: [{ type: 10, content: `# QRU enviada para aprovação\nA ocorrência \`${record.id}\` foi bloqueada para edição e encaminhada aos supervisores.` }]
     }],
     flags: MessageFlags.IsComponentsV2
   };
@@ -539,6 +760,12 @@ function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): Me
           "### 🚗 Veículo",
           escapeMarkdown(record.vehicle ?? "Não informado"),
           "",
+          "### 📦 Apreensões",
+          escapeMarkdown(record.seizures ?? "Nenhuma"),
+          "",
+          "### 📝 Observações",
+          escapeMarkdown(record.notes ?? "Nenhuma"),
+          "",
           "### 👮 Oficiais envolvidos",
           officerMentions
         ].join("\n") },
@@ -550,7 +777,7 @@ function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): Me
         ].join("\n") },
         { type: 12, items: [{ media: { url: record.evidenceUrl }, description: "Evidência do B.O." }] },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: `-# ID do registro: ${record.id} • ${formatDate(record.createdAt)}` }
+        { type: 10, content: `-# ID do registro: ${record.id} • Aprovada por ${record.approvedById ? `<@${record.approvedById}>` : "supervisor"} • ${record.approvedAt ? formatDate(record.approvedAt) : formatDate(record.createdAt)}` }
       ]
     }],
     flags: MessageFlags.IsComponentsV2
@@ -625,6 +852,83 @@ async function sendLog(interaction: ButtonInteraction<"cached">, context: BotCon
   await channel.send({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# 🚔 QRU registrada\n**B.O:** ${escapeMarkdown(record.boNumber)}\n**QRU:** ${escapeMarkdown(record.qruType)}\n**Veículo:** ${escapeMarkdown(record.vehicle ?? "Não informado")}\n**Autor:** <@${record.authorId}>\n**Oficiais:** ${record.officers.map((officer) => officer.mention).join(" ")}` }] }], flags: MessageFlags.IsComponentsV2 } as any).catch(() => null);
 }
 
+async function lockTemporaryChannel(interaction: ButtonInteraction<"cached">, session: QruSession) {
+  const channel = interaction.channel;
+  if (!channel || channel.isDMBased() || !("permissionOverwrites" in channel)) return;
+  await channel.permissionOverwrites.edit(session.authorId, {
+    AttachFiles: false,
+    ReadMessageHistory: false,
+    SendMessages: false,
+    ViewChannel: false
+  }).catch(() => null);
+}
+
+async function reopenTemporaryQruChannel(interaction: ModalSubmitInteraction<"cached">, record: PoliceQruRecord, settings: PoliceQruSettings, reason: string) {
+  if (!record.temporaryChannelId) return;
+  const channel = await interaction.guild.channels.fetch(record.temporaryChannelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased() || !("permissionOverwrites" in channel)) return;
+  await channel.permissionOverwrites.edit(record.authorId, {
+    AttachFiles: true,
+    ReadMessageHistory: true,
+    SendMessages: true,
+    ViewChannel: true
+  }).catch(() => null);
+  sessions.set(channel.id, {
+    authorId: record.authorId,
+    authorName: record.authorName,
+    boNumber: record.boNumber,
+    channelId: channel.id,
+    createdAt: Date.now(),
+    evidenceUrl: record.evidenceUrl,
+    guildId: record.guildId,
+    notes: record.notes,
+    occurrenceDate: record.occurrenceDate,
+    officers: record.officers,
+    qruType: record.qruType,
+    recordId: record.id,
+    seizures: record.seizures,
+    settings,
+    step: "confirm",
+    vehicle: record.vehicle
+  });
+  await channel.send(rejectedCorrectionPayload(interaction.user, reason, record.id) as any).catch(() => null);
+}
+
+async function closeTemporaryQruChannel(interaction: ButtonInteraction<"cached">, record: PoliceQruRecord, settings: PoliceQruSettings) {
+  if (!record.temporaryChannelId) return;
+  const channel = await interaction.guild.channels.fetch(record.temporaryChannelId).catch(() => null);
+  if (!channel || channel.isDMBased()) return;
+  if ("send" in channel) {
+    await channel.send({ components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: `# QRU aprovada\nA ocorrência \`${record.id}\` foi aprovada por <@${interaction.user.id}> e enviada ao canal oficial.` }] }], flags: MessageFlags.IsComponentsV2 } as any).catch(() => null);
+  }
+  sessions.delete(channel.id);
+  if ("delete" in channel) scheduleChannelDelete(channel, settings.deleteChannelSeconds);
+}
+
+function rejectedCorrectionPayload(supervisor: User, reason: string, recordId: string): MessageCreateOptions {
+  return {
+    components: [{
+      type: 17,
+      accent_color: 0xef4444,
+      components: [
+        { type: 10, content: [
+          "# QRU recusada",
+          `**Supervisor:** <@${supervisor.id}>`,
+          "",
+          "**Motivo:**",
+          escapeMarkdown(reason),
+          "",
+          "Corrija as informações solicitadas e clique em **Reenviar QRU**."
+        ].join("\n") },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${PREFIX}:resubmit:${recordId}`).setEmoji("🔄").setLabel("Reenviar QRU").setStyle(ButtonStyle.Primary)
+        )
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
 async function getSettings(context: BotContext, guildId: string) {
   const key = `${MODULE_ID}:${guildId}`;
   const cached = settingsCache.get(key);
@@ -642,8 +946,15 @@ function canUseQru(member: GuildMember | null, settings: PoliceQruSettings, supe
   return member.roles.cache.some((role) => roleIds.includes(role.id));
 }
 
-function isComplete(session: QruSession): session is QruSession & { boNumber: string; evidenceUrl: string; occurrenceDate: string; qruType: string; vehicle: string } {
-  return Boolean(session.boNumber && session.evidenceUrl && session.occurrenceDate && session.qruType && session.vehicle && session.officers.length);
+function canApproveQru(member: GuildMember | null, settings: PoliceQruSettings) {
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
+  if (!settings.supervisorRoleIds.length) return false;
+  return member.roles.cache.some((role) => settings.supervisorRoleIds.includes(role.id));
+}
+
+function isComplete(session: QruSession): session is QruSession & { boNumber: string; evidenceUrl: string; notes: string; occurrenceDate: string; qruType: string; seizures: string; vehicle: string } {
+  return Boolean(session.boNumber && session.evidenceUrl && session.notes && session.occurrenceDate && session.qruType && session.seizures && session.vehicle && session.officers.length);
 }
 
 function resolveEvidenceImageUrl(message: Message) {
@@ -683,10 +994,11 @@ function displayName(member: GuildMember | null, user: User) {
   return member?.displayName ?? user.globalName ?? user.username;
 }
 
-function scheduleChannelDelete(channel: Interaction["channel"], seconds: number) {
+function scheduleChannelDelete(channel: (Pick<NonNullable<Interaction["channel"]>, "isDMBased"> & { delete?: () => Promise<unknown> }) | null, seconds: number) {
   if (!channel || channel.isDMBased()) return;
-  if (!("delete" in channel)) return;
-  windowlessTimeout(() => channel.delete().catch(() => null), Math.max(seconds, 1) * 1000);
+  const deleteChannel = channel.delete;
+  if (!deleteChannel) return;
+  windowlessTimeout(() => deleteChannel.call(channel).catch(() => null), Math.max(seconds, 1) * 1000);
 }
 
 function windowlessTimeout(callback: () => void, timeoutMs: number) {
@@ -724,4 +1036,8 @@ function escapeInlineCode(value: string) {
 
 function escapeMarkdown(value: string) {
   return value.replace(/([\\*_`~|])/g, "\\$1");
+}
+
+function readApiError(error: unknown, fallback: string) {
+  return (error as any)?.response?.data?.message ?? fallback;
 }
