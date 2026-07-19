@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, EmbedBuilder, MessageFlags, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, EmbedBuilder, MessageFlags, TextDisplayBuilder, type Guild } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, LogCategory } from "../types";
 import type { DiscordLogDispatchEvent } from "../websocket/socketClient";
@@ -70,6 +70,13 @@ async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEve
     return;
   }
 
+  if (log.type === "voice.join" || log.type === "voice.leave" || log.type === "voice.move") {
+    await deliverVoiceLog(channel, guild, log).catch((error) => {
+      console.warn("[logs] falha ao enviar log de voz:", error instanceof Error ? error.message : error);
+    });
+    return;
+  }
+
   const embed = new EmbedBuilder()
     .setColor(colorForType(log.type, category))
     .setTitle(logTitle(log))
@@ -116,6 +123,56 @@ async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEve
     embeds: [embed]
   }).catch((error) => {
     console.warn("[logs] falha ao enviar log no Discord:", error instanceof Error ? error.message : error);
+  });
+}
+
+async function deliverVoiceLog(
+  channel: { send: (options: Record<string, unknown>) => Promise<unknown> },
+  guild: Guild,
+  log: DiscordLogDispatchEvent
+) {
+  const metadata = voiceLogMetadata(log.metadata);
+  const user = log.userId ? await guild.client.users.fetch(log.userId).catch(() => null) : null;
+  const displayName = user?.tag ?? log.userId ?? "Membro desconhecido";
+  const avatarUrl = user?.displayAvatarURL({ size: 128 }) ?? null;
+  const channelId = metadata.channelId ?? metadata.toChannelId ?? metadata.fromChannelId;
+  const fromChannelName = await voiceChannelLabel(guild, metadata.fromChannelId);
+  const toChannelName = await voiceChannelLabel(guild, metadata.toChannelId);
+  const channelName = await voiceChannelLabel(guild, channelId);
+  const duration = typeof metadata.durationSeconds === "number" && metadata.durationSeconds > 0
+    ? formatDuration(metadata.durationSeconds)
+    : null;
+  const config = voiceLogConfig(log.type);
+
+  const lines = log.type === "voice.move"
+    ? [
+        `${config.pin} **Um membro mudou de canal de voz:**`,
+        "",
+        `${config.memberIcon} **Membro:** ${log.userId ? `<@${log.userId}> (\`${log.userId}\`)` : `\`${displayName}\``}`,
+        `🔴 **Canal anterior:** ${fromChannelName}`,
+        `🟢 **Novo canal:** ${toChannelName}`,
+        duration ? `⏱️ **Tempo no canal anterior:** ${duration}` : null
+      ]
+    : [
+        `${config.pin} **Um membro ${log.type === "voice.join" ? "entrou em" : "saiu de"} um canal de voz:**`,
+        "",
+        `${config.memberIcon} **Membro:** ${log.userId ? `<@${log.userId}> (\`${log.userId}\`)` : `\`${displayName}\``}`,
+        `${config.channelIcon} **Canal:** ${channelName}`,
+        duration ? `⏱️ **Tempo na call:** ${duration}` : null
+      ];
+
+  const embed = new EmbedBuilder()
+    .setColor(config.color)
+    .setTitle(config.title)
+    .setDescription(lines.filter(Boolean).join("\n"))
+    .setFooter({ text: `${guild.client.user.username} - Logs de Voz` })
+    .setTimestamp(new Date(log.createdAt));
+
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+
+  await channel.send({
+    allowedMentions: { parse: [] },
+    embeds: [embed]
   });
 }
 
@@ -277,6 +334,74 @@ function deletedMessageMetadata(metadata: unknown): DeletedMessageLogMetadata {
     })),
     unavailableReason: optionalString(record.unavailableReason)
   };
+}
+
+type VoiceLogMetadata = {
+  channelId: string | null;
+  durationSeconds: number | null;
+  fromChannelId: string | null;
+  toChannelId: string | null;
+};
+
+function voiceLogMetadata(metadata: unknown): VoiceLogMetadata {
+  const record = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : {};
+
+  return {
+    channelId: optionalString(record.channelId),
+    durationSeconds: typeof record.durationSeconds === "number" ? record.durationSeconds : null,
+    fromChannelId: optionalString(record.fromChannelId),
+    toChannelId: optionalString(record.toChannelId)
+  };
+}
+
+function voiceLogConfig(type: string) {
+  if (type === "voice.join") {
+    return {
+      channelIcon: "🔊",
+      color: 0x22c55e,
+      memberIcon: "📌",
+      pin: "📌",
+      title: "✅ LOG DE ENTRADA NO CANAL DE VOZ"
+    };
+  }
+
+  if (type === "voice.move") {
+    return {
+      channelIcon: "🔁",
+      color: 0x3b82f6,
+      memberIcon: "📌",
+      pin: "📌",
+      title: "🔁 LOG DE MUDANÇA DE CANAL DE VOZ"
+    };
+  }
+
+  return {
+    channelIcon: "📍",
+    color: 0xef4444,
+    memberIcon: "📌",
+    pin: "📌",
+    title: "❌ LOG DE SAÍDA DO CANAL DE VOZ"
+  };
+}
+
+async function voiceChannelLabel(guild: Guild, channelId: string | null | undefined) {
+  if (!channelId) return "`Canal não informado`";
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  const name = channel && "name" in channel && typeof channel.name === "string" ? channel.name : null;
+  return name ? `[${name}](https://discord.com/channels/${guild.id}/${channelId})` : `<#${channelId}>`;
+}
+
+function formatDuration(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours) return `${hours}h ${minutes}m ${remainingSeconds}s`;
+  if (minutes) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
 }
 
 function buildDeletedMessagePreview(metadata: DeletedMessageLogMetadata, guildName: string) {
