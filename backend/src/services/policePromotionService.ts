@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import axios from "axios";
 import {
   getMongoCollections,
   type MongoPolicePromotionAnswer,
@@ -10,8 +11,12 @@ import {
 } from "../database/mongo";
 import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom, emitRealtimeToRoomWithAck } from "../realtime/events";
+import { getDevBotToken } from "./devBotService";
 
 export const POLICE_PROMOTIONS_MODULE_ID = "police-promotions";
+const DISCORD_API = "https://discord.com/api/v10";
+const COMPONENTS_V2_FLAG = 1 << 15;
+const PANEL_SELECT_ID = "police_promotions:choose";
 
 export type PolicePromotionSettingsDto = Omit<MongoPolicePromotionSettings, "_id" | "createdAt" | "updatedAt"> & {
   id: string;
@@ -110,20 +115,28 @@ export async function requestPolicePromotionPanelPublish(botId: string, guildId:
   if (!settings.enabled) throw Object.assign(new Error("Ative o Sistema de Promoções antes de publicar o painel."), { statusCode: 400 });
   if (!settings.defaultPanelChannelId) throw Object.assign(new Error("Configure o canal padrão do painel antes de publicar."), { statusCode: 400 });
 
+  let messageId: string | null = null;
   const responses = await emitRealtimeToRoomWithAck<
     { botId: string; guildId: string; settings: PolicePromotionSettingsDto },
     { error?: string; messageId?: string | null; ok: boolean }
   >(devBotRealtimeRoom(botId), "police-promotions:panel_publish", { botId, guildId, settings }, 20_000);
   const success = responses.find((response) => response?.ok);
-  if (!success) {
+  if (success) {
+    messageId = success.messageId ?? null;
+  } else {
     const error = responses.find((response) => response?.error)?.error;
-    throw Object.assign(new Error(error ?? "O bot selecionado não respondeu à publicação do painel. Verifique se ele está online, conectado ao servidor e com o módulo ativo."), { statusCode: 409 });
+    messageId = await publishPolicePromotionPanelToDiscord(settings, await getDevBotToken(botId))
+      .catch((directError) => {
+        const directMessage = directError instanceof Error ? directError.message : String(directError);
+        const socketMessage = error ? `${error} ` : "";
+        throw Object.assign(new Error(`${socketMessage}Falha na publicação direta: ${directMessage}`.trim()), { statusCode: 409 });
+      });
   }
 
   await createPolicePromotionLog(botId, guildId, {
     action: "promotion.panel_published",
     actorId,
-    metadata: { channelId: settings.defaultPanelChannelId, messageId: success.messageId ?? null }
+    metadata: { channelId: settings.defaultPanelChannelId, messageId }
   });
   return settings;
 }
@@ -409,6 +422,69 @@ function requestDto(row: MongoPolicePromotionRequest): PolicePromotionRequestDto
   };
 }
 
+async function publishPolicePromotionPanelToDiscord(settings: PolicePromotionSettingsDto, botToken: string | null) {
+  if (!botToken) throw new Error("Token do bot não configurado.");
+  if (!settings.defaultPanelChannelId) throw new Error("Canal padrão do painel não configurado.");
+
+  const payload = buildPolicePromotionPanelPayload(settings);
+  const { data } = await axios.post<{ id: string }>(
+    `${DISCORD_API}/channels/${settings.defaultPanelChannelId}/messages`,
+    payload,
+    {
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json"
+      },
+      timeout: 12_000
+    }
+  ).catch((error) => {
+    throw new Error(discordErrorMessage(error));
+  });
+
+  return data.id;
+}
+
+function buildPolicePromotionPanelPayload(settings: PolicePromotionSettingsDto) {
+  const promotions = settings.promotions.filter((item) => item.active);
+  const options = promotions.slice(0, 25).map((promotion) => ({
+    description: clipText(promotion.description, 90),
+    emoji: parseDiscordEmoji(normalizePromotionEmoji(promotion.emoji) ?? fixedSystemEmojiText("prancheta")),
+    label: clipText(promotion.name, 80),
+    value: promotion.id.slice(0, 100)
+  }));
+
+  return {
+    allowed_mentions: { parse: [] },
+    components: [{
+      type: 17,
+      accent_color: parseColor(promotions[0]?.color ?? "#2563eb"),
+      components: [
+        {
+          type: 10,
+          content: [
+            `# ${fixedSystemEmojiText("prancheta_acertos")} Sistema de Promoções`,
+            "Solicite sua avaliação de promoção pelo seletor abaixo.",
+            "",
+            promotions.map((item) => `• ${normalizePromotionEmoji(item.emoji) ?? fixedSystemEmojiText("prancheta")} **${escapeMarkdown(item.name)}** -> ${escapeMarkdown(item.receivedRankName)}`).join("\n") || "Nenhuma promoção ativa configurada."
+          ].join("\n")
+        },
+        ...(options.length ? [{
+          type: 1,
+          components: [{
+            type: 3,
+            custom_id: PANEL_SELECT_ID,
+            placeholder: "Selecione a promoção desejada",
+            min_values: 1,
+            max_values: 1,
+            options
+          }]
+        }] : [])
+      ]
+    }],
+    flags: COMPONENTS_V2_FLAG
+  };
+}
+
 function sanitizeSettingsInput(input: SavePolicePromotionSettingsInput) {
   const next: SavePolicePromotionSettingsInput = { ...input };
   if (next.defaultApprovalChannelId !== undefined) next.defaultApprovalChannelId = normalizeSnowflake(next.defaultApprovalChannelId);
@@ -506,6 +582,46 @@ function normalizePromotionEmoji(value: unknown) {
   }
 
   return normalizeFixedSystemEmojiText(raw).slice(0, 120) || null;
+}
+
+function parseDiscordEmoji(value: string) {
+  const custom = /^<(a?):([a-zA-Z0-9_]{2,32}):(\d{5,32})>$/.exec(value.trim());
+  if (custom) {
+    return {
+      animated: Boolean(custom[1]),
+      id: custom[3],
+      name: custom[2]
+    };
+  }
+
+  return { name: value.trim() || "📋" };
+}
+
+function discordErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const data = error.response?.data as { message?: string } | string | undefined;
+    const detail = typeof data === "string" ? data : data?.message;
+    if (status === 401) return "Token do bot inválido.";
+    if (status === 403) return "O bot não tem permissão para enviar mensagens nesse canal.";
+    if (status === 404) return "Canal do painel não encontrado pelo bot.";
+    return [status ? `Discord ${status}` : "Discord", detail].filter(Boolean).join(": ");
+  }
+
+  return error instanceof Error ? error.message : String(error);
+}
+
+function clipText(value: string, maxLength: number) {
+  return value.length > maxLength ? value.slice(0, maxLength - 1) : value;
+}
+
+function parseColor(value: string) {
+  const hex = value.replace("#", "");
+  return /^[0-9a-f]{6}$/i.test(hex) ? Number.parseInt(hex, 16) : 0x2563eb;
+}
+
+function escapeMarkdown(value: string) {
+  return String(value ?? "").replace(/([\\*_`~|])/g, "\\$1");
 }
 
 function normalizeText(value: string, maxLength: number) {
