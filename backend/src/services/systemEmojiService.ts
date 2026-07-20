@@ -108,6 +108,21 @@ export async function getSystemEmojiRuntimeConfig(botId?: string | null, guildId
     guildId: dashboard.guildId,
     definitions: dashboard.definitions,
     emojis: dashboard.emojis.map((item) => {
+      const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[item.key];
+      if (fixed) {
+        return {
+          key: item.key,
+          name: fixed.name,
+          emojiId: fixed.emojiId,
+          animated: fixed.animated,
+          sourceGuildId: null,
+          enabled: true,
+          fallback: item.fallback,
+          guildId: item.guildId,
+          scope: item.scope
+        };
+      }
+
       const applicationEmoji = applicationEmojis.get(item.key);
       const emojiId = applicationEmoji?.emojiId ?? (item.missing ? null : item.emojiId);
       return {
@@ -281,9 +296,34 @@ async function getApplicationEmojiRuntimeMap(botId: string | null) {
 function toDto(key: SystemEmojiKey, doc: MongoSystemEmoji | null, requestedBotId: string | null, requestedGuildId: string | null): SystemEmojiDto {
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
   const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
-  const name = doc?.name || fixed?.name || definition.name;
+  if (fixed) {
+    return {
+      key,
+      name: fixed.name,
+      emojiId: fixed.emojiId,
+      animated: fixed.animated,
+      sourceGuildId: null,
+      enabled: true,
+      fallback: definition.fallback,
+      scope: "default",
+      botId: doc?.botId ?? requestedBotId,
+      guildId: doc?.guildId ?? requestedGuildId,
+      preview: `<${fixed.animated ? "a" : ""}:${fixed.name}:${fixed.emojiId}>`,
+      found: Boolean(doc?.lastFoundAt && (!doc.lastMissingAt || doc.lastFoundAt >= doc.lastMissingAt)),
+      missing: false,
+      updatedAt: doc?.updatedAt ? doc.updatedAt.toISOString() : null,
+      lastFoundAt: doc?.lastFoundAt ? doc.lastFoundAt.toISOString() : null,
+      lastMissingAt: doc?.lastMissingAt ? doc.lastMissingAt.toISOString() : null,
+      lastValidatedAt: doc?.lastValidatedAt ? doc.lastValidatedAt.toISOString() : null,
+      label: definition.label,
+      description: definition.description,
+      extraEmojiNames: doc?.extraEmojiNames ?? []
+    };
+  }
+
+  const name = doc?.name || definition.name;
   const emojiId = doc?.emojiId || null;
-  const animated = doc?.animated ?? fixed?.animated ?? false;
+  const animated = doc?.animated ?? false;
   const enabled = doc?.enabled ?? true;
   const lastMissingAt = doc?.lastMissingAt ?? null;
   const lastFoundAt = doc?.lastFoundAt ?? null;

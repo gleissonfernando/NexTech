@@ -242,9 +242,6 @@ function systemEmojiNames(definition: SystemEmojiDefinition) {
 
 function runtimeEmoji(key: SystemEmojiKey): RuntimeEmoji {
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
-  const configured = runtimeEmojis.get(key);
-  if (configured) return configured;
-
   const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
   if (fixed) {
     return {
@@ -257,6 +254,9 @@ function runtimeEmoji(key: SystemEmojiKey): RuntimeEmoji {
       fallback: definition.fallback
     };
   }
+
+  const configured = runtimeEmojis.get(key);
+  if (configured) return configured;
 
   return {
     key,
