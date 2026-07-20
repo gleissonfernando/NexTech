@@ -21,7 +21,7 @@ import { startPolicePatrolReportService } from "../services/policePatrolReportSe
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
 import { clearVehicleAbandonmentSettingsCache } from "../services/vehicleAbandonmentService";
 import { clearPoliceQruSettingsCache } from "../services/policeQruService";
-import { clearPolicePromotionSettingsCache } from "../services/policePromotionService";
+import { clearPolicePromotionSettingsCache, startPolicePromotionService } from "../services/policePromotionService";
 import { clearMessageControlCache } from "../services/messageControlService";
 import { clearVisibleMessageCache } from "../services/visibleMessageService";
 import { clearDmBarConfigCache } from "../services/dmBarService";
@@ -293,6 +293,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("fivem-actions", isBotModuleEnabled("fivem-actions") || isBotModuleEnabled("police-actions"), () => startFivemActionService(client, context));
   startRuntimeService("faction-chest", isBotModuleEnabled("faction-chest"), () => startFactionChestService(client, context));
   startRuntimeService("police-patrol-reports", isBotModuleEnabled("police-patrol-reports"), () => startPolicePatrolReportService(client, context));
+  startRuntimeService("police-promotions", isBotModuleEnabled("police-promotions"), () => startPolicePromotionService(client, context));
   startRuntimeService("manual-registration", isBotModuleEnabled("manual-registration"), () => startManualRegistrationService(client, context));
   startRuntimeService("image-anti-spam", isBotModuleEnabled("image-anti-spam") && !isSelfBotModuleEnabled(), () => startImageAntiSpamService(context));
   await startRuntimeService("voice-recorder", isBotModuleEnabled("voice-recorder"), async () => {

@@ -151,6 +151,11 @@ export type PolicePromotionSettingsEvent = {
   botId?: string | null;
   guildId: string;
 };
+export type PolicePromotionPanelPublishEvent = {
+  botId?: string | null;
+  guildId: string;
+  settings?: unknown;
+};
 export type VisibleMessageUsersEvent = {
   botId?: string | null;
   guildId: string;
@@ -318,6 +323,7 @@ export class BotSocketClient {
   private vehicleAbandonmentSettingsHandler: ((payload: VehicleAbandonmentSettingsEvent) => void) | null = null;
   private policeQruSettingsHandler: ((payload: PoliceQruSettingsEvent) => void) | null = null;
   private policePromotionSettingsHandler: ((payload: PolicePromotionSettingsEvent) => void) | null = null;
+  private policePromotionPanelPublishHandler: ((payload: PolicePromotionPanelPublishEvent) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
   private messageControlUsersHandler: ((payload: MessageControlUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
@@ -452,6 +458,9 @@ export class BotSocketClient {
     }
     if (this.policePromotionSettingsHandler) {
       this.socket.on("police-promotions:settings_updated", this.policePromotionSettingsHandler);
+    }
+    if (this.policePromotionPanelPublishHandler) {
+      this.socket.on("police-promotions:panel_publish", this.policePromotionPanelPublishHandler);
     }
     if (this.visibleMessageUsersHandler) {
       this.socket.on("visible-message:users_updated", this.visibleMessageUsersHandler);
@@ -730,6 +739,12 @@ export class BotSocketClient {
     this.policePromotionSettingsHandler = handler;
     this.socket?.off("police-promotions:settings_updated");
     this.socket?.on("police-promotions:settings_updated", handler);
+  }
+
+  onPolicePromotionPanelPublish(handler: (payload: PolicePromotionPanelPublishEvent) => void) {
+    this.policePromotionPanelPublishHandler = handler;
+    this.socket?.off("police-promotions:panel_publish");
+    this.socket?.on("police-promotions:panel_publish", handler);
   }
 
   onVisibleMessageUsersUpdated(handler: (payload: VisibleMessageUsersEvent) => void) {

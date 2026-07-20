@@ -13,6 +13,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type ChatInputCommandInteraction,
+  type Client,
   type Guild,
   type GuildMember,
   type Interaction,
@@ -20,7 +21,7 @@ import {
   type MessageCreateOptions,
   type ModalSubmitInteraction
 } from "discord.js";
-import { isBotModuleEnabled } from "../config/env";
+import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PolicePromotionAnswer, PolicePromotionDefinition, PolicePromotionQuestion, PolicePromotionRequest, PolicePromotionSettings } from "./apiClient";
@@ -44,6 +45,7 @@ type PromotionFormSession = {
 const settingsCache = new Map<string, { expiresAt: number; settings: PolicePromotionSettings }>();
 const formSessions = new Map<string, PromotionFormSession>();
 const evaluationDrafts = new Map<string, { notes: string; requestId: string }>();
+let serviceStarted = false;
 
 export const policePromotionsCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -134,6 +136,18 @@ export function clearPolicePromotionSettingsCache(guildId?: string | null) {
   }
 }
 
+export function startPolicePromotionService(client: Client, context: BotContext) {
+  if (serviceStarted) return;
+  serviceStarted = true;
+  context.socket.onPolicePromotionPanelPublish((payload) => {
+    const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+    if (!isBotModuleEnabled(MODULE_ID) || (payload.botId && runtimeBotId && payload.botId !== runtimeBotId)) return;
+    void publishConfiguredPromotionPanel(client, context, payload.guildId).catch((error) => {
+      console.error(`[police-promotions] falha ao publicar painel em ${payload.guildId}:`, error instanceof Error ? error.message : error);
+    });
+  });
+}
+
 async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"cached">, settings: PolicePromotionSettings) {
   const channelId = settings.defaultPanelChannelId;
   const target = channelId ? await interaction.guild.channels.fetch(channelId).catch(() => null) : interaction.channel;
@@ -144,6 +158,18 @@ async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"c
 
   await target.send(panelPayload(settings, interaction.guild) as any);
   await interaction.reply({ content: "Painel de promoções publicado.", ephemeral: true });
+}
+
+async function publishConfiguredPromotionPanel(client: Client, context: BotContext, guildId: string) {
+  clearPolicePromotionSettingsCache(guildId);
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) throw new Error("O bot não está conectado ao servidor selecionado.");
+  const settings = await getSettings(context, guild.id);
+  if (!settings.enabled) throw new Error("Sistema de Promoções desativado.");
+  if (!settings.defaultPanelChannelId) throw new Error("Canal padrão do painel não configurado.");
+  const channel = await guild.channels.fetch(settings.defaultPanelChannelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased()) throw new Error("Canal padrão do painel inválido.");
+  await channel.send(panelPayload(settings, guild) as any);
 }
 
 async function handlePromotionChoose(interaction: StringSelectMenuInteraction<"cached">, context: BotContext) {

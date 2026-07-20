@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, ClipboardList, Copy, Loader2, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
-import { getGuildLiveOptions, getPolicePromotionDashboard, savePolicePromotionSettings } from "../../lib/api";
+import { BadgeCheck, ClipboardList, Copy, Loader2, Plus, Save, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { getGuildLiveOptions, getPolicePromotionDashboard, publishPolicePromotionPanel, savePolicePromotionSettings } from "../../lib/api";
 import type {
   DashboardGuild,
   GuildCategoryOption,
@@ -36,6 +36,7 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const settingsRef = useRef<PolicePromotionSettings | null>(null);
@@ -112,6 +113,27 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
     }
   }
 
+  async function publishPanel() {
+    if (!canManage || !guild || !botId || !settingsRef.current) return;
+    setPublishing(true);
+    setSaving(true);
+    setMessage(null);
+    try {
+      const saved = await savePolicePromotionSettings(guild.id, botId, settingsRef.current);
+      settingsRef.current = saved;
+      setData((current) => current ? { ...current, settings: saved } : current);
+      const published = await publishPolicePromotionPanel(guild.id, botId);
+      settingsRef.current = published;
+      setData((current) => current ? { ...current, settings: published } : current);
+      setMessage("Publicação do painel enviada para o bot.");
+    } catch (error) {
+      setMessage(readMessage(error));
+    } finally {
+      setPublishing(false);
+      setSaving(false);
+    }
+  }
+
   function addPromotion() {
     const promotion = newPromotion();
     patchSettings({ promotions: [...data!.settings.promotions, promotion] });
@@ -149,6 +171,10 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
             </div>
             <div className="flex items-center gap-3">
               <Badge variant={data.settings.enabled ? "success" : "muted"}>{data.settings.enabled ? "Ativo" : "Desativado"}</Badge>
+              <Button disabled={disabled || publishing || !data.settings.enabled || !data.settings.defaultPanelChannelId} onClick={() => void publishPanel()} size="sm" variant="secondary">
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Publicar painel
+              </Button>
               <Button disabled={disabled} onClick={() => void save()} size="sm"><Save className="h-4 w-4" />Salvar</Button>
             </div>
           </div>

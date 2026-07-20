@@ -16,6 +16,7 @@ import {
   getPolicePromotionRequest,
   getPolicePromotionSettings,
   POLICE_PROMOTIONS_MODULE_ID,
+  requestPolicePromotionPanelPublish,
   savePolicePromotionSettings,
   updatePolicePromotionApprovalMessage,
   updatePolicePromotionTicketState
@@ -114,6 +115,17 @@ policePromotionsRouter.patch("/:guildId/settings", requireAuth, async (req, res,
     const botId = await botIdFor(req);
     await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
     res.json({ settings: await savePolicePromotionSettings(botId, guildId, settingsSchema.parse(req.body), res.locals.dashboardAuth.user.discordId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policePromotionsRouter.post("/:guildId/publish", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json({ settings: await requestPolicePromotionPanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId) });
   } catch (error) {
     next(error);
   }

@@ -8,7 +8,7 @@ import {
   type MongoPolicePromotionRequest,
   type MongoPolicePromotionSettings
 } from "../database/mongo";
-import { emitRealtime } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 
 export const POLICE_PROMOTIONS_MODULE_ID = "police-promotions";
 
@@ -102,6 +102,20 @@ export async function savePolicePromotionSettings(botId: string, guildId: string
   const dto = settingsDto(next);
   emitRealtime("police-promotions:settings_updated", { botId, guildId, settings: dto });
   return dto;
+}
+
+export async function requestPolicePromotionPanelPublish(botId: string, guildId: string, actorId: string | null) {
+  const settings = await getPolicePromotionSettings(botId, guildId);
+  if (!settings.enabled) throw Object.assign(new Error("Ative o Sistema de Promoções antes de publicar o painel."), { statusCode: 400 });
+  if (!settings.defaultPanelChannelId) throw Object.assign(new Error("Configure o canal padrão do painel antes de publicar."), { statusCode: 400 });
+
+  emitRealtimeToRoom(devBotRealtimeRoom(botId), "police-promotions:panel_publish", { botId, guildId, settings });
+  await createPolicePromotionLog(botId, guildId, {
+    action: "promotion.panel_publish_requested",
+    actorId,
+    metadata: { channelId: settings.defaultPanelChannelId }
+  });
+  return settings;
 }
 
 export async function createPolicePromotionRequest(botId: string, input: CreatePolicePromotionRequestInput) {
