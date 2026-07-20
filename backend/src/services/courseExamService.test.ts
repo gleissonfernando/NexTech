@@ -59,9 +59,12 @@ test("multipla escolha divide os pontos restantes entre corretas sem score", () 
   assert.equal(calculateMultipleChoiceScore(question, ["b"]), 0.375);
 });
 
-test("resultado da prova segue a nota minima configurada", () => {
-  assert.equal(decideCourseExamResult(5.99, { minScore: 6 }, 10), "rejected");
-  assert.equal(decideCourseExamResult(6, { minScore: 6 }, 10), "approved");
-  assert.equal(decideCourseExamResult(9.8, { minScore: 6 }, 10), "approved");
-  assert.equal(decideCourseExamResult(9.8, { minScore: 98 }, 10), "approved");
+test("resultado da prova segue nota minima fixa 6.0", () => {
+  assert.equal(decideCourseExamResult(5.99), "rejected");
+  assert.equal(decideCourseExamResult(6.00), "approved");
+  assert.equal(decideCourseExamResult(6.01), "approved");
+  assert.equal(decideCourseExamResult(6.10), "approved");
+  assert.equal(decideCourseExamResult(6.50), "approved");
+  assert.equal(decideCourseExamResult(7.25), "approved");
+  assert.equal(decideCourseExamResult(10.00), "approved");
 });

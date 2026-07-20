@@ -3824,11 +3824,9 @@ function examResultAccent(attempt: CourseExamAttempt) {
 }
 
 function automaticExamStatus(attempt: CourseExamAttempt, settings: CourseExamSettings): "approved" | "rejected" {
+  void settings;
   const score = attempt.finalScore ?? attempt.automaticScore ?? attempt.score ?? 0;
-  const maxScore = attempt.maxScore || EXAM_TOTAL_SCORE;
-  const configuredMinimum = Number(settings.minScore ?? 0);
-  const minimumScore = configuredMinimum > maxScore ? (configuredMinimum / 100) * maxScore : configuredMinimum;
-  return score + 1e-9 >= minimumScore ? "approved" : "rejected";
+  return Number(score) >= 6 ? "approved" : "rejected";
 }
 
 function examResultLogMessage(guildId: string, course: Course, attempt: CourseExamAttempt, actorId: string | null, source: string) {

@@ -12,6 +12,7 @@ const DEFAULT_EXTERNAL_LINK_TEXT = "Acessar material da prova";
 const DEFAULT_RELEASE_MODE = "immediate";
 const EXAM_TOTAL_SCORE = 10;
 const DEFAULT_MIN_SCORE = 6;
+const COURSE_EXAM_PASSING_SCORE = 6;
 const MAX_QUESTION_SCORE = 1;
 const MAX_EXAM_ALTERNATIVES = 25;
 
@@ -31,7 +32,6 @@ export type CourseExamSettingsDto = ReturnType<typeof mapSettings>;
 export type CourseExamQuestionDto = ReturnType<typeof mapQuestion>;
 export type CourseExamAttemptDto = ReturnType<typeof mapAttempt>;
 export type CourseExamAnswerDto = ReturnType<typeof mapAnswer>;
-type MongoCollections = Awaited<ReturnType<typeof getMongoCollections>>;
 
 export async function getCourseExamDashboard(botId: string | null, guildId: string, courseId: string) {
   const collections = await getMongoCollections();
@@ -40,8 +40,7 @@ export async function getCourseExamDashboard(botId: string | null, guildId: stri
     collections.courseExamQuestions.find({ ...scope(botId, guildId), courseId }).sort({ order: 1, createdAt: 1 }).toArray(),
     collections.courseExamAttempts.find({ ...scope(botId, guildId), courseId }).sort({ startedAt: -1 }).limit(50).toArray()
   ]);
-  const normalizedAttempts = await Promise.all(attempts.map((attempt) => reconcileCourseExamAttemptOutcome(collections, botId, guildId, attempt)));
-  return { attempts: normalizedAttempts.map(mapAttempt), questions: questions.map(mapQuestion), settings };
+  return { attempts: attempts.map(mapAttempt), questions: questions.map(mapQuestion), settings };
 }
 
 export async function getCourseExamRuntime(botId: string | null, guildId: string, courseId: string) {
@@ -380,8 +379,7 @@ export async function getCourseExamAttemptBundle(botId: string | null, guildId: 
     collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) }),
     collections.courseExamAnswers.find({ ...scope(botId, guildId), attemptId }).sort({ questionOrder: 1 }).toArray()
   ]);
-  const normalizedAttempt = attempt ? await reconcileCourseExamAttemptOutcome(collections, botId, guildId, attempt) : null;
-  return normalizedAttempt ? { answers: answers.map(mapAnswer), attempt: mapAttempt(normalizedAttempt), questions: attemptQuestions(normalizedAttempt).map(mapQuestion) } : null;
+  return attempt ? { answers: answers.map(mapAnswer), attempt: mapAttempt(attempt), questions: attemptQuestions(attempt).map(mapQuestion) } : null;
 }
 
 export async function listCourseExamAttemptsPendingCorrection(botId: string | null, guildId: string) {
@@ -514,10 +512,8 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   const guardedScore = hasAnyScoredAnswer ? capExamScore(score) : 0;
   const percent = decimalMultiplyByInteger(guardedScore, 10);
   const now = new Date();
-  const settings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
-    ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
-  const minimumScore = examMinimumScore(settings, maxScore);
-  const result = decideCourseExamResult(guardedScore, settings, maxScore);
+  const minimumScore = COURSE_EXAM_PASSING_SCORE;
+  const result = decideCourseExamResult(guardedScore);
   await logCourseAction(botId, guildId, "course.exam_score_calculated", attempt.studentId, attempt.courseId, attempt.publicationId, {
     attemptId,
     detail: scoredAnswers.map((answer) => ({ correct: answer.correct, pointsEarned: answer.pointsEarned, questionId: answer.questionId, selectedAlternativeId: answer.selectedAlternativeId, selectedAlternativeIds: answer.selectedAlternativeIds ?? [] })),
@@ -586,9 +582,7 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
   const manualScore = Math.max(0, parseDecimalNumber(manualScoreInput ?? existing.manualScore ?? 0, 0));
   const finalScore = capExamScore(decimalSum([automaticScore, manualScore]));
   const percent = decimalMultiplyByInteger(finalScore, 10);
-  const settings = await collections.courseExamSettings.findOne({ _id: existing.examId ?? "", ...scope(botId, guildId) })
-    ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: existing.courseId });
-  const finalResult = decideCourseExamResult(finalScore, settings, existing.maxScore || EXAM_TOTAL_SCORE);
+  const finalResult = decideCourseExamResult(finalScore);
   const finalRejectionReason = finalResult === "rejected" ? rejectionReason || null : null;
   const decided = await courseExamAttempts.updateOne(reviewableFilter, {
     $set: { automaticScore, correctedAt: now, correctedBy: reviewerId, finalScore, manualScore, percent, rejectionReason: finalRejectionReason, result: finalResult, score: finalScore, status: finalResult, updatedAt: now }
@@ -604,13 +598,6 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
   if (finalResult === "approved") {
     await recordApprovedCourseHistoryFromAttempt(botId, guildId, attemptId).catch((error) => {
       console.error("[courses] failed to record approved course history:", error instanceof Error ? error.message : error);
-    });
-  } else {
-    await collections.courseStudentHistory.updateMany(
-      { ...scope(botId, guildId), attemptId, removedAt: null },
-      { $set: { removedAt: now, removedBy: reviewerId, removalReason: "Resultado da prova ficou abaixo da nota mínima.", updatedAt: now } }
-    ).catch((error) => {
-      console.error("[courses] failed to remove rejected course history:", error instanceof Error ? error.message : error);
     });
   }
   emitRealtime("courses:publication", { botId, guildId, publicationId: attempt.publicationId });
@@ -937,74 +924,8 @@ function isObjectiveAnswerFullyScored(question: MongoCourseExamQuestion, pointsE
   return maxScore > 0 && pointsEarned > 0;
 }
 
-function examMinimumScore(settings: Pick<MongoCourseExamSettings, "minScore"> | null | undefined, maxScore: number) {
-  const configuredMinimum = Math.max(0, parseDecimalNumber(settings?.minScore, DEFAULT_MIN_SCORE));
-  return configuredMinimum > maxScore ? (configuredMinimum / 100) * maxScore : configuredMinimum;
-}
-
-export function decideCourseExamResult(score: number, settings: Pick<MongoCourseExamSettings, "minScore"> | null | undefined, maxScore = EXAM_TOTAL_SCORE): "approved" | "rejected" {
-  const normalizedMaxScore = Math.max(0, Number(maxScore) || EXAM_TOTAL_SCORE);
-  const minimumScore = examMinimumScore(settings, normalizedMaxScore);
-  return score + 1e-9 >= minimumScore ? "approved" : "rejected";
-}
-
-async function reconcileCourseExamAttemptOutcome(collections: MongoCollections, botId: string | null, guildId: string, attempt: MongoCourseExamAttempt) {
-  const currentResult = attempt.result ?? (attempt.status === "approved" || attempt.status === "rejected" ? attempt.status : null);
-  if (currentResult !== "approved" && currentResult !== "rejected") return attempt;
-  const score = capExamScore(parseDecimalNumber(attempt.finalScore ?? attempt.score ?? attempt.automaticScore, 0));
-  const maxScore = attempt.maxScore || EXAM_TOTAL_SCORE;
-  const settings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
-    ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
-  const expectedResult = decideCourseExamResult(score, settings, maxScore);
-  if (attempt.result === expectedResult && attempt.status === expectedResult) return attempt;
-
-  const now = new Date();
-  await collections.courseExamAttempts.updateOne(
-    { _id: attempt._id, ...scope(botId, guildId) },
-    {
-      $set: {
-        percent: decimalMultiplyByInteger(score, 10),
-        rejectionReason: expectedResult === "approved" ? null : attempt.rejectionReason,
-        result: expectedResult,
-        score,
-        status: expectedResult,
-        updatedAt: now
-      }
-    }
-  );
-  await collections.courseEnrollments.updateOne(
-    { ...scope(botId, guildId), publicationId: attempt.publicationId, studentId: attempt.studentId },
-    { $set: { examStatus: expectedResult === "approved" ? "APPROVED" : "FAILED", score, result: expectedResult, updatedAt: now } }
-  );
-  await logCourseAction(botId, guildId, "course.exam_result_reconciled", attempt.correctedBy ?? null, attempt.courseId, attempt.publicationId, {
-    attemptId: attempt._id,
-    from: currentResult,
-    score,
-    to: expectedResult
-  });
-  emitRealtime("courses:exam_reviewed", { actorId: attempt.correctedBy ?? null, attemptId: attempt._id, botId, courseId: attempt.courseId, guildId, status: expectedResult });
-  emitRealtime("courses:publication", { botId, guildId, publicationId: attempt.publicationId });
-  if (expectedResult === "approved") {
-    await recordApprovedCourseHistoryFromAttempt(botId, guildId, attempt._id).catch((error) => {
-      console.error("[courses] failed to record reconciled approved course history:", error instanceof Error ? error.message : error);
-    });
-  } else {
-    await collections.courseStudentHistory.updateMany(
-      { ...scope(botId, guildId), attemptId: attempt._id, removedAt: null },
-      { $set: { removedAt: now, removedBy: "system", removalReason: "Resultado da prova reconciliado abaixo da nota mínima.", updatedAt: now } }
-    ).catch((error) => {
-      console.error("[courses] failed to remove reconciled rejected course history:", error instanceof Error ? error.message : error);
-    });
-  }
-  return await collections.courseExamAttempts.findOne({ _id: attempt._id, ...scope(botId, guildId) }) ?? {
-    ...attempt,
-    percent: decimalMultiplyByInteger(score, 10),
-    rejectionReason: expectedResult === "approved" ? null : attempt.rejectionReason,
-    result: expectedResult,
-    score,
-    status: expectedResult,
-    updatedAt: now
-  };
+export function decideCourseExamResult(score: number): "approved" | "rejected" {
+  return parseDecimalNumber(score, 0) >= COURSE_EXAM_PASSING_SCORE ? "approved" : "rejected";
 }
 
 function normalizeQuestionScoring<T extends MongoCourseExamQuestion>(question: T): T {
