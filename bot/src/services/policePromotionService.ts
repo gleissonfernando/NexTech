@@ -4,6 +4,7 @@ import {
   ButtonInteraction,
   ButtonStyle,
   ChannelType,
+  EmbedBuilder,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
@@ -591,17 +592,19 @@ function panelPayload(settings: PolicePromotionSettings, guild: Guild): MessageC
       label: clip(promotion.name, 80),
       value: promotion.id
     })));
+  const embed = new EmbedBuilder()
+    .setColor(parseColor(promotions[0]?.color ?? "#2563eb"))
+    .setTitle(`${icon("prancheta_acertos", guild)} Sistema de Promoções`)
+    .setDescription([
+      "Solicite sua avaliação de promoção pelo seletor abaixo.",
+      "",
+      promotions.map((item) => `• ${promotionEmojiText(item, guild)} **${escapeMarkdown(item.name)}** → ${escapeMarkdown(item.receivedRankName)}`).join("\n") || "Nenhuma promoção ativa configurada."
+    ].join("\n"));
+
   return {
     allowedMentions: { parse: [] },
-    components: [{
-      type: 17,
-      accent_color: parseColor(promotions[0]?.color ?? "#2563eb"),
-      components: [
-        { type: 10, content: [`# ${icon("prancheta_acertos", guild)} Sistema de Promoções`, "Solicite sua avaliação de promoção pelo seletor abaixo.", "", promotions.map((item) => `• ${promotionEmojiText(item, guild)} **${escapeMarkdown(item.name)}** → ${escapeMarkdown(item.receivedRankName)}`).join("\n") || "Nenhuma promoção ativa configurada."].join("\n") },
-        ...(promotions.length ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)] : [])
-      ]
-    }],
-    flags: MessageFlags.IsComponentsV2
+    components: promotions.length ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)] : [],
+    embeds: [embed]
   };
 }
 
