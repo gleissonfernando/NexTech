@@ -1,5 +1,6 @@
 import {
     Activity,
+    BadgeCheck,
     Bot,
     CalendarDays,
     CheckCircle2,
@@ -183,6 +184,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
+  { id: "police-promotions", label: "Polícia - Promoções de Patente" },
   { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
   { id: "visible-message", label: "Polícia - Mensagem Visível" },
   { id: "message-control", label: "Polícia - Controle de Mensagem Individual" },
@@ -253,6 +255,7 @@ type BotMenuId =
   | "police-courses"
   | "police-patrol-reports"
   | "police-qru"
+  | "police-promotions"
   | "police-hidden-channel"
   | "visible-message"
   | "message-control"
@@ -283,6 +286,7 @@ const POLICE_RELEASE_MODULE_IDS = [
   "police-courses",
   "police-patrol-reports",
   "police-qru",
+  "police-promotions",
   "visible-message",
   "message-control",
   "police-dm",
@@ -658,6 +662,13 @@ const botMenuItems: BotMenuItem[] = [
         description: "Ocorrências, evidências e ranking de apreensões",
         icon: ShieldCheck,
         moduleIds: ["police-qru"]
+      },
+      {
+        id: "police-promotions",
+        label: "Promoções de Patente",
+        description: "Solicitação, avaliação, aprovação e cargos automáticos",
+        icon: BadgeCheck,
+        moduleIds: ["police-promotions"]
       },
       {
         id: "police-hidden-channel",

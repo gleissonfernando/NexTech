@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import {
   Activity,
   AtSign,
+  BadgeCheck,
   Bell,
   Bot,
   BookOpen,
@@ -62,6 +63,7 @@ import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
 import { PolicePatrolReportsPanel } from "../components/fivem/PolicePatrolReportsPanel";
 import { PoliceQruPanel } from "../components/police/PoliceQruPanel";
+import { PolicePromotionsPanel } from "../components/police/PolicePromotionsPanel";
 import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
 import { PoliceHiddenChannelPanel } from "../components/fivem/PoliceHiddenChannelPanel";
 import { VisibleMessagePanel } from "../components/fivem/VisibleMessagePanel";
@@ -591,6 +593,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-qru"
   },
   {
+    id: "police-promotions",
+    title: "Promoções de Patente",
+    description: "Solicitações com avaliação de instrutor, aprovação, cargos automáticos e histórico.",
+    icon: BadgeCheck,
+    view: "police-promotions"
+  },
+  {
     id: "vehicle-abandonment",
     title: "Abandono de Veículo",
     description: "Registra veículos abandonados por imagem com parser automático.",
@@ -783,6 +792,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-actions": "police-actions",
   "police-patrol-reports": "police-patrol-reports",
   "police-qru": "police-qru",
+  "police-promotions": "police-promotions",
   "vehicle-abandonment": "vehicle-abandonment",
   "police-hidden-channel": "police-hidden-channel",
   "visible-message": "visible-message",
@@ -840,6 +850,7 @@ const policeTranscriptViews = new Set<ViewId>([
   "police-actions",
   "police-patrol-reports",
   "police-qru",
+  "police-promotions",
   "police-hidden-channel",
   "visible-message",
   "police-dm",
@@ -1716,6 +1727,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PoliceQruPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "police-qru", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "police-promotions" ? (
+          <PolicePromotionsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police-promotions", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -4311,6 +4329,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Operações policiais com painel, participantes e relatórios separados.", id: "police-actions", permissions: "Admin Polícia", title: "Ações Políciais" },
     { builtIn: true, description: "Relatórios de patrulhamento exclusivos para oficiais.", id: "police-patrol-reports", permissions: "Admin Polícia", title: "Relatórios Políciais" },
     { builtIn: true, description: "Registro de QRUs com evidências, oficiais envolvidos e ranking automático.", id: "police-qru", permissions: "Admin Polícia", title: "Registro de QRU" },
+    { builtIn: true, description: "Solicitações de promoção com avaliação, aprovação, cargos e histórico.", id: "police-promotions", permissions: "Admin Polícia", title: "Promoções de Patente" },
     { builtIn: true, description: "Registros automáticos de veículos abandonados por imagem.", id: "vehicle-abandonment", permissions: "Admin Polícia", title: "Abandono de Veículo" },
     { builtIn: true, description: "Canal anonimo policial com logs administrativos.", id: "police-hidden-channel", permissions: "Admin Polícia", title: "Canal Oculto" },
     { builtIn: true, description: "Mensagens com nome e avatar do usuário autorizado via webhook.", id: "visible-message", permissions: "Admin Polícia", title: "Mensagem Visível" },
@@ -4327,7 +4346,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     .filter((module) => {
       if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports" && module.id !== "police-qru" && module.id !== "vehicle-abandonment" && module.id !== "police-hidden-channel" && module.id !== "visible-message" && module.id !== "police-dm" && module.id !== "police-iab" && module.id !== "police-subpoenas" && module.id !== "police-open-duty";
+      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports" && module.id !== "police-qru" && module.id !== "police-promotions" && module.id !== "vehicle-abandonment" && module.id !== "police-hidden-channel" && module.id !== "visible-message" && module.id !== "police-dm" && module.id !== "police-iab" && module.id !== "police-subpoenas" && module.id !== "police-open-duty";
     })
     .map((module) => ({
       description: module.description,
@@ -4353,6 +4372,7 @@ function fivemIconForModule(moduleId: string) {
     "police-absences": CalendarClock,
     "police-actions": Activity,
     "police-qru": ShieldCheck,
+    "police-promotions": BadgeCheck,
     "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,
@@ -4460,6 +4480,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "police-subpoenas",
       "police-patrol-reports",
       "police-qru",
+      "police-promotions",
       "vehicle-abandonment",
       "police-hidden-channel",
       "visible-message",

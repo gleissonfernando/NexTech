@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Activity,
+  BadgeCheck,
   Boxes,
   BriefcaseBusiness,
   Building2,
@@ -1597,8 +1598,8 @@ function DevFiveMManager({
   };
   const copy = scope === "police"
     ? {
-      title: "Polícia Manager",
-      description: "Gerencie sistemas policiais separados dos modulos FiveM.",
+      title: "Polícia",
+      description: "Gerencie sistemas diretamente da Polícia, separados dos módulos FiveM.",
       cardTitle: "Modulos de Polícia",
       cardDescription: "Sistemas policiais independentes das configurações gerais de RP.",
       loading: "Carregando modulos de Polícia...",
@@ -1813,8 +1814,17 @@ function DevFiveMManager({
         <FiveMStat icon={Activity} label="Módulos ativos" value={String(stats.active)} />
         <FiveMStat icon={ShieldAlert} label="Desativados" value={String(stats.disabled)} />
         <FiveMStat icon={Users} label="Usuários com acesso" value={String(stats.users)} />
-        <FiveMStat icon={Building2} label="Facções cadastradas" value={String(stats.factions)} />
-        <FiveMStat icon={BriefcaseBusiness} label="Corporacoes" value={String(stats.corporations)} />
+        {scope === "police" ? (
+          <>
+            <FiveMStat icon={ShieldCheck} label="Sistemas policiais" value={String(viewModules.filter((module) => module.id.startsWith("police-")).length)} />
+            <FiveMStat icon={BadgeCheck} label="Promoções" value={enabled.has("police-promotions") ? "Ativo" : "Inativo"} />
+          </>
+        ) : (
+          <>
+            <FiveMStat icon={Building2} label="Facções cadastradas" value={String(stats.factions)} />
+            <FiveMStat icon={BriefcaseBusiness} label="Corporacoes" value={String(stats.corporations)} />
+          </>
+        )}
       </section>
 
       <Card className="border-zinc-800/80 bg-zinc-950/75">
@@ -1959,6 +1969,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "police-daf-roster": CalendarClock,
     "police-courses": ScrollText,
     "police-patrol-reports": ShieldCheck,
+    "police-promotions": BadgeCheck,
     "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,

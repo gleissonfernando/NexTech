@@ -2567,6 +2567,126 @@ export type MongoPoliceQruLog = {
   createdAt: Date;
 };
 
+export type MongoPolicePromotionQuestionType = "short" | "paragraph" | "number" | "date" | "time" | "select" | "checkbox" | "radio";
+
+export type MongoPolicePromotionQuestion = {
+  id: string;
+  active: boolean;
+  defaultValue: string | null;
+  description: string | null;
+  label: string;
+  maxLength: number | null;
+  options: string[];
+  order: number;
+  placeholder: string | null;
+  required: boolean;
+  type: MongoPolicePromotionQuestionType;
+};
+
+export type MongoPolicePromotionDefinition = {
+  id: string;
+  active: boolean;
+  approvalRoleIds: string[];
+  categoryId: string | null;
+  color: string;
+  description: string;
+  evaluatorRoleIds: string[];
+  grantedRoleId: string | null;
+  historyChannelId: string | null;
+  logChannelId: string | null;
+  name: string;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelMessageId: string | null;
+  panelTitle: string;
+  receivedRankName: string;
+  rejectedRoleIds: string[];
+  removedRoleId: string | null;
+  requestNewEvaluationEnabled: boolean;
+  questions: MongoPolicePromotionQuestion[];
+  emoji: string | null;
+};
+
+export type MongoPolicePromotionSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  defaultApprovalChannelId: string | null;
+  defaultCategoryId: string | null;
+  defaultHistoryChannelId: string | null;
+  defaultLogChannelId: string | null;
+  defaultPanelChannelId: string | null;
+  promotions: MongoPolicePromotionDefinition[];
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoPolicePromotionAnswer = {
+  questionId: string;
+  label: string;
+  type: MongoPolicePromotionQuestionType;
+  value: string | string[];
+};
+
+export type MongoPolicePromotionHistoryEntry = {
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  at: Date;
+  metadata: Record<string, unknown>;
+};
+
+export type MongoPolicePromotionRequest = {
+  _id: string;
+  approvalChannelId: string | null;
+  approvalMessageId: string | null;
+  approvalReason: string | null;
+  approvalResult: "approved" | "rejected" | null;
+  approvedAt: Date | null;
+  approvedById: string | null;
+  approvedByName: string | null;
+  answers: MongoPolicePromotionAnswer[];
+  botId: string;
+  channelId: string | null;
+  channelMessageId: string | null;
+  createdAt: Date;
+  currentRank: string;
+  evaluationEndedAt: Date | null;
+  evaluationNotes: string | null;
+  evaluationResult: "approved" | "rejected" | null;
+  evaluationStartedAt: Date | null;
+  evaluatorId: string | null;
+  evaluatorName: string | null;
+  guildId: string;
+  history: MongoPolicePromotionHistoryEntry[];
+  inGameId: string;
+  logChannelId: string | null;
+  previousRequestId: string | null;
+  promotionId: string;
+  promotionName: string;
+  requesterId: string;
+  requesterName: string;
+  requestedDate: string;
+  requestedTime: string;
+  status: "submitted" | "ticket_open" | "in_evaluation" | "pending_approval" | "approved" | "rejected" | "cancelled" | "closed";
+  targetRank: string;
+  updatedAt: Date;
+};
+
+export type MongoPolicePromotionLog = {
+  _id: string;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  botId: string;
+  createdAt: Date;
+  guildId: string;
+  metadata: Record<string, unknown>;
+  requestId: string | null;
+};
+
 export type MongoPoliceHiddenChannelSettings = {
   _id: string;
   botId: string;
@@ -4532,6 +4652,9 @@ export async function getMongoCollections() {
     policeQruSettings: db.collection<MongoPoliceQruSettings>("police_qru_settings"),
     policeQruRecords: db.collection<MongoPoliceQruRecord>("police_qru_records"),
     policeQruLogs: db.collection<MongoPoliceQruLog>("police_qru_logs"),
+    policePromotionSettings: db.collection<MongoPolicePromotionSettings>("police_promotion_settings"),
+    policePromotionRequests: db.collection<MongoPolicePromotionRequest>("police_promotion_requests"),
+    policePromotionLogs: db.collection<MongoPolicePromotionLog>("police_promotion_logs"),
     policeHiddenChannelSettings: db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings"),
     policeHiddenChannelLogs: db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs"),
     visibleMessageUsers: db.collection<MongoVisibleMessageUser>("visible_message_users"),
@@ -5297,6 +5420,14 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoPoliceQruRecord>("police_qru_records").createIndex({ botId: 1, guildId: 1, "officers.id": 1, createdAt: -1 }),
     db.collection<MongoPoliceQruLog>("police_qru_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPoliceQruLog>("police_qru_logs").createIndex({ botId: 1, guildId: 1, recordId: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionSettings>("police_promotion_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, requesterId: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, channelId: 1 }, { sparse: true }),
+    db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, promotionId: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionLog>("police_promotion_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPolicePromotionLog>("police_promotion_logs").createIndex({ botId: 1, guildId: 1, requestId: 1, createdAt: -1 }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),

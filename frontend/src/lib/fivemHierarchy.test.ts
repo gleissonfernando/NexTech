@@ -15,13 +15,15 @@ function examplePanel(): FivemHierarchyPanel {
     allowedRoleIds: ["12345"],
     botId: "bot-id",
     color: "#22c55e",
+    configRevision: 1,
     contentHash: "a".repeat(64),
     createdAt: "2026-07-10T00:00:00.000Z",
+    createdBy: "22222",
     description: "Painel oficial",
     enabled: true,
     footerEnabled: true,
     footerIconUrl: null,
-    footerText: "NexTechK",
+    footerText: "NexTech",
     guildId: "67890",
     hierarchies: [{
       active: true,
@@ -39,10 +41,16 @@ function examplePanel(): FivemHierarchyPanel {
     imageUrl: null,
     linkedToFivem: true,
     logChannelId: null,
+    managerUserIds: [],
+    managerRoleIds: [],
+    commandUserIds: [],
+    commandRoleIds: [],
     name: "Comando",
     panelChannelId: "98765",
     panelMessageId: "11111",
     panelVersion: 2,
+    publishedAt: "2026-07-10T00:00:00.000Z",
+    status: "published",
     title: "Hierarquia",
     updatedAt: "2026-07-10T00:00:00.000Z",
     updatedBy: "22222"
@@ -79,5 +87,5 @@ test("payload editavel nunca envia estado oficial controlado pelo bot", () => {
 });
 
 test("chave de criacao inválida e rejeitada", () => {
-  assert.throws(() => hierarchyPanelDraftId("new"), /invalido/i);
+  assert.throws(() => hierarchyPanelDraftId("new"), /inv[aá]lido/i);
 });

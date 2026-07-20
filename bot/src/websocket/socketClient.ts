@@ -147,6 +147,10 @@ export type PoliceQruSettingsEvent = {
   botId?: string | null;
   guildId: string;
 };
+export type PolicePromotionSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+};
 export type VisibleMessageUsersEvent = {
   botId?: string | null;
   guildId: string;
@@ -313,6 +317,7 @@ export class BotSocketClient {
   private policeHiddenChannelSettingsHandler: ((payload: PoliceHiddenChannelSettingsEvent) => void) | null = null;
   private vehicleAbandonmentSettingsHandler: ((payload: VehicleAbandonmentSettingsEvent) => void) | null = null;
   private policeQruSettingsHandler: ((payload: PoliceQruSettingsEvent) => void) | null = null;
+  private policePromotionSettingsHandler: ((payload: PolicePromotionSettingsEvent) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
   private messageControlUsersHandler: ((payload: MessageControlUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
@@ -444,6 +449,9 @@ export class BotSocketClient {
     }
     if (this.policeQruSettingsHandler) {
       this.socket.on("police-qru:settings_updated", this.policeQruSettingsHandler);
+    }
+    if (this.policePromotionSettingsHandler) {
+      this.socket.on("police-promotions:settings_updated", this.policePromotionSettingsHandler);
     }
     if (this.visibleMessageUsersHandler) {
       this.socket.on("visible-message:users_updated", this.visibleMessageUsersHandler);
@@ -716,6 +724,12 @@ export class BotSocketClient {
     this.policeQruSettingsHandler = handler;
     this.socket?.off("police-qru:settings_updated");
     this.socket?.on("police-qru:settings_updated", handler);
+  }
+
+  onPolicePromotionSettingsUpdated(handler: (payload: PolicePromotionSettingsEvent) => void) {
+    this.policePromotionSettingsHandler = handler;
+    this.socket?.off("police-promotions:settings_updated");
+    this.socket?.on("police-promotions:settings_updated", handler);
   }
 
   onVisibleMessageUsersUpdated(handler: (payload: VisibleMessageUsersEvent) => void) {

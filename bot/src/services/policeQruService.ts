@@ -11,6 +11,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type ChatInputCommandInteraction,
+  type Guild,
   type GuildMember,
   type Interaction,
   type Message,
@@ -26,7 +27,10 @@ import type { PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./api
 const MODULE_ID = "police-qru";
 const PREFIX = "police_qru";
 const SETTINGS_TTL_MS = 30_000;
-const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
+const IMAGE_EXTENSIONS = new Set(["gif", "jpg", "jpeg", "png", "webp"]);
+const PDF_EXTENSIONS = new Set(["pdf"]);
+const MAX_EVIDENCE_FILES = 10;
+const QRU_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
 
 type QruStep = "officers" | "date" | "bo" | "type" | "vehicle" | "evidence" | "seizures" | "notes" | "confirm";
 
@@ -229,14 +233,14 @@ export async function handlePoliceQruMessage(message: Message, context: BotConte
       return true;
     }
     session.step = "evidence";
-    await sendStepMessage(message.channel, "Envie o print do B.O. como anexo ou link direto. São aceitas imagens `jpg`, `jpeg`, `png` e `webp`.");
+    await sendStepMessage(message.channel, "Envie os comprovantes do B.O. como anexo ou link direto. Imagens, PDFs e outros links HTTP(S) são aceitos.");
     return true;
   }
 
   if (session.step === "evidence") {
-    const evidenceUrl = resolveEvidenceImageUrl(message);
+    const evidenceUrl = resolveEvidenceUrls(message);
     if (!evidenceUrl) {
-      await sendStepMessage(message.channel, "Envie uma imagem válida do B.O. como anexo ou link direto (`jpg`, `jpeg`, `png` ou `webp`).");
+      await sendStepMessage(message.channel, "Envie pelo menos um comprovante válido como anexo ou link HTTP(S).");
       return true;
     }
 
@@ -290,7 +294,7 @@ async function publishQruPanel(interaction: ChatInputCommandInteraction, setting
     return;
   }
 
-  await interaction.channel.send(qruPanelPayload(settings) as any);
+  await interaction.channel.send(qruPanelPayload(settings, interaction.guild, interaction.client) as any);
   await interaction.reply({ content: "✅ Painel de QRU publicado.", ephemeral: true });
 }
 
@@ -375,7 +379,7 @@ async function submitQruForApproval(interaction: ButtonInteraction<"cached">, co
     : await context.api.createPoliceQruRecord(payload);
 
   session.recordId = record.id;
-  const sent = await approvalChannel.send(approvalPayload(record, session.settings) as any);
+  const sent = await approvalChannel.send(approvalPayload(record, session.settings, "pending", interaction.guild, context.client) as any);
   const saved = await context.api.updatePoliceQruApprovalMessage(record.id, { approvalChannelId: approvalChannel.id, approvalMessageId: sent.id }).catch(() => record);
   await lockTemporaryChannel(interaction, session);
   await context.api.createPoliceQruLog({ action: record.status === "rejected" ? "qru.resubmitted" : "qru.submitted", actorId: interaction.user.id, actorName: interaction.user.username, guildId: session.guildId, metadata: { channelId: session.channelId }, recordId: saved.id }).catch(() => null);
@@ -410,10 +414,10 @@ async function approveQru(interaction: ButtonInteraction<"cached">, context: Bot
     return;
   }
 
-  const sent = await recordChannel.send(recordPayload(record, settings) as any);
+  const sent = await recordChannel.send(recordPayload(record, settings, interaction.guild, context.client) as any);
   await context.api.updatePoliceQruRecordMessage(record.id, { recordChannelId: recordChannel.id, recordMessageId: sent.id }).catch(() => null);
 
-  await interaction.message.edit(approvalPayload(record, settings, "approved") as any).catch(() => null);
+  await interaction.message.edit(approvalPayload(record, settings, "approved", interaction.guild, context.client) as any).catch(() => null);
   await updateOfficialRankingPanel(context, interaction.guild.id, settings);
   await closeTemporaryQruChannel(interaction, record, settings);
 }
@@ -458,7 +462,7 @@ async function handleRejectModal(interaction: ModalSubmitInteraction, context: B
   }
 
   await interaction.reply({ content: "QRU recusada e devolvida para correção.", ephemeral: true });
-  if (interaction.message) await interaction.message.edit(approvalPayload(record, settings, "rejected") as any).catch(() => null);
+  if (interaction.message) await interaction.message.edit(approvalPayload(record, settings, "rejected", interaction.guild, context.client) as any).catch(() => null);
   await reopenTemporaryQruChannel(interaction, record, settings, reason);
 }
 
@@ -618,7 +622,7 @@ async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"
   return channel?.type === ChannelType.GuildCategory ? channel.id : null;
 }
 
-function qruPanelPayload(settings: PoliceQruSettings): MessageCreateOptions {
+function qruPanelPayload(settings: PoliceQruSettings, guild?: Guild | null, client?: BotContext["client"] | null): MessageCreateOptions {
   const components: any[] = [
     { type: 10, content: `# ${clip(settings.panelTitle, 200)}\n${clip(settings.panelDescription, 1200)}` },
   ];
@@ -632,7 +636,7 @@ function qruPanelPayload(settings: PoliceQruSettings): MessageCreateOptions {
     { type: 10, content: `**Iniciar registro**\n${clip(settings.panelMessage, 1200)}` }
   );
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:open`).setEmoji("✅").setLabel("Registrar QRU").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(`${PREFIX}:open`).setEmoji(systemComponentEmoji("visto", guild, client)).setLabel("Registrar QRU").setStyle(ButtonStyle.Success)
   ));
   return { allowedMentions: { parse: [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components }], flags: MessageFlags.IsComponentsV2 };
 }
@@ -642,7 +646,7 @@ function qruPanelExplanation() {
     "## Modo explicativo",
     "**1. Abra o atendimento:** clique em **Registrar QRU** para criar um canal temporário privado.",
     "**2. Informe os dados:** mencione os oficiais envolvidos, a data, o número do B.O., o tipo da QRU, o veículo, as apreensões e as observações.",
-    "**3. Envie o comprovante:** anexe a foto ou print do B.O. ou informe um link direto de imagem.",
+    "**3. Envie os comprovantes:** anexe imagens, PDFs ou informe links HTTP(S).",
     "**4. Aguarde aprovação:** ao confirmar, o canal fica bloqueado para o registrante e a QRU vai para análise da supervisão.",
     "**5. Correção:** se for recusada, o acesso ao canal volta para ajustes e reenvio."
   ].join("\n");
@@ -660,61 +664,104 @@ function qruIntroPayload(user: User, settings: PoliceQruSettings): MessageCreate
 }
 
 function confirmationPayload(session: QruSession): MessageCreateOptions {
+  const icons = qruIcons();
+  const components: any[] = [
+    { type: 10, content: [
+      `# ${icons.police} CONFERÊNCIA DA QRU`,
+      QRU_DIVIDER,
+      `${icons.calendar} DATA DA OCORRÊNCIA`,
+      escapeMarkdown(session.occurrenceDate ?? "-"),
+      "",
+      `${icons.document} BOLETIM`,
+      `\`${escapeInlineCode(session.boNumber ?? "-")}\``,
+      "",
+      `${icons.officer} REGISTRADO POR`,
+      `<@${session.authorId}>`,
+      "",
+      `${icons.clock} HORÁRIO`,
+      formatDate(new Date(session.createdAt).toISOString())
+    ].join("\n") },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: qruInfoBlock([
+      [`${icons.police} QRU`, safeDisplay(session.qruType)],
+      [`${icons.vehicle} VEÍCULO`, safeDisplay(session.vehicle)],
+      [`${icons.box} APREENSÕES`, formatSeizuresList(session.seizures, icons)],
+      [`${icons.notes} OBSERVAÇÕES`, formatNotesBlock(session.notes)],
+      [`${icons.officer} OFICIAIS ENVOLVIDOS`, formatOfficerList(session.officers)]
+    ]) },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: evidenceTextBlock(session.evidenceUrl ?? "", icons) },
+    ...evidenceMediaComponents(session.evidenceUrl ?? "")
+  ];
+
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:confirm`).setEmoji(systemComponentEmoji("visto")).setLabel("Enviar para aprovação").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Cancelar").setStyle(ButtonStyle.Danger)
+  ));
+
   return {
     components: [{
       type: 17,
       accent_color: parseColor(session.settings.color),
-      components: [
-        { type: 10, content: [
-          "# Confirmação da QRU",
-          `**📅 Data:** ${escapeMarkdown(session.occurrenceDate ?? "-")}`,
-          `**📄 B.O:** \`${escapeInlineCode(session.boNumber ?? "-")}\``,
-          `**🚓 QRU:** ${escapeMarkdown(session.qruType ?? "-")}`,
-          `**🚗 Veículo:** ${escapeMarkdown(session.vehicle ?? "-")}`,
-          `**📦 Apreensões:** ${escapeMarkdown(session.seizures ?? "-")}`,
-          `**📝 Observações:** ${escapeMarkdown(session.notes ?? "-")}`,
-          `**👮 Oficiais:** ${session.officers.map((officer) => officer.mention).join(" ") || "-"}`
-        ].join("\n") },
-        { type: 12, items: [{ media: { url: session.evidenceUrl! }, description: "Print do B.O." }] },
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:confirm`).setEmoji("✅").setLabel("Enviar para aprovação").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`${PREFIX}:cancel`).setEmoji("❌").setLabel("Cancelar").setStyle(ButtonStyle.Danger)
-        )
-      ]
+      components
     }],
     flags: MessageFlags.IsComponentsV2
   };
 }
 
-function approvalPayload(record: PoliceQruRecord, settings: PoliceQruSettings, state: "pending" | "approved" | "rejected" = "pending"): MessageCreateOptions {
+function approvalPayload(
+  record: PoliceQruRecord,
+  settings: PoliceQruSettings,
+  state: "pending" | "approved" | "rejected" = "pending",
+  guild?: Guild | null,
+  client?: BotContext["client"] | null
+): MessageCreateOptions {
   const disabled = state !== "pending";
   const statusText = state === "approved" ? "Aprovada" : state === "rejected" ? "Recusada" : "Aguardando aprovação";
+  const icons = qruIcons(guild, client);
+  const components: any[] = [
+    { type: 10, content: [
+      `# ${icons.document} SISTEMA DE APROVAÇÃO DE QRU`,
+      QRU_DIVIDER,
+      `${icons.status} STATUS`,
+      statusText,
+      "",
+      `${icons.officer} REGISTRANTE`,
+      `<@${record.authorId}>`,
+      "",
+      `${icons.clock} HORÁRIO`,
+      formatDate(record.createdAt),
+      "",
+      `${icons.id} ID DA OCORRÊNCIA`,
+      `\`${escapeInlineCode(record.id)}\``,
+      record.rejectionCount ? `\n${icons.warning} RECUSAS\n${record.rejectionCount}` : null
+    ].filter(Boolean).join("\n") },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: qruInfoBlock([
+      [`${icons.calendar} DATA DA OCORRÊNCIA`, safeDisplay(record.occurrenceDate)],
+      [`${icons.document} BOLETIM`, `\`${escapeInlineCode(record.boNumber)}\``],
+      [`${icons.police} QRU`, safeDisplay(record.qruType)],
+      [`${icons.vehicle} VEÍCULO`, safeDisplay(record.vehicle)],
+      [`${icons.box} APREENSÕES`, formatSeizuresList(record.seizures, icons)],
+      [`${icons.notes} OBSERVAÇÕES`, formatNotesBlock(record.notes)],
+      [`${icons.officer} OFICIAIS ENVOLVIDOS`, formatOfficerList(record.officers)]
+    ]) },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: evidenceTextBlock(record.evidenceUrl, icons) },
+    ...evidenceMediaComponents(record.evidenceUrl)
+  ];
+
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:approve:${record.id}`).setEmoji(systemComponentEmoji("visto", guild, client)).setLabel("Aceitar QRU").setStyle(ButtonStyle.Success).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(`${PREFIX}:reject:${record.id}`).setEmoji(systemComponentEmoji("exclamacao", guild, client)).setLabel("Recusar QRU").setStyle(ButtonStyle.Danger).setDisabled(disabled)
+  ));
+
   return {
     allowedMentions: { parse: [] },
     components: [{
       type: 17,
       accent_color: state === "approved" ? 0x22c55e : state === "rejected" ? 0xef4444 : parseColor(settings.color),
-      components: [
-        { type: 10, content: [
-          "# Sistema de Aprovação de QRU",
-          `**Status:** ${statusText}`,
-          `**Registrante:** <@${record.authorId}>`,
-          `**Data:** ${escapeMarkdown(record.occurrenceDate)}`,
-          `**Tipo da QRU:** ${escapeMarkdown(record.qruType)}`,
-          `**Oficiais envolvidos:** ${record.officers.map((officer) => officer.mention).join(" ") || "-"}`,
-          `**Apreensões:** ${escapeMarkdown(record.seizures ?? "Nenhuma")}`,
-          `**Observações:** ${escapeMarkdown(record.notes ?? "Nenhuma")}`,
-          `**B.O:** \`${escapeInlineCode(record.boNumber)}\``,
-          `**Horário:** ${formatDate(record.createdAt)}`,
-          `**ID da ocorrência:** \`${record.id}\``,
-          record.rejectionCount ? `**Recusas:** ${record.rejectionCount}` : null
-        ].filter(Boolean).join("\n") },
-        { type: 12, items: [{ media: { url: record.evidenceUrl }, description: "Imagem do B.O." }] },
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:approve:${record.id}`).setEmoji("🟢").setLabel("Aceitar QRU").setStyle(ButtonStyle.Success).setDisabled(disabled),
-          new ButtonBuilder().setCustomId(`${PREFIX}:reject:${record.id}`).setEmoji("🔴").setLabel("Recusar QRU").setStyle(ButtonStyle.Danger).setDisabled(disabled)
-        )
-      ]
+      components
     }],
     flags: MessageFlags.IsComponentsV2
   };
@@ -731,54 +778,63 @@ function submittedPayload(record: PoliceQruRecord): MessageCreateOptions {
   };
 }
 
-function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings): MessageCreateOptions {
-  const officerMentions = record.officers.map((officer) => officer.mention).join("\n") || "-";
+function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings, guild?: Guild | null, client?: BotContext["client"] | null): MessageCreateOptions {
+  const icons = qruIcons(guild, client);
   const mentionUserIds = [...new Set([record.authorId, ...record.officers.map((officer) => officer.id)].filter(Boolean))];
+  const approvedAt = record.approvedAt ? formatDate(record.approvedAt) : formatDate(record.createdAt);
   const headerContent = [
-    "# 🚔 REGISTRO DE QRU",
-    `**${escapeMarkdown(record.qruType)}** | **B.O:** \`${escapeInlineCode(record.boNumber)}\``,
-    `**Registrado por** <@${record.authorId}>  •  **Registrado em** ${formatDate(record.createdAt)}`
+    `# ${icons.police} REGISTRO DE QRU`,
+    QRU_DIVIDER,
+    `${icons.police} QRU`,
+    escapeMarkdown(record.qruType),
+    "",
+    `${icons.document} BOLETIM`,
+    `\`${escapeInlineCode(record.boNumber)}\``,
+    "",
+    `${icons.officer} REGISTRADO POR`,
+    `<@${record.authorId}>`,
+    "",
+    `${icons.clock} HORÁRIO`,
+    formatDate(record.createdAt)
   ].join("\n");
-  const headerComponent = settings.panelImageUrl
-    ? { type: 9, components: [{ type: 10, content: headerContent }], accessory: { type: 11, media: { url: settings.panelImageUrl }, description: "Imagem do painel de QRU" } }
+  const thumbnailUrl = guild?.iconURL({ size: 128 }) ?? null;
+  const headerComponent = thumbnailUrl
+    ? { type: 9, components: [{ type: 10, content: headerContent }], accessory: { type: 11, media: { url: thumbnailUrl }, description: "Ícone do servidor" } }
     : { type: 10, content: headerContent };
+  const components: any[] = [
+    ...(settings.panelImageUrl ? [{ type: 12, items: [{ media: { url: settings.panelImageUrl }, description: "Banner do registro de QRU" }] }] : []),
+    headerComponent,
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: qruInfoBlock([
+      [`${icons.calendar} DATA DA OCORRÊNCIA`, safeDisplay(record.occurrenceDate)],
+      [`${icons.police} QRU`, safeDisplay(record.qruType)],
+      [`${icons.vehicle} VEÍCULO`, safeDisplay(record.vehicle)],
+      [`${icons.box} APREENSÕES`, formatSeizuresList(record.seizures, icons)],
+      [`${icons.notes} OBSERVAÇÕES`, formatNotesBlock(record.notes)],
+      [`${icons.officer} OFICIAIS ENVOLVIDOS`, formatOfficerList(record.officers)]
+    ]) },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: evidenceTextBlock(record.evidenceUrl, icons) },
+    ...evidenceMediaComponents(record.evidenceUrl),
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: [
+      `${icons.id} ID DO REGISTRO`,
+      `\`${escapeInlineCode(record.id)}\``,
+      "",
+      `${icons.status} APROVADO POR`,
+      record.approvedById ? `<@${record.approvedById}>` : "Supervisor",
+      "",
+      `${icons.clock} HORÁRIO DA APROVAÇÃO`,
+      approvedAt
+    ].join("\n") }
+  ];
+
   return {
     allowedMentions: { users: mentionUserIds },
     components: [{
       type: 17,
       accent_color: parseColor(settings.color),
-      components: [
-        headerComponent,
-        { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: [
-          "### 📅 Data da ocorrência",
-          escapeMarkdown(record.occurrenceDate),
-          "",
-          "### 🚓 QRU",
-          escapeMarkdown(record.qruType),
-          "",
-          "### 🚗 Veículo",
-          escapeMarkdown(record.vehicle ?? "Não informado"),
-          "",
-          "### 📦 Apreensões",
-          escapeMarkdown(record.seizures ?? "Nenhuma"),
-          "",
-          "### 📝 Observações",
-          escapeMarkdown(record.notes ?? "Nenhuma"),
-          "",
-          "### 👮 Oficiais envolvidos",
-          officerMentions
-        ].join("\n") },
-        { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: [
-          "### 📄 Comprovante / B.O",
-          `\`${escapeInlineCode(record.boNumber)}\``,
-          record.evidenceUrl
-        ].join("\n") },
-        { type: 12, items: [{ media: { url: record.evidenceUrl }, description: "Evidência do B.O." }] },
-        { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: `-# ID do registro: ${record.id} • Aprovada por ${record.approvedById ? `<@${record.approvedById}>` : "supervisor"} • ${record.approvedAt ? formatDate(record.approvedAt) : formatDate(record.createdAt)}` }
-      ]
+      components
     }],
     flags: MessageFlags.IsComponentsV2
   };
@@ -957,33 +1013,175 @@ function isComplete(session: QruSession): session is QruSession & { boNumber: st
   return Boolean(session.boNumber && session.evidenceUrl && session.notes && session.occurrenceDate && session.qruType && session.seizures && session.vehicle && session.officers.length);
 }
 
-function resolveEvidenceImageUrl(message: Message) {
-  const attachment = message.attachments.find((item) => {
-    const type = item.contentType?.toLowerCase() ?? "";
-    const extension = item.name?.split(".").pop()?.toLowerCase() ?? item.url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
-    return (type.startsWith("image/") && IMAGE_EXTENSIONS.has(type.slice("image/".length))) || IMAGE_EXTENSIONS.has(extension);
-  });
-  return attachment?.url ?? directImageUrlFromText(message.content);
+function qruIcons(guild?: Guild | null, client?: BotContext["client"] | null) {
+  return {
+    box: systemEmojiText("caixa", guild, client),
+    calendar: systemEmojiText("calendario", guild, client),
+    clock: systemEmojiText("relogio", guild, client),
+    document: systemEmojiText("folha", guild, client),
+    files: systemEmojiText("link", guild, client),
+    id: systemEmojiText("discord", guild, client),
+    money: systemEmojiText("dinheiro", guild, client),
+    notes: systemEmojiText("prancheta_caneta", guild, client),
+    officer: systemEmojiText("homem", guild, client),
+    police: systemEmojiText("alerta", guild, client),
+    status: systemEmojiText("visto", guild, client),
+    vehicle: systemEmojiText("acessar", guild, client),
+    warning: systemEmojiText("exclamacao", guild, client),
+    weapon: systemEmojiText("arma", guild, client)
+  };
 }
 
-function directImageUrlFromText(content: string) {
-  const matches = content.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
-  for (const match of matches) {
-    const url = match.replace(/[.,;!?]+$/g, "");
-    if (isDirectImageUrl(url)) return url;
+function qruInfoBlock(rows: Array<[string, string | null | undefined]>) {
+  return rows
+    .filter(([, value]) => !isBlank(value))
+    .map(([title, value]) => [`### ${title}`, value].join("\n"))
+    .join(`\n\n${QRU_DIVIDER}\n\n`);
+}
+
+function formatOfficerList(officers: PoliceQruOfficer[]) {
+  return officers.length
+    ? officers.map((officer) => `▸ ${officer.mention || `<@${officer.id}>`}`).join("\n")
+    : "Nenhum oficial registrado.";
+}
+
+function formatNotesBlock(value: string | null | undefined) {
+  const text = isBlank(value) || isNoneValue(value) ? "Nenhuma observação registrada." : escapeMarkdown(value!.trim());
+  return text.split("\n").map((line) => `> ${line || " "}`).join("\n");
+}
+
+function safeDisplay(value: string | null | undefined) {
+  return isBlank(value) ? null : escapeMarkdown(value!.trim());
+}
+
+function formatSeizuresList(value: string | null | undefined, icons = qruIcons()) {
+  if (isBlank(value) || isNoneValue(value)) {
+    return `• ${icons.box} Nenhuma apreensão registrada.`;
   }
-  return null;
+
+  const items = value!
+    .split(/[\n;,]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return (items.length ? items : [value!.trim()])
+    .map((item) => `• ${seizureEmoji(item, icons)} ${escapeMarkdown(item)}`)
+    .join("\n");
 }
 
-function isDirectImageUrl(value: string) {
+function seizureEmoji(value: string, icons: ReturnType<typeof qruIcons>) {
+  const text = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(arma|armas|pistola|fuzil|rifle|ak|glock|municao|municoes|bala|balas)\b/.test(text)) return icons.weapon;
+  if (/(r\$|\$|dinheiro|real|reais|dolar|dolares|cash)/.test(text)) return icons.money;
+  return icons.box;
+}
+
+function evidenceTextBlock(value: string, icons = qruIcons()) {
+  const files = policeQruEvidenceFiles(value);
+  const rows = files.length
+    ? files.map((file) => `• ${evidenceEmoji(file, icons)} ${escapeMarkdown(file.name)}\n  <${file.url}>`).join("\n")
+    : `• ${icons.files} Nenhum comprovante registrado.`;
+
+  return [`### ${icons.files} COMPROVANTES`, rows].join("\n");
+}
+
+function evidenceMediaComponents(value: string) {
+  const imageItems = policeQruEvidenceFiles(value)
+    .filter((file) => file.kind === "image")
+    .slice(0, MAX_EVIDENCE_FILES)
+    .map((file) => ({ media: { url: file.url }, description: file.name }));
+
+  return imageItems.length ? [{ type: 12, items: imageItems }] : [];
+}
+
+function evidenceEmoji(file: ReturnType<typeof policeQruEvidenceFiles>[number], icons: ReturnType<typeof qruIcons>) {
+  if (file.kind === "image") return icons.files;
+  if (file.kind === "pdf") return icons.document;
+  return icons.box;
+}
+
+function resolveEvidenceUrls(message: Message) {
+  const urls = [
+    ...message.attachments.map((item) => item.url),
+    ...directUrlsFromText(message.content)
+  ];
+  return normalizeEvidenceUrls(urls).join("\n") || null;
+}
+
+export function policeQruEvidenceFiles(value: string) {
+  return normalizeEvidenceUrls(directUrlsFromText(value)).map((url) => ({
+    kind: evidenceKind(url),
+    name: evidenceFileName(url),
+    url
+  }));
+}
+
+export function normalizeEvidenceUrls(values: string[] | string) {
+  const source = Array.isArray(values) ? values : directUrlsFromText(values);
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const raw of source) {
+    const url = cleanUrl(raw);
+    if (!url || seen.has(url) || !isHttpUrl(url)) continue;
+    seen.add(url);
+    result.push(url);
+    if (result.length >= MAX_EVIDENCE_FILES) break;
+  }
+
+  return result;
+}
+
+function evidenceKind(url: string): "file" | "image" | "pdf" {
+  const extension = urlExtension(url);
+  if (IMAGE_EXTENSIONS.has(extension)) return "image";
+  if (PDF_EXTENSIONS.has(extension)) return "pdf";
+  return "file";
+}
+
+function evidenceFileName(url: string) {
+  try {
+    const parsed = new URL(url);
+    const pathName = parsed.pathname.split("/").filter(Boolean).pop();
+    return decodeURIComponent(pathName || parsed.hostname).slice(0, 100);
+  } catch {
+    return "comprovante";
+  }
+}
+
+function urlExtension(url: string) {
+  try {
+    const pathName = new URL(url).pathname;
+    return pathName.split("/").pop()?.split(".").pop()?.toLowerCase() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function directUrlsFromText(content: string) {
+  return content.match(/https?:\/\/[^\s<>()]+/gi)?.map(cleanUrl).filter(Boolean) ?? [];
+}
+
+function cleanUrl(value: string) {
+  return value.trim().replace(/[.,;!?]+$/g, "");
+}
+
+function isHttpUrl(value: string) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-    const extension = url.pathname.split("/").pop()?.split(".").pop()?.toLowerCase() ?? "";
-    return IMAGE_EXTENSIONS.has(extension);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
+}
+
+function isBlank(value: string | null | undefined) {
+  return !String(value ?? "").trim();
+}
+
+function isNoneValue(value: string | null | undefined) {
+  const normalized = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return ["nao", "nenhum", "nenhuma", "n/a", "na", "-", "sem"].includes(normalized);
 }
 
 function userToOfficer(user: User): PoliceQruOfficer {

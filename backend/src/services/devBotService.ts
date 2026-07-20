@@ -100,6 +100,7 @@ export const DEV_MODULES = [
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
+  { id: "police-promotions", label: "Polícia - Promoções de Patente" },
   { id: "vehicle-abandonment", label: "Polícia - Abandono de Veículo" },
   { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
   { id: "visible-message", label: "Polícia - Mensagem Visível" },

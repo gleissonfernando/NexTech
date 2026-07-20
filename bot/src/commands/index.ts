@@ -35,6 +35,7 @@ import { consultaPontosCommand, fecharPontoCommand, pontosAutomaticosCommand, po
 import { barraCommand, relogioDePontoCommand } from "../services/policeTimeClockBotService";
 import { vehicleAbandonmentPanelCommand } from "../services/vehicleAbandonmentService";
 import { qruCommand, rankCommand, rankingCommandQru } from "../services/policeQruService";
+import { policePromotionsCommand } from "../services/policePromotionService";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -90,6 +91,7 @@ export function createCommandCollection() {
     pontosAutomaticosCommand,
     vehicleAbandonmentPanelCommand,
     qruCommand,
+    policePromotionsCommand,
     rankCommand,
     rankingCommandQru
   ].forEach((command) => {

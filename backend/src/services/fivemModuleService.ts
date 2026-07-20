@@ -144,6 +144,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Solicitações de promoção com avaliação, aprovação, cargos automáticos e histórico.",
+    id: "police-promotions",
+    permissions: "Admin Polícia, Instrutor, Comando",
+    title: "Promoções de Patente"
+  },
+  {
+    builtIn: true,
     description: "Canal anonimo para comunicacoes policiais com auditoria administrativa completa.",
     id: "police-hidden-channel",
     permissions: "Admin Polícia, Investigação",

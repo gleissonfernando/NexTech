@@ -3,6 +3,7 @@ import {
   Activity,
   Archive,
   AtSign,
+  BadgeCheck,
   Bell,
   Bot,
   BookOpen,
@@ -93,6 +94,7 @@ export type ViewId =
   | "police-subpoenas"
   | "police-patrol-reports"
   | "police-qru"
+  | "police-promotions"
   | "vehicle-abandonment"
   | "police-hidden-channel"
   | "visible-message"
@@ -185,6 +187,7 @@ const navItems: NavItem[] = [
   { id: "police-subpoenas", label: "Intimação", icon: ScrollText, moduleId: "police-subpoenas" },
   { id: "police-patrol-reports", label: "Relatórios Políciais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
   { id: "police-qru", label: "Registro de QRU", icon: ShieldCheck, moduleId: "police-qru" },
+  { id: "police-promotions", label: "Promoções", icon: BadgeCheck, moduleId: "police-promotions" },
   { id: "vehicle-abandonment", label: "Abandono de Veículo", icon: Car, moduleId: "vehicle-abandonment" },
   { id: "police-hidden-channel", label: "Canal Oculto", icon: EyeOff, moduleId: "police-hidden-channel" },
   { id: "visible-message", label: "Mensagem Visível", icon: MessageCircle, moduleId: "visible-message" },
@@ -221,6 +224,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.id === "police-subpoenas"
     || item.id === "police-patrol-reports"
     || item.id === "police-qru"
+    || item.id === "police-promotions"
     || item.id === "vehicle-abandonment"
     || item.id === "police-hidden-channel"
     || item.id === "visible-message"
@@ -239,6 +243,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     || item.moduleId === "police-subpoenas"
     || item.moduleId === "police-patrol-reports"
     || item.moduleId === "police-qru"
+    || item.moduleId === "police-promotions"
     || item.moduleId === "vehicle-abandonment"
     || item.moduleId === "police-hidden-channel"
     || item.moduleId === "visible-message"

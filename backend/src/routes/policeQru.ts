@@ -24,6 +24,8 @@ const snowflake = z.string().regex(/^\d{5,32}$/);
 const id = z.string().uuid();
 const nullableSnowflake = snowflake.nullable();
 const httpUrl = z.string().url().max(2048).nullable();
+const MAX_EVIDENCE_LINKS = 10;
+const MAX_EVIDENCE_TEXT_LENGTH = 12_000;
 const officerSchema = z.object({
   id: snowflake,
   mention: z.string().max(80),
@@ -53,7 +55,7 @@ const recordSchema = z.object({
   approvalChannelId: snowflake.nullable().optional(),
   approvalMessageId: snowflake.nullable().optional(),
   boNumber: z.string().min(1).max(80),
-  evidenceUrl: z.string().url().max(2048),
+  evidenceUrl: z.string().max(MAX_EVIDENCE_TEXT_LENGTH).transform(normalizeEvidenceUrls).pipe(z.string().min(1)),
   guildId: snowflake,
   notes: z.string().max(1000).nullable().optional(),
   occurrenceDate: z.string().min(1).max(20),
@@ -299,6 +301,31 @@ async function authorize(user: any, botId: string, guildId: string, manage: bool
 
 function stringQuery(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeEvidenceUrls(value: string) {
+  const matches = value.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  for (const match of matches) {
+    const url = match.trim().replace(/[.,;!?]+$/g, "");
+    if (seen.has(url) || !isHttpUrl(url)) continue;
+    seen.add(url);
+    urls.push(url);
+    if (urls.length >= MAX_EVIDENCE_LINKS) break;
+  }
+
+  return urls.join("\n");
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function routeError(message: string, statusCode: number) {

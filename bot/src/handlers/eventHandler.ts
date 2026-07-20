@@ -395,6 +395,7 @@ function shouldHandleMessageCreateEvents() {
     "music",
     "police-hidden-channel",
     "police-iab",
+    "police-promotions",
     "police-subpoenas",
     "temporary-voice",
     "logs"
