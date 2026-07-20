@@ -199,7 +199,6 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
     .map((item) => {
       const key = item.key as SystemEmojiKey;
       const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
-      const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
       const foundEmojiId = item.found ? normalizeSnowflake(item.emojiId ?? null) : null;
       const foundUpdate = item.found ? { lastFoundAt: now, lastMissingAt: null } : { lastMissingAt: now };
 
@@ -207,8 +206,9 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
         { botId: normalizedBotId, guildId: normalizedGuildId, key },
         {
           $set: {
-            animated: foundEmojiId ? Boolean(item.animated) : fixed ? fixed.animated : Boolean(item.animated),
+            animated: foundEmojiId ? Boolean(item.animated) : false,
             botId: normalizedBotId,
+            emojiId: foundEmojiId,
             enabled: true,
             extraEmojiNames,
             fallback: definition.fallback,
@@ -216,11 +216,10 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
             key,
             lastValidatedAt: now,
             lastValidationBotId: normalizedBotId,
-            name: foundEmojiId ? normalizeEmojiName(item.name || definition.name) : fixed ? fixed.name : normalizeEmojiName(item.name || definition.name),
-            sourceGuildId: foundEmojiId ? normalizedGuildId : fixed ? null : normalizeSnowflake(item.sourceGuildId ?? null),
+            name: foundEmojiId ? normalizeEmojiName(item.name || definition.name) : definition.name,
+            sourceGuildId: foundEmojiId ? normalizedGuildId : null,
             updatedAt: now,
             updatedBy: "bot-runtime",
-            ...(foundEmojiId ? { emojiId: foundEmojiId } : fixed ? { emojiId: fixed.emojiId } : item.emojiId ? { emojiId: normalizeSnowflake(item.emojiId) } : {}),
             ...foundUpdate
           },
           $setOnInsert: {

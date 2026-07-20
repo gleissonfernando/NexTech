@@ -23,7 +23,7 @@ import {
 } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
-import { cacheGuildSystemEmojis, refreshSystemEmojis, replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { cacheGuildSystemEmojis, fetchApplicationEmojis, refreshSystemEmojis, replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PolicePromotionAnswer, PolicePromotionDefinition, PolicePromotionQuestion, PolicePromotionRequest, PolicePromotionSettings } from "./apiClient";
 
 const MODULE_ID = "police-promotions";
@@ -865,6 +865,7 @@ function displayName(member: GuildMember | null, fallback: string) {
 }
 
 async function refreshPromotionSystemEmojis(guild: Guild, context: BotContext) {
+  await fetchApplicationEmojis(guild.client).catch(() => undefined);
   await cacheGuildSystemEmojis(guild, context).catch(() => undefined);
   await refreshSystemEmojis(context).catch(() => undefined);
 }

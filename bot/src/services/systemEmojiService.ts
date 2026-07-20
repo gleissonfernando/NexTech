@@ -85,6 +85,7 @@ export async function refreshSystemEmojis(context: BotContext) {
 export async function validateSystemEmojisOnStartup(client: Client<true>, context: BotContext) {
   try {
     await refreshSystemEmojis(context);
+    await fetchApplicationEmojis(client);
   } catch (error) {
     console.warn("[system-emojis] não foi possível carregar configuração; usando fallbacks:", error instanceof Error ? error.message : error);
   }
@@ -159,12 +160,8 @@ export function systemEmojiText(key: SystemEmojiKey, guild?: Guild | null, clien
   }
 
   if (emoji.enabled && emoji.emojiId && client) {
-    const fromClient = client.emojis.cache.get(emoji.emojiId);
+    const fromClient = client.emojis.cache.get(emoji.emojiId) ?? findApplicationEmoji(client, emoji.emojiId);
     if (fromClient) return `<${fromClient.animated ? "a" : ""}:${fromClient.name}:${fromClient.id}>`;
-  }
-
-  if (emoji.enabled && emoji.emojiId) {
-    return `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.emojiId}>`;
   }
 
   return emoji.fallback;
@@ -278,6 +275,8 @@ function findEmoji(client: Client, guild: Guild | null, item: RuntimeEmoji) {
   if (item.emojiId) {
     const fromClient = client.emojis.cache.get(item.emojiId);
     if (fromClient) return fromClient;
+    const fromApplication = findApplicationEmoji(client, item.emojiId);
+    if (fromApplication) return fromApplication;
     const fromGuild = guild?.emojis.cache.get(item.emojiId);
     if (fromGuild) return fromGuild;
   }
@@ -287,6 +286,7 @@ function findEmoji(client: Client, guild: Guild | null, item: RuntimeEmoji) {
     sourceGuild?.emojis.cache.find((emoji) => emoji.name === item.name) ??
     guild?.emojis.cache.find((emoji) => emoji.name === item.name) ??
     client.emojis.cache.find((emoji) => emoji.name === item.name) ??
+    findApplicationEmojiByName(client, item.name) ??
     null
   );
 }
@@ -295,4 +295,18 @@ function findGuildEmoji(guild: Guild | null, item: RuntimeEmoji) {
   if (!item.enabled || !guild) return null;
   if (item.emojiId) return guild.emojis.cache.get(item.emojiId) ?? null;
   return guild.emojis.cache.find((emoji) => emoji.name === item.name) ?? null;
+}
+
+export async function fetchApplicationEmojis(client: Client) {
+  const emojis = (client.application as any)?.emojis;
+  if (!emojis?.fetch) return;
+  await emojis.fetch().catch(() => undefined);
+}
+
+function findApplicationEmoji(client: Client, emojiId: string) {
+  return ((client.application as any)?.emojis?.cache?.get(emojiId) ?? null) as { animated?: boolean; id: string; name: string } | null;
+}
+
+function findApplicationEmojiByName(client: Client, name: string) {
+  return (((client.application as any)?.emojis?.cache?.find((emoji: { name?: string | null }) => emoji.name === name)) ?? null) as { animated?: boolean; id: string; name: string } | null;
 }
