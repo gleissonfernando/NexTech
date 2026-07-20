@@ -101,22 +101,27 @@ export async function getSystemEmojiDashboard(botId?: string | null, guildId?: s
 
 export async function getSystemEmojiRuntimeConfig(botId?: string | null, guildId?: string | null) {
   const dashboard = await getSystemEmojiDashboard(botId ?? null, guildId ?? null);
+  const applicationEmojis = await getApplicationEmojiRuntimeMap(dashboard.botId);
 
   return {
     botId: dashboard.botId,
     guildId: dashboard.guildId,
     definitions: dashboard.definitions,
-    emojis: dashboard.emojis.map((item) => ({
-      key: item.key,
-      name: item.name,
-      emojiId: item.emojiId,
-      animated: item.animated,
-      sourceGuildId: item.sourceGuildId,
-      enabled: item.enabled,
-      fallback: item.fallback,
-      guildId: item.guildId,
-      scope: item.scope
-    }))
+    emojis: dashboard.emojis.map((item) => {
+      const applicationEmoji = applicationEmojis.get(item.key);
+      const emojiId = applicationEmoji?.emojiId ?? (item.missing ? null : item.emojiId);
+      return {
+        key: item.key,
+        name: applicationEmoji?.name ?? item.name,
+        emojiId,
+        animated: applicationEmoji?.animated ?? item.animated,
+        sourceGuildId: applicationEmoji ? null : item.sourceGuildId,
+        enabled: item.enabled,
+        fallback: item.fallback,
+        guildId: item.guildId,
+        scope: item.scope
+      };
+    })
   };
 }
 
@@ -195,13 +200,14 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
       const key = item.key as SystemEmojiKey;
       const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
       const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
-      const foundUpdate = fixed || item.found ? { lastFoundAt: now, lastMissingAt: null } : { lastMissingAt: now };
+      const foundEmojiId = item.found ? normalizeSnowflake(item.emojiId ?? null) : null;
+      const foundUpdate = item.found ? { lastFoundAt: now, lastMissingAt: null } : { lastMissingAt: now };
 
       return systemEmojis.updateOne(
         { botId: normalizedBotId, guildId: normalizedGuildId, key },
         {
           $set: {
-            animated: fixed ? fixed.animated : Boolean(item.animated),
+            animated: foundEmojiId ? Boolean(item.animated) : fixed ? fixed.animated : Boolean(item.animated),
             botId: normalizedBotId,
             enabled: true,
             extraEmojiNames,
@@ -210,11 +216,11 @@ export async function recordSystemEmojiValidation(input: ValidationInput) {
             key,
             lastValidatedAt: now,
             lastValidationBotId: normalizedBotId,
-            name: fixed ? fixed.name : normalizeEmojiName(item.name || definition.name),
-            sourceGuildId: fixed ? null : normalizeSnowflake(item.sourceGuildId ?? null),
+            name: foundEmojiId ? normalizeEmojiName(item.name || definition.name) : fixed ? fixed.name : normalizeEmojiName(item.name || definition.name),
+            sourceGuildId: foundEmojiId ? normalizedGuildId : fixed ? null : normalizeSnowflake(item.sourceGuildId ?? null),
             updatedAt: now,
             updatedBy: "bot-runtime",
-            ...(fixed ? { emojiId: fixed.emojiId } : item.emojiId ? { emojiId: normalizeSnowflake(item.emojiId) } : {}),
+            ...(foundEmojiId ? { emojiId: foundEmojiId } : fixed ? { emojiId: fixed.emojiId } : item.emojiId ? { emojiId: normalizeSnowflake(item.emojiId) } : {}),
             ...foundUpdate
           },
           $setOnInsert: {
@@ -250,32 +256,53 @@ async function listSystemEmojis(botId: string | null, guildId: string | null) {
   });
 }
 
+async function getApplicationEmojiRuntimeMap(botId: string | null) {
+  const byKey = new Map<SystemEmojiKey, { animated: boolean; emojiId: string; name: string }>();
+  if (!botId) return byKey;
+
+  const { applicationEmojiItems } = await getMongoCollections();
+  const items = await applicationEmojiItems.find({ botId }).sort({ syncedAt: -1 }).limit(2000).toArray();
+  const byName = new Map(items.map((item) => [item.applicationName.toLowerCase(), item]));
+
+  for (const definition of SYSTEM_EMOJIS) {
+    const names = [definition.key, definition.name, ...(definition.aliases ?? [])].map((name) => name.toLowerCase());
+    const item = names.map((name) => byName.get(name)).find(Boolean);
+    if (!item) continue;
+
+    byKey.set(definition.key, {
+      animated: Boolean(item.animated),
+      emojiId: item.applicationEmojiId,
+      name: item.applicationName
+    });
+  }
+
+  return byKey;
+}
+
 function toDto(key: SystemEmojiKey, doc: MongoSystemEmoji | null, requestedBotId: string | null, requestedGuildId: string | null): SystemEmojiDto {
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
   const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
-  const hasFixed = Boolean(fixed);
-  const name = hasFixed ? fixed.name : doc?.name || definition.name;
-  const emojiId = hasFixed ? fixed.emojiId : doc?.emojiId || null;
-  const animated = hasFixed ? fixed.animated : doc?.animated ?? false;
-  const enabled = hasFixed ? true : doc?.enabled ?? true;
-  const lastMissingAt = hasFixed ? null : doc?.lastMissingAt ?? null;
-  const lastFoundAt = hasFixed ? doc?.lastFoundAt ?? null : doc?.lastFoundAt ?? null;
-  const fixedFound = Boolean(enabled && hasFixed && fixed.emojiId);
-  const missing = fixedFound ? false : enabled && Boolean(emojiId) && lastMissingAt !== null && (!lastFoundAt || lastMissingAt > lastFoundAt);
+  const name = doc?.name || fixed?.name || definition.name;
+  const emojiId = doc?.emojiId || null;
+  const animated = doc?.animated ?? fixed?.animated ?? false;
+  const enabled = doc?.enabled ?? true;
+  const lastMissingAt = doc?.lastMissingAt ?? null;
+  const lastFoundAt = doc?.lastFoundAt ?? null;
+  const missing = enabled && Boolean(emojiId) && lastMissingAt !== null && (!lastFoundAt || lastMissingAt > lastFoundAt);
 
   return {
     key,
     name,
     emojiId,
     animated,
-    sourceGuildId: hasFixed ? null : doc?.sourceGuildId ?? null,
+    sourceGuildId: doc?.sourceGuildId ?? null,
     enabled,
-    fallback: hasFixed ? definition.fallback : doc?.fallback || definition.fallback,
-    scope: hasFixed ? "default" : doc ? ((doc.guildId ?? null) ? "guild" : doc.botId ? "bot" : "global") : "default",
+    fallback: doc?.fallback || definition.fallback,
+    scope: doc ? ((doc.guildId ?? null) ? "guild" : doc.botId ? "bot" : "global") : "default",
     botId: doc?.botId ?? requestedBotId,
     guildId: doc?.guildId ?? requestedGuildId,
-    preview: emojiId && enabled ? `<${animated ? "a" : ""}:${name}:${emojiId}>` : (hasFixed ? definition.fallback : doc?.fallback || definition.fallback),
-    found: fixedFound || Boolean(enabled && emojiId && lastFoundAt && !missing),
+    preview: emojiId && enabled ? `<${animated ? "a" : ""}:${name}:${emojiId}>` : (doc?.fallback || definition.fallback),
+    found: Boolean(enabled && emojiId && lastFoundAt && !missing),
     missing,
     updatedAt: doc?.updatedAt ? doc.updatedAt.toISOString() : null,
     lastFoundAt: lastFoundAt ? lastFoundAt.toISOString() : null,

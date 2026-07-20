@@ -90,6 +90,7 @@ export async function validateSystemEmojisOnStartup(client: Client<true>, contex
   }
 
   const caches = await Promise.all([...client.guilds.cache.values()].map((guild) => cacheGuildSystemEmojis(guild, context)));
+  await refreshSystemEmojis(context);
   const found = caches.reduce((total, cache) => total + [...cache.emojis.values()].filter((item) => item.found).length, 0);
   const total = caches.length * SYSTEM_EMOJIS.length;
   console.log(`[system-emojis] cache por servidor concluído: ${found}/${total} encontrado(s) em ${caches.length} servidor(es).`);
@@ -244,6 +245,9 @@ function systemEmojiNames(definition: SystemEmojiDefinition) {
 
 function runtimeEmoji(key: SystemEmojiKey): RuntimeEmoji {
   const definition = SYSTEM_EMOJI_BY_KEY.get(key)!;
+  const configured = runtimeEmojis.get(key);
+  if (configured) return configured;
+
   const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
   if (fixed) {
     return {
@@ -256,9 +260,6 @@ function runtimeEmoji(key: SystemEmojiKey): RuntimeEmoji {
       fallback: definition.fallback
     };
   }
-
-  const configured = runtimeEmojis.get(key);
-  if (configured) return configured;
 
   return {
     key,

@@ -23,7 +23,7 @@ import {
 } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
-import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { cacheGuildSystemEmojis, refreshSystemEmojis, replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PolicePromotionAnswer, PolicePromotionDefinition, PolicePromotionQuestion, PolicePromotionRequest, PolicePromotionSettings } from "./apiClient";
 
 const MODULE_ID = "police-promotions";
@@ -106,7 +106,7 @@ export const policePromotionsCommand: BotCommand = {
       return;
     }
 
-    await publishPromotionPanel(interaction, settings);
+    await publishPromotionPanel(interaction, context, settings);
   },
   moduleId: MODULE_ID
 };
@@ -177,7 +177,7 @@ export function startPolicePromotionService(client: Client, context: BotContext)
   });
 }
 
-async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"cached">, settings: PolicePromotionSettings) {
+async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"cached">, context: BotContext, settings: PolicePromotionSettings) {
   const channelId = settings.defaultPanelChannelId;
   const target = channelId ? await interaction.guild.channels.fetch(channelId).catch(() => null) : interaction.channel;
   if (!target?.isTextBased() || target.isDMBased()) {
@@ -185,6 +185,7 @@ async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"c
     return;
   }
 
+  await refreshPromotionSystemEmojis(interaction.guild, context);
   await target.send(panelPayload(settings, interaction.guild) as any);
   await interaction.reply({ content: "Painel de promoções publicado.", ephemeral: true });
 }
@@ -198,6 +199,7 @@ async function publishConfiguredPromotionPanel(client: Client, context: BotConte
   if (!settings.defaultPanelChannelId) throw new Error("Canal padrão do painel não configurado.");
   const channel = await guild.channels.fetch(settings.defaultPanelChannelId).catch(() => null);
   if (!channel?.isTextBased() || channel.isDMBased()) throw new Error("Canal padrão do painel inválido.");
+  await refreshPromotionSystemEmojis(guild, context);
   await channel.send(panelPayload(settings, guild) as any);
 }
 
@@ -860,6 +862,11 @@ async function replyOrUpdate(interaction: ButtonInteraction<"cached"> | StringSe
 
 function displayName(member: GuildMember | null, fallback: string) {
   return member?.displayName ?? fallback;
+}
+
+async function refreshPromotionSystemEmojis(guild: Guild, context: BotContext) {
+  await cacheGuildSystemEmojis(guild, context).catch(() => undefined);
+  await refreshSystemEmojis(context).catch(() => undefined);
 }
 
 function icon(key: Parameters<typeof systemEmojiText>[0], guild?: Guild | null) {
