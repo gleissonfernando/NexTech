@@ -122,10 +122,11 @@ export function useAuth() {
       setAccessValidation(session.validation ?? null);
       setStatus("Acesso liberado.");
       clearAuthCallbackLanding();
-      if (!isProtectedPanelPath(window.location.pathname)) {
-        window.location.replace(session.redirectTo ? appUrl(session.redirectTo) : dashboardUrl(session.user.dashboardBotSlug));
-      } else if (session.redirectTo && window.location.pathname !== session.redirectTo) {
-        window.location.replace(appUrl(session.redirectTo));
+      const redirectUrl = session.redirectTo ? appUrl(session.redirectTo) : dashboardUrl(session.user.dashboardBotSlug);
+      const redirectPath = new URL(redirectUrl, window.location.origin).pathname;
+
+      if (!isProtectedPanelPath(window.location.pathname) || window.location.pathname !== redirectPath) {
+        window.location.replace(redirectUrl);
       }
     } catch (requestError) {
       const validation = readRequestValidation(requestError);

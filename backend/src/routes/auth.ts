@@ -28,7 +28,7 @@ import {
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { clearStoredDiscordTokens, saveDiscordUser } from "../services/userService";
 import type { AuthSessionUser } from "../types/session";
-import { getDevBot, getDevBotBySlug } from "../services/devBotService";
+import { getDevBot, getDevBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
 import { canAccessDevDashboard } from "../services/devPermissionService";
 
 export const authRouter = Router();
@@ -534,7 +534,22 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       lastLoginAt: user.lastLoginAt?.toISOString?.() ?? baseUser.lastLoginAt
     };
 
-    req.session.user = applyDashboardAccessValidation(sessionBaseUser, validation);
+    const validatedUserBase = applyDashboardAccessValidation(sessionBaseUser, validation);
+    const defaultDashboardBotSlug = verifiedState.type === "dashboard"
+      ? await withAuthTimeout("dashboard_default_bot_lookup", resolveDashboardBotSlugForRedirect(validatedUserBase, validatedUserBase.dashboardBotSlug))
+      : validatedUserBase.dashboardBotSlug;
+    const validatedUser = defaultDashboardBotSlug === validatedUserBase.dashboardBotSlug
+      ? validatedUserBase
+      : {
+          ...validatedUserBase,
+          dashboardBotSlug: defaultDashboardBotSlug
+        };
+
+    if (verifiedState.type === "dashboard" && defaultDashboardBotSlug) {
+      redirectTo = `/${defaultDashboardBotSlug}/dashboard`;
+    }
+
+    req.session.user = validatedUser;
     req.session.verified = false;
     req.session.oauthState = undefined;
     req.session.discordAccessToken = tokens.access_token;
@@ -665,7 +680,17 @@ authRouter.post("/verify", requireAuthenticated, async (req, res, next) => {
       });
     }
 
-    const validatedUser = applyDashboardAccessValidation(refreshedUser, validation);
+    const validatedUserBase = applyDashboardAccessValidation(refreshedUser, validation);
+    const defaultDashboardBotSlug = await withAuthTimeout(
+      "dashboard_default_bot_lookup",
+      resolveDashboardBotSlugForRedirect(validatedUserBase, validatedUserBase.dashboardBotSlug)
+    );
+    const validatedUser = defaultDashboardBotSlug === validatedUserBase.dashboardBotSlug
+      ? validatedUserBase
+      : {
+          ...validatedUserBase,
+          dashboardBotSlug: defaultDashboardBotSlug
+        };
     const verifiedAuth = issueAuthCookies(
       res,
       validatedUser,
@@ -710,6 +735,15 @@ async function refreshAuthUserGuilds(req: Request, user: AuthSessionUser) {
     console.warn("[auth] não foi possível atualizar servidores do usuário:", error instanceof Error ? error.message : error);
     return user;
   }
+}
+
+async function resolveDashboardBotSlugForRedirect(user: AuthSessionUser, currentSlug: string | null | undefined) {
+  if (currentSlug) {
+    return currentSlug;
+  }
+
+  const bots = await listAccessibleDashboardBots(user).catch(() => []);
+  return bots[0]?.slug ?? null;
 }
 
 authRouter.post("/logout", async (req, res, next) => {
