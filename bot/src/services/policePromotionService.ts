@@ -25,13 +25,15 @@ import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import { FIXED_SYSTEM_EMOJI_BY_KEY, normalizeFixedSystemEmojiText, SYSTEM_EMOJIS, type SystemEmojiKey } from "../config/systemEmojis";
 import type { BotCommand, BotContext } from "../types";
 import { cacheGuildSystemEmojis, fetchApplicationEmojis, refreshSystemEmojis, replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
-import type { PolicePromotionAnswer, PolicePromotionDefinition, PolicePromotionQuestion, PolicePromotionRequest, PolicePromotionSettings } from "./apiClient";
+import type { PolicePromotionAnswer, PolicePromotionDefinition, PolicePromotionEvaluationHistory, PolicePromotionQuestion, PolicePromotionRequest, PolicePromotionSettings } from "./apiClient";
 import type { PolicePromotionPanelPublishAck } from "../websocket/socketClient";
 import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 
 const MODULE_ID = "police-promotions";
 const PREFIX = "police_promotions";
 const SETTINGS_TTL_MS = 30_000;
+const EVALUATION_PANEL_DELETE_DELAY_MS = 15_000;
+const HISTORY_PAGE_SIZE = 3;
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
 const CUSTOM_EMOJI_PATTERN = /^<a?:[a-zA-Z0-9_]{2,32}:\d{5,32}>$/;
 const SYSTEM_PROMOTION_EMOJI_KEYS = new Set<SystemEmojiKey>([
@@ -147,6 +149,26 @@ export const policePromotionsCommand: BotCommand = {
   moduleId: MODULE_ID
 };
 
+function createHistoryCommand(name: "historico" | "historia"): BotCommand {
+  return {
+    data: new SlashCommandBuilder()
+      .setName(name)
+      .setDescription("Consulta históricos dos sistemas policiais.")
+      .addSubcommand((subcommand) => subcommand
+        .setName("dia-de-princesa")
+        .setDescription("Mostra o histórico de avaliações Dia de Princesa.")
+        .addUserOption((option) => option
+          .setName("usuario")
+          .setDescription("Cadete avaliado para filtrar o histórico.")
+          .setRequired(false))),
+    execute: executePrincessHistoryCommand,
+    moduleId: MODULE_ID
+  };
+}
+
+export const policePromotionHistoryCommand = createHistoryCommand("historico");
+export const policePromotionHistoryAliasCommand = createHistoryCommand("historia");
+
 export async function handlePolicePromotionInteraction(interaction: Interaction, context: BotContext) {
   if (!isBotModuleEnabled(MODULE_ID)) return false;
   if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return false;
@@ -181,6 +203,7 @@ export async function handlePolicePromotionInteraction(interaction: Interaction,
   if (action === "reject" && interaction.isButton()) return openDecisionModal(interaction, "rejected", context);
   if (action === "decision_modal" && interaction.isModalSubmit()) return handleDecisionModal(interaction, context);
   if (action === "new_eval" && interaction.isButton()) return requestNewEvaluation(interaction, context);
+  if (action === "history_page" && interaction.isButton()) return handlePrincessHistoryPage(interaction, context);
   if (action === "cancel" && interaction.isButton()) return closeTicket(interaction, context, "cancelled");
   if (action === "close" && interaction.isButton()) return closeTicket(interaction, context, "closed");
 
@@ -273,6 +296,35 @@ async function publishPromotionPanel(interaction: ChatInputCommandInteraction<"c
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
   await target.send(panelPayload(settings, interaction.guild, panelImage) as any);
   await interaction.reply({ content: "Painel de promoções publicado.", ephemeral: true });
+}
+
+async function executePrincessHistoryCommand(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guildId || !interaction.guild || !interaction.inCachedGuild()) {
+    await interaction.reply({ content: "Use este comando dentro de um servidor.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const cadet = interaction.options.getUser("usuario", false);
+  await renderPrincessHistory(interaction, context, cadet?.id ?? null, 0, false);
+}
+
+async function handlePrincessHistoryPage(interaction: ButtonInteraction<"cached">, context: BotContext) {
+  const [, , rawPage, rawCadetId] = interaction.customId.split(":");
+  const page = Math.max(0, Number(rawPage) || 0);
+  const cadetId = rawCadetId && rawCadetId !== "all" ? rawCadetId : null;
+  await interaction.deferUpdate();
+  await renderPrincessHistory(interaction, context, cadetId, page, true);
+  return true;
+}
+
+async function renderPrincessHistory(interaction: ChatInputCommandInteraction<"cached"> | ButtonInteraction<"cached">, context: BotContext, cadetId: string | null, page: number, _update: boolean) {
+  const history = await context.api.listPolicePromotionEvaluationHistory(interaction.guild.id, {
+    cadetId,
+    limit: HISTORY_PAGE_SIZE,
+    page
+  });
+  await interaction.editReply(princessHistoryPayload(interaction.guild, history.records, history.total, page, cadetId) as any);
 }
 
 async function publishConfiguredPromotionPanel(client: Client, context: BotContext, guildId: string) {
@@ -803,10 +855,7 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   evaluationQuestionnaireDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   await sendApprovalPanel(interaction.guild, context, settings, promotion, updated);
   await interaction.editReply(evaluationSubmittedPayload(updated, promotion, interaction.guild, false) as any);
-  if (interaction.channel?.isTextBased() && !interaction.channel.isDMBased() && "messages" in interaction.channel && updated.channelMessageId) {
-    const message = await interaction.channel.messages.fetch(updated.channelMessageId).catch(() => null);
-    await message?.edit(ticketPayload(updated, promotion, interaction.guild) as any).catch(() => null);
-  }
+  await updateAndScheduleSubmittedEvaluationPanel(interaction, updated, promotion);
   return true;
 }
 
@@ -937,10 +986,7 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   } as any);
-  if (interaction.channel?.isTextBased() && !interaction.channel.isDMBased() && "messages" in interaction.channel && updated.channelMessageId) {
-    const message = await interaction.channel.messages.fetch(updated.channelMessageId).catch(() => null);
-    await message?.edit(ticketPayload(updated, promotion, interaction.guild) as any).catch(() => null);
-  }
+  await updateAndScheduleSubmittedEvaluationPanel(interaction, updated, promotion);
   return true;
 }
 
@@ -1098,6 +1144,58 @@ function promotionListPayload(settings: PolicePromotionSettings, guild: Guild): 
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   };
+}
+
+function princessHistoryPayload(guild: Guild, records: PolicePromotionEvaluationHistory[], total: number, page: number, cadetId: string | null): MessageCreateOptions {
+  const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 0), totalPages - 1);
+  const filter = cadetId ? `Cadete filtrado: <@${cadetId}>` : "Histórico completo de todas as avaliações.";
+  const body = records.length
+    ? records.map(formatPrincessHistoryRecord).join("\n\n")
+    : "Nenhuma avaliação Dia de Princesa foi encontrada.";
+  const nav = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${PREFIX}:history_page:${Math.max(safePage - 1, 0)}:${cadetId ?? "all"}`)
+      .setEmoji(systemComponentEmoji("porta", guild))
+      .setLabel("Anterior")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePage === 0),
+    new ButtonBuilder()
+      .setCustomId(`${PREFIX}:history_page:${safePage + 1}:${cadetId ?? "all"}`)
+      .setEmoji(systemComponentEmoji("acessar", guild))
+      .setLabel("Próxima")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePage >= totalPages - 1)
+  );
+  return {
+    allowedMentions: { users: uniqueMentionUsers(cadetId, ...records.flatMap((record) => [record.cadetId, record.evaluatorId])) },
+    components: [{
+      type: 17,
+      accent_color: 0x2563eb,
+      components: [
+        { type: 10, content: [`# 📖 Histórico Dia de Princesa`, filter, `Página ${safePage + 1}/${totalPages} • ${total} avaliação(ões)`, "", body].join("\n") },
+        nav
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  };
+}
+
+function formatPrincessHistoryRecord(record: PolicePromotionEvaluationHistory) {
+  const rejected = record.result === "rejected";
+  return [
+    DIVIDER,
+    `👤 Cadete: <@${record.cadetId}> (${escapeMarkdown(record.cadetName)})`,
+    `🛡️ Avaliador: ${record.evaluatorId ? `<@${record.evaluatorId}>` : "Não informado"} (${escapeMarkdown(record.evaluatorName ?? "Não informado")})`,
+    `📅 Data: ${formatHistoryDate(record.evaluatedAt)}`,
+    `🕒 Horário: ${formatHistoryTime(record.evaluatedAt)}`,
+    `📖 Avaliação: ${escapeMarkdown(record.evaluationType)}`,
+    `${rejected ? "❌" : "✅"} Resultado: ${rejected ? "Reprovado" : "Aprovado"}`,
+    rejected ? `📌 Motivo: ${escapeMarkdown(clip(record.rejectionReason ?? "Não informado", 240))}` : null,
+    `📝 Observações: ${escapeMarkdown(clip(record.evaluationNotes ?? "Nenhuma observação registrada.", 350))}`,
+    `🔢 Tentativa: ${record.attemptNumber}`,
+    `🆔 ID da avaliação: \`${record.evaluationId}\``
+  ].filter(Boolean).join("\n");
 }
 
 function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild): MessageCreateOptions {
@@ -1308,6 +1406,25 @@ async function updateEvaluationChannelMessage(message: Message, request: PoliceP
     return;
   }
   await message.channel.send(payload as any).catch(() => null);
+}
+
+async function updateAndScheduleSubmittedEvaluationPanel(interaction: ButtonInteraction<"cached">, request: PolicePromotionRequest, promotion: PolicePromotionDefinition) {
+  let panelMessage: Message | null = null;
+  if (interaction.channel?.isTextBased() && !interaction.channel.isDMBased() && "messages" in interaction.channel && request.channelMessageId) {
+    panelMessage = await interaction.channel.messages.fetch(request.channelMessageId).catch(() => null);
+    if (panelMessage && panelMessage.id !== interaction.message.id) {
+      await panelMessage.edit(ticketPayload(request, promotion, interaction.guild) as any).catch(() => null);
+    }
+  }
+  scheduleEvaluationPanelDeletion(panelMessage ?? interaction.message);
+}
+
+function scheduleEvaluationPanelDeletion(message: Message | null | undefined) {
+  if (!message) return;
+  const timer = setTimeout(() => {
+    void message.delete().catch(() => null);
+  }, EVALUATION_PANEL_DELETE_DELAY_MS);
+  timer.unref?.();
 }
 
 async function updateModalMessageOrReply(interaction: ModalSubmitInteraction<"cached">, payload: MessageCreateOptions) {
@@ -2303,6 +2420,14 @@ function systemEmojiKeyFromValue(value: string | null | undefined): SystemEmojiK
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+function formatHistoryDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+function formatHistoryTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(value));
 }
 
 function parseColor(value: string) {

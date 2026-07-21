@@ -2654,6 +2654,7 @@ export type MongoPolicePromotionRequest = {
   createdAt: Date;
   currentRank: string;
   evaluationEndedAt: Date | null;
+  evaluationAttemptNumber: number | null;
   evaluationNotes: string | null;
   evaluationResult: "approved" | "rejected" | null;
   evaluationStartedAt: Date | null;

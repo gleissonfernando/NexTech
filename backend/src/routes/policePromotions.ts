@@ -15,6 +15,7 @@ import {
   getPolicePromotionDashboard,
   getPolicePromotionRequest,
   getPolicePromotionSettings,
+  listPolicePromotionEvaluationHistory,
   POLICE_PROMOTIONS_MODULE_ID,
   requestPolicePromotionPanelPublish,
   savePolicePromotionSettings,
@@ -166,6 +167,21 @@ policePromotionsRouter.get("/bot/channels/:channelId/request", requireBot, async
     const botId = await botIdFor(req);
     await licensed(botId);
     res.json({ request: await findPolicePromotionRequestByChannel(botId, snowflake.parse(req.params.channelId)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+policePromotionsRouter.get("/bot/:guildId/history", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    const input = z.object({
+      cadetId: snowflake.optional(),
+      limit: z.coerce.number().int().min(1).max(10).optional(),
+      page: z.coerce.number().int().min(0).optional()
+    }).parse(req.query);
+    res.json(await listPolicePromotionEvaluationHistory(botId, snowflake.parse(req.params.guildId), input));
   } catch (error) {
     next(error);
   }

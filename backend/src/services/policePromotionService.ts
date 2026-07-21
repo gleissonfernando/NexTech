@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import axios from "axios";
+import type { Filter } from "mongodb";
 import {
   getMongoCollections,
   type MongoPolicePromotionAnswer,
@@ -45,6 +46,25 @@ export type PolicePromotionDashboardDto = {
     rejected: number;
     total: number;
   };
+};
+
+export type PolicePromotionEvaluationHistoryDto = {
+  cadetId: string;
+  cadetName: string;
+  evaluatedAt: string;
+  evaluationId: string;
+  evaluationNotes: string | null;
+  evaluationType: string;
+  evaluatorId: string | null;
+  evaluatorName: string | null;
+  rejectionReason: string | null;
+  result: "approved" | "rejected";
+  attemptNumber: number;
+};
+
+export type PolicePromotionEvaluationHistoryPageDto = {
+  records: PolicePromotionEvaluationHistoryDto[];
+  total: number;
 };
 
 export type SavePolicePromotionSettingsInput = Partial<Pick<
@@ -166,6 +186,7 @@ export async function createPolicePromotionRequest(botId: string, input: CreateP
     createdAt: now,
     currentRank: answerValue(answers, "current_rank") || "Não informado",
     evaluationEndedAt: null,
+    evaluationAttemptNumber: null,
     evaluationNotes: null,
     evaluationResult: null,
     evaluationStartedAt: null,
@@ -229,8 +250,10 @@ export async function finishPolicePromotionEvaluation(botId: string, requestId: 
   const current = await getPolicePromotionRequest(botId, requestId);
   if (current.status !== "in_evaluation") throw Object.assign(new Error("Esta avaliação já foi enviada ou encerrada."), { statusCode: 409 });
   if (current.evaluatorId !== input.evaluatorId) throw Object.assign(new Error("Esta avaliação pertence a outro avaliador."), { statusCode: 403 });
+  const evaluationAttemptNumber = await nextPolicePromotionAttemptNumber(botId, current.guildId, current.requesterId, current.createdAt);
   return updateRequest(botId, requestId, {
     evaluationEndedAt: new Date(),
+    evaluationAttemptNumber,
     evaluationNotes: normalizeText(input.evaluationNotes, 6000),
     evaluationResult: input.evaluationResult,
     status: "pending_approval"
@@ -283,6 +306,31 @@ export async function listPolicePromotionRequests(botId: string, guildId: string
   return (await policePromotionRequests.find({ botId, guildId }).sort({ createdAt: -1 }).limit(Math.min(Math.max(limit, 1), 200)).toArray()).map(requestDto);
 }
 
+export async function listPolicePromotionEvaluationHistory(botId: string, guildId: string, input: { cadetId?: string | null; limit?: number; page?: number }): Promise<PolicePromotionEvaluationHistoryPageDto> {
+  const { policePromotionRequests } = await getMongoCollections();
+  const limit = Math.min(Math.max(Math.round(input.limit ?? 5), 1), 10);
+  const page = Math.max(Math.round(input.page ?? 0), 0);
+  const query: Filter<MongoPolicePromotionRequest> = {
+    botId,
+    guildId,
+    evaluationEndedAt: { $ne: null },
+    evaluationResult: { $in: ["approved", "rejected"] },
+    ...(input.cadetId ? { requesterId: input.cadetId } : {})
+  };
+  const [rows, total, attemptRows] = await Promise.all([
+    policePromotionRequests.find(query).sort({ evaluationEndedAt: -1, createdAt: -1 }).skip(page * limit).limit(limit).toArray(),
+    policePromotionRequests.countDocuments(query),
+    policePromotionRequests.find({ botId, guildId, evaluationEndedAt: { $ne: null }, evaluationResult: { $in: ["approved", "rejected"] } })
+      .project<{ _id: string; requesterId: string }>({ _id: 1, requesterId: 1 })
+      .sort({ createdAt: 1, evaluationEndedAt: 1 })
+      .toArray()
+  ]);
+  return {
+    records: rows.map((row) => evaluationHistoryDto(row, attemptNumberFor(row, attemptRows))),
+    total
+  };
+}
+
 export async function createPolicePromotionLog(botId: string, guildId: string, input: { action: string; actorId?: string | null; actorName?: string | null; metadata?: Record<string, unknown>; requestId?: string | null }) {
   const { policePromotionLogs } = await getMongoCollections();
   const row = {
@@ -325,6 +373,43 @@ async function listPolicePromotionLogs(botId: string, guildId: string, limit = 5
     id: log._id,
     requestId: log.requestId
   }));
+}
+
+async function nextPolicePromotionAttemptNumber(botId: string, guildId: string, requesterId: string, createdAt: string) {
+  const { policePromotionRequests } = await getMongoCollections();
+  return (await policePromotionRequests.countDocuments({
+    botId,
+    createdAt: { $lte: new Date(createdAt) },
+    evaluationEndedAt: { $ne: null },
+    guildId,
+    requesterId
+  })) + 1;
+}
+
+function evaluationHistoryDto(row: MongoPolicePromotionRequest, fallbackAttemptNumber: number): PolicePromotionEvaluationHistoryDto {
+  return {
+    cadetId: row.requesterId,
+    cadetName: row.requesterName,
+    evaluatedAt: (row.evaluationEndedAt ?? row.updatedAt).toISOString(),
+    evaluationId: row._id,
+    evaluationNotes: row.evaluationNotes,
+    evaluationType: "Dia de Princesa",
+    evaluatorId: row.evaluatorId,
+    evaluatorName: row.evaluatorName,
+    rejectionReason: row.evaluationResult === "rejected" ? row.approvalReason : null,
+    result: row.evaluationResult ?? "rejected",
+    attemptNumber: row.evaluationAttemptNumber ?? fallbackAttemptNumber
+  };
+}
+
+function attemptNumberFor(row: MongoPolicePromotionRequest, orderedRows: Array<{ _id: string; requesterId: string }>) {
+  let attempt = 0;
+  for (const item of orderedRows) {
+    if (item.requesterId !== row.requesterId) continue;
+    attempt += 1;
+    if (item._id === row._id) return attempt;
+  }
+  return row.evaluationAttemptNumber ?? 1;
 }
 
 function defaultSettings(botId: string, guildId: string): MongoPolicePromotionSettings {
