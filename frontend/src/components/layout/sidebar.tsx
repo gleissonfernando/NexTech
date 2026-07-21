@@ -359,7 +359,7 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-20 flex-col border-r border-zinc-900 bg-[#070708] px-3 py-4 shadow-[24px_0_80px_rgba(0,0,0,0.58)] transition duration-300 lg:z-30 lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-16 flex-col border-r border-zinc-900 bg-[#070708] px-2 py-4 shadow-[24px_0_80px_rgba(0,0,0,0.58)] transition duration-300 lg:z-30 lg:w-20 lg:translate-x-0 lg:px-3",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
@@ -492,8 +492,8 @@ function BotManagementSidebar({
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-20 z-40 flex w-80 flex-col border-r border-[#FFD500]/20 bg-[#0b0b0b]/95 px-4 py-4 shadow-[24px_0_80px_rgba(0,0,0,0.45)] backdrop-blur-xl transition duration-300 lg:z-30",
-        isMainOpen ? "translate-x-0" : "-translate-x-[26rem] lg:translate-x-0"
+          "fixed inset-y-0 left-16 z-40 flex w-[calc(100vw-4rem)] max-w-80 flex-col border-r border-[#FFD500]/20 bg-[#0b0b0b]/95 px-3 py-4 shadow-[24px_0_80px_rgba(0,0,0,0.45)] backdrop-blur-xl transition duration-300 sm:px-4 lg:left-20 lg:z-30 lg:w-80",
+        isMainOpen ? "translate-x-0" : "-translate-x-[100vw] lg:translate-x-0"
       )}
     >
       <div className="mb-4 flex items-start justify-between gap-3">

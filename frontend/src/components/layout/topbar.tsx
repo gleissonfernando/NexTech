@@ -37,10 +37,10 @@ export function Topbar({ dashboardUser, user, guilds, selectedGuildId, onOpenMen
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex w-full min-w-0 items-center gap-3 md:w-auto">
           {guilds.length > 1 ? (
             <select
-              className="h-10 max-w-[46vw] rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition duration-300 focus:border-[#FFD500]/60 md:max-w-64"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition duration-300 focus:border-[#FFD500]/60 md:max-w-64"
               onChange={(event) => onSelectGuild(event.target.value)}
               value={selectedGuildId ?? ""}
             >
@@ -51,7 +51,7 @@ export function Topbar({ dashboardUser, user, guilds, selectedGuildId, onOpenMen
               ))}
             </select>
           ) : (
-            <div className="hidden h-10 max-w-[46vw] items-center rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 md:flex md:max-w-64">
+            <div className="hidden h-10 min-w-0 max-w-full items-center rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm font-medium text-zinc-100 md:flex md:max-w-64">
               <span className="truncate">{guilds[0]?.name ?? "Servidor configurado"}</span>
             </div>
           )}

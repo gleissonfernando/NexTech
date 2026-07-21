@@ -1158,7 +1158,7 @@ export function DevPanel({
 
   if (activeDashboardSection === "bot-menu") {
     return (
-      <div className="space-y-7">
+      <div className="min-w-0 space-y-7">
         <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
         {message ? (
           <div className="rounded-lg border border-[#FFEA70]/20 bg-[#FFD500]/[0.07] px-3 py-2 text-sm font-medium text-[#FFEA70] shadow-[0_0_18px_rgba(255,213,0,0.08)]">
@@ -1187,7 +1187,7 @@ export function DevPanel({
 
   if (activeDashboardSection === "cloning") {
     return (
-      <div className="space-y-7">
+      <div className="min-w-0 space-y-7">
         <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
         {message ? (
           <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
@@ -1214,7 +1214,7 @@ export function DevPanel({
 
   if (activeDashboardSection === "sales") {
     return (
-      <div className="space-y-7">
+      <div className="min-w-0 space-y-7">
         <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
         {message ? (
           <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(255,213,0,0.12)]">
@@ -1244,7 +1244,7 @@ export function DevPanel({
   }
 
   return (
-    <div className="space-y-7">
+    <div className="min-w-0 space-y-7">
       <BotGlobalSelect bots={bots} selectedBotId={selectedBotId} onSelectBot={handleSelectBotId} />
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1265,14 +1265,14 @@ export function DevPanel({
         </div>
       ) : null}
 
-      <section className="grid items-stretch gap-6 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.05fr)]">
+      <section className="grid min-w-0 items-stretch gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-6">
         <Card className="flex h-full flex-col border-[#FFD500]/25 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(7,7,10,0.96))] shadow-[0_0_42px_rgba(255,213,0,0.10)] backdrop-blur-xl hover:translate-y-0">
           <CardHeader className="border-b border-[#FFD500]/15 p-5 sm:p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#E5C000] text-white shadow-[0_12px_30px_rgba(255,213,0,0.34)]">
                 <Bot className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="text-white">Conectar Bot</CardTitle>
                 <CardDescription className="font-medium text-zinc-300">Token e servidor. O Discord fornece o restante.</CardDescription>
               </div>
@@ -1406,7 +1406,7 @@ export function DevPanel({
                             <span className="block truncate font-mono text-[11px] text-zinc-400">{bot.clientId}</span>
                           </span>
                         </button>
-                        <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+                        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center sm:self-center">
                           <Button
                             disabled={poweringBotId === bot.id}
                             onClick={() => void handlePower(bot)}
@@ -1484,8 +1484,9 @@ function BulkBotPowerPanel({
             {onlineCount} online, {offlineCount} offline, {total} no total.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button
+            className="w-full sm:w-auto"
             disabled={disabled || action !== null}
             onClick={onStartAll}
             size="sm"
@@ -1496,6 +1497,7 @@ function BulkBotPowerPanel({
             Ligar todos
           </Button>
           <Button
+            className="w-full sm:w-auto"
             disabled={disabled || action !== null}
             onClick={onStopAll}
             size="sm"
@@ -1628,7 +1630,7 @@ function ConnectedBotPanel({
   }
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col overflow-hidden border-[#FFD500]/25 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(7,7,10,0.96))] shadow-[0_0_44px_rgba(255,213,0,0.10)] backdrop-blur-xl hover:translate-y-0">
+    <Card className="flex h-full min-h-[360px] min-w-0 flex-col overflow-hidden border-[#FFD500]/25 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(7,7,10,0.96))] shadow-[0_0_44px_rgba(255,213,0,0.10)] backdrop-blur-xl hover:translate-y-0 sm:min-h-[420px]">
       <div className="h-20 shrink-0 border-b border-[#FFD500]/25 bg-[linear-gradient(135deg,rgba(255,213,0,0.36),rgba(16,185,129,0.08),rgba(9,9,11,0.15))]" />
       <CardContent className="-mt-8 flex flex-1 flex-col gap-5 p-5 pt-0 sm:p-6 sm:pt-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1715,12 +1717,12 @@ function ConnectedBotPanel({
                 URL copiada com sucesso.
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button onClick={() => void handleCopyDashboardUrl()} size="sm" variant="outline">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap">
+              <Button className="w-full sm:w-auto" onClick={() => void handleCopyDashboardUrl()} size="sm" variant="outline">
                 {copiedDashboardUrl ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                 Copiar URL
               </Button>
-              <Button onClick={handleOpenDashboardUrl} size="sm" variant="outline">
+              <Button className="w-full sm:w-auto" onClick={handleOpenDashboardUrl} size="sm" variant="outline">
                 <ExternalLink className="h-4 w-4" />
                 Abrir Dashboard
               </Button>
@@ -1728,16 +1730,16 @@ function ConnectedBotPanel({
           </div>
         </div>
 
-        <div className="mt-auto flex flex-wrap gap-2 border-t border-[#FFD500]/15 pt-4">
-          <Button onClick={onOpenDashboard} size="sm">
+        <div className="mt-auto grid grid-cols-2 gap-2 border-t border-[#FFD500]/15 pt-4 sm:flex sm:flex-wrap">
+          <Button className="w-full sm:w-auto" onClick={onOpenDashboard} size="sm">
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
           </Button>
-          <Button onClick={onOpenSettings} size="sm" variant="outline">
+          <Button className="w-full sm:w-auto" onClick={onOpenSettings} size="sm" variant="outline">
             <Settings className="h-4 w-4" />
             Configurações
           </Button>
-          <Button onClick={onOpenLogs} size="sm" variant="outline">
+          <Button className="w-full sm:w-auto" onClick={onOpenLogs} size="sm" variant="outline">
             <ScrollText className="h-4 w-4" />
             Logs
           </Button>
@@ -2208,7 +2210,7 @@ function BotModuleWorkspace({
   return (
     <Card className="overflow-hidden border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(18,18,22,0.94),rgba(7,7,10,0.98))] shadow-[0_0_54px_rgba(255,213,0,0.12)] hover:translate-y-0" id="dev-bot-module-settings">
       <CardHeader className="border-b border-[#FFD500]/15 p-5 sm:p-6">
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] xl:items-start">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)] xl:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">Bot Menu</Badge>
@@ -2251,7 +2253,7 @@ function BotModuleWorkspace({
           ]}
         />
 
-        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)] xl:gap-6">
           <aside className="min-w-0 self-start rounded-lg border border-[#FFD500]/15 bg-black/35 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur xl:sticky xl:top-4">
             <div className="mb-3 flex items-center gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/55 p-3">
               <Avatar className="h-10 w-10 rounded-lg border border-[#FFD500]/25" fallback={bot.name} src={bot.avatarUrl} />
@@ -2495,7 +2497,7 @@ function PoliceServerReleasePanel({ bot, guilds }: { bot: DevBot; guilds: Dashbo
             DAF e Mensagem só aparecem e funcionam no servidor marcado aqui.
           </p>
         </div>
-        <label className="block min-w-[240px] text-xs font-semibold text-zinc-400">
+        <label className="block text-xs font-semibold text-zinc-400 sm:min-w-[240px]">
           Servidor
           <select
             className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black/50 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]"
@@ -3779,7 +3781,7 @@ function NexTechSalesWorkspace({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <Card className="border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(8,8,12,0.96))] shadow-[0_0_44px_rgba(255,213,0,0.10)] hover:translate-y-0">
         <CardHeader className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -3792,23 +3794,23 @@ function NexTechSalesWorkspace({
                 Central de produtos, tickets de compra, pagamentos, fila e histórico para qualquer bot da NextTech.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <select
-                className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none"
+                className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none sm:w-auto"
                 onChange={(event) => setGuildId(event.target.value)}
                 value={guildId}
               >
                 {guildOptions.map((guild) => <option key={guild.id} value={guild.id}>{guild.name}</option>)}
               </select>
-              <Button onClick={() => onToggleSales(!enabled)} variant={enabled ? "outline" : "default"}>
+              <Button className="w-full sm:w-auto" onClick={() => onToggleSales(!enabled)} variant={enabled ? "outline" : "default"}>
                 <Power className="h-4 w-4" />
                 {enabled ? "Desativar vendas" : "Liberar vendas"}
               </Button>
-              <Button onClick={() => onTogglePaymentGateway(!paymentGatewayEnabled)} variant={paymentGatewayEnabled ? "outline" : "default"}>
+              <Button className="w-full sm:w-auto" onClick={() => onTogglePaymentGateway(!paymentGatewayEnabled)} variant={paymentGatewayEnabled ? "outline" : "default"}>
                 <CreditCard className="h-4 w-4" />
                 {paymentGatewayEnabled ? "Desativar Mercado Pago" : "Liberar Mercado Pago"}
               </Button>
-              <Button onClick={() => onToggleManualPayments(!manualPaymentsEnabled)} variant="outline">
+              <Button className="w-full sm:w-auto" onClick={() => onToggleManualPayments(!manualPaymentsEnabled)} variant="outline">
                 <CreditCard className="h-4 w-4" />
                 {manualPaymentsEnabled ? "Desativar manual" : "Liberar manual"}
               </Button>
@@ -3915,7 +3917,7 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0">
               <CardHeader>
                 <CardTitle className="text-white">Pagamento Automático | Mercado Pago</CardTitle>
@@ -4013,7 +4015,7 @@ function NexTechSalesWorkspace({
               <CardTitle className="text-white">Cadastro de Produtos</CardTitle>
               <CardDescription>Paginas de venda com banner, planos mensal/vitalicio, benefícios e checkout vinculado ao gateway da loja.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
+            <CardContent className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.75fr)]">
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DevInput label="Nome do produto" onChange={(value) => setProductForm((current) => ({ ...current, name: value }))} value={productForm.name} />

@@ -84,6 +84,22 @@ type FiveMModuleView = FivemModuleDefinition & {
 
 const MAINTENANCE_GIF_URL = "/maintenance/nft-coding.gif";
 
+const DEV_NAV_ITEMS: Array<{ icon: LucideIcon; id: DevView; label: string }> = [
+  { icon: LayoutDashboard, id: "bots", label: "Dashboard" },
+  { icon: Boxes, id: "connected", label: "Bots conectados" },
+  { icon: Settings, id: "bot-menu", label: "Menu do Bot" },
+  { icon: Copy, id: "cloning", label: "Clonagem" },
+  { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
+  { icon: PackagePlus, id: "plans", label: "Planos" },
+  { icon: Activity, id: "monitoring", label: "Monitoramento" },
+  { icon: HardDrive, id: "discloud", label: "DisCloud" },
+  { icon: Building2, id: "fivem", label: "FiveM" },
+  { icon: ShieldCheck, id: "police", label: "Polícia" },
+  { icon: ScrollText, id: "logs", label: "Logs" },
+  { icon: UserCog, id: "access", label: "Acessos DEV" },
+  { icon: Wrench, id: "maintenance", label: "Manutenção" }
+];
+
 export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashboardProps) {
   const [profile, setProfile] = useState<DashboardMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,13 +223,18 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,213,0,0.14),transparent_34%),linear-gradient(180deg,#050506,#08080b_48%,#050505)] text-white lg:pl-72">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,213,0,0.14),transparent_34%),linear-gradient(180deg,#050506,#08080b_48%,#050505)] text-white lg:pl-72">
+      <DevMobileHeader
+        activeView={activeView}
+        onChangeView={handleChangeView}
+        onLogout={onLogout}
+      />
       <DevSidebar
         activeView={activeView}
         onChangeView={handleChangeView}
       />
 
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
+      <div className="mx-auto grid min-w-0 w-full max-w-7xl gap-5 px-3 pb-6 pt-4 sm:px-4 sm:py-6 lg:gap-6 lg:px-8">
         {!isBotManagerView(activeView) ? <DevUserCard user={auth.user} canViewDev={profile.canViewDev} /> : null}
 
         {isBotManagerView(activeView) ? (
@@ -330,22 +351,6 @@ function DevSidebar({
   activeView: DevView;
   onChangeView: (view: DevView) => void;
 }) {
-  const items: Array<{ icon: LucideIcon; id: DevView; label: string }> = [
-    { icon: LayoutDashboard, id: "bots", label: "Dashboard" },
-    { icon: Boxes, id: "connected", label: "Bots conectados" },
-    { icon: Settings, id: "bot-menu", label: "Menu do Bot" },
-    { icon: Copy, id: "cloning", label: "Clonagem" },
-    { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
-    { icon: PackagePlus, id: "plans", label: "Planos" },
-    { icon: Activity, id: "monitoring", label: "Monitoramento" },
-    { icon: HardDrive, id: "discloud", label: "DisCloud" },
-    { icon: Building2, id: "fivem", label: "FiveM" },
-    { icon: ShieldCheck, id: "police", label: "Polícia" },
-    { icon: ScrollText, id: "logs", label: "Logs" },
-    { icon: UserCog, id: "access", label: "Acessos DEV" },
-    { icon: Wrench, id: "maintenance", label: "Manutenção" }
-  ];
-
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-[#FFD500]/15 bg-[#08080b]/96 px-4 py-4 shadow-[22px_0_70px_rgba(0,0,0,0.48)] backdrop-blur-xl lg:flex">
       <div className="mb-5 flex h-12 items-center gap-3">
@@ -357,8 +362,8 @@ function DevSidebar({
           <p className="truncate text-xs font-medium text-zinc-300">Menu principal</p>
         </div>
       </div>
-      <nav className="space-y-1">
-        {items.map((item) => (
+      <nav className="discord-scrollbar flex-1 space-y-1 overflow-y-auto pb-2">
+        {DEV_NAV_ITEMS.map((item) => (
           <div key={item.id}>
             <button
               className={[
@@ -378,6 +383,45 @@ function DevSidebar({
         ))}
       </nav>
     </aside>
+  );
+}
+
+function DevMobileHeader({
+  activeView,
+  onChangeView,
+  onLogout
+}: {
+  activeView: DevView;
+  onChangeView: (view: DevView) => void;
+  onLogout: () => void;
+}) {
+  const activeItem = DEV_NAV_ITEMS.find((item) => item.id === activeView) ?? DEV_NAV_ITEMS[0]!;
+
+  return (
+    <header className="sticky top-0 z-30 border-b border-[#FFD500]/15 bg-[#07070a]/95 px-3 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.36)] backdrop-blur-xl lg:hidden">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#FFEA70]/35 bg-[#FFD500]/15 text-[#FFEA70]">
+          <Code2 className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-white">Painel DEV</p>
+          <p className="truncate text-xs font-medium text-zinc-400">{activeItem.label}</p>
+        </div>
+        <Button aria-label="Sair" className="h-10 w-10 shrink-0 p-0" onClick={onLogout} type="button" variant="outline">
+          <PowerOff className="h-4 w-4" />
+        </Button>
+      </div>
+      <select
+        aria-label="Selecionar seção DEV"
+        className="mt-3 h-11 w-full rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none transition focus:border-[#FFEA70]/60"
+        onChange={(event) => onChangeView(event.target.value as DevView)}
+        value={activeView}
+      >
+        {DEV_NAV_ITEMS.map((item) => (
+          <option key={item.id} value={item.id}>{item.label}</option>
+        ))}
+      </select>
+    </header>
   );
 }
 
@@ -524,18 +568,18 @@ function RealtimeSystemMonitoringPanel() {
     .reduce((total, route) => total + route.requests, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-white">Monitoramento em tempo real</h2>
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">Monitoramento em tempo real</h2>
           <p className="mt-1 text-sm text-zinc-400">Sistema, bot, banco, filas e rotas atualizados a cada 1 segundo.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setPaused((current) => !current)} variant="outline">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button className="w-full sm:w-auto" onClick={() => setPaused((current) => !current)} variant="outline">
             {paused ? <Play className="h-4 w-4" /> : <Square className="h-4 w-4" />}
             {paused ? "Retomar" : "Pausar"}
           </Button>
-          <Button disabled={loading} onClick={() => setRefreshNow((current) => current + 1)} variant="outline">
+          <Button className="w-full sm:w-auto" disabled={loading} onClick={() => setRefreshNow((current) => current + 1)} variant="outline">
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             Atualizar
           </Button>
@@ -850,13 +894,13 @@ function DiscloudMonitoringPanel() {
     .join("\n");
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-white">Monitoramento da DisCloud</h2>
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">Monitoramento da DisCloud</h2>
           <p className="mt-1 text-sm text-zinc-400">Status, recursos, logs e controles das aplicacoes hospedadas.</p>
         </div>
-        <Button disabled={loading} onClick={() => void getDiscloudMonitoring(true).then(setData)} variant="outline">
+        <Button className="w-full sm:w-auto" disabled={loading} onClick={() => void getDiscloudMonitoring(true).then(setData)} variant="outline">
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           Atualizar
         </Button>
@@ -893,7 +937,7 @@ function DiscloudMonitoringPanel() {
         )}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
         <Card className="border-zinc-800/80 bg-zinc-950/80">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ScrollText className="h-5 w-5" />Logs</CardTitle>
@@ -901,11 +945,11 @@ function DiscloudMonitoringPanel() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none" onChange={(event) => setLogsQuery(event.target.value)} placeholder="Buscar nos logs" value={logsQuery} />
-              <Button disabled={!selectedBot || busyAction?.startsWith("logs:")} onClick={() => void loadLogs()} variant="outline"><RefreshCw className="h-4 w-4" />Logs</Button>
-              <Button disabled={!filteredLogs} onClick={() => downloadText("discloud-logs.txt", filteredLogs)} variant="outline"><Download className="h-4 w-4" />Baixar</Button>
+              <input className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none" onChange={(event) => setLogsQuery(event.target.value)} placeholder="Buscar nos logs" value={logsQuery} />
+              <Button className="w-full sm:w-auto" disabled={!selectedBot || busyAction?.startsWith("logs:")} onClick={() => void loadLogs()} variant="outline"><RefreshCw className="h-4 w-4" />Logs</Button>
+              <Button className="w-full sm:w-auto" disabled={!filteredLogs} onClick={() => downloadText("discloud-logs.txt", filteredLogs)} variant="outline"><Download className="h-4 w-4" />Baixar</Button>
             </div>
-            <pre className="max-h-[420px] min-h-[260px] overflow-auto rounded-lg border border-zinc-900 bg-black p-4 font-mono text-xs leading-5 text-emerald-100">{filteredLogs || "Sem logs carregados."}</pre>
+            <pre className="max-h-[420px] min-h-[220px] max-w-full overflow-auto rounded-lg border border-zinc-900 bg-black p-3 font-mono text-[11px] leading-5 text-emerald-100 sm:min-h-[260px] sm:p-4 sm:text-xs">{filteredLogs || "Sem logs carregados."}</pre>
             <div className="flex flex-wrap gap-2">
               <Button disabled={!filteredLogs} onClick={() => void navigator.clipboard?.writeText(filteredLogs)} size="sm" variant="outline"><Copy className="h-4 w-4" />Copiar</Button>
               <Button disabled={!logs} onClick={() => setLogs(null)} size="sm" variant="outline">Limpar tela</Button>
@@ -978,12 +1022,12 @@ function DiscloudBotCard({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={Boolean(busyAction)} onClick={() => onAction(bot, "start")} size="sm"><Play className="h-4 w-4" />Iniciar</Button>
-          <Button disabled={Boolean(busyAction)} onClick={() => onAction(bot, "stop")} size="sm" variant="outline"><Square className="h-4 w-4" />Parar</Button>
-          <Button disabled={Boolean(busyAction)} onClick={() => onAction(bot, "restart")} size="sm" variant="outline"><RefreshCw className="h-4 w-4" />Reiniciar</Button>
-          <Button disabled={Boolean(busyAction)} onClick={() => onAction(bot, "redeploy")} size="sm" variant="outline">Redeploy</Button>
-          <Button disabled={Boolean(busyAction)} onClick={() => { onSelect(bot.botId); onLogs(bot.botId); }} size="sm" variant="outline"><ScrollText className="h-4 w-4" />Logs</Button>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button className="w-full sm:w-auto" disabled={Boolean(busyAction)} onClick={() => onAction(bot, "start")} size="sm"><Play className="h-4 w-4" />Iniciar</Button>
+          <Button className="w-full sm:w-auto" disabled={Boolean(busyAction)} onClick={() => onAction(bot, "stop")} size="sm" variant="outline"><Square className="h-4 w-4" />Parar</Button>
+          <Button className="w-full sm:w-auto" disabled={Boolean(busyAction)} onClick={() => onAction(bot, "restart")} size="sm" variant="outline"><RefreshCw className="h-4 w-4" />Reiniciar</Button>
+          <Button className="w-full sm:w-auto" disabled={Boolean(busyAction)} onClick={() => onAction(bot, "redeploy")} size="sm" variant="outline">Redeploy</Button>
+          <Button className="w-full sm:w-auto" disabled={Boolean(busyAction)} onClick={() => { onSelect(bot.botId); onLogs(bot.botId); }} size="sm" variant="outline"><ScrollText className="h-4 w-4" />Logs</Button>
         </div>
       </CardContent>
     </Card>
@@ -1130,13 +1174,13 @@ function DevAccessPanel() {
 
         <form className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]" onSubmit={(event) => void handleSubmit(event)}>
           <input
-            className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-[#FFEA70]"
+            className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-[#FFEA70]"
             onChange={(event) => setUserId(event.target.value)}
             placeholder="Discord ID do usuário"
             value={userId}
           />
           <select
-            className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-[#FFEA70]"
+            className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-[#FFEA70]"
             onChange={(event) => setRole(event.target.value as DevAccessRole)}
             value={role}
           >
@@ -1144,7 +1188,7 @@ function DevAccessPanel() {
             <option value="admin">Admin</option>
             <option value="owner">Owner</option>
           </select>
-          <Button disabled={saving} type="submit">
+          <Button className="w-full md:w-auto" disabled={saving} type="submit">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Salvar
           </Button>
@@ -1278,7 +1322,7 @@ function MaintenancePanel() {
   const elapsed = active && since ? formatDuration(Math.max(0, now - since)) : "00:00:00";
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <Card className="overflow-hidden border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(8,8,12,0.96))] shadow-[0_0_48px_rgba(255,213,0,0.12)] hover:translate-y-0">
         <CardHeader className="border-b border-[#FFD500]/15 p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1544,14 +1588,14 @@ function DevSalesManager({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-white">Sistema de Vendas Manager</h2>
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">Sistema de Vendas Manager</h2>
           <p className="mt-1 text-sm text-zinc-500">Libere vendas, Mercado Pago e pagamentos por bot, separados igual aos módulos FiveM.</p>
         </div>
         <select
-          className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+          className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none sm:w-auto"
           onChange={(event) => onSelectBot(event.target.value || null)}
           value={selectedBot?.id ?? ""}
         >
@@ -1830,21 +1874,21 @@ function DevFiveMManager({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-white">{copy.title}</h2>
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">{copy.title}</h2>
           <p className="mt-1 text-sm text-zinc-500">{copy.description}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <select
-            className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+            className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none sm:w-auto"
             onChange={(event) => onSelectBot(event.target.value || null)}
             value={selectedBot?.id ?? ""}
           >
             {botList.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
           </select>
-          <Button onClick={handleCreateModule}>
+          <Button className="w-full sm:w-auto" onClick={handleCreateModule}>
             <Plus className="h-4 w-4" />
             Novo módulo
           </Button>

@@ -41,7 +41,7 @@ export function DashboardLayout({
   const [secondaryCollapsed, setSecondaryCollapsed] = useState(false);
 
   return (
-    <div className={secondaryCollapsed ? "min-h-screen bg-[#050505] lg:pl-20" : "min-h-screen bg-[#050505] lg:pl-[25rem]"}>
+    <div className={secondaryCollapsed ? "min-h-screen overflow-x-hidden bg-[#050505] lg:pl-20" : "min-h-screen overflow-x-hidden bg-[#050505] lg:pl-[25rem]"}>
       <Sidebar
         activeView={activeView}
         bots={bots}
@@ -64,7 +64,7 @@ export function DashboardLayout({
         dashboardUser={dashboardUser}
         user={user}
       />
-      <main className="mx-auto w-full max-w-[92rem] px-4 py-5 sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto min-w-0 w-full max-w-[92rem] px-3 py-4 sm:px-6 sm:py-5 lg:px-8">{children}</main>
     </div>
   );
 }
