@@ -3455,7 +3455,10 @@ export type ZtkWebhookDashboard = {
   logs: ZtkWebhookLog[];
   recruitmentRankings: {
     recruiters: Array<{
+      avatarUrl: string | null;
+      firstRecruitmentAt: string | null;
       lastRecruitmentAt: string | null;
+      monthlyRecruitments: number;
       normalizedRecruiterName: string;
       recentRecruits: Array<{
         recruitedName: string;
@@ -3464,8 +3467,21 @@ export type ZtkWebhookDashboard = {
       }>;
       recruiterId: string | null;
       recruiterName: string;
+      roleName: string | null;
+      todayRecruitments: number;
       totalRecruitments: number;
+      weeklyRecruitments: number;
     }>;
+    stats: {
+      dailySeries: Array<{ date: string; total: number }>;
+      lastRecruitmentAt: string | null;
+      lastRecruiterName: string | null;
+      monthTotal: number;
+      todayTotal: number;
+      topRecruiterName: string | null;
+      total: number;
+      weekTotal: number;
+    };
   };
   rankings: Record<ZtkRankingType, ZtkPlayerStat[]>;
   rewards: ZtkReward[];

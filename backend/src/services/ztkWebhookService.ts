@@ -81,6 +81,8 @@ export type ZtkDominationRankingsDto = {
 };
 
 export type ZtkRecruitmentRankingDto = {
+  avatarUrl: string | null;
+  firstRecruitmentAt: string | null;
   lastRecruitmentAt: string | null;
   normalizedRecruiterName: string;
   recentRecruits: Array<{
@@ -90,11 +92,25 @@ export type ZtkRecruitmentRankingDto = {
   }>;
   recruiterId: string | null;
   recruiterName: string;
+  roleName: string | null;
+  todayRecruitments: number;
   totalRecruitments: number;
+  weeklyRecruitments: number;
+  monthlyRecruitments: number;
 };
 
 export type ZtkRecruitmentRankingsDto = {
   recruiters: ZtkRecruitmentRankingDto[];
+  stats: {
+    dailySeries: Array<{ date: string; total: number }>;
+    lastRecruitmentAt: string | null;
+    lastRecruiterName: string | null;
+    monthTotal: number;
+    todayTotal: number;
+    topRecruiterName: string | null;
+    total: number;
+    weekTotal: number;
+  };
 };
 
 export type ZtkClanDto = Omit<MongoZtkWebhookClan, "_id" | "createdAt" | "lastEventAt" | "updatedAt" | "webhookCreatedAt"> & {
@@ -160,7 +176,7 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
     : emptyDominationRankings();
   const recruitmentRankings = selectedClanId
     ? await buildRecruitmentRankings(ztkWebhookLogs, resolvedBotId, guildId, selectedClanId)
-    : { recruiters: [] };
+    : emptyRecruitmentRankings();
 
   return {
     clans: clans.map(toClanDto),
@@ -669,6 +685,22 @@ function emptyDominationRankings(): ZtkDominationRankingsDto {
   };
 }
 
+function emptyRecruitmentRankings(): ZtkRecruitmentRankingsDto {
+  return {
+    recruiters: [],
+    stats: {
+      dailySeries: [],
+      lastRecruitmentAt: null,
+      lastRecruiterName: null,
+      monthTotal: 0,
+      todayTotal: 0,
+      topRecruiterName: null,
+      total: 0,
+      weekTotal: 0
+    }
+  };
+}
+
 function startOfDay(value: Date) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -836,8 +868,16 @@ async function buildRecruitmentRankings(
   guildId: string,
   clanId: string
 ): Promise<ZtkRecruitmentRankingsDto> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const weekStart = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
   const recruiters = await collection.aggregate<{
+    avatarUrl: string | null;
+    firstRecruitmentAt: Date | null;
     lastRecruitmentAt: Date | null;
+    monthlyRecruitments: number;
     normalizedRecruiterName: string;
     recentRecruits: Array<{
       recruitedName: string;
@@ -846,14 +886,20 @@ async function buildRecruitmentRankings(
     }>;
     recruiterId: string | null;
     recruiterName: string;
+    roleName: string | null;
+    todayRecruitments: number;
     totalRecruitments: number;
+    weeklyRecruitments: number;
   }>([
     { $match: { botId, clanId, eventType: "recruitment", guildId, recruiterName: { $type: "string", $ne: "" } } },
     { $sort: { eventTimestamp: -1, _id: -1 } },
     {
       $group: {
         _id: { $ifNull: ["$recruiterId", { $toLower: "$recruiterName" }] },
+        avatarUrl: { $first: null },
+        firstRecruitmentAt: { $last: "$eventTimestamp" },
         lastRecruitmentAt: { $first: "$eventTimestamp" },
+        monthlyRecruitments: { $sum: { $cond: [{ $gte: ["$eventTimestamp", monthStart] }, 1, 0] } },
         recentRecruits: {
           $push: {
             recruitedAt: "$eventTimestamp",
@@ -863,34 +909,91 @@ async function buildRecruitmentRankings(
         },
         recruiterId: { $first: "$recruiterId" },
         recruiterName: { $first: "$recruiterName" },
-        totalRecruitments: { $sum: 1 }
+        roleName: { $first: null },
+        todayRecruitments: { $sum: { $cond: [{ $gte: ["$eventTimestamp", todayStart] }, 1, 0] } },
+        totalRecruitments: { $sum: 1 },
+        weeklyRecruitments: { $sum: { $cond: [{ $gte: ["$eventTimestamp", weekStart] }, 1, 0] } }
       }
     },
     {
       $project: {
         _id: 0,
+        avatarUrl: 1,
+        firstRecruitmentAt: 1,
         lastRecruitmentAt: 1,
+        monthlyRecruitments: 1,
         normalizedRecruiterName: "$_id",
-        recentRecruits: { $slice: ["$recentRecruits", 5] },
+        recentRecruits: { $slice: ["$recentRecruits", 50] },
         recruiterId: 1,
         recruiterName: 1,
-        totalRecruitments: 1
+        roleName: 1,
+        todayRecruitments: 1,
+        totalRecruitments: 1,
+        weeklyRecruitments: 1
       }
     },
     { $sort: { totalRecruitments: -1, lastRecruitmentAt: -1, recruiterName: 1 } },
     { $limit: ZTK_RANKING_LIMIT }
   ]).toArray();
 
+  const [statsDoc] = await collection.aggregate<{
+    lastRecruitmentAt: Date | null;
+    lastRecruiterName: string | null;
+    monthTotal: number;
+    todayTotal: number;
+    total: number;
+    weekTotal: number;
+  }>([
+    { $match: { botId, clanId, eventType: "recruitment", guildId } },
+    { $sort: { eventTimestamp: -1, _id: -1 } },
+    {
+      $group: {
+        _id: null,
+        lastRecruitmentAt: { $first: "$eventTimestamp" },
+        lastRecruiterName: { $first: "$recruiterName" },
+        monthTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", monthStart] }, 1, 0] } },
+        todayTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", todayStart] }, 1, 0] } },
+        total: { $sum: 1 },
+        weekTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", weekStart] }, 1, 0] } }
+      }
+    }
+  ]).toArray();
+  const dailySeries = await collection.aggregate<{ date: string; total: number }>([
+    { $match: { botId, clanId, eventType: "recruitment", eventTimestamp: { $gte: seriesStart }, guildId } },
+    {
+      $group: {
+        _id: { $dateToString: { date: "$eventTimestamp", format: "%Y-%m-%d", timezone: "America/Sao_Paulo" } },
+        total: { $sum: 1 }
+      }
+    },
+    { $project: { _id: 0, date: "$_id", total: 1 } },
+    { $sort: { date: 1 } }
+  ]).toArray();
+  const stats = statsDoc
+    ? {
+        dailySeries,
+        lastRecruitmentAt: statsDoc.lastRecruitmentAt?.toISOString?.() ?? null,
+        lastRecruiterName: statsDoc.lastRecruiterName ?? null,
+        monthTotal: statsDoc.monthTotal,
+        todayTotal: statsDoc.todayTotal,
+        topRecruiterName: recruiters[0]?.recruiterName ?? null,
+        total: statsDoc.total,
+        weekTotal: statsDoc.weekTotal
+      }
+    : emptyRecruitmentRankings().stats;
+
   return {
     recruiters: recruiters.map((item) => ({
       ...item,
+      firstRecruitmentAt: item.firstRecruitmentAt?.toISOString?.() ?? null,
       lastRecruitmentAt: item.lastRecruitmentAt?.toISOString?.() ?? null,
       normalizedRecruiterName: normalizeEntity(item.normalizedRecruiterName),
       recentRecruits: item.recentRecruits.map((recruit) => ({
         ...recruit,
         recruitedAt: recruit.recruitedAt.toISOString()
       }))
-    }))
+    })),
+    stats
   };
 }
 

@@ -411,15 +411,24 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
   const [recruitedQuery, setRecruitedQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [selectedRecruiter, setSelectedRecruiter] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<"today" | "week" | "month" | "total">("total");
   const recruiters = dashboard?.recruitmentRankings.recruiters ?? [];
-  const filtered = recruiters.filter((item) => {
+  const recruitmentLogs = (dashboard?.logs ?? []).filter((log) => log.eventType === "recruitment");
+  const stats = dashboard?.recruitmentRankings.stats;
+  const filtered = useMemo(() => recruiters.filter((item) => {
     const recruiterOk = !recruiterQuery.trim() || normalizeSearch(item.recruiterName).includes(normalizeSearch(recruiterQuery));
     const recruitedOk = !recruitedQuery.trim() || item.recentRecruits.some((recruit) => normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery)));
     const dateOk = !dateFilter || item.recentRecruits.some((recruit) => recruit.recruitedAt.slice(0, 10) === dateFilter);
     return recruiterOk && recruitedOk && dateOk;
-  }).slice(0, ZTK_RANKING_LIMIT);
+  }).sort((a, b) => recruitmentPeriodValue(b, periodFilter) - recruitmentPeriodValue(a, periodFilter) || a.recruiterName.localeCompare(b.recruiterName)).slice(0, ZTK_RANKING_LIMIT), [dateFilter, periodFilter, recruitedQuery, recruiterQuery, recruiters]);
   const activeRecruiter = filtered.find((item) => item.normalizedRecruiterName === selectedRecruiter) ?? filtered[0] ?? null;
+  const maxRecruitments = Math.max(1, ...filtered.map((item) => recruitmentPeriodValue(item, periodFilter)));
   const medals = ["🥇", "🥈", "🥉"];
+  const activeHistory = (activeRecruiter?.recentRecruits ?? []).filter((recruit) => {
+    const recruitedOk = !recruitedQuery.trim() || normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery));
+    const dateOk = !dateFilter || recruit.recruitedAt.slice(0, 10) === dateFilter;
+    return recruitedOk && dateOk && periodAllows(recruit.recruitedAt, periodFilter);
+  });
 
   useEffect(() => {
     if (!activeRecruiter) {
@@ -433,14 +442,34 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
     <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
       <Card>
         <CardHeader>
-          <CardTitle>👥 Sistema de Recrutamento</CardTitle>
-          <CardDescription>Ranking e histórico do clã {selectedClan.clanName}, atualizado por webhook em tempo real.</CardDescription>
+          <CardTitle>Ranking de Recrutamento ZTK</CardTitle>
+          <CardDescription>Dados isolados do clã {selectedClan.clanName}, atualizados pela webhook em tempo real.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Metric label="Hoje" value={String(stats?.todayTotal ?? 0)} />
+            <Metric label="Semana" value={String(stats?.weekTotal ?? 0)} />
+            <Metric label="Mês" value={String(stats?.monthTotal ?? 0)} />
+            <Metric label="Total geral" value={String(stats?.total ?? 0)} />
+            <Metric label="Maior recrutador" value={stats?.topRecruiterName ?? "Sem dados"} />
+            <Metric label="Último recrutamento" value={stats?.lastRecruitmentAt ? `${stats.lastRecruiterName ?? "Não informado"} • ${formatDateTime(stats.lastRecruitmentAt)}` : "Sem dados"} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
             <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setRecruiterQuery(event.target.value)} placeholder="Buscar recrutador" value={recruiterQuery} />
             <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setRecruitedQuery(event.target.value)} placeholder="Buscar recrutado" value={recruitedQuery} />
             <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setDateFilter(event.target.value)} type="date" value={dateFilter} />
+            <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setPeriodFilter(event.target.value as typeof periodFilter)} value={periodFilter}>
+              <option value="total">Todo período</option>
+              <option value="today">Hoje</option>
+              <option value="week">7 dias</option>
+              <option value="month">30 dias</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => exportRecruitments("csv", recruitmentLogs)} size="sm" variant="secondary">Exportar CSV</Button>
+            <Button onClick={() => exportRecruitments("xls", recruitmentLogs)} size="sm" variant="secondary">Exportar Excel</Button>
+            <Button onClick={() => exportRecruitments("json", recruitmentLogs)} size="sm" variant="secondary">Exportar JSON</Button>
+            <Button onClick={() => window.print()} size="sm" variant="secondary">Exportar PDF</Button>
           </div>
           <div className="discord-scrollbar max-h-[40rem] space-y-3 overflow-y-auto pr-1">
             {filtered.map((item, index) => (
@@ -451,8 +480,19 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
                 type="button"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 truncate font-semibold text-zinc-100">{medals[index] ?? `${index + 1}º`} {item.recruiterName}</p>
-                  <span className="shrink-0 text-sm text-zinc-500">{item.totalRecruitments} recrutamentos</span>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs font-bold text-zinc-300">
+                      {item.avatarUrl ? <img alt="" className="h-full w-full rounded-md object-cover" src={item.avatarUrl} /> : item.recruiterName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-zinc-100">{medals[index] ?? `${index + 1}º`} {item.recruiterName}</p>
+                      <p className="truncate text-xs text-zinc-500">{item.roleName ?? "Cargo não informado"}</p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-sm text-zinc-500">{recruitmentPeriodValue(item, periodFilter)} recrutamentos</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <div className="h-full rounded-full bg-[#FFD500]" style={{ width: `${Math.max(4, (recruitmentPeriodValue(item, periodFilter) / maxRecruitments) * 100)}%` }} />
                 </div>
                 <div className="mt-3 space-y-1">
                   {item.recentRecruits.slice(0, 3).map((recruit) => (
@@ -475,16 +515,25 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
             <>
               <Metric label="Nome" value={activeRecruiter.recruiterName} />
               <Metric label="Total recrutados" value={`${activeRecruiter.totalRecruitments} pessoas`} />
+              <Metric label="Primeiro recrutamento" value={activeRecruiter.firstRecruitmentAt ? formatDateTime(activeRecruiter.firstRecruitmentAt) : "Sem registro"} />
+              <Metric label="Último recrutamento" value={activeRecruiter.lastRecruitmentAt ? formatDateTime(activeRecruiter.lastRecruitmentAt) : "Sem registro"} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Metric label="Hoje" value={String(activeRecruiter.todayRecruitments)} />
+                <Metric label="Semana" value={String(activeRecruiter.weeklyRecruitments)} />
+                <Metric label="Mês" value={String(activeRecruiter.monthlyRecruitments)} />
+              </div>
+              <DailyRecruitmentChart values={stats?.dailySeries ?? []} />
               <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
                 <p className="mb-3 text-sm font-semibold text-zinc-100">Histórico</p>
-                <div className="space-y-3">
-                  {activeRecruiter.recentRecruits.map((recruit, index) => (
+                <div className="discord-scrollbar max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+                  {activeHistory.map((recruit, index) => (
                     <div className="text-sm text-zinc-300" key={`${recruit.recruitedName}-${recruit.recruitedAt}`}>
                       <p className="font-semibold text-zinc-100">{index + 1}. {recruit.recruitedName}</p>
                       <p className="text-zinc-500">Data: {formatDate(recruit.recruitedAt)}</p>
                       <p className="text-zinc-500">Horário: {formatTime(recruit.recruitedAt)}</p>
                     </div>
                   ))}
+                  {!activeHistory.length ? <p className="text-sm text-zinc-500">Nenhum recrutamento encontrado nos filtros.</p> : null}
                 </div>
               </div>
             </>
@@ -801,6 +850,24 @@ function DailyDominationsChart({ values }: { values: ZtkWebhookDashboard["domina
   );
 }
 
+function DailyRecruitmentChart({ values }: { values: ZtkWebhookDashboard["recruitmentRankings"]["stats"]["dailySeries"] }) {
+  const max = Math.max(1, ...values.map((item) => item.total));
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      <p className="mb-3 text-sm font-semibold text-zinc-100">Recrutamentos por dia</p>
+      <div className="flex h-24 items-end gap-1">
+        {values.slice(-14).map((item) => (
+          <div className="flex min-w-0 flex-1 flex-col items-center gap-2" key={item.date}>
+            <div className="w-full rounded-sm bg-[#3b82f6]" style={{ height: `${Math.max(8, (item.total / max) * 80)}px` }} title={`${item.date}: ${item.total}`} />
+            <span className="w-full truncate text-center text-[10px] text-zinc-500">{item.date.slice(5)}</span>
+          </div>
+        ))}
+        {!values.length ? <p className="self-center text-sm text-zinc-500">Sem dados para o gráfico.</p> : null}
+      </div>
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
@@ -867,6 +934,47 @@ function rankingPeriodValue(item: ZtkWebhookDashboard["dominationRankings"]["par
   if (period === "week") return item.weeklyDominations;
   if (period === "month") return item.monthlyDominations;
   return item.participations;
+}
+
+function recruitmentPeriodValue(item: ZtkWebhookDashboard["recruitmentRankings"]["recruiters"][number], period: "today" | "week" | "month" | "total") {
+  if (period === "today") return item.todayRecruitments;
+  if (period === "week") return item.weeklyRecruitments;
+  if (period === "month") return item.monthlyRecruitments;
+  return item.totalRecruitments;
+}
+
+function exportRecruitments(format: "csv" | "json" | "xls", logs: ZtkWebhookDashboard["logs"]) {
+  const rows = logs.map((log) => ({
+    canal: log.channelId ?? "",
+    data: formatDate(log.eventTimestamp),
+    hora: formatTime(log.eventTimestamp),
+    recrutado: log.playerName ?? "",
+    recrutador: log.recruiterName ?? "",
+    webhook: log.webhookId ?? ""
+  }));
+  const filename = `ztk-recrutamentos.${format}`;
+  if (format === "json") {
+    downloadText(filename, "application/json", JSON.stringify(rows, null, 2));
+    return;
+  }
+  const delimiter = format === "xls" ? "\t" : ",";
+  const header = ["recrutador", "recrutado", "data", "hora", "canal", "webhook"];
+  const body = rows.map((row) => header.map((key) => csvCell(String(row[key as keyof typeof row] ?? ""), delimiter)).join(delimiter)).join("\n");
+  downloadText(filename, format === "xls" ? "application/vnd.ms-excel" : "text/csv", `${header.join(delimiter)}\n${body}`);
+}
+
+function csvCell(value: string, delimiter: string) {
+  return value.includes(delimiter) || value.includes("\n") || value.includes("\"") ? `"${value.replace(/"/g, "\"\"")}"` : value;
+}
+
+function downloadText(filename: string, type: string, content: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function trendLabel(value: "down" | "same" | "up") {

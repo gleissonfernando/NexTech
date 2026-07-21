@@ -1,10 +1,70 @@
-import type { Client, Guild, Message } from "discord.js";
+import { SlashCommandBuilder, type Client, type Guild, type Message } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
-import type { BotContext } from "../types";
+import type { BotCommand, BotContext } from "../types";
 import type { ZtkWebhookEventReceivedEvent, ZtkWebhookManageEvent, ZtkWebhookPlayerStatEvent, ZtkWebhookRewardUpdatedEvent } from "../websocket/socketClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
 const ZTK_RANKING_LIMIT = 10;
+
+export const recrutamentoCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("recrutamento")
+    .setDescription("Consulta o ranking de recrutamento ZTK.")
+    .addSubcommand((subcommand) => subcommand
+      .setName("painel")
+      .setDescription("Mostra o painel de recrutamentos do clã.")
+      .addUserOption((option) => option.setName("usuario").setDescription("Recrutador para consulta individual.").setRequired(false))),
+  moduleId: "ztk-webhook",
+  async execute(interaction, context) {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "Comando disponível apenas em servidores.", ephemeral: true });
+      return;
+    }
+    if (!isBotModuleEnabled("ztk-webhook")) {
+      await interaction.reply({ content: "ZTK Webhook não está habilitado neste bot.", ephemeral: true });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const target = interaction.options.getUser("usuario");
+    const dashboard = await context.api.getZtkWebhookDashboard(interaction.guildId);
+    const clan = dashboard.selectedClan ?? dashboard.clans[0] ?? null;
+    if (!clan) {
+      await interaction.editReply("Nenhum clã ZTK configurado.");
+      return;
+    }
+    const recruiters = dashboard.recruitmentRankings.recruiters;
+    const selected = target
+      ? recruiters.find((item) => item.recruiterId === target.id || normalizeSearch(item.recruiterName).includes(normalizeSearch(target.username)))
+      : null;
+    const panel = selected
+      ? renderComponentsV2Panel({
+          accentColor: 0x3b82f6,
+          description: `Consulta individual de recrutamento para o clã **${clan.clanName}**.`,
+          fields: [
+            `## 👤 ${selected.recruiterName}\n**Total recrutado:** ${selected.totalRecruitments}\n**Hoje:** ${selected.todayRecruitments}\n**Semana:** ${selected.weeklyRecruitments}\n**Mês:** ${selected.monthlyRecruitments}`,
+            `**Primeiro recrutamento:** ${selected.firstRecruitmentAt ? formatDate(selected.firstRecruitmentAt) : "Sem registro"}\n**Último recrutamento:** ${selected.lastRecruitmentAt ? formatDateTime(selected.lastRecruitmentAt) : "Sem registro"}`,
+            selected.recentRecruits.length
+              ? selected.recentRecruits.slice(0, 10).map((recruit) => `👤 ${recruit.recruitedName}\n${formatDate(recruit.recruitedAt)} • ${formatTime(recruit.recruitedAt)}`).join("\n\n")
+              : "Nenhum histórico registrado."
+          ],
+          footer: { text: "NexTech • ZTK Recrutamento" },
+          moduleId: "ztk-webhook",
+          title: "👥 Painel de Recrutamentos"
+        })
+      : renderComponentsV2Panel({
+          accentColor: 0x3b82f6,
+          description: `Ranking geral de recrutamento do clã **${clan.clanName}**.`,
+          fields: [
+            `## 📊 Resumo\n**Hoje:** ${dashboard.recruitmentRankings.stats.todayTotal}\n**Semana:** ${dashboard.recruitmentRankings.stats.weekTotal}\n**Mês:** ${dashboard.recruitmentRankings.stats.monthTotal}\n**Total:** ${dashboard.recruitmentRankings.stats.total}\n**Maior recrutador:** ${dashboard.recruitmentRankings.stats.topRecruiterName ?? "Sem dados"}`,
+            ...recruitmentRankingBlocks("🥇 Top Recrutadores", recruiters)
+          ],
+          footer: { text: "NexTech • ZTK Recrutamento" },
+          moduleId: "ztk-webhook",
+          title: "👥 Painel de Recrutamentos"
+        });
+    await interaction.editReply(panel as any);
+  }
+};
 
 export function startZtkWebhookService(client: Client<true>, context: BotContext) {
   context.socket.onZtkWebhookEventReceived((payload) => {
@@ -364,6 +424,10 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
@@ -373,6 +437,10 @@ function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours ? `${hours}h ${minutes}min` : `${minutes}min`;
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 function collectMessageText(message: Message) {

@@ -36,6 +36,7 @@ import { barraCommand, relogioDePontoCommand } from "../services/policeTimeClock
 import { vehicleAbandonmentPanelCommand } from "../services/vehicleAbandonmentService";
 import { qruCommand, rankCommand, rankingCommandQru } from "../services/policeQruService";
 import { policePromotionHistoryAliasCommand, policePromotionHistoryCommand, policePromotionsCommand } from "../services/policePromotionService";
+import { recrutamentoCommand } from "../services/ztkWebhookService";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -94,6 +95,7 @@ export function createCommandCollection() {
     policePromotionHistoryCommand,
     policePromotionHistoryAliasCommand,
     policePromotionsCommand,
+    recrutamentoCommand,
     rankCommand,
     rankingCommandQru
   ].forEach((command) => {
