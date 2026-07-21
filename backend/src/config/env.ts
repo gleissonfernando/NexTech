@@ -240,7 +240,7 @@ const envSchema = z
     SESSION_SECRET: envSecret(),
     SESSION_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
     JWT_SECRET: envSecret(),
-    JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(60 * 15),
+    JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
     JWT_REFRESH_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
     BOT_API_TOKEN: internalBotToken(),
     PAYMENTS_ENABLED: envBoolean(false),

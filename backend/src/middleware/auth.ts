@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
+import { isDashboardDevUserId } from "../config/devOwner";
 import { recordAccessAttempt } from "../services/accessAuditService";
 import { applyDashboardAccessValidation, createDeniedAccessUser, evaluateDashboardAccess } from "../services/accessControlService";
 import { dashboardPermissionsForLevel } from "../services/dashboardPermissionService";
@@ -114,6 +115,20 @@ async function ensureBotGuildsLoaded() {
 
 async function ensureVerifiedRoleAccess(req: Request, res: Response, auth: DashboardAuth) {
   const lastValidation = typeof req.session.accessValidatedAt === "number" ? req.session.accessValidatedAt : 0;
+
+  if (isDashboardDevUserId(auth.user.discordId)) {
+    const freshAuth = auth.verified && auth.user.authorized === true && auth.user.accessLevel === "admin"
+      ? auth
+      : issueAuthCookies(res, {
+          ...auth.user,
+          accessLevel: "admin",
+          authorized: true
+        }, true);
+    req.session.user = freshAuth.user;
+    req.session.verified = true;
+    req.session.accessValidatedAt = Date.now();
+    return freshAuth;
+  }
 
   if (auth.verified && Date.now() - lastValidation < VERIFIED_ACCESS_RECHECK_MS) {
     return auth;

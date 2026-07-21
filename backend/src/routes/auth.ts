@@ -559,15 +559,15 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     }
 
     req.session.user = validatedUser;
-    req.session.verified = false;
+    req.session.verified = true;
     req.session.oauthState = undefined;
     req.session.discordAccessToken = tokens.access_token;
     req.session.discordRefreshToken = undefined;
     req.session.accessValidatedAt = Date.now();
 
-    issueAuthCookies(res, req.session.user, false);
+    issueAuthCookies(res, req.session.user, true);
     await saveSession(req);
-    console.info(`[auth] oauth: sessão temporaria criada para ${discordUser.id}; redirect=${redirectTo}.`);
+    console.info(`[auth] oauth: sessão validada criada para ${discordUser.id}; redirect=${redirectTo}.`);
     return res.redirect(authCallbackLandingUrl(redirectTo));
   } catch (error) {
     console.error("[auth] oauth: falha no callback:", error instanceof Error ? error.message : error);
