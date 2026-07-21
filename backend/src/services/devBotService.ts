@@ -3197,25 +3197,25 @@ async function getDashboardMemberRoleIds(
   guildId: string,
   options: AccessibleDevBotsOptions = {}
 ): Promise<MemberRoleLookupResult> {
-  const oauthRoleIds = await fetchOAuthGuildMemberRoleIds(userId, guildId, options);
-
-  if (oauthRoleIds.roleIds) {
-    return oauthRoleIds;
-  }
-
   const botRoleIds = await fetchBotGuildMemberRoleIds(userId, bot, guildId);
 
   if (botRoleIds.roleIds) {
     return botRoleIds;
   }
 
+  const oauthRoleIds = await fetchOAuthGuildMemberRoleIds(userId, guildId, options);
+
+  if (oauthRoleIds.roleIds) {
+    return oauthRoleIds;
+  }
+
   return {
     roleIds: null,
     source: null,
     reason: [
-      oauthRoleIds.reason,
       botRoleIds.reason,
-      "Entre novamente pelo Discord e confira se o Server Members Intent está ativo no bot."
+      oauthRoleIds.reason,
+      "Confira se o bot está no servidor com permissão para ler membros."
     ].filter(Boolean).join(" ")
   };
 }
@@ -3272,11 +3272,10 @@ async function fetchOAuthGuildMemberRoleIds(
   const refreshToken = options.discordRefreshToken?.trim() || storedTokens?.refreshToken;
 
   if (!accessToken) {
-    console.warn(`[access] usuário ${userId} precisa entrar novamente pelo Discord para validar cargos do servidor ${guildId}.`);
     return {
       roleIds: null,
       source: null,
-      reason: "A sessão Discord não tem token OAuth salvo para ler cargos."
+      reason: "Sem token OAuth opcional para fallback de cargos."
     };
   }
 
@@ -3332,7 +3331,7 @@ async function fetchOAuthGuildMemberRoleIdsWithToken(accessToken: string, guildI
     const status = axios.isAxiosError(error) ? error.response?.status ?? null : null;
 
     if (status === 403) {
-      console.warn(`[discord] OAuth sem permissão guilds.members.read para validar cargos do servidor ${guildId}.`);
+      console.warn(`[discord] OAuth sem permissão opcional para validar cargos do servidor ${guildId}.`);
     } else if (status === 404) {
       console.warn(`[discord] usuário OAuth não encontrado como membro do servidor ${guildId}.`);
     } else if (status !== 401) {
@@ -3346,7 +3345,7 @@ async function fetchOAuthGuildMemberRoleIdsWithToken(accessToken: string, guildI
       roleIds: null,
       status,
       reason: status === 403
-        ? "A autorizacao Discord não liberou a leitura de cargos. Clique em Sair e entre novamente pelo Discord."
+        ? "A autorizacao Discord não liberou a leitura opcional de cargos."
         : status === 404
           ? "Sua conta não foi encontrada como membro do servidor no OAuth do Discord."
           : status === 401

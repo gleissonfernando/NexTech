@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const productionPublicUrl = "https://nextech.discloud.app";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
-const requiredDiscordScopes = "identify email guilds guilds.members.read";
+const requiredDiscordScopes = "identify guilds";
 const allowedDiscordOAuthScopes = new Set(requiredDiscordScopes.split(" "));
 const isProduction = process.env.NODE_ENV === "production";
 
