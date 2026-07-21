@@ -531,6 +531,14 @@ async function handleEvaluationReview(interaction: ButtonInteraction<"cached">, 
   }
 
   const draft = evaluationQuestionnaireDrafts.get(evaluationDraftKey(request.id, interaction.user.id));
+  const missingSteps = missingEvaluationQuestionnaireSteps(draft);
+  if (missingSteps.length) {
+    const activeDraft = draft ?? createEvaluationQuestionnaireDraft(request, interaction);
+    evaluationQuestionnaireDrafts.set(evaluationDraftKey(request.id, interaction.user.id), activeDraft);
+    await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, activeDraft, `Ainda falta preencher: ${missingSteps.join(", ")}.`) as any);
+    return true;
+  }
+
   const evaluation = buildPlainClothesEvaluation({
     conduct: draft?.conduct ?? "",
     final: draft?.final ?? "",
@@ -1045,6 +1053,8 @@ function evaluationQuestionnairePayload(request: PolicePromotionRequest, promoti
     ["notes", "Observações gerais", draft.notes],
     ["final", "Avaliação final", draft.final]
   ] as const;
+  const missingSteps = missingEvaluationQuestionnaireSteps(draft);
+  const canReview = missingSteps.length === 0;
   return {
     components: [{
       type: 17,
@@ -1059,7 +1069,8 @@ function evaluationQuestionnairePayload(request: PolicePromotionRequest, promoti
           `${icon("homem", guild)} Instrutor\n<@${draft.userId}>`,
           "",
           `${icon("trofeu", guild)} Promoção\n${escapeMarkdown(request.currentRank)} → ${escapeMarkdown(request.targetRank)}`,
-          message ? `\n${icon("visto", guild)} ${escapeMarkdown(message)}` : ""
+          message ? `\n${icon(canReview ? "visto" : "alerta", guild)} ${escapeMarkdown(message)}` : "",
+          !canReview ? `\n${icon("relogio", guild)} Falta preencher: ${escapeMarkdown(missingSteps.join(", "))}.` : ""
         ].join("\n") },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: progress.map(([, label, value]) => `${value ? icon("visto", guild) : icon("relogio", guild)} ${label}`).join("\n") },
@@ -1071,7 +1082,7 @@ function evaluationQuestionnairePayload(request: PolicePromotionRequest, promoti
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           evaluationStepButton(request.id, "notes", "4 Observações", guild, Boolean(draft.notes)),
           evaluationStepButton(request.id, "final", "5 Final", guild, Boolean(draft.final)),
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_review:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Revisar / Enviar").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_review:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Revisar / Enviar").setStyle(ButtonStyle.Success).setDisabled(!canReview),
           new ButtonBuilder().setCustomId(`${PREFIX}:eval_cancel:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Cancelar").setStyle(ButtonStyle.Danger)
         )
       ]
@@ -1175,31 +1186,31 @@ function applyEvaluationStepValues(draft: EvaluationQuestionnaireDraft, step: Ev
   }
   if (step === "operational") {
     draft.operational = [
-      `Decisões: ${interaction.fields.getTextInputValue("decisions")}`,
-      `Abordagens: ${interaction.fields.getTextInputValue("approaches")}`,
-      `Acompanhamentos: ${interaction.fields.getTextInputValue("pursuits")}`
+      `Decisões: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("decisions"))}`,
+      `Abordagens: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("approaches"))}`,
+      `Acompanhamentos: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("pursuits"))}`
     ].join("\n");
     return;
   }
   if (step === "conduct") {
     draft.conduct = [
-      `Comportamento: ${interaction.fields.getTextInputValue("professional")}`,
-      `Comunicação: ${interaction.fields.getTextInputValue("communication")}`,
-      `Adaptação: ${interaction.fields.getTextInputValue("adaptation")}`
+      `Comportamento: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("professional"))}`,
+      `Comunicação: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("communication"))}`,
+      `Adaptação: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("adaptation"))}`
     ].join("\n");
     return;
   }
   if (step === "notes") {
     draft.notes = [
-      `Pontos fortes: ${interaction.fields.getTextInputValue("strengths")}`,
-      `Melhorias: ${interaction.fields.getTextInputValue("improvements")}`,
-      `Intervenção: ${interaction.fields.getTextInputValue("intervention")}`
+      `Pontos fortes: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("strengths"))}`,
+      `Melhorias: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("improvements"))}`,
+      `Intervenção: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("intervention"))}`
     ].join("\n");
     return;
   }
   draft.final = [
-    `Apto: ${interaction.fields.getTextInputValue("apt")}`,
-    `Justificativa: ${interaction.fields.getTextInputValue("final_justification")}`
+    `Apto: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("apt"))}`,
+    `Justificativa: ${oneLineEvaluationValue(interaction.fields.getTextInputValue("final_justification"))}`
   ].join("\n");
 }
 
@@ -1216,6 +1227,21 @@ function evaluationStepTitle(step: EvaluationStep) {
 
 function isEvaluationStep(value: string | undefined): value is EvaluationStep {
   return value === "patrol" || value === "operational" || value === "conduct" || value === "notes" || value === "final";
+}
+
+function missingEvaluationQuestionnaireSteps(draft: EvaluationQuestionnaireDraft | null | undefined) {
+  if (!draft) return ["Patrulha", "Operacional", "Conduta", "Observações", "Final"];
+  return [
+    [draft.patrol, "Patrulha"],
+    [draft.operational, "Operacional"],
+    [draft.conduct, "Conduta"],
+    [draft.notes, "Observações"],
+    [draft.final, "Final"]
+  ].filter(([value]) => !value).map(([, label]) => label);
+}
+
+function oneLineEvaluationValue(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(" - ");
 }
 
 function valueFromLine(text: string | undefined, label: string) {
@@ -1319,18 +1345,27 @@ function validationErrorPayload(errors: string[], guild: Guild): MessageCreateOp
 
 function parseCriterion(text: string, aliases: readonly string[]) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const line = lines.find((item) => {
+  const lineIndex = lines.findIndex((item) => {
     const normalized = normalizePlainText(item);
     return aliases.some((alias) => normalized.includes(alias));
   });
+  const line = lines[lineIndex];
   if (!line) return null;
   const normalizedLine = normalizePlainText(line);
   const rating = Object.keys(PCD_RATING_POINTS).find((item) => normalizedLine.includes(item));
   if (!rating) return null;
   const ratingIndex = normalizedLine.indexOf(rating);
-  const justification = line.slice(Math.max(0, ratingIndex + rating.length)).replace(/^[-:|.\s]+/, "").trim();
+  let justification = line.slice(Math.max(0, ratingIndex + rating.length)).replace(/^[-:|.\s]+/, "").trim();
+  if (justification.length < 8) {
+    justification = lines.slice(lineIndex + 1).find((item) => !isCriterionHeaderLine(item))?.trim() ?? "";
+  }
   if (justification.length < 8) return null;
   return { justification: clip(justification, 500), rating };
+}
+
+function isCriterionHeaderLine(value: string) {
+  const normalized = normalizePlainText(value);
+  return PCD_CRITERIA.some((criterion) => criterion.aliases.some((alias) => normalized.includes(alias)));
 }
 
 function parsePatrol(text: string) {
