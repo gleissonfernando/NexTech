@@ -479,7 +479,7 @@ function buildPolicePromotionPanelPayload(settings: PolicePromotionSettingsDto, 
         type: 3,
         custom_id: PANEL_SELECT_ID,
         placeholder: "Selecione a promoção desejada",
-        min_values: 1,
+        min_values: 0,
         max_values: 1,
         options
       }]

@@ -231,6 +231,12 @@ async function publishConfiguredPromotionPanel(client: Client, context: BotConte
 }
 
 async function handlePromotionChoose(interaction: StringSelectMenuInteraction<"cached">, context: BotContext) {
+  if (!interaction.values.length) {
+    formSessions.delete(sessionKey(interaction.guild.id, interaction.user.id));
+    await interaction.reply({ content: "Seleção removida.", ephemeral: true });
+    return true;
+  }
+
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = settings.promotions.find((item) => item.id === interaction.values[0] && item.active);
   if (!promotion) {
@@ -627,6 +633,7 @@ function panelPayload(settings: PolicePromotionSettings, guild: Guild, panelImag
   const select = new StringSelectMenuBuilder()
     .setCustomId(`${PREFIX}:choose`)
     .setPlaceholder("Selecione a promoção desejada")
+    .setMinValues(0)
     .addOptions(promotions.slice(0, 25).map((promotion) => ({
       description: clip(promotion.description, 90),
       emoji: fixedComponentEmoji("prancheta"),
