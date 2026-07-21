@@ -3352,6 +3352,82 @@ export type MongoManualPaymentOrderLog = {
   userId: string;
 };
 
+export type MongoZtkWebhookEventType = "recruitment" | "domination" | "player_connected" | "player_disconnected" | "unknown";
+
+export type MongoZtkWebhookClan = {
+  _id: string;
+  active: boolean;
+  botId: string;
+  clanName: string;
+  createdAt: Date;
+  guildId: string;
+  lastEventAt: Date | null;
+  ownerUserId: string;
+  rankingChannelId: string | null;
+  recruitmentChannelId: string | null;
+  dominationChannelId: string | null;
+  rewardChannelId: string | null;
+  settingsChannelId: string | null;
+  updatedAt: Date;
+  webhookCreatedAt: Date | null;
+  webhookEnabled: boolean;
+  webhookToken: string | null;
+};
+
+export type MongoZtkWebhookLog = {
+  _id: string;
+  botId: string;
+  clanId: string;
+  clanName: string;
+  createdAt: Date;
+  dedupeKey: string;
+  eventTimestamp: Date;
+  eventType: MongoZtkWebhookEventType;
+  guildId: string;
+  hash: string;
+  playerId: string | null;
+  playerName: string | null;
+  rawPayload: unknown;
+  rawText: string;
+  recruiterName: string | null;
+  recruiterId: string | null;
+  location: string | null;
+  onlineSeconds: number;
+};
+
+export type MongoZtkWebhookPlayerStat = {
+  _id: string;
+  activeSessionStartedAt: Date | null;
+  botId: string;
+  clanId: string;
+  clanName: string;
+  dominations: number;
+  guildId: string;
+  lastSeenAt: Date | null;
+  onlineSeconds: number;
+  playerId: string | null;
+  playerName: string;
+  recruitments: number;
+  updatedAt: Date;
+};
+
+export type MongoZtkWebhookReward = {
+  _id: string;
+  active: boolean;
+  botId: string;
+  clanId: string;
+  createdAt: Date;
+  guildId: string;
+  name: string;
+  rankingType: "domination" | "recruitment" | "online";
+  rewardDate: Date | null;
+  updatedAt: Date;
+  winners: Array<{
+    place: number;
+    value: string;
+  }>;
+};
+
 export type MongoNexTechSalesPlan = {
   _id: string;
   botId: string;
@@ -4602,6 +4678,10 @@ export async function getMongoCollections() {
     fivemFinanceLogs: db.collection<MongoFivemFinanceLog>("fivem_finance_logs"),
     fivemHierarchyPanels: db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels"),
     fivemHierarchyLogs: db.collection<MongoFivemHierarchyLog>("fivem_hierarchy_logs"),
+    ztkWebhookClans: db.collection<MongoZtkWebhookClan>("ztk_webhook_clans"),
+    ztkWebhookLogs: db.collection<MongoZtkWebhookLog>("ztk_webhook_logs"),
+    ztkWebhookPlayerStats: db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats"),
+    ztkWebhookRewards: db.collection<MongoZtkWebhookReward>("ztk_webhook_rewards"),
     globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
     globalBlacklistEntries: db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries"),
     globalBlacklistHistory: db.collection<MongoGlobalBlacklistHistory>("global_blacklist_history"),
@@ -4900,6 +4980,15 @@ async function createMongoIndexes(db: Db) {
     ),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, legacyCleanupPending: 1, deletedAt: 1 }),
     db.collection<MongoFivemHierarchyLog>("fivem_hierarchy_logs").createIndex({ botId: 1, guildId: 1, panelId: 1, createdAt: -1 }),
+    db.collection<MongoZtkWebhookClan>("ztk_webhook_clans").createIndex({ botId: 1, guildId: 1, ownerUserId: 1, clanName: 1 }, { unique: true }),
+    db.collection<MongoZtkWebhookClan>("ztk_webhook_clans").createIndex({ webhookToken: 1 }, { unique: true, partialFilterExpression: { webhookToken: { $type: "string" } } }),
+    db.collection<MongoZtkWebhookLog>("ztk_webhook_logs").createIndex({ botId: 1, guildId: 1, clanId: 1, createdAt: -1 }),
+    db.collection<MongoZtkWebhookLog>("ztk_webhook_logs").createIndex({ botId: 1, guildId: 1, clanId: 1, dedupeKey: 1 }, { unique: true }),
+    db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, playerName: 1 }, { unique: true }),
+    db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, dominations: -1 }),
+    db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, recruitments: -1 }),
+    db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, onlineSeconds: -1 }),
+    db.collection<MongoZtkWebhookReward>("ztk_webhook_rewards").createIndex({ botId: 1, guildId: 1, clanId: 1, rankingType: 1, createdAt: -1 }),
     db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ userId: 1, active: 1 }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ botId: 1, guildId: 1, active: 1 }),

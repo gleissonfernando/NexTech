@@ -3321,6 +3321,102 @@ export type SaveManualPaymentSettingsPayload = Partial<Omit<
   "botId" | "guildId" | "id" | "salePanelMessageId" | "updatedAt" | "updatedBy"
 >>;
 
+export type ZtkWebhookEventType = "recruitment" | "domination" | "player_connected" | "player_disconnected" | "unknown";
+export type ZtkRankingType = "domination" | "recruitment" | "online";
+
+export type ZtkWebhookClan = {
+  id: string;
+  active: boolean;
+  botId: string;
+  clanName: string;
+  createdAt: string;
+  dominationChannelId: string | null;
+  guildId: string;
+  lastEventAt: string | null;
+  ownerUserId: string;
+  rankingChannelId: string | null;
+  recruitmentChannelId: string | null;
+  rewardChannelId: string | null;
+  settingsChannelId: string | null;
+  updatedAt: string;
+  webhookCreatedAt: string | null;
+  webhookEnabled: boolean;
+  webhookToken: string | null;
+  webhookUrl: string | null;
+};
+
+export type ZtkWebhookLog = {
+  id: string;
+  botId: string;
+  clanId: string;
+  clanName: string;
+  createdAt: string;
+  dedupeKey: string;
+  eventTimestamp: string;
+  eventType: ZtkWebhookEventType;
+  guildId: string;
+  hash: string;
+  location: string | null;
+  onlineSeconds: number;
+  playerId: string | null;
+  playerName: string | null;
+  rawPayload: unknown;
+  rawText: string;
+  recruiterId: string | null;
+  recruiterName: string | null;
+};
+
+export type ZtkPlayerStat = {
+  id: string;
+  activeSessionStartedAt: string | null;
+  botId: string;
+  clanId: string;
+  clanName: string;
+  dominations: number;
+  guildId: string;
+  lastSeenAt: string | null;
+  onlineSeconds: number;
+  playerId: string | null;
+  playerName: string;
+  recruitments: number;
+  updatedAt: string;
+};
+
+export type ZtkReward = {
+  id: string;
+  active: boolean;
+  botId: string;
+  clanId: string;
+  createdAt: string;
+  guildId: string;
+  name: string;
+  rankingType: ZtkRankingType;
+  rewardDate: string | null;
+  updatedAt: string;
+  winners: Array<{ place: number; value: string }>;
+};
+
+export type ZtkWebhookDashboard = {
+  clans: ZtkWebhookClan[];
+  logs: ZtkWebhookLog[];
+  rankings: Record<ZtkRankingType, ZtkPlayerStat[]>;
+  rewards: ZtkReward[];
+  selectedClan: ZtkWebhookClan | null;
+};
+
+export type SaveZtkWebhookClanPayload = Partial<Pick<
+  ZtkWebhookClan,
+  | "active"
+  | "clanName"
+  | "dominationChannelId"
+  | "rankingChannelId"
+  | "recruitmentChannelId"
+  | "rewardChannelId"
+  | "settingsChannelId"
+>>;
+
+export type SaveZtkRewardPayload = Partial<Pick<ZtkReward, "active" | "name" | "rankingType" | "rewardDate" | "winners">>;
+
 export type SaveNexTechSalesSettingsPayload = Partial<Pick<
   NexTechSalesSettings,
   | "currency"

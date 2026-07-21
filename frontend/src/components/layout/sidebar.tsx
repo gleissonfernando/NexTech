@@ -36,6 +36,7 @@ import {
   Search,
   Server,
   TableProperties,
+  Trophy,
   UserMinus,
   UserPlus,
   Users,
@@ -113,6 +114,7 @@ export type ViewId =
   | "fivem-custom"
   | "fivem-finance"
   | "fivem-goals"
+  | "ztk-webhook"
   | "manual-registration"
   | "notifications"
   | "entry-leave"
@@ -206,6 +208,7 @@ const navItems: NavItem[] = [
   { id: "fivem-custom", label: "Personalizados", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-finance", label: "Financeiro", icon: CircleDollarSign, moduleId: "fivem-finance" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
+  { id: "ztk-webhook", label: "ZTK Webhook", icon: Trophy, moduleId: "ztk-webhook" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
   { id: "entry-leave", label: "Entrada/Saída", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
@@ -258,7 +261,7 @@ function navSectionForItem(item: NavItem): NavSectionId {
     return "police";
   }
 
-  if (item.id.startsWith("fivem") || item.id === "manual-registration") {
+  if (item.id.startsWith("fivem") || item.id === "ztk-webhook" || item.id === "manual-registration") {
     return "fivem";
   }
 

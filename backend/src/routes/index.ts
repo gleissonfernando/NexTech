@@ -61,6 +61,7 @@ import { voiceRecorderRouter } from "./voiceRecorder";
 import { visibleMessageRouter } from "./visibleMessage";
 import { xMonitorRouter } from "./xMonitor";
 import { xWebhookRouter } from "./xWebhook";
+import { ztkWebhookRouter } from "./ztkWebhook";
 
 export const apiRouter = Router();
 
@@ -135,3 +136,4 @@ apiRouter.use("/social-notifications", socialNotificationsRouter);
 apiRouter.use("/socials", socialsRouter);
 apiRouter.use("/x-monitor", xMonitorRouter);
 apiRouter.use("/x-webhook", xWebhookRouter);
+apiRouter.use("/ztk-webhook", ztkWebhookRouter);

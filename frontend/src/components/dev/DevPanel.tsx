@@ -35,6 +35,7 @@ import {
     SlidersHorizontal,
     Star,
     Ticket,
+    Trophy,
     Trash2,
     Unplug,
     UserCheck,
@@ -174,6 +175,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "faction-chest", label: "Sistema de Baú" },
+  { id: "ztk-webhook", label: "ZTK Webhook 🏆" },
   { id: "fivem-hierarchy", label: "Polícia - Hierarquia" },
   { id: "fivem-actions", label: "FiveM - Ações FAC" },
   { id: "police-absences", label: "Polícia - Sistema de Ausências" },
@@ -244,6 +246,7 @@ type BotMenuId =
   | "fivem-finance"
   | "fivem-goals"
   | "faction-chest"
+  | "ztk-webhook"
   | "fivem-hierarchy"
   | "fivem-actions"
   | "police"
@@ -625,6 +628,14 @@ const botMenuItems: BotMenuItem[] = [
         description: "Entrada e saída manual do baú da facção",
         icon: Database,
         moduleIds: ["faction-chest"]
+      },
+      {
+        group: "fivem",
+        id: "ztk-webhook",
+        label: "ZTK Webhook 🏆",
+        description: "Webhooks FiveM por clã, ranking automático e premiações",
+        icon: Trophy,
+        moduleIds: ["ztk-webhook"]
       },
       {
         group: "fivem",

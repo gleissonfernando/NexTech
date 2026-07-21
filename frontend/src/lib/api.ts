@@ -118,6 +118,8 @@ import type {
   SavePaymentSettingsPayload,
   SavePlanFeaturePayload,
   SavePlanPayload,
+  SaveZtkRewardPayload,
+  SaveZtkWebhookClanPayload,
   SaveFivemModulePayload,
   SaveGiveawayPayload,
   SaveImageAntiSpamSettingsPayload,
@@ -166,7 +168,10 @@ import type {
   VoiceRecording,
   XAccount,
   XAccountPreview,
-  XMonitorResponse
+  XMonitorResponse,
+  ZtkReward,
+  ZtkWebhookClan,
+  ZtkWebhookDashboard
 } from "../types";
 import { buildEditableFivemHierarchyPanelPayload, hierarchyPanelClientRequestId } from "./fivemHierarchy";
 import { publicOrigin } from "./urls";
@@ -2698,6 +2703,49 @@ export async function publishManualPaymentPanel(botId: string, guildId: string) 
     { params: botParams(botId), timeout: 15000 }
   );
   return data.settings;
+}
+
+export async function getZtkWebhookDashboard(botId: string, guildId: string, clanId?: string | null) {
+  const { data } = await api.get<ZtkWebhookDashboard>(`/ztk-webhook/${encodeURIComponent(guildId)}`, {
+    params: { ...botParams(botId), ...(clanId ? { clanId } : {}) }
+  });
+  return data;
+}
+
+export async function createZtkWebhookClan(botId: string, guildId: string, payload: { clanName: string; ownerUserId?: string }) {
+  const { data } = await api.post<{ clan: ZtkWebhookClan }>(
+    `/ztk-webhook/${encodeURIComponent(guildId)}/clans`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.clan;
+}
+
+export async function saveZtkWebhookClan(botId: string, guildId: string, clanId: string, payload: SaveZtkWebhookClanPayload) {
+  const { data } = await api.patch<{ clan: ZtkWebhookClan }>(
+    `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.clan;
+}
+
+export async function updateZtkWebhookState(botId: string, guildId: string, clanId: string, action: "create" | "delete" | "disable" | "regenerate") {
+  const { data } = await api.post<{ clan: ZtkWebhookClan }>(
+    `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}/webhook/${action}`,
+    undefined,
+    { params: botParams(botId) }
+  );
+  return data.clan;
+}
+
+export async function createZtkReward(botId: string, guildId: string, clanId: string, payload: SaveZtkRewardPayload) {
+  const { data } = await api.post<{ reward: ZtkReward }>(
+    `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}/rewards`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.reward;
 }
 
 export async function getAdvancedModuleConfig(botId: string, guildId: string, moduleId: string) {

@@ -47,6 +47,7 @@ import {
   SlidersHorizontal,
   TableProperties,
   TicketIcon,
+  Trophy,
   Trash2,
   Upload,
   UserMinus,
@@ -73,6 +74,7 @@ import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
 import { Pd7Panel } from "../components/fivem/Pd7Panel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
+import { ZtkWebhookPanel } from "../components/fivem/ZtkWebhookPanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
 import { TranscriptSettingsCard } from "../components/TranscriptSettingsCard";
@@ -719,6 +721,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "fivem-goals"
   },
   {
+    id: "ztk-webhook",
+    title: "ZTK Webhook 🏆",
+    description: "Webhooks FiveM por clã, ranking automático, tempo online e premiações.",
+    icon: Trophy,
+    view: "ztk-webhook"
+  },
+  {
     id: "verification",
     title: "Usuários",
     description: "Define quais usuários podem entrar e configurar este painel.",
@@ -814,6 +823,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-custom": "fivem-orders",
   "fivem-finance": "fivem-finance",
   "fivem-goals": "fivem-goals",
+  "ztk-webhook": "ztk-webhook",
   "manual-registration": "manual-registration",
   "voice-recorder": "voice-recorder",
   music: "music",
@@ -1884,6 +1894,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             fivemModules={fivemModules}
             guild={selectedGuild}
             mode="goals"
+          />
+        ) : null}
+        {activeView === "ztk-webhook" ? (
+          <ZtkWebhookPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "ztk-webhook", canManageDashboard)}
+            guild={selectedGuild}
           />
         ) : null}
         {activeView === "manual-registration" ? (
@@ -10883,6 +10900,10 @@ function dashboardViewFromPath(path: string): ViewId {
     return "fivem-hierarchy";
   }
 
+  if (path === "/dashboard/ztk-webhook" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/ztk-webhook(?:\/|$)/i.test(path)) {
+    return "ztk-webhook";
+  }
+
   return "overview";
 }
 
@@ -10891,6 +10912,7 @@ function dashboardPathForView(slug: string, view: ViewId) {
   if (view === "auto-activity-clock") return `${base}/ponto-automatico`;
   if (view === "police-time-clock") return `${base}/relogio-de-ponto`;
   if (view === "fivem-hierarchy") return `${base}/hierarquia`;
+  if (view === "ztk-webhook") return `${base}/ztk-webhook`;
   return base;
 }
 

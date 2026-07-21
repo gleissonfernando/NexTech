@@ -78,6 +78,57 @@ export type CourseExamReviewedEvent = { actorId?: string | null; attemptId: stri
 export type RhAdminPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type TicketPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 
+export type ZtkWebhookClanEvent = {
+  active: boolean;
+  clanName: string;
+  dominationChannelId?: string | null;
+  id: string;
+  rankingChannelId?: string | null;
+  recruitmentChannelId?: string | null;
+  rewardChannelId?: string | null;
+  settingsChannelId?: string | null;
+  webhookEnabled?: boolean;
+};
+
+export type ZtkWebhookLogEvent = {
+  eventTimestamp: string;
+  eventType: "domination" | "player_connected" | "player_disconnected" | "recruitment" | "unknown";
+  id: string;
+  location?: string | null;
+  onlineSeconds?: number | null;
+  playerId?: string | null;
+  playerName?: string | null;
+  recruiterName?: string | null;
+};
+
+export type ZtkWebhookPlayerStatEvent = {
+  dominations: number;
+  onlineSeconds: number;
+  playerName: string;
+  recruitments: number;
+};
+
+export type ZtkWebhookEventReceivedEvent = {
+  botId?: string | null;
+  clan: ZtkWebhookClanEvent;
+  event: ZtkWebhookLogEvent;
+  guildId: string;
+  rankings: Record<"domination" | "online" | "recruitment", ZtkWebhookPlayerStatEvent[]>;
+};
+
+export type ZtkWebhookRewardUpdatedEvent = {
+  botId?: string | null;
+  clan: ZtkWebhookClanEvent;
+  clanId: string;
+  guildId: string;
+  reward: {
+    name: string;
+    rankingType: "domination" | "online" | "recruitment";
+    rewardDate?: string | null;
+    winners: Array<{ place: number; value: string }>;
+  };
+};
+
 export type NexTechSalePaidEvent = {
   amountCents: number;
   botId?: string | null;
@@ -313,6 +364,8 @@ export class BotSocketClient {
   private courseExamReviewedHandler: ((payload: CourseExamReviewedEvent) => void) | null = null;
   private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
   private ticketPanelPublishHandler: ((payload: TicketPanelPublishEvent) => void) | null = null;
+  private ztkWebhookEventReceivedHandler: ((payload: ZtkWebhookEventReceivedEvent) => void) | null = null;
+  private ztkWebhookRewardUpdatedHandler: ((payload: ZtkWebhookRewardUpdatedEvent) => void) | null = null;
   private nexTechSalePaidHandler: ((payload: NexTechSalePaidEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
@@ -431,6 +484,8 @@ export class BotSocketClient {
     if (this.courseExamReviewedHandler) this.socket.on("courses:exam_reviewed", this.courseExamReviewedHandler);
     if (this.rhAdminPanelPublishHandler) this.socket.on("rh-admin:panel_publish", this.rhAdminPanelPublishHandler);
     if (this.ticketPanelPublishHandler) this.socket.on("tickets:panel_publish", this.ticketPanelPublishHandler);
+    if (this.ztkWebhookEventReceivedHandler) this.socket.on("ztk-webhook:event_received", this.ztkWebhookEventReceivedHandler);
+    if (this.ztkWebhookRewardUpdatedHandler) this.socket.on("ztk-webhook:reward_updated", this.ztkWebhookRewardUpdatedHandler);
     if (this.nexTechSalePaidHandler) this.socket.on("nex-tech-sales:sale_paid", this.nexTechSalePaidHandler);
 
     if (this.manualRegistrationPanelPublishHandler) {
@@ -679,6 +734,18 @@ export class BotSocketClient {
     this.ticketPanelPublishHandler = handler;
     this.socket?.off("tickets:panel_publish");
     this.socket?.on("tickets:panel_publish", handler);
+  }
+
+  onZtkWebhookEventReceived(handler: (payload: ZtkWebhookEventReceivedEvent) => void) {
+    this.ztkWebhookEventReceivedHandler = handler;
+    this.socket?.off("ztk-webhook:event_received");
+    this.socket?.on("ztk-webhook:event_received", handler);
+  }
+
+  onZtkWebhookRewardUpdated(handler: (payload: ZtkWebhookRewardUpdatedEvent) => void) {
+    this.ztkWebhookRewardUpdatedHandler = handler;
+    this.socket?.off("ztk-webhook:reward_updated");
+    this.socket?.on("ztk-webhook:reward_updated", handler);
   }
 
   onNexTechSalePaid(handler: (payload: NexTechSalePaidEvent) => void) {
