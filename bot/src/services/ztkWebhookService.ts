@@ -153,9 +153,9 @@ function createRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
     accentColor: 0xffd500,
     description: `Ranking atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
     fields: [
-      rankingBlock("🔥 TOP 10 — DOMINAÇÕES", payload.rankings.domination, "dominations", "dominações", 10),
-      rankingBlock("👥 TOP RECRUTAMENTO", payload.rankings.recruitment, "recruitments", "recrutamentos"),
-      rankingBlock("⏱️ TOP ONLINE", payload.rankings.online, "onlineSeconds", "horas")
+      ...rankingBlocks("🔥 DOMINAÇÕES — TODOS", payload.rankings.domination, "dominations", "dominações"),
+      ...rankingBlocks("👥 RECRUTAMENTO — TODOS", payload.rankings.recruitment, "recruitments", "recrutamentos"),
+      ...rankingBlocks("⏱️ ONLINE — TODOS", payload.rankings.online, "onlineSeconds", "horas")
     ],
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
@@ -176,12 +176,23 @@ function channelIdForEvent(payload: ZtkWebhookEventReceivedEvent) {
   return null;
 }
 
-function rankingBlock(title: string, values: ZtkWebhookPlayerStatEvent[], field: "dominations" | "onlineSeconds" | "recruitments", label: string, limit = 3) {
-  const lines = values.slice(0, limit).map((item, index) => {
+function rankingBlocks(title: string, values: ZtkWebhookPlayerStatEvent[], field: "dominations" | "onlineSeconds" | "recruitments", label: string) {
+  if (!values.length) return [`## ${title}\nSem registros.`];
+  const blocks: string[] = [];
+  let current = `## ${title}\n`;
+  values.forEach((item, index) => {
     const value = field === "onlineSeconds" ? Math.floor(item.onlineSeconds / 3600) : item[field];
-    return `${medal(index + 1)} **${item.playerName}**\n${value} ${label}`;
+    const line = `${medal(index + 1)} **${item.playerName}**\n${value} ${label}`;
+    const separator = current.endsWith("\n") ? "" : "\n\n";
+    if (`${current}${separator}${line}`.length > 3500) {
+      blocks.push(current);
+      current = `## ${title} (continuação)\n${line}`;
+      return;
+    }
+    current = `${current}${separator}${line}`;
   });
-  return `## ${title}\n${lines.length ? lines.join("\n\n") : "Sem registros."}`;
+  if (current.trim()) blocks.push(current);
+  return blocks;
 }
 
 function isCurrentRuntime(botId: string | null | undefined) {

@@ -446,7 +446,7 @@ async function topPlayers(
   clanId: string,
   field: "dominations" | "onlineSeconds" | "recruitments"
 ) {
-  return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).limit(10).toArray()).map(toPlayerStatDto);
+  return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).toArray()).map(toPlayerStatDto);
 }
 
 function parseZtkPayload(rawPayload: unknown, rawBody: string, fallbackClanName: string) {

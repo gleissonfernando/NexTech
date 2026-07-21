@@ -268,9 +268,9 @@ function RankingView({ dashboard, selectedClan, stats }: { dashboard: ZtkWebhook
           <CardDescription>Ordenado automaticamente pelas logs recebidas do FiveM.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-3">
-          <RankingList maxItems={10} title="🔥 TOP 10 — Dominações" valueLabel="dominações" values={dashboard?.rankings.domination ?? []} valueOf={(item) => item.dominations} />
-          <RankingList title="👥 Top Recrutamento" valueLabel="recrutamentos" values={dashboard?.rankings.recruitment ?? []} valueOf={(item) => item.recruitments} />
-          <RankingList title="⏱ Top Online" valueLabel="horas" values={dashboard?.rankings.online ?? []} valueOf={(item) => Math.floor(item.onlineSeconds / 3600)} />
+          <RankingList title="🔥 Dominações — Todos" valueLabel="dominações" values={dashboard?.rankings.domination ?? []} valueOf={(item) => item.dominations} />
+          <RankingList title="👥 Recrutamento — Todos" valueLabel="recrutamentos" values={dashboard?.rankings.recruitment ?? []} valueOf={(item) => item.recruitments} />
+          <RankingList title="⏱ Online — Todos" valueLabel="horas" values={dashboard?.rankings.online ?? []} valueOf={(item) => Math.floor(item.onlineSeconds / 3600)} />
         </CardContent>
       </Card>
       <Card>
@@ -478,13 +478,13 @@ function SettingsView({ canManage, clan, onSave, savingKey }: { canManage: boole
   );
 }
 
-function RankingList({ maxItems = 3, title, valueLabel, values, valueOf }: { maxItems?: number; title: string; valueLabel: string; values: ZtkWebhookDashboard["rankings"]["domination"]; valueOf: (item: ZtkWebhookDashboard["rankings"]["domination"][number]) => number }) {
+function RankingList({ title, valueLabel, values, valueOf }: { title: string; valueLabel: string; values: ZtkWebhookDashboard["rankings"]["domination"]; valueOf: (item: ZtkWebhookDashboard["rankings"]["domination"][number]) => number }) {
   const medals = ["🥇", "🥈", "🥉"];
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <p className="mb-3 font-semibold text-zinc-100">{title}</p>
-      <div className="space-y-2">
-        {values.slice(0, maxItems).map((item, index) => (
+      <div className="discord-scrollbar max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+        {values.map((item, index) => (
           <div className="flex items-center justify-between gap-3 text-sm" key={item.id}>
             <span className="min-w-0 truncate text-zinc-200">{medals[index] ?? `${index + 1}º`} {item.playerName}</span>
             <span className="shrink-0 text-zinc-500">{valueOf(item)} {valueLabel}</span>
