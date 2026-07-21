@@ -65,7 +65,6 @@ export function buildDiscordAuthUrl(state: string) {
   const params = new URLSearchParams({
     client_id: env.DISCORD_CLIENT_ID,
     redirect_uri: env.DISCORD_OAUTH_REDIRECT_URI,
-    prompt: "consent",
     response_type: "code",
     scope: env.DISCORD_SCOPES,
     state

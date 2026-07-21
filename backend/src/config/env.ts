@@ -9,7 +9,8 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const productionPublicUrl = "https://nextech.discloud.app";
 const defaultDashboardGuildIds = "";
 const defaultDashboardDevUserIds = "";
-const requiredDiscordScopes = "identify email connections guilds guilds.join guilds.members.read";
+const requiredDiscordScopes = "identify email guilds guilds.members.read";
+const allowedDiscordOAuthScopes = new Set(requiredDiscordScopes.split(" "));
 const isProduction = process.env.NODE_ENV === "production";
 
 function cleanEnvValue(value: unknown) {
@@ -165,6 +166,15 @@ function mergeCsvValues(value: string, fallback: string) {
 
 function mergeSpaceValues(value: string, fallback: string) {
   return [...new Set(`${value} ${fallback}`.split(/\s+/).map((item) => item.trim()).filter(Boolean))].join(" ");
+}
+
+function normalizeDiscordScopes(value: string) {
+  const scopes = value
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => allowedDiscordOAuthScopes.has(item));
+
+  return [...new Set(scopes)].join(" ") || requiredDiscordScopes;
 }
 
 function isLocalUrl(value: string) {
@@ -359,7 +369,7 @@ const envSchema = z
       DISCORD_CALLBACK_URL: effectiveDiscordRedirect,
       TWITCH_OAUTH_REDIRECT_URI: value.TWITCH_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/twitch/callback` : ""),
       KICK_OAUTH_REDIRECT_URI: value.KICK_OAUTH_REDIRECT_URI || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/giveaways/oauth/kick/callback` : ""),
-      DISCORD_SCOPES: mergeSpaceValues(value.DISCORD_SCOPES, requiredDiscordScopes),
+      DISCORD_SCOPES: normalizeDiscordScopes(mergeSpaceValues(value.DISCORD_SCOPES, requiredDiscordScopes)),
       REDIS_URL: productionSafeUrl(cleanEnvValue(value.REDIS_URL)) ?? "",
       DASHBOARD_DEV_USER_IDS: mergeCsvValues(
         mergeCsvValues(value.DASHBOARD_DEV_USER_IDS, value.DEV_DISCORD_IDS),
