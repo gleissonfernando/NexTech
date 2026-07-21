@@ -3428,15 +3428,29 @@ export type ZtkWebhookDashboard = {
     }>;
     participants: Array<{
       avatarUrl: string | null;
+      firstDominatedAt: string | null;
       gangName: string | null;
       lastDominatedAt: string | null;
       lastZone: string | null;
+      monthlyDominations: number;
       normalizedPlayerName: string;
       participations: number;
       playerId: string | null;
       playerName: string;
       positionChange: "down" | "same" | "up";
+      todayDominations: number;
+      weeklyDominations: number;
     }>;
+    stats: {
+      averageDaily: number;
+      dailySeries: Array<{ date: string; total: number }>;
+      leaderName: string | null;
+      monthTotal: number;
+      todayTotal: number;
+      total: number;
+      updatedAt: string | null;
+      weekTotal: number;
+    };
   };
   logs: ZtkWebhookLog[];
   recruitmentRankings: {

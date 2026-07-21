@@ -312,12 +312,13 @@ function TopDominationsView({ dashboard, selectedClan }: { dashboard: ZtkWebhook
   const [periodFilter, setPeriodFilter] = useState<"today" | "week" | "month" | "total">("total");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const ranking = dashboard?.dominationRankings.participants ?? [];
+  const dominationStats = dashboard?.dominationRankings.stats;
   const clanOptions = useMemo(() => [...new Set(ranking.map((item) => item.gangName).filter((value): value is string => Boolean(value)))], [ranking]);
   const filtered = useMemo(() => ranking.filter((item) => {
     const playerOk = !playerQuery.trim() || normalizeSearch(item.playerName).includes(normalizeSearch(playerQuery));
     const clanOk = !clanFilter || item.gangName === clanFilter;
     return playerOk && clanOk;
-  }).slice(0, ZTK_RANKING_LIMIT), [clanFilter, playerQuery, ranking]);
+  }).sort((a, b) => rankingPeriodValue(b, periodFilter) - rankingPeriodValue(a, periodFilter) || a.playerName.localeCompare(b.playerName)).slice(0, ZTK_RANKING_LIMIT), [clanFilter, periodFilter, playerQuery, ranking]);
   const activePlayer = filtered.find((item) => item.normalizedPlayerName === selectedPlayer || item.playerId === selectedPlayer) ?? filtered[0] ?? null;
   const playerLogs = (dashboard?.logs ?? []).filter((log) => (
     log.eventType === "domination"
@@ -338,14 +339,22 @@ function TopDominationsView({ dashboard, selectedClan }: { dashboard: ZtkWebhook
     <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
       <Card>
         <CardHeader>
-          <CardTitle>🎯 Top 10 Dominações por Membro</CardTitle>
-          <CardDescription>Conta apenas membros capturados nas logs de dominação do clã {selectedClan.clanName}.</CardDescription>
+          <CardTitle>Ranking de Dominações</CardTitle>
+          <CardDescription>Competição interna do clã {selectedClan.clanName}, usando apenas logs recebidas nesta webhook.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Metric label="Hoje" value={String(dominationStats?.todayTotal ?? 0)} />
+            <Metric label="Semana" value={String(dominationStats?.weekTotal ?? 0)} />
+            <Metric label="Mês" value={String(dominationStats?.monthTotal ?? 0)} />
+            <Metric label="Total geral" value={String(dominationStats?.total ?? 0)} />
+            <Metric label="Membro líder" value={dominationStats?.leaderName ?? "Sem dados"} />
+            <Metric label="Média diária" value={String(dominationStats?.averageDaily ?? 0)} />
+          </div>
           <div className="grid gap-3 md:grid-cols-3">
             <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setPlayerQuery(event.target.value)} placeholder="Pesquisar jogador" value={playerQuery} />
             <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setClanFilter(event.target.value)} value={clanFilter}>
-              <option value="">Todos os clãs registrados</option>
+              <option value="">Todos os registros do clã</option>
               {clanOptions.map((clan) => <option key={clan} value={clan}>{clan}</option>)}
             </select>
             <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setPeriodFilter(event.target.value as typeof periodFilter)} value={periodFilter}>
@@ -355,7 +364,8 @@ function TopDominationsView({ dashboard, selectedClan }: { dashboard: ZtkWebhook
               <option value="month">Mês</option>
             </select>
           </div>
-          <ParticipantRankingList onSelect={(item) => setSelectedPlayer(item.playerId ?? item.normalizedPlayerName)} selectedKey={activePlayer?.playerId ?? activePlayer?.normalizedPlayerName ?? null} values={filtered} />
+          <ParticipantRankingList onSelect={(item) => setSelectedPlayer(item.playerId ?? item.normalizedPlayerName)} period={periodFilter} selectedKey={activePlayer?.playerId ?? activePlayer?.normalizedPlayerName ?? null} values={filtered} />
+          <DailyDominationsChart values={dominationStats?.dailySeries ?? []} />
         </CardContent>
       </Card>
       <Card>
@@ -369,7 +379,13 @@ function TopDominationsView({ dashboard, selectedClan }: { dashboard: ZtkWebhook
               <Metric label="Jogador" value={activePlayer.playerName} />
               <Metric label="Clã atual" value={activePlayer.gangName ?? selectedClan.clanName} />
               <Metric label="Total de dominações" value={String(activePlayer.participations)} />
+              <Metric label="Primeira dominação" value={activePlayer.firstDominatedAt ? formatDateTime(activePlayer.firstDominatedAt) : "Sem registro"} />
               <Metric label="Última dominação" value={activePlayer.lastDominatedAt ? `${activePlayer.lastZone ?? "Local não informado"} • ${formatDateTime(activePlayer.lastDominatedAt)}` : "Sem registro"} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Metric label="No filtro" value={String(rankingPeriodValue(activePlayer, periodFilter))} />
+                <Metric label="Semana" value={String(activePlayer.weeklyDominations)} />
+                <Metric label="Mês" value={String(activePlayer.monthlyDominations)} />
+              </div>
               <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
                 <p className="mb-3 text-sm font-semibold text-zinc-100">Histórico</p>
                 <div className="discord-scrollbar max-h-[24rem] space-y-3 overflow-y-auto pr-1">
@@ -729,7 +745,7 @@ function GangRankingList({ values }: { values: ZtkWebhookDashboard["dominationRa
   );
 }
 
-function ParticipantRankingList({ onSelect, selectedKey, values }: { onSelect?: (item: ZtkWebhookDashboard["dominationRankings"]["participants"][number]) => void; selectedKey?: string | null; values: ZtkWebhookDashboard["dominationRankings"]["participants"] }) {
+function ParticipantRankingList({ onSelect, period = "total", selectedKey, values }: { onSelect?: (item: ZtkWebhookDashboard["dominationRankings"]["participants"][number]) => void; period?: "today" | "week" | "month" | "total"; selectedKey?: string | null; values: ZtkWebhookDashboard["dominationRankings"]["participants"] }) {
   const medals = ["🥇", "🥈", "🥉"];
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
@@ -752,7 +768,7 @@ function ParticipantRankingList({ onSelect, selectedKey, values }: { onSelect?: 
               </div>
             </div>
             <div className="text-zinc-300">
-              <p className="font-semibold">{item.participations} dominações</p>
+              <p className="font-semibold">{rankingPeriodValue(item, period)} dominações</p>
               <p className="text-xs text-zinc-500">Total acumulado</p>
             </div>
             <div className="text-zinc-500">
@@ -762,6 +778,24 @@ function ParticipantRankingList({ onSelect, selectedKey, values }: { onSelect?: 
           </button>
         ))}
         {!values.length ? <p className="text-sm text-zinc-500">Sem registros.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function DailyDominationsChart({ values }: { values: ZtkWebhookDashboard["dominationRankings"]["stats"]["dailySeries"] }) {
+  const max = Math.max(1, ...values.map((item) => item.total));
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      <p className="mb-3 text-sm font-semibold text-zinc-100">Dominações por dia</p>
+      <div className="flex h-28 items-end gap-1">
+        {values.slice(-14).map((item) => (
+          <div className="flex min-w-0 flex-1 flex-col items-center gap-2" key={item.date}>
+            <div className="w-full rounded-sm bg-[#FFD500]" style={{ height: `${Math.max(8, (item.total / max) * 96)}px` }} title={`${item.date}: ${item.total}`} />
+            <span className="w-full truncate text-center text-[10px] text-zinc-500">{item.date.slice(5)}</span>
+          </div>
+        ))}
+        {!values.length ? <p className="self-center text-sm text-zinc-500">Sem dados para o gráfico.</p> : null}
       </div>
     </div>
   );
@@ -826,6 +860,13 @@ function periodAllows(value: string, period: "today" | "week" | "month" | "total
     start.setHours(0, 0, 0, 0);
   }
   return date >= start;
+}
+
+function rankingPeriodValue(item: ZtkWebhookDashboard["dominationRankings"]["participants"][number], period: "today" | "week" | "month" | "total") {
+  if (period === "today") return item.todayDominations;
+  if (period === "week") return item.weeklyDominations;
+  if (period === "month") return item.monthlyDominations;
+  return item.participations;
 }
 
 function trendLabel(value: "down" | "same" | "up") {

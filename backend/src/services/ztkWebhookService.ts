@@ -51,19 +51,33 @@ export type ZtkDominationGangRankingDto = {
 
 export type ZtkDominationParticipantRankingDto = {
   avatarUrl: string | null;
+  firstDominatedAt: string | null;
   lastDominatedAt: string | null;
   lastZone: string | null;
   gangName: string | null;
+  monthlyDominations: number;
   normalizedPlayerName: string;
   participations: number;
   playerId: string | null;
   playerName: string;
   positionChange: "down" | "same" | "up";
+  todayDominations: number;
+  weeklyDominations: number;
 };
 
 export type ZtkDominationRankingsDto = {
   gangs: ZtkDominationGangRankingDto[];
   participants: ZtkDominationParticipantRankingDto[];
+  stats: {
+    averageDaily: number;
+    dailySeries: Array<{ date: string; total: number }>;
+    leaderName: string | null;
+    monthTotal: number;
+    todayTotal: number;
+    total: number;
+    updatedAt: string | null;
+    weekTotal: number;
+  };
 };
 
 export type ZtkRecruitmentRankingDto = {
@@ -129,7 +143,7 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
   const clanIds = clans.map((clan) => clan._id);
   const selectedClanId = selectedClan?._id ?? clanIds[0] ?? null;
   const logs = selectedClanId
-    ? await ztkWebhookLogs.find({ botId: resolvedBotId, guildId, clanId: selectedClanId }).sort({ createdAt: -1 }).limit(50).toArray()
+    ? await ztkWebhookLogs.find({ botId: resolvedBotId, guildId, clanId: selectedClanId }).sort({ createdAt: -1 }).limit(300).toArray()
     : [];
   const rewards = selectedClanId
     ? await ztkWebhookRewards.find({ botId: resolvedBotId, guildId, clanId: selectedClanId }).sort({ createdAt: -1 }).limit(25).toArray()
@@ -143,7 +157,7 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
     : { domination: [], online: [], recruitment: [] };
   const dominationRankings = selectedClanId
     ? await buildDominationRankings(ztkWebhookLogs, resolvedBotId, guildId, selectedClanId)
-    : { gangs: [], participants: [] };
+    : emptyDominationRankings();
   const recruitmentRankings = selectedClanId
     ? await buildRecruitmentRankings(ztkWebhookLogs, resolvedBotId, guildId, selectedClanId)
     : { recruiters: [] };
@@ -638,12 +652,40 @@ async function topPlayers(
   return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).limit(ZTK_RANKING_LIMIT).toArray()).map(toPlayerStatDto);
 }
 
+function emptyDominationRankings(): ZtkDominationRankingsDto {
+  return {
+    gangs: [],
+    participants: [],
+    stats: {
+      averageDaily: 0,
+      dailySeries: [],
+      leaderName: null,
+      monthTotal: 0,
+      todayTotal: 0,
+      total: 0,
+      updatedAt: null,
+      weekTotal: 0
+    }
+  };
+}
+
+function startOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 async function buildDominationRankings(
   collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
   botId: string,
   guildId: string,
   clanId: string
 ): Promise<ZtkDominationRankingsDto> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const weekStart = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
   const gangs = await collection.aggregate<{
     dominations: number;
     gangName: string;
@@ -690,14 +732,18 @@ async function buildDominationRankings(
 
   const participants = await collection.aggregate<{
     avatarUrl: string | null;
+    firstDominatedAt: Date | null;
     gangName: string | null;
     lastDominatedAt: Date | null;
     lastZone: string | null;
+    monthlyDominations: number;
     normalizedPlayerName: string;
     participations: number;
     playerId: string | null;
     playerName: string;
     positionChange: "down" | "same" | "up";
+    todayDominations: number;
+    weeklyDominations: number;
   }>([
     { $match: { botId, clanId, eventType: "domination", guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
@@ -706,20 +752,69 @@ async function buildDominationRankings(
       $group: {
         _id: { $ifNull: ["$participants.id", "$participants.normalizedName"] },
         avatarUrl: { $first: null },
+        firstDominatedAt: { $last: "$eventTimestamp" },
         gangName: { $first: "$clanName" },
         lastDominatedAt: { $first: "$eventTimestamp" },
         lastZone: { $first: "$location" },
+        monthlyDominations: { $sum: { $cond: [{ $gte: ["$eventTimestamp", monthStart] }, 1, 0] } },
         normalizedPlayerName: { $first: "$participants.normalizedName" },
         participations: { $sum: 1 },
         playerId: { $first: "$participants.id" },
         playerName: { $first: "$participants.name" },
-        positionChange: { $first: "same" }
+        positionChange: { $first: "same" },
+        todayDominations: { $sum: { $cond: [{ $gte: ["$eventTimestamp", todayStart] }, 1, 0] } },
+        weeklyDominations: { $sum: { $cond: [{ $gte: ["$eventTimestamp", weekStart] }, 1, 0] } }
       }
     },
-    { $project: { _id: 0, avatarUrl: 1, gangName: 1, lastDominatedAt: 1, lastZone: 1, normalizedPlayerName: 1, participations: 1, playerId: 1, playerName: 1, positionChange: 1 } },
+    { $project: { _id: 0, avatarUrl: 1, firstDominatedAt: 1, gangName: 1, lastDominatedAt: 1, lastZone: 1, monthlyDominations: 1, normalizedPlayerName: 1, participations: 1, playerId: 1, playerName: 1, positionChange: 1, todayDominations: 1, weeklyDominations: 1 } },
     { $sort: { participations: -1, lastDominatedAt: -1, playerName: 1 } },
     { $limit: ZTK_RANKING_LIMIT }
   ]).toArray();
+
+  const [statsDoc] = await collection.aggregate<{
+    monthTotal: number;
+    todayTotal: number;
+    total: number;
+    updatedAt: Date | null;
+    weekTotal: number;
+  }>([
+    { $match: { botId, clanId, eventType: "domination", guildId, participants: { $type: "array" } } },
+    { $unwind: "$participants" },
+    {
+      $group: {
+        _id: null,
+        monthTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", monthStart] }, 1, 0] } },
+        todayTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", todayStart] }, 1, 0] } },
+        total: { $sum: 1 },
+        updatedAt: { $max: "$eventTimestamp" },
+        weekTotal: { $sum: { $cond: [{ $gte: ["$eventTimestamp", weekStart] }, 1, 0] } }
+      }
+    }
+  ]).toArray();
+  const dailySeries = await collection.aggregate<{ date: string; total: number }>([
+    { $match: { botId, clanId, eventType: "domination", eventTimestamp: { $gte: seriesStart }, guildId, participants: { $type: "array" } } },
+    { $unwind: "$participants" },
+    {
+      $group: {
+        _id: { $dateToString: { date: "$eventTimestamp", format: "%Y-%m-%d", timezone: "America/Sao_Paulo" } },
+        total: { $sum: 1 }
+      }
+    },
+    { $project: { _id: 0, date: "$_id", total: 1 } },
+    { $sort: { date: 1 } }
+  ]).toArray();
+  const stats = statsDoc
+    ? {
+        averageDaily: dailySeries.length ? Math.round((statsDoc.total / dailySeries.length) * 10) / 10 : statsDoc.total,
+        dailySeries,
+        leaderName: participants[0]?.playerName ?? null,
+        monthTotal: statsDoc.monthTotal,
+        todayTotal: statsDoc.todayTotal,
+        total: statsDoc.total,
+        updatedAt: statsDoc.updatedAt?.toISOString?.() ?? null,
+        weekTotal: statsDoc.weekTotal
+      }
+    : emptyDominationRankings().stats;
 
   return {
     gangs: gangs.map((item) => ({
@@ -728,8 +823,10 @@ async function buildDominationRankings(
     })),
     participants: participants.map((item) => ({
       ...item,
+      firstDominatedAt: item.firstDominatedAt?.toISOString?.() ?? null,
       lastDominatedAt: item.lastDominatedAt?.toISOString?.() ?? null
-    }))
+    })),
+    stats
   };
 }
 
