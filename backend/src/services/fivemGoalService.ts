@@ -13,6 +13,7 @@ import {
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 
 export const FIVEM_GOALS_MODULE_ID = "fivem-goals";
+const WEEKLY_RANKING_LIMIT = 10;
 
 export type FivemGoalFieldDto = {
   id: string;
@@ -608,7 +609,7 @@ export async function getFivemGoalUserRuntime(guildId: string, userId: string, b
   const approved = submissions.filter((item) => item.status === "approved");
   const totals = new Map<string, number>();
   for (const item of approved) totals.set(item.userId, (totals.get(item.userId) ?? 0) + item.value);
-  const ranking = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 100).map(([rankedUserId, total], index) => ({ rank: index + 1, total, userId: rankedUserId }));
+  const ranking = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, WEEKLY_RANKING_LIMIT).map(([rankedUserId, total], index) => ({ rank: index + 1, total, userId: rankedUserId }));
   return {
     configs,
     ranking,

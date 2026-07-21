@@ -23,6 +23,7 @@ import type { FivemGoalSettings } from "./apiClient";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
+const WEEKLY_RANKING_LIMIT = 10;
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -343,7 +344,7 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
     return;
   }
   if (action === "ranking") {
-    const lines = runtime.ranking.slice(0, 25).map((item) => `${item.rank <= 3 ? ["🥇", "🥈", "🥉"][item.rank - 1] : `**${item.rank}.**`} <@${item.userId}> — ${formatGoalValue(item.total)}`);
+    const lines = runtime.ranking.slice(0, WEEKLY_RANKING_LIMIT).map((item) => `${item.rank <= 3 ? ["🥇", "🥈", "🥉"][item.rank - 1] : `**${item.rank}.**`} <@${item.userId}> — ${formatGoalValue(item.total)}`);
     await interaction.reply({ content: `## Ranking de Metas\n${lines.join("\n") || "Ainda não existem valores aprovados."}`, ephemeral: true });
     return;
   }

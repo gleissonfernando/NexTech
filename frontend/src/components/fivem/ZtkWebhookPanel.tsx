@@ -38,6 +38,7 @@ const rankingLabels: Record<ZtkRankingType, string> = {
   online: "Online",
   recruitment: "Recrutamento"
 };
+const ZTK_RANKING_LIMIT = 10;
 
 export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("ranking");
@@ -323,7 +324,7 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
     const recruitedOk = !recruitedQuery.trim() || item.recentRecruits.some((recruit) => normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery)));
     const dateOk = !dateFilter || item.recentRecruits.some((recruit) => recruit.recruitedAt.slice(0, 10) === dateFilter);
     return recruiterOk && recruitedOk && dateOk;
-  });
+  }).slice(0, ZTK_RANKING_LIMIT);
   const activeRecruiter = filtered.find((item) => item.normalizedRecruiterName === selectedRecruiter) ?? filtered[0] ?? null;
   const medals = ["🥇", "🥈", "🥉"];
 
@@ -618,7 +619,7 @@ function RankingList({ title, valueLabel, values, valueOf }: { title: string; va
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <p className="mb-3 font-semibold text-zinc-100">{title}</p>
       <div className="discord-scrollbar max-h-[32rem] space-y-2 overflow-y-auto pr-1">
-        {values.map((item, index) => (
+        {values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => (
           <div className="flex items-center justify-between gap-3 text-sm" key={item.id}>
             <span className="min-w-0 truncate text-zinc-200">{medals[index] ?? `${index + 1}º`} {item.playerName}</span>
             <span className="shrink-0 text-zinc-500">{valueOf(item)} {valueLabel}</span>
@@ -636,7 +637,7 @@ function GangRankingList({ values }: { values: ZtkWebhookDashboard["dominationRa
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <p className="mb-3 font-semibold text-zinc-100">🏆 Top 10 Dominações</p>
       <div className="discord-scrollbar max-h-[32rem] space-y-2 overflow-y-auto pr-1">
-        {values.map((item, index) => (
+        {values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => (
           <div className="text-sm" key={item.normalizedGangName}>
             <div className="flex items-center justify-between gap-3">
               <span className="min-w-0 truncate text-zinc-200">{medals[index] ?? `${index + 1}º`} {item.gangName}</span>
@@ -657,7 +658,7 @@ function ParticipantRankingList({ values }: { values: ZtkWebhookDashboard["domin
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <p className="mb-3 font-semibold text-zinc-100">🎯 Ranking de Participação</p>
       <div className="discord-scrollbar max-h-[32rem] space-y-2 overflow-y-auto pr-1">
-        {values.map((item, index) => (
+        {values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => (
           <div className="flex items-center justify-between gap-3 text-sm" key={item.playerId ?? item.normalizedPlayerName}>
             <span className="min-w-0 truncate text-zinc-200">{medals[index] ?? `${index + 1}º`} {item.playerName}</span>
             <span className="shrink-0 text-zinc-500">{item.participations} participações</span>

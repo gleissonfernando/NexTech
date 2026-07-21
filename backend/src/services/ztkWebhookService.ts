@@ -5,6 +5,7 @@ import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoomWithAck } from "../
 import { createLog } from "./logService";
 
 export const ZTK_WEBHOOK_MODULE_ID = "ztk-webhook";
+const ZTK_RANKING_LIMIT = 10;
 
 export type ZtkRankingType = "domination" | "recruitment" | "online";
 
@@ -630,7 +631,7 @@ async function topPlayers(
   clanId: string,
   field: "dominations" | "onlineSeconds" | "recruitments"
 ) {
-  return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).toArray()).map(toPlayerStatDto);
+  return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).limit(ZTK_RANKING_LIMIT).toArray()).map(toPlayerStatDto);
 }
 
 async function buildDominationRankings(
@@ -680,7 +681,7 @@ async function buildDominationRankings(
       }
     },
     { $sort: { dominations: -1, zoneCount: -1, participantTotal: -1, lastDominatedAt: -1, gangName: 1 } },
-    { $limit: 10 }
+    { $limit: ZTK_RANKING_LIMIT }
   ]).toArray();
 
   const participants = await collection.aggregate<{
@@ -704,7 +705,7 @@ async function buildDominationRankings(
     },
     { $project: { _id: 0, gangName: 1, normalizedPlayerName: 1, participations: 1, playerId: 1, playerName: 1 } },
     { $sort: { participations: -1, playerName: 1 } },
-    { $limit: 10 }
+    { $limit: ZTK_RANKING_LIMIT }
   ]).toArray();
 
   return {
@@ -764,7 +765,7 @@ async function buildRecruitmentRankings(
       }
     },
     { $sort: { totalRecruitments: -1, lastRecruitmentAt: -1, recruiterName: 1 } },
-    { $limit: 50 }
+    { $limit: ZTK_RANKING_LIMIT }
   ]).toArray();
 
   return {

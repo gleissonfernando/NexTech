@@ -4,6 +4,8 @@ import type { BotContext } from "../types";
 import type { ZtkWebhookEventReceivedEvent, ZtkWebhookManageEvent, ZtkWebhookPlayerStatEvent, ZtkWebhookRewardUpdatedEvent } from "../websocket/socketClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
+const ZTK_RANKING_LIMIT = 10;
+
 export function startZtkWebhookService(client: Client<true>, context: BotContext) {
   context.socket.onZtkWebhookEventReceived((payload) => {
     if (!isCurrentRuntime(payload.botId)) return;
@@ -276,7 +278,7 @@ function channelIdForEvent(payload: ZtkWebhookEventReceivedEvent) {
 
 function gangRankingBlocks(title: string, values: NonNullable<ZtkWebhookEventReceivedEvent["dominationRankings"]>["gangs"]) {
   if (!values.length) return [`## ${title}\nSem registros.`];
-  return [`## ${title}\n${values.map((item, index) => {
+  return [`## ${title}\n${values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => {
     const last = item.lastZone ? `\nÚltima dominação: ${item.lastZone}${item.lastDominatedAt ? `\nHorário: ${formatDateTime(item.lastDominatedAt)}` : ""}` : "";
     return `${medal(index + 1)} **${item.gangName}**\n${item.dominations} dominações${last}`;
   }).join("\n\n")}`];
@@ -284,14 +286,14 @@ function gangRankingBlocks(title: string, values: NonNullable<ZtkWebhookEventRec
 
 function participantRankingBlocks(title: string, values: NonNullable<ZtkWebhookEventReceivedEvent["dominationRankings"]>["participants"]) {
   if (!values.length) return [`## ${title}\nSem registros.`];
-  return [`## ${title}\n${values.map((item, index) => `${medal(index + 1)} **${item.playerName}**\n${item.participations} participações${item.gangName ? `\nGang atual: ${item.gangName}` : ""}`).join("\n\n")}`];
+  return [`## ${title}\n${values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => `${medal(index + 1)} **${item.playerName}**\n${item.participations} participações${item.gangName ? `\nGang atual: ${item.gangName}` : ""}`).join("\n\n")}`];
 }
 
 function recruitmentRankingBlocks(title: string, values: NonNullable<ZtkWebhookEventReceivedEvent["recruitmentRankings"]>["recruiters"]) {
   if (!values.length) return [`## ${title}\nSem registros.`];
   const blocks: string[] = [];
   let current = `## ${title}\n`;
-  values.slice(0, 10).forEach((item, index) => {
+  values.slice(0, ZTK_RANKING_LIMIT).forEach((item, index) => {
     const recruits = item.recentRecruits.length
       ? item.recentRecruits.map((recruit) => `👤 ${recruit.recruitedName}\n📅 ${formatDate(recruit.recruitedAt)}`).join("\n")
       : "Nenhum histórico recente.";
@@ -312,7 +314,7 @@ function rankingBlocks(title: string, values: ZtkWebhookPlayerStatEvent[], field
   if (!values.length) return [`## ${title}\nSem registros.`];
   const blocks: string[] = [];
   let current = `## ${title}\n`;
-  values.forEach((item, index) => {
+  values.slice(0, ZTK_RANKING_LIMIT).forEach((item, index) => {
     const value = field === "onlineSeconds" ? Math.floor(item.onlineSeconds / 3600) : item[field];
     const line = `${medal(index + 1)} **${item.playerName}**\n${value} ${label}`;
     const separator = current.endsWith("\n") ? "" : "\n\n";
