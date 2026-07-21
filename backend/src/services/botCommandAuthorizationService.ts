@@ -91,10 +91,7 @@ export async function authorizeBotCommand(input: BotCommandAuthorizationInput) {
       return writeAuthorizationLog(normalizedInput, denied(normalizedInput, config.moduleId, "guild_not_registered", "Servidor não está vinculado a este bot na dashboard.", checkedAt));
     }
 
-    if (
-      normalizedInput.commandName === "clear" &&
-      isDashboardDevUserId(normalizedInput.userId)
-    ) {
+    if (isDashboardDevUserId(normalizedInput.userId)) {
       return writeAuthorizationLog(normalizedInput, {
         allowed: true,
         botId: normalizedInput.botId,
@@ -103,7 +100,7 @@ export async function authorizeBotCommand(input: BotCommandAuthorizationInput) {
         guildId: normalizedInput.guildId,
         moduleId: config.moduleId,
         policy: "fail_closed",
-        reason: "Comando /clear autorizado para usuário dev do dashboard.",
+        reason: "Comando autorizado para usuário owner DEV do dashboard.",
         reasonCode: "dev_user_override"
       });
     }
