@@ -9,6 +9,7 @@ import {
   savePanelImageUpload,
   savePanelImageSettings
 } from "../services/panelImageSettingsService";
+import { PERSISTENT_VIDEO_MAX_BYTES } from "../services/persistentImageStorageService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import type { AuthSessionUser } from "../types/session";
 
@@ -46,7 +47,7 @@ const settingsSchema = z.object({
   useGlobalDefault: z.boolean().optional()
 });
 const panelImageUpload = raw({
-  limit: process.env.PANEL_MEDIA_UPLOAD_LIMIT || "2gb",
+  limit: process.env.PANEL_MEDIA_UPLOAD_LIMIT || PERSISTENT_VIDEO_MAX_BYTES,
   type: () => true
 });
 
@@ -112,12 +113,24 @@ panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload
     const botId = await readRequiredBotId(req);
     const user = res.locals.dashboardAuth.user;
     const mimeType = req.header("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    const originalName = decodeHeader(req.header("x-file-name"));
 
     await assertCanManage(user, guildId, botId, moduleIdForPanel(panelId));
 
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       throw createRouteError("Envie uma mídia para o painel.", 400);
     }
+
+    console.info("[panel-media]", JSON.stringify({
+      actorId: user.discordId,
+      botId,
+      bytes: req.body.length,
+      guildId,
+      mimeType,
+      originalName,
+      panelId,
+      stage: "upload:received"
+    }));
 
     return res.json({
       settings: await savePanelImageUpload({
@@ -126,11 +139,17 @@ panelImagesRouter.put("/:guildId/:panelId/upload", requireAuth, panelImageUpload
         buffer: req.body,
         guildId,
         mimeType,
-        originalName: decodeHeader(req.header("x-file-name")),
+        originalName,
         panelId
       })
     });
   } catch (error) {
+    console.warn("[panel-media]", JSON.stringify({
+      error: error instanceof Error ? error.message : String(error),
+      guildId: req.params.guildId,
+      panelId: req.params.panelId,
+      stage: "upload:failed"
+    }));
     return next(error);
   }
 });

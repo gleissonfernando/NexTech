@@ -6,7 +6,7 @@ import { GridFSBucket, ObjectId } from "mongodb";
 import { env } from "../config/env";
 import { getMongoCollections, getMongoDb, type MongoPersistentImage } from "../database/mongo";
 import { createLog } from "./logService";
-import { PANEL_MEDIA_MIME_EXTENSIONS, processPanelMedia } from "./panelMediaProcessor";
+import { PANEL_MEDIA_MIME_EXTENSIONS, PANEL_VIDEO_MAX_DURATION_SECONDS, processPanelMedia } from "./panelMediaProcessor";
 
 export type StoredImageDto = {
   animated: boolean;
@@ -39,6 +39,22 @@ export async function savePersistentImage(input: {
   originalName?: string | null;
   previousUrl?: string | null;
 }) {
+  const candidateMimeType = detectSupportedImageMimeType(input.buffer, input.mimeType, input.originalName);
+  const videoCandidate = isVideoMedia(candidateMimeType, input.originalName);
+  const maxBytes = videoCandidate ? PERSISTENT_VIDEO_MAX_BYTES : PERSISTENT_IMAGE_MAX_BYTES;
+  if (input.buffer.length > maxBytes) {
+    throw Object.assign(new Error(`Arquivo muito grande. O limite para ${videoCandidate ? "vídeos" : "imagens"} é ${formatBytes(maxBytes)}.`), { statusCode: 413 });
+  }
+
+  console.info("[panel-media]", JSON.stringify({
+    botId: input.botId ?? null,
+    guildId: input.guildId,
+    moduleId: input.moduleId,
+    originalName: input.originalName ?? null,
+    size: input.buffer.length,
+    stage: "storage:start",
+    videoMaxDurationSeconds: videoCandidate ? PANEL_VIDEO_MAX_DURATION_SECONDS : null
+  }));
   const processed = await processPanelMedia({ buffer: input.buffer, mimeType: input.mimeType, originalName: input.originalName });
 
   const id = randomUUID();
@@ -71,6 +87,7 @@ export async function savePersistentImage(input: {
     imageType: input.imageType,
     metadata: {
       ...(input.metadata ?? {}),
+      durationSeconds: processed.durationSeconds,
       inputHash: processed.inputHash
     },
     mimeType,
@@ -146,6 +163,7 @@ export async function savePersistentImage(input: {
         previousDeletedBeforeInsert,
         processingError: processed.processingError,
         processingStatus: processed.processingStatus,
+        durationSeconds: processed.durationSeconds,
         size: processed.buffer.length,
         storageProvider: "mongodb",
         status: "uploaded"
@@ -257,11 +275,13 @@ export function validatePersistentImage(buffer: Buffer, mimeType: string) {
   detectSupportedImageMimeType(buffer, mimeType);
 }
 
-export function detectSupportedImageMimeType(buffer: Buffer, mimeType: string) {
+export function detectSupportedImageMimeType(buffer: Buffer, mimeType: string, originalName?: string | null) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw Object.assign(new Error("Arquivo de mídia obrigatório."), { statusCode: 400 });
   }
-  return mimeType.trim().toLowerCase() || "application/octet-stream";
+  const normalized = mimeType.trim().toLowerCase();
+  const extensionMimeType = mimeTypeFromExtension(originalName ?? "");
+  return !normalized || normalized === "application/octet-stream" ? extensionMimeType || "application/octet-stream" : normalized;
 }
 
 export function isPersistentImageUrl(value: string | null | undefined) {
@@ -399,6 +419,16 @@ function mimeTypeFromExtension(filePath: string) {
   if (ext === ".webm") return "video/webm";
   if (ext === ".webp") return "image/webp";
   return null;
+}
+
+function isVideoMedia(mimeType: string, originalName?: string | null) {
+  return mimeType.startsWith("video/") || /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)$/i.test(originalName ?? "");
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function sanitizePathPart(value: string) {

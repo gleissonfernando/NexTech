@@ -541,7 +541,7 @@ export async function uploadPanelImage(guildId: string, panelId: string, file: F
         if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100));
       },
       params: botParams(botId),
-      timeout: 0
+      timeout: 120000
     }
   );
   return data.settings;

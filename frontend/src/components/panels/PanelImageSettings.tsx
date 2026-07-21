@@ -42,9 +42,13 @@ const PANELS: PanelDefinition[] = [
 ];
 const PANEL_MEDIA_ACCEPT = [
   "image/png", "image/apng", "image/jpeg", "image/jpg", "image/webp", "image/gif",
-  "video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/x-matroska", "video/mpeg", "video/mp2t", "video/x-flv", "video/x-ms-wmv", "video/ogg",
-  ".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".flv", ".wmv", ".ts", ".mts", ".3gp", ".ogv", ".asf", ".f4v", ".vob", ".rmvb", ".mxf"
+  "video/3gpp", "video/3gpp2", "video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/x-matroska", "video/mpeg", "video/mp2t", "video/x-flv", "video/x-ms-wmv", "video/ogg",
+  ".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".flv", ".wmv", ".ts", ".mts", ".3gp", ".3g2", ".ogv", ".asf", ".f4v", ".vob", ".rmvb", ".mxf"
 ].join(",");
+const PANEL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const PANEL_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
+const PANEL_VIDEO_MAX_DURATION_SECONDS = 15;
+const VIDEO_METADATA_TIMEOUT_MS = 8000;
 
 const positionOptions: Array<{ label: string; value: PanelImagePosition }> = [
   { label: "Sem imagem", value: "none" },
@@ -258,37 +262,34 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       return;
     }
 
-    const allowedMime = isPanelMediaMime(file.type);
-    const allowedExtension = isPanelMediaName(file.name);
-    if (!allowedMime && !allowedExtension) {
-      setStatus(null);
-      setError("Formato não reconhecido. Envie imagem, GIF/animação ou vídeo comum como MP4, MOV, AVI, MKV, WEBM, M4V, MPEG, FLV, WMV, TS, 3GP, OGV, ASF, F4V, VOB, RMVB ou MXF.");
-      return;
-    }
-
     setUploading(true);
     setUploadProgress(0);
-    setStatus(null);
+    setStatus("Validando arquivo selecionado...");
     setError(null);
+    logPanelUpload("selection", file, selectedPanelId);
 
     try {
+      await validatePanelMediaBeforeUpload(file, (message) => setStatus(message));
+      logPanelUpload("upload:start", file, selectedPanelId);
       setStatus("Enviando...\n░░░░░░░░░░ 0%");
       const saved = await uploadPanelImage(guildId, selectedPanelId, file, botId, (percent) => {
         setUploadProgress(percent);
-        setStatus(`Enviando...\n${progressBar(percent)} ${percent}%`);
+        setStatus(percent >= 100 ? "Upload concluído. Processando no servidor..." : `Enviando...\n${progressBar(percent)} ${percent}%`);
       });
-      setStatus("Convertendo e gerando miniatura...\n██████████");
+      logPanelUpload("upload:complete", file, selectedPanelId);
       setSettingsByPanel((current) => ({
         ...current,
         [saved.panelId]: saved
       }));
       setDraft(saved);
-      setStatus("Concluído.");
+      setUploadProgress(100);
+      setStatus("Mídia enviada e pré-visualização atualizada.");
     } catch (requestError) {
+      logPanelUpload("upload:failed", file, selectedPanelId, readErrorMessage(requestError, "Falha desconhecida."));
+      setStatus(null);
       setError(readErrorMessage(requestError, "Não foi possível enviar a mídia."));
     } finally {
       setUploading(false);
-      setUploadProgress(0);
     }
   }
 
@@ -412,9 +413,17 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span>PNG • JPG • JPEG • WEBP • GIF</span>
+                  <span>PNG • JPG • WEBP • GIF • MP4 • WEBM • MOV • AVI • MKV • M4V</span>
                   {draft.imageUrl ? <ImageTypeBadge settings={draft} /> : null}
                 </div>
+                {uploading ? (
+                  <div className="grid gap-1">
+                    <div className="h-2 overflow-hidden rounded-full bg-zinc-800" aria-label={`Progresso do upload ${uploadProgress}%`}>
+                      <div className="h-full bg-[#FFD500] transition-[width] duration-200" style={{ width: `${Math.max(0, Math.min(100, uploadProgress))}%` }} />
+                    </div>
+                    <p className="text-right text-[11px] text-zinc-500">{uploadProgress}%</p>
+                  </div>
+                ) : null}
               </div>
 
               <SelectField
@@ -733,7 +742,94 @@ function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
 
 function isVideoMedia(imageUrl: string, mimeType?: string | null) {
   if (mimeType?.startsWith("video/")) return true;
-  return /\.(3gp|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(imageUrl);
+  return /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(imageUrl);
+}
+
+async function validatePanelMediaBeforeUpload(file: File, onStatus: (message: string) => void) {
+  const allowedMime = isPanelMediaMime(file.type);
+  const allowedExtension = isPanelMediaName(file.name);
+  if (!allowedMime && !allowedExtension) {
+    throw new Error("Formato não reconhecido. Envie imagem, GIF/animação ou vídeo comum como MP4, MOV, AVI, MKV, WEBM, M4V, MPEG, FLV, WMV, TS, 3GP, OGV, ASF, F4V, VOB, RMVB ou MXF.");
+  }
+
+  const video = isPanelVideoFile(file);
+  const maxBytes = video ? PANEL_VIDEO_MAX_BYTES : PANEL_IMAGE_MAX_BYTES;
+  if (file.size > maxBytes) {
+    throw new Error(`Arquivo muito grande. O limite para ${video ? "vídeos" : "imagens"} é ${formatBytes(maxBytes)}.`);
+  }
+
+  if (!video) return;
+
+  onStatus("Validando duração do vídeo...");
+  const metadata = await readBrowserVideoMetadata(file).catch((error) => {
+    console.info("[panel-media-upload]", JSON.stringify({
+      error: error instanceof Error ? error.message : String(error),
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      stage: "client_duration:skipped"
+    }));
+    return null;
+  });
+  if (!metadata) {
+    onStatus("Duração será validada pelo servidor...");
+    return;
+  }
+  if (!Number.isFinite(metadata.duration) || metadata.duration <= 0) {
+    throw new Error("Não foi possível validar a duração deste vídeo no navegador.");
+  }
+  if (metadata.duration > PANEL_VIDEO_MAX_DURATION_SECONDS) {
+    throw new Error(`O vídeo tem ${formatSeconds(metadata.duration)}s. O tempo máximo permitido é de ${PANEL_VIDEO_MAX_DURATION_SECONDS} segundos.`);
+  }
+}
+
+function readBrowserVideoMetadata(file: File) {
+  return new Promise<{ duration: number }>((resolve, reject) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const cleanup = () => {
+      clearTimeout(timer);
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+    };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Tempo limite ao ler metadados do vídeo no navegador."));
+    }, VIDEO_METADATA_TIMEOUT_MS);
+
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      cleanup();
+      resolve({ duration });
+    };
+    video.onerror = () => {
+      cleanup();
+      reject(new Error("O navegador não conseguiu ler os metadados deste formato."));
+    };
+    video.src = url;
+  });
+}
+
+function isPanelVideoFile(file: File) {
+  return file.type.startsWith("video/") || /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)$/i.test(file.name);
+}
+
+function formatSeconds(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function logPanelUpload(stage: string, file: File, panelId: string, error?: string) {
+  console.info("[panel-media-upload]", JSON.stringify({
+    error,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    panelId,
+    size: file.size,
+    stage
+  }));
 }
 
 function dashboardImageUrl(imageUrl: string) {
@@ -766,7 +862,7 @@ function isPanelMediaMime(value: string) {
 }
 
 function isPanelMediaName(value: string) {
-  return /\.(apng|gif|jpe?g|png|webp|3gp|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)$/i.test(value);
+  return /\.(apng|gif|jpe?g|png|webp|3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)$/i.test(value);
 }
 
 function progressBar(percent: number) {
@@ -874,12 +970,14 @@ function previewImageStyle(size: PanelImageSize, customWidth: number | null, cus
 }
 
 function readErrorMessage(error: unknown, fallback: string) {
-  if (typeof error !== "object" || error === null || !("response" in error)) {
-    return fallback;
-  }
+  const response = typeof error === "object" && error !== null && "response" in error
+    ? (error as { response?: { data?: { message?: unknown } } }).response
+    : null;
+  if (typeof response?.data?.message === "string") return response.data.message;
 
-  const response = (error as { response?: { data?: { message?: unknown } } }).response;
-  return typeof response?.data?.message === "string"
-    ? response.data.message
-    : fallback;
+  const code = typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : null;
+  if (code === "ECONNABORTED") return "O upload excedeu o tempo limite. Tente um arquivo menor ou outro formato de vídeo.";
+
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
 }

@@ -8,6 +8,7 @@ import path from "node:path";
 export type ProcessedPanelMedia = {
   animated: boolean;
   buffer: Buffer;
+  durationSeconds: number | null;
   extension: string;
   inputHash: string;
   mimeType: string;
@@ -22,6 +23,10 @@ export type ProcessedPanelMedia = {
 const nodeRequire = createRequire(__filename);
 const BROWSER_SAFE_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
 const BROWSER_SAFE_IMAGE_MIME_TYPES = new Set(["image/apng", "image/gif", "image/jpeg", "image/png", "image/webp"]);
+export const PANEL_VIDEO_MAX_DURATION_SECONDS = 15;
+const PROBE_TIMEOUT_MS = 20_000;
+const POSTER_TIMEOUT_MS = 30_000;
+const CONVERSION_TIMEOUT_MS = Number(process.env.PANEL_MEDIA_CONVERSION_TIMEOUT_MS || 90_000);
 
 export const PANEL_MEDIA_MIME_EXTENSIONS: Record<string, string> = {
   "image/apng": "apng",
@@ -52,10 +57,12 @@ export const PANEL_MEDIA_MIME_EXTENSIONS: Record<string, string> = {
 };
 
 export async function processPanelMedia(input: { buffer: Buffer; mimeType: string; originalName?: string | null }): Promise<ProcessedPanelMedia> {
+  const startedAt = Date.now();
   if (!Buffer.isBuffer(input.buffer) || input.buffer.length === 0) {
     throw Object.assign(new Error("Arquivo de mídia obrigatório."), { statusCode: 400 });
   }
 
+  logPanelMedia("selection", { mimeType: input.mimeType, originalName: input.originalName ?? null, size: input.buffer.length });
   const originalMimeType = resolveInputMimeType(input.buffer, input.mimeType, input.originalName);
   const inputHash = sha256(input.buffer);
   const extension = PANEL_MEDIA_MIME_EXTENSIONS[originalMimeType] ?? extensionFromName(input.originalName) ?? "bin";
@@ -70,6 +77,7 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
     return {
       animated: isAnimation,
       buffer: input.buffer,
+      durationSeconds: null,
       extension,
       inputHash,
       mimeType: originalMimeType,
@@ -84,29 +92,32 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
 
   const ffmpegPath = resolveFfmpegPath();
   if (!ffmpegPath) {
-    return {
-      animated: true,
-      buffer: input.buffer,
-      extension,
-      inputHash,
-      mimeType: originalMimeType,
-      originalMimeType,
-      originalSize: input.buffer.length,
-      posterBuffer: null,
-      posterMimeType: null,
-      processingError: "FFmpeg não encontrado no backend; mídia salva no formato original.",
-      processingStatus: BROWSER_SAFE_VIDEO_MIME_TYPES.has(originalMimeType) ? "stored" : "failed"
-    };
+    throw Object.assign(new Error("Não foi possível validar a duração do vídeo porque o FFmpeg não está disponível no backend."), { statusCode: 503 });
   }
 
-  const probe = await probeMedia(input.buffer, extension, ffmpegPath).catch((error) => ({ raw: readError(error) }));
+  logPanelMedia("probe:start", { extension, originalMimeType });
+  const probe = await probeMedia(input.buffer, extension, ffmpegPath);
+  const durationSeconds = parseDurationSeconds(probe.raw);
+  logPanelMedia("probe:complete", { durationSeconds, elapsedMs: Date.now() - startedAt });
+  if (!Number.isFinite(durationSeconds) || durationSeconds === null) {
+    throw Object.assign(new Error("Não foi possível validar a duração deste vídeo. Envie outro arquivo ou converta para MP4/WebM."), { statusCode: 422 });
+  }
+  if (durationSeconds > PANEL_VIDEO_MAX_DURATION_SECONDS) {
+    throw Object.assign(new Error(`O vídeo tem ${formatSeconds(durationSeconds)}s. O tempo máximo permitido é de ${PANEL_VIDEO_MAX_DURATION_SECONDS} segundos.`), { statusCode: 400 });
+  }
+
   const compatible = isBrowserCompatibleVideo(originalMimeType, probe.raw);
-  const posterBuffer = await generatePoster(input.buffer, extension, ffmpegPath).catch(() => null);
+  const posterBuffer = await generatePoster(input.buffer, extension, ffmpegPath).catch((error) => {
+    logPanelMedia("poster:failed", { error: readError(error) });
+    return null;
+  });
 
   if (compatible) {
+    logPanelMedia("store:compatible", { durationSeconds, originalMimeType, elapsedMs: Date.now() - startedAt });
     return {
       animated: true,
       buffer: input.buffer,
+      durationSeconds,
       extension,
       inputHash,
       mimeType: originalMimeType,
@@ -120,10 +131,13 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
   }
 
   try {
+    logPanelMedia("convert:start", { extension, originalMimeType });
     const converted = await convertToBrowserMp4(input.buffer, extension, ffmpegPath);
+    logPanelMedia("convert:complete", { elapsedMs: Date.now() - startedAt, outputBytes: converted.length });
     return {
       animated: true,
       buffer: converted,
+      durationSeconds,
       extension: "mp4",
       inputHash,
       mimeType: "video/mp4",
@@ -136,9 +150,11 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
     };
   } catch (error) {
     if (BROWSER_SAFE_VIDEO_MIME_TYPES.has(originalMimeType)) {
+      logPanelMedia("convert:fallback_original", { error: readError(error), originalMimeType });
       return {
         animated: true,
         buffer: input.buffer,
+        durationSeconds,
         extension,
         inputHash,
         mimeType: originalMimeType,
@@ -168,7 +184,7 @@ function isBrowserCompatibleVideo(mimeType: string, probeOutput: string) {
 async function probeMedia(buffer: Buffer, extension: string, ffmpegPath: string) {
   const temp = await writeTempFile(buffer, extension);
   try {
-    const result = await run(ffmpegPath, ["-hide_banner", "-i", temp.input], 20_000, true);
+    const result = await run(ffmpegPath, ["-hide_banner", "-i", temp.input], PROBE_TIMEOUT_MS, true);
     return { raw: `${result.stdout}\n${result.stderr}` };
   } finally {
     await fs.rm(temp.dir, { force: true, recursive: true }).catch(() => null);
@@ -193,9 +209,9 @@ async function convertToBrowserMp4(buffer: Buffer, extension: string, ffmpegPath
       "-c:v",
       "libx264",
       "-preset",
-      "slow",
+      "veryfast",
       "-crf",
-      "18",
+      "23",
       "-pix_fmt",
       "yuv420p",
       "-c:a",
@@ -205,7 +221,7 @@ async function convertToBrowserMp4(buffer: Buffer, extension: string, ffmpegPath
       "-movflags",
       "+faststart",
       output
-    ], 0);
+    ], CONVERSION_TIMEOUT_MS);
     return fs.readFile(output);
   } finally {
     await fs.rm(temp.dir, { force: true, recursive: true }).catch(() => null);
@@ -216,7 +232,7 @@ async function generatePoster(buffer: Buffer, extension: string, ffmpegPath: str
   const temp = await writeTempFile(buffer, extension);
   const output = path.join(temp.dir, "poster.jpg");
   try {
-    await run(ffmpegPath, ["-hide_banner", "-y", "-i", temp.input, "-vf", "thumbnail,scale=640:-1", "-frames:v", "1", "-q:v", "3", output], 30_000);
+    await run(ffmpegPath, ["-hide_banner", "-y", "-i", temp.input, "-vf", "thumbnail,scale=640:-1", "-frames:v", "1", "-q:v", "3", output], POSTER_TIMEOUT_MS);
     return fs.readFile(output);
   } finally {
     await fs.rm(temp.dir, { force: true, recursive: true }).catch(() => null);
@@ -253,6 +269,24 @@ function run(command: string, args: string[], timeoutMs: number, allowNonZero = 
       else reject(new Error(result.stderr || `FFmpeg terminou com código ${code}.`));
     });
   });
+}
+
+function parseDurationSeconds(probeOutput: string) {
+  const match = /Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/i.exec(probeOutput);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  if (![hours, minutes, seconds].every(Number.isFinite)) return null;
+  return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function formatSeconds(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function logPanelMedia(stage: string, metadata: Record<string, unknown>) {
+  console.info("[panel-media]", JSON.stringify({ stage, ...metadata }));
 }
 
 function resolveInputMimeType(buffer: Buffer, mimeType: string, originalName?: string | null) {
