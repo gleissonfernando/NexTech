@@ -1,5 +1,4 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { env } from "../config/env";
 import type { MongoZtkWebhookClan, MongoZtkWebhookEventType, MongoZtkWebhookLog, MongoZtkWebhookPlayerStat, MongoZtkWebhookReward } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoomWithAck } from "../realtime/events";
@@ -531,7 +530,7 @@ function toClanDto(value: MongoZtkWebhookClan): ZtkClanDto {
     lastEventAt: value.lastEventAt?.toISOString() ?? null,
     updatedAt: value.updatedAt.toISOString(),
     webhookCreatedAt: value.webhookCreatedAt?.toISOString() ?? null,
-    webhookUrl: value.discordWebhookUrl ?? (value.webhookToken ? buildWebhookUrl(value._id, value.webhookToken) : null)
+    webhookUrl: value.discordWebhookUrl ?? null
   };
 }
 
@@ -551,11 +550,6 @@ function toPlayerStatDto(value: MongoZtkWebhookPlayerStat): ZtkPlayerStatDto {
 
 function toRewardDto(value: MongoZtkWebhookReward): ZtkRewardDto {
   return { ...value, createdAt: value.createdAt.toISOString(), id: value._id, rewardDate: value.rewardDate?.toISOString() ?? null, updatedAt: value.updatedAt.toISOString() };
-}
-
-function buildWebhookUrl(clanId: string, token: string) {
-  const baseUrl = (env.API_PUBLIC_URL || `${env.FRONTEND_URL}/api`).replace(/\/+$/, "");
-  return `${baseUrl}/ztk-webhook/ingest/${encodeURIComponent(clanId)}/${encodeURIComponent(token)}`;
 }
 
 function newWebhookToken() {

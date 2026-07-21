@@ -2734,7 +2734,7 @@ export async function updateZtkWebhookState(botId: string, guildId: string, clan
   const { data } = await api.post<{ clan: ZtkWebhookClan }>(
     `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}/webhook/${action}`,
     undefined,
-    { params: botParams(botId) }
+    { params: botParams(botId), timeout: 40000 }
   );
   return data.clan;
 }

@@ -179,7 +179,7 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
               <CardDescription>Ranking automático, logs FiveM e premiações por clã.</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant={selectedClan?.active ? "success" : "muted"}>{selectedClan?.active ? "Monitorando" : "Inativo"}</Badge>
+              <Badge variant={selectedClan?.active && isDiscordWebhookUrl(selectedClan.webhookUrl) ? "success" : "muted"}>{selectedClan?.active && isDiscordWebhookUrl(selectedClan.webhookUrl) ? "Monitorando" : "Inativo"}</Badge>
               <Button disabled={savingKey !== null} onClick={() => void refresh()} size="sm" variant="secondary">
                 {savingKey === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Atualizar
@@ -298,7 +298,7 @@ function WebhookView({ canManage, clan, onCopy, onWebhookAction, savingKey }: { 
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-3">
-          <Metric label="Status" value={clan.webhookEnabled ? "Gerada e ativa" : "Não gerada"} />
+          <Metric label="Status" value={isDiscordWebhookUrl(clan.webhookUrl) && clan.webhookEnabled ? "Gerada e ativa" : "Não gerada"} />
           <Metric label="Última log recebida" value={clan.lastEventAt ? formatDateTime(clan.lastEventAt) : "Nenhuma"} />
           <Metric label="Criada em" value={clan.webhookCreatedAt ? formatDateTime(clan.webhookCreatedAt) : "Pendente"} />
         </div>
@@ -307,13 +307,13 @@ function WebhookView({ canManage, clan, onCopy, onWebhookAction, savingKey }: { 
           <p className="break-all text-sm text-zinc-200">{clan.webhookUrl ?? "Configure um canal e clique em Criar webhook para gerar a URL aceita pelo FiveM."}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={!canManage || savingKey !== null} onClick={() => void onWebhookAction(clan.webhookUrl ? "regenerate" : "create")}>
+          <Button disabled={!canManage || savingKey !== null} onClick={() => void onWebhookAction(isDiscordWebhookUrl(clan.webhookUrl) ? "regenerate" : "create")}>
             {savingKey?.startsWith("webhook") ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {clan.webhookUrl ? "Regenerar" : "Criar webhook"}
+            {isDiscordWebhookUrl(clan.webhookUrl) ? "Regenerar" : "Criar webhook"}
           </Button>
-          <Button disabled={!clan.webhookUrl} onClick={onCopy} variant="secondary"><Clipboard className="h-4 w-4" />Copiar URL</Button>
-          <Button disabled={!canManage || savingKey !== null || !clan.webhookUrl} onClick={() => void onWebhookAction("disable")} variant="secondary">Desativar</Button>
-          <Button disabled={!canManage || savingKey !== null || !clan.webhookUrl} onClick={() => void onWebhookAction("delete")} variant="destructive"><Trash2 className="h-4 w-4" />Excluir</Button>
+          <Button disabled={!isDiscordWebhookUrl(clan.webhookUrl)} onClick={onCopy} variant="secondary"><Clipboard className="h-4 w-4" />Copiar URL</Button>
+          <Button disabled={!canManage || savingKey !== null || !isDiscordWebhookUrl(clan.webhookUrl)} onClick={() => void onWebhookAction("disable")} variant="secondary">Desativar</Button>
+          <Button disabled={!canManage || savingKey !== null || !isDiscordWebhookUrl(clan.webhookUrl)} onClick={() => void onWebhookAction("delete")} variant="destructive"><Trash2 className="h-4 w-4" />Excluir</Button>
         </div>
       </CardContent>
     </Card>
@@ -541,5 +541,12 @@ function errorMessage(error: unknown, fallback: string) {
     const response = (error as { response?: { data?: { message?: unknown } } }).response;
     if (typeof response?.data?.message === "string") return response.data.message;
   }
+  if (error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ECONNABORTED") {
+    return "Tempo esgotado ao criar a webhook. Verifique se o bot está online e tem permissão Gerenciar Webhooks no canal escolhido.";
+  }
   return fallback;
+}
+
+function isDiscordWebhookUrl(value: string | null | undefined) {
+  return /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,32}\/[-_a-zA-Z0-9]+/i.test(value ?? "");
 }
