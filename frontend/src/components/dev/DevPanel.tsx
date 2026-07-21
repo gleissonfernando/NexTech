@@ -267,7 +267,18 @@ type BotMenuId =
   | "fivem-production"
   | "integrations";
 
+type BotMenuGroupId =
+  | "quick"
+  | "geral"
+  | "sales"
+  | "seguranca"
+  | "voz"
+  | "fivem"
+  | "policia"
+  | "outros";
+
 type BotMenuItem = {
+  group: BotMenuGroupId;
   id: BotMenuId;
   label: string;
   description: string;
@@ -310,6 +321,7 @@ const POLICE_SERVER_RELEASE_MODULES = [
 
 const botMenuItems: BotMenuItem[] = [
   {
+    group: "quick",
     id: "overview",
     label: "Visao Geral",
     description: "Resumo do bot selecionado",
@@ -317,6 +329,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: []
   },
   {
+    group: "geral",
     id: "settings",
     label: "Configurações",
     description: "Ajustes gerais do bot",
@@ -324,6 +337,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["avisos", "mission-tools", "voice-recorder", "server-generator"]
   },
   {
+    group: "geral",
     id: "moderation",
     label: "Moderação",
     description: "Ban, kick, warn e protecoes",
@@ -331,6 +345,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["moderation", "rules", "safe-bot", "account-age-security"]
   },
   {
+    group: "geral",
     id: "tickets",
     label: "Tickets",
     description: "Atendimento e suporte",
@@ -338,6 +353,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["tickets"]
   },
   {
+    group: "sales",
     id: "sales",
     label: "Vendas e Pagamentos",
     description: "Sistema de vendas, Mercado Pago, pagamento manual e tabelas",
@@ -345,6 +361,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["nex-tech-sales"],
     children: [
       {
+        group: "sales",
         id: "payment-gateway",
         label: "Pagamento Automático",
         description: "Mercado Pago por bot com confirmação automática",
@@ -352,6 +369,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["payment-gateway"]
       },
       {
+        group: "sales",
         id: "manual-payments",
         label: "Pagamento Manual",
         description: "Pix manual, comprovantes e aprovação por equipe",
@@ -359,6 +377,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["manual-payments"]
       },
       {
+        group: "sales",
         id: "price-tables",
         label: "Painel de Vendas",
         description: "Tabelas de preços e publicação no Discord",
@@ -368,6 +387,7 @@ const botMenuItems: BotMenuItem[] = [
     ]
   },
   {
+    group: "geral",
     id: "verification",
     label: "Verificação",
     description: "Entrada segura no servidor",
@@ -375,6 +395,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["verification"]
   },
   {
+    group: "geral",
     id: "logs",
     label: "Logs",
     description: "Eventos e auditoria",
@@ -382,6 +403,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["logs"]
   },
   {
+    group: "seguranca",
     id: "anti-abuse",
     label: "DEV Control Panel",
     description: "Controle global Anti Abuse por bot",
@@ -389,6 +411,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["anti-abuse"]
   },
   {
+    group: "seguranca",
     id: "cloning",
     label: "Clonagem",
     description: "Clonagem de emojis e estrutura de servidor",
@@ -396,6 +419,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["emoji-cloner", "server-cloner"]
   },
   {
+    group: "seguranca",
     id: "anti-ban",
     label: "Anti Ban",
     description: "Proteção contra ban, kick, timeout e remoção de cargos",
@@ -403,6 +427,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["anti-ban"]
   },
   {
+    group: "seguranca",
     id: "suspicious-servers",
     label: "Servidores Suspeitos",
     description: "Monitoramento de entrada e servidores blacklist",
@@ -410,6 +435,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["suspicious-servers"]
   },
   {
+    group: "seguranca",
     id: "global-blacklist",
     label: "Blacklist Global",
     description: "Bloqueio de usuários por ID e motivo",
@@ -417,6 +443,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["global-blacklist"]
   },
   {
+    group: "seguranca",
     id: "advanced-permissions",
     label: "Permissões Avançadas",
     description: "Permissões específicas por cargo",
@@ -424,6 +451,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["advanced-permissions"]
   },
   {
+    group: "seguranca",
     id: "invite-cleanup",
     label: "Limpeza de Convites",
     description: "Rotina automática de remoção de convites",
@@ -431,6 +459,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["invite-cleanup"]
   },
   {
+    group: "seguranca",
     id: "server-backup",
     label: "Backup",
     description: "Backup e restauração seletiva do servidor",
@@ -438,6 +467,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["server-backup"]
   },
   {
+    group: "seguranca",
     id: "vanity-url-protection",
     label: "URL Personalizada",
     description: "Proteção e restauração da URL personalizada",
@@ -445,6 +475,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["vanity-url-protection"]
   },
   {
+    group: "voz",
     id: "hide-empty-voice",
     label: "Chamadas Vazias",
     description: "Oculta canais de voz vazios automaticamente",
@@ -452,6 +483,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["hide-empty-voice"]
   },
   {
+    group: "voz",
     id: "anti-disconnect",
     label: "Anti Disconnect",
     description: "Reconecta membros removidos de calls por usuários sem autorizacao",
@@ -459,6 +491,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["anti-disconnect"]
   },
   {
+    group: "voz",
     id: "auto-unmute",
     label: "Auto Desmutar",
     description: "Desmuta membros ao entrar no canal configurado",
@@ -466,6 +499,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["auto-unmute"]
   },
   {
+    group: "voz",
     id: "temporary-voice",
     label: "Chamadas Temporárias",
     description: "Criação e controle de salas temporárias",
@@ -473,6 +507,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["temporary-voice"]
   },
   {
+    group: "seguranca",
     id: "tag-verification",
     label: "Verificação de Tag",
     description: "Cargo automático por tag personalizada",
@@ -480,6 +515,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["tag-verification"]
   },
   {
+    group: "seguranca",
     id: "bio-url-verification",
     label: "URL na Bio",
     description: "Cargo automático por URL na bio",
@@ -487,6 +523,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["bio-url-verification"]
   },
   {
+    group: "outros",
     id: "first-lady",
     label: "Primeira Dama",
     description: "Relacionamentos, limites e histórico",
@@ -494,6 +531,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["first-lady"]
   },
   {
+    group: "outros",
     id: "economy",
     label: "Economia",
     description: "Sistemas economicos",
@@ -501,6 +539,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: []
   },
   {
+    group: "outros",
     id: "discord",
     label: "Discord",
     description: "Cargos, boas-vindas e mensagens",
@@ -508,6 +547,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["roles", "welcome", "leave", "avisos"]
   },
   {
+    group: "outros",
     id: "select-menu",
     label: "Select Menu",
     description: "Gerenciamento de menus de seleção",
@@ -515,6 +555,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: []
   },
   {
+    group: "fivem",
     id: "fivem",
     label: "FiveM",
     description: "Módulos de RP e gestão",
@@ -522,6 +563,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: ["fivem"],
     children: [
       {
+        group: "fivem",
         id: "fivem-factions",
         label: "Facções",
         description: "Facções e ausências",
@@ -529,6 +571,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-factions", "fivem-absences"]
       },
       {
+        group: "fivem",
         id: "fivem-ammo",
         label: "Municoes",
         description: "Controle de munições",
@@ -536,6 +579,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-ammo"]
       },
       {
+        group: "fivem",
         id: "fivem-orders",
         label: "Encomendas",
         description: "Pedidos e entregas",
@@ -543,6 +587,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-orders"]
       },
       {
+        group: "fivem",
         id: "fivem-washing",
         label: "Sistema de Lavagem",
         description: "Lavagem RP, porcentagens, repasses e histórico",
@@ -550,6 +595,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-washing"]
       },
       {
+        group: "fivem",
         id: "fivem-drugs",
         label: "Sistema de Drogas",
         description: "Drogas, pedidos, famílias, logs e histórico",
@@ -557,6 +603,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-drugs"]
       },
       {
+        group: "fivem",
         id: "fivem-finance",
         label: "Financeiro",
         description: "Caixa e financeiro",
@@ -564,6 +611,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-finance"]
       },
       {
+        group: "fivem",
         id: "fivem-goals",
         label: "Metas",
         description: "Metas e produção",
@@ -571,6 +619,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-goals"]
       },
       {
+        group: "fivem",
         id: "faction-chest",
         label: "Sistema de Baú",
         description: "Entrada e saída manual do baú da facção",
@@ -578,6 +627,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["faction-chest"]
       },
       {
+        group: "fivem",
         id: "fivem-actions",
         description: "Ações profissionais para FAC",
         label: "Ações FAC",
@@ -585,6 +635,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-actions"]
       },
       {
+        group: "fivem",
         id: "fivem-production",
         label: "Produção",
         description: "Produção e corporações",
@@ -594,6 +645,7 @@ const botMenuItems: BotMenuItem[] = [
     ]
   },
   {
+    group: "policia",
     id: "police",
     label: "Polícia",
     description: "Hierarquia, ações e relatórios policiais",
@@ -601,6 +653,7 @@ const botMenuItems: BotMenuItem[] = [
     moduleIds: [],
     children: [
       {
+        group: "policia",
         id: "fivem-hierarchy",
         label: "Hierarquia V2",
         description: "Paineis oficiais V2 sincronizados por cargos",
@@ -608,6 +661,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["fivem-hierarchy"]
       },
       {
+        group: "policia",
         id: "police-absences",
         label: "Ausências Políciais",
         description: "Solicitacoes e aprovação de ausências para oficiais",
@@ -615,6 +669,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-absences"]
       },
       {
+        group: "policia",
         id: "police-actions",
         label: "Ações Políciais",
         description: "Operações policiais com participantes e relatórios",
@@ -622,6 +677,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-actions"]
       },
       {
+        group: "policia",
         id: "police-iab",
         label: "Denúncia IAB",
         description: "Denuncias IAB com triagem e auditoria",
@@ -629,6 +685,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-iab"]
       },
       {
+        group: "policia",
         id: "police-hr",
         label: "RH Policial",
         description: "Efetivo, recrutamento e movimentações internas",
@@ -636,6 +693,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-hr"]
       },
       {
+        group: "policia",
         id: "police-daf-roster",
         label: "Escalacao DAF",
         description: "Escalas, plantões e equipes DAF",
@@ -643,6 +701,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-daf-roster"]
       },
       {
+        group: "policia",
         id: "police-courses",
         label: "Cursos Políciais",
         description: "Cursos, aprovação e histórico de capacitacao",
@@ -650,6 +709,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-courses"]
       },
       {
+        group: "policia",
         id: "police-patrol-reports",
         label: "Relatórios Políciais",
         description: "Relatórios profissionais de patrulhamento",
@@ -657,6 +717,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-patrol-reports"]
       },
       {
+        group: "policia",
         id: "police-qru",
         label: "Registro de QRU",
         description: "Ocorrências, evidências e ranking de apreensões",
@@ -664,6 +725,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-qru"]
       },
       {
+        group: "policia",
         id: "police-promotions",
         label: "Promoções de Patente",
         description: "Solicitação, avaliação, aprovação e cargos automáticos",
@@ -671,6 +733,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-promotions"]
       },
       {
+        group: "policia",
         id: "police-hidden-channel",
         label: "Canal Oculto",
         description: "Canal policial oculto com retransmissão e auditoria",
@@ -678,6 +741,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-hidden-channel"]
       },
       {
+        group: "policia",
         id: "visible-message",
         label: "Mensagem Visível",
         description: "Mensagens com nome e avatar do usuário autorizado",
@@ -685,6 +749,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["visible-message"]
       },
       {
+        group: "policia",
         id: "message-control",
         label: "Controle de Mensagem",
         description: "Modo individual oculto/pessoal para tickets policiais",
@@ -692,6 +757,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["message-control"]
       },
       {
+        group: "policia",
         id: "police-dm",
         label: "DM Policial",
         description: "Atendimento por DM com registro e histórico",
@@ -699,6 +765,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-dm"]
       },
       {
+        group: "policia",
         id: "police-subpoenas",
         label: "Intimação",
         description: "Intimações, prazos e notificações",
@@ -706,6 +773,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-subpoenas"]
       },
       {
+        group: "policia",
         id: "police-open-duty",
         label: "Notificar / Ponto Aberto",
         description: "DM policial, canal mencionado e contador de avisos",
@@ -713,6 +781,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-open-duty"]
       },
       {
+        group: "policia",
         id: "police-time-clock",
         label: "Relógio de Ponto",
         description: "Controle manual de ponto policial",
@@ -720,6 +789,7 @@ const botMenuItems: BotMenuItem[] = [
         moduleIds: ["police-time-clock"]
       },
       {
+        group: "policia",
         id: "auto-activity-clock",
         label: "Ponto Automático",
         description: "Controle automático por atividade do Discord",
@@ -729,6 +799,7 @@ const botMenuItems: BotMenuItem[] = [
     ]
   },
   {
+    group: "outros",
     id: "integrations",
     label: "Integrações",
     description: "Lives, clips e redes",
@@ -2144,10 +2215,13 @@ function BotModuleWorkspace({
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readFavoriteModules(bot.id));
   const categories = moduleDashboardCategories(modules);
-  const activeCategory = categories.find((item) => item.id === activeMenuId) ?? categories[0];
+  const categoryItems = flattenBotMenuItems(categories).filter((item) => modulesForMenu(item, modules, true).length > 0);
   const enabledModules = normalizeDevModuleIds(bot.enabledModules);
+  const defaultExpandedGroups = defaultExpandedBotMenuGroups(categoryItems, enabledModules);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readFavoriteModules(bot.id));
+  const [expandedGroupIds, setExpandedGroupIds] = useState<BotMenuGroupId[]>(() => readBotMenuGroupExpansion(bot.id, defaultExpandedGroups));
+  const activeCategory = categoryItems.find((item) => item.id === activeMenuId) ?? categoryItems[0];
   const enabledSet = new Set(enabledModules);
   const favoriteSet = new Set(favoriteIds);
   const normalizedQuery = query.trim().toLowerCase();
@@ -2171,6 +2245,7 @@ function BotModuleWorkspace({
   const activeModules = modules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id)));
   const inactiveCount = Math.max(0, modules.length - activeModules.length);
   const securityModules = modulesForMenu({
+    group: "seguranca",
     id: "moderation",
     label: "Segurança",
     description: "",
@@ -2191,10 +2266,16 @@ function BotModuleWorkspace({
   }, modules, true);
   const activeSecurityCount = securityModules.filter((module) => enabledSet.has(module.id)).length;
   const moduleSections = moduleDashboardSections(filteredModules, categories);
+  const categoryGroups = groupedBotMenuCategories(categoryItems, modules, enabledModules);
+  const activeGroupId = activeBotMenuGroupId(activeMenuId, categoryItems);
 
   useEffect(() => {
     setFavoriteIds(readFavoriteModules(bot.id));
   }, [bot.id]);
+
+  useEffect(() => {
+    setExpandedGroupIds(readBotMenuGroupExpansion(bot.id, defaultExpandedGroups));
+  }, [bot.id, defaultExpandedGroups.join("|")]);
 
   function toggleFavorite(moduleId: string) {
     setFavoriteIds((current) => {
@@ -2206,6 +2287,53 @@ function BotModuleWorkspace({
       return next;
     });
   }
+
+  function toggleGroup(groupId: BotMenuGroupId) {
+    setExpandedGroupIds((current) => {
+      const next = current.includes(groupId)
+        ? current.filter((item) => item !== groupId)
+        : [...current, groupId];
+
+      writeBotMenuGroupExpansion(bot.id, next);
+      return next;
+    });
+  }
+
+  const quickMenuItems = [
+    {
+      active: activeMenuId === "overview",
+      count: activeModules.length,
+      icon: LayoutDashboard,
+      label: "Todos",
+      menuId: "overview" as BotMenuId,
+      total: modules.length
+    },
+    {
+      active: activeMenuId === "favorites",
+      count: favoriteModules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length,
+      icon: Star,
+      label: "Favoritos",
+      menuId: "favorites" as BotMenuId,
+      total: favoriteModules.length
+    },
+    {
+      active: activeMenuId === "database-maintenance",
+      count: 0,
+      icon: Database,
+      label: "Manutencao do Banco",
+      menuId: "database-maintenance" as BotMenuId,
+      total: 0
+    },
+    {
+      active: activeMenuId === "system-emojis",
+      count: 0,
+      icon: SmilePlus,
+      label: "Emojis do Sistema",
+      menuId: "system-emojis" as BotMenuId,
+      total: 0
+    }
+  ];
+  const quickGroupOpen = expandedGroupIds.includes("quick") || activeGroupId === "quick";
 
   return (
     <Card className="overflow-hidden border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(18,18,22,0.94),rgba(7,7,10,0.98))] shadow-[0_0_54px_rgba(255,213,0,0.12)] hover:translate-y-0" id="dev-bot-module-settings">
@@ -2262,50 +2390,61 @@ function BotModuleWorkspace({
                 <p className="truncate text-xs font-medium text-zinc-500">Dashboard DEV</p>
               </div>
             </div>
-            <nav className="space-y-1">
-              <BotMenuCategoryButton
-                active={activeMenuId === "overview"}
-                count={activeModules.length}
-                icon={LayoutDashboard}
-                label="Todos"
-                onClick={() => onSelectMenu("overview")}
-                total={modules.length}
+            <nav className="space-y-3">
+              <BotMenuGroupHeader
+                count={quickMenuItems.filter((item) => item.total ? item.count > 0 : item.active).length}
+                label="Acesso rápido"
+                onToggle={() => toggleGroup("quick")}
+                open={quickGroupOpen}
+                total={quickMenuItems.length}
               />
-              <BotMenuCategoryButton
-                active={activeMenuId === "favorites"}
-                count={favoriteModules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length}
-                icon={Star}
-                label="Favoritos"
-                onClick={() => onSelectMenu("favorites")}
-                total={favoriteModules.length}
-              />
-              <BotMenuCategoryButton
-                active={activeMenuId === "database-maintenance"}
-                count={0}
-                icon={Database}
-                label="Manutencao do Banco"
-                onClick={() => onSelectMenu("database-maintenance")}
-                total={0}
-              />
-              <BotMenuCategoryButton
-                active={activeMenuId === "system-emojis"}
-                count={0}
-                icon={SmilePlus}
-                label="Emojis do Sistema"
-                onClick={() => onSelectMenu("system-emojis")}
-                total={0}
-              />
-              {categories.map((item) => (
-                <BotMenuCategoryButton
-                  active={activeMenuId === item.id}
-                  count={countEnabledMenuModules(item, modules, enabledModules)}
-                  icon={item.icon}
-                  key={item.id}
-                  label={item.label}
-                  onClick={() => onSelectMenu(item.id)}
-                  total={modulesForMenu(item, modules, true).length}
-                />
-              ))}
+              {quickGroupOpen ? (
+                <div className="space-y-1">
+                  {quickMenuItems.map((item) => (
+                    <BotMenuCategoryButton
+                      active={item.active}
+                      count={item.count}
+                      icon={item.icon}
+                      key={item.menuId}
+                      label={item.label}
+                      onClick={() => onSelectMenu(item.menuId)}
+                      total={item.total}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {categoryGroups.map((group) => {
+                const open = expandedGroupIds.includes(group.id) || activeGroupId === group.id;
+
+                return (
+                  <div className="space-y-1.5" key={group.id}>
+                    <BotMenuGroupHeader
+                      count={group.count}
+                      label={group.label}
+                      onToggle={() => toggleGroup(group.id)}
+                      open={open}
+                      total={group.total}
+                    />
+                    {open ? (
+                      <div className="space-y-1">
+                        {group.items.map((item) => (
+                          <BotMenuCategoryButton
+                            active={activeMenuId === item.id}
+                            compact={group.compact}
+                            count={countEnabledMenuModules(item, modules, enabledModules)}
+                            icon={item.icon}
+                            key={item.id}
+                            label={item.label}
+                            onClick={() => onSelectMenu(item.id)}
+                            total={modulesForMenu(item, modules, true).length}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </nav>
           </aside>
 
@@ -3144,8 +3283,36 @@ function BotMenuSummary({
   );
 }
 
+function BotMenuGroupHeader({
+  count,
+  label,
+  onToggle,
+  open,
+  total
+}: {
+  count: number;
+  label: string;
+  onToggle: () => void;
+  open: boolean;
+  total: number;
+}) {
+  return (
+    <button
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-zinc-900/80 bg-zinc-950/55 px-3 text-left transition hover:border-[#FFD500]/20 hover:bg-[#FFD500]/[0.06]"
+      onClick={onToggle}
+      title={`${label}: ${count}/${total} ativos`}
+      type="button"
+    >
+      <ChevronDown className={`h-4 w-4 shrink-0 text-[#FFEA70] transition ${open ? "rotate-0" : "-rotate-90"}`} />
+      <span className="min-w-0 flex-1 truncate text-[0.68rem] font-bold uppercase tracking-[0.16em] text-zinc-400">{label}</span>
+      <span className="rounded-full border border-[#FFD500]/15 bg-black/35 px-2 py-0.5 text-[0.68rem] font-bold text-[#FFEA70]">{count}/{total}</span>
+    </button>
+  );
+}
+
 function BotMenuCategoryButton({
   active,
+  compact = false,
   count,
   icon: Icon,
   label,
@@ -3153,6 +3320,7 @@ function BotMenuCategoryButton({
   total
 }: {
   active: boolean;
+  compact?: boolean;
   count: number;
   icon: typeof Bot;
   label: string;
@@ -3164,7 +3332,8 @@ function BotMenuCategoryButton({
   return (
     <button
       className={[
-        "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
+        "group flex w-full items-center rounded-lg text-left font-semibold transition duration-300",
+        compact ? "h-9 gap-2 px-2.5 text-xs" : "h-11 gap-3 px-3 text-sm",
         active
           ? "bg-[#FFD500]/18 text-white ring-1 ring-[#FFEA70]/30 shadow-[0_0_22px_rgba(255,213,0,0.13)]"
           : inactive
@@ -3175,8 +3344,8 @@ function BotMenuCategoryButton({
       title={`${label}: ${count}/${total} ativos`}
       type="button"
     >
-      <span className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition", active ? "border-[#FFEA70]/30 bg-[#FFD500]/15 text-[#FFEA70]" : "border-zinc-800 bg-black/30 text-zinc-500 group-hover:text-[#FFEA70]"].join(" ")}>
-        <Icon className="h-4 w-4" />
+      <span className={["flex shrink-0 items-center justify-center rounded-lg border transition", compact ? "h-7 w-7" : "h-8 w-8", active ? "border-[#FFEA70]/30 bg-[#FFD500]/15 text-[#FFEA70]" : "border-zinc-800 bg-black/30 text-zinc-500 group-hover:text-[#FFEA70]"].join(" ")}>
+        <Icon className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className={["rounded-full border px-2 py-0.5 text-xs", inactive ? "border-zinc-900 bg-black/20 text-zinc-600" : "border-zinc-800 bg-black/35 text-zinc-300"].join(" ")}>{total ? count : 0}</span>
@@ -5273,6 +5442,89 @@ function moduleDashboardCategories(modules: DevModuleDefinition[]) {
     .filter((item) => modulesForMenu(item, modules, true).length > 0);
 }
 
+const botMenuGroupDefinitions: Array<{ compact?: boolean; id: BotMenuGroupId; label: string }> = [
+  { id: "geral", label: "Geral" },
+  { id: "sales", label: "Vendas e Pagamentos" },
+  { id: "seguranca", label: "Segurança" },
+  { id: "voz", label: "Voz", compact: true },
+  { id: "fivem", label: "FiveM / Roleplay", compact: true },
+  { id: "policia", label: "Polícia (RP)", compact: true },
+  { id: "outros", label: "Outros", compact: true }
+];
+
+type BotMenuCategoryGroup = {
+  compact: boolean;
+  count: number;
+  id: BotMenuGroupId;
+  items: BotMenuItem[];
+  label: string;
+  total: number;
+};
+
+function groupedBotMenuCategories(categories: BotMenuItem[], modules: DevModuleDefinition[], enabledModules: string[]): BotMenuCategoryGroup[] {
+  const enabledSet = new Set(normalizeDevModuleIds(enabledModules));
+
+  return botMenuGroupDefinitions
+    .map((definition) => {
+      const items = categories.filter((item) => item.group === definition.id);
+      const groupModules = uniqueModulesForMenuItems(items, modules);
+
+      return {
+        compact: Boolean(definition.compact),
+        count: groupModules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length,
+        id: definition.id,
+        items,
+        label: definition.label,
+        total: groupModules.length
+      };
+    })
+    .filter((group) => group.items.length > 0 && group.total > 0);
+}
+
+function uniqueModulesForMenuItems(items: BotMenuItem[], modules: DevModuleDefinition[]) {
+  const seen = new Set<string>();
+  const result: DevModuleDefinition[] = [];
+
+  for (const item of items) {
+    for (const module of modulesForMenu(item, modules, true)) {
+      if (seen.has(module.id)) continue;
+      seen.add(module.id);
+      result.push(module);
+    }
+  }
+
+  return result;
+}
+
+function defaultExpandedBotMenuGroups(categories: BotMenuItem[], enabledModules: string[]): BotMenuGroupId[] {
+  const enabledSet = new Set(normalizeDevModuleIds(enabledModules));
+  const enabledByGroup = new Set<BotMenuGroupId>();
+
+  for (const category of categories) {
+    if (category.moduleIds.some((moduleId) => enabledSet.has(canonicalDevModuleId(moduleId)))) {
+      enabledByGroup.add(category.group);
+    }
+  }
+
+  return botMenuGroupDefinitions
+    .filter((definition) => (
+      definition.id === "geral"
+      || definition.id === "sales"
+      || definition.id === "seguranca"
+      || enabledByGroup.has(definition.id)
+    ))
+    .map((definition) => definition.id)
+    .concat("quick");
+}
+
+function activeBotMenuGroupId(activeMenuId: BotMenuId, categories: BotMenuItem[]): BotMenuGroupId | null {
+  if (["overview", "favorites", "database-maintenance", "system-emojis"].includes(activeMenuId)) {
+    return "quick";
+  }
+
+  return categories.find((category) => category.id === activeMenuId)?.group ?? null;
+}
+
 type ModuleDashboardSection = {
   description: string;
   id: string;
@@ -5399,6 +5651,31 @@ function writeFavoriteModules(botId: string, moduleIds: string[]) {
     window.localStorage.setItem(favoriteStorageKey(botId), JSON.stringify([...new Set(moduleIds)]));
   } catch {
     // Favoritos sao apenas uma preferencia visual local.
+  }
+}
+
+function groupExpansionStorageKey(botId: string) {
+  return `dev.bot-menu.groups.${botId}`;
+}
+
+function readBotMenuGroupExpansion(botId: string, fallback: BotMenuGroupId[]) {
+  try {
+    const raw = window.localStorage.getItem(groupExpansionStorageKey(botId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(parsed)) return [...new Set(fallback)];
+    const validGroupIds = new Set<BotMenuGroupId>(["quick", "geral", "sales", "seguranca", "voz", "fivem", "policia", "outros"]);
+    const stored = parsed.filter((item): item is BotMenuGroupId => typeof item === "string" && validGroupIds.has(item as BotMenuGroupId));
+    return stored.length ? [...new Set(stored)] : [...new Set(fallback)];
+  } catch {
+    return [...new Set(fallback)];
+  }
+}
+
+function writeBotMenuGroupExpansion(botId: string, groupIds: BotMenuGroupId[]) {
+  try {
+    window.localStorage.setItem(groupExpansionStorageKey(botId), JSON.stringify([...new Set(groupIds)]));
+  } catch {
+    // Grupos expandidos sao apenas uma preferencia visual local.
   }
 }
 
