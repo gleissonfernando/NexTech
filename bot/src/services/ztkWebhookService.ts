@@ -84,7 +84,7 @@ function createRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
     accentColor: 0xffd500,
     description: `Ranking atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
     fields: [
-      rankingBlock("🔥 TOP DOMINAÇÃO", payload.rankings.domination, "dominations", "dominações"),
+      rankingBlock("🔥 TOP 10 — DOMINAÇÕES", payload.rankings.domination, "dominations", "dominações", 10),
       rankingBlock("👥 TOP RECRUTAMENTO", payload.rankings.recruitment, "recruitments", "recrutamentos"),
       rankingBlock("⏱️ TOP ONLINE", payload.rankings.online, "onlineSeconds", "horas")
     ],
@@ -107,8 +107,8 @@ function channelIdForEvent(payload: ZtkWebhookEventReceivedEvent) {
   return null;
 }
 
-function rankingBlock(title: string, values: ZtkWebhookPlayerStatEvent[], field: "dominations" | "onlineSeconds" | "recruitments", label: string) {
-  const lines = values.slice(0, 3).map((item, index) => {
+function rankingBlock(title: string, values: ZtkWebhookPlayerStatEvent[], field: "dominations" | "onlineSeconds" | "recruitments", label: string, limit = 3) {
+  const lines = values.slice(0, limit).map((item, index) => {
     const value = field === "onlineSeconds" ? Math.floor(item.onlineSeconds / 3600) : item[field];
     return `${medal(index + 1)} **${item.playerName}**\n${value} ${label}`;
   });
