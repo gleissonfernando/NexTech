@@ -715,7 +715,7 @@ function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromoti
       new ButtonBuilder().setCustomId(`${PREFIX}:close:${request.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Secondary)
     );
   return {
-    allowedMentions: { users: [request.requesterId, ...(request.evaluatorId ? [request.evaluatorId] : [])] },
+    allowedMentions: { users: uniqueMentionUsers(request.requesterId, request.evaluatorId) },
     components: [{
       type: 17,
       accent_color: parseColor(promotion.color),
@@ -874,6 +874,10 @@ function sessionKey(guildId: string, userId: string) {
 
 function evaluationDraftKey(requestId: string, userId: string) {
   return `${requestId}:${userId}`;
+}
+
+function uniqueMentionUsers(...userIds: Array<string | null | undefined>) {
+  return [...new Set(userIds.filter((userId): userId is string => Boolean(userId)))];
 }
 
 function promotionFor(settings: PolicePromotionSettings, request: PolicePromotionRequest) {
