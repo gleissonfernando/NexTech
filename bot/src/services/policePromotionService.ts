@@ -1687,95 +1687,203 @@ function evaluationStepTitle(step: EvaluationStep) {
 function evaluationStepInstruction(step: EvaluationStep, guild: Guild) {
   const instructions: Record<EvaluationStep, string> = {
     conduct: [
-      `## ${icon("homem", guild)} Etapa 3 - Comportamento e Conduta`,
-      "Descreva o comportamento do avaliado durante a avaliação.",
+      `## ${icon("homem", guild)} Etapa 3 - Avaliação de Comportamento e Conduta`,
+      "Avalie os seguintes itens.",
       "",
-      "Analise:",
-      "• Respeito à hierarquia;",
-      "• Postura profissional;",
-      "• Comunicação com oficiais;",
-      "• Comunicação com civis;",
-      "• Trabalho em equipe;",
-      "• Controle emocional;",
-      "• Cumprimento das regras.",
+      "Utilize:",
+      "Excelente",
+      "Bom",
+      "Regular",
+      "Ruim",
       "",
-      `${icon("folha", guild)} Exemplo:`,
-      "O avaliado manteve postura profissional, respeitou as orientações do instrutor e se comunicou corretamente com os demais oficiais. Demonstrou controle emocional e bom trabalho em equipe durante toda a patrulha.",
+      "Justifique todas as respostas.",
+      "",
+      `${icon("folha", guild)} Modelo obrigatório:`,
+      "",
+      "1. Demonstração de comportamento profissional durante a patrulha",
+      "",
+      "Nota:",
+      "Excelente",
+      "",
+      "Justificativa:",
+      "Manteve postura profissional durante toda a patrulha.",
+      "",
+      DIVIDER,
+      "",
+      "2. Comunicação com colegas e civis",
+      "",
+      "Nota:",
+      "Bom",
+      "",
+      "Justificativa:",
+      "Comunicou-se corretamente, porém pode melhorar a objetividade.",
+      "",
+      DIVIDER,
+      "",
+      "3. Capacidade de adaptação a situações imprevistas",
+      "",
+      "Nota:",
+      "Excelente",
+      "",
+      "Justificativa:",
+      "Adaptou-se rapidamente às mudanças de cenário.",
       "",
       "Envie agora a resposta neste canal. A próxima mensagem enviada por você será capturada pelo sistema."
     ].join("\n"),
     final: [
       `## ${icon("trofeu", guild)} Etapa 5 - Avaliação Final`,
-      "Informe o resultado recomendado e a justificativa final.",
+      "Informe o resultado final da avaliação.",
       "",
-      "Preencha:",
-      "• Resultado recomendado;",
-      "• Justificativa;",
-      "• Pontos positivos;",
-      "• Pontos negativos;",
-      "• Recomendação do instrutor.",
+      `${icon("folha", guild)} Modelo:`,
       "",
-      `${icon("folha", guild)} Exemplo de aprovação:`,
-      "Resultado recomendado: Aprovação",
-      "O avaliado demonstrou conhecimento adequado dos procedimentos, boa comunicação e postura profissional. Os erros apresentados foram corrigidos após orientação.",
-      "Recomendação: Apto para promoção.",
+      "O Cadet está apto para se tornar Officer?",
       "",
-      `${icon("exclamacao", guild)} Exemplo de reprovação:`,
-      "Resultado recomendado: Reprovação",
-      "O avaliado apresentou dificuldades frequentes nos procedimentos e não conseguiu corrigir os erros mesmo após orientação.",
-      "Recomendação: Realizar novo treinamento antes de uma nova avaliação.",
+      "Sim ou Não",
+      "",
+      DIVIDER,
+      "",
+      "Justificativa:",
+      "",
+      "[Resposta completa]",
+      "",
+      `${icon("folha", guild)} Exemplo:`,
+      "",
+      "Resultado:",
+      "",
+      "Sim",
+      "",
+      DIVIDER,
+      "",
+      "Justificativa:",
+      "",
+      "O avaliado demonstrou domínio dos procedimentos operacionais, boa postura, respeito à hierarquia e capacidade de atuar de forma segura durante toda a avaliação.",
       "",
       "Envie agora a resposta neste canal. A próxima mensagem enviada por você será capturada pelo sistema."
     ].join("\n"),
     notes: [
       `## ${icon("folha", guild)} Etapa 4 - Observações Gerais`,
-      "Informe pontos positivos, pontos que precisam ser melhorados e qualquer ocorrência importante durante a avaliação.",
+      "Responda todos os itens abaixo.",
+      "",
+      `${icon("folha", guild)} Modelo:`,
+      "",
+      "Pontos fortes do avaliado:",
+      "",
+      "[Resposta]",
+      "",
+      DIVIDER,
+      "",
+      "Áreas que precisam ser melhoradas:",
+      "",
+      "[Resposta]",
+      "",
+      DIVIDER,
+      "",
+      "Foi necessária intervenção do F.T.O?",
+      "",
+      "Sim ou Não",
+      "",
+      DIVIDER,
+      "",
+      "Caso tenha respondido SIM, descreva:",
+      "",
+      "[Resposta]",
       "",
       `${icon("folha", guild)} Exemplo:`,
-      "O avaliado apresentou evolução durante a patrulha. No início demonstrou dificuldade para informar corretamente a localização pelo rádio, mas melhorou após as orientações. Recomenda-se reforçar o treinamento de modulação.",
       "",
-      "Caso não existam observações, envie: Sem observações adicionais.",
+      "Pontos fortes:",
+      "",
+      "Excelente comunicação e postura profissional.",
+      "",
+      DIVIDER,
+      "",
+      "Pontos a melhorar:",
+      "",
+      "Melhorar a velocidade de resposta via rádio.",
+      "",
+      DIVIDER,
+      "",
+      "Intervenção do F.T.O?",
+      "",
+      "Sim",
+      "",
+      DIVIDER,
+      "",
+      "Descrição:",
+      "",
+      "Foi necessário orientar durante uma perseguição para manter distância segura.",
       "",
       "Envie agora a resposta neste canal. A próxima mensagem enviada por você será capturada pelo sistema."
     ].join("\n"),
     operational: [
-      `## ${icon("engrenagem", guild)} Etapa 2 - Avaliação Operacional`,
-      "Descreva o desempenho operacional do avaliado.",
+      `## ${icon("engrenagem", guild)} Etapa 2 - Avaliação de Habilidades Operacionais`,
+      "Avalie cada item utilizando:",
       "",
-      "Analise:",
-      "• Comunicação no rádio;",
-      "• Procedimentos de abordagem;",
-      "• Uso da viatura;",
-      "• Tomada de decisão;",
-      "• Conhecimento dos códigos;",
-      "• Cumprimento das ordens;",
-      "• Segurança durante a operação.",
+      "Excelente",
+      "Bom",
+      "Regular",
+      "Ruim",
       "",
-      `${icon("folha", guild)} Exemplo:`,
-      "O avaliado realizou as abordagens de forma segura, manteve boa comunicação no rádio e utilizou os códigos corretamente. Apresentou pequena dificuldade durante uma perseguição, mas corrigiu a conduta após orientação do instrutor.",
+      "Após cada nota, justifique sua resposta.",
+      "",
+      `${icon("folha", guild)} Modelo obrigatório:`,
+      "",
+      "1. Capacidade de tomar decisões rápidas e eficazes",
+      "",
+      "Nota:",
+      "Excelente",
+      "",
+      "Justificativa:",
+      "Demonstrou excelente tomada de decisão durante todas as ocorrências.",
+      "",
+      DIVIDER,
+      "",
+      "2. Condução de abordagens de forma segura e profissional",
+      "",
+      "Nota:",
+      "Bom",
+      "",
+      "Justificativa:",
+      "Realizou abordagens corretas, porém apresentou pequenas falhas de posicionamento.",
+      "",
+      DIVIDER,
+      "",
+      "3. Capacidade de conduzir acompanhamentos de forma adequada",
+      "",
+      "Nota:",
+      "Excelente",
+      "",
+      "Justificativa:",
+      "Conduziu o acompanhamento respeitando todos os protocolos operacionais.",
       "",
       "Envie agora a resposta neste canal. A próxima mensagem enviada por você será capturada pelo sistema."
     ].join("\n"),
     patrol: [
       `## ${icon("prancheta", guild)} Etapa 1 - Identificação da Patrulha`,
-      "Envie no chat as informações referentes à patrulha realizada.",
+      "Objetivo",
       "",
-      "Preencha:",
-      "• Identificação ou nome da patrulha;",
-      "• Integrantes envolvidos;",
-      "• Função de cada integrante;",
-      "• Viatura utilizada;",
-      "• Horário de início;",
-      "• Horário de encerramento.",
+      "Coletar todas as informações iniciais da avaliação.",
       "",
-      `${icon("folha", guild)} Exemplo de preenchimento:`,
-      "Patrulha: Alpha-01",
-      "Comandante: @Oficial",
-      "Patrulheiro: @Oficial",
-      "Apoio: @Oficial",
-      "Viatura: Police Cruiser 01",
-      "Início: 20:30",
-      "Encerramento: 22:15",
+      "Responda no chat seguindo este modelo:",
+      "",
+      "Nome do F.T.O:",
+      "Nome do avaliado:",
+      "Data da patrulha:",
+      "Duração da patrulha:",
+      "",
+      `${icon("folha", guild)} Exemplo:`,
+      "",
+      "Nome do F.T.O:",
+      "PC Lucas Bennett | 2164",
+      "",
+      "Nome do avaliado:",
+      "Cb João Silva | 1234",
+      "",
+      "Data da patrulha:",
+      "15/08/2026",
+      "",
+      "Duração:",
+      "2 horas",
+      "19:00 às 21:00",
       "",
       "Envie agora a sua resposta neste canal. A próxima mensagem enviada por você será capturada pelo sistema."
     ].join("\n")
@@ -1945,23 +2053,33 @@ function parseCriterion(text: string, aliases: readonly string[]) {
     const normalized = normalizePlainText(item);
     return aliases.some((alias) => normalized.includes(alias));
   });
-  const line = lines[lineIndex];
-  if (!line) return null;
-  const normalizedLine = normalizePlainText(line);
-  const rating = Object.keys(PCD_RATING_POINTS).find((item) => normalizedLine.includes(item));
+  if (lineIndex < 0) return null;
+  const blockEnd = lines.findIndex((item, index) => index > lineIndex && (isDividerLine(item) || isCriterionHeaderLine(item)));
+  const block = lines.slice(lineIndex, blockEnd > lineIndex ? blockEnd : undefined);
+  const rating = Object.keys(PCD_RATING_POINTS).find((item) => block.some((line, index) => {
+    const normalized = normalizePlainText(line).replace(/[:?]+$/g, "").trim();
+    if (normalized === "nota") {
+      const next = normalizePlainText(block[index + 1] ?? "");
+      return next === item;
+    }
+    return normalized.includes(item);
+  }));
   if (!rating) return null;
-  const ratingIndex = normalizedLine.indexOf(rating);
-  let justification = line.slice(Math.max(0, ratingIndex + rating.length)).replace(/^[-:|.\s]+/, "").trim();
-  if (justification.length < 8) {
-    justification = lines.slice(lineIndex + 1).find((item) => !isCriterionHeaderLine(item))?.trim() ?? "";
-  }
+  const justification = extractValueAfterLabel(block, "justificativa");
   if (justification.length < 8) return null;
   return { justification: clip(justification, 500), rating };
 }
 
 function isCriterionHeaderLine(value: string) {
   const normalized = normalizePlainText(value);
-  return PCD_CRITERIA.some((criterion) => criterion.aliases.some((alias) => normalized.includes(alias)));
+  return PCD_CRITERIA.some((criterion) => criterion.aliases.some((alias) => {
+    if (normalized.startsWith(alias)) return true;
+    return /^\d+\s*[.)-]/.test(normalized) && normalized.includes(alias);
+  }));
+}
+
+function isDividerLine(value: string) {
+  return /^[━─\-_\s]{6,}$/.test(value);
 }
 
 function parsePatrol(text: string) {
@@ -1992,6 +2110,21 @@ function parsePatrol(text: string) {
 
 function parseIntervention(text: string) {
   const normalized = normalizePlainText(text);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const interventionIndex = lines.findIndex((line) => normalizePlainText(line).includes("intervencao"));
+  if (interventionIndex >= 0) {
+    const inline = normalizePlainText(lines[interventionIndex] ?? "");
+    const next = normalizePlainText(nextMeaningfulLine(lines, interventionIndex + 1) ?? "");
+    const value = /\bnao\b/.test(inline) || next === "nao"
+      ? "nao"
+      : /\bsim\b/.test(inline) || next === "sim"
+        ? "sim"
+        : null;
+    const description = value === "sim"
+      ? extractValueAfterAnyLabel(lines, ["caso tenha respondido sim, descreva", "descricao"])
+      : "";
+    return { description: description.length >= 8 ? description : "", value };
+  }
   if (!normalized.includes("intervencao")) return { description: "", value: null as string | null };
   if (/\bintervencao\b.*\bnao\b/.test(normalized)) return { description: "", value: "nao" };
   if (/\bintervencao\b.*\bsim\b/.test(normalized)) {
@@ -2003,15 +2136,46 @@ function parseIntervention(text: string) {
 }
 
 function parseFinalDecision(text: string) {
-  const normalized = normalizePlainText(text);
-  const result = /\b(apto|resultado|final|recomendacao|recomendado)\b.*\b(nao|reprovado|reprovacao|inapto)\b/.test(normalized)
+  const normalized = normalizePlainText(text).replace(/\s+/g, " ");
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const resultAnswer = extractValueAfterAnyLabel(lines, ["resultado", "o cadet esta apto para se tornar officer", "apto"]);
+  const normalizedResultAnswer = normalizePlainText(resultAnswer).replace(/\s+/g, " ");
+  const decisionSource = normalizedResultAnswer || normalized;
+  const result = /\b(nao|reprovado|reprovacao|inapto)\b/.test(decisionSource)
     ? "rejected"
-    : /\b(apto|resultado|final|recomendacao|recomendado)\b.*\b(sim|aprovado|aprovacao|apto)\b/.test(normalized)
+    : /\b(sim|aprovado|aprovacao|apto)\b/.test(decisionSource)
       ? "approved"
       : null;
-  const justificationLine = text.split(/\r?\n/).find((line) => normalizePlainText(line).includes("justificativa"));
-  const justification = (justificationLine ? justificationLine.replace(/^.*?justificativa\s*[:|-]?/i, "") : text).trim();
+  const justification = extractValueAfterLabel(lines, "justificativa") || text.trim();
   return { justification: justification.length >= 10 ? clip(justification, 800) : "", result };
+}
+
+function extractValueAfterAnyLabel(lines: string[], labels: string[]) {
+  for (const label of labels) {
+    const value = extractValueAfterLabel(lines, label);
+    if (value) return value;
+  }
+  return "";
+}
+
+function extractValueAfterLabel(lines: string[], label: string) {
+  const normalizedLabel = normalizePlainText(label);
+  const index = lines.findIndex((line) => {
+    const normalized = normalizePlainText(line).replace(/[:?]+$/g, "").trim();
+    return normalized.includes(normalizedLabel);
+  });
+  if (index < 0) return "";
+  const inline = lines[index]!.replace(/^.*?[:?]\s*/i, "").trim();
+  if (inline && normalizePlainText(inline) !== normalizePlainText(lines[index]!)) return inline;
+  return nextMeaningfulLine(lines, index + 1) ?? "";
+}
+
+function nextMeaningfulLine(lines: string[], startIndex: number) {
+  for (const line of lines.slice(startIndex)) {
+    if (!line || isDividerLine(line)) continue;
+    return line;
+  }
+  return null;
 }
 
 function isValidBrazilianDate(day: number, month: number, year: number) {
