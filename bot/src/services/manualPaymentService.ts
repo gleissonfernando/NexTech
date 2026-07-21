@@ -28,6 +28,7 @@ export function startManualPaymentService(client: Client<true>, context: BotCont
     const guild = client.guilds.cache.get(payload.guildId);
     if (guild) void publishManualPaymentPanel(guild, context);
   });
+  void reconcileOpenPaymentChannelPrivacy(client, context);
 }
 
 export async function handleManualPaymentInteraction(interaction: Interaction, context: BotContext) {
@@ -60,6 +61,7 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
   if (!runtime) return false;
   const order = runtime.orders.find((item) => item.paymentChannelId === message.channelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(item.status));
   if (!order) return false;
+  await enforcePaymentChannelPrivacy(message.guild, runtime.settings, order);
   if (order.userId !== message.author.id) {
     await message.reply("Somente quem solicitou este pagamento pode enviar o comprovante neste canal.").catch(() => null);
     return true;
@@ -169,14 +171,7 @@ async function startPurchase(interaction: ButtonInteraction, context: BotContext
 
 async function createPaymentChannel(guild: Guild, settings: ManualPaymentSettings, order: ManualPaymentOrder, userId: string) {
   const member = await guild.members.fetch(userId).catch(() => null);
-  const botUserId = guild.members.me?.id ?? guild.client.user.id;
-  const staffRoleIds = paymentStaffRoleIds(guild, settings);
-  const permissionOverwrites = [
-    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
-    { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
-    ...staffRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }))
-  ];
+  const permissionOverwrites = buildPrivatePaymentChannelOverwrites(guild, settings, userId);
   const channel = await guild.channels.create({
     name: `pagamento-${slug(member?.displayName ?? order.username ?? userId)}-${String(order.orderNumber).padStart(3, "0")}`.slice(0, 90),
     parent: settings.paymentCategoryId ?? undefined,
@@ -184,13 +179,57 @@ async function createPaymentChannel(guild: Guild, settings: ManualPaymentSetting
     reason: `Pagamento manual pedido ${order.orderNumber}`,
     type: ChannelType.GuildText
   }) as TextChannel;
-  await channel.permissionOverwrites.set(permissionOverwrites, "Canal privado de pagamento manual: cliente, equipe e bot.").catch(() => null);
+  await channel.permissionOverwrites.set(permissionOverwrites, "Canal privado de pagamento manual: cliente, administradores e bot.").catch((error) => {
+    console.warn("[manual-payments] falha ao reforçar permissões do canal de pagamento:", error instanceof Error ? error.message : error);
+  });
   return channel;
 }
 
-function paymentStaffRoleIds(guild: Guild, settings: ManualPaymentSettings) {
-  const roleIds = [...settings.approveRoleIds, ...settings.rejectRoleIds, ...settings.logViewRoleIds];
-  return [...new Set(roleIds)].filter((id) => id !== guild.roles.everyone.id && guild.roles.cache.has(id));
+export function buildPrivatePaymentChannelOverwrites(guild: Guild, settings: ManualPaymentSettings, userId: string) {
+  const botUserId = guild.members.me?.id ?? guild.client.user.id;
+  const adminRoleIds = paymentAdminRoleIds(guild, settings);
+  const ownerId = guild.ownerId && guild.ownerId !== userId && guild.ownerId !== botUserId ? guild.ownerId : null;
+  return [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
+    { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] },
+    ...(ownerId ? [{ id: ownerId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }] : []),
+    ...adminRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }))
+  ];
+}
+
+function paymentAdminRoleIds(guild: Guild, settings: ManualPaymentSettings) {
+  const roleIds = [...settings.approveRoleIds, ...settings.rejectRoleIds, ...settings.finalizeRoleIds, ...settings.logViewRoleIds];
+  return [...new Set(roleIds)].filter((id) => {
+    const role = guild.roles.cache.get(id);
+    return Boolean(role && id !== guild.roles.everyone.id && role.permissions.has(PermissionFlagsBits.Administrator));
+  });
+}
+
+async function enforcePaymentChannelPrivacy(guild: Guild, settings: ManualPaymentSettings, order: ManualPaymentOrder) {
+  if (!order.paymentChannelId) return;
+  const channel = await guild.channels.fetch(order.paymentChannelId).catch(() => null);
+  if (!channel || !("permissionOverwrites" in channel)) return;
+  await channel.permissionOverwrites.set(
+    buildPrivatePaymentChannelOverwrites(guild, settings, order.userId),
+    "Canal privado de pagamento manual: somente cliente, administradores e bot."
+  ).then(() => {
+    console.log(`[manual-payments] privacidade do canal de pagamento ${order.paymentChannelId} aplicada para o pedido ${order.orderNumber}.`);
+  }).catch((error) => {
+    console.warn(`[manual-payments] falha ao aplicar privacidade no canal ${order.paymentChannelId}:`, error instanceof Error ? error.message : error);
+  });
+}
+
+async function reconcileOpenPaymentChannelPrivacy(client: Client<true>, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    const runtime = await context.api.getManualPaymentRuntime(guild.id).catch((error) => {
+      console.warn(`[manual-payments] falha ao carregar pedidos ativos do servidor ${guild.id}:`, error instanceof Error ? error.message : error);
+      return null;
+    });
+    if (!runtime) continue;
+    const orders = runtime.orders.filter((order) => order.paymentChannelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(order.status));
+    await Promise.all(orders.map((order) => enforcePaymentChannelPrivacy(guild, runtime.settings, order)));
+  }
 }
 
 function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymentOrder, service?: ManualPaymentService | null) {
