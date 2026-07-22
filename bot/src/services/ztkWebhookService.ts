@@ -281,7 +281,7 @@ function createRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
   const participantRanking = payload.dominationRankings?.participants ?? [];
   return renderComponentsV2Panel({
     accentColor: 0xffd500,
-    description: `Top 10 semanal de membros com mais dominações para o clã **${payload.clan.clanName}**. Reseta toda segunda-feira.`,
+    description: `Top 10 semanal de membros com mais dominações para o clã **${payload.clan.clanName}**. Reinicia toda segunda-feira.`,
     fields: participantRankingBlocks("🔥 TOP 10 DOMINAÇÕES", participantRanking),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
@@ -293,7 +293,7 @@ function createParticipationRankingPanel(payload: ZtkWebhookEventReceivedEvent) 
   const participantRanking = payload.dominationRankings?.participants ?? [];
   return renderComponentsV2Panel({
     accentColor: 0xffd500,
-    description: `Top 10 semanal de membros com mais dominações registradas para o clã **${payload.clan.clanName}**. Reseta toda segunda-feira.`,
+    description: `Top 10 semanal de membros com mais dominações registradas para o clã **${payload.clan.clanName}**. Reinicia toda segunda-feira.`,
     fields: participantRankingBlocks("🎯 TOP 10 DOMINAÇÕES POR MEMBRO", participantRanking),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
@@ -316,7 +316,7 @@ function createRecruitmentRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
   const recruiters = payload.recruitmentRankings?.recruiters ?? [];
   return renderComponentsV2Panel({
     accentColor: 0x3b82f6,
-    description: "Ranking semanal. Reseta toda segunda-feira.",
+    description: "Ranking semanal. Reinicia toda segunda-feira.",
     fields: recruitmentRankingBlocks(recruiters),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
