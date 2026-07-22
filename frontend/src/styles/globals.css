@@ -53,9 +53,7 @@
     @apply bg-background text-foreground antialiased;
     margin: 0;
     min-width: 320px;
-    background:
-      radial-gradient(circle at top right, rgba(255, 213, 0, 0.08), transparent 34rem),
-      #0a0a0a;
+    background: #0a0a0a;
     font-family:
       Inter,
       ui-sans-serif,
@@ -146,19 +144,8 @@
     box-shadow: 0 0 0 3px rgba(255, 213, 0, 0.16);
   }
 
-  .terminal-cursor {
-    display: inline-block;
-    width: 0.58em;
-    height: 1.12em;
-    margin-left: 0.18rem;
-    background: #ffd900;
-    box-shadow: 0 0 14px rgba(255, 217, 0, 0.42);
-    transform: translateY(0.12em);
-    animation: terminal-cursor-blink 0.85s steps(1, end) infinite;
-  }
-
   .terminal-response-line {
-    animation: terminal-line-in 0.24s ease-out both;
+    animation: none;
   }
 
   .plans-grid-transition {
@@ -168,19 +155,9 @@
 
 @keyframes nex-tech-gradient { to { background-position: 220% center; } }
 
-@keyframes server-marquee {
-  to { transform: translateX(-50%); }
-}
-
-.server-marquee-track {
-  animation: server-marquee 34s linear infinite;
-  will-change: transform;
-}
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .nex-tech-gradient-text, .terminal-cursor, .terminal-response-line { animation: none !important; }
-  .server-marquee-track { animation: none !important; }
+  .nex-tech-gradient-text, .terminal-response-line { animation: none !important; }
   .nex-tech-home *, .nex-tech-home *::before, .nex-tech-home *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
@@ -192,30 +169,6 @@
 
   50% {
     box-shadow: 0 0 32px rgba(255, 234, 112, 0.34);
-  }
-}
-
-@keyframes terminal-cursor-blink {
-  0%,
-  48% {
-    opacity: 1;
-  }
-
-  49%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes terminal-line-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

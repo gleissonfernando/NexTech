@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import {
   Activity,
   AlertTriangle,
@@ -95,12 +94,7 @@ export function PublicStatusPage() {
       </header>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
-          initial={{ opacity: 0, y: 18 }}
-          transition={{ duration: 0.45, ease: "easeOut" }}
-        >
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-semibold text-[#FFEA70]">
               <Activity className="h-4 w-4" />
@@ -115,7 +109,7 @@ export function PublicStatusPage() {
           </div>
 
           <GlobalStatusCard snapshot={snapshot} degradedCount={degradedCount} operationalCount={operationalCount} />
-        </motion.div>
+        </div>
 
         {error ? (
           <div className="mt-8 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">

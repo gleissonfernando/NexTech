@@ -1,4 +1,3 @@
-import { motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
   Check,
@@ -23,7 +22,7 @@ import {
   Wrench,
   X
 } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
 import type { AuthResponse } from "../types";
 
@@ -66,11 +65,6 @@ type LandingMetrics = {
   responseTimeMs: number | null;
   updatedAt: string | null;
   uptimePercent: number | null;
-};
-
-const reveal = {
-  hidden: { opacity: 0, y: 28 },
-  visible: { opacity: 1, y: 0 }
 };
 
 type TerminalResponseLine = {
@@ -120,11 +114,7 @@ const terminalRuntimeRows = [
   { label: "Componentes V2", value: "sincronizado", width: "w-[88%]" }
 ];
 
-const TYPEWRITER_DELAY_MS = 28;
-const RESPONSE_REVEAL_DELAY_MS = 190;
-const RESPONSE_START_DELAY_MS = 220;
-const TERMINAL_HOLD_MS = 3400;
-const LANDING_SERVERS_REFRESH_MS = 15_000;
+const LANDING_SERVERS_REFRESH_MS = 60_000;
 
 const solutionCards = [
   {
@@ -302,21 +292,19 @@ export function Login({
   return (
     <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0A0A0A] text-white">
       <div className="fixed inset-0 -z-10 bg-[#0A0A0A]" />
-      <div className="fixed inset-0 -z-10 bg-[linear-gradient(rgba(255,213,0,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,213,0,0.035)_1px,transparent_1px)] bg-[size:44px_44px]" />
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(255,213,0,0.16),transparent_32rem)]" />
 
       <Header entering={verifying} onStart={handleStart} onNavigate={scrollTo} />
 
       <section id="inicio" className="relative mx-auto grid min-h-screen w-full max-w-[100vw] items-center gap-10 overflow-hidden px-4 pb-16 pt-32 text-center sm:max-w-7xl sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.95fr)] lg:px-8 lg:text-left">
         <div className="flex w-full min-w-0 max-w-[21rem] flex-col items-center justify-self-center lg:max-w-none lg:items-start">
-          <Reveal delay={0.1} className="inline-flex w-full max-w-[20rem] items-center justify-center rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-center text-xs font-medium leading-5 text-[#FFEA70] shadow-[0_0_24px_rgba(255,213,0,0.16)] sm:w-auto sm:max-w-full sm:text-sm">
+          <Reveal delay={0.1} className="inline-flex w-full max-w-[20rem] items-center justify-center rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-center text-xs font-medium leading-5 text-[#FFEA70] sm:w-auto sm:max-w-full sm:text-sm">
             A plataforma #1 de automação para Discord
           </Reveal>
 
           <Reveal delay={0.2} className="mt-8 w-full max-w-[21rem] sm:max-w-5xl">
             <h1 className="max-w-full text-3xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
               Automatize seu servidor{" "}
-              <span className="inline-block text-[#FFD500] drop-shadow-[0_0_28px_rgba(255,213,0,0.45)]">
+              <span className="inline-block text-[#FFD500]">
                 do seu jeito
               </span>
             </h1>
@@ -390,11 +378,11 @@ export function Login({
             const featured = resource.title === "Controle Total";
             return (
             <Reveal
-              className={`rounded-lg border bg-[#141414]/90 p-5 transition duration-300 hover:-translate-y-1 hover:border-[#FFD500]/50 hover:shadow-[0_0_32px_rgba(255,213,0,0.13)] ${featured ? "border-[#FFD500]/40 sm:col-span-2 lg:col-span-2" : "border-[#FFD500]/20"}`}
+              className={`rounded-lg border bg-[#141414] p-5 transition-colors duration-150 hover:border-[#FFD500]/45 ${featured ? "border-[#FFD500]/36 sm:col-span-2 lg:col-span-2" : "border-[#FFD500]/18"}`}
               delay={index * 0.035}
               key={resource.title}
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#FFD500]/35 bg-[#FFD500]/10 text-[#FFD500] shadow-[0_0_22px_rgba(255,213,0,0.10)]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500]">
                 <resource.icon className="h-6 w-6" />
               </span>
               <h3 className="mt-5 text-base font-bold text-white">{resource.title}</h3>
@@ -416,7 +404,7 @@ export function Login({
           <div className="grid gap-12 lg:grid-cols-3 lg:gap-8">
             {steps.map((step, index) => (
               <Reveal className="relative flex flex-col items-center text-center" delay={index * 0.08} key={step.title}>
-                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#FFD500]/40 bg-[#111108] text-[#FFD500] shadow-[0_0_26px_rgba(255,213,0,0.12)]">
+                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-lg border border-[#FFD500]/35 bg-[#111108] text-[#FFD500]">
                   <step.icon className="h-7 w-7" />
                   <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-[#050505] bg-[#FFD500] px-1 text-[10px] font-black leading-none text-black">
                     0{index + 1}
@@ -431,7 +419,7 @@ export function Login({
       </section>
 
       <section id="suporte" className="home-section px-4 sm:px-6 lg:px-8">
-        <Reveal className="mx-auto max-w-5xl rounded-lg border border-[#FFD500]/25 bg-[#141414]/95 px-6 py-12 text-center shadow-glow sm:px-10">
+        <Reveal className="mx-auto max-w-5xl rounded-lg border border-[#FFD500]/22 bg-[#141414] px-6 py-12 text-center sm:px-10">
           <h2 className="text-4xl font-black text-white sm:text-5xl">Pronto para automatizar seus bots?</h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#B3B3B3]">
             Entre com Discord, valide seu acesso e comece a controlar seus bots pelo Nex Tech.
@@ -466,7 +454,6 @@ export function Login({
 function Header({ entering, onNavigate, onStart }: { entering: boolean; onNavigate: (id: string) => void; onStart: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -485,11 +472,8 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
   ] as const;
 
   return (
-    <motion.header
-      animate={{ opacity: 1, y: 0 }}
-      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition duration-300 sm:px-6 lg:px-8 ${scrolled ? "border-[#FFD500]/20 bg-[#0A0A0A]/88 py-3 shadow-[0_16px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl" : "border-transparent bg-[#0A0A0A]/65 py-4 backdrop-blur-md"}`}
-      initial={reducedMotion ? false : { opacity: 0, y: -18 }}
-      transition={{ duration: 0.48, ease: "easeOut" }}
+    <header
+      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition-colors duration-200 sm:px-6 lg:px-8 ${scrolled ? "border-[#FFD500]/18 bg-[#0A0A0A]/95 py-3 shadow-[0_12px_34px_rgba(0,0,0,0.34)]" : "border-transparent bg-[#0A0A0A]/82 py-4"}`}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
         <button className="flex items-center gap-2 text-left" onClick={() => onNavigate("inicio")} type="button">
@@ -522,12 +506,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
         </button>
       </div>
       {menuOpen ? (
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          className="mx-auto mt-3 grid max-w-7xl gap-2 rounded-lg border border-[#FFD500]/20 bg-[#0A0A0A]/95 p-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl md:hidden"
-          initial={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-        >
+        <div className="mx-auto mt-3 grid max-w-7xl gap-2 rounded-lg border border-[#FFD500]/20 bg-[#0A0A0A]/98 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.42)] md:hidden">
           {nav.map(([label, id]) => (
             <button className="rounded-lg px-3 py-3 text-left text-sm font-semibold text-zinc-200 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={`mobile-${id}`} onClick={() => { setMenuOpen(false); onNavigate(id); }} type="button">
               {label}
@@ -537,9 +516,9 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
             {entering ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {entering ? "Entrando..." : "Dashboard"}
           </Button>
-        </motion.div>
+        </div>
       ) : null}
-    </motion.header>
+    </header>
   );
 }
 
@@ -558,87 +537,15 @@ function SectionHeading({ badge, subtitle, title }: { badge?: string; subtitle: 
 }
 
 function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
-  const terminalRef = useRef<HTMLDivElement | null>(null);
-  const reducedMotion = useReducedMotion();
-  const [sequenceIndex, setSequenceIndex] = useState(0);
-  const [typedCommand, setTypedCommand] = useState("");
-  const [visibleResponseCount, setVisibleResponseCount] = useState(0);
-  const [typing, setTyping] = useState(true);
-  const sequence = terminalSequences[sequenceIndex] ?? terminalSequences[0];
-
-  useEffect(() => {
-    const timers: number[] = [];
-    let cancelled = false;
-
-    const schedule = (callback: () => void, delay: number) => {
-      const timer = window.setTimeout(() => {
-        if (!cancelled) callback();
-      }, delay);
-      timers.push(timer);
-    };
-
-    setTypedCommand("");
-    setVisibleResponseCount(0);
-    setTyping(true);
-
-    for (let index = 1; index <= sequence.command.length; index += 1) {
-      schedule(() => setTypedCommand(sequence.command.slice(0, index)), index * TYPEWRITER_DELAY_MS);
-    }
-
-    const typingCompleteAt = sequence.command.length * TYPEWRITER_DELAY_MS + 240;
-    const responseStartAt = typingCompleteAt + RESPONSE_START_DELAY_MS;
-    schedule(() => setTyping(false), typingCompleteAt);
-
-    sequence.response.forEach((_, index) => {
-      schedule(() => setVisibleResponseCount(index + 1), responseStartAt + index * RESPONSE_REVEAL_DELAY_MS);
-    });
-
-    const restartAt = responseStartAt + sequence.response.length * RESPONSE_REVEAL_DELAY_MS + TERMINAL_HOLD_MS;
-    schedule(() => {
-      setTypedCommand("");
-      setVisibleResponseCount(0);
-      setSequenceIndex((current) => (current + 1) % terminalSequences.length);
-    }, restartAt);
-
-    return () => {
-      cancelled = true;
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [sequence.command, sequence.response.length]);
-
-  const visibleResponse = sequence.response.slice(0, visibleResponseCount);
+  const sequence = terminalSequences[0];
   const terminalMetrics = [
     { label: "Gateway", value: formatMilliseconds(metrics.responseTimeMs, "ao vivo"), tone: "text-[#3DDC84]" },
     { label: "Uptime", value: formatPercent(metrics.uptimePercent, "ao vivo"), tone: "text-[#FFEA70]" },
     { label: "Bots", value: metrics.botsCreated === null ? "ao vivo" : metrics.botsCreated.toLocaleString("pt-BR"), tone: "text-white" }
   ];
 
-  function handleTerminalPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (reducedMotion || event.pointerType !== "mouse") return;
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    const bounds = terminal.getBoundingClientRect();
-    const horizontal = (event.clientX - bounds.left) / bounds.width - 0.5;
-    const vertical = (event.clientY - bounds.top) / bounds.height - 0.5;
-    terminal.style.transform = `perspective(1000px) rotateX(${-vertical * 8}deg) rotateY(${horizontal * 12}deg) scale3d(1.012, 1.012, 1.012)`;
-  }
-
-  function resetTerminalTilt() {
-    const terminal = terminalRef.current;
-    if (terminal) terminal.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
-  }
-
   return (
-    <div
-      className="relative transform-gpu overflow-hidden rounded-lg border border-[#FFD500]/25 bg-[#070707] text-left shadow-[0_28px_90px_rgba(0,0,0,0.7),0_0_40px_8px_rgba(255,213,0,0.15)] transition-transform duration-200 ease-out"
-      onPointerCancel={resetTerminalTilt}
-      onPointerLeave={resetTerminalTilt}
-      onPointerMove={handleTerminalPointerMove}
-      ref={terminalRef}
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(255,213,0,0.14),transparent_18rem),linear-gradient(135deg,rgba(255,213,0,0.08),transparent_38%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:100%_44px] opacity-35" />
-
+    <div className="relative overflow-hidden rounded-lg border border-[#FFD500]/22 bg-[#080808] text-left shadow-[0_18px_54px_rgba(0,0,0,0.46)]">
       <div className="relative flex items-center gap-3 border-b border-[#FFD500]/15 bg-[#111111]/95 px-4 py-3">
         <div className="flex shrink-0 items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#FFD900]" />
@@ -652,15 +559,15 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
       </div>
 
       <div className="relative grid gap-0 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <div aria-label="Demonstração animada do terminal Nex Tech" aria-live="off" className="min-h-[23rem] p-5 font-mono text-sm leading-7">
+        <div aria-label="Demonstração do terminal Nex Tech" aria-live="off" className="min-h-[23rem] p-5 font-mono text-sm leading-7">
           <div className="mb-5 flex flex-wrap gap-2 font-sans text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-400">
             <span className="rounded-md border border-[#FFD500]/20 bg-[#FFD500]/10 px-2.5 py-1 text-[#FFEA70]">auth</span>
             <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">dashboard</span>
             <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">discord api</span>
           </div>
-          <TerminalCommandLine command={typedCommand} typing={typing} />
-          {visibleResponse.map((line, index) => (
-            <TerminalResponseItem key={`${sequenceIndex}-${line.text}-${index}`} line={line} />
+          <TerminalCommandLine command={sequence.command} />
+          {sequence.response.map((line, index) => (
+            <TerminalResponseItem key={`${line.text}-${index}`} line={line} />
           ))}
           <div className="mt-5 grid gap-2 font-sans text-xs text-zinc-400 sm:grid-cols-3">
             {terminalMetrics.map((metric) => (
@@ -685,7 +592,7 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
                   <span className="text-zinc-500">{row.value}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
-                  <span className={`block h-full rounded-full bg-[#3DDC84] shadow-[0_0_16px_rgba(61,220,132,0.36)] ${row.width}`} />
+                  <span className={`block h-full rounded-full bg-[#3DDC84] ${row.width}`} />
                 </div>
               </div>
             ))}
@@ -703,7 +610,7 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
       <div className="relative flex items-center justify-between border-t border-[#FFD500]/15 bg-[#0d0d0d]/90 px-4 py-3 text-xs text-zinc-400">
         <span>request_id: nex-tech-live-demo</span>
         <span className="flex items-center gap-2 text-[#3DDC84]">
-          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#3DDC84]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#3DDC84]" />
           Online
         </span>
       </div>
@@ -711,14 +618,13 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
   );
 }
 
-function TerminalCommandLine({ command, typing }: { command: string; typing: boolean }) {
+function TerminalCommandLine({ command }: { command: string }) {
   const hasPrompt = command.startsWith("$");
 
   return (
     <p className="flex min-h-7 min-w-0 items-center whitespace-pre-wrap text-zinc-100">
       {hasPrompt ? <span className="text-[#FFD900]">$</span> : null}
       <span>{hasPrompt ? command.slice(1) : command}</span>
-      {typing ? <span aria-hidden="true" className="terminal-cursor" /> : null}
     </p>
   );
 }
@@ -754,11 +660,11 @@ function TerminalHighlightedLine({ text }: { text: string }) {
 function SolutionCard({ index, onStart, solution }: { index: number; onStart: () => void; solution: (typeof solutionCards)[number] }) {
   return (
     <Reveal
-      className={`relative flex min-h-[25rem] flex-col rounded-lg border bg-[#141414]/95 p-6 transition duration-300 hover:-translate-y-1 hover:border-[#FFD500]/55 hover:shadow-[0_0_34px_rgba(255,213,0,0.14)] ${solution.popular ? "border-[#FFD500]/50 shadow-glow lg:-translate-y-3" : "border-[#FFD500]/20"}`}
+      className={`relative flex min-h-[25rem] flex-col rounded-lg border bg-[#141414] p-6 transition-colors duration-150 hover:border-[#FFD500]/50 ${solution.popular ? "border-[#FFD500]/45" : "border-[#FFD500]/18"}`}
       delay={index * 0.08}
     >
       {solution.popular ? (
-        <span className="absolute right-4 top-4 rounded-full border border-[#FFD500]/35 bg-[#FFD500] px-3 py-1 text-xs font-black text-black shadow-[0_0_24px_rgba(255,213,0,0.32)]">
+        <span className="absolute right-4 top-4 rounded-full border border-[#FFD500]/35 bg-[#FFD500] px-3 py-1 text-xs font-black text-black">
           Mais popular
         </span>
       ) : null}
@@ -783,7 +689,6 @@ function SolutionCard({ index, onStart, solution }: { index: number; onStart: ()
 
 function StatCounter({
   decimals = 0,
-  delay = 0,
   displayOverride,
   label,
   prefix = "",
@@ -798,65 +703,11 @@ function StatCounter({
   suffix?: string;
   value: number;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [displayValue, setDisplayValue] = useState(0);
-  const reducedMotion = useReducedMotion();
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) {
-        setVisible(true);
-        observer.disconnect();
-      }
-    }, { threshold: 0.4 });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-
-    if (reducedMotion) {
-      setDisplayValue(value);
-      return;
-    }
-
-    const duration = 1400;
-    let start = 0;
-    let animation = 0;
-    let delayTimer = 0;
-    const precision = 10 ** decimals;
-
-    const tick = (now: number) => {
-      if (!start) start = now;
-      const progress = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplayValue(Math.round(value * eased * precision) / precision);
-      if (progress < 1) {
-        animation = requestAnimationFrame(tick);
-      }
-    };
-
-    delayTimer = window.setTimeout(() => {
-      animation = requestAnimationFrame(tick);
-    }, delay);
-
-    return () => {
-      window.clearTimeout(delayTimer);
-      cancelAnimationFrame(animation);
-    };
-  }, [decimals, delay, reducedMotion, value, visible]);
-
-  const formattedValue = displayOverride ?? `${prefix}${formatStatNumber(displayValue, decimals)}${suffix}`;
+  const formattedValue = displayOverride ?? `${prefix}${formatStatNumber(value, decimals)}${suffix}`;
 
   return (
-    <div ref={ref} className="text-center">
-      <p className="text-4xl font-black tracking-tight text-[#FFD500] drop-shadow-[0_0_12px_rgba(255,213,0,0.45)] sm:text-5xl">{formattedValue}</p>
+    <div className="text-center">
+      <p className="text-4xl font-black tracking-tight text-[#FFD500] sm:text-5xl">{formattedValue}</p>
       <p className="mt-2 text-sm text-[#B3B3B3]">{label}</p>
     </div>
   );
@@ -932,29 +783,26 @@ function formatPercent(value: number | null, fallback: string) {
 
 function PublicServerMarquee({ servers }: { servers: PublicServer[] }) {
   if (!servers.length) return null;
-  const items = Array.from({ length: Math.max(1, Math.ceil(8 / servers.length)) }, () => servers).flat();
+  const items = servers.slice(0, 10);
 
   return (
-    <section aria-label="Bots cadastrados" className="relative overflow-hidden border-y border-[#FFD500]/15 bg-black/35 py-12">
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#0A0A0A] to-transparent sm:w-36" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#0A0A0A] to-transparent sm:w-36" />
+    <section aria-label="Bots cadastrados" className="relative border-y border-[#FFD500]/12 bg-black/30 py-10">
       <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[.22em] text-[#FFD500]">
         {servers.length} {servers.length === 1 ? "bot cadastrado" : "bots cadastrados na Nex Tech"}
       </p>
-      <div className="server-marquee-track flex w-max hover:[animation-play-state:paused]">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-8 px-4 sm:gap-10">
         <PublicServerGroup servers={items} />
-        <PublicServerGroup ariaHidden servers={items} />
       </div>
     </section>
   );
 }
 
-function PublicServerGroup({ ariaHidden = false, servers }: { ariaHidden?: boolean; servers: PublicServer[] }) {
+function PublicServerGroup({ servers }: { servers: PublicServer[] }) {
   return (
-    <div aria-hidden={ariaHidden || undefined} className="flex shrink-0 items-center gap-12 pr-12 sm:gap-16 sm:pr-16">
+    <>
       {servers.map((server, index) => (
         <div className="flex w-36 shrink-0 flex-col items-center text-center" key={`${server.botId ?? server.id}-${index}`}>
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/35 bg-[#141414] shadow-[0_0_22px_rgba(255,213,0,.12)]">
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/28 bg-[#141414]">
             {server.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={server.iconUrl} /> : <Server aria-hidden="true" className="h-6 w-6 text-[#FFD500]" />}
           </div>
           <p className="mt-3 w-full truncate text-sm font-semibold text-zinc-200" title={server.botName ?? server.name}>{server.botName ?? server.name}</p>
@@ -962,21 +810,13 @@ function PublicServerGroup({ ariaHidden = false, servers }: { ariaHidden?: boole
           <p className="mt-1 text-[11px] font-medium text-zinc-400">{server.memberCount.toLocaleString("pt-BR")} membros</p>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 
 function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: (id: string) => void }) {
-  const reducedMotion = useReducedMotion();
-
   return (
-    <motion.footer
-      className="border-t border-[#FFD500]/15 bg-[#050505] px-4 py-12 sm:px-6 lg:px-8"
-      initial={reducedMotion ? false : { opacity: 0, y: 20 }}
-      transition={{ duration: 0.55, ease: "easeOut" }}
-      viewport={{ once: true, amount: 0.15 }}
-      whileInView={reducedMotion ? undefined : { opacity: 1, y: 0 }}
-    >
+    <footer className="border-t border-[#FFD500]/15 bg-[#050505] px-4 py-12 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
         <div>
           <button className="text-2xl font-black text-[#FFD500]" onClick={() => onNavigate("inicio")} type="button">Nex Tech</button>
@@ -993,7 +833,7 @@ function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: 
       <div className="mx-auto mt-10 max-w-7xl border-t border-[#FFD500]/10 pt-6 text-sm text-zinc-500">
         © {currentYear} Nex Tech. Todos os direitos reservados.
       </div>
-    </motion.footer>
+    </footer>
   );
 }
 
@@ -1013,18 +853,5 @@ function FooterColumn({ links, onNavigate, title }: { links: Array<[string, stri
 }
 
 function Reveal({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
-  const reducedMotion = useReducedMotion();
-
-  return (
-    <motion.div
-      className={className}
-      initial={reducedMotion ? false : "hidden"}
-      transition={{ delay: reducedMotion ? 0 : delay, duration: 0.55, ease: "easeOut" }}
-      variants={reducedMotion ? undefined : reveal}
-      viewport={{ once: true, amount: 0.18 }}
-      whileInView={reducedMotion ? undefined : "visible"}
-    >
-      {children}
-    </motion.div>
-  );
+  return <div className={className} style={delay ? { transitionDelay: `${delay * 1000}ms` } : undefined}>{children}</div>;
 }

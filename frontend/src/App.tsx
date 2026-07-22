@@ -1,19 +1,19 @@
 import { Loader2 } from "lucide-react";
-import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
-import { Dashboard } from "./pages/Dashboard";
-import { BotRegistrationPage } from "./pages/BotRegistration";
-import { DevDashboard } from "./pages/DevDashboard";
-import { DocsPage } from "./pages/Docs";
-import { GiveawayRoulettePage } from "./pages/GiveawayRoulette";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Login } from "./pages/Login";
-import { NexTechProductPage } from "./pages/NexTechProductPage";
-import { PaymentReturnPage } from "./pages/PaymentReturn";
-import { PixPaymentPage } from "./pages/PixPayment";
-import { PublicStatusPage } from "./pages/PublicStatusPage";
-import { PublicPlansPage } from "./pages/Plans";
 import { useAuth } from "./hooks/useAuth";
 import { appUrl, dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "./lib/urls";
+
+const BotRegistrationPage = lazy(() => import("./pages/BotRegistration").then((module) => ({ default: module.BotRegistrationPage })));
+const Dashboard = lazy(() => import("./pages/Dashboard").then((module) => ({ default: module.Dashboard })));
+const DevDashboard = lazy(() => import("./pages/DevDashboard").then((module) => ({ default: module.DevDashboard })));
+const DocsPage = lazy(() => import("./pages/Docs").then((module) => ({ default: module.DocsPage })));
+const GiveawayRoulettePage = lazy(() => import("./pages/GiveawayRoulette").then((module) => ({ default: module.GiveawayRoulettePage })));
+const NexTechProductPage = lazy(() => import("./pages/NexTechProductPage").then((module) => ({ default: module.NexTechProductPage })));
+const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((module) => ({ default: module.PaymentReturnPage })));
+const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
+const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
+const PublicStatusPage = lazy(() => import("./pages/PublicStatusPage").then((module) => ({ default: module.PublicStatusPage })));
 
 export function App() {
   const {
@@ -78,35 +78,35 @@ export function App() {
   }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken, statusPath]);
 
   if (docsPath) {
-    return <DocsPage />;
+    return <LazyPage><DocsPage /></LazyPage>;
   }
 
   if (plansPath) {
-    return <PublicPlansPage />;
+    return <LazyPage><PublicPlansPage /></LazyPage>;
   }
 
   if (statusPath) {
-    return <PublicStatusPage />;
+    return <LazyPage><PublicStatusPage /></LazyPage>;
   }
 
   if (paymentReturnStatus) {
-    return <PaymentReturnPage status={paymentReturnStatus} />;
+    return <LazyPage><PaymentReturnPage status={paymentReturnStatus} /></LazyPage>;
   }
 
   if (pixPaymentOrderId) {
-    return <PixPaymentPage orderId={pixPaymentOrderId} />;
+    return <LazyPage><PixPaymentPage orderId={pixPaymentOrderId} /></LazyPage>;
   }
 
   if (botRegistrationPath) {
-    return <BotRegistrationPage />;
+    return <LazyPage><BotRegistrationPage /></LazyPage>;
   }
 
   if (rouletteToken) {
-    return <GiveawayRoulettePage token={rouletteToken} />;
+    return <LazyPage><GiveawayRoulettePage token={rouletteToken} /></LazyPage>;
   }
 
   if (productRoute) {
-    return <NexTechProductPage slug={productRoute.slug} status={productRoute.status} storeId={productRoute.storeId} />;
+    return <LazyPage><NexTechProductPage slug={productRoute.slug} status={productRoute.status} storeId={productRoute.storeId} /></LazyPage>;
   }
 
   if ((routeError || accessDeniedError) && (!auth?.access.verified || protectedPanelPath)) {
@@ -150,10 +150,14 @@ export function App() {
   }
 
   if (devPanelPath) {
-    return <DevDashboard auth={auth} initialView={devViewFromPath(path)} onLogout={logout} />;
+    return <LazyPage><DevDashboard auth={auth} initialView={devViewFromPath(path)} onLogout={logout} /></LazyPage>;
   }
 
-  return <Dashboard auth={auth} initialBotSlug={dashboardSlugFromPath(path)} onLogout={logout} />;
+  return <LazyPage><Dashboard auth={auth} initialBotSlug={dashboardSlugFromPath(path)} onLogout={logout} /></LazyPage>;
+}
+
+function LazyPage({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
 }
 
 function readAuthError() {
@@ -310,16 +314,11 @@ function LoadingScreen() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] px-4">
       <div className="absolute inset-0 bg-[#050505]" />
-      <motion.div
-        animate={{ opacity: 1, y: 0 }}
-        className="relative flex flex-col items-center rounded-lg border border-[#FFD500]/20 bg-[#141414]/90 px-8 py-7 text-center shadow-glow backdrop-blur-2xl"
-        initial={{ opacity: 0, y: 14 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-      >
+      <div className="relative flex flex-col items-center rounded-lg border border-[#FFD500]/20 bg-[#141414] px-8 py-7 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#FFD500]" />
         <p className="mt-4 text-sm font-medium text-white">Carregando painel</p>
         <p className="mt-1 text-xs text-zinc-500">Sincronizando sessão Discord</p>
-      </motion.div>
+      </div>
     </main>
   );
 }
