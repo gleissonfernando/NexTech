@@ -3847,6 +3847,7 @@ function NexTechSalesWorkspace({
     [dashboard?.products, editingProductId]
   );
   const [paymentLogFilter, setPaymentLogFilter] = useState<"today" | "7d" | "30d" | "all">("7d");
+  const [salesView, setSalesView] = useState<"sales" | "tickets">("sales");
   const filteredPaymentLogs = useMemo(() => {
     const logs = dashboard?.paymentLogs ?? [];
     if (paymentLogFilter === "all") return logs;
@@ -4173,6 +4174,20 @@ function NexTechSalesWorkspace({
   const scrollToSalesSection = (sectionId: string) => {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const salesViewItems = [
+    {
+      active: salesView === "sales",
+      icon: CreditCard,
+      id: "sales" as const,
+      label: "Vendas"
+    },
+    {
+      active: salesView === "tickets",
+      icon: Ticket,
+      id: "tickets" as const,
+      label: "Tickets"
+    }
+  ];
 
   return (
     <div className="min-w-0 space-y-6">
@@ -4223,10 +4238,23 @@ function NexTechSalesWorkspace({
             <SalesMetric label="Compras concluídas" value={String(stats?.paidSales ?? 0)} />
           </div>
           <div className="flex flex-wrap gap-2 border-t border-[#FFD500]/10 pt-4">
-            <Button onClick={() => scrollToSalesSection("sales-products")}><Plus className="h-4 w-4" />Novo Produto</Button>
-            <Button onClick={() => scrollToSalesSection("sales-settings")} variant="outline"><Settings className="h-4 w-4" />Configurar Sistema</Button>
-            <Button onClick={() => scrollToSalesSection("sales-tickets")} variant="outline"><Ticket className="h-4 w-4" />Visualizar Tickets</Button>
-            <Button onClick={() => scrollToSalesSection("sales-history")} variant="outline"><ScrollText className="h-4 w-4" />Histórico</Button>
+            {salesViewItems.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <Button key={item.id} onClick={() => setSalesView(item.id)} variant={item.active ? "default" : "outline"}>
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Button>
+              );
+            })}
+            {salesView === "sales" ? (
+              <>
+                <Button onClick={() => scrollToSalesSection("sales-products")} variant="outline"><Plus className="h-4 w-4" />Novo Produto</Button>
+                <Button onClick={() => scrollToSalesSection("sales-settings")} variant="outline"><Settings className="h-4 w-4" />Configurar Sistema</Button>
+                <Button onClick={() => scrollToSalesSection("sales-history")} variant="outline"><ScrollText className="h-4 w-4" />Histórico</Button>
+              </>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -4261,6 +4289,8 @@ function NexTechSalesWorkspace({
             <Loader2 className="h-7 w-7 animate-spin text-zinc-400" />
           </CardContent>
         </Card>
+      ) : salesView === "tickets" ? (
+        <SalesTicketsWorkspace bot={bot} enabled={enabled} guildId={guildId} />
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-settings">
@@ -4594,12 +4624,10 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
-          <SalesTicketsWorkspace bot={bot} enabled={enabled} guildId={guildId} />
-
-          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-tickets">
+          <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-plans">
             <CardHeader>
-              <CardTitle className="text-white">Visualizar Tickets</CardTitle>
-              <CardDescription>Planos usados nos tickets de compra e no checkout dos clientes.</CardDescription>
+              <CardTitle className="text-white">Planos</CardTitle>
+              <CardDescription>Planos usados no checkout dos clientes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
