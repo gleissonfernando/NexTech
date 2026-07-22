@@ -112,6 +112,7 @@ export type BotStatus = {
     heapUsedMb: number;
     rssMb: number;
   };
+  responseTime?: BotResponseTimeStats;
   botGuilds: Array<{
     id: string;
     name: string;
@@ -120,6 +121,21 @@ export type BotStatus = {
     channelCount?: number;
     shardId?: number;
   }>;
+  updatedAt: string;
+};
+
+export type BotResponseTimeStats = {
+  averageMs: number | null;
+  currentMs: number | null;
+  history: Array<{
+    at: string;
+    latencyMs: number | null;
+    status: "good" | "warn" | "critical" | "offline";
+  }>;
+  maxMs: number | null;
+  minMs: number | null;
+  samples: number;
+  status: "good" | "warn" | "critical" | "offline";
   updatedAt: string;
 };
 
@@ -4205,6 +4221,7 @@ export type SystemBotHealth = {
     heapUsedMb: number;
     rssMb: number;
   };
+  responseTime?: BotResponseTimeStats;
   updatedAt: string;
 };
 

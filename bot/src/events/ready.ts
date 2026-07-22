@@ -208,6 +208,12 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     await startOperationalRuntime(client, context, "ready");
   }
 
+  const statusInterval = setInterval(() => {
+    context.socket.emitStatus(client, true);
+  }, 5_000);
+
+  statusInterval.unref();
+
   const interval = setInterval(() => {
     context.socket.emitStatus(client, true);
     void reportRuntimeStatus(context, client, true);

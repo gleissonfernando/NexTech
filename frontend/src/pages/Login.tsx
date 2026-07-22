@@ -5,7 +5,6 @@ import {
   Check,
   CheckCircle2,
   Code2,
-  ExternalLink,
   Gauge,
   Headphones,
   KeyRound,
@@ -27,7 +26,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "../components/ui/button";
-import { EXTERNAL_STATUS_URL, fetchPublicStatus, type PublicStatusSnapshot } from "../lib/publicStatus";
+import { fetchPublicStatus, type PublicStatusSnapshot } from "../lib/publicStatus";
 import type { AuthResponse } from "../types";
 
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
@@ -195,6 +194,10 @@ export function Login({
       window.location.assign("/docs");
       return;
     }
+    if (id === "status") {
+      window.location.assign("/status");
+      return;
+    }
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -240,7 +243,7 @@ export function Login({
             Ver Planos
           </Button>
           <Button asChild className="h-12 min-w-44" variant="outline">
-            <a href={EXTERNAL_STATUS_URL} rel="noreferrer" target="_blank">
+            <a href="/status">
               <Activity className="h-4 w-4" />
               Ver Status
             </a>
@@ -732,15 +735,9 @@ function PublicStatusPreview() {
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <Button asChild className="h-12 min-w-44">
-              <a href={EXTERNAL_STATUS_URL} rel="noreferrer" target="_blank">
-                <ExternalLink className="h-4 w-4" />
-                Ver Status
-              </a>
-            </Button>
-            <Button asChild className="h-12 min-w-44" variant="outline">
               <a href="/status">
                 <Activity className="h-4 w-4" />
-                Página Interna
+                Ver Status
               </a>
             </Button>
           </div>

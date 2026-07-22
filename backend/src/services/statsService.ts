@@ -14,6 +14,25 @@ export type BotGuildDto = {
   shardId?: number;
 };
 
+export type BotResponseTimeStatus = "good" | "warn" | "critical" | "offline";
+
+export type BotResponseTimePoint = {
+  at: string;
+  latencyMs: number | null;
+  status: BotResponseTimeStatus;
+};
+
+export type BotResponseTimeStats = {
+  averageMs: number | null;
+  currentMs: number | null;
+  history: BotResponseTimePoint[];
+  maxMs: number | null;
+  minMs: number | null;
+  samples: number;
+  status: BotResponseTimeStatus;
+  updatedAt: string;
+};
+
 export type BotStatusDto = {
   botId?: string | null;
   botProfile?: {
@@ -33,6 +52,7 @@ export type BotStatusDto = {
     heapUsedMb: number;
     rssMb: number;
   };
+  responseTime: BotResponseTimeStats;
   updatedAt: string;
 };
 
@@ -42,6 +62,7 @@ let botStatus: BotStatusDto = {
   guilds: 0,
   users: 0,
   botGuilds: [],
+  responseTime: emptyResponseTimeStats(),
   updatedAt: new Date().toISOString()
 };
 
@@ -56,6 +77,8 @@ type ShardReport = {
 
 const SHARD_REPORT_TTL_MS = 90_000;
 const shardReports = new Map<string, Map<string, ShardReport>>();
+const MAX_RESPONSE_TIME_SAMPLES = 120;
+const responseTimeHistory = new Map<string, BotResponseTimePoint[]>();
 
 type DiscordBotGuild = {
   id: string;
@@ -71,16 +94,81 @@ export function getBotStatus() {
 export function updateBotStatus(input: BotStatusInput) {
   const aggregatedInput = aggregateShardStatus(input);
   const botGuilds = aggregatedInput.botGuilds ? normalizeBotGuilds(aggregatedInput.botGuilds) : botStatus.botGuilds;
-
-  botStatus = {
+  const nextStatus = {
     ...botStatus,
     ...aggregatedInput,
     botGuilds,
-    guilds: aggregatedInput.guilds ?? botGuilds.length,
+    guilds: aggregatedInput.guilds ?? botGuilds.length
+  };
+  const botKey = responseTimeKey(nextStatus);
+  const shouldRecordResponseTime = typeof aggregatedInput.latency === "number" || typeof aggregatedInput.online === "boolean";
+  const responseTime = shouldRecordResponseTime
+    ? recordResponseTime(botKey, nextStatus.online, nextStatus.latency)
+    : getResponseTimeStats(botKey);
+
+  botStatus = {
+    ...nextStatus,
+    responseTime,
     updatedAt: new Date().toISOString()
   };
 
   return botStatus;
+}
+
+function responseTimeKey(status: Pick<BotStatusDto, "botId" | "botProfile">) {
+  return status.botId?.trim() || status.botProfile?.id || "default";
+}
+
+function recordResponseTime(botKey: string, online: boolean, latency: number) {
+  const point: BotResponseTimePoint = {
+    at: new Date().toISOString(),
+    latencyMs: online ? Math.max(0, Math.round(latency)) : null,
+    status: online ? classifyResponseTime(latency) : "offline"
+  };
+  const history = [...(responseTimeHistory.get(botKey) ?? []), point].slice(-MAX_RESPONSE_TIME_SAMPLES);
+  responseTimeHistory.set(botKey, history);
+  return summarizeResponseTime(history);
+}
+
+function getResponseTimeStats(botKey: string) {
+  const history = responseTimeHistory.get(botKey) ?? [];
+  return history.length ? summarizeResponseTime(history) : emptyResponseTimeStats();
+}
+
+function summarizeResponseTime(history: BotResponseTimePoint[]): BotResponseTimeStats {
+  const samples = history.map((point) => point.latencyMs).filter((value): value is number => typeof value === "number");
+  const last = history.at(-1);
+
+  return {
+    averageMs: samples.length ? Math.round(samples.reduce((total, value) => total + value, 0) / samples.length) : null,
+    currentMs: last?.latencyMs ?? null,
+    history,
+    maxMs: samples.length ? Math.max(...samples) : null,
+    minMs: samples.length ? Math.min(...samples) : null,
+    samples: history.length,
+    status: last?.status ?? "offline",
+    updatedAt: last?.at ?? new Date().toISOString()
+  };
+}
+
+function emptyResponseTimeStats(): BotResponseTimeStats {
+  const now = new Date().toISOString();
+  return {
+    averageMs: null,
+    currentMs: null,
+    history: [],
+    maxMs: null,
+    minMs: null,
+    samples: 0,
+    status: "offline",
+    updatedAt: now
+  };
+}
+
+function classifyResponseTime(latency: number): BotResponseTimeStatus {
+  if (latency >= 800) return "critical";
+  if (latency >= 250) return "warn";
+  return "good";
 }
 
 function aggregateShardStatus(input: BotStatusInput): BotStatusInput {

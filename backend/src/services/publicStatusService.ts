@@ -112,9 +112,14 @@ export async function getPublicStatusSnapshot(): Promise<PublicStatusSnapshot> {
           critical: true,
           description: "Conexão do bot principal e eventos do Discord.",
           id: "discord-bot",
-          latencyMs: null,
+          history: bot.responseTime.history.length ? bot.responseTime.history.map((point) => ({
+            averageResponseTimeMs: point.latencyMs,
+            startedAt: point.at,
+            status: publicHistoryStatusFromResponseTime(point.status)
+          })) : undefined,
+          latencyMs: bot.responseTime.currentMs ?? (bot.online ? bot.latency : null),
           name: "Bot Discord",
-          status: bot.online ? "operational" : "degraded",
+          status: bot.online ? publicServiceStatusFromResponseTime(bot.responseTime.status) : "partial_outage",
           timestamp: generatedAt
         }),
         buildService({
@@ -234,6 +239,7 @@ function latestApiLatency(routes: Array<{ avgDurationMs: number; route: string }
 function buildService(input: {
   critical: boolean;
   description: string;
+  history?: PublicStatusService["history"];
   id: string;
   latencyMs: number | null;
   name: string;
@@ -244,13 +250,25 @@ function buildService(input: {
     critical: input.critical,
     currentStatus: input.status,
     description: input.description,
-    history: buildHistory(input.status, input.latencyMs, input.timestamp),
+    history: input.history?.length ? input.history.slice(-HISTORY_BARS) : buildHistory(input.status, input.latencyMs, input.timestamp),
     id: input.id,
     lastCheckedAt: input.timestamp.toISOString(),
     name: input.name,
     responseTimeMs: input.latencyMs,
     uptimePercentage: uptimeForStatus(input.status)
   };
+}
+
+function publicServiceStatusFromResponseTime(status: "good" | "warn" | "critical" | "offline"): PublicServiceState {
+  if (status === "good") return "operational";
+  if (status === "offline") return "partial_outage";
+  return "degraded";
+}
+
+function publicHistoryStatusFromResponseTime(status: "good" | "warn" | "critical" | "offline"): PublicHistoryState {
+  if (status === "good") return "operational";
+  if (status === "offline") return "down";
+  return "degraded";
 }
 
 function buildHistory(status: PublicServiceState, latencyMs: number | null, now: Date) {

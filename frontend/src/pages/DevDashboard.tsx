@@ -75,7 +75,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -1237,7 +1237,8 @@ function RealtimeSystemMonitoringPanel() {
   const heapTotal = metrics ? bytesToMb(metrics.metrics.memory.heapTotal) : null;
   const rss = metrics ? bytesToMb(metrics.metrics.memory.rss) : null;
   const statusTone = health?.status === "ok" && metrics?.status === "ok" ? "good" : "warn";
-  const botTone = bot?.online ? "good" : "danger";
+  const botResponseTone = responseTimeTone(bot?.responseTime?.status ?? (bot?.online ? "good" : "offline"));
+  const botTone = bot?.online ? botResponseTone : "danger";
   const dbTone = health?.database.ok ? "good" : "danger";
   const redisTone = health?.redis.ok || !health?.redis.configured ? "good" : "danger";
   const readyBots = bots.filter((item) => isDevBotReadyStatus(item.status)).length;
@@ -1270,7 +1271,7 @@ function RealtimeSystemMonitoringPanel() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <RealtimeStatCard icon={Activity} label="Sistema" tone={statusTone} value={health?.status ?? "-"} detail={metrics ? `Uptime ${formatUptime(metrics.metrics.uptimeSeconds)}` : "Aguardando leitura"} />
         <RealtimeStatCard icon={Wifi} label="Site/API" tone={statusTone} value={health?.status === "ok" ? "Online" : "Degradado"} detail={`${apiRequests} chamadas monitoradas`} />
-        <RealtimeStatCard icon={Wifi} label="Bot principal" tone={botTone} value={bot?.online ? "Online" : "Offline"} detail={`${bot?.latency ?? "-"}ms de latência`} />
+        <RealtimeStatCard icon={Wifi} label="Bot principal" tone={botTone} value={bot?.online ? responseTimeLabel(bot?.responseTime?.status ?? "good") : "Offline"} detail={`Resposta ${msLabel(bot?.responseTime?.currentMs ?? bot?.latency ?? null)}`} />
         <RealtimeStatCard icon={Users} label="Bots cadastrados" tone={errorBots > 0 ? "warn" : "good"} value={`${readyBots}/${bots.length}`} detail={`${errorBots} com erro`} />
         <RealtimeStatCard icon={HardDrive} label="Banco" tone={dbTone} value={health?.database.status ?? "-"} detail={health?.database.latencyMs !== undefined ? `${health.database.latencyMs}ms` : health?.database.message ?? "Sem latência"} />
       </section>
@@ -1299,6 +1300,8 @@ function RealtimeSystemMonitoringPanel() {
               <RealtimeMiniMetric label="Shards" value={String(bot?.shardCount ?? bot?.shardIds?.length ?? 1)} />
               <RealtimeMiniMetric label="Memória do bot" value={`${mbLabel(bot?.memory?.heapUsedMb ?? null)} / ${mbLabel(bot?.memory?.rssMb ?? null)}`} />
             </div>
+
+            <BotResponseTimePanel responseTime={bot?.responseTime ?? null} />
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Servidores recentes</p>
@@ -1448,6 +1451,47 @@ function RealtimeStatCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function BotResponseTimePanel({ responseTime }: { responseTime: BotResponseTimeStats | null }) {
+  const history = responseTime?.history.slice(-60) ?? [];
+  const tone = responseTimeTone(responseTime?.status ?? "offline");
+
+  return (
+    <div className="rounded-lg border border-zinc-900 bg-black/35 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Tempo de resposta do bot</p>
+          <p className={`mt-1 text-lg font-black ${toneTextClass(tone)}`}>
+            {msLabel(responseTime?.currentMs ?? null)}
+          </p>
+        </div>
+        <RealtimeStatusPill tone={tone}>{responseTimeLabel(responseTime?.status ?? "offline")}</RealtimeStatusPill>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <RealtimeMiniMetric label="Média" value={msLabel(responseTime?.averageMs ?? null)} tone={tone} />
+        <RealtimeMiniMetric label="Pico" value={msLabel(responseTime?.maxMs ?? null)} tone={responseTimeTone(latencyStatusFromMs(responseTime?.maxMs ?? null))} />
+        <RealtimeMiniMetric label="Menor" value={msLabel(responseTime?.minMs ?? null)} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-[repeat(30,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(60,minmax(0,1fr))]">
+        {history.length ? history.map((point) => (
+          <span
+            className={`h-7 rounded-sm ${responseTimeBarClass(point.status)}`}
+            key={`${point.at}-${point.latencyMs ?? "off"}`}
+            title={`${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(point.at))} - ${responseTimeLabel(point.status)} - ${msLabel(point.latencyMs)}`}
+          />
+        )) : Array.from({ length: 30 }, (_, index) => (
+          <span className="h-7 rounded-sm bg-zinc-800" key={`empty-${index}`} />
+        ))}
+      </div>
+
+      <p className="mt-2 text-[11px] font-medium text-zinc-500">
+        Atualização a cada 5 segundos. Última leitura: {responseTime?.updatedAt ? `${secondsSince(responseTime.updatedAt, Date.now())}s atrás` : "-"}.
+      </p>
+    </div>
   );
 }
 
@@ -2845,6 +2889,10 @@ function mbLabel(value: number | null) {
   return value === null ? "-" : `${Math.round(value)} MB`;
 }
 
+function msLabel(value: number | null) {
+  return value === null ? "-" : `${Math.round(value)}ms`;
+}
+
 function bytesToMb(value: number | null) {
   return value === null ? null : value / 1024 / 1024;
 }
@@ -2878,6 +2926,32 @@ function toneTextClass(tone: "good" | "warn" | "danger") {
   if (tone === "danger") return "text-red-200";
   if (tone === "warn") return "text-amber-100";
   return "text-zinc-100";
+}
+
+function responseTimeTone(status: BotResponseTimeStats["status"]): "good" | "warn" | "danger" {
+  if (status === "critical" || status === "offline") return "danger";
+  if (status === "warn") return "warn";
+  return "good";
+}
+
+function responseTimeLabel(status: BotResponseTimeStats["status"]) {
+  if (status === "critical") return "Crítico";
+  if (status === "warn") return "Degradado";
+  if (status === "offline") return "Offline";
+  return "Bom";
+}
+
+function latencyStatusFromMs(value: number | null): BotResponseTimeStats["status"] {
+  if (value === null) return "offline";
+  if (value >= 800) return "critical";
+  if (value >= 250) return "warn";
+  return "good";
+}
+
+function responseTimeBarClass(status: BotResponseTimeStats["status"]) {
+  if (status === "critical" || status === "offline") return "bg-red-500";
+  if (status === "warn") return "bg-amber-400";
+  return "bg-emerald-400";
 }
 
 function downloadText(filename: string, content: string) {

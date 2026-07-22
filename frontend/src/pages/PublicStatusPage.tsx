@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock3,
-  ExternalLink,
   Loader2,
   RefreshCw,
   Server,
@@ -15,7 +14,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../components/ui/button";
 import {
-  EXTERNAL_STATUS_URL,
   fetchPublicStatus,
   type PublicHistoryState,
   type PublicServiceState,
@@ -63,7 +61,7 @@ export function PublicStatusPage() {
 
     const fallback = window.setInterval(() => {
       void refresh();
-    }, 30_000);
+    }, 10_000);
 
     return () => {
       controller.abort();
@@ -91,12 +89,6 @@ export function PublicStatusPage() {
             <Button className="h-10" disabled={refreshing} onClick={() => void refresh()} variant="outline">
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Atualizar
-            </Button>
-            <Button asChild className="h-10">
-              <a href={EXTERNAL_STATUS_URL} rel="noreferrer" target="_blank">
-                <ExternalLink className="h-4 w-4" />
-                Ver Status
-              </a>
             </Button>
           </div>
         </div>

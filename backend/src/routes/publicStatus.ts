@@ -100,7 +100,7 @@ publicStatusRouter.get("/status/events", async (req, res, next) => {
       send().catch(() => {
         res.write("event: status-error\ndata: {}\n\n");
       });
-    }, 30_000);
+    }, 5_000);
 
     req.on("close", () => {
       clearInterval(interval);
