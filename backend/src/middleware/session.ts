@@ -13,8 +13,10 @@ const persistentStore = redis
 
 if (persistentStore) {
   console.log(`[session] usando ${redis ? "Redis" : "MongoDB"} como store de sessão.`);
+} else if (env.NODE_ENV === "production") {
+  throw new Error("Store persistente de sessão não configurado. Configure MONGODB_URI ou REDIS_URL.");
 } else {
-  console.warn("[session] usando MemoryStore. Configure MONGODB_URI ou REDIS_URL para persistir sessões.");
+  console.warn("[session] usando store temporário em memória. Configure MONGODB_URI ou REDIS_URL para persistir sessões.");
 }
 
 export const sessionMiddleware = session({

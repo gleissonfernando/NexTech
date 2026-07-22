@@ -59,8 +59,8 @@ writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   version: "1.0.0",
   main: "index.js",
   scripts: {
-    start: "node scripts/start-production.mjs",
-    "start:discloud": "node scripts/start-production.mjs"
+    start: "node index.js",
+    "start:discloud": "node index.js"
   },
   dependencies: {
     "@discordjs/voice": "^0.19.2",
