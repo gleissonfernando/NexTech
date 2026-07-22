@@ -39,6 +39,7 @@ import {
   RefreshCw,
   ScrollText,
   Search,
+  Send,
   Server,
   Settings,
   Shield,
@@ -160,6 +161,7 @@ import {
   patchGuildSettings,
   listPanelImageSettings,
   publishReportSystemPanel,
+  publishAdvancedModulePanel,
   publishFivemGoalPanel,
   publishManualRegistrationPanel,
   publishRulesPanel,
@@ -2711,6 +2713,7 @@ function AdvancedSecurityModulePanel({
   const [textChannels, setTextChannels] = useState<GuildChannelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishingPanel, setPublishingPanel] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -2859,6 +2862,33 @@ function AdvancedSecurityModulePanel({
     }
   }
 
+  async function publishModulePanel() {
+    if (!botId || !guild || moduleId !== "fivem-captcha") return;
+
+    if (!enabled) {
+      setMessage("Ative e salve o CAPTCHA FiveM antes de publicar o painel.");
+      return;
+    }
+
+    if (!stringConfig(config.panelChannelId)) {
+      setMessage("Selecione o canal do painel antes de publicar.");
+      return;
+    }
+
+    setPublishingPanel(true);
+    setMessage(null);
+
+    try {
+      const result = await publishAdvancedModulePanel(botId, guild.id, "fivem-captcha");
+      setConfig(defaultAdvancedModuleConfig(moduleId, result.module.config));
+      setMessage(result.messageId ? "Painel do CAPTCHA FiveM publicado." : "Publicação solicitada ao bot.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível publicar o painel do CAPTCHA FiveM.");
+    } finally {
+      setPublishingPanel(false);
+    }
+  }
+
   if (!details) {
     return <EmptyState icon={Shield} title="Módulo não encontrado" />;
   }
@@ -2885,7 +2915,7 @@ function AdvancedSecurityModulePanel({
   }
 
   const enabled = config.enabled === true;
-  const disabled = !canManage || saving;
+  const disabled = !canManage || saving || publishingPanel;
   const moduleFooter = moduleId === "auto-unmute"
     ? "Este menu só aparece quando o módulo Auto Desmutar está liberado para este bot na Dashboard DEV."
     : null;
@@ -2943,6 +2973,12 @@ function AdvancedSecurityModulePanel({
               <Button disabled={disabled || !enabled || runningNow} onClick={() => void verifyTagNow()} variant="outline">
                 {runningNow ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Verificar agora
+              </Button>
+            ) : null}
+            {moduleId === "fivem-captcha" ? (
+              <Button disabled={disabled || !enabled || !stringConfig(config.panelChannelId)} onClick={() => void publishModulePanel()} variant="outline">
+                {publishingPanel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Postar painel
               </Button>
             ) : null}
             <Badge variant="muted">Escopo: bot {botId} / {guild.name}</Badge>

@@ -5,6 +5,7 @@ import { authorizeBotCommand } from "../services/botCommandAuthorizationService"
 import {
   authorizeBotRuntimeModule,
   getBotGuildConfig,
+  getBotGuildModuleConfig,
   getBotApiPermissions,
   syncDevBotGuilds,
   syncDevBotProfile,
@@ -41,6 +42,7 @@ const commandAuthorizationSchema = z.object({
   userId: z.string().nullable().optional()
 });
 const guildIdSchema = z.string().regex(/^\d{5,32}$/);
+const runtimeModuleIdSchema = z.string().min(1).max(120);
 const runtimeStatusSchema = z.object({
   botGuilds: z.array(z.object({
     id: z.string().regex(/^\d{5,32}$/),
@@ -144,6 +146,27 @@ botDevApiRouter.get("/system-emojis", async (req, res, next) => {
     const botId = await resolveRequestBotId(req);
 
     return res.json(await getSystemEmojiRuntimeConfig(botId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.get("/runtime/guilds/:guildId/modules/:moduleId/config", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const moduleId = runtimeModuleIdSchema.parse(req.params.moduleId);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot vinculado obrigatório para consultar este módulo." });
+    }
+
+    const authorization = await authorizeBotRuntimeModule({ botId, guildId, moduleId });
+    if (!authorization.allowed) {
+      return res.status(403).json({ message: authorization.reason ?? "Módulo não liberado para este bot." });
+    }
+
+    return res.json({ module: await getBotGuildModuleConfig(botId, guildId, moduleId) });
   } catch (error) {
     return next(error);
   }

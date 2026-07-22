@@ -5,6 +5,7 @@ import { devBotRealtimeRoom, emitRealtimeToRoom, emitRealtimeToRoomWithAck } fro
 import {
   canReadDevBotModule,
   canUseDevBotModule,
+  getBotGuildConfig,
   getDevBotToken,
   getBotGuildModuleConfig,
   updateBotGuildModuleConfig
@@ -166,6 +167,12 @@ type TagVerificationRunResult = {
   lastError: string | null;
 };
 
+type PanelPublishAck = {
+  error?: string;
+  messageId?: string | null;
+  ok: boolean;
+};
+
 export const advancedModulesRouter = Router();
 
 advancedModulesRouter.use(requireAuth);
@@ -294,6 +301,75 @@ advancedModulesRouter.post("/:botId/:guildId/tag-verification/run", async (req, 
     }
 
     return res.json({ result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+advancedModulesRouter.post("/:botId/:guildId/fivem-captcha/panel", async (req, res, next) => {
+  try {
+    const botId = botIdSchema.parse(req.params.botId);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    if (!(await canUseDevBotModule(user, botId, guildId, "fivem-captcha"))) {
+      return res.status(403).json({ message: "Este módulo não foi liberado para este bot ou servidor." });
+    }
+
+    const [guildConfig, module] = await Promise.all([
+      getBotGuildConfig(botId, guildId),
+      getBotGuildModuleConfig(botId, guildId, "fivem-captcha")
+    ]);
+    const config = normalizeModuleConfig("fivem-captcha", module.config) as Record<string, unknown>;
+
+    if (config.enabled !== true) {
+      return res.status(409).json({ message: "Ative e salve o CAPTCHA FiveM antes de publicar o painel." });
+    }
+
+    if (!config.panelChannelId) {
+      return res.status(409).json({ message: "Selecione o canal do painel antes de publicar." });
+    }
+
+    const responses = await emitRealtimeToRoomWithAck<
+      { botId: string; guildId: string; settings: Record<string, unknown> },
+      PanelPublishAck
+    >(devBotRealtimeRoom(botId), "fivem-captcha:panel_publish", { botId, guildId, settings: config }, 30_000);
+    const success = responses.find((item) => item.ok);
+
+    if (!success) {
+      const error = responses.find((item) => item.error)?.error;
+      return res.status(503).json({ message: error || "O bot não respondeu a publicação do painel." });
+    }
+
+    const savedModule = await updateBotGuildModuleConfig({
+      botId,
+      guildId,
+      guildName: guildConfig.guildName,
+      moduleId: "fivem-captcha",
+      config: {
+        ...config,
+        panelMessageId: success.messageId ?? null,
+        updatedBy: user.id
+      }
+    });
+
+    await createLog({
+      botId,
+      guildId,
+      userId: user.discordId ?? user.id,
+      type: "fivem-captcha.panel_published",
+      message: "CAPTCHA FiveM: painel publicado pela dashboard.",
+      metadata: {
+        messageId: success.messageId ?? null,
+        moduleId: "fivem-captcha",
+        panelChannelId: config.panelChannelId
+      }
+    }).catch(() => undefined);
+
+    return res.json({
+      messageId: success.messageId ?? null,
+      module: savedModule
+    });
   } catch (error) {
     return next(error);
   }

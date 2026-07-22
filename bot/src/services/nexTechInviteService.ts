@@ -3,7 +3,9 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  type Client,
   EmbedBuilder,
+  type Guild,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -17,11 +19,13 @@ import type { BotCommand, BotContext } from "../types";
 import { deleteMessageWithAudit } from "./deletedMessageLogService";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
+import type { NexTechInvitePanelPublishAck } from "../websocket/socketClient";
 
 const MODULE_ID = "nextech-invites";
 const DISCORD_INVITE_PATTERN = /(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-z0-9-]+)/gi;
 const runtimeCache = new Map<string, { expiresAt: number; invite: NexTechInviteRuntimeInvite | null }>();
 const RUNTIME_TTL_MS = 5_000;
+let nexTechInviteServiceStarted = false;
 
 export const nexTechInviteCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -55,7 +59,43 @@ async function publishNexTechInvitePanel(interaction: ChatInputCommandInteractio
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const invite = await context.api.getNexTechInviteRuntime(interaction.guild.id)
+  const optionChannel = interaction.options.getChannel("canal", false, [ChannelType.GuildText]);
+  const result = await publishConfiguredNexTechInvitePanel(interaction.guild, context, {
+    actorId: interaction.user.id,
+    channelId: optionChannel?.id ?? null,
+    fallbackChannelId: interaction.channelId
+  });
+
+  await interaction.editReply(`Painel de convite oficial publicado em <#${result.channelId}>.`);
+}
+
+export function startNexTechInviteService(client: Client, context: BotContext) {
+  if (nexTechInviteServiceStarted) return;
+  nexTechInviteServiceStarted = true;
+
+  context.socket.onNexTechInvitePanelPublish((payload, ack?: NexTechInvitePanelPublishAck) => {
+    const guild = client.guilds.cache.get(payload.guildId);
+    if (!guild) {
+      ack?.({ ok: false, error: "O bot não está conectado ao servidor selecionado." });
+      return;
+    }
+
+    void publishConfiguredNexTechInvitePanel(guild, context)
+      .then((result) => ack?.({ ok: true, messageId: result.messageId }))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[nextech-invites] falha ao publicar via dashboard:", message);
+        ack?.({ ok: false, error: message });
+      });
+  });
+}
+
+export async function publishConfiguredNexTechInvitePanel(guild: Guild, context: BotContext, options: { actorId?: string | null; channelId?: string | null; fallbackChannelId?: string | null } = {}) {
+  if (!(await isRuntimeModuleAuthorized(context, guild.id, MODULE_ID))) {
+    throw new Error("O Sistema de Convites NextTech não está liberado para este servidor.");
+  }
+
+  const invite = await context.api.getNexTechInviteRuntime(guild.id)
     .then((runtime) => runtime.invite)
     .catch((error) => {
       console.warn("[nextech-invites] falha ao buscar painel para publicação:", errorMessage(error));
@@ -63,21 +103,22 @@ async function publishNexTechInvitePanel(interaction: ChatInputCommandInteractio
     });
 
   if (!invite || invite.status !== "active" || !invite.inviteUrl) {
-    await interaction.editReply("Cadastre um convite oficial ativo na Dashboard antes de publicar o painel.");
-    return;
+    throw new Error("Cadastre um convite oficial ativo na Dashboard antes de publicar o painel.");
   }
 
-  const optionChannel = interaction.options.getChannel("canal", false, [ChannelType.GuildText]);
-  const channelId = optionChannel?.id ?? invite.panelChannelId ?? interaction.channelId;
-  const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+  const channelId = options.channelId ?? invite.panelChannelId ?? options.fallbackChannelId;
+  if (!channelId) {
+    throw new Error("Configure o canal do painel antes de publicar.");
+  }
+
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
 
   if (!channel?.isTextBased() || !channel.isSendable() || !("messages" in channel)) {
-    await interaction.editReply("Não foi possível acessar o canal do painel. Verifique o canal configurado e as permissões do bot.");
-    return;
+    throw new Error("Não foi possível acessar o canal do painel. Verifique o canal configurado e as permissões do bot.");
   }
 
   const textChannel = channel as TextChannel;
-  const payload = buildInvitePanelPayload(interaction.guild, invite);
+  const payload = buildInvitePanelPayload(guild, invite);
   let panelMessage = invite.panelMessageId
     ? await textChannel.messages.fetch(invite.panelMessageId).catch(() => null)
     : null;
@@ -86,23 +127,23 @@ async function publishNexTechInvitePanel(interaction: ChatInputCommandInteractio
     ? await panelMessage.edit(payload)
     : await textChannel.send(payload);
 
-  await context.api.updateNexTechInvitePanelState(interaction.guild.id, {
+  await context.api.updateNexTechInvitePanelState(guild.id, {
     inviteId: invite.id,
     messageId: panelMessage.id
   }).catch((error) => {
     console.warn("[nextech-invites] falha ao salvar mensagem do painel:", errorMessage(error));
   });
-  clearNexTechInviteRuntimeCache(interaction.guild.id);
+  clearNexTechInviteRuntimeCache(guild.id);
 
   await context.api.postLog({
     action: "publish_panel",
     botId: invite.botId ?? null,
     channelId: textChannel.id,
-    guildId: interaction.guild.id,
+    guildId: guild.id,
     module: "Sistema de Convites NextTech",
     status: "success",
     type: "nextech_invites.panel_published",
-    userId: interaction.user.id,
+    userId: options.actorId ?? context.client.user?.id ?? "system",
     message: `Painel de convite oficial publicado em #${textChannel.name}.`,
     metadata: {
       inviteId: invite.id,
@@ -110,7 +151,10 @@ async function publishNexTechInvitePanel(interaction: ChatInputCommandInteractio
     }
   }).catch(() => null);
 
-  await interaction.editReply(`Painel de convite oficial publicado em <#${textChannel.id}>.`);
+  return {
+    channelId: textChannel.id,
+    messageId: panelMessage.id
+  };
 }
 
 export async function handleNexTechInviteMessage(message: Message, context: BotContext) {

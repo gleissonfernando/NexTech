@@ -65,6 +65,7 @@ import {
   getLogs,
   getSystemHealth,
   getSystemMetrics,
+  publishNexTechInvitePanel,
   sendMaintenanceAlert,
   saveDevAccessEntry,
   setMaintenanceMode,
@@ -628,6 +629,7 @@ function DevNexTechInvitesPanel({
   const [form, setForm] = useState(emptyInviteForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishingPanel, setPublishingPanel] = useState(false);
   const [togglingModule, setTogglingModule] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const selectedBot = useMemo(() => bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null, [bots, selectedBotId]);
@@ -855,6 +857,37 @@ function DevNexTechInvitesPanel({
     }
   }
 
+  async function handlePublishInvitePanel() {
+    if (!selectedBot || !selectedScopeGuildId) {
+      setMessage("Selecione um bot e um servidor antes de postar o painel.");
+      return;
+    }
+
+    const invite = dashboard?.officialInvite ?? dashboard?.invites.find((item) => item.status === "active") ?? null;
+    if (!invite || invite.status !== "active") {
+      setMessage("Cadastre um convite oficial ativo antes de postar o painel.");
+      return;
+    }
+
+    if (!invite.panelChannelId) {
+      setMessage("Configure o canal do painel no convite oficial antes de postar.");
+      return;
+    }
+
+    setPublishingPanel(true);
+    setMessage(null);
+
+    try {
+      await publishNexTechInvitePanel(selectedBot.id, selectedScopeGuildId);
+      await reload();
+      setMessage("Painel do Sistema de Convites postado.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível postar o painel de convites.");
+    } finally {
+      setPublishingPanel(false);
+    }
+  }
+
   const invites = dashboard?.invites ?? [];
   const logs = dashboard?.logs ?? [];
   const stats = dashboard?.stats ?? { active: 0, blockedInvites: 0, cancelled: 0, clicks: 0, conversions: 0, expired: 0, memberCount: 0, paused: 0, remainingUses: 0, totalUses: 0 };
@@ -871,10 +904,16 @@ function DevNexTechInvitesPanel({
           <h2 className="mt-2 text-2xl font-black text-white">Sistema de Convites</h2>
           <p className="mt-1 text-sm font-medium text-zinc-400">Convite oficial por bot e servidor, com bloqueio de convites não autorizados e logs em tempo real.</p>
         </div>
-        <Button disabled={loading} onClick={() => void reload()} type="button" variant="outline">
-          <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-          Atualizar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={publishingPanel || !moduleEnabled || !officialInvite?.panelChannelId} onClick={() => void handlePublishInvitePanel()} type="button" variant="outline">
+            {publishingPanel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Postar painel
+          </Button>
+          <Button disabled={loading} onClick={() => void reload()} type="button" variant="outline">
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            Atualizar
+          </Button>
+        </div>
       </section>
 
       {message ? <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white">{message}</div> : null}

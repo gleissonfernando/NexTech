@@ -398,6 +398,7 @@ function shouldHandleMessageCreateEvents() {
     "fivem-goals",
     "manual-payments",
     "music",
+    "nextech-invites",
     "police-hidden-channel",
     "police-iab",
     "police-promotions",

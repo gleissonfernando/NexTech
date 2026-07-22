@@ -79,6 +79,10 @@ export type CourseExamReviewedEvent = { actorId?: string | null; attemptId: stri
 export type RhAdminPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type TicketPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type TicketPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
+export type NexTechInvitePanelPublishEvent = { botId?: string | null; guildId: string };
+export type NexTechInvitePanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
+export type FivemCaptchaPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
+export type FivemCaptchaPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
 
 export type ZtkWebhookClanEvent = {
   active: boolean;
@@ -461,6 +465,8 @@ export class BotSocketClient {
   private courseExamReviewedHandler: ((payload: CourseExamReviewedEvent) => void) | null = null;
   private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
   private ticketPanelPublishHandler: ((payload: TicketPanelPublishEvent, ack?: TicketPanelPublishAck) => void) | null = null;
+  private nexTechInvitePanelPublishHandler: ((payload: NexTechInvitePanelPublishEvent, ack?: NexTechInvitePanelPublishAck) => void) | null = null;
+  private fivemCaptchaPanelPublishHandler: ((payload: FivemCaptchaPanelPublishEvent, ack?: FivemCaptchaPanelPublishAck) => void) | null = null;
   private ztkWebhookEventReceivedHandler: ((payload: ZtkWebhookEventReceivedEvent) => void) | null = null;
   private ztkWebhookRewardUpdatedHandler: ((payload: ZtkWebhookRewardUpdatedEvent) => void) | null = null;
   private ztkWebhookManageHandler: ((payload: ZtkWebhookManageEvent, ack?: ZtkWebhookManageAck) => void) | null = null;
@@ -583,6 +589,8 @@ export class BotSocketClient {
     if (this.courseExamReviewedHandler) this.socket.on("courses:exam_reviewed", this.courseExamReviewedHandler);
     if (this.rhAdminPanelPublishHandler) this.socket.on("rh-admin:panel_publish", this.rhAdminPanelPublishHandler);
     if (this.ticketPanelPublishHandler) this.socket.on("tickets:panel_publish", this.ticketPanelPublishHandler);
+    if (this.nexTechInvitePanelPublishHandler) this.socket.on("nextech-invites:panel_publish", this.nexTechInvitePanelPublishHandler);
+    if (this.fivemCaptchaPanelPublishHandler) this.socket.on("fivem-captcha:panel_publish", this.fivemCaptchaPanelPublishHandler);
     if (this.ztkWebhookEventReceivedHandler) this.socket.on("ztk-webhook:event_received", this.ztkWebhookEventReceivedHandler);
     if (this.ztkWebhookRewardUpdatedHandler) this.socket.on("ztk-webhook:reward_updated", this.ztkWebhookRewardUpdatedHandler);
     if (this.ztkWebhookManageHandler) this.socket.on("ztk-webhook:webhook_manage", this.ztkWebhookManageHandler);
@@ -840,6 +848,18 @@ export class BotSocketClient {
     this.ticketPanelPublishHandler = handler;
     this.socket?.off("tickets:panel_publish");
     this.socket?.on("tickets:panel_publish", handler);
+  }
+
+  onNexTechInvitePanelPublish(handler: (payload: NexTechInvitePanelPublishEvent, ack?: NexTechInvitePanelPublishAck) => void) {
+    this.nexTechInvitePanelPublishHandler = handler;
+    this.socket?.off("nextech-invites:panel_publish");
+    this.socket?.on("nextech-invites:panel_publish", handler);
+  }
+
+  onFivemCaptchaPanelPublish(handler: (payload: FivemCaptchaPanelPublishEvent, ack?: FivemCaptchaPanelPublishAck) => void) {
+    this.fivemCaptchaPanelPublishHandler = handler;
+    this.socket?.off("fivem-captcha:panel_publish");
+    this.socket?.on("fivem-captcha:panel_publish", handler);
   }
 
   onZtkWebhookEventReceived(handler: (payload: ZtkWebhookEventReceivedEvent) => void) {

@@ -2494,6 +2494,16 @@ export class ApiClient {
     return data.authorization;
   }
 
+  async getRuntimeModuleConfig(guildId: string, moduleId: string) {
+    const { data } = await this.http.get<{ module: { botId: string; config: Record<string, unknown>; guildId: string; moduleId: string } }>(
+      `/bot/runtime/guilds/${guildId}/modules/${encodeURIComponent(moduleId)}/config`,
+      {
+        timeout: 8_000
+      }
+    );
+    return data.module;
+  }
+
   async getAntiBanConfig(guildId: string) {
     const { data } = await this.http.get<{ config: AntiBanConfig }>(`/anti-ban/bot/${guildId}`, { timeout: 8_000 });
     return data.config;

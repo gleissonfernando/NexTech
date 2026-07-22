@@ -2334,6 +2334,15 @@ export async function deleteNexTechInvite(inviteId: string) {
   return data.invite;
 }
 
+export async function publishNexTechInvitePanel(botId: string, guildId: string) {
+  const { data } = await api.post<{ messageId: string | null }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites/panel`,
+    undefined,
+    { timeout: 45_000 }
+  );
+  return data;
+}
+
 export async function getNexTechSalesDashboard(botId: string, guildId: string) {
   const { data } = await api.get<NexTechSalesDashboard>(`/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales`);
   return data;
@@ -2918,6 +2927,15 @@ export async function runTagVerificationNow(botId: string, guildId: string) {
     { timeout: 120_000 }
   );
   return data.result;
+}
+
+export async function publishAdvancedModulePanel(botId: string, guildId: string, moduleId: "fivem-captcha") {
+  const { data } = await api.post<{ messageId: string | null; module: AdvancedModuleConfig }>(
+    `/advanced-modules/${encodeURIComponent(botId)}/${encodeURIComponent(guildId)}/${encodeURIComponent(moduleId)}/panel`,
+    undefined,
+    { timeout: 45_000 }
+  );
+  return data;
 }
 
 export async function getServerBackupDashboard(botId: string, guildId: string) {

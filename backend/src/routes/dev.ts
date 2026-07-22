@@ -1,6 +1,6 @@
 import { Router, raw } from "express";
 import { z } from "zod";
-import { emitRealtime } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoomWithAck } from "../realtime/events";
 import { requireDevAccess } from "../services/devAccessService";
 import {
   createDevBot,
@@ -423,6 +423,63 @@ devRouter.get("/bots/:botId/guilds/:guildId/nextech-invites", async (req, res, n
       botId: req.params.botId,
       guildId: req.params.guildId
     }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nextech-invites/panel", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem permissão para publicar painel deste bot." });
+    }
+
+    const dashboard = await getNexTechInviteDashboard({
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    });
+    const invite = dashboard.officialInvite ?? dashboard.invites.find((item) => item.status === "active") ?? null;
+
+    if (!invite || invite.status !== "active" || !invite.inviteUrl) {
+      return res.status(409).json({ message: "Cadastre um convite oficial ativo antes de publicar o painel." });
+    }
+
+    if (!invite.panelChannelId) {
+      return res.status(409).json({ message: "Configure o canal do painel antes de publicar." });
+    }
+
+    const responses = await emitRealtimeToRoomWithAck<
+      { botId: string; guildId: string },
+      { error?: string; messageId?: string | null; ok: boolean }
+    >(devBotRealtimeRoom(req.params.botId), "nextech-invites:panel_publish", {
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    }, 30_000);
+    const success = responses.find((item) => item.ok);
+
+    if (!success) {
+      const error = responses.find((item) => item.error)?.error;
+      return res.status(503).json({ message: error || "O bot não respondeu a publicação do painel." });
+    }
+
+    await createLog({
+      botId: req.params.botId,
+      guildId: req.params.guildId,
+      userId: auth.user.discordId ?? auth.user.id,
+      type: "nextech-invites.panel_published",
+      message: "Sistema de Convites: painel publicado pela dashboard.",
+      metadata: {
+        inviteId: invite.id,
+        messageId: success.messageId ?? null,
+        panelChannelId: invite.panelChannelId
+      }
+    }).catch(() => undefined);
+
+    return res.json({
+      messageId: success.messageId ?? null
+    });
   } catch (error) {
     return next(error);
   }
