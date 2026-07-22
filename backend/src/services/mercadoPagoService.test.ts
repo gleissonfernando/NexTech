@@ -99,6 +99,7 @@ test("monta preference Mercado Pago com Pix e cartão no mesmo checkout", () => 
       success: "https://example.com/sucesso"
     },
     binaryMode: false,
+    defaultPaymentMethodId: "pix",
     externalReference: "order-123",
     items: [{
       currencyId: "BRL",
@@ -112,6 +113,7 @@ test("monta preference Mercado Pago com Pix e cartão no mesmo checkout", () => 
   });
 
   assert.equal(body.binary_mode, false);
+  assert.equal(body.payment_methods?.default_payment_method_id, "pix");
   assert.equal(body.payment_methods?.excluded_payment_types, undefined);
   assert.equal(body.payment_methods?.installments, 12);
   assert.equal(body.external_reference, "order-123");

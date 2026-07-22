@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Check, Loader2, ShieldCheck, ShoppingCart, Sparkles } from "lucide-react";
+import { ArrowLeft, Bot, Check, CreditCard, Loader2, QrCode, ShieldCheck, ShoppingCart, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPlanCheckoutInterest, getPublicPlans } from "../lib/api";
 import type { Plan } from "../types";
@@ -23,6 +23,8 @@ export function PublicPlansPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyPlanSlug, setBusyPlanSlug] = useState<string | null>(null);
+  const [busyPaymentMethod, setBusyPaymentMethod] = useState<"card" | "pix" | null>(null);
+  const [paymentPlan, setPaymentPlan] = useState<Plan | null>(null);
   const [periodicityFilter, setPeriodicityFilter] = useState<PlanPeriodicityFilter>("all");
   const [levelFilter, setLevelFilter] = useState<PlanLevelFilter>("all");
 
@@ -36,12 +38,13 @@ export function PublicPlansPage() {
     void getPublicPlans().then(setPlans).catch(() => setError("Não foi possível carregar os planos agora.")).finally(() => setLoading(false));
   }, []);
 
-  async function handleBuy(plan: Plan) {
+  async function startCheckout(plan: Plan, paymentMethod: "card" | "pix") {
     setBusyPlanSlug(plan.slug);
+    setBusyPaymentMethod(paymentMethod);
     setError(null);
 
     try {
-      const result = await createPlanCheckoutInterest(plan.id, "checkout");
+      const result = await createPlanCheckoutInterest(plan.id, paymentMethod === "pix" ? "pix" : "checkout");
       if (result.order.checkoutUrl) {
         window.location.assign(result.order.checkoutUrl);
         return;
@@ -56,6 +59,8 @@ export function PublicPlansPage() {
       setError(readError(requestError, "Não foi possível iniciar o checkout agora."));
     } finally {
       setBusyPlanSlug(null);
+      setBusyPaymentMethod(null);
+      setPaymentPlan(null);
     }
   }
 
@@ -82,12 +87,68 @@ export function PublicPlansPage() {
         ) : null}
         {loading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : null}
         {error ? <div className="mx-auto max-w-xl rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">{error}</div> : null}
-        {!loading && !error && filteredPlans.length ? <section aria-label="Planos disponíveis" className="plans-grid-transition grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3" key={`${periodicityFilter}-${levelFilter}`}>{filteredPlans.map((plan) => <PublicPlanCard busy={busyPlanSlug === plan.slug} key={plan.id} onBuy={() => void handleBuy(plan)} plan={plan} />)}</section> : null}
+        {!loading && !error && filteredPlans.length ? <section aria-label="Planos disponíveis" className="plans-grid-transition grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3" key={`${periodicityFilter}-${levelFilter}`}>{filteredPlans.map((plan) => <PublicPlanCard busy={busyPlanSlug === plan.slug} key={plan.id} onBuy={() => setPaymentPlan(plan)} plan={plan} />)}</section> : null}
         {!loading && !error && !plans.length ? <p className="py-20 text-center text-zinc-500">Nenhum plano público disponível no momento.</p> : null}
         {!loading && !error && plans.length > 0 && !filteredPlans.length ? <p className="plans-grid-transition py-20 text-center text-zinc-500" key={`${periodicityFilter}-${levelFilter}-empty`}>Nenhum plano encontrado para este filtro.</p> : null}
         <div className="mx-auto mt-16 flex max-w-3xl items-start gap-3 rounded-xl border border-primary/15 bg-primary/[.05] p-5 text-sm leading-6 text-zinc-400"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><p>Esta página mostra somente informações públicas. Tokens, pagamentos e dados administrativos não são enviados ao navegador.</p></div>
       </div>
+      {paymentPlan ? (
+        <PaymentMethodDialog
+          busyMethod={busyPlanSlug === paymentPlan.slug ? busyPaymentMethod : null}
+          onClose={() => busyPlanSlug ? null : setPaymentPlan(null)}
+          onSelect={(method) => void startCheckout(paymentPlan, method)}
+          plan={paymentPlan}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function PaymentMethodDialog({
+  busyMethod,
+  onClose,
+  onSelect,
+  plan
+}: {
+  busyMethod: "card" | "pix" | null;
+  onClose: () => void;
+  onSelect: (method: "card" | "pix") => void;
+  plan: Plan;
+}) {
+  const disabled = Boolean(busyMethod);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 px-4 py-6 sm:items-center" role="dialog" aria-modal="true">
+      <div className="w-full max-w-md rounded-xl border border-primary/20 bg-[#101010] p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--nextech-accent-soft)]">Finalizar compra</p>
+            <h2 className="mt-1 text-xl font-black text-white">{plan.name}</h2>
+            <p className="mt-1 text-sm text-zinc-400">{formatPrice(plan.promotionalPriceInCents ?? plan.priceInCents, plan.currency)}</p>
+          </div>
+          <button className="rounded-lg border border-zinc-800 p-2 text-zinc-400 transition hover:text-white disabled:opacity-50" disabled={disabled} onClick={onClose} type="button">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          <button className="flex min-h-16 items-center gap-3 rounded-lg border border-primary/30 bg-primary px-4 text-left text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={disabled} onClick={() => onSelect("pix")} type="button">
+            {busyMethod === "pix" ? <Loader2 className="h-5 w-5 animate-spin" /> : <QrCode className="h-5 w-5" />}
+            <span>
+              <span className="block text-sm font-black">Pagar com Pix</span>
+              <span className="block text-xs font-semibold opacity-80">QR Code e copia e cola gerado na NexTech</span>
+            </span>
+          </button>
+          <button className="flex min-h-16 items-center gap-3 rounded-lg border border-zinc-700 bg-black px-4 text-left text-zinc-100 transition hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-70" disabled={disabled} onClick={() => onSelect("card")} type="button">
+            {busyMethod === "card" ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <CreditCard className="h-5 w-5 text-primary" />}
+            <span>
+              <span className="block text-sm font-black">Pagar com cartão</span>
+              <span className="block text-xs font-semibold text-zinc-500">Checkout seguro do Mercado Pago</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

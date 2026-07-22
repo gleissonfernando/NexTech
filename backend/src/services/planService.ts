@@ -2616,6 +2616,7 @@ async function createMercadoPagoPlanCheckoutPreference(
     },
     binaryMode: false,
     dateOfExpiration: order.expiresAt ?? null,
+    defaultPaymentMethodId: paymentMethod === "checkout" ? "pix" : null,
     environment: mercadoPagoConfig.environment,
     excludedPaymentTypes: paymentMethod === "pix" ? ["credit_card", "debit_card", "ticket", "atm"] : undefined,
     externalReference: order._id,

@@ -1461,6 +1461,7 @@ async function createMercadoPagoProductPreference(
       success: context.successUrl
     },
     binaryMode: false,
+    defaultPaymentMethodId: "pix",
     environment,
     externalReference: context.saleId,
     items: [
