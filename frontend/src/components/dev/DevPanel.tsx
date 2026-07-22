@@ -2240,18 +2240,20 @@ function BotModuleWorkspace({
 }) {
   const [query, setQuery] = useState("");
   const [moduleSectionPages, setModuleSectionPages] = useState<Record<string, number>>({});
-  const categories = moduleDashboardCategories(modules);
-  const categoryItems = flattenBotMenuItems(categories).filter((item) => modulesForMenu(item, modules, true).length > 0);
-  const enabledModules = normalizeDevModuleIds(bot.enabledModules);
-  const defaultExpandedGroups = defaultExpandedBotMenuGroups(categoryItems, enabledModules);
+  const categories = useMemo(() => moduleDashboardCategories(modules), [modules]);
+  const categoryItems = useMemo(() => (
+    flattenBotMenuItems(categories).filter((item) => modulesForMenu(item, modules, true).length > 0)
+  ), [categories, modules]);
+  const enabledModules = useMemo(() => normalizeDevModuleIds(bot.enabledModules), [bot.enabledModules]);
+  const defaultExpandedGroups = useMemo(() => defaultExpandedBotMenuGroups(categoryItems, enabledModules), [categoryItems, enabledModules]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readFavoriteModules(bot.id));
   const [expandedGroupIds, setExpandedGroupIds] = useState<BotMenuGroupId[]>(() => readBotMenuGroupExpansion(bot.id, defaultExpandedGroups));
   const activeCategory = categoryItems.find((item) => item.id === activeMenuId) ?? categoryItems[0];
-  const enabledSet = new Set(enabledModules);
-  const favoriteSet = new Set(favoriteIds);
+  const enabledSet = useMemo(() => new Set(enabledModules), [enabledModules]);
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const normalizedQuery = query.trim().toLowerCase();
-  const favoriteModules = modules.filter((module) => favoriteSet.has(module.id));
-  const selectedModules = activeMenuId === "overview"
+  const favoriteModules = useMemo(() => modules.filter((module) => favoriteSet.has(module.id)), [favoriteSet, modules]);
+  const selectedModules = useMemo(() => activeMenuId === "overview"
     ? modules
     : activeMenuId === "favorites"
       ? favoriteModules
@@ -2261,13 +2263,13 @@ function BotModuleWorkspace({
         ? []
       : activeCategory
         ? modulesForMenu(activeCategory, modules, true)
-        : modules;
-  const filteredModules = (normalizedQuery ? modules : selectedModules).filter((module) => {
+        : modules, [activeCategory, activeMenuId, favoriteModules, modules]);
+  const filteredModules = useMemo(() => (normalizedQuery ? modules : selectedModules).filter((module) => {
     if (!normalizedQuery) return true;
 
     return module.label.toLowerCase().includes(normalizedQuery) || module.id.toLowerCase().includes(normalizedQuery);
-  });
-  const activeModules = modules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id)));
+  }), [modules, normalizedQuery, selectedModules]);
+  const activeModules = useMemo(() => modules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))), [enabledSet, modules]);
   const inactiveCount = Math.max(0, modules.length - activeModules.length);
   const securityModules = modulesForMenu({
     group: "seguranca",
@@ -2290,9 +2292,9 @@ function BotModuleWorkspace({
     ]
   }, modules, true);
   const activeSecurityCount = securityModules.filter((module) => enabledSet.has(module.id)).length;
-  const moduleSections = moduleDashboardSections(filteredModules, categories);
-  const categoryGroups = groupedBotMenuCategories(categoryItems, modules, enabledModules);
-  const activeGroupId = activeBotMenuGroupId(activeMenuId, categoryItems);
+  const moduleSections = useMemo(() => moduleDashboardSections(filteredModules, categories), [categories, filteredModules]);
+  const categoryGroups = useMemo(() => groupedBotMenuCategories(categoryItems, modules, enabledModules), [categoryItems, enabledModules, modules]);
+  const activeGroupId = useMemo(() => activeBotMenuGroupId(activeMenuId, categoryItems), [activeMenuId, categoryItems]);
 
   useEffect(() => {
     setFavoriteIds(readFavoriteModules(bot.id));
@@ -2559,6 +2561,9 @@ function BotModuleWorkspace({
                               >
                                 <ChevronLeft className="h-4 w-4" />
                               </button>
+                              <span className="rounded-md border border-zinc-800 bg-black/25 px-2 py-1 text-[0.68rem] font-bold text-zinc-400">
+                                Página {currentPage + 1} de {totalPages}
+                              </span>
                               <button
                                 aria-label={`Próxima página de ${section.label}`}
                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-800 bg-black/25 text-zinc-400 transition hover:border-[#FFEA70]/40 hover:text-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-40"
@@ -2572,7 +2577,7 @@ function BotModuleWorkspace({
                           ) : null}
                         </div>
                       </div>
-                      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                      <div className="grid auto-rows-fr gap-4 md:grid-cols-2 2xl:grid-cols-3">
                         {pageModules.map((module, index) => (
                           <ModuleDashboardCard
                             enabled={enabledSet.has(canonicalDevModuleId(module.id))}
@@ -3445,7 +3450,7 @@ function ModuleDashboardCard({
   const Icon = iconForModule(module.id);
   const moduleStatus = moduleCardStatus(enabled, status);
   const cardClassName = [
-    "group relative flex min-h-[212px] flex-col overflow-hidden rounded-lg border p-4 shadow-[0_18px_44px_rgba(0,0,0,0.22)] backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:border-[#FFD500]/45 hover:bg-zinc-950 hover:shadow-[0_0_30px_rgba(255,213,0,0.12)]",
+    "group relative flex h-full min-h-[212px] flex-col overflow-hidden rounded-lg border p-4 shadow-[0_18px_44px_rgba(0,0,0,0.22)] backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:border-[#FFD500]/45 hover:bg-zinc-950 hover:shadow-[0_0_30px_rgba(255,213,0,0.12)]",
     enabled
       ? "border-[#FFD500]/30 bg-[linear-gradient(135deg,rgba(255,213,0,0.10),rgba(9,9,11,0.90))] ring-1 ring-[#FFD500]/10"
       : "border-zinc-800/95 bg-zinc-950/58"
@@ -5849,7 +5854,7 @@ type BotMenuCategoryGroup = {
   total: number;
 };
 
-const MODULE_SECTION_PAGE_SIZE = 6;
+const MODULE_SECTION_PAGE_SIZE = 10;
 
 function groupedBotMenuCategories(categories: BotMenuItem[], modules: DevModuleDefinition[], enabledModules: string[]): BotMenuCategoryGroup[] {
   const enabledSet = new Set(normalizeDevModuleIds(enabledModules));
