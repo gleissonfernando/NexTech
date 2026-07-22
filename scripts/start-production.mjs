@@ -14,13 +14,7 @@ process.env.SITE_ORIGIN ||= packedConfigValue("SITE_ORIGIN") || process.env.APP_
 process.env.FRONTEND_URL ||= packedConfigValue("FRONTEND_URL") || process.env.APP_BASE_URL;
 process.env.BACKEND_URL ||= packedConfigValue("BACKEND_URL") || process.env.APP_BASE_URL;
 process.env.BOT_API_TOKEN ||= packedConfigValue("BOT_API_TOKEN") || randomBytes(32).toString("hex");
-const requestedDevBotAutostart = process.env.START_REGISTERED_DEV_BOTS || packedConfigValue("START_REGISTERED_DEV_BOTS");
-const allowDevBotAutostart = process.env.NEX_TECH_ALLOW_DEV_BOT_AUTOSTART === "true"
-  || packedConfigValue("NEX_TECH_ALLOW_DEV_BOT_AUTOSTART") === "true";
-process.env.START_REGISTERED_DEV_BOTS = allowDevBotAutostart ? requestedDevBotAutostart || "" : "false";
-if (requestedDevBotAutostart === "true" && !allowDevBotAutostart) {
-  console.warn("[start] START_REGISTERED_DEV_BOTS ignorado: configure NEX_TECH_ALLOW_DEV_BOT_AUTOSTART=true para iniciar todos os bots DEV junto com o site principal.");
-}
+process.env.START_REGISTERED_DEV_BOTS ||= packedConfigValue("START_REGISTERED_DEV_BOTS") || "";
 process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
 
