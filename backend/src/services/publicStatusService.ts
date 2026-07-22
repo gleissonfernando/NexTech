@@ -123,7 +123,7 @@ export async function getPublicStatusSnapshot(): Promise<PublicStatusSnapshot> {
           id: "background-jobs",
           latencyMs: null,
           name: "Jobs Assíncronos",
-          status: jobs.status === "ok" ? "operational" : "degraded",
+          status: jobs.status === "ok" || jobs.status === "running" ? "operational" : "degraded",
           timestamp: generatedAt
         }),
         buildService({
