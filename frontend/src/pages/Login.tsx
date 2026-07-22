@@ -1,6 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  Activity,
   Bot,
   Check,
   CheckCircle2,
@@ -26,7 +25,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "../components/ui/button";
-import { fetchPublicStatus, type PublicStatusSnapshot } from "../lib/publicStatus";
 import type { AuthResponse } from "../types";
 
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
@@ -260,8 +258,6 @@ export function Login({
       </section>
 
       <PublicServerMarquee servers={publicServers} />
-
-      <PublicStatusPreview />
 
       <section id="solucoes" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
@@ -693,113 +689,6 @@ function StatCounter({ delay = 0, label, prefix = "", suffix = "", value }: { de
       <p className="mt-2 text-sm text-[#B3B3B3]">{label}</p>
     </div>
   );
-}
-
-function PublicStatusPreview() {
-  const [snapshot, setSnapshot] = useState<PublicStatusSnapshot | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchPublicStatus(controller.signal)
-      .then((data) => {
-        setSnapshot(data);
-        setFailed(false);
-      })
-      .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setFailed(true);
-        }
-      });
-    return () => controller.abort();
-  }, []);
-
-  const services = snapshot?.categories.flatMap((category) => category.services) ?? [];
-  const visibleServices = services.slice(0, 6);
-  const operationalCount = services.filter((service) => service.currentStatus === "operational").length;
-  const statusTone = snapshot?.globalStatus === "major_outage"
-    ? "border-red-500/35 bg-red-500/10 text-red-200"
-    : snapshot?.globalStatus === "degraded"
-      ? "border-amber-500/35 bg-amber-500/10 text-amber-200"
-      : "border-emerald-500/35 bg-emerald-500/10 text-emerald-200";
-
-  return (
-    <section id="status" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-        <Reveal>
-          <p className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-medium text-[#FFEA70]">
-            <Activity className="h-4 w-4" />
-            Monitoramento público
-          </p>
-          <h2 className="mt-6 text-4xl font-black text-white sm:text-5xl">Status da plataforma</h2>
-          <p className="mt-5 max-w-xl text-base leading-8 text-[#B3B3B3]">
-            Acompanhe a disponibilidade da NextTech com dados tratados, sem expor APIs privadas, tokens, hosts internos ou detalhes sensíveis da infraestrutura.
-          </p>
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Button asChild className="h-12 min-w-44">
-              <a href="/status">
-                <Activity className="h-4 w-4" />
-                Ver Status
-              </a>
-            </Button>
-          </div>
-        </Reveal>
-
-        <Reveal delay={0.12} className="rounded-lg border border-[#FFD500]/20 bg-[#101010]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-          <div className="flex flex-col gap-4 border-b border-[#FFD500]/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[.18em] text-[#FFD500]">NextTech Status</p>
-              <h3 className="mt-2 text-2xl font-black text-white">{snapshot?.globalMessage ?? (failed ? "Status indisponível" : "Carregando status")}</h3>
-            </div>
-            <span className={`w-fit rounded-full border px-3 py-1.5 text-xs font-black ${statusTone}`}>
-              {snapshot ? `${operationalCount}/${services.length} online` : failed ? "falha" : "sincronizando"}
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {visibleServices.length ? visibleServices.map((service) => (
-              <div className="grid gap-3 rounded-lg border border-white/5 bg-black/25 p-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:items-center" key={service.id}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-white" title={service.name}>{service.name}</p>
-                  <p className="mt-1 text-xs text-zinc-500">{serviceStatusLabel(service.currentStatus)}</p>
-                </div>
-                <div className="grid grid-cols-[repeat(30,minmax(0,1fr))] gap-1">
-                  {service.history.slice(-30).map((item) => (
-                    <span className={`h-6 rounded-sm ${previewHistoryClass(item.status)}`} key={`${service.id}-${item.startedAt}`} title={`${serviceStatusLabel(service.currentStatus)} - ${item.averageResponseTimeMs ?? "sem"} ms`} />
-                  ))}
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-lg border border-zinc-800 bg-black/25 p-6 text-sm font-medium text-zinc-300">
-                {failed ? "Não foi possível carregar o resumo agora." : "Buscando dados públicos de disponibilidade."}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
-            <span>{snapshot ? `Atualizado às ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(snapshot.generatedAt))}` : "Aguardando primeira leitura"}</span>
-            <span>{snapshot?.historyWindow.label ?? "Últimos 60 minutos"}</span>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-function serviceStatusLabel(status: PublicStatusSnapshot["categories"][number]["services"][number]["currentStatus"]) {
-  if (status === "operational") return "Operacional";
-  if (status === "degraded") return "Desempenho degradado";
-  if (status === "maintenance") return "Em manutenção";
-  if (status === "unknown") return "Sem informações";
-  return "Indisponível";
-}
-
-function previewHistoryClass(status: PublicStatusSnapshot["categories"][number]["services"][number]["history"][number]["status"]) {
-  if (status === "operational") return "bg-emerald-400";
-  if (status === "degraded") return "bg-amber-400";
-  if (status === "maintenance") return "bg-sky-400";
-  if (status === "down") return "bg-red-500";
-  return "bg-zinc-700";
 }
 
 function PublicServerMarquee({ servers }: { servers: PublicServer[] }) {
