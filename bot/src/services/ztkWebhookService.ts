@@ -58,7 +58,7 @@ export const recrutamentoCommand: BotCommand = {
           description: `Ranking geral de recrutamento do clã **${clan.clanName}**.`,
           fields: [
             `## 📊 Resumo\n**Hoje:** ${dashboard.recruitmentRankings.stats.todayTotal}\n**Semana:** ${dashboard.recruitmentRankings.stats.weekTotal}\n**Mês:** ${dashboard.recruitmentRankings.stats.monthTotal}\n**Total:** ${dashboard.recruitmentRankings.stats.total}\n**Maior recrutador:** ${dashboard.recruitmentRankings.stats.topRecruiterName ?? "Sem dados"}`,
-            ...recruitmentRankingBlocks("🥇 Top Recrutadores", recruiters)
+            ...recruitmentRankingBlocks(recruiters)
           ],
           footer: { text: "NexTech • ZTK Recrutamento" },
           moduleId: "ztk-webhook",
@@ -123,8 +123,7 @@ async function syncZtkRecruitmentPanelsOnStartup(client: Client<true>, context: 
       const selectedClan = dashboard.selectedClan ?? dashboard.clans.find((item) => item.id === clan.id) ?? clan;
       const panelPayload = createRecruitmentPanelPayload(guild.id, selectedClan, dashboard);
       const messageId = await upsertChannelMessage(guild, channelId, selectedClan.recruitmentRankingMessageId ?? null, createRecruitmentRankingPanel(panelPayload), [
-        "Sistema de Recrutamento",
-        `RECRUTAMENTO — ${selectedClan.clanName.toUpperCase()}`
+        "Recrutamento"
       ]);
       if (messageId && messageId !== selectedClan.recruitmentRankingMessageId) {
         await context.api.updateZtkRankingMessageState(guild.id, selectedClan.id, {
@@ -317,11 +316,11 @@ function createRecruitmentRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
   const recruiters = payload.recruitmentRankings?.recruiters ?? [];
   return renderComponentsV2Panel({
     accentColor: 0x3b82f6,
-    description: `Histórico de recrutamento atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
-    fields: recruitmentRankingBlocks(`👥 RECRUTAMENTO — ${payload.clan.clanName.toUpperCase()}`, recruiters),
+    description: "",
+    fields: recruitmentRankingBlocks(recruiters),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
-    title: "👥 Sistema de Recrutamento"
+    title: "📊 Ranking de Recrutamento in-game"
   });
 }
 
@@ -343,7 +342,7 @@ async function upsertZtkRankingMessages(guild: Guild, payload: ZtkWebhookEventRe
     {
       channelId: payload.clan.recruitmentChannelId ?? payload.clan.rankingChannelId,
       kind: "recruitment",
-      markers: ["Sistema de Recrutamento", `RECRUTAMENTO — ${payload.clan.clanName.toUpperCase()}`],
+      markers: ["Recrutamento"],
       messageId: payload.clan.recruitmentRankingMessageId,
       panel: createRecruitmentRankingPanel(payload)
     },
@@ -468,25 +467,14 @@ function participantRankingBlocks(title: string, values: NonNullable<ZtkWebhookE
   }).join("\n\n")}`];
 }
 
-function recruitmentRankingBlocks(title: string, values: NonNullable<ZtkWebhookEventReceivedEvent["recruitmentRankings"]>["recruiters"]) {
-  if (!values.length) return [`## ${title}\nSem registros.`];
-  const blocks: string[] = [];
-  let current = `## ${title}\n`;
-  values.slice(0, ZTK_RANKING_LIMIT).forEach((item, index) => {
-    const recruits = item.recentRecruits.length
-      ? item.recentRecruits.map((recruit) => `👤 ${recruit.recruitedName}\n📅 ${formatDate(recruit.recruitedAt)}`).join("\n")
-      : "Nenhum histórico recente.";
-    const line = `${medal(index + 1)} **${item.recruiterName}**\n${item.totalRecruitments} recrutamentos\n\nÚltimos recrutamentos:\n${recruits}`;
-    const separator = current.endsWith("\n") ? "" : "\n\n";
-    if (`${current}${separator}${line}`.length > 3500) {
-      blocks.push(current);
-      current = `## ${title} (continuação)\n${line}`;
-      return;
-    }
-    current = `${current}${separator}${line}`;
-  });
-  if (current.trim()) blocks.push(current);
-  return blocks;
+function recruitmentRankingBlocks(values: NonNullable<ZtkWebhookEventReceivedEvent["recruitmentRankings"]>["recruiters"]) {
+  if (!values.length) return ["Sem registros."];
+  return [
+    values.slice(0, ZTK_RANKING_LIMIT).map((item, index) => {
+      const recruiterId = item.recruiterId ? ` (ID: ${item.recruiterId})` : "";
+      return `#${index + 1} — ${item.recruiterName} — ${item.totalRecruitments} recrutamentos${recruiterId}`;
+    }).join("\n")
+  ];
 }
 
 function rankingBlocks(title: string, values: ZtkWebhookPlayerStatEvent[], field: "dominations" | "onlineSeconds" | "recruitments", label: string) {
