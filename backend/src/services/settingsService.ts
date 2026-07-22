@@ -308,8 +308,8 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
   moduleName: null,
   showAnonymousAuthorToRoleIds: []
 };
-const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 25;
-const MAX_EMOJI_CLONE_MAX_PER_RUN = 100;
+const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 1000;
+const MAX_EMOJI_CLONE_MAX_PER_RUN = 1000;
 const DEFAULT_RULES_TITLE = "Regras da comunidade";
 const DEFAULT_RULES_MESSAGE = [
   "Respeite todos os membros. Ofensas, preconceito, assedio ou discriminacao não serão tolerados.",

@@ -9929,11 +9929,11 @@ function EmojiCloneSettingsPanel({
             <input
               className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none"
               disabled={disabled}
-              max={100}
+              max={1000}
               min={1}
-              onBlur={(event) => void savePatch({ emojiCloneMaxPerRun: Number(event.target.value) || 25 })}
+              onBlur={(event) => void savePatch({ emojiCloneMaxPerRun: Number(event.target.value) || 1000 })}
               type="number"
-              defaultValue={settings?.emojiCloneMaxPerRun ?? 25}
+              defaultValue={settings?.emojiCloneMaxPerRun ?? 1000}
             />
           </label>
 

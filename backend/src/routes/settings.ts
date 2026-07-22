@@ -184,7 +184,7 @@ const settingsSchema = z.object({
   emojiCloneLogChannelId: z.string().nullable().optional(),
   emojiCloneDefaultPrefix: z.string().max(24).nullable().optional(),
   emojiCloneAllowAnimated: z.boolean().optional(),
-  emojiCloneMaxPerRun: z.coerce.number().int().min(1).max(100).optional(),
+  emojiCloneMaxPerRun: z.coerce.number().int().min(1).max(1000).optional(),
   emojiCloneAllowedBotIds: z.array(z.string().regex(/^\d{5,32}$/)).max(25).optional(),
   rulesEnabled: z.boolean().optional(),
   rulesChannelId: z.string().nullable().optional(),

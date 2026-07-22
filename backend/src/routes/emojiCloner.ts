@@ -33,13 +33,13 @@ const jobSchema = z.object({
   userId: z.string().regex(/^\d{5,32}$/),
   sourceGuildId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   status: z.enum(["pending", "running", "completed", "cancelled"]),
-  total: z.number().int().min(0).max(100),
-  success: z.number().int().min(0).max(100),
-  failed: z.number().int().min(0).max(100),
+  total: z.number().int().min(0).max(1000),
+  success: z.number().int().min(0).max(1000),
+  failed: z.number().int().min(0).max(1000),
   prefix: z.string().max(24).nullable().optional(),
   createdAt: z.string().datetime().nullable().optional(),
   finishedAt: z.string().datetime().nullable().optional(),
-  items: z.array(itemSchema).max(100)
+  items: z.array(itemSchema).max(1000)
 });
 const cloneSchema = z.object({
   image: z.string().min(1).max(1_000_000),
@@ -93,7 +93,7 @@ const bulkCloneSchema = botTokenSchema.extend({
     id: z.string().regex(/^\d{5,32}$/),
     name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/),
     url: z.string().url().max(500)
-  })).min(1).max(50),
+  })).min(1).max(1000),
   prefix: z.string().max(24).nullable().optional()
 });
 const emojiCloneQueues = new Map<string, Promise<unknown>>();
