@@ -117,6 +117,22 @@ const temporaryVoiceConfigSchema = z.object({
   logChannelId: snowflakeSchema.nullable().default(null),
   autoDeleteChannelIds: z.array(snowflakeSchema).max(100).default([])
 });
+const fivemCaptchaConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  panelChannelId: snowflakeSchema.nullable().default(null),
+  panelMessageId: snowflakeSchema.nullable().default(null),
+  roleId: snowflakeSchema.nullable().default(null),
+  bypassRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  logChannelId: snowflakeSchema.nullable().default(null),
+  challengeMode: z.enum(["button", "code", "math"]).default("math"),
+  captchaLength: z.coerce.number().int().min(4).max(8).default(6),
+  maxAttempts: z.coerce.number().int().min(1).max(10).default(3),
+  expiresMinutes: z.coerce.number().int().min(1).max(60).default(5),
+  cooldownSeconds: z.coerce.number().int().min(0).max(300).default(10),
+  failureAction: z.enum(["log_only", "kick", "ban"]).default("log_only"),
+  requireNickname: z.boolean().default(true),
+  deletePromptAfterVerify: z.boolean().default(true)
+});
 const tagVerificationConfigSchema = z.object({
   enabled: z.boolean().default(false),
   requiredTag: z.string().trim().max(100).default(""),
@@ -198,7 +214,7 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
     const previous = await getBotGuildModuleConfig(botId, guildId, moduleId);
     const normalizedConfig = normalizeModuleConfig(moduleId, input.config);
     if (
-      moduleId === "temporary-voice"
+      (moduleId === "temporary-voice" || moduleId === "fivem-captcha")
       && !Object.prototype.hasOwnProperty.call(input.config, "panelMessageId")
       && previous.config.panelMessageId
     ) {
@@ -207,6 +223,11 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
 
     if (moduleId === "tag-verification" && normalizedConfig.enabled === true) {
       await validateTagVerificationRole(botId, guildId, String((normalizedConfig as Record<string, unknown>).roleId));
+    }
+
+    const normalizedRecord = normalizedConfig as Record<string, unknown>;
+    if (moduleId === "fivem-captcha" && typeof normalizedRecord.roleId === "string") {
+      await validateTagVerificationRole(botId, guildId, normalizedRecord.roleId);
     }
 
     const savedModule = await updateBotGuildModuleConfig({
@@ -330,6 +351,25 @@ function normalizeModuleConfig(moduleId: z.infer<typeof moduleIdSchema>, config:
     return temporaryVoiceConfigSchema.parse(config);
   }
 
+  if (moduleId === "fivem-captcha") {
+    return fivemCaptchaConfigSchema.parse({
+      bypassRoleIds: Array.isArray(config.bypassRoleIds) ? config.bypassRoleIds : [],
+      captchaLength: config.captchaLength,
+      challengeMode: config.challengeMode,
+      cooldownSeconds: config.cooldownSeconds,
+      deletePromptAfterVerify: config.deletePromptAfterVerify,
+      enabled: config.enabled,
+      expiresMinutes: config.expiresMinutes,
+      failureAction: config.failureAction,
+      logChannelId: config.logChannelId || null,
+      maxAttempts: config.maxAttempts,
+      panelChannelId: config.panelChannelId || null,
+      panelMessageId: config.panelMessageId || null,
+      requireNickname: config.requireNickname,
+      roleId: config.roleId || null
+    });
+  }
+
   if (moduleId === "tag-verification") {
     const result = tagVerificationConfigSchema.safeParse({
       autoRemove: config.autoRemove ?? config.removeOnMismatch,
@@ -386,7 +426,7 @@ async function writeModuleConfigLogs(input: {
   previousConfig: Record<string, unknown>;
   user: AuthSessionUser;
 }) {
-  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId === "anti-abuse" ? "Anti Abuse" : input.moduleId === "tag-verification" ? "Verificação de Tag" : input.moduleId;
+  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId === "anti-abuse" ? "Anti Abuse" : input.moduleId === "tag-verification" ? "Verificação de Tag" : input.moduleId === "fivem-captcha" ? "CAPTCHA FiveM" : input.moduleId;
   const enabled = input.config.enabled === true;
   const wasEnabled = input.previousConfig.enabled === true;
 
@@ -405,6 +445,13 @@ async function writeModuleConfigLogs(input: {
         requiredTag: input.config.requiredTag,
         roleId: input.config.roleId,
         updateIntervalMinutes: input.config.updateIntervalMinutes
+      } : {}),
+      ...(input.moduleId === "fivem-captcha" ? {
+        challengeMode: input.config.challengeMode,
+        failureAction: input.config.failureAction,
+        maxAttempts: input.config.maxAttempts,
+        panelChannelId: input.config.panelChannelId,
+        roleId: input.config.roleId
       } : {})
     }
   }).catch(() => undefined);

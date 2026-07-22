@@ -1910,13 +1910,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
         {activeView === "fivem-captcha" ? (
-          <FivemView
+          <AdvancedSecurityModulePanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "fivem-captcha", canManageDashboard)}
-            enabledModules={enabledModules}
-            fivemModules={fivemModules}
             guild={selectedGuild}
-            mode="general"
+            moduleId="fivem-captcha"
           />
         ) : null}
         {activeView === "ztk-webhook" ? (
@@ -2074,6 +2072,12 @@ const advancedSecurityModuleDetails: Record<string, {
     description: "Módulo isolado para entregar cargo conforme domínios permitidos na bio.",
     icon: AtSign,
     items: ["Domínios permitidos", "Expressões", "Cargo entregue", "Atualização automática"]
+  },
+  "fivem-captcha": {
+    title: "CAPTCHA FiveM",
+    description: "Verificação por CAPTCHA para entrada FiveM com cargo de liberação, bypass, logs e punição opcional.",
+    icon: ShieldCheck,
+    items: ["Canal do painel", "Cargo entregue", "Tentativas", "Logs de verificação"]
   },
   "first-lady": {
     title: "Sistema Primeira Dama",
@@ -2927,7 +2931,7 @@ function AdvancedSecurityModulePanel({
             disabled={disabled}
             moduleId={moduleId}
             onChange={patchConfig}
-            roles={roles.filter((role) => !role.managed && (moduleId !== "tag-verification" || role.assignable))}
+            roles={roles.filter((role) => !role.managed && (!["fivem-captcha", "tag-verification"].includes(moduleId) || role.assignable))}
             voiceChannels={voiceChannels}
           />
           <div className="flex flex-wrap items-center gap-3">
@@ -3007,6 +3011,25 @@ function AdvancedModuleFields({
         <AdvancedSelectField disabled={disabled} label="Cargo entregue" onChange={(value) => onChange({ roleId: value || null })} options={roleOptions} placeholder="Selecione um cargo" value={stringConfig(config.roleId)} />
         <AdvancedNumberField disabled={disabled} label="Tempo de atualização (minutos)" min={1} onChange={(value) => onChange({ intervalMinutes: value })} value={numberConfig(config.intervalMinutes, 15)} />
         <AdvancedToggleField checked={config.removeOnMismatch !== false} disabled={disabled} label="Remoção automática" onChange={(checked) => onChange({ removeOnMismatch: checked })} />
+      </div>
+    );
+  }
+
+  if (moduleId === "fivem-captcha") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <AdvancedSelectField disabled={disabled} label="Canal do painel" onChange={(value) => onChange({ panelChannelId: value || null })} options={textChannelOptions} placeholder="Selecione um canal" value={stringConfig(config.panelChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Cargo entregue" onChange={(value) => onChange({ roleId: value || null })} options={roleOptions} placeholder="Sem cargo automático" value={stringConfig(config.roleId)} />
+        <AdvancedSelectField disabled={disabled} label="Canal de logs" onChange={(value) => onChange({ logChannelId: value || null })} options={textChannelOptions} placeholder="Sem logs dedicado" value={stringConfig(config.logChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Tipo de desafio" onChange={(value) => onChange({ challengeMode: value })} options={[{ label: "Código aleatório", value: "code" }, { label: "Conta matemática", value: "math" }, { label: "Botão de confirmação", value: "button" }]} placeholder="Selecione" value={stringConfig(config.challengeMode) || "math"} />
+        <AdvancedNumberField disabled={disabled} label="Tamanho do código" max={8} min={4} onChange={(value) => onChange({ captchaLength: value })} value={numberConfig(config.captchaLength, 6)} />
+        <AdvancedNumberField disabled={disabled} label="Tentativas máximas" max={10} min={1} onChange={(value) => onChange({ maxAttempts: value })} value={numberConfig(config.maxAttempts, 3)} />
+        <AdvancedNumberField disabled={disabled} label="Expira após (minutos)" max={60} min={1} onChange={(value) => onChange({ expiresMinutes: value })} value={numberConfig(config.expiresMinutes, 5)} />
+        <AdvancedNumberField disabled={disabled} label="Cooldown entre tentativas (segundos)" max={300} min={0} onChange={(value) => onChange({ cooldownSeconds: value })} value={numberConfig(config.cooldownSeconds, 10)} />
+        <AdvancedSelectField disabled={disabled} label="Falha no CAPTCHA" onChange={(value) => onChange({ failureAction: value })} options={[{ label: "Somente registrar", value: "log_only" }, { label: "Remover do servidor", value: "kick" }, { label: "Banir usuário", value: "ban" }]} placeholder="Selecione" value={stringConfig(config.failureAction) || "log_only"} />
+        <AdvancedTextField disabled={disabled} label="IDs dos cargos com bypass" onChange={(value) => onChange({ bypassRoleIds: splitIds(value) })} placeholder="ID, ID, ID" value={arrayConfig(config.bypassRoleIds)} />
+        <AdvancedToggleField checked={config.requireNickname !== false} disabled={disabled} label="Exigir nome FiveM" onChange={(checked) => onChange({ requireNickname: checked })} />
+        <AdvancedToggleField checked={config.deletePromptAfterVerify !== false} disabled={disabled} label="Limpar desafio após validar" onChange={(checked) => onChange({ deletePromptAfterVerify: checked })} />
       </div>
     );
   }
@@ -3225,6 +3248,26 @@ function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, un
 
   if (moduleId === "bio-url-verification") {
     return { allowedDomains: "", enabled: false, intervalMinutes: 15, removeOnMismatch: true, roleId: null, ...config };
+  }
+
+  if (moduleId === "fivem-captcha") {
+    return {
+      bypassRoleIds: [],
+      captchaLength: 6,
+      challengeMode: "math",
+      cooldownSeconds: 10,
+      deletePromptAfterVerify: true,
+      enabled: false,
+      expiresMinutes: 5,
+      failureAction: "log_only",
+      logChannelId: null,
+      maxAttempts: 3,
+      panelChannelId: null,
+      panelMessageId: null,
+      requireNickname: true,
+      roleId: null,
+      ...config
+    };
   }
 
   if (moduleId === "auto-unmute") {
