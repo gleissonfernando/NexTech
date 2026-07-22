@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { runAutoUpdateLogger } from "./auto-update-logger.mjs";
 
 const root = process.cwd();
 const commitMessage = process.argv.slice(2).join(" ").trim() || `Manual Discloud release ${new Date().toISOString()}`;
@@ -77,6 +78,11 @@ run("discloud", ["app", "status", appId]);
 console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
+
+console.log("[release] Auto Update Logger...");
+await runAutoUpdateLogger().catch((error) => {
+  console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
+});
 
 console.log("[release] Concluido.");
 

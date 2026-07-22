@@ -18,6 +18,7 @@ build
 coverage
 dev-logs
 logs
+.release-history/
 .reference/
 my-mercadopago-app/
 .DS_Store
