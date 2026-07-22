@@ -6,6 +6,8 @@ import { createLog } from "./logService";
 
 export const ZTK_WEBHOOK_MODULE_ID = "ztk-webhook";
 const ZTK_RANKING_LIMIT = 10;
+const ZTK_RECRUITMENT_REPAIR_LIMIT = 2000;
+const ZTK_RECRUITMENT_REPAIR_TEXT_PATTERN = /(novo\s+membro|novo\s+integrante|recrutamento|recrutado|convidado\s+por|quem\s+convidou|convidou|promovido)/i;
 
 export type ZtkRankingType = "domination" | "recruitment" | "online";
 
@@ -158,6 +160,9 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
   const selectedClan = clans.find((clan) => clan._id === requestedClanId) ?? clans[0] ?? null;
   const clanIds = clans.map((clan) => clan._id);
   const selectedClanId = selectedClan?._id ?? clanIds[0] ?? null;
+  if (selectedClan) {
+    await repairZtkRecruitmentLogs(ztkWebhookLogs, selectedClan);
+  }
   const logs = selectedClanId
     ? await ztkWebhookLogs.find({ botId: resolvedBotId, guildId, clanId: selectedClanId }).sort({ createdAt: -1 }).limit(300).toArray()
     : [];
@@ -448,6 +453,9 @@ export async function ingestZtkWebhookEvent(clanId: string, token: string, rawPa
   await ztkWebhookClans.updateOne({ _id: clan._id }, { $set: { lastEventAt: now, updatedAt: now } });
   await updatePlayerStats(ztkWebhookPlayerStats, clan, log);
   await updateRecruiterRanking(ztkRecruiterRankings, clan, log);
+  if (log.eventType === "recruitment") {
+    await repairZtkRecruitmentLogs(ztkWebhookLogs, clan);
+  }
   const rankings = {
     domination: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "dominations"),
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
@@ -569,6 +577,9 @@ async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unkno
   await ztkWebhookClans.updateOne({ _id: clan._id }, { $set: { lastEventAt: now, updatedAt: now } });
   await updatePlayerStats(ztkWebhookPlayerStats, clan, log);
   await updateRecruiterRanking(ztkRecruiterRankings, clan, log);
+  if (log.eventType === "recruitment") {
+    await repairZtkRecruitmentLogs(ztkWebhookLogs, clan);
+  }
   const rankings = {
     domination: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "dominations"),
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
@@ -629,6 +640,150 @@ async function updateRecruiterRanking(collection: Awaited<ReturnType<typeof getM
     },
     { upsert: true }
   );
+}
+
+async function repairZtkRecruitmentLogs(collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"], clan: MongoZtkWebhookClan) {
+  const candidates = await collection.find({
+    botId: clan.botId,
+    clanId: clan._id,
+    guildId: clan.guildId,
+    $or: [
+      { eventType: "unknown", rawText: ZTK_RECRUITMENT_REPAIR_TEXT_PATTERN },
+      { eventType: "recruitment", playerName: null },
+      { eventType: "recruitment", recruiterName: null },
+      { eventType: "recruitment", playerName: ZTK_INVALID_RECRUITMENT_NAME_PATTERN },
+      { eventType: "recruitment", recruiterName: ZTK_INVALID_RECRUITMENT_NAME_PATTERN }
+    ]
+  }).sort({ createdAt: -1 }).limit(ZTK_RECRUITMENT_REPAIR_LIMIT).toArray();
+
+  const operations = candidates.flatMap((log) => {
+    const parsed = parseZtkPayload(log.rawPayload, log.rawText, clan.clanName);
+    if (parsed.eventType !== "recruitment") return [];
+    const recruitedName = sanitizeZtkRecruitmentName(parsed.playerName);
+    const recruiterName = sanitizeZtkRecruitmentName(parsed.recruiterName);
+    if (!recruitedName || !recruiterName) return [];
+
+    const eventTimestamp = hasZtkTimestampSignal(log.rawPayload, log.rawText) ? parsed.timestamp : log.eventTimestamp;
+    const patch: Partial<MongoZtkWebhookLog> = {
+      clanName: parsed.clanName || clan.clanName,
+      eventTimestamp,
+      eventType: "recruitment",
+      hash: parsed.hash,
+      initialRole: parsed.initialRole,
+      location: parsed.location,
+      normalizedGangName: parsed.normalizedGangName,
+      normalizedZoneName: parsed.normalizedZoneName,
+      onlineSeconds: parsed.onlineSeconds,
+      participantCount: parsed.participantCount,
+      participants: parsed.participants,
+      playerId: parsed.playerId,
+      playerName: recruitedName,
+      processingStatus: "processed",
+      rawText: parsed.rawText,
+      recruiterId: parsed.recruiterId,
+      recruiterName,
+      rivalGangs: parsed.rivalGangs,
+      totalPlayersInZone: parsed.totalPlayersInZone
+    };
+
+    const currentRecruitedName = sanitizeZtkRecruitmentName(log.playerName);
+    const currentRecruiterName = sanitizeZtkRecruitmentName(log.recruiterName);
+    const unchanged = log.eventType === "recruitment"
+      && currentRecruitedName === recruitedName
+      && currentRecruiterName === recruiterName
+      && (log.playerId ?? null) === (parsed.playerId ?? null)
+      && (log.recruiterId ?? null) === (parsed.recruiterId ?? null)
+      && (log.initialRole ?? null) === (parsed.initialRole ?? null);
+    if (unchanged) return [];
+
+    return [{
+      updateOne: {
+        filter: { _id: log._id, botId: clan.botId, clanId: clan._id, guildId: clan.guildId },
+        update: { $set: patch }
+      }
+    }];
+  });
+
+  if (!operations.length) return 0;
+  await collection.bulkWrite(operations, { ordered: false });
+  await rebuildZtkRecruiterRankingsFromLogs(clan);
+  console.info(`[ztk-webhook] ${operations.length} log(s) antigas de recrutamento reparadas para o clã ${clan.clanName}.`);
+  return operations.length;
+}
+
+async function rebuildZtkRecruiterRankingsFromLogs(clan: MongoZtkWebhookClan) {
+  const { ztkRecruiterRankings, ztkWebhookLogs } = await getMongoCollections();
+  const recruiters = await ztkWebhookLogs.aggregate<{
+    cargo: string | null;
+    created_at: Date | null;
+    discord_id: string | null;
+    lastTimestamp: Date | null;
+    nome: string;
+    normalized_nome: string;
+    total_recrutamentos: number;
+    ultimo_recrutado: string | null;
+  }>([
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "recruitment", guildId: clan.guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
+    { $sort: { eventTimestamp: -1, _id: -1 } },
+    {
+      $group: {
+        _id: { $ifNull: ["$recruiterId", { $toLower: "$recruiterName" }] },
+        cargo: { $first: "$initialRole" },
+        created_at: { $last: "$createdAt" },
+        discord_id: { $first: "$recruiterId" },
+        lastTimestamp: { $first: "$eventTimestamp" },
+        nome: { $first: "$recruiterName" },
+        normalized_nome: { $first: { $toLower: "$recruiterName" } },
+        total_recrutamentos: { $sum: 1 },
+        ultimo_recrutado: { $first: "$playerName" }
+      }
+    }
+  ]).toArray();
+  if (!recruiters.length) return;
+
+  const updatedAt = new Date();
+  await ztkRecruiterRankings.bulkWrite(recruiters.map((recruiter) => {
+    const { date, time } = formatZtkEventDateParts(recruiter.lastTimestamp ?? updatedAt);
+    const normalizedName = normalizeEntity(recruiter.nome);
+    return {
+      updateOne: {
+        filter: {
+          botId: clan.botId,
+          clan_id: clan._id,
+          guildId: clan.guildId,
+          normalized_nome: normalizedName
+        },
+        update: {
+          $set: {
+            cargo: clean(recruiter.cargo, 80) || null,
+            discord_id: clean(recruiter.discord_id, 80) || null,
+            nome: recruiter.nome,
+            normalized_nome: normalizedName,
+            total_recrutamentos: recruiter.total_recrutamentos,
+            ultima_data: date,
+            ultima_hora: time,
+            ultimo_recrutado: recruiter.ultimo_recrutado,
+            updated_at: updatedAt
+          },
+          $setOnInsert: {
+            _id: randomUUID(),
+            avatar: null,
+            botId: clan.botId,
+            clan_id: clan._id,
+            created_at: recruiter.created_at ?? updatedAt,
+            guildId: clan.guildId
+          }
+        },
+        upsert: true
+      }
+    };
+  }), { ordered: false });
+}
+
+function hasZtkTimestampSignal(rawPayload: unknown, rawText: string) {
+  return Boolean(readStringDeep(rawPayload, ["timestamp", "time", "date", "createdAt"]))
+    || /(?:data|hor[aá]rio|timestamp)[:\s]+[0-9/:\-\sTZ.]+/i.test(rawText)
+    || /\b\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\b/.test(rawText);
 }
 
 async function updatePlayerStats(collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookPlayerStats"], clan: MongoZtkWebhookClan, log: MongoZtkWebhookLog) {
@@ -1083,6 +1238,7 @@ function parseZtkPayload(rawPayload: unknown, rawBody: string, fallbackClanName:
     ?? readField(fields, ["data", "horario", "horário", "hora", "timestamp"])
     ?? (dateOnlyValue && timeOnlyValue ? `${dateOnlyValue} ${timeOnlyValue}` : null)
     ?? timestampSection[0]
+    ?? regex(rawText, /\b(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?)\b/)
     ?? regex(rawText, /(?:data|hor[aá]rio|timestamp)[:\s]+([0-9/:\-\sTZ.]+)/i);
   const playerName = firstValidRecruitmentName(
     eventType,

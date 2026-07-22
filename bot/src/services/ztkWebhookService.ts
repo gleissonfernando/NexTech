@@ -1,10 +1,12 @@
 import { SlashCommandBuilder, type Client, type Guild, type Message } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
+import type { ZtkWebhookClanRuntime, ZtkWebhookRecruitmentDashboard } from "./apiClient";
 import type { ZtkWebhookEventReceivedEvent, ZtkWebhookManageEvent, ZtkWebhookPlayerStatEvent, ZtkWebhookRewardUpdatedEvent } from "../websocket/socketClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
 const ZTK_RANKING_LIMIT = 10;
+let ztkRecruitmentStartupSyncStarted = false;
 
 export const recrutamentoCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -89,6 +91,70 @@ export function startZtkWebhookService(client: Client<true>, context: BotContext
       .then((response) => acknowledge?.(response))
       .catch((error) => acknowledge?.({ error: error instanceof Error ? error.message : String(error), ok: false }));
   });
+
+  scheduleZtkRecruitmentPanelStartupSync(client, context);
+}
+
+function scheduleZtkRecruitmentPanelStartupSync(client: Client<true>, context: BotContext) {
+  if (ztkRecruitmentStartupSyncStarted || !isBotModuleEnabled("ztk-webhook")) return;
+  ztkRecruitmentStartupSyncStarted = true;
+  const run = () => {
+    void syncZtkRecruitmentPanelsOnStartup(client, context).catch((error) => {
+      console.warn("[ztk-webhook] falha ao sincronizar painel de recrutamento na inicialização:", error instanceof Error ? error.message : error);
+    });
+  };
+  run();
+}
+
+async function syncZtkRecruitmentPanelsOnStartup(client: Client<true>, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    const clans = await context.api.getZtkWebhookClans(guild.id).catch((error) => {
+      console.warn("[ztk-webhook] falha ao buscar clãs para sincronização:", error instanceof Error ? error.message : error);
+      return [] as ZtkWebhookClanRuntime[];
+    });
+    for (const clan of clans) {
+      const channelId = clan.recruitmentChannelId ?? clan.rankingChannelId ?? null;
+      if (!channelId) continue;
+      const dashboard = await context.api.getZtkWebhookDashboard(guild.id, clan.id).catch((error) => {
+        console.warn("[ztk-webhook] falha ao buscar ranking de recrutamento:", error instanceof Error ? error.message : error);
+        return null;
+      });
+      if (!dashboard?.recruitmentRankings) continue;
+      const selectedClan = dashboard.selectedClan ?? dashboard.clans.find((item) => item.id === clan.id) ?? clan;
+      const panelPayload = createRecruitmentPanelPayload(guild.id, selectedClan, dashboard);
+      const messageId = await upsertChannelMessage(guild, channelId, selectedClan.recruitmentRankingMessageId ?? null, createRecruitmentRankingPanel(panelPayload), [
+        "Sistema de Recrutamento",
+        `RECRUTAMENTO — ${selectedClan.clanName.toUpperCase()}`
+      ]);
+      if (messageId && messageId !== selectedClan.recruitmentRankingMessageId) {
+        await context.api.updateZtkRankingMessageState(guild.id, selectedClan.id, {
+          channelId,
+          kind: "recruitment",
+          messageId
+        }).catch((error) => {
+          console.warn("[ztk-webhook] falha ao salvar mensagem de recrutamento sincronizada:", error instanceof Error ? error.message : error);
+        });
+      }
+    }
+  }
+}
+
+function createRecruitmentPanelPayload(guildId: string, clan: ZtkWebhookClanRuntime, dashboard: ZtkWebhookRecruitmentDashboard): ZtkWebhookEventReceivedEvent {
+  return {
+    botId: currentRuntimeBotId(),
+    clan,
+    event: {
+      clanName: clan.clanName,
+      eventTimestamp: new Date().toISOString(),
+      eventType: "recruitment",
+      id: `startup-sync-${clan.id}`,
+      playerName: null,
+      recruiterName: null
+    },
+    guildId,
+    recruitmentRankings: dashboard.recruitmentRankings,
+    rankings: { domination: [], online: [], recruitment: [] }
+  };
 }
 
 export async function handleZtkWebhookMessage(message: Message, context: BotContext) {
