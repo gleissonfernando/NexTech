@@ -64,17 +64,7 @@ function isMaintenanceBypass(req: Request) {
     return true;
   }
 
-  if (
-    method === "GET"
-    && (
-      path === "/dashboard"
-      || path.startsWith("/dashboard/")
-      || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard(?:\/|$)/i.test(path)
-      || path === "/api/dashboard/me"
-      || path === "/api/dashboard/maintenance"
-      || /^\/api\/dashboard\/[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(path)
-    )
-  ) {
+  if (method === "GET" && path === "/api/dashboard/maintenance") {
     return true;
   }
 

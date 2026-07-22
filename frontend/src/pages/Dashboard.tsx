@@ -1390,6 +1390,10 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     return <DashboardRouteError message={dashboardRouteError} />;
   }
 
+  if (maintenanceState?.active) {
+    return <DashboardMaintenanceScreen maintenance={maintenanceState} />;
+  }
+
   return (
     <DashboardLayout
       activeView={activeView}
@@ -4634,6 +4638,35 @@ function DashboardNoticeCenter({
         </Card>
       ) : null}
     </section>
+  );
+}
+
+function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceState }) {
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] px-4 py-10 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]" />
+      <motion.section
+        animate={{ opacity: 1, y: 0 }}
+        className="relative w-full max-w-xl rounded-lg border border-[#FFD500]/25 bg-[#141414]/90 p-8 text-center shadow-glow backdrop-blur-2xl"
+        initial={{ opacity: 0, y: 14 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+      >
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFD500]/30 bg-[#FFD500]/10">
+          <ShieldAlert className="h-7 w-7 text-[#FFD500]" />
+        </div>
+        <h1 className="mt-5 text-2xl font-black tracking-normal text-white">Sistema em manutenção</h1>
+        <p className="mt-3 text-sm font-semibold leading-6 text-zinc-300">
+          A dashboard está temporariamente indisponível enquanto a equipe finaliza a manutenção.
+        </p>
+        <p className="mt-4 text-xs font-medium text-zinc-500">
+          Iniciada em {maintenance.activatedAt ? formatFullDate(maintenance.activatedAt) : "horário não informado"}.
+        </p>
+        <Button className="mt-6" onClick={() => window.location.reload()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Verificar novamente
+        </Button>
+      </motion.section>
+    </main>
   );
 }
 
