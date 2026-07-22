@@ -48,6 +48,7 @@ import {
     createDevBot,
     createNexTechProduct,
     createNexTechSale,
+    createSalesTicketType,
     cleanupLegacyDatabaseMaintenance,
     createNexTechSalesPlan,
     deleteDevBot,
@@ -55,6 +56,8 @@ import {
     deleteNexTechProduct,
     deleteNexTechPaymentProvider,
     deleteNexTechSalesPlan,
+    deleteSalesTicketType,
+    duplicateSalesTicketType,
     getBotGuildConfig,
     getDatabaseMaintenanceModules,
     getDatabaseMaintenanceUserLinks,
@@ -62,7 +65,9 @@ import {
     getDevModules,
     getGuildLiveOptions,
     getNexTechSalesDashboard,
+    getSalesTicketDashboard,
     getSystemEmojiDashboard,
+    publishSalesTicketPanel,
     resetDatabaseMaintenanceModule,
     resetDatabaseMaintenanceServer,
     resetSystemEmoji,
@@ -70,6 +75,7 @@ import {
     restartDevBot,
     saveNexTechPaymentProvider,
     saveNexTechSalesSettings,
+    saveSalesTicketSettings,
     searchDatabaseMaintenanceUsers,
     startAllDevBots,
     stopAllDevBots,
@@ -82,6 +88,7 @@ import {
     updateNexTechProduct,
     updateNexTechSaleStatus,
     updateNexTechSalesPlan,
+    updateSalesTicketType,
     saveSystemEmoji,
     uploadNexTechProductBanner
 } from "../../lib/api";
@@ -114,6 +121,10 @@ import type {
     SaveNexTechSalePayload,
     SaveNexTechSalesPlanPayload,
     SaveNexTechSalesSettingsPayload,
+    SalesTicketDashboard,
+    SalesTicketType,
+    SaveSalesTicketSettingsPayload,
+    SaveSalesTicketTypePayload,
     SystemEmojiConfig,
     SystemEmojiDashboard
 } from "../../types";
@@ -3556,6 +3567,30 @@ const defaultPlanForm: SaveNexTechSalesPlanPayload = {
   priceCents: 0
 };
 
+const defaultSalesTicketSettingsForm: SaveSalesTicketSettingsPayload = {
+  closeDeleteDelaySeconds: 15,
+  enabled: false,
+  panelChannelId: null,
+  panelColor: "#FFD500",
+  panelDescription: "Selecione abaixo o tipo de atendimento de vendas que deseja abrir.",
+  panelImageUrl: null,
+  panelPlaceholder: "Selecione o atendimento desejado",
+  panelTitle: "Sistema de Tickets de Vendas"
+};
+
+const defaultSalesTicketTypeForm: SaveSalesTicketTypePayload = {
+  active: true,
+  categoryId: null,
+  channelNamePattern: "ticket-{usuario}",
+  description: "Abrir atendimento de vendas.",
+  emoji: "🎫",
+  initialMessage: "Olá {usuario}\n\nSeu atendimento foi iniciado.\nAguarde um membro da equipe.",
+  name: "Suporte",
+  order: 0,
+  supportRoleIds: [],
+  ticketLimit: 1
+};
+
 const defaultSaleForm: SaveNexTechSalePayload = {
   amountCents: null,
   buyerId: "",
@@ -4430,6 +4465,8 @@ function NexTechSalesWorkspace({
             </CardContent>
           </Card>
 
+          <SalesTicketsWorkspace bot={bot} enabled={enabled} guildId={guildId} />
+
           <Card className="border-zinc-800/80 bg-zinc-950/80 hover:translate-y-0" id="sales-tickets">
             <CardHeader>
               <CardTitle className="text-white">Visualizar Tickets</CardTitle>
@@ -4569,6 +4606,264 @@ function NexTechSalesWorkspace({
   );
 }
 
+function SalesTicketsWorkspace({ bot, enabled, guildId }: { bot: DevBot; enabled: boolean; guildId: string }) {
+  const [dashboard, setDashboard] = useState<SalesTicketDashboard | null>(null);
+  const [settingsForm, setSettingsForm] = useState<SaveSalesTicketSettingsPayload>(defaultSalesTicketSettingsForm);
+  const [typeForm, setTypeForm] = useState<SaveSalesTicketTypePayload>(defaultSalesTicketTypeForm);
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function refreshTickets() {
+    if (!guildId || !enabled) return;
+    const data = await getSalesTicketDashboard(bot.id, guildId);
+    setDashboard(data);
+    setSettingsForm(ticketSettingsToForm(data.settings));
+  }
+
+  useEffect(() => {
+    if (!enabled || !guildId) {
+      setDashboard(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setMessage(null);
+    getSalesTicketDashboard(bot.id, guildId)
+      .then((data) => {
+        if (cancelled) return;
+        setDashboard(data);
+        setSettingsForm(ticketSettingsToForm(data.settings));
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(readRequestMessage(error) ?? "Não foi possível carregar os tickets de vendas.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bot.id, enabled, guildId]);
+
+  useEffect(() => {
+    if (!enabled || !guildId) return;
+    const socket = createDashboardSocket();
+    const refresh = (payload: { botId?: string | null; guildId?: string | null } = {}) => {
+      if (payload.botId === bot.id && payload.guildId === guildId) void refreshTickets();
+    };
+    socket.on("sales-tickets:dashboard_updated", refresh);
+    socket.on("sales-tickets:ticket_created", refresh);
+    socket.on("sales-tickets:ticket_updated", refresh);
+    return () => {
+      socket.off("sales-tickets:dashboard_updated", refresh);
+      socket.off("sales-tickets:ticket_created", refresh);
+      socket.off("sales-tickets:ticket_updated", refresh);
+      socket.disconnect();
+    };
+  }, [bot.id, enabled, guildId]);
+
+  async function handleSaveTicketSettings() {
+    if (!guildId) return;
+    setSaving("ticket-settings");
+    setMessage(null);
+    try {
+      const settings = await saveSalesTicketSettings(bot.id, guildId, sanitizeSalesTicketSettings(settingsForm));
+      setDashboard((current) => current ? { ...current, settings } : current);
+      setSettingsForm(ticketSettingsToForm(settings));
+      setMessage("Configuração dos tickets de vendas salva.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar os tickets de vendas.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handlePublishTicketPanel() {
+    if (!guildId) return;
+    setSaving("ticket-publish");
+    setMessage(null);
+    try {
+      const settings = await publishSalesTicketPanel(bot.id, guildId);
+      setDashboard((current) => current ? { ...current, settings } : current);
+      setMessage("Publicação do painel enviada para o bot.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível publicar o painel de tickets.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveTicketType() {
+    if (!guildId || !typeForm.name.trim()) return;
+    setSaving("ticket-type");
+    setMessage(null);
+    try {
+      if (editingTypeId) {
+        await updateSalesTicketType(bot.id, guildId, editingTypeId, sanitizeSalesTicketType(typeForm));
+      } else {
+        await createSalesTicketType(bot.id, guildId, sanitizeSalesTicketType(typeForm));
+      }
+      setTypeForm(defaultSalesTicketTypeForm);
+      setEditingTypeId(null);
+      await refreshTickets();
+      setMessage("Tipo de ticket de vendas salvo.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o tipo de ticket.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDuplicateTicketType(type: SalesTicketType) {
+    setSaving(type.id);
+    try {
+      await duplicateSalesTicketType(bot.id, guildId, type.id);
+      await refreshTickets();
+      setMessage("Tipo de ticket duplicado.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível duplicar o tipo.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDeleteTicketType(type: SalesTicketType) {
+    if (!window.confirm(`Excluir o tipo ${type.name}?`)) return;
+    setSaving(type.id);
+    try {
+      await deleteSalesTicketType(bot.id, guildId, type.id);
+      if (editingTypeId === type.id) {
+        setEditingTypeId(null);
+        setTypeForm(defaultSalesTicketTypeForm);
+      }
+      await refreshTickets();
+      setMessage("Tipo de ticket removido.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível excluir o tipo.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function editTicketType(type: SalesTicketType) {
+    setEditingTypeId(type.id);
+    setTypeForm({
+      active: type.active,
+      categoryId: type.categoryId,
+      channelNamePattern: type.channelNamePattern,
+      description: type.description,
+      emoji: type.emoji ?? "",
+      initialMessage: type.initialMessage,
+      name: type.name,
+      order: type.order,
+      supportRoleIds: type.supportRoleIds,
+      ticketLimit: type.ticketLimit
+    });
+  }
+
+  return (
+    <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0 xl:col-span-2" id="sales-ticket-builder">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white"><Ticket className="h-5 w-5 text-[#FFEA70]" />Tickets de Vendas</CardTitle>
+        <CardDescription>Sistema isolado do módulo de vendas. Tipos, painel público, canais e histórico não usam o ticket antigo.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {message ? <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 py-2 text-sm font-semibold text-white">{message}</div> : null}
+        {loading ? (
+          <div className="flex min-h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+        ) : (
+          <>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-white">Painel Público</p>
+                    <p className="text-xs font-medium text-zinc-500">Mensagem com Select Menu enviada no canal configurado.</p>
+                  </div>
+                  <Switch checked={Boolean(settingsForm.enabled)} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, enabled: checked }))} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DevInput label="Canal do painel" onChange={(value) => setSettingsForm((current) => ({ ...current, panelChannelId: value.replace(/\D/g, "") || null }))} value={settingsForm.panelChannelId ?? ""} />
+                  <DevInput label="Cor" onChange={(value) => setSettingsForm((current) => ({ ...current, panelColor: value }))} value={settingsForm.panelColor ?? ""} />
+                  <DevInput label="Título" onChange={(value) => setSettingsForm((current) => ({ ...current, panelTitle: value }))} value={settingsForm.panelTitle ?? ""} />
+                  <DevInput inputMode="numeric" label="Apagar canal após fechar (s)" onChange={(value) => setSettingsForm((current) => ({ ...current, closeDeleteDelaySeconds: Number(value.replace(/\D/g, "")) || 15 }))} value={String(settingsForm.closeDeleteDelaySeconds ?? 15)} />
+                  <DevInput label="Placeholder" onChange={(value) => setSettingsForm((current) => ({ ...current, panelPlaceholder: value }))} value={settingsForm.panelPlaceholder ?? ""} />
+                  <DevInput label="Imagem/Banner" onChange={(value) => setSettingsForm((current) => ({ ...current, panelImageUrl: value || null }))} value={settingsForm.panelImageUrl ?? ""} />
+                </div>
+                <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">Descrição</label>
+                <textarea className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 p-3 text-sm font-medium text-white outline-none" onChange={(event) => setSettingsForm((current) => ({ ...current, panelDescription: event.target.value }))} value={settingsForm.panelDescription ?? ""} />
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={saving === "ticket-settings"} onClick={() => void handleSaveTicketSettings()}><Settings className="h-4 w-4" />Salvar painel</Button>
+                  <Button disabled={saving === "ticket-publish" || !settingsForm.enabled} onClick={() => void handlePublishTicketPanel()} variant="outline"><ExternalLink className="h-4 w-4" />Publicar</Button>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/30 p-4">
+                <p className="text-sm font-bold text-white">{editingTypeId ? "Editar tipo" : "Novo tipo de ticket"}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DevInput label="Nome" onChange={(value) => setTypeForm((current) => ({ ...current, name: value }))} value={typeForm.name} />
+                  <DevInput label="Emoji" onChange={(value) => setTypeForm((current) => ({ ...current, emoji: value }))} value={typeForm.emoji ?? ""} />
+                  <DevInput label="Descrição do select" onChange={(value) => setTypeForm((current) => ({ ...current, description: value }))} value={typeForm.description} />
+                  <DevInput label="Categoria Discord" onChange={(value) => setTypeForm((current) => ({ ...current, categoryId: value.replace(/\D/g, "") || null }))} value={typeForm.categoryId ?? ""} />
+                  <DevInput label="Cargos com acesso (,)" onChange={(value) => setTypeForm((current) => ({ ...current, supportRoleIds: value.split(",").map((item) => item.replace(/\D/g, "")).filter(Boolean) }))} value={typeForm.supportRoleIds.join(",")} />
+                  <DevInput label="Nome do canal" onChange={(value) => setTypeForm((current) => ({ ...current, channelNamePattern: value }))} value={typeForm.channelNamePattern} />
+                  <DevInput inputMode="numeric" label="Limite por usuário (0 sem limite)" onChange={(value) => setTypeForm((current) => ({ ...current, ticketLimit: Number(value.replace(/\D/g, "")) || null }))} value={String(typeForm.ticketLimit ?? 0)} />
+                  <DevInput inputMode="numeric" label="Ordem" onChange={(value) => setTypeForm((current) => ({ ...current, order: Number(value.replace(/\D/g, "")) || 0 }))} value={String(typeForm.order)} />
+                </div>
+                <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">Mensagem inicial</label>
+                <textarea className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 p-3 text-sm font-medium text-white outline-none" onChange={(event) => setTypeForm((current) => ({ ...current, initialMessage: event.target.value }))} value={typeForm.initialMessage} />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-white"><Switch checked={typeForm.active} onCheckedChange={(checked) => setTypeForm((current) => ({ ...current, active: checked }))} />Ativo</label>
+                  <div className="flex gap-2">
+                    {editingTypeId ? <Button onClick={() => { setEditingTypeId(null); setTypeForm(defaultSalesTicketTypeForm); }} variant="outline">Cancelar</Button> : null}
+                    <Button disabled={saving === "ticket-type"} onClick={() => void handleSaveTicketType()}><Plus className="h-4 w-4" />{editingTypeId ? "Salvar tipo" : "Criar tipo"}</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {dashboard?.types.map((type) => (
+                <div className="rounded-lg border border-zinc-800 bg-black/35 p-3" key={type.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-white">{type.emoji ? `${type.emoji} ` : ""}{type.name}</p>
+                      <p className="mt-1 text-xs font-medium text-zinc-500">{type.description}</p>
+                      <p className="mt-1 text-xs font-medium text-zinc-600">Categoria {type.categoryId || "não configurada"} · Limite {type.ticketLimit ?? "sem limite"}</p>
+                    </div>
+                    <Badge variant={type.active ? "success" : "muted"}>{type.active ? "Ativo" : "Off"}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button onClick={() => editTicketType(type)} size="sm" variant="outline"><Settings className="h-4 w-4" />Editar</Button>
+                    <Button disabled={saving === type.id} onClick={() => void handleDuplicateTicketType(type)} size="sm" variant="outline"><Copy className="h-4 w-4" />Duplicar</Button>
+                    <Button disabled={saving === type.id} onClick={() => void handleDeleteTicketType(type)} size="sm" variant="destructive"><Trash2 className="h-4 w-4" />Excluir</Button>
+                  </div>
+                </div>
+              ))}
+              {!dashboard?.types.length ? <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm font-medium text-zinc-500 lg:col-span-2">Nenhum tipo de ticket de vendas criado.</div> : null}
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-black/30 p-3">
+              <p className="text-sm font-bold text-white">Tickets recentes</p>
+              <div className="mt-3 grid gap-2">
+                {dashboard?.tickets.slice(0, 6).map((ticket) => (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-sm" key={ticket.id}>
+                    <span className="font-bold text-white">{ticket.typeName} · {ticket.userName || ticket.userId}</span>
+                    <span className="text-xs font-semibold text-zinc-500">{ticket.channelId ? `#${ticket.channelId}` : "sem canal"} · {ticket.status}</span>
+                  </div>
+                ))}
+                {!dashboard?.tickets.length ? <div className="rounded-lg border border-dashed border-zinc-800 p-4 text-center text-sm font-medium text-zinc-500">Nenhum ticket aberto ainda.</div> : null}
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SalesMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-[#FFD500]/15 bg-black/35 p-4">
@@ -4672,6 +4967,19 @@ function settingsToForm(settings: NexTechSalesDashboard["settings"]): SaveNexTec
   };
 }
 
+function ticketSettingsToForm(settings: SalesTicketDashboard["settings"]): SaveSalesTicketSettingsPayload {
+  return {
+    closeDeleteDelaySeconds: settings.closeDeleteDelaySeconds,
+    enabled: settings.enabled,
+    panelChannelId: settings.panelChannelId,
+    panelColor: settings.panelColor,
+    panelDescription: settings.panelDescription,
+    panelImageUrl: settings.panelImageUrl,
+    panelPlaceholder: settings.panelPlaceholder,
+    panelTitle: settings.panelTitle
+  };
+}
+
 function productToForm(product: NexTechProduct): SaveNexTechProductPayload {
   return {
     active: product.active,
@@ -4701,6 +5009,25 @@ function sanitizeSalesSettingsForm(form: SaveNexTechSalesSettingsPayload): SaveN
     saleChannelId: form.saleChannelId || null,
     termsUrl: form.termsUrl || null,
     thumbnailUrl: form.thumbnailUrl || null
+  };
+}
+
+function sanitizeSalesTicketSettings(form: SaveSalesTicketSettingsPayload): SaveSalesTicketSettingsPayload {
+  return {
+    ...form,
+    closeDeleteDelaySeconds: Math.max(15, Number(form.closeDeleteDelaySeconds ?? 15)),
+    panelChannelId: form.panelChannelId || null,
+    panelImageUrl: form.panelImageUrl || null
+  };
+}
+
+function sanitizeSalesTicketType(form: SaveSalesTicketTypePayload): SaveSalesTicketTypePayload {
+  return {
+    ...form,
+    categoryId: form.categoryId || null,
+    emoji: form.emoji || null,
+    supportRoleIds: [...new Set(form.supportRoleIds.map((item) => item.replace(/\D/g, "")).filter(Boolean))],
+    ticketLimit: form.ticketLimit && form.ticketLimit > 0 ? form.ticketLimit : null
   };
 }
 

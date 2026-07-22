@@ -99,6 +99,9 @@ import type {
   NexTechSalesDashboard,
   NexTechSalesPlan,
   NexTechSalesSettings,
+  SalesTicketDashboard,
+  SalesTicketSettings,
+  SalesTicketType,
   OpenDutyDashboard,
   PanelImageSettings,
   Pd7Dashboard,
@@ -132,6 +135,8 @@ import type {
   SaveNexTechSalePayload,
   SaveNexTechSalesPlanPayload,
   SaveNexTechSalesSettingsPayload,
+  SaveSalesTicketSettingsPayload,
+  SaveSalesTicketTypePayload,
   SaveOpenDutySettingsPayload,
   SavePanelImageSettingsPayload,
   SavePriceTablePayload,
@@ -2324,6 +2329,58 @@ export async function saveNexTechSalesSettings(botId: string, guildId: string, p
     payload
   );
   return data.settings;
+}
+
+export async function getSalesTicketDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<SalesTicketDashboard>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets`
+  );
+  return data;
+}
+
+export async function saveSalesTicketSettings(botId: string, guildId: string, payload: SaveSalesTicketSettingsPayload) {
+  const { data } = await api.patch<{ settings: SalesTicketSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/settings`,
+    payload
+  );
+  return data.settings;
+}
+
+export async function publishSalesTicketPanel(botId: string, guildId: string) {
+  const { data } = await api.post<{ settings: SalesTicketSettings }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/panel`
+  );
+  return data.settings;
+}
+
+export async function createSalesTicketType(botId: string, guildId: string, payload: SaveSalesTicketTypePayload) {
+  const { data } = await api.post<{ type: SalesTicketType }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/types`,
+    payload
+  );
+  return data.type;
+}
+
+export async function updateSalesTicketType(botId: string, guildId: string, typeId: string, payload: SaveSalesTicketTypePayload) {
+  const { data } = await api.patch<{ type: SalesTicketType }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/types/${encodeURIComponent(typeId)}`,
+    payload
+  );
+  return data.type;
+}
+
+export async function duplicateSalesTicketType(botId: string, guildId: string, typeId: string) {
+  const { data } = await api.post<{ type: SalesTicketType }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/types/${encodeURIComponent(typeId)}/duplicate`
+  );
+  return data.type;
+}
+
+export async function deleteSalesTicketType(botId: string, guildId: string, typeId: string) {
+  const { data } = await api.delete<{ type: SalesTicketType }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nex-tech-sales/tickets/types/${encodeURIComponent(typeId)}`
+  );
+  return data.type;
 }
 
 export async function saveNexTechPaymentProvider(botId: string, guildId: string, payload: SaveNexTechPaymentProviderPayload) {

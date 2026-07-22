@@ -85,6 +85,16 @@ import {
   updateNexTechSaleStatus
 } from "../services/nexTechSalesService";
 import {
+  deleteSalesTicketType,
+  duplicateSalesTicketType,
+  getSalesTicketDashboard,
+  requestSalesTicketPanelPublish,
+  saveSalesTicketSettings,
+  saveSalesTicketType,
+  toSettingsDto as toSalesTicketSettingsDto,
+  toTypeDto as toSalesTicketTypeDto
+} from "../services/salesTicketService";
+import {
   createNexTechInvite,
   deleteNexTechInvite,
   generateNexTechInviteCode,
@@ -186,6 +196,30 @@ const nexTechSalesPlanSchema = z.object({
   moduleIds: z.array(devModuleIdSchema).default([NEX_TECH_SALES_MODULE_ID]),
   name: z.string().min(2).max(100),
   priceCents: z.number().int().min(0).max(100000000)
+});
+
+const salesTicketSettingsSchema = z.object({
+  closeDeleteDelaySeconds: z.coerce.number().int().min(15).max(86400).optional(),
+  enabled: z.boolean().optional(),
+  panelChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  panelDescription: z.string().min(1).max(1500).optional(),
+  panelImageUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  panelPlaceholder: z.string().min(1).max(100).optional(),
+  panelTitle: z.string().min(2).max(120).optional()
+});
+
+const salesTicketTypeSchema = z.object({
+  active: z.boolean().default(true),
+  categoryId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  channelNamePattern: z.string().min(1).max(90).default("ticket-{usuario}"),
+  description: z.string().min(1).max(100).default("Abrir atendimento de vendas."),
+  emoji: z.string().max(32).nullable().optional().or(z.literal("")),
+  initialMessage: z.string().min(1).max(1500).default("Olá {usuario}\n\nSeu atendimento foi iniciado.\nAguarde um membro da equipe."),
+  name: z.string().min(2).max(80),
+  order: z.coerce.number().int().min(0).max(500).default(0),
+  supportRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(20).default([]),
+  ticketLimit: z.union([z.coerce.number().int().min(1).max(25), z.null()]).default(1)
 });
 
 const productPlanSchema = z.object({
@@ -1205,6 +1239,173 @@ devRouter.get("/bots/:botId/guilds/:guildId/nex-tech-sales", async (req, res, ne
     }
 
     return res.json(await getNexTechSalesDashboard(req.params.botId, req.params.guildId, auth.user.discordId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    return res.json(await getSalesTicketDashboard(req.params.botId, req.params.guildId, auth.user.discordId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/settings", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const input = salesTicketSettingsSchema.parse(req.body ?? {});
+    const settings = await saveSalesTicketSettings(req.params.botId, req.params.guildId, {
+      ...input,
+      panelChannelId: input.panelChannelId || null,
+      panelImageUrl: input.panelImageUrl || null
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_settings", "Configuração de tickets de vendas atualizada.", {
+      enabled: settings.enabled
+    });
+
+    return res.json({
+      settings: toSalesTicketSettingsDto(settings)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/panel", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const settings = await requestSalesTicketPanelPublish(req.params.botId, req.params.guildId, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_panel_publish", "Painel de tickets de vendas publicado.");
+
+    return res.json({
+      settings: toSalesTicketSettingsDto(settings)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const input = salesTicketTypeSchema.parse(req.body ?? {});
+    const type = await saveSalesTicketType(req.params.botId, req.params.guildId, null, {
+      ...input,
+      categoryId: input.categoryId || null,
+      emoji: input.emoji || null
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_create", `Tipo de ticket de vendas criado: ${type.name}.`);
+
+    return res.status(201).json({
+      type: toSalesTicketTypeDto(type)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types/:typeId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const input = salesTicketTypeSchema.parse(req.body ?? {});
+    const type = await saveSalesTicketType(req.params.botId, req.params.guildId, req.params.typeId, {
+      ...input,
+      categoryId: input.categoryId || null,
+      emoji: input.emoji || null
+    }, auth.user.discordId);
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_update", `Tipo de ticket de vendas atualizado: ${type.name}.`);
+
+    return res.json({
+      type: toSalesTicketTypeDto(type)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types/:typeId/duplicate", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const type = await duplicateSalesTicketType(req.params.botId, req.params.guildId, req.params.typeId, auth.user.discordId);
+    if (!type) return res.status(404).json({ message: "Tipo de ticket não encontrado." });
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_duplicate", `Tipo de ticket de vendas duplicado: ${type.name}.`);
+
+    return res.status(201).json({
+      type: toSalesTicketTypeDto(type)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types/:typeId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const type = await deleteSalesTicketType(req.params.botId, req.params.guildId, req.params.typeId, auth.user.discordId);
+    if (!type) return res.status(404).json({ message: "Tipo de ticket não encontrado." });
+
+    await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_delete", `Tipo de ticket de vendas removido: ${type.name}.`);
+
+    return res.json({
+      type: toSalesTicketTypeDto(type)
+    });
   } catch (error) {
     return next(error);
   }

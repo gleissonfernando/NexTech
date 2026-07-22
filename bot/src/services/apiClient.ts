@@ -2068,6 +2068,58 @@ export type ManualPaymentSettings = {
   updatedAt: string;
 };
 
+export type SalesTicketSettings = {
+  id: string;
+  botId: string;
+  closeDeleteDelaySeconds: number;
+  enabled: boolean;
+  guildId: string;
+  panelChannelId: string | null;
+  panelColor: string;
+  panelDescription: string;
+  panelImageUrl: string | null;
+  panelMessageId: string | null;
+  panelPlaceholder: string;
+  panelTitle: string;
+  updatedAt: string;
+};
+
+export type SalesTicketType = {
+  id: string;
+  active: boolean;
+  botId: string;
+  categoryId: string | null;
+  channelNamePattern: string;
+  description: string;
+  emoji: string | null;
+  guildId: string;
+  initialMessage: string;
+  name: string;
+  order: number;
+  supportRoleIds: string[];
+  ticketLimit: number | null;
+  updatedAt: string;
+};
+
+export type SalesTicket = {
+  id: string;
+  botId: string;
+  channelId: string | null;
+  claimedById: string | null;
+  claimedByName: string | null;
+  closeReason: string | null;
+  closedAt: string | null;
+  guildId: string;
+  passwordId: string | null;
+  status: "open" | "claimed" | "closed";
+  transcriptId: string | null;
+  typeId: string;
+  typeName: string;
+  updatedAt: string;
+  userId: string;
+  userName: string | null;
+};
+
 export type ManualPaymentOrderStatus = "PENDING_PAYMENT" | "WAITING_STAFF_APPROVAL" | "APPROVED" | "REJECTED" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "DELIVERED" | "FINISHED" | "CANCELLED_BY_CUSTOMER" | "CANCELLED_BY_STAFF";
 
 export type ManualPaymentOrder = {
@@ -2904,6 +2956,36 @@ export class ApiClient {
     status: "delivered" | "partial" | "failed";
   }) {
     const { data } = await this.http.post(`/bot/guilds/${guildId}/nex-tech-sales/delivery-result`, input);
+    return data;
+  }
+
+  async getSalesTicketRuntime(guildId: string) {
+    const { data } = await this.http.get<{ settings: SalesTicketSettings; tickets: SalesTicket[]; types: SalesTicketType[] }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets/runtime`);
+    return data;
+  }
+
+  async updateSalesTicketPanelState(guildId: string, messageId: string | null) {
+    const { data } = await this.http.put<{ settings: SalesTicketSettings }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets/panel-state`, { messageId });
+    return data.settings;
+  }
+
+  async createSalesTicket(guildId: string, input: { typeId: string; userId: string; userName?: string | null }) {
+    const { data } = await this.http.post<{ settings: SalesTicketSettings; ticket: SalesTicket; type: SalesTicketType }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets`, input);
+    return data;
+  }
+
+  async updateSalesTicketChannel(guildId: string, ticketId: string, channelId: string | null) {
+    const { data } = await this.http.patch<{ ticket: SalesTicket }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets/${ticketId}/channel`, { channelId });
+    return data.ticket;
+  }
+
+  async claimSalesTicket(guildId: string, ticketId: string, input: { actorId: string; actorName?: string | null }) {
+    const { data } = await this.http.patch<{ ticket: SalesTicket }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets/${ticketId}/claim`, input);
+    return data.ticket;
+  }
+
+  async closeSalesTicket(guildId: string, ticketId: string, input: { actorId: string; actorName?: string | null; channelId?: string | null; closeReason?: string | null; messages: Array<Record<string, unknown>> }) {
+    const { data } = await this.http.post<{ password: string; ticket: SalesTicket; transcriptId: string; transcriptUrl: string }>(`/bot/guilds/${guildId}/nex-tech-sales/tickets/${ticketId}/close`, input);
     return data;
   }
 

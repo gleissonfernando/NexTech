@@ -34,6 +34,7 @@ import { startLiveDetectionService } from "../services/liveService";
 import { startMaintenanceService } from "../services/maintenanceService";
 import { startMissionToolsService } from "../services/missionToolsService";
 import { startNexTechSalesDeliveryService } from "../services/nexTechSalesDeliveryService";
+import { startSalesTicketService } from "../services/salesTicketService";
 import { startManualPaymentService } from "../services/manualPaymentService";
 import { startPriceTableService } from "../services/priceTableService";
 import { startManualRegistrationService } from "../services/manualRegistrationService";
@@ -288,6 +289,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("manual-payments", isBotModuleEnabled("manual-payments"), () => startManualPaymentService(client, context));
   startRuntimeService("price-tables", isBotModuleEnabled("price-tables"), () => startPriceTableService(client, context));
   startRuntimeService("nex-tech-sales", isBotModuleEnabled("nex-tech-sales"), () => startNexTechSalesDeliveryService(client, context));
+  startRuntimeService("sales-tickets", isBotModuleEnabled("nex-tech-sales"), () => startSalesTicketService(client, context));
   startRuntimeService("emoji-cloner", isBotModuleEnabled("emoji-cloner"), () => startApplicationEmojiAutoSync(client, context));
   startRuntimeService("rh-admin", isBotModuleEnabled("rh-admin"), () => startRhAdminService(client, context));
   startRuntimeService("courses", isBotModuleEnabled("courses"), () => startCourseSystemService(client, context));

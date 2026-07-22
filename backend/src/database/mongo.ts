@@ -3186,6 +3186,104 @@ export type MongoNexTechSalesSettings = {
   updatedAt: Date;
 };
 
+export type MongoSalesTicketSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ownerUserId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  panelTitle: string;
+  panelDescription: string;
+  panelImageUrl: string | null;
+  panelColor: string;
+  panelPlaceholder: string;
+  closeDeleteDelaySeconds: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSalesTicketType = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ownerUserId: string;
+  active: boolean;
+  name: string;
+  emoji: string | null;
+  description: string;
+  categoryId: string | null;
+  supportRoleIds: string[];
+  initialMessage: string;
+  channelNamePattern: string;
+  ticketLimit: number | null;
+  order: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoSalesTicket = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ownerUserId: string;
+  typeId: string;
+  typeName: string;
+  userId: string;
+  userName: string | null;
+  channelId: string | null;
+  status: "open" | "claimed" | "closed";
+  claimedById: string | null;
+  claimedByName: string | null;
+  closeReason: string | null;
+  transcriptId: string | null;
+  passwordId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  closedAt: Date | null;
+};
+
+export type MongoSalesTicketLog = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ticketId: string | null;
+  event: string;
+  actorId: string | null;
+  actorName: string | null;
+  message: string;
+  data: Record<string, unknown>;
+  createdAt: Date;
+};
+
+export type MongoSalesTicketTranscript = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ticketId: string;
+  channelId: string | null;
+  userId: string;
+  messages: Array<Record<string, unknown>>;
+  messageCount: number;
+  createdAt: Date;
+};
+
+export type MongoSalesTicketPassword = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  ticketId: string;
+  transcriptId: string;
+  passwordHash: string;
+  salt: string;
+  createdAt: Date;
+};
+
 export type MongoPriceTableItem = {
   active: boolean;
   billingType: "one_time" | "monthly" | "weekly" | "custom";
@@ -4856,6 +4954,12 @@ export async function getMongoCollections() {
     nexTechCustomers: db.collection<MongoNexTechCustomer>("nexTech_customers"),
     nexTechSubscriptions: db.collection<MongoNexTechSubscription>("nexTech_subscriptions"),
     nexTechWebhookLogs: db.collection<MongoNexTechWebhookLog>("nexTech_webhook_logs"),
+    salesTicketSettings: db.collection<MongoSalesTicketSettings>("salesTicketSettings"),
+    salesTicketTypes: db.collection<MongoSalesTicketType>("salesTicketTypes"),
+    salesTickets: db.collection<MongoSalesTicket>("salesTickets"),
+    salesTicketLogs: db.collection<MongoSalesTicketLog>("salesTicketLogs"),
+    salesTicketTranscripts: db.collection<MongoSalesTicketTranscript>("salesTicketTranscripts"),
+    salesTicketPasswords: db.collection<MongoSalesTicketPassword>("salesTicketPasswords"),
     priceTables: db.collection<MongoPriceTable>("price_tables"),
     priceTableRequests: db.collection<MongoPriceTableRequest>("price_table_requests"),
     priceTableLogs: db.collection<MongoPriceTableLog>("price_table_logs"),
@@ -5138,6 +5242,7 @@ async function createMongoIndexes(db: Db) {
     ensureEmojiCloneIndexes(db),
     ensureNexTechInviteIndexes(db),
     ensureNexTechSalesIndexes(db),
+    ensureSalesTicketIndexes(db),
     ensurePriceTableIndexes(db),
     ensureManualPaymentIndexes(db),
     ensureMissionToolsIndexes(db),
@@ -5781,6 +5886,21 @@ async function ensureNexTechSalesIndexes(db: Db) {
     db.collection<MongoNexTechSubscription>("nexTech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, customerId: 1, status: 1 }),
     db.collection<MongoNexTechSubscription>("nexTech_subscriptions").createIndex({ ownerUserId: 1, storeId: 1, productPlanType: 1, nextHostingDueAt: 1, status: 1 }),
     db.collection<MongoNexTechWebhookLog>("nexTech_webhook_logs").createIndex({ ownerUserId: 1, storeId: 1, createdAt: -1 })
+  ]);
+}
+
+async function ensureSalesTicketIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoSalesTicketSettings>("salesTicketSettings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoSalesTicketType>("salesTicketTypes").createIndex({ botId: 1, guildId: 1, order: 1, updatedAt: -1 }),
+    db.collection<MongoSalesTicketType>("salesTicketTypes").createIndex({ botId: 1, guildId: 1, active: 1, order: 1 }),
+    db.collection<MongoSalesTicket>("salesTickets").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoSalesTicket>("salesTickets").createIndex({ botId: 1, guildId: 1, typeId: 1, userId: 1, status: 1 }),
+    db.collection<MongoSalesTicket>("salesTickets").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
+    db.collection<MongoSalesTicketLog>("salesTicketLogs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoSalesTicketLog>("salesTicketLogs").createIndex({ botId: 1, guildId: 1, ticketId: 1, createdAt: -1 }),
+    db.collection<MongoSalesTicketTranscript>("salesTicketTranscripts").createIndex({ botId: 1, guildId: 1, ticketId: 1 }),
+    db.collection<MongoSalesTicketPassword>("salesTicketPasswords").createIndex({ transcriptId: 1 }, { unique: true })
   ]);
 }
 

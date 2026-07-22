@@ -25,6 +25,7 @@ import { handleDmBarInteraction } from "../services/dmBarService";
 import { handleDafScaleInteraction } from "../services/dafScaleService";
 import { handlePoliceSubpoenaInteraction } from "../services/policeSubpoenaService";
 import { handleManualPaymentInteraction } from "../services/manualPaymentService";
+import { handleSalesTicketInteraction } from "../services/salesTicketService";
 import { handlePriceTableInteraction } from "../services/priceTableService";
 import { handleCourseSystemInteraction } from "../services/courseSystemService";
 import { handleRhAdminInteraction } from "../services/rhAdminService";
@@ -120,6 +121,10 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   }
 
   if (await handleTemporaryVoiceInteraction(interaction, context)) {
+    return;
+  }
+
+  if (await handleSalesTicketInteraction(interaction, context)) {
     return;
   }
 

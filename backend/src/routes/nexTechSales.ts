@@ -5,6 +5,7 @@ import {
   getPublicNexTechProduct,
   processNexTechPaymentWebhook
 } from "../services/nexTechSalesService";
+import { verifyAndReadSalesTicketTranscript } from "../services/salesTicketService";
 
 export const nexTechSalesRouter = Router();
 
@@ -24,6 +25,37 @@ const checkoutSchema = z.object({
   buyerName: z.string().max(100).nullable().optional().or(z.literal("")),
   paymentProviderId: z.string().max(120).nullable().optional(),
   planType: z.enum(["monthly", "lifetime"])
+});
+const transcriptSchema = z.object({
+  password: z.string().min(8).max(64)
+});
+
+nexTechSalesRouter.post("/tickets/transcripts/:transcriptId", async (req, res, next) => {
+  try {
+    const transcriptId = z.string().min(8).max(120).parse(req.params.transcriptId);
+    const input = transcriptSchema.parse(req.body ?? {});
+    const result = await verifyAndReadSalesTicketTranscript(transcriptId, input.password);
+
+    if (!result) {
+      return res.status(404).json({
+        message: "Transcript não encontrado ou senha inválida."
+      });
+    }
+
+    return res.json({
+      ticket: result.ticket,
+      transcript: {
+        id: result.transcript._id,
+        channelId: result.transcript.channelId,
+        createdAt: result.transcript.createdAt.toISOString(),
+        messageCount: result.transcript.messageCount,
+        messages: result.transcript.messages,
+        ticketId: result.transcript.ticketId
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 nexTechSalesRouter.get("/stores/:storeId/products/:slug", async (req, res, next) => {

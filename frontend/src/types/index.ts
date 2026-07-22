@@ -3100,6 +3100,61 @@ export type NexTechSalesDashboard = {
   };
 };
 
+export type SalesTicketSettings = {
+  id: string;
+  botId: string;
+  closeDeleteDelaySeconds: number;
+  enabled: boolean;
+  guildId: string;
+  panelChannelId: string | null;
+  panelColor: string;
+  panelDescription: string;
+  panelImageUrl: string | null;
+  panelMessageId: string | null;
+  panelPlaceholder: string;
+  panelTitle: string;
+  updatedAt: string;
+};
+
+export type SalesTicketType = {
+  id: string;
+  active: boolean;
+  botId: string;
+  categoryId: string | null;
+  channelNamePattern: string;
+  description: string;
+  emoji: string | null;
+  guildId: string;
+  initialMessage: string;
+  name: string;
+  order: number;
+  supportRoleIds: string[];
+  ticketLimit: number | null;
+  updatedAt: string;
+};
+
+export type SalesTicket = {
+  id: string;
+  botId: string;
+  channelId: string | null;
+  closedAt: string | null;
+  guildId: string;
+  status: "open" | "claimed" | "closed";
+  transcriptId: string | null;
+  typeId: string;
+  typeName: string;
+  updatedAt: string;
+  userId: string;
+  userName: string | null;
+};
+
+export type SalesTicketDashboard = {
+  logs: Array<{ id: string; event: string; message: string; ticketId: string | null; createdAt: string }>;
+  settings: SalesTicketSettings;
+  tickets: SalesTicket[];
+  types: SalesTicketType[];
+};
+
 export type NexTechLifetimeLicense = {
   customerId: string;
   expiresAt: string | null;
@@ -3588,6 +3643,31 @@ export type SaveNexTechSalePayload = {
   paymentProviderId?: string | null;
   planId?: string | null;
   status: NexTechSaleStatus;
+};
+
+export type SaveSalesTicketSettingsPayload = Partial<Pick<
+  SalesTicketSettings,
+  | "closeDeleteDelaySeconds"
+  | "enabled"
+  | "panelChannelId"
+  | "panelColor"
+  | "panelDescription"
+  | "panelImageUrl"
+  | "panelPlaceholder"
+  | "panelTitle"
+>>;
+
+export type SaveSalesTicketTypePayload = {
+  active: boolean;
+  categoryId?: string | null;
+  channelNamePattern: string;
+  description: string;
+  emoji?: string | null;
+  initialMessage: string;
+  name: string;
+  order: number;
+  supportRoleIds: string[];
+  ticketLimit: number | null;
 };
 
 export type BotGuildConfig = {

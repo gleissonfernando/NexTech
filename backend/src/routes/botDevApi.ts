@@ -13,6 +13,15 @@ import {
 } from "../services/devBotService";
 import { getMaintenanceState } from "../services/maintenanceService";
 import { recordNexTechSaleDeliveryResult } from "../services/nexTechSalesService";
+import {
+  claimSalesTicket,
+  closeSalesTicketWithTranscript,
+  createSalesTicket,
+  getSalesTicketRuntime,
+  toTicketDto as toSalesTicketDto,
+  updateSalesTicketChannel,
+  updateSalesTicketPanelState
+} from "../services/salesTicketService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
   getSystemEmojiRuntimeConfig,
@@ -67,6 +76,28 @@ const nexTechSaleDeliveryResultSchema = z.object({
   saleId: z.string().min(1).max(120),
   status: z.enum(["delivered", "partial", "failed"])
 });
+const salesTicketCreateSchema = z.object({
+  typeId: z.string().min(1).max(120),
+  userId: z.string().regex(/^\d{5,32}$/),
+  userName: z.string().max(100).nullable().optional()
+});
+const salesTicketChannelSchema = z.object({
+  channelId: z.string().regex(/^\d{5,32}$/).nullable().optional()
+});
+const salesTicketPanelStateSchema = z.object({
+  messageId: z.string().regex(/^\d{5,32}$/).nullable().optional()
+});
+const salesTicketClaimSchema = z.object({
+  actorId: z.string().regex(/^\d{5,32}$/),
+  actorName: z.string().max(100).nullable().optional()
+});
+const salesTicketCloseSchema = z.object({
+  actorId: z.string().regex(/^\d{5,32}$/),
+  actorName: z.string().max(100).nullable().optional(),
+  channelId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  closeReason: z.string().max(1000).nullable().optional(),
+  messages: z.array(z.record(z.unknown())).max(1000).default([])
+});
 
 botDevApiRouter.use(requireBot);
 
@@ -118,6 +149,83 @@ botDevApiRouter.post("/guilds/:guildId/nex-tech-sales/delivery-result", async (r
   }
 });
 
+botDevApiRouter.get("/guilds/:guildId/nex-tech-sales/tickets/runtime", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    return res.json(await getSalesTicketRuntime(resolvedBotId, guildId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.put("/guilds/:guildId/nex-tech-sales/tickets/panel-state", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    const input = salesTicketPanelStateSchema.parse(req.body ?? {});
+    return res.json({ settings: await updateSalesTicketPanelState(resolvedBotId, guildId, input.messageId || null) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.post("/guilds/:guildId/nex-tech-sales/tickets", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    const input = salesTicketCreateSchema.parse(req.body ?? {});
+    return res.status(201).json(await createSalesTicket(resolvedBotId, guildId, input));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.patch("/guilds/:guildId/nex-tech-sales/tickets/:ticketId/channel", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    const input = salesTicketChannelSchema.parse(req.body ?? {});
+    const ticket = await updateSalesTicketChannel(resolvedBotId, guildId, req.params.ticketId, input.channelId || null);
+    if (!ticket) return res.status(404).json({ message: "Ticket de vendas não encontrado." });
+    return res.json({ ticket: toSalesTicketDto(ticket) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.patch("/guilds/:guildId/nex-tech-sales/tickets/:ticketId/claim", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    const input = salesTicketClaimSchema.parse(req.body ?? {});
+    const ticket = await claimSalesTicket(resolvedBotId, guildId, req.params.ticketId, input.actorId, input.actorName ?? null);
+    if (!ticket) return res.status(404).json({ message: "Ticket de vendas não encontrado." });
+    return res.json({ ticket: toSalesTicketDto(ticket) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.post("/guilds/:guildId/nex-tech-sales/tickets/:ticketId/close", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const resolvedBotId = await assertSalesTicketRuntime(botId, guildId);
+    const input = salesTicketCloseSchema.parse(req.body ?? {});
+    const result = await closeSalesTicketWithTranscript(resolvedBotId, guildId, req.params.ticketId, input);
+    if (!result) return res.status(404).json({ message: "Ticket de vendas não encontrado ou já fechado." });
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 botDevApiRouter.get("/runtime/modules", async (req, res, next) => {
   try {
     const botId = await resolveRequestBotId(req);
@@ -140,6 +248,12 @@ botDevApiRouter.get("/runtime/modules", async (req, res, next) => {
     return next(error);
   }
 });
+
+async function assertSalesTicketRuntime(botId: string | null, guildId: string) {
+  const authorization = await authorizeBotRuntimeModule({ botId, guildId, moduleId: "nex-tech-sales" });
+  if (!authorization.allowed || !botId) throw Object.assign(new Error(authorization.reason || "Sistema de vendas não liberado."), { statusCode: 403 });
+  return botId;
+}
 
 botDevApiRouter.post("/runtime/status", async (req, res, next) => {
   try {
