@@ -4,15 +4,19 @@ import {
   ButtonStyle,
   ChannelType,
   EmbedBuilder,
+  ModalBuilder,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   TextChannel,
+  TextInputBuilder,
+  TextInputStyle,
   type ButtonInteraction,
   type Client,
   type Guild,
   type Interaction,
   type Message,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction
 } from "discord.js";
 import type { BotContext } from "../types";
@@ -29,6 +33,14 @@ export function startSalesTicketService(client: Client<true>, context: BotContex
 
 export async function handleSalesTicketInteraction(interaction: Interaction, context: BotContext) {
   if (!("customId" in interaction) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:show_password:`)) {
+    await showTranscriptPassword(interaction);
+    return true;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:close_confirm:`)) {
+    await closeSalesTicket(interaction, context);
+    return true;
+  }
   if (interaction.isStringSelectMenu() && interaction.customId === `${PREFIX}:open`) {
     await openSalesTicket(interaction, context);
     return true;
@@ -41,12 +53,16 @@ export async function handleSalesTicketInteraction(interaction: Interaction, con
     await confirmCloseSalesTicket(interaction);
     return true;
   }
-  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:close_confirm:`)) {
-    await closeSalesTicket(interaction, context);
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:add_member:`)) {
+    await showMemberAccessModal(interaction, "add");
     return true;
   }
-  if (interaction.isButton() && (interaction.customId.startsWith(`${PREFIX}:add_member:`) || interaction.customId.startsWith(`${PREFIX}:remove_member:`))) {
-    await interaction.reply({ content: "Ajuste o acesso do ticket pelas permissões do canal. Esta ação pertence somente ao ticket de vendas.", ephemeral: true });
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:remove_member:`)) {
+    await showMemberAccessModal(interaction, "remove");
+    return true;
+  }
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:member_access:`)) {
+    await submitMemberAccessModal(interaction);
     return true;
   }
   return false;
@@ -193,6 +209,51 @@ async function confirmCloseSalesTicket(interaction: ButtonInteraction) {
   await interaction.reply({ components: [row], content: "Confirme para fechar este ticket de vendas, gerar transcript e enviar DM ao usuário.", ephemeral: true });
 }
 
+async function showMemberAccessModal(interaction: ButtonInteraction, action: "add" | "remove") {
+  const ticketId = interaction.customId.split(":")[2] ?? "";
+  const modal = new ModalBuilder()
+    .setCustomId(`${PREFIX}:member_access:${action}:${ticketId}`)
+    .setTitle(action === "add" ? "Adicionar membro" : "Remover membro");
+  const input = new TextInputBuilder()
+    .setCustomId("user_id")
+    .setLabel("ID Discord do membro")
+    .setMaxLength(32)
+    .setMinLength(5)
+    .setPlaceholder("Ex: 123456789012345678")
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+  await interaction.showModal(modal);
+}
+
+async function submitMemberAccessModal(interaction: ModalSubmitInteraction) {
+  if (!interaction.guild || !interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
+  const [, , action] = interaction.customId.split(":");
+  const userId = interaction.fields.getTextInputValue("user_id").replace(/\D/g, "");
+  if (!/^\d{5,32}$/.test(userId)) {
+    await interaction.reply({ content: "Informe um ID Discord válido.", ephemeral: true });
+    return;
+  }
+  const channel = interaction.channel as TextChannel;
+  if (action === "add") {
+    await channel.permissionOverwrites.edit(userId, {
+      AttachFiles: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      ViewChannel: true
+    }, { reason: "Membro adicionado ao ticket de vendas." });
+    await interaction.reply({ content: `<@${userId}> foi adicionado ao ticket de vendas.`, ephemeral: true });
+    await channel.send(`➕ <@${userId}> foi adicionado ao ticket por ${interaction.user}.`).catch(() => null);
+    return;
+  }
+  await channel.permissionOverwrites.edit(userId, {
+    SendMessages: false,
+    ViewChannel: false
+  }, { reason: "Membro removido do ticket de vendas." });
+  await interaction.reply({ content: `<@${userId}> foi removido do ticket de vendas.`, ephemeral: true });
+  await channel.send(`➖ <@${userId}> foi removido do ticket por ${interaction.user}.`).catch(() => null);
+}
+
 async function closeSalesTicket(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.guild || !interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
   await interaction.deferReply({ ephemeral: true });
@@ -235,6 +296,7 @@ async function freezeTicketChannel(channel: TextChannel, userId: string) {
 }
 
 async function sendTranscriptDm(interaction: ButtonInteraction, transcriptUrl: string, password: string) {
+  const passwordToken = Buffer.from(password, "utf8").toString("base64url");
   const embed = new EmbedBuilder()
     .setColor(0xFFD500)
     .setTitle("Seu atendimento foi finalizado")
@@ -242,13 +304,29 @@ async function sendTranscriptDm(interaction: ButtonInteraction, transcriptUrl: s
     .setFooter({ text: "NexTech • Transcript exclusivo de vendas" });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${PREFIX}:password_once`)
+      .setCustomId(`${PREFIX}:show_password:${passwordToken}`)
       .setLabel("Mostrar senha")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
   );
   await interaction.user.send({ components: [row], embeds: [embed] }).catch(() => null);
-  await interaction.user.send({ content: `Senha do transcript: ||${password}||` }).catch(() => null);
+}
+
+async function showTranscriptPassword(interaction: ButtonInteraction) {
+  const token = interaction.customId.split(":")[2] ?? "";
+  const password = readPasswordToken(token);
+  if (!password) {
+    await interaction.reply({ content: "Senha indisponível para este transcript.", ephemeral: true });
+    return;
+  }
+  await interaction.reply({ content: `Senha do transcript: ||${password}||`, ephemeral: true });
+}
+
+function readPasswordToken(token: string) {
+  try {
+    return Buffer.from(token, "base64url").toString("utf8").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function channelName(pattern: string, username: string, typeName: string, ticketId: string) {
