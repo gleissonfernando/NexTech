@@ -352,6 +352,22 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
           <Empty text="Crie ou selecione uma promoção para configurar." />
         )}
       </div>
+
+      <div className="sticky bottom-4 z-20 rounded-lg border border-blue-500/30 bg-zinc-950/95 p-3 shadow-2xl shadow-black/40 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Configurações do Sistema de Promoções</p>
+            <p className="text-xs text-zinc-400">{dirty ? "Existem alterações pendentes. Salve para aplicar no bot." : "Configurações salvas e sincronizadas."}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {dirty ? <Badge variant="warning">Pendente</Badge> : <Badge variant="success">Salvo</Badge>}
+            <Button disabled={disabled} onClick={() => void save()} size="sm">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar configurações
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
