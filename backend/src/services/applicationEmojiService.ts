@@ -9,11 +9,13 @@ import {
 } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 import { createLog } from "./logService";
-import { getDevBot, getDevBotToken } from "./devBotService";
+import { authorizeBotRuntimeModule, getDevBot, getDevBotToken, listGuildBotRuntimeConfigs } from "./devBotService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const APPLICATION_EMOJI_LIMIT = 2000;
 const MAX_EMOJI_BYTES = 256 * 1024;
+const MODULE_ID = "emoji-cloner";
+const guildApplicationEmojiSyncs = new Map<string, Promise<GuildApplicationEmojiSyncResult>>();
 
 type DiscordEmoji = {
   animated?: boolean;
@@ -36,6 +38,20 @@ type ApplicationEmojiDto = {
   type: "Animado" | "Estatico";
   updatedAt: string;
   url: string;
+};
+
+type GuildApplicationEmojiSyncResult = {
+  failed: number;
+  guildId: string;
+  results: Array<{
+    botId: string;
+    error: string | null;
+    removed?: boolean;
+    status: "failed" | "removed" | "skipped" | "synced";
+  }>;
+  skipped: number;
+  synced: number;
+  totalBots: number;
 };
 
 export type ApplicationEmojiSeedAsset = {
@@ -285,6 +301,7 @@ export async function syncGuildEmojisToApplication(input: {
       listApplicationEmojis(bot.clientId, bot.token)
     ]);
     const existingAppNames = new Set(applicationEmojis.map((emoji) => emoji.name.toLowerCase()));
+    const existingAppByName = new Map(applicationEmojis.map((emoji) => [emoji.name.toLowerCase(), emoji]));
     const existingAppIds = new Set(applicationEmojis.map((emoji) => emoji.id));
     const { applicationEmojiItems } = await getMongoCollections();
     const savedItems = await applicationEmojiItems.find({ botId: input.botId }).toArray();
@@ -301,10 +318,14 @@ export async function syncGuildEmojisToApplication(input: {
         const image = await downloadEmoji(sourceUrl);
         const hash = sha256(image.buffer);
         const saved = savedByOriginal.get(`${input.guildId}:${emoji.id}`);
+        const existingByName = existingAppByName.get(sanitizeEmojiName(emoji.name).toLowerCase());
 
         if (saved && saved.hash === hash && existingAppIds.has(saved.applicationEmojiId)) {
           job.skipped += 1;
           await createApplicationEmojiLog(input, "application_emoji.skipped", `Emoji ignorado: ${emoji.name}.`);
+        } else if (!saved && existingByName) {
+          job.skipped += 1;
+          await createApplicationEmojiLog(input, "application_emoji.duplicate_name", `Emoji já existia na aplicação e foi ignorado: ${emoji.name}.`);
         } else {
           if (saved?.applicationEmojiId && existingAppIds.has(saved.applicationEmojiId)) {
             await deleteApplicationEmoji(bot.clientId, saved.applicationEmojiId, bot.token).catch(() => undefined);
@@ -324,6 +345,7 @@ export async function syncGuildEmojisToApplication(input: {
             });
             existingAppIds.add(created.id);
             existingAppNames.add(created.name.toLowerCase());
+            existingAppByName.set(created.name.toLowerCase(), created);
             job.sent += saved ? 0 : 1;
             await saveApplicationEmoji({
               animated: Boolean(created.animated ?? emoji.animated),
@@ -404,49 +426,143 @@ export async function handleApplicationEmojiGuildEvent(input: {
   guildId: string;
   name: string;
 }) {
-  const { applicationEmojiItems, applicationEmojiSettings } = await getMongoCollections();
-  const settings = await applicationEmojiSettings.findOne({
-    autoSync: true,
-    botId: input.botId,
-    guildId: input.guildId
-  });
-
-  if (!settings) {
-    return {
-      skipped: true,
-      reason: "Sincronização automática desativada."
-    };
-  }
-
-  if (input.action === "deleted") {
-    const bot = await resolveBotAndToken(input.botId);
-    const existing = await applicationEmojiItems.findOne({
-      botId: input.botId,
-      originalEmojiId: input.emojiId,
-      sourceGuildId: input.guildId
-    });
-
-    if (existing) {
-      await deleteApplicationEmoji(bot.clientId, existing.applicationEmojiId, bot.token).catch(() => undefined);
-      await applicationEmojiItems.deleteOne({ _id: existing._id });
-      await createApplicationEmojiLog(
-        { botId: input.botId, guildId: input.guildId, userId: "bot:auto-sync" },
-        "application_emoji.auto_removed",
-        `Emoji removido automaticamente: ${existing.applicationName}.`
-      );
-    }
-
-    return {
-      removed: Boolean(existing),
-      skipped: false
-    };
-  }
-
-  return syncGuildEmojisToApplication({
-    botId: input.botId,
+  return syncGuildEmojisToAllApplications({
+    action: input.action,
+    emojiId: input.emojiId,
     guildId: input.guildId,
+    sourceBotId: input.botId,
     userId: "bot:auto-sync"
   });
+}
+
+export async function syncGuildEmojisToAllApplications(input: {
+  action?: "created" | "deleted" | "startup" | "updated" | null;
+  emojiId?: string | null;
+  guildId: string;
+  sourceBotId?: string | null;
+  userId?: string | null;
+}) {
+  const key = input.action === "deleted" && input.emojiId
+    ? `${input.guildId}:delete:${input.emojiId}`
+    : `${input.guildId}:sync`;
+  const running = guildApplicationEmojiSyncs.get(key);
+  if (running) return running;
+
+  const task = runGuildApplicationEmojiSync(input).finally(() => {
+    if (guildApplicationEmojiSyncs.get(key) === task) {
+      guildApplicationEmojiSyncs.delete(key);
+    }
+  });
+  guildApplicationEmojiSyncs.set(key, task);
+  return task;
+}
+
+async function runGuildApplicationEmojiSync(input: {
+  action?: "created" | "deleted" | "startup" | "updated" | null;
+  emojiId?: string | null;
+  guildId: string;
+  sourceBotId?: string | null;
+  userId?: string | null;
+}): Promise<GuildApplicationEmojiSyncResult> {
+  const targets = await listAuthorizedApplicationEmojiSyncBots(input.guildId);
+  const result: GuildApplicationEmojiSyncResult = {
+    failed: 0,
+    guildId: input.guildId,
+    results: [],
+    skipped: 0,
+    synced: 0,
+    totalBots: targets.length
+  };
+  const userId = input.userId ?? "bot:auto-sync";
+
+  if (!targets.length) {
+    return result;
+  }
+
+  const logBotId = input.sourceBotId ?? targets[0]!.id;
+  await createApplicationEmojiLog(
+    { botId: logBotId, guildId: input.guildId, userId },
+    "application_emoji.guild_rule.started",
+    `Regra automática iniciada para ${targets.length} bot(s) no servidor.`
+  ).catch(() => undefined);
+
+  for (const target of targets) {
+    try {
+      if (input.action === "deleted" && input.emojiId) {
+        const removed = await removeGuildEmojiFromApplication(target.id, input.guildId, input.emojiId, userId);
+        result.results.push({ botId: target.id, error: null, removed, status: removed ? "removed" : "skipped" });
+        if (removed) result.synced += 1;
+        else result.skipped += 1;
+      } else {
+        await syncGuildEmojisToApplication({
+          botId: target.id,
+          guildId: input.guildId,
+          userId
+        });
+        result.synced += 1;
+        result.results.push({ botId: target.id, error: null, status: "synced" });
+      }
+    } catch (error) {
+      result.failed += 1;
+      result.results.push({ botId: target.id, error: friendlyError(error), status: "failed" });
+      await createApplicationEmojiLog(
+        { botId: target.id, guildId: input.guildId, userId },
+        "application_emoji.guild_rule.failed",
+        `Falha ao sincronizar emojis automaticamente: ${friendlyError(error)}.`
+      ).catch(() => undefined);
+    }
+
+    await wait(1_000);
+  }
+
+  return result;
+}
+
+async function listAuthorizedApplicationEmojiSyncBots(guildId: string) {
+  const configs = await listGuildBotRuntimeConfigs(guildId);
+  const unique = new Map(configs.map((config) => [config.id, config]));
+  const allowed = [];
+
+  for (const config of unique.values()) {
+    if (!config.desiredOnline || !config.enabledModules.includes(MODULE_ID)) {
+      continue;
+    }
+
+    const authorization = await authorizeBotRuntimeModule({
+      botId: config.id,
+      guildId,
+      moduleId: MODULE_ID
+    }).catch(() => null);
+
+    if (authorization?.allowed) {
+      allowed.push(config);
+    }
+  }
+
+  return allowed;
+}
+
+async function removeGuildEmojiFromApplication(botId: string, guildId: string, emojiId: string, userId: string) {
+  const { applicationEmojiItems } = await getMongoCollections();
+  const existing = await applicationEmojiItems.findOne({
+    botId,
+    originalEmojiId: emojiId,
+    sourceGuildId: guildId
+  });
+
+  if (!existing) {
+    return false;
+  }
+
+  const bot = await resolveBotAndToken(botId);
+  await deleteApplicationEmoji(bot.clientId, existing.applicationEmojiId, bot.token).catch(() => undefined);
+  await applicationEmojiItems.deleteOne({ _id: existing._id });
+  await createApplicationEmojiLog(
+    { botId, guildId, userId },
+    "application_emoji.auto_removed",
+    `Emoji removido automaticamente: ${existing.applicationName}.`
+  );
+  return true;
 }
 
 export async function createApplicationEmojiZip(input: {

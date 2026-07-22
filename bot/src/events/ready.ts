@@ -57,6 +57,7 @@ import { validateSystemEmojisOnStartup } from "../services/systemEmojiService";
 import { startTemporaryVoiceService } from "../services/temporaryVoiceService";
 import { startAutomatedLogService } from "../services/automatedLogService";
 import { startAutoActivityClockService } from "../services/autoActivityClockBotService";
+import { startApplicationEmojiAutoSync } from "../services/applicationEmojiSyncService";
 import { startTagVerificationService, stopTagVerificationService } from "../services/tagVerificationService";
 import { startXMonitor } from "../services/xMonitor";
 import type { BotCommand, BotContext } from "../types";
@@ -287,6 +288,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("manual-payments", isBotModuleEnabled("manual-payments"), () => startManualPaymentService(client, context));
   startRuntimeService("price-tables", isBotModuleEnabled("price-tables"), () => startPriceTableService(client, context));
   startRuntimeService("nex-tech-sales", isBotModuleEnabled("nex-tech-sales"), () => startNexTechSalesDeliveryService(client, context));
+  startRuntimeService("emoji-cloner", isBotModuleEnabled("emoji-cloner"), () => startApplicationEmojiAutoSync(client, context));
   startRuntimeService("rh-admin", isBotModuleEnabled("rh-admin"), () => startRhAdminService(client, context));
   startRuntimeService("courses", isBotModuleEnabled("courses"), () => startCourseSystemService(client, context));
   startRuntimeService("tickets", isBotModuleEnabled("tickets"), () => startTicketPanelService(client, context));

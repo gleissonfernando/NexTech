@@ -12,6 +12,7 @@ import {
   refreshApplicationEmojis,
   removeAllApplicationEmojis,
   saveApplicationEmojiSettings,
+  syncGuildEmojisToAllApplications,
   syncGuildEmojisToApplication
 } from "../services/applicationEmojiService";
 import { createEmojiLibraryZip, listEmojiLibrary, recordEmojiCloneJob } from "../services/emojiCloneService";
@@ -67,6 +68,10 @@ const applicationBotEventSchema = z.object({
   guildId: z.string().regex(/^\d{5,32}$/),
   name: z.string().min(1).max(64)
 });
+const applicationBotSyncSchema = z.object({
+  guildId: z.string().regex(/^\d{5,32}$/),
+  reason: z.string().max(80).nullable().optional()
+});
 const resendSchema = z.object({
   guildId: z.string().regex(/^\d{5,32}$/),
   name: z.string().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/).optional()
@@ -104,14 +109,42 @@ emojiClonerRouter.post("/application/bot/guild-event", requireBot, async (req, r
       return res.status(400).json({ message: "Bot não identificado." });
     }
 
-    return res.json(await handleApplicationEmojiGuildEvent({
+    void handleApplicationEmojiGuildEvent({
       action: input.action,
       animated: input.animated,
       botId,
       emojiId: input.emojiId,
       guildId: input.guildId,
       name: input.name
-    }));
+    }).catch((error) => {
+      console.warn("[application-emojis] falha ao enfileirar evento automático:", error instanceof Error ? error.message : error);
+    });
+
+    return res.json({ queued: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+emojiClonerRouter.post("/application/bot/sync-guild", requireBot, async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const input = applicationBotSyncSchema.parse(req.body);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot não identificado." });
+    }
+
+    void syncGuildEmojisToAllApplications({
+      action: "startup",
+      guildId: input.guildId,
+      sourceBotId: botId,
+      userId: "bot:auto-sync"
+    }).catch((error) => {
+      console.warn("[application-emojis] falha ao enfileirar sincronização automática:", error instanceof Error ? error.message : error);
+    });
+
+    return res.status(202).json({ queued: true });
   } catch (error) {
     return next(error);
   }

@@ -2371,6 +2371,13 @@ export class ApiClient {
     return data;
   }
 
+  async syncApplicationEmojiGuild(input: { guildId: string; reason?: string | null }) {
+    const { data } = await this.http.post("/emoji-cloner/application/bot/sync-guild", input, {
+      timeout: 20_000
+    });
+    return data;
+  }
+
   async createTicket(input: {
     allowedRoleIds?: string[];
     categoryId?: string | null;

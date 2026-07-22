@@ -12,7 +12,7 @@ import { handleReady } from "../events/ready";
 import { env, isBotModuleEnabled } from "../config/env";
 import { isLinkAntiSpamEnabled } from "../services/linkAntiSpamService";
 import { isMaintenanceModeActive } from "../services/maintenanceService";
-import { handleApplicationEmojiGuildCreate, handleApplicationEmojiGuildDelete, handleApplicationEmojiGuildUpdate } from "../services/applicationEmojiSyncService";
+import { handleApplicationEmojiGuildCreate, handleApplicationEmojiGuildDelete, handleApplicationEmojiGuildUpdate, syncGuildApplicationEmojis } from "../services/applicationEmojiSyncService";
 import { clearSafeBotSetupCache, ensureSafeBotSetup, isSelfBotModuleEnabled } from "../services/safeBotService";
 import { handleSelfBotProtectionGuildMutation, handleSelfBotProtectionMemberUpdate } from "../services/selfBotProtectionService";
 import { handleAutoUnmuteVoiceStateUpdate } from "../services/autoUnmuteService";
@@ -75,6 +75,7 @@ export function registerEvents(client: Client, context: BotContext) {
     runEvent("guildCreate", async () => {
       await cacheGuildSystemEmojis(guild, context);
       await ensureSafeBotSetup(guild, context);
+      await syncGuildApplicationEmojis(guild, context, "guild_create");
       if (isBotModuleEnabled("fivem-hierarchy")) scheduleHierarchyRefresh(guild, context);
     });
   });
