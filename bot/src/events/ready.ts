@@ -42,6 +42,7 @@ import { startRhAdminService } from "../services/rhAdminService";
 import { startCourseSystemService } from "../services/courseSystemService";
 import { startTicketPanelService } from "../services/ticketPanelService";
 import { startReportSystemService } from "../services/reportSystemService";
+import { syncAutomaticRolesAfterReady } from "../services/roleService";
 import {
   disableUnreleasedSafeBotChannels,
   ensureSafeBotSetup,
@@ -200,6 +201,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   context.socket.connect(client);
   context.socket.emitStatus(client, true);
   void reportRuntimeStatus(context, client, true);
+  void syncAutomaticRolesAfterReady(client, context).catch((error) => {
+    console.warn("[roles] falha na sincronização pós-redeploy:", error instanceof Error ? error.message : error);
+  });
 
   const interval = setInterval(() => {
     context.socket.emitStatus(client, true);

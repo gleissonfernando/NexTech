@@ -14,6 +14,7 @@ import { isLinkAntiSpamEnabled } from "../services/linkAntiSpamService";
 import { isMaintenanceModeActive } from "../services/maintenanceService";
 import { handleApplicationEmojiGuildCreate, handleApplicationEmojiGuildDelete, handleApplicationEmojiGuildUpdate, syncGuildApplicationEmojis } from "../services/applicationEmojiSyncService";
 import { clearSafeBotSetupCache, ensureSafeBotSetup, isSelfBotModuleEnabled } from "../services/safeBotService";
+import { syncAutomaticRolesAfterReady } from "../services/roleService";
 import { handleSelfBotProtectionGuildMutation, handleSelfBotProtectionMemberUpdate } from "../services/selfBotProtectionService";
 import { handleAutoUnmuteVoiceStateUpdate } from "../services/autoUnmuteService";
 import { handleAntiDisconnectVoiceStateUpdate } from "../services/antiDisconnectService";
@@ -58,6 +59,9 @@ export function registerEvents(client: Client, context: BotContext) {
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
     console.log(`[discord] shard ${shardId} reconectado; eventos reproduzidos=${replayedEvents}.`);
     context.socket.emitStatus(client, true);
+    void syncAutomaticRolesAfterReady(client, context, `shard_resume:${shardId}`).catch((error) => {
+      console.warn("[roles] falha na sincronização após reconexão:", error instanceof Error ? error.message : error);
+    });
   });
   client.once(Events.ClientReady, (readyClient) => runEvent("ready", () => handleReady(readyClient, context)));
   client.on(Events.InteractionCreate, (interaction) => {
