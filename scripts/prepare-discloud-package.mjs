@@ -54,6 +54,10 @@ writeFileSync(path.join(target, "discloud.config"), [
   ""
 ].join("\n"));
 
+writeFileSync(path.join(target, ".nex-tech-runtime-env.json"), `${JSON.stringify({
+  START_REGISTERED_DEV_BOTS: "true"
+}, null, 2)}\n`);
+
 writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   name: "nextech-discloud-runtime",
   version: "1.0.0",

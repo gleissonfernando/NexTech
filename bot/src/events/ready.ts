@@ -67,6 +67,8 @@ let lastRuntimeModuleSignature = "";
 let lastRuntimeStatusWarningAt = 0;
 let commandSyncPromise: Promise<void> | null = null;
 const startedRuntimeServices = new Set<string>();
+const COMMAND_SYNC_ATTEMPTS = 3;
+const COMMAND_SYNC_RETRY_DELAY_MS = 5_000;
 
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
@@ -230,6 +232,10 @@ function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function syncVisibleGuildCommands(client: Client<true>, context: BotContext, reason: string) {
   if (commandSyncPromise) {
     await commandSyncPromise;
@@ -256,12 +262,30 @@ async function syncVisibleGuildCommandsNow(client: Client<true>, context: BotCon
 
   for (const commandGuildId of commandGuildIds) {
     try {
-      await registerGuildCommands(commands, client.user.id, commandGuildId);
+      await registerGuildCommandsWithRetry(commands, client.user.id, commandGuildId, reason);
       console.log(`[bot] comandos sincronizados no servidor ${commandGuildId} (${reason}): ${commandNames}`);
     } catch (error) {
       console.warn(`[bot] falha ao sincronizar comandos no servidor ${commandGuildId} (${reason}):`, error instanceof Error ? error.message : error);
     }
   }
+}
+
+async function registerGuildCommandsWithRetry(commands: BotCommand[], clientId: string, guildId: string, reason: string) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= COMMAND_SYNC_ATTEMPTS; attempt += 1) {
+    try {
+      await registerGuildCommands(commands, clientId, guildId);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= COMMAND_SYNC_ATTEMPTS) break;
+      console.warn(`[bot] tentativa ${attempt}/${COMMAND_SYNC_ATTEMPTS} falhou ao sincronizar comandos em ${guildId} (${reason}); tentando novamente em ${COMMAND_SYNC_RETRY_DELAY_MS / 1_000}s:`, error instanceof Error ? error.message : error);
+      await delay(COMMAND_SYNC_RETRY_DELAY_MS);
+    }
+  }
+
+  throw lastError;
 }
 
 function visibleCommands(commands: BotCommand[]) {
