@@ -31,7 +31,7 @@ import { startGuildSettingsCache } from "../services/guildSettingsCache";
 import { startImageAntiSpamService } from "../services/imageAntiSpamService";
 import { startKickNotificationMonitor } from "../services/kickNotificationMonitor";
 import { startLiveDetectionService } from "../services/liveService";
-import { startMaintenanceService } from "../services/maintenanceService";
+import { isMaintenanceModeActive, onMaintenanceStateChanged, refreshMaintenanceState, startMaintenanceService } from "../services/maintenanceService";
 import { startMissionToolsService } from "../services/missionToolsService";
 import { startNexTechSalesDeliveryService } from "../services/nexTechSalesDeliveryService";
 import { startSalesTicketService } from "../services/salesTicketService";
@@ -186,24 +186,27 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   });
   startDiscordLogDelivery(context);
   startDatabaseMaintenanceService(client, context);
-  startMaintenanceService(context);
+  startMaintenanceService(context, { refreshImmediately: false });
+  await refreshMaintenanceState(context);
+  onMaintenanceStateChanged((state, previousActive) => {
+    if (previousActive && !state.active) {
+      void startOperationalRuntime(client, context, "maintenance_ended").catch((error) => {
+        console.warn("[bot] falha ao iniciar serviços após manutenção:", error instanceof Error ? error.message : error);
+      });
+    }
+  });
 
   await syncVisibleGuildCommands(client, context, "ready");
 
-  await startRuntimeModuleServices(client, context);
-  startSelfBotProtectionService(context);
-  if (isSelfBotModuleEnabled()) {
-    await ensureSelfBotRoles(client, context);
-    await reconcileSelfBotPunishmentRoles(client, context);
-  } else {
-    await disableUnreleasedSafeBotChannels(client, context);
-  }
   context.socket.connect(client);
   context.socket.emitStatus(client, true);
   void reportRuntimeStatus(context, client, true);
-  void syncAutomaticRolesAfterReady(client, context).catch((error) => {
-    console.warn("[roles] falha na sincronização pós-redeploy:", error instanceof Error ? error.message : error);
-  });
+
+  if (isMaintenanceModeActive()) {
+    console.log("[maintenance] serviços operacionais adiados até o fim da manutenção.");
+  } else {
+    await startOperationalRuntime(client, context, "ready");
+  }
 
   const interval = setInterval(() => {
     context.socket.emitStatus(client, true);
@@ -220,12 +223,14 @@ export async function handleReady(client: Client<true>, context: BotContext) {
 }
 
 function commandRegistrationGuildIds(client: Client<true>) {
+  const connectedGuildIds = new Set(client.guilds.cache.map((guild) => guild.id));
+
   return unique([
     ...csv(env.BOT_COMMAND_GUILD_IDS),
     env.BOT_MAIN_GUILD_ID.trim(),
     ...csv(env.DASHBOARD_GUILD_IDS),
     ...client.guilds.cache.map((guild) => guild.id)
-  ]);
+  ]).filter((guildId) => connectedGuildIds.has(guildId));
 }
 
 function csv(value: string) {
@@ -294,6 +299,26 @@ async function registerGuildCommandsWithRetry(commands: BotCommand[], clientId: 
 
 function visibleCommands(commands: BotCommand[]) {
   return commands.filter((command) => !command.moduleId || isBotModuleEnabled(command.moduleId));
+}
+
+async function startOperationalRuntime(client: Client<true>, context: BotContext, reason: string) {
+  if (isMaintenanceModeActive()) {
+    console.log(`[maintenance] serviços operacionais seguem adiados (${reason}).`);
+    return;
+  }
+
+  await startRuntimeModuleServices(client, context);
+  startSelfBotProtectionService(context);
+  if (isSelfBotModuleEnabled()) {
+    await ensureSelfBotRoles(client, context);
+    await reconcileSelfBotPunishmentRoles(client, context);
+  } else {
+    await disableUnreleasedSafeBotChannels(client, context);
+  }
+
+  void syncAutomaticRolesAfterReady(client, context, reason).catch((error) => {
+    console.warn("[roles] falha na sincronização pós-redeploy:", error instanceof Error ? error.message : error);
+  });
 }
 
 async function startRuntimeModuleServices(client: Client<true>, context: BotContext) {

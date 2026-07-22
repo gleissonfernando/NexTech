@@ -55,9 +55,15 @@ let maintenanceState: MaintenanceState = {
 };
 let started = false;
 let appliedInitialMaintenanceState = false;
+const maintenanceStateListeners = new Set<(state: MaintenanceState, previousActive: boolean, action: string) => void>();
 
 export function isMaintenanceModeActive() {
   return maintenanceState.active;
+}
+
+export function onMaintenanceStateChanged(listener: (state: MaintenanceState, previousActive: boolean, action: string) => void) {
+  maintenanceStateListeners.add(listener);
+  return () => maintenanceStateListeners.delete(listener);
 }
 
 export async function refreshMaintenanceState(context: BotContext) {
@@ -70,21 +76,25 @@ export async function refreshMaintenanceState(context: BotContext) {
   if (state) {
     maintenanceState = state;
     await applyMaintenanceState(context, previousActive, MAINTENANCE_ALERT_MESSAGE);
+    notifyMaintenanceStateChanged(previousActive, "maintenance:poll");
   }
 }
 
-export function startMaintenanceService(context: BotContext) {
+export function startMaintenanceService(context: BotContext, options: { refreshImmediately?: boolean } = {}) {
   if (started) {
     return;
   }
 
   started = true;
-  void refreshMaintenanceState(context);
+  if (options.refreshImmediately ?? true) {
+    void refreshMaintenanceState(context);
+  }
 
   context.socket.onMaintenanceUpdated((payload) => {
     const previousActive = maintenanceState.active;
     maintenanceState = payload.state;
-    void applyMaintenanceState(context, previousActive, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE, payload.action);
+    void applyMaintenanceState(context, previousActive, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE, payload.action)
+      .finally(() => notifyMaintenanceStateChanged(previousActive, payload.action));
   });
 
   const interval = setInterval(() => {
@@ -92,6 +102,20 @@ export function startMaintenanceService(context: BotContext) {
   }, 60_000);
 
   interval.unref();
+}
+
+function notifyMaintenanceStateChanged(previousActive: boolean, action: string) {
+  if (previousActive === maintenanceState.active) {
+    return;
+  }
+
+  for (const listener of maintenanceStateListeners) {
+    try {
+      listener(maintenanceState, previousActive, action);
+    } catch (error) {
+      console.warn("[maintenance] listener falhou:", error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 export async function blockInteractionIfMaintenance(interaction: Interaction, context: BotContext) {
