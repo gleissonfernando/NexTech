@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { getMongoDb } from "../database/mongo";
 import { listDevBots, type DevBotDto } from "./devBotService";
+import { createLog } from "./logService";
 
 type DiscloudAction = "start" | "stop" | "restart" | "redeploy";
 
@@ -563,6 +564,62 @@ async function recordDiscloudEvent(input: { appId: string; botId: string | null;
     ...input,
     createdAt: now
   });
+
+  if (isDiscloudErrorEvent(input)) {
+    await dispatchDiscloudErrorToPrimaryBot(input).catch((error) => {
+      console.warn("[discloud] falha ao enviar log de erro ao bot principal:", error instanceof Error ? error.message : error);
+    });
+  }
+}
+
+function isDiscloudErrorEvent(input: { event: string; message: string }) {
+  const event = input.event.toLowerCase();
+  const message = input.message.toLowerCase();
+
+  return event.includes("failed")
+    || event.includes("error")
+    || event.includes("alert")
+    || event.includes("offline")
+    || message.includes("falha")
+    || message.includes("erro")
+    || message.includes("offline");
+}
+
+async function dispatchDiscloudErrorToPrimaryBot(input: { appId: string; botId: string | null; event: string; message: string }) {
+  const target = await resolvePrimaryDiscloudLogTarget();
+
+  if (!target) {
+    console.warn("[discloud] bot principal não encontrado para receber logs de erro.");
+    return;
+  }
+
+  await createLog({
+    action: input.event,
+    botId: target.id,
+    guildId: target.mainGuildId,
+    message: input.message,
+    metadata: {
+      affectedAppId: input.appId,
+      affectedBotId: input.botId,
+      delivery: "primary-bot",
+      source: "discloud"
+    },
+    module: "discloud",
+    status: "error",
+    type: `discloud.${input.event}`,
+    userId: "system:discloud"
+  });
+}
+
+async function resolvePrimaryDiscloudLogTarget() {
+  const bots = await listDevBots();
+  const configured = env.DISCLOUD_LOG_BOT_ID.trim();
+  const primaryClientId = env.DISCORD_CLIENT_ID.trim();
+
+  return bots.find((bot) => configured && [bot.id, bot.clientId, bot.slug].includes(configured))
+    ?? bots.find((bot) => primaryClientId && bot.clientId === primaryClientId)
+    ?? bots[0]
+    ?? null;
 }
 
 async function readDiscloudHistory(): Promise<DiscloudHistoryEvent[]> {

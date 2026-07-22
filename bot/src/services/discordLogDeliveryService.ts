@@ -49,12 +49,17 @@ async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEve
 
   const settings = await getCachedGuildSettings(context, log.guildId, context.client.user?.id).catch(() => null);
   const category = logCategoryForType(log.type);
+  const forcedDiscloudLog = log.type.startsWith("discloud.");
 
-  if (!settings?.discordLogsEnabled || !settings.discordLogCategories.includes(category)) {
+  if (!settings) {
     return;
   }
-  const automated = await context.api.getAutomatedLogSettings(guild.id).catch(() => null);
-  const targetChannelId = automated?.enabled ? automatedLogChannelForType(automated, log.type) : settings.logChannelId;
+
+  if (!forcedDiscloudLog && (!settings.discordLogsEnabled || !settings.discordLogCategories.includes(category))) {
+    return;
+  }
+  const automated = forcedDiscloudLog ? null : await context.api.getAutomatedLogSettings(guild.id).catch(() => null);
+  const targetChannelId = log.logChannelId ?? (automated?.enabled ? automatedLogChannelForType(automated, log.type) : settings.logChannelId);
   if (!targetChannelId) return;
   const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
 

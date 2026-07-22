@@ -280,6 +280,7 @@ const envSchema = z
     DISCLOUD_TOKEN: z.string().optional().default(""),
     DISCLOUD_APP_IDS: z.string().optional().default(""),
     DISCLOUD_APP_ID_BY_BOT: z.string().optional().default(""),
+    DISCLOUD_LOG_BOT_ID: z.string().optional().default(""),
     DISCLOUD_AUTO_RECOVERY_ENABLED: envBoolean(true),
     DISCLOUD_AUTO_RECOVERY_APP_IDS: z.string().optional().default(""),
     DISCLOUD_AUTO_RECOVERY_INTERVAL_MS: z.coerce.number().int().min(30_000).max(900_000).default(60_000),

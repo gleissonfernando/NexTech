@@ -377,6 +377,7 @@ export type DiscordLogDispatchEvent = {
   id: string;
   botId: string | null;
   guildId: string;
+  logChannelId?: string | null;
   userId?: string | null;
   type: string;
   message: string;
