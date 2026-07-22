@@ -159,7 +159,7 @@ export async function blockMessageIfMaintenance(message: Message, context: BotCo
       return false;
     }
 
-    await message.reply(maintenanceMessageReplyPayload()).catch(() => undefined);
+    await sendMaintenancePrivateMessage(message).catch(() => undefined);
   }
 
   return true;
@@ -176,7 +176,7 @@ async function applyMaintenanceState(
   updateMaintenancePresence(context, maintenanceState.active);
 
   if (maintenanceState.active && (!previousActive || action === "maintenance:manual_alert")) {
-    await ensureMaintenancePanels(context, message);
+    void message;
     appliedInitialMaintenanceState = true;
     return;
   }
@@ -324,6 +324,10 @@ function maintenanceMessageReplyPayload() {
     components: [maintenancePanelComponent(MAINTENANCE_INTERACTION_MESSAGE, false)],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+async function sendMaintenancePrivateMessage(message: Message) {
+  await message.author.send(maintenanceMessageReplyPayload());
 }
 
 function maintenancePanelComponent(message: string, includeMedia = true) {
