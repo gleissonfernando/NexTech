@@ -301,13 +301,40 @@ const systemEmojiPatchSchema = z.object({
 });
 
 const nexTechInviteSchema = z.object({
+  adminChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  alertChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  bannerUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  blockUnknownInvites: z.boolean().optional(),
+  botId: z.string().min(3).max(120).nullable().optional().or(z.literal("")),
+  buttonEmoji: z.string().max(32).nullable().optional().or(z.literal("")),
+  buttonLabel: z.string().max(40).nullable().optional().or(z.literal("")),
+  channelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
   clientName: z.string().min(2).max(120),
   code: z.string().min(4).max(80).nullable().optional().or(z.literal("")),
+  description: z.string().max(1200).nullable().optional().or(z.literal("")),
+  discordInviteId: z.string().max(120).nullable().optional().or(z.literal("")),
   expiresAt: z.string().datetime().nullable().optional().or(z.literal("")),
+  footerText: z.string().max(120).nullable().optional().or(z.literal("")),
+  guildId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  guildName: z.string().max(120).nullable().optional().or(z.literal("")),
+  imageUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  inviteUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  logChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
   maxUses: z.number().int().min(1).max(100000).nullable().optional(),
   name: z.string().min(2).max(120),
   notes: z.string().max(800).nullable().optional().or(z.literal("")),
-  status: z.enum(["active", "paused", "expired", "cancelled"]).optional()
+  panelChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional().or(z.literal("")),
+  panelTitle: z.string().max(120).nullable().optional().or(z.literal("")),
+  permissions: z.object({
+    administrator: z.array(z.string().regex(/^\d{5,32}$/)).max(50).optional(),
+    manager: z.array(z.string().regex(/^\d{5,32}$/)).max(50).optional(),
+    moderator: z.array(z.string().regex(/^\d{5,32}$/)).max(50).optional(),
+    viewer: z.array(z.string().regex(/^\d{5,32}$/)).max(50).optional()
+  }).partial().optional(),
+  statsChannelId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
+  status: z.enum(["active", "paused", "expired", "cancelled"]).optional(),
+  videoUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
 });
 
 export const devRouter = Router();
@@ -330,9 +357,12 @@ devRouter.get("/modules", (_req, res) => {
   });
 });
 
-devRouter.get("/nextech/invites", async (_req, res, next) => {
+devRouter.get("/nextech/invites", async (req, res, next) => {
   try {
-    return res.json(await getNexTechInviteDashboard());
+    return res.json(await getNexTechInviteDashboard({
+      botId: typeof req.query.botId === "string" ? req.query.botId : null,
+      guildId: typeof req.query.guildId === "string" ? req.query.guildId : null
+    }));
   } catch (error) {
     return next(error);
   }
@@ -378,6 +408,53 @@ devRouter.delete("/nextech/invites/:inviteId", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const invite = await deleteNexTechInvite(req.params.inviteId, {
+      id: auth.user.discordId,
+      name: auth.user.globalName || auth.user.username
+    });
+    return res.json({ invite });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/bots/:botId/guilds/:guildId/nextech-invites", async (req, res, next) => {
+  try {
+    return res.json(await getNexTechInviteDashboard({
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nextech-invites", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = nexTechInviteSchema.parse(req.body ?? {});
+    const invite = await createNexTechInvite({
+      ...input,
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    }, {
+      id: auth.user.discordId,
+      name: auth.user.globalName || auth.user.username
+    });
+    return res.status(201).json({ invite });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/bots/:botId/guilds/:guildId/nextech-invites/:inviteId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = nexTechInviteSchema.partial().parse(req.body ?? {});
+    const invite = await updateNexTechInvite(req.params.inviteId, {
+      ...input,
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    }, {
       id: auth.user.discordId,
       name: auth.user.globalName || auth.user.username
     });

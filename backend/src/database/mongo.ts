@@ -3095,6 +3095,7 @@ export type MongoApplicationEmojiSettings = {
 };
 
 export type MongoNexTechInviteStatus = "active" | "paused" | "expired" | "cancelled";
+export type MongoNexTechInvitePermissionRole = "administrator" | "manager" | "moderator" | "viewer";
 
 export type MongoNexTechInviteUsage = {
   guildId: string;
@@ -3107,19 +3108,44 @@ export type MongoNexTechInviteUsage = {
 
 export type MongoNexTechInvite = {
   _id: string;
+  adminChannelId?: string | null;
+  alertChannelId?: string | null;
+  bannerUrl?: string | null;
+  blockUnknownInvites?: boolean;
+  botId?: string | null;
+  buttonEmoji?: string | null;
+  buttonLabel?: string | null;
+  channelId?: string | null;
+  clicks?: number;
   clientName: string;
   code: string;
+  conversionCount?: number;
   createdAt: Date;
   createdBy: string | null;
+  description?: string | null;
+  discordInviteId?: string | null;
   expiresAt: Date | null;
+  footerText?: string | null;
+  guildId?: string | null;
+  guildName?: string | null;
+  imageUrl?: string | null;
+  inviteUrl?: string | null;
+  logChannelId?: string | null;
   maxUses: number | null;
   name: string;
   notes: string | null;
+  panelChannelId?: string | null;
+  panelColor?: string | null;
+  panelMessageId?: string | null;
+  panelTitle?: string | null;
+  permissions?: Partial<Record<MongoNexTechInvitePermissionRole, string[]>>;
   status: MongoNexTechInviteStatus;
+  statsChannelId?: string | null;
   updatedAt: Date;
   updatedBy: string | null;
   usages: MongoNexTechInviteUsage[];
   usedCount: number;
+  videoUrl?: string | null;
 };
 
 export type MongoNexTechInviteLog = {
@@ -5855,11 +5881,14 @@ async function ensureMissionToolsIndexes(db: Db) {
 }
 
 async function ensureNexTechInviteIndexes(db: Db) {
+  await db.collection<MongoNexTechInvite>("nextech_invites").dropIndex("code_1").catch(() => undefined);
   await Promise.all([
-    db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ code: 1 }, { unique: true }),
+    db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ botId: 1, guildId: 1, code: 1 }, { unique: true }),
+    db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ botId: 1, guildId: 1, status: 1, updatedAt: -1 }),
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ status: 1, updatedAt: -1 }),
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ clientName: 1, createdAt: -1 }),
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ createdAt: -1 }),
+    db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ inviteId: 1, createdAt: -1 }),
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ inviteCode: 1, createdAt: -1 })
   ]);

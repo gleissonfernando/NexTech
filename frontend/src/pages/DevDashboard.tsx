@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Activity,
   BadgeCheck,
@@ -288,7 +288,15 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
         ) : null}
 
         {activeView === "nextech-invites" ? (
-          <DevNexTechInvitesPanel />
+          <DevNexTechInvitesPanel
+            bots={profile.bots}
+            guilds={profile.guilds}
+            onBotUpdated={handleBotUpdated}
+            onSelectBot={setSelectedBotId}
+            selectedBotId={selectedBotId}
+            selectedGuildId={selectedGuildId}
+            onSelectGuild={setSelectedGuildId}
+          />
         ) : null}
 
         {activeView === "sales" ? (
@@ -570,27 +578,103 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
 }
 
 const emptyInviteForm = {
+  adminChannelId: "",
+  alertChannelId: "",
+  bannerUrl: "",
+  blockUnknownInvites: true,
+  buttonEmoji: "🔗",
+  buttonLabel: "Entrar no Servidor",
+  channelId: "",
   clientName: "",
   code: "",
+  description: "Entre utilizando nosso convite oficial.",
+  discordInviteId: "",
   expiresAt: "",
+  footerText: "NexTech",
+  guildName: "",
+  imageUrl: "",
+  inviteUrl: "",
+  logChannelId: "",
   maxUses: "",
   name: "",
   notes: "",
-  status: "active" as NexTechInviteStatus
+  panelChannelId: "",
+  panelColor: "#FFD500",
+  panelTitle: "NEXTTECH",
+  statsChannelId: "",
+  status: "active" as NexTechInviteStatus,
+  videoUrl: ""
 };
 
-function DevNexTechInvitesPanel() {
+function DevNexTechInvitesPanel({
+  bots,
+  guilds,
+  onBotUpdated,
+  onSelectBot,
+  onSelectGuild,
+  selectedBotId,
+  selectedGuildId
+}: {
+  bots: DashboardBot[];
+  guilds: DashboardMeResponse["guilds"];
+  onBotUpdated: (bot: DashboardBot) => void;
+  onSelectBot: (botId: string | null) => void;
+  onSelectGuild: (guildId: string | null) => void;
+  selectedBotId: string | null;
+  selectedGuildId: string | null;
+}) {
   const [dashboard, setDashboard] = useState<NexTechInviteDashboard | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyInviteForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [togglingModule, setTogglingModule] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const selectedBot = useMemo(() => bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null, [bots, selectedBotId]);
+  const guildOptions = useMemo(() => selectedBot
+    ? [...new Set([selectedBot.mainGuildId, ...selectedBot.guildIds, ...guilds.map((guild) => guild.id)].filter(Boolean))]
+      .map((id) => ({
+        id,
+        name: guilds.find((guild) => guild.id === id)?.name ?? (id === selectedBot.mainGuildId ? selectedBot.mainGuildName || id : id)
+      }))
+    : [], [guilds, selectedBot]);
+  const selectedScopeGuildId = selectedGuildId && guildOptions.some((guild) => guild.id === selectedGuildId)
+    ? selectedGuildId
+    : guildOptions[0]?.id ?? null;
+  const moduleEnabled = selectedBot?.enabledModules.includes("nextech-invites") ?? false;
 
   useEffect(() => {
+    if (selectedBot && selectedBot.id !== selectedBotId) {
+      onSelectBot(selectedBot.id);
+    }
+  }, [onSelectBot, selectedBot, selectedBotId]);
+
+  useEffect(() => {
+    if (selectedScopeGuildId && selectedScopeGuildId !== selectedGuildId) {
+      onSelectGuild(selectedScopeGuildId);
+    }
+  }, [onSelectGuild, selectedGuildId, selectedScopeGuildId]);
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      clientName: current.clientName || selectedBot?.name || "",
+      guildName: guildOptions.find((guild) => guild.id === selectedScopeGuildId)?.name ?? "",
+      name: current.name || "Convite Oficial",
+      panelTitle: current.panelTitle || "NEXTTECH"
+    }));
+  }, [guildOptions, selectedBot?.name, selectedScopeGuildId]);
+
+  useEffect(() => {
+    if (!selectedBot || !selectedScopeGuildId) {
+      setDashboard(null);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     setLoading(true);
-    getNexTechInviteDashboard()
+    getNexTechInviteDashboard(selectedBot.id, selectedScopeGuildId)
       .then((data) => {
         if (mounted) setDashboard(data);
       })
@@ -603,19 +687,21 @@ function DevNexTechInvitesPanel() {
 
     const socket = createDashboardSocket();
     socket.on("nextech-invites:updated", (data: NexTechInviteDashboard) => {
-      setDashboard(data);
+      const scoped = data.officialInvite?.botId === selectedBot.id && data.officialInvite?.guildId === selectedScopeGuildId;
+      if (scoped) setDashboard(data);
     });
 
     return () => {
       mounted = false;
       socket.disconnect();
     };
-  }, []);
+  }, [selectedBot?.id, selectedScopeGuildId]);
 
   async function reload() {
+    if (!selectedBot || !selectedScopeGuildId) return;
     setLoading(true);
     try {
-      setDashboard(await getNexTechInviteDashboard());
+      setDashboard(await getNexTechInviteDashboard(selectedBot.id, selectedScopeGuildId));
       setMessage(null);
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Não foi possível atualizar os convites.");
@@ -636,13 +722,32 @@ function DevNexTechInvitesPanel() {
   function editInvite(invite: NexTechInvite) {
     setEditingId(invite.id);
     setForm({
+      adminChannelId: invite.adminChannelId ?? "",
+      alertChannelId: invite.alertChannelId ?? "",
+      bannerUrl: invite.bannerUrl ?? "",
+      blockUnknownInvites: invite.blockUnknownInvites ?? true,
+      buttonEmoji: invite.buttonEmoji ?? "🔗",
+      buttonLabel: invite.buttonLabel ?? "Entrar no Servidor",
+      channelId: invite.channelId ?? "",
       clientName: invite.clientName,
       code: invite.code,
+      description: invite.description ?? "",
+      discordInviteId: invite.discordInviteId ?? "",
       expiresAt: toDatetimeLocal(invite.expiresAt),
+      footerText: invite.footerText ?? "NexTech",
+      guildName: invite.guildName ?? "",
+      imageUrl: invite.imageUrl ?? "",
+      inviteUrl: invite.inviteUrl ?? "",
+      logChannelId: invite.logChannelId ?? "",
       maxUses: invite.maxUses === null ? "" : String(invite.maxUses),
       name: invite.name,
       notes: invite.notes ?? "",
-      status: invite.status
+      panelChannelId: invite.panelChannelId ?? "",
+      panelColor: invite.panelColor ?? "#FFD500",
+      panelTitle: invite.panelTitle ?? "NEXTTECH",
+      statsChannelId: invite.statsChannelId ?? "",
+      status: invite.status,
+      videoUrl: invite.videoUrl ?? ""
     });
     window.scrollTo({ behavior: "smooth", top: 0 });
   }
@@ -654,24 +759,50 @@ function DevNexTechInvitesPanel() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!selectedBot || !selectedScopeGuildId) {
+      setMessage("Selecione um bot e um servidor antes de salvar o convite oficial.");
+      return;
+    }
+
     const payload: SaveNexTechInvitePayload = {
+      adminChannelId: form.adminChannelId || null,
+      alertChannelId: form.alertChannelId || null,
+      bannerUrl: form.bannerUrl || null,
+      blockUnknownInvites: form.blockUnknownInvites,
+      botId: selectedBot.id,
+      buttonEmoji: form.buttonEmoji || null,
+      buttonLabel: form.buttonLabel || null,
+      channelId: form.channelId || null,
       clientName: form.clientName,
       code: form.code || null,
+      description: form.description || null,
+      discordInviteId: form.discordInviteId || null,
       expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+      footerText: form.footerText || null,
+      guildId: selectedScopeGuildId,
+      guildName: guildOptions.find((guild) => guild.id === selectedScopeGuildId)?.name ?? (form.guildName || null),
+      imageUrl: form.imageUrl || null,
+      inviteUrl: form.inviteUrl || null,
+      logChannelId: form.logChannelId || null,
       maxUses: form.maxUses ? Number(form.maxUses) : null,
       name: form.name,
       notes: form.notes || null,
-      status: form.status
+      panelChannelId: form.panelChannelId || null,
+      panelColor: form.panelColor || null,
+      panelTitle: form.panelTitle || null,
+      statsChannelId: form.statsChannelId || null,
+      status: form.status,
+      videoUrl: form.videoUrl || null
     };
 
     setSaving(true);
     setMessage(null);
     try {
       if (editingId) {
-        await updateNexTechInvite(editingId, payload);
+        await updateNexTechInvite(editingId, payload, selectedBot.id, selectedScopeGuildId);
         setMessage("Convite atualizado.");
       } else {
-        await createNexTechInvite(payload);
+        await createNexTechInvite(payload, selectedBot.id, selectedScopeGuildId);
         setMessage("Convite criado.");
       }
       resetForm();
@@ -686,7 +817,7 @@ function DevNexTechInvitesPanel() {
   async function handleStatus(invite: NexTechInvite, status: NexTechInviteStatus) {
     setMessage(null);
     try {
-      await updateNexTechInvite(invite.id, { status });
+      await updateNexTechInvite(invite.id, { status }, selectedBot?.id, selectedScopeGuildId);
       await reload();
     } catch (error) {
       setMessage(readRequestMessage(error) ?? "Não foi possível alterar o status.");
@@ -705,9 +836,29 @@ function DevNexTechInvitesPanel() {
     }
   }
 
+  async function handleToggleInviteModule(checked: boolean) {
+    if (!selectedBot) return;
+    const nextModules = checked
+      ? [...new Set([...selectedBot.enabledModules, "nextech-invites"])]
+      : selectedBot.enabledModules.filter((moduleId) => moduleId !== "nextech-invites");
+
+    setTogglingModule(true);
+    setMessage(null);
+    try {
+      const updated = await updateDevBotModules(selectedBot.id, nextModules);
+      onBotUpdated(updated);
+      setMessage(checked ? "Sistema de Convites liberado para este bot." : "Sistema de Convites bloqueado para este bot.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível alterar o módulo de convites.");
+    } finally {
+      setTogglingModule(false);
+    }
+  }
+
   const invites = dashboard?.invites ?? [];
   const logs = dashboard?.logs ?? [];
-  const stats = dashboard?.stats ?? { active: 0, cancelled: 0, expired: 0, paused: 0, remainingUses: 0, totalUses: 0 };
+  const stats = dashboard?.stats ?? { active: 0, blockedInvites: 0, cancelled: 0, clicks: 0, conversions: 0, expired: 0, memberCount: 0, paused: 0, remainingUses: 0, totalUses: 0 };
+  const officialInvite = dashboard?.officialInvite ?? invites.find((invite) => invite.status === "active") ?? null;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -718,7 +869,7 @@ function DevNexTechInvitesPanel() {
             NexTech
           </div>
           <h2 className="mt-2 text-2xl font-black text-white">Sistema de Convites</h2>
-          <p className="mt-1 text-sm font-medium text-zinc-400">Cadastro proprietário de convites autorizados pela NexTech, com código único, limite, expiração e logs.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-400">Convite oficial por bot e servidor, com bloqueio de convites não autorizados e logs em tempo real.</p>
         </div>
         <Button disabled={loading} onClick={() => void reload()} type="button" variant="outline">
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -728,31 +879,78 @@ function DevNexTechInvitesPanel() {
 
       {message ? <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white">{message}</div> : null}
 
+      <Card className="border-[#FFD500]/18 bg-zinc-950/80">
+        <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Bot</label>
+            <select
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60"
+              onChange={(event) => onSelectBot(event.target.value || null)}
+              value={selectedBot?.id ?? ""}
+            >
+              {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Servidor</label>
+            <select
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60"
+              onChange={(event) => onSelectGuild(event.target.value || null)}
+              value={selectedScopeGuildId ?? ""}
+            >
+              {guildOptions.map((guild) => <option key={guild.id} value={guild.id}>{guild.name}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/30 px-4 py-3">
+            {togglingModule ? <Loader2 className="h-4 w-4 animate-spin text-zinc-400" /> : <KeyRound className="h-4 w-4 text-[#FFEA70]" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-white">Módulo do Bot</p>
+              <p className="text-xs font-semibold text-zinc-400">{moduleEnabled ? "Liberado" : "Bloqueado"}</p>
+            </div>
+            <Switch checked={moduleEnabled} disabled={!selectedBot || togglingModule} onCheckedChange={(checked) => void handleToggleInviteModule(checked)} />
+          </div>
+        </CardContent>
+      </Card>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <NexTechInviteStat label="Ativos" value={stats.active} tone="good" />
-        <NexTechInviteStat label="Pausados" value={stats.paused} tone="warn" />
-        <NexTechInviteStat label="Expirados" value={stats.expired} tone="danger" />
-        <NexTechInviteStat label="Cancelados" value={stats.cancelled} tone="danger" />
+        <NexTechInviteStat label="Cliques" value={stats.clicks} tone="good" />
+        <NexTechInviteStat label="Entradas" value={stats.memberCount || stats.totalUses} tone="good" />
+        <NexTechInviteStat label="Bloqueados" value={stats.blockedInvites} tone="danger" />
         <NexTechInviteStat label="Utilizações" value={stats.totalUses} tone="good" />
         <NexTechInviteStat label="Restantes" value={stats.remainingUses} tone="warn" />
       </section>
 
+      <Card className="border-[#FFD500]/18 bg-[linear-gradient(135deg,rgba(255,213,0,0.12),rgba(9,9,11,0.92))]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-[#FFEA70]" />Convite Oficial</CardTitle>
+          <CardDescription>Somente esse link deve ser aceito quando o bloqueio de convites estiver ativo.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 lg:grid-cols-4">
+          <NexTechInviteDetail label="Status" value={officialInvite ? officialInvite.status : "Não cadastrado"} />
+          <NexTechInviteDetail label="Código" value={officialInvite?.code ?? "Nenhum"} />
+          <NexTechInviteDetail label="URL" value={officialInvite?.inviteUrl ?? "Configure abaixo"} />
+          <NexTechInviteDetail label="Bloqueio" value={officialInvite?.blockUnknownInvites ? "Ativo" : "Inativo"} />
+        </CardContent>
+      </Card>
+
       <Card className="border-[#FFD500]/18 bg-zinc-950/80">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5 text-[#FFEA70]" />{editingId ? "Editar convite" : "Criar convite NexTech"}</CardTitle>
-          <CardDescription>Somente códigos cadastrados aqui devem ser considerados autorizados pela NexTech.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5 text-[#FFEA70]" />{editingId ? "Editar convite oficial" : "Cadastrar Convite Oficial"}</CardTitle>
+          <CardDescription>Cadastro único do convite aceito pelo bot, canais, visual do painel e regras de bloqueio.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3 lg:grid-cols-2" onSubmit={handleSubmit}>
             <DevTextInput label="Nome do convite" required value={form.name} onChange={(name) => setForm((current) => ({ ...current, name }))} />
-            <DevTextInput label="Cliente responsável" required value={form.clientName} onChange={(clientName) => setForm((current) => ({ ...current, clientName }))} />
+            <DevTextInput label="Servidor / Cliente" required value={form.clientName} onChange={(clientName) => setForm((current) => ({ ...current, clientName }))} />
             <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Código</label>
+              <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Código do convite</label>
               <div className="flex gap-2">
-                <input className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black/40 px-3 font-mono text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))} placeholder="NEXTECH-4582-A1" />
+                <input className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black/40 px-3 font-mono text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))} placeholder="nextech ou abc123" />
                 <Button onClick={() => void handleGenerateCode()} type="button" variant="outline">Gerar</Button>
               </div>
             </div>
+            <DevTextInput label="Link completo" type="url" value={form.inviteUrl} onChange={(inviteUrl) => setForm((current) => ({ ...current, inviteUrl }))} />
             <DevTextInput label="Limite de usos" min={1} type="number" value={form.maxUses} onChange={(maxUses) => setForm((current) => ({ ...current, maxUses }))} />
             <DevTextInput label="Expiração" type="datetime-local" value={form.expiresAt} onChange={(expiresAt) => setForm((current) => ({ ...current, expiresAt }))} />
             <div className="space-y-1">
@@ -764,14 +962,35 @@ function DevNexTechInvitesPanel() {
                 <option value="cancelled">Cancelado</option>
               </select>
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/30 px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-white">Bloquear outros convites</p>
+                <p className="text-xs font-semibold text-zinc-500">Remove mensagens com discord.gg diferente do convite oficial.</p>
+              </div>
+              <Switch checked={form.blockUnknownInvites} onCheckedChange={(blockUnknownInvites) => setForm((current) => ({ ...current, blockUnknownInvites }))} />
+            </div>
+            <DevTextInput label="Canal do painel" value={form.panelChannelId} onChange={(panelChannelId) => setForm((current) => ({ ...current, panelChannelId: panelChannelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Canal dos logs" value={form.logChannelId} onChange={(logChannelId) => setForm((current) => ({ ...current, logChannelId: logChannelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Canal dos avisos" value={form.alertChannelId} onChange={(alertChannelId) => setForm((current) => ({ ...current, alertChannelId: alertChannelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Canal das estatísticas" value={form.statsChannelId} onChange={(statsChannelId) => setForm((current) => ({ ...current, statsChannelId: statsChannelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Canal administrativo" value={form.adminChannelId} onChange={(adminChannelId) => setForm((current) => ({ ...current, adminChannelId: adminChannelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Canal permitido para divulgar" value={form.channelId} onChange={(channelId) => setForm((current) => ({ ...current, channelId: channelId.replace(/\D/g, "") }))} />
+            <DevTextInput label="Título do painel" value={form.panelTitle} onChange={(panelTitle) => setForm((current) => ({ ...current, panelTitle }))} />
+            <DevTextInput label="Descrição do painel" value={form.description} onChange={(description) => setForm((current) => ({ ...current, description }))} />
+            <DevTextInput label="Cor do painel" value={form.panelColor} onChange={(panelColor) => setForm((current) => ({ ...current, panelColor }))} />
+            <DevTextInput label="Banner / imagem / GIF" type="url" value={form.imageUrl} onChange={(imageUrl) => setForm((current) => ({ ...current, imageUrl }))} />
+            <DevTextInput label="Vídeo" type="url" value={form.videoUrl} onChange={(videoUrl) => setForm((current) => ({ ...current, videoUrl }))} />
+            <DevTextInput label="Texto do botão" value={form.buttonLabel} onChange={(buttonLabel) => setForm((current) => ({ ...current, buttonLabel }))} />
+            <DevTextInput label="Emoji do botão" value={form.buttonEmoji} onChange={(buttonEmoji) => setForm((current) => ({ ...current, buttonEmoji }))} />
+            <DevTextInput label="Rodapé" value={form.footerText} onChange={(footerText) => setForm((current) => ({ ...current, footerText }))} />
             <div className="space-y-1 lg:col-span-2">
               <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Observações</label>
               <textarea className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Detalhes internos do cliente, liberação ou restrição." />
             </div>
             <div className="flex flex-wrap gap-2 lg:col-span-2">
-              <Button disabled={saving} type="submit">
+              <Button disabled={saving || !selectedBot || !selectedScopeGuildId} type="submit">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                {editingId ? "Salvar alterações" : "Criar convite"}
+                {editingId ? "Salvar alterações" : "Salvar convite oficial"}
               </Button>
               {editingId ? <Button onClick={resetForm} type="button" variant="outline">Cancelar edição</Button> : null}
             </div>
@@ -869,6 +1088,15 @@ function NexTechInviteStat({ label, tone, value }: { label: string; tone: "good"
     <div className={`rounded-xl border px-4 py-3 ${toneClass(tone)}`}>
       <p className="text-xs font-bold uppercase tracking-wide opacity-80">{label}</p>
       <p className="mt-1 text-2xl font-black">{value}</p>
+    </div>
+  );
+}
+
+function NexTechInviteDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-zinc-800/80 bg-black/35 px-4 py-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
     </div>
   );
 }

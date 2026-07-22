@@ -7,6 +7,7 @@ import { handleSelfBotProtectionMessage } from "../services/selfBotProtectionSer
 import { handleTemporaryVoiceMessage } from "../services/temporaryVoiceService";
 import { handleFivemGoalMessage } from "../services/fivemGoalService";
 import { handleManualPaymentMessage } from "../services/manualPaymentService";
+import { handleNexTechInviteMessage } from "../services/nexTechInviteService";
 import { handleZtkWebhookMessage } from "../services/ztkWebhookService";
 import type { BotContext } from "../types";
 import { isBotModuleEnabled } from "../config/env";
@@ -35,6 +36,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handleZtkWebhookMessage(message, context)) {
+    return;
+  }
+
+  if (await handleNexTechInviteMessage(message, context)) {
     return;
   }
 

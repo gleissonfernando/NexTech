@@ -14,6 +14,10 @@ import {
 import { getMaintenanceState } from "../services/maintenanceService";
 import { recordNexTechSaleDeliveryResult } from "../services/nexTechSalesService";
 import {
+  getNexTechInviteRuntime,
+  recordNexTechInviteBlocked
+} from "../services/nexTechInviteService";
+import {
   claimSalesTicket,
   closeSalesTicketWithTranscript,
   createSalesTicket,
@@ -75,6 +79,13 @@ const nexTechSaleDeliveryResultSchema = z.object({
   messageId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
   saleId: z.string().min(1).max(120),
   status: z.enum(["delivered", "partial", "failed"])
+});
+const nexTechInviteBlockedSchema = z.object({
+  channelId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  inviteCode: z.string().max(120).nullable().optional(),
+  messageId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  userId: z.string().regex(/^\d{5,32}$/).nullable().optional(),
+  userName: z.string().max(120).nullable().optional()
 });
 const salesTicketCreateSchema = z.object({
   typeId: z.string().min(1).max(120),
@@ -144,6 +155,37 @@ botDevApiRouter.post("/guilds/:guildId/nex-tech-sales/delivery-result", async (r
     const input = nexTechSaleDeliveryResultSchema.parse(req.body ?? {});
 
     return res.json(await recordNexTechSaleDeliveryResult(botId, guildId, input));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.get("/guilds/:guildId/nextech-invites/runtime", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+
+    return res.json(await getNexTechInviteRuntime(botId, guildId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.post("/guilds/:guildId/nextech-invites/blocked", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = nexTechInviteBlockedSchema.parse(req.body ?? {});
+
+    return res.status(201).json({
+      log: await recordNexTechInviteBlocked(botId, guildId, {
+        channelId: input.channelId ?? null,
+        inviteCode: input.inviteCode ?? null,
+        messageId: input.messageId ?? null,
+        userId: input.userId ?? null,
+        userName: input.userName ?? null
+      })
+    });
   } catch (error) {
     return next(error);
   }

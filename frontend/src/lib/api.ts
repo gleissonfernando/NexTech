@@ -2293,8 +2293,13 @@ export async function updateBotGuildConfig(botId: string, guildId: string, paylo
   return data.config;
 }
 
-export async function getNexTechInviteDashboard() {
-  const { data } = await api.get<NexTechInviteDashboard>("/dev/nextech/invites");
+export async function getNexTechInviteDashboard(botId?: string | null, guildId?: string | null) {
+  const path = botId && guildId
+    ? `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites`
+    : "/dev/nextech/invites";
+  const { data } = await api.get<NexTechInviteDashboard>(path, {
+    params: botId && guildId ? undefined : { botId: botId || undefined, guildId: guildId || undefined }
+  });
   return data;
 }
 
@@ -2303,13 +2308,19 @@ export async function generateNexTechInviteCode() {
   return data.code;
 }
 
-export async function createNexTechInvite(payload: SaveNexTechInvitePayload) {
-  const { data } = await api.post<{ invite: NexTechInvite }>("/dev/nextech/invites", payload);
+export async function createNexTechInvite(payload: SaveNexTechInvitePayload, botId?: string | null, guildId?: string | null) {
+  const path = botId && guildId
+    ? `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites`
+    : "/dev/nextech/invites";
+  const { data } = await api.post<{ invite: NexTechInvite }>(path, payload);
   return data.invite;
 }
 
-export async function updateNexTechInvite(inviteId: string, payload: Partial<SaveNexTechInvitePayload>) {
-  const { data } = await api.patch<{ invite: NexTechInvite }>(`/dev/nextech/invites/${encodeURIComponent(inviteId)}`, payload);
+export async function updateNexTechInvite(inviteId: string, payload: Partial<SaveNexTechInvitePayload>, botId?: string | null, guildId?: string | null) {
+  const path = botId && guildId
+    ? `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites/${encodeURIComponent(inviteId)}`
+    : `/dev/nextech/invites/${encodeURIComponent(inviteId)}`;
+  const { data } = await api.patch<{ invite: NexTechInvite }>(path, payload);
   return data.invite;
 }
 

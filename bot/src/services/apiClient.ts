@@ -25,6 +25,26 @@ export type Pd7Request = { _id:string; botId:string; guildId:string; factionId:s
 export type ZtkWebhookClanRuntime = { active:boolean; clanName:string; discordWebhookChannelId?:string|null; discordWebhookId?:string|null; dominationChannelId?:string|null; id:string; onlineChannelId?:string|null; onlineRankingMessageId?:string|null; participationRankingMessageId?:string|null; rankingChannelId?:string|null; rankingMessageId?:string|null; recruitmentChannelId?:string|null; recruitmentRankingMessageId?:string|null; rewardChannelId?:string|null; settingsChannelId?:string|null; webhookEnabled:boolean };
 export type ZtkWebhookRecruitmentDashboard = { clans: ZtkWebhookClanRuntime[]; selectedClan: ZtkWebhookClanRuntime | null; recruitmentRankings: { recruiters: Array<{ avatarUrl: string | null; firstRecruitmentAt: string | null; lastRecruitmentAt: string | null; monthlyRecruitments: number; normalizedRecruiterName: string; recentRecruits: Array<{ recruitedName: string; recruitedPlayerId: string | null; recruitedAt: string }>; recruiterId: string | null; recruiterName: string; roleName: string | null; todayRecruitments: number; totalRecruitments: number; weeklyRecruitments: number }>; stats: { dailySeries: Array<{ date: string; total: number }>; lastRecruitmentAt: string | null; lastRecruiterName: string | null; monthTotal: number; todayTotal: number; topRecruiterName: string | null; total: number; weekTotal: number } } };
 
+export type NexTechInviteRuntimeInvite = {
+  alertChannelId?: string | null;
+  blockUnknownInvites: boolean;
+  botId?: string | null;
+  code: string;
+  guildId?: string | null;
+  guildName?: string | null;
+  id: string;
+  inviteUrl?: string | null;
+  logChannelId?: string | null;
+  name: string;
+  panelChannelId?: string | null;
+  statsChannelId?: string | null;
+  status: "active" | "paused" | "expired" | "cancelled";
+};
+
+export type NexTechInviteRuntime = {
+  invite: NexTechInviteRuntimeInvite | null;
+};
+
 export type TicketRecord = {
   id: string;
   botId: string | null;
@@ -2956,6 +2976,22 @@ export class ApiClient {
     status: "delivered" | "partial" | "failed";
   }) {
     const { data } = await this.http.post(`/bot/guilds/${guildId}/nex-tech-sales/delivery-result`, input);
+    return data;
+  }
+
+  async getNexTechInviteRuntime(guildId: string) {
+    const { data } = await this.http.get<NexTechInviteRuntime>(`/bot/guilds/${guildId}/nextech-invites/runtime`);
+    return data;
+  }
+
+  async recordNexTechInviteBlocked(guildId: string, input: {
+    channelId?: string | null;
+    inviteCode?: string | null;
+    messageId?: string | null;
+    userId?: string | null;
+    userName?: string | null;
+  }) {
+    const { data } = await this.http.post(`/bot/guilds/${guildId}/nextech-invites/blocked`, input);
     return data;
   }
 

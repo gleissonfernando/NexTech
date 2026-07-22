@@ -4150,17 +4150,41 @@ export type DevAccessEntry = {
 export type NexTechInviteStatus = "active" | "paused" | "expired" | "cancelled";
 
 export type NexTechInvite = {
+  adminChannelId?: string | null;
+  alertChannelId?: string | null;
+  bannerUrl?: string | null;
+  blockUnknownInvites?: boolean;
+  botId?: string | null;
+  buttonEmoji?: string | null;
+  buttonLabel?: string | null;
+  channelId?: string | null;
+  clicks?: number;
   clientName: string;
   code: string;
+  conversionCount?: number;
   createdAt: string;
   createdBy: string | null;
+  description?: string | null;
+  discordInviteId?: string | null;
   expiresAt: string | null;
+  footerText?: string | null;
+  guildId?: string | null;
+  guildName?: string | null;
   id: string;
+  imageUrl?: string | null;
+  inviteUrl?: string | null;
+  logChannelId?: string | null;
   maxUses: number | null;
   name: string;
   notes: string | null;
+  panelChannelId?: string | null;
+  panelColor?: string | null;
+  panelMessageId?: string | null;
+  panelTitle?: string | null;
+  permissions?: Partial<Record<"administrator" | "manager" | "moderator" | "viewer", string[]>>;
   remainingUses: number | null;
   status: NexTechInviteStatus;
+  statsChannelId?: string | null;
   updatedAt: string;
   updatedBy: string | null;
   usages: Array<{
@@ -4170,8 +4194,9 @@ export type NexTechInvite = {
     usedAt: string;
     usedById: string | null;
     usedByName: string | null;
-  }>;
+    }>;
   usedCount: number;
+  videoUrl?: string | null;
 };
 
 export type NexTechInviteLog = {
@@ -4190,10 +4215,15 @@ export type NexTechInviteLog = {
 export type NexTechInviteDashboard = {
   invites: NexTechInvite[];
   logs: NexTechInviteLog[];
+  officialInvite: NexTechInvite | null;
   stats: {
     active: number;
+    blockedInvites: number;
     cancelled: number;
+    clicks: number;
+    conversions: number;
     expired: number;
+    memberCount: number;
     paused: number;
     remainingUses: number;
     totalUses: number;
@@ -4201,13 +4231,35 @@ export type NexTechInviteDashboard = {
 };
 
 export type SaveNexTechInvitePayload = {
+  adminChannelId?: string | null;
+  alertChannelId?: string | null;
+  bannerUrl?: string | null;
+  blockUnknownInvites?: boolean;
+  botId?: string | null;
+  buttonEmoji?: string | null;
+  buttonLabel?: string | null;
+  channelId?: string | null;
   clientName: string;
   code?: string | null;
+  description?: string | null;
+  discordInviteId?: string | null;
   expiresAt?: string | null;
+  footerText?: string | null;
+  guildId?: string | null;
+  guildName?: string | null;
+  imageUrl?: string | null;
+  inviteUrl?: string | null;
+  logChannelId?: string | null;
   maxUses?: number | null;
   name: string;
   notes?: string | null;
+  panelChannelId?: string | null;
+  panelColor?: string | null;
+  panelTitle?: string | null;
+  permissions?: Partial<Record<"administrator" | "manager" | "moderator" | "viewer", string[]>>;
+  statsChannelId?: string | null;
   status?: NexTechInviteStatus;
+  videoUrl?: string | null;
 };
 
 export type CreateDevBotPayload = {
