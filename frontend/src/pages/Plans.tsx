@@ -1,13 +1,36 @@
 import { ArrowLeft, Bot, Check, CreditCard, Loader2, QrCode, ShieldCheck, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPlanCheckoutInterest, getPublicPlans } from "../lib/api";
 import type { Plan } from "../types";
+
+type PlanPeriodicityFilter = "all" | "monthly" | "lifetime";
+type PlanLevelFilter = "all" | "basic" | "complete";
+
+const PERIODICITY_FILTERS: Array<{ label: string; value: PlanPeriodicityFilter }> = [
+  { label: "Todos", value: "all" },
+  { label: "Mensal", value: "monthly" },
+  { label: "Vitalício", value: "lifetime" }
+];
+
+const LEVEL_FILTERS: Array<{ label: string; value: PlanLevelFilter }> = [
+  { label: "Todos", value: "all" },
+  { label: "Básico", value: "basic" },
+  { label: "Completo", value: "complete" }
+];
 
 export function PublicPlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyPlanSlug, setBusyPlanSlug] = useState<string | null>(null);
+  const [periodicityFilter, setPeriodicityFilter] = useState<PlanPeriodicityFilter>("all");
+  const [levelFilter, setLevelFilter] = useState<PlanLevelFilter>("all");
+
+  const filteredPlans = useMemo(() => plans.filter((plan) => {
+    const periodicityMatches = periodicityFilter === "all" || planPeriodicity(plan) === periodicityFilter;
+    const levelMatches = levelFilter === "all" || planLevel(plan) === levelFilter;
+    return periodicityMatches && levelMatches;
+  }), [levelFilter, periodicityFilter, plans]);
 
   useEffect(() => {
     void getPublicPlans().then(setPlans).catch(() => setError("Não foi possível carregar os planos agora.")).finally(() => setLoading(false));
@@ -37,25 +60,83 @@ export function PublicPlansPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#080808] px-4 py-10 text-white sm:px-6 lg:px-8">
+    <main className="relative min-h-screen overflow-hidden bg-[var(--nextech-bg)] px-4 py-10 text-white sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,213,0,.13),transparent_32rem)]" />
       <div className="relative mx-auto max-w-7xl">
         <header className="flex items-center justify-between gap-4">
-          <a className="flex items-center gap-2 text-[#FFD500]" href="/"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10"><Bot className="h-5 w-5" /></span><strong className="text-xl">Nex Tech</strong></a>
-          <a className="flex items-center gap-2 rounded-lg border border-[#FFD500]/25 px-4 py-2 text-sm text-[#FFEA70] transition hover:bg-[#FFD500]/10" href="/"><ArrowLeft className="h-4 w-4" />Voltar ao início</a>
+          <a className="flex items-center gap-2 text-primary" href="/"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-primary/30 bg-primary/10"><Bot className="h-5 w-5" /></span><strong className="text-xl">Nex Tech</strong></a>
+          <a className="flex items-center gap-2 rounded-lg border border-primary/25 px-4 py-2 text-sm text-[var(--nextech-accent-soft)] transition hover:bg-primary/10" href="/"><ArrowLeft className="h-4 w-4" />Voltar ao início</a>
         </header>
         <section className="py-20 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm text-[#FFEA70]"><Sparkles className="h-4 w-4" />Planos Nex Tech</span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-2 text-sm text-[var(--nextech-accent-soft)]"><Sparkles className="h-4 w-4" />Planos Nex Tech</span>
           <h1 className="mt-6 text-4xl font-black tracking-tight sm:text-6xl">Escolha o plano ideal para sua operação</h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-zinc-400">Compare os planos públicos e entre na dashboard somente quando decidir continuar.</p>
         </section>
-        {loading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#FFD500]" /></div> : null}
+        {!loading && !error ? (
+          <PlanFilterBar
+            levelFilter={levelFilter}
+            onLevelChange={setLevelFilter}
+            onPeriodicityChange={setPeriodicityFilter}
+            periodicityFilter={periodicityFilter}
+          />
+        ) : null}
+        {loading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : null}
         {error ? <div className="mx-auto max-w-xl rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">{error}</div> : null}
-        {!loading && !error ? <section aria-label="Planos disponíveis" className="grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">{plans.map((plan) => <PublicPlanCard busy={busyPlanSlug === plan.slug} key={plan.id} onBuy={(paymentMethod) => void handleBuy(plan, paymentMethod)} plan={plan} />)}</section> : null}
+        {!loading && !error && filteredPlans.length ? <section aria-label="Planos disponíveis" className="plans-grid-transition grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3" key={`${periodicityFilter}-${levelFilter}`}>{filteredPlans.map((plan) => <PublicPlanCard busy={busyPlanSlug === plan.slug} key={plan.id} onBuy={(paymentMethod) => void handleBuy(plan, paymentMethod)} plan={plan} />)}</section> : null}
         {!loading && !error && !plans.length ? <p className="py-20 text-center text-zinc-500">Nenhum plano público disponível no momento.</p> : null}
-        <div className="mx-auto mt-16 flex max-w-3xl items-start gap-3 rounded-xl border border-[#FFD500]/15 bg-[#FFD500]/[.05] p-5 text-sm leading-6 text-zinc-400"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD500]" /><p>Esta página mostra somente informações públicas. Tokens, pagamentos e dados administrativos não são enviados ao navegador.</p></div>
+        {!loading && !error && plans.length > 0 && !filteredPlans.length ? <p className="plans-grid-transition py-20 text-center text-zinc-500" key={`${periodicityFilter}-${levelFilter}-empty`}>Nenhum plano encontrado para este filtro.</p> : null}
+        <div className="mx-auto mt-16 flex max-w-3xl items-start gap-3 rounded-xl border border-primary/15 bg-primary/[.05] p-5 text-sm leading-6 text-zinc-400"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><p>Esta página mostra somente informações públicas. Tokens, pagamentos e dados administrativos não são enviados ao navegador.</p></div>
       </div>
     </main>
+  );
+}
+
+function PlanFilterBar({
+  levelFilter,
+  onLevelChange,
+  onPeriodicityChange,
+  periodicityFilter
+}: {
+  levelFilter: PlanLevelFilter;
+  onLevelChange: (filter: PlanLevelFilter) => void;
+  onPeriodicityChange: (filter: PlanPeriodicityFilter) => void;
+  periodicityFilter: PlanPeriodicityFilter;
+}) {
+  return (
+    <div className="mb-8 grid gap-3 rounded-xl border border-primary/15 bg-card/70 p-3 sm:grid-cols-2 sm:items-center">
+      <FilterGroup filters={PERIODICITY_FILTERS} label="Periodicidade" onChange={onPeriodicityChange} value={periodicityFilter} />
+      <FilterGroup filters={LEVEL_FILTERS} label="Nível do plano" onChange={onLevelChange} value={levelFilter} />
+    </div>
+  );
+}
+
+function FilterGroup<T extends string>({
+  filters,
+  label,
+  onChange,
+  value
+}: {
+  filters: Array<{ label: string; value: T }>;
+  label: string;
+  onChange: (filter: T) => void;
+  value: T;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="mr-1 text-xs font-semibold uppercase text-zinc-500">{label}</span>
+      {filters.map((filter) => (
+        <button
+          className={filter.value === value
+            ? "rounded-full border border-primary bg-primary px-4 py-2 text-sm font-black text-black transition"
+            : "rounded-full border border-primary/35 bg-transparent px-4 py-2 text-sm font-bold text-[var(--nextech-accent-soft)] transition hover:bg-primary/10"}
+          key={filter.value}
+          onClick={() => onChange(filter.value)}
+          type="button"
+        >
+          {filter.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -63,22 +144,36 @@ function PublicPlanCard({ busy, onBuy, plan }: { busy: boolean; onBuy: (paymentM
   const price = plan.promotionalPriceInCents ?? plan.priceInCents;
   const includedFeatures = plan.entitlements.filter((feature) => feature.enabled).map((feature) => feature.key.replace(/[._-]+/g, " "));
   const features = [`${plan.botLimit} ${plan.botLimit === 1 ? "bot" : "bots"}`, `${plan.guildLimit} ${plan.guildLimit === 1 ? "servidor" : "servidores"}`, plan.validityDays ? `${plan.validityDays} dias de validade` : "Validade contínua", ...includedFeatures];
-  return <article className={`relative flex flex-col rounded-2xl border bg-[#121212]/95 p-6 ${plan.isRecommended ? "border-[#FFD500]/60 shadow-[0_0_42px_rgba(255,213,0,.16)]" : "border-[#FFD500]/20"}`}>
-    {plan.badge || plan.isRecommended ? <span className="absolute right-4 top-4 rounded-full bg-[#FFD500] px-3 py-1 text-xs font-black text-black">{plan.badge || "Recomendado"}</span> : null}
-    <p className="text-sm font-semibold text-[#FFEA70]">{cycleLabel(plan.billingCycle)}</p><h2 className="mt-3 pr-24 text-2xl font-black">{plan.name}</h2><p className="mt-3 min-h-12 text-sm leading-6 text-zinc-400">{plan.shortDescription || plan.description}</p>
-    <div className="mt-6"><span className="text-4xl font-black text-[#FFD500]">{formatPrice(price, plan.currency)}</span><span className="text-sm text-zinc-500"> {price ? cycleSuffix(plan.billingCycle) : ""}</span></div>
+  return <article className={`relative flex flex-col rounded-2xl border bg-[var(--nextech-surface)] p-6 ${plan.isRecommended ? "border-primary/60 shadow-[0_0_42px_rgba(255,213,0,.16)]" : "border-primary/20"}`}>
+    {plan.badge || plan.isRecommended ? <span className="absolute right-4 top-4 rounded-full bg-primary px-3 py-1 text-xs font-black text-black">{plan.badge || "Recomendado"}</span> : null}
+    <p className="text-sm font-semibold text-[var(--nextech-accent-soft)]">{cycleLabel(plan.billingCycle)}</p><h2 className="mt-3 pr-24 text-2xl font-black">{plan.name}</h2><p className="mt-3 min-h-12 text-sm leading-6 text-zinc-400">{plan.shortDescription || plan.description}</p>
+    <div className="mt-6"><span className="text-4xl font-black text-primary">{formatPrice(price, plan.currency)}</span><span className="text-sm text-zinc-500"> {price ? cycleSuffix(plan.billingCycle) : ""}</span></div>
     {plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents < plan.priceInCents ? <p className="mt-1 text-sm text-zinc-600 line-through">{formatPrice(plan.priceInCents, plan.currency)}</p> : null}
-    <ul className="mt-7 space-y-3">{features.map((feature) => <li className="flex gap-3 text-sm text-zinc-300" key={feature}><Check className="h-4 w-4 shrink-0 text-[#FFD500]" />{feature}</li>)}</ul>
+    <ul className="mt-7 space-y-3">{features.map((feature) => <li className="flex gap-3 text-sm text-zinc-300" key={feature}><Check className="h-4 w-4 shrink-0 text-primary" />{feature}</li>)}</ul>
     {plan.billingCycle === "lifetime" ? (
-      <p className="mt-5 rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/10 p-3 text-sm font-semibold leading-6 text-[#FFEA70]">
+      <p className="mt-5 rounded-lg border border-primary/20 bg-primary/10 p-3 text-sm font-semibold leading-6 text-[var(--nextech-accent-soft)]">
         Após o período gratuito será cobrada apenas a hospedagem, a partir de R$12,00 por mês. Sua licença continuará sendo vitalícia.
       </p>
     ) : null}
     {plan.isPurchasable ? <div className="mt-8 grid gap-2 sm:grid-cols-2">
-      <button className="flex h-12 items-center justify-center gap-2 rounded-lg bg-[#FFD500] text-sm font-bold text-black transition hover:bg-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={() => onBuy("checkout")} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Mercado Pago</button>
-      <button className="flex h-12 items-center justify-center gap-2 rounded-lg border border-[#FFD500]/35 bg-[#FFD500]/10 text-sm font-bold text-[#FFEA70] transition hover:bg-[#FFD500]/15 disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={() => onBuy("pix")} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}Pix</button>
+      <button className="flex h-12 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={() => onBuy("checkout")} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Mercado Pago</button>
+      <button className="flex h-12 items-center justify-center gap-2 rounded-lg border border-primary/35 bg-primary/10 text-sm font-bold text-[var(--nextech-accent-soft)] transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={() => onBuy("pix")} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}Pix</button>
     </div> : <span className="mt-8 flex h-12 items-center justify-center rounded-lg border border-zinc-700 text-sm font-bold text-zinc-500">Indisponível</span>}
   </article>;
+}
+
+function planPeriodicity(plan: Plan): Exclude<PlanPeriodicityFilter, "all"> {
+  return plan.billingCycle === "lifetime" ? "lifetime" : "monthly";
+}
+
+function planLevel(plan: Plan): Exclude<PlanLevelFilter, "all"> {
+  const text = normalizePlanText([plan.name, plan.slug, plan.badge, plan.shortDescription, plan.description].filter(Boolean).join(" "));
+  if (/\b(completo|completa|premium|profissional|pro)\b/.test(text) || plan.billingCycle === "lifetime") return "complete";
+  return "basic";
+}
+
+function normalizePlanText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function formatPrice(value: number, currency: Plan["currency"]) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value / 100); }

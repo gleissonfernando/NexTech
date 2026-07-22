@@ -25,6 +25,13 @@
     --border: 50 100% 50%;
     --input: 0 0% 16%;
     --ring: 50 100% 64%;
+    --nextech-bg: #080808;
+    --nextech-bg-deep: #050505;
+    --nextech-surface: #121212;
+    --nextech-surface-soft: #141414;
+    --nextech-accent: #ffd500;
+    --nextech-accent-soft: #ffea70;
+    --nextech-text-muted: #b3b3b3;
   }
 
   * {
@@ -172,6 +179,10 @@
   .terminal-response-line {
     animation: terminal-line-in 0.24s ease-out both;
   }
+
+  .plans-grid-transition {
+    animation: plans-grid-in 240ms ease-out both;
+  }
 }
 
 @keyframes nex-tech-gradient { to { background-position: 220% center; } }
@@ -219,6 +230,18 @@
   from {
     opacity: 0;
     transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes plans-grid-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 
   to {
