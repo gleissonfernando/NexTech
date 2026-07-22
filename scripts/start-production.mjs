@@ -217,4 +217,50 @@ process.on("SIGTERM", () => shutdown(0));
 
 ensureBuild();
 startProcess("backend", "node", ["backend/dist/server.js"], { restartDelayMs: 5_000 });
-startProcess("bot", "node", [process.env.BOT_SHARDING_ENABLED === "true" ? "bot/dist/shard.js" : "bot/dist/index.js"], { restartOnCleanExit: false });
+startBotAfterBackendReady();
+
+function startBotAfterBackendReady() {
+  void waitForBackendReady()
+    .then(() => {
+      if (shuttingDown) {
+        return;
+      }
+
+      startProcess("bot", "node", [process.env.BOT_SHARDING_ENABLED === "true" ? "bot/dist/shard.js" : "bot/dist/index.js"], { restartOnCleanExit: false });
+    })
+    .catch((error) => {
+      console.error("[start] backend ainda não está pronto; bot principal aguardará nova tentativa:", error instanceof Error ? error.message : error);
+      setTimeout(() => {
+        if (!shuttingDown) {
+          startBotAfterBackendReady();
+        }
+      }, 5_000).unref();
+    });
+}
+
+async function waitForBackendReady(timeoutMs = 45_000) {
+  const startedAt = Date.now();
+  const url = `http://127.0.0.1:${process.env.PORT}/health`;
+  let lastError = "";
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2_500);
+      const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+
+      if (response.status < 500) {
+        console.log("[start] backend pronto; iniciando bot principal.");
+        return;
+      }
+
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+  }
+
+  throw new Error(lastError || "timeout aguardando /health");
+}
