@@ -213,11 +213,11 @@ function createEventPanel(payload: ZtkWebhookEventReceivedEvent) {
 }
 
 function createRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
-  const gangRanking = payload.dominationRankings?.gangs ?? [];
+  const participantRanking = payload.dominationRankings?.participants ?? [];
   return renderComponentsV2Panel({
     accentColor: 0xffd500,
-    description: `Ranking de dominações atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
-    fields: gangRankingBlocks("🔥 TOP 10 DOMINAÇÕES", gangRanking),
+    description: `Top 10 membros com mais dominações atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
+    fields: participantRankingBlocks("🔥 TOP 10 DOMINAÇÕES", participantRanking),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
     title: `🏆 RANKING ${payload.clan.clanName.toUpperCase()}`

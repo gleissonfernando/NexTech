@@ -1058,6 +1058,11 @@ function parseZtkPayload(rawPayload: unknown, rawBody: string, fallbackClanName:
   const totalPlayersInZone = parseFirstNumber(readField(fields, ["total de jogadores na zona", "total na zona"]) ?? totalPlayersSection[0] ?? "");
   const rivalGangs = parseRivalGangs(rivalGangSection.length ? rivalGangSection : splitFieldLines(readField(fields, ["outras gangs presentes", "gangs presentes"]) ?? ""));
   const participants = parseParticipants(participantSection.length ? participantSection : splitFieldLines(readField(fields, ["membros participantes", "participantes"]) ?? ""));
+  const cleanedPlayerName = clean(playerName, 100) || null;
+  const cleanedPlayerId = clean(playerId, 80) || null;
+  const rankingParticipants = participants.length || eventType !== "domination" || !cleanedPlayerName
+    ? participants
+    : [{ id: cleanedPlayerId, name: cleanedPlayerName, normalizedName: normalizeEntity(cleanedPlayerName) }];
   const cleanedClanName = clean(stripBullet(clanName), 100);
   const cleanedLocation = clean(stripBullet(location ?? ""), 120);
   const hash = createHash("sha256").update(`${eventType}|${rawText}|${JSON.stringify(rawPayload ?? {})}`).digest("hex");
@@ -1074,9 +1079,9 @@ function parseZtkPayload(rawPayload: unknown, rawBody: string, fallbackClanName:
     normalizedZoneName: cleanedLocation ? normalizeEntity(cleanedLocation) : null,
     onlineSeconds,
     participantCount,
-    participants,
-    playerId: clean(playerId, 80) || null,
-    playerName: clean(playerName, 100) || null,
+    participants: rankingParticipants,
+    playerId: cleanedPlayerId,
+    playerName: cleanedPlayerName,
     rawText: rawText.slice(0, 6000),
     recruiterId: clean(recruiterId, 80) || null,
     recruiterName: clean(recruiterName, 100) || null,
