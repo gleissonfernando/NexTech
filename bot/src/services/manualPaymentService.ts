@@ -17,17 +17,19 @@ import {
   type Message,
   type ModalSubmitInteraction
 } from "discord.js";
+import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualPaymentOrder, ManualPaymentOrderStatus, ManualPaymentReceiptAttachment, ManualPaymentService, ManualPaymentSettings } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 
 const PREFIX = "manual_pay";
-const MAX_RECEIPT_SIZE = 10 * 1024 * 1024;
+const MAX_RECEIPT_SIZE = env.MANUAL_PAYMENT_MAX_RECEIPT_MB * 1024 * 1024;
 const RECEIPT_WARNING_COOLDOWN_MS = 20_000;
 const receiptProcessingLocks = new Set<string>();
 const receiptWarningCooldown = new Map<string, number>();
-const allowedReceiptMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"]);
+const allowedReceiptMimeTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/webp", "image/gif", "application/pdf"]);
 const allowedReceiptExtensions = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf"]);
+type ReceiptAttachmentLike = Pick<Attachment, "contentType" | "name" | "url">;
 
 export function startManualPaymentService(client: Client<true>, context: BotContext) {
   context.socket.onManualPaymentPanelPublish((payload) => {
@@ -109,26 +111,27 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
 
       const filesWithinLimit = validAttachments.filter((attachment) => attachment.size <= MAX_RECEIPT_SIZE);
       if (!filesWithinLimit.length) {
-        await sendReceiptWarning(message, "too_large", "❌ O arquivo enviado ultrapassa o tamanho máximo permitido.\n\nEnvie uma imagem ou PDF com até 10 MB.");
+        await sendReceiptWarning(message, "too_large", `❌ O arquivo enviado ultrapassa o tamanho máximo permitido.\n\nEnvie uma imagem ou PDF com até ${env.MANUAL_PAYMENT_MAX_RECEIPT_MB} MB.`);
         logReceiptRejected("too_large", message, order, validAttachments);
         return true;
       }
+      const receiptAttachments = filesWithinLimit.slice(0, 10);
 
       console.log("[MANUAL_PAYMENT_RECEIPT_RECEIVED]", {
-        attachmentCount: filesWithinLimit.length,
+        attachmentCount: receiptAttachments.length,
         channelId: message.channelId,
-        contentTypes: filesWithinLimit.map((attachment) => attachment.contentType ?? null),
+        contentTypes: receiptAttachments.map((attachment) => attachment.contentType ?? null),
         customerId: message.author.id,
         guildId: message.guild.id,
         messageId: message.id,
         orderId: order.id,
         paymentId: order.id,
-        sizes: filesWithinLimit.map((attachment) => attachment.size),
+        sizes: receiptAttachments.map((attachment) => attachment.size),
         submittedAt: new Date().toISOString()
       });
 
       const result = await context.api.registerManualPaymentReceipt(message.guild.id, order.id, {
-        attachments: filesWithinLimit.map(toReceiptAttachment),
+        attachments: receiptAttachments.map(toReceiptAttachment),
         channelId: message.channelId,
         customerId: message.author.id,
         customerUsername: message.author.username,
@@ -136,14 +139,14 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
       });
 
       if (result.duplicate) {
-        logReceiptRejected("duplicate", message, order, filesWithinLimit);
+        logReceiptRejected("duplicate", message, order, receiptAttachments);
         return true;
       }
 
       await message.react("✅").catch(() => null);
       await message.reply(createReceiptReceivedPanel(result.order, message.createdAt)).catch(() => null);
       await refreshPaymentPanel(message.guild, context, runtime.settings, result.order);
-      await sendStaffApprovalLog(message.guild, context, runtime.settings, result.order, filesWithinLimit);
+      await sendStaffApprovalLog(message.guild, context, runtime.settings, result.order, receiptAttachments);
       return true;
     } finally {
       receiptProcessingLocks.delete(lockKey);
@@ -160,10 +163,16 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
   }
 }
 
-function isValidReceiptAttachment(item: Attachment) {
+export function isValidReceiptAttachment(item: ReceiptAttachmentLike) {
   const contentType = item.contentType?.split(";")[0]?.toLowerCase() ?? "";
   const extension = receiptAttachmentExtension(item);
   return Boolean((contentType && allowedReceiptMimeTypes.has(contentType)) || allowedReceiptExtensions.has(extension));
+}
+
+export function isReceiptImageAttachment(item: ReceiptAttachmentLike) {
+  const contentType = item.contentType?.split(";")[0]?.toLowerCase() ?? "";
+  const extension = receiptAttachmentExtension(item);
+  return contentType.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif"].includes(extension);
 }
 
 function getUrlPathname(value: string) {
@@ -174,14 +183,16 @@ function getUrlPathname(value: string) {
   }
 }
 
-function receiptAttachmentExtension(item: Attachment) {
-  const fromName = getExtension(item.name ?? "");
+export function receiptAttachmentExtension(item: ReceiptAttachmentLike) {
+  const fromName = getReceiptExtension(item.name ?? "");
   if (fromName) return fromName;
-  return getExtension(getUrlPathname(item.url));
+  return getReceiptExtension(getUrlPathname(item.url));
 }
 
-function getExtension(value: string) {
-  return value.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+export function getReceiptExtension(value: string) {
+  const lastDot = value.lastIndexOf(".");
+  if (lastDot < 0 || lastDot === value.length - 1) return "";
+  return value.slice(lastDot + 1).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function toReceiptAttachment(attachment: Attachment): ManualPaymentReceiptAttachment {
@@ -321,7 +332,7 @@ export function buildPrivatePaymentChannelOverwrites(guild: Guild, settings: Man
   return [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
-    { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] },
     ...(ownerId ? [{ id: ownerId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }] : []),
     ...adminRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }))
   ];
@@ -505,7 +516,7 @@ async function sendStaffApprovalLog(guild: Guild, context: BotContext, settings:
   if (!settings.logChannelId) return null;
   const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
   if (!channel?.isSendable()) return null;
-  const visualAttachment = attachments?.find((attachment) => attachment.contentType?.toLowerCase().startsWith("image/")) ?? null;
+  const visualAttachment = attachments?.find(isReceiptImageAttachment) ?? null;
   const pdfAttachments = attachments?.filter((attachment) => {
     const extension = receiptAttachmentExtension(attachment);
     const contentType = attachment.contentType?.split(";")[0]?.toLowerCase() ?? "";
@@ -740,7 +751,7 @@ function paymentStatusVisual(order: ManualPaymentOrder) {
       description: order.proofUrl
         ? "Seu comprovante foi enviado.\n\nNossa equipe irá analisar em breve."
         : "Recebemos sua confirmação.\n\nEnvie o comprovante neste canal para nossa equipe analisar.",
-      label: "🔵 Comprovante enviado"
+      label: order.proofUrl ? "🔵 Comprovante enviado" : "🔵 Aguardando comprovante"
     };
   }
   if (order.status === "REJECTED") {

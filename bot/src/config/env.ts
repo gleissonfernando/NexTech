@@ -157,6 +157,7 @@ const envSchema = z
     KICK_CLIENT_SECRET: z.string().default(""),
     KICK_MONITOR_INTERVAL_MS: z.coerce.number().default(30_000),
     X_MONITOR_INTERVAL_MS: z.coerce.number().default(60_000),
+    MANUAL_PAYMENT_MAX_RECEIPT_MB: z.coerce.number().int().min(1).max(25).default(10),
     SECURITY_MAX_ACTIONS_PER_MINUTE: envNumber(40),
     SECURITY_MAX_DELETES_PER_MINUTE: envNumber(20),
     SECURITY_MAX_KICKS_PER_MINUTE: envNumber(4),

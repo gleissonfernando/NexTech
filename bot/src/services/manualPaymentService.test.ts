@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PermissionFlagsBits, type Guild } from "discord.js";
 import type { ManualPaymentSettings } from "./apiClient";
-import { buildPrivatePaymentChannelOverwrites } from "./manualPaymentService";
+import {
+  buildPrivatePaymentChannelOverwrites,
+  getReceiptExtension,
+  isReceiptImageAttachment,
+  isValidReceiptAttachment,
+  receiptAttachmentExtension
+} from "./manualPaymentService";
 
 function settingsWithRoles(): ManualPaymentSettings {
   return {
@@ -72,4 +78,34 @@ test("canal temporario de pagamento libera somente comprador, bot, dono e cargos
     "approver-admin",
     "reject-admin"
   ]);
+
+  const botOverwrite = overwrites.find((overwrite) => overwrite.id === "bot-user");
+  const botAllow = botOverwrite?.allow ?? [];
+  assert.ok(botAllow.includes(PermissionFlagsBits.AttachFiles));
+  assert.ok(botAllow.includes(PermissionFlagsBits.EmbedLinks));
+});
+
+test("comprovante manual aceita imagens e pdf por MIME ou extensão", () => {
+  const cases = [
+    { contentType: "image/png", name: "print.png", url: "https://cdn.test/print.png" },
+    { contentType: "image/jpeg", name: "foto.jpg", url: "https://cdn.test/foto.jpg" },
+    { contentType: "image/jpg", name: "celular.jpg", url: "https://cdn.test/celular.jpg" },
+    { contentType: null, name: "captura.jpeg", url: "https://cdn.test/captura.jpeg?ex=1" },
+    { contentType: null, name: "arquivo", url: "https://cdn.test/upload.webp?token=abc" },
+    { contentType: "image/gif; charset=binary", name: "animado.gif", url: "https://cdn.test/animado.gif" },
+    { contentType: "application/pdf", name: "comprovante.pdf", url: "https://cdn.test/comprovante.pdf" }
+  ];
+
+  for (const item of cases) {
+    assert.equal(isValidReceiptAttachment(item), true, `${item.name} deveria ser aceito`);
+  }
+});
+
+test("comprovante manual rejeita tipo inválido e detecta imagens por extensão", () => {
+  assert.equal(isValidReceiptAttachment({ contentType: "application/zip", name: "arquivo.zip", url: "https://cdn.test/arquivo.zip" }), false);
+  assert.equal(isValidReceiptAttachment({ contentType: null, name: "sem-extensao", url: "https://cdn.test/file" }), false);
+  assert.equal(isReceiptImageAttachment({ contentType: null, name: "screenshot", url: "https://cdn.test/screenshot.PNG?x=1" }), true);
+  assert.equal(isReceiptImageAttachment({ contentType: "application/pdf", name: "comprovante.pdf", url: "https://cdn.test/comprovante.pdf" }), false);
+  assert.equal(receiptAttachmentExtension({ contentType: null, name: "", url: "https://cdn.test/minha%20foto.webp?token=1" }), "webp");
+  assert.equal(getReceiptExtension("COMPROVANTE.JPEG"), "jpeg");
 });
