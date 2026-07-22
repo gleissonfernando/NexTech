@@ -5,6 +5,7 @@ import type { AccessValidationResult, AuthResponse } from "../types";
 
 const ACCESS_DENIED_MESSAGE = "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
 const AUTH_TIMEOUT_MS = 18_000;
+const AUTH_TEMP_PARAMS = ["auth", "code", "state", "error", "error_description"];
 export type AuthStatus =
   | "Conectando ao Discord..."
   | "Validando usuário..."
@@ -42,6 +43,9 @@ export function useAuth() {
       setAuth(session);
       setAccessValidation(session.validation ?? null);
       setStatus(session.access.verified ? "Acesso liberado." : "Verificando liberação na dashboard...");
+      if (session.access.verified) {
+        clearTemporaryAuthParams();
+      }
 
       if (!session.access.verified) {
         setCheckingAccess(true);
@@ -96,7 +100,7 @@ export function useAuth() {
       : botSlug
         ? `/auth/discord/bot/${encodeURIComponent(botSlug)}`
         : "/auth/discord/dashboard";
-    window.location.href = appUrl(path);
+    window.location.href = appUrl(`${path}?returnTo=${encodeURIComponent(currentReturnTo())}`);
   }, []);
 
   const logout = useCallback(async () => {
@@ -121,7 +125,7 @@ export function useAuth() {
       setAuth(session);
       setAccessValidation(session.validation ?? null);
       setStatus("Acesso liberado.");
-      clearAuthCallbackLanding();
+      clearTemporaryAuthParams();
       const redirectUrl = session.redirectTo ? appUrl(session.redirectTo) : dashboardUrl(session.user.dashboardBotSlug);
       const redirectPath = new URL(redirectUrl, window.location.origin).pathname;
 
@@ -171,15 +175,31 @@ function isAuthCallbackLanding() {
   return new URLSearchParams(window.location.search).get("auth") === "callback";
 }
 
-function clearAuthCallbackLanding() {
+function currentReturnTo() {
   const url = new URL(window.location.href);
 
-  if (!url.searchParams.has("auth")) {
-    return;
+  for (const param of AUTH_TEMP_PARAMS) {
+    url.searchParams.delete(param);
   }
 
-  url.searchParams.delete("auth");
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  const path = `${url.pathname}${url.search}${url.hash}`;
+  return path.startsWith("/") && !path.startsWith("//") ? path : "/dashboard";
+}
+
+function clearTemporaryAuthParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+
+  for (const param of AUTH_TEMP_PARAMS) {
+    if (url.searchParams.has(param)) {
+      url.searchParams.delete(param);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

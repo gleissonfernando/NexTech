@@ -48,9 +48,8 @@ function appRedirectUrl(path: string) {
   return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}` : path;
 }
 
-function authCallbackLandingUrl(path: string) {
-  const separator = path.includes("?") ? "&" : "?";
-  return appRedirectUrl(`${path}${separator}auth=callback`);
+function cleanAppRedirectUrl(path: string) {
+  return appRedirectUrl(stripAuthTemporaryParams(path));
 }
 
 function errorRedirectUrl(reason: string) {
@@ -145,27 +144,77 @@ function verifyOAuthState(state: string): SignedOAuthState | null {
   }
 }
 
+function readReturnTo(req: Request, fallback: string, botSlug?: string | null) {
+  const requested = typeof req.query.returnTo === "string" ? req.query.returnTo : null;
+  return normalizeReturnTo(requested, fallback, botSlug);
+}
+
+function normalizeReturnTo(value: string | null | undefined, fallback: string, botSlug?: string | null) {
+  const candidate = stripAuthTemporaryParams(toRelativeAppPath(value) ?? fallback);
+  return isAllowedReturnTo(candidate, botSlug) ? candidate : fallback;
+}
+
+function toRelativeAppPath(value: string | null | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed || trimmed.startsWith("//")) {
+    return null;
+  }
+
+  try {
+    const base = env.SITE_ORIGIN || "https://nextech.local";
+    const parsed = new URL(trimmed, base);
+
+    if (/^https?:\/\//i.test(trimmed) && env.SITE_ORIGIN && parsed.origin !== new URL(env.SITE_ORIGIN).origin) {
+      return null;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function stripAuthTemporaryParams(path: string) {
+  const base = env.SITE_ORIGIN || "https://nextech.local";
+
+  try {
+    const parsed = new URL(path, base);
+    for (const param of ["auth", "code", "state", "error", "error_description"]) {
+      parsed.searchParams.delete(param);
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return path.startsWith("/") && !path.startsWith("//") ? path : "/dashboard";
+  }
+}
+
 function isAllowedReturnTo(returnTo: string, botSlug?: string | null) {
-  if (returnTo === "/dev") {
+  const parsed = new URL(returnTo, env.SITE_ORIGIN || "https://nextech.local");
+  const pathname = parsed.pathname;
+
+  if (pathname === "/dev" || pathname.startsWith("/dev/")) {
     return true;
   }
 
-  if (returnTo === "/dashboard") {
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
     return true;
   }
 
-  if (returnTo === "/planos" || returnTo === "/cadastrar-bot") {
+  if (pathname === "/planos" || pathname.startsWith("/planos/")) {
     return true;
   }
 
-  if (/^\/cadastrar-bot\?orderId=[a-zA-Z0-9:-]{8,120}$/.test(returnTo)) {
-    return true;
+  if (pathname === "/cadastrar-bot" || pathname.startsWith("/cadastrar-bot/")) {
+    const params = [...parsed.searchParams.keys()];
+    return params.length === 0 || (params.length === 1 && /^[a-zA-Z0-9:-]{8,120}$/.test(parsed.searchParams.get("orderId") ?? ""));
   }
 
   return Boolean(
     botSlug &&
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(botSlug) &&
-    returnTo === `/${botSlug}/dashboard`
+    (pathname === `/${botSlug}/dashboard` || pathname.startsWith(`/${botSlug}/dashboard/`))
   );
 }
 
@@ -273,13 +322,20 @@ authRouter.get("/discord/dev", async (req, res, next) => {
   }
 
   try {
+    const returnTo = readReturnTo(req, "/dev");
+    const currentAuth = resolveAuthFromRequest(req, res);
+    if (currentAuth?.verified) {
+      console.info(`[auth] login Discord ignorado: sessão existente; type=dev redirect=${returnTo}.`);
+      return res.redirect(cleanAppRedirectUrl(returnTo));
+    }
+
     clearSessionAuthState(req, res);
     const state = await createOAuthState(req, {
       type: "dev",
-      returnTo: "/dev"
+      returnTo
     });
     const diagnostics = getDiscordOAuthDiagnostics();
-    console.info(`[auth] login Discord iniciado: type=dev returnTo=/dev client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
+    console.info(`[auth] login Discord iniciado: type=dev returnTo=${returnTo} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
 
     return res.redirect(buildDiscordAuthUrl(state));
   } catch (error) {
@@ -300,13 +356,20 @@ authRouter.get("/discord/dashboard", async (req, res, next) => {
   }
 
   try {
+    const returnTo = readReturnTo(req, "/dashboard");
+    const currentAuth = resolveAuthFromRequest(req, res);
+    if (currentAuth?.verified) {
+      console.info(`[auth] login Discord ignorado: sessão existente; type=dashboard redirect=${returnTo}.`);
+      return res.redirect(cleanAppRedirectUrl(returnTo));
+    }
+
     clearSessionAuthState(req, res);
     const state = await createOAuthState(req, {
       type: "dashboard",
-      returnTo: "/dashboard"
+      returnTo
     });
     const diagnostics = getDiscordOAuthDiagnostics();
-    console.info(`[auth] login Discord iniciado: type=dashboard returnTo=/dashboard client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
+    console.info(`[auth] login Discord iniciado: type=dashboard returnTo=${returnTo} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
 
     return res.redirect(buildDiscordAuthUrl(state));
   } catch (error) {
@@ -327,9 +390,15 @@ authRouter.get("/discord/customer", async (req, res, next) => {
   }
 
   try {
-    clearSessionAuthState(req, res);
     const requestedReturnTo = typeof req.query.returnTo === "string" ? req.query.returnTo : "/planos";
-    const returnTo = isAllowedReturnTo(requestedReturnTo) ? requestedReturnTo : "/planos";
+    const returnTo = normalizeReturnTo(requestedReturnTo, "/planos");
+    const currentAuth = resolveAuthFromRequest(req, res);
+    if (currentAuth?.verified) {
+      console.info(`[auth] login Discord ignorado: sessão existente; type=customer redirect=${returnTo}.`);
+      return res.redirect(cleanAppRedirectUrl(returnTo));
+    }
+
+    clearSessionAuthState(req, res);
     const state = await createOAuthState(req, {
       type: "customer",
       returnTo
@@ -356,7 +425,6 @@ authRouter.get("/discord/bot/:slug", async (req, res, next) => {
   }
 
   try {
-    clearSessionAuthState(req, res);
     const slug = req.params.slug.trim().toLowerCase();
 
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
@@ -373,7 +441,14 @@ authRouter.get("/discord/bot/:slug", async (req, res, next) => {
       });
     }
 
-    const returnTo = `/${bot.slug}/dashboard`;
+    const returnTo = readReturnTo(req, `/${bot.slug}/dashboard`, bot.slug);
+    const currentAuth = resolveAuthFromRequest(req, res);
+    if (currentAuth?.verified) {
+      console.info(`[auth] login Discord ignorado: sessão existente; type=bot slug=${bot.slug} redirect=${returnTo}.`);
+      return res.redirect(cleanAppRedirectUrl(returnTo));
+    }
+
+    clearSessionAuthState(req, res);
     const state = await createOAuthState(req, {
       type: "bot",
       botId: bot.id,
@@ -400,10 +475,12 @@ authRouter.get("/discord", async (req, res) => {
   const botSlug = readAccessBotSlug(req);
 
   if (botSlug) {
-    return res.redirect(`/auth/discord/bot/${encodeURIComponent(botSlug)}`);
+    const returnTo = readReturnTo(req, `/${botSlug}/dashboard`, botSlug);
+    return res.redirect(`/auth/discord/bot/${encodeURIComponent(botSlug)}?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
-  return res.redirect("/auth/discord/dashboard");
+  const returnTo = readReturnTo(req, "/dashboard");
+  return res.redirect(`/auth/discord/dashboard?returnTo=${encodeURIComponent(returnTo)}`);
 });
 
 authRouter.get("/discord/callback", async (req, res, next) => {
@@ -417,10 +494,19 @@ authRouter.get("/discord/callback", async (req, res, next) => {
   try {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
+    const discordError = typeof req.query.error === "string" ? req.query.error : null;
+    const discordErrorDescription = typeof req.query.error_description === "string" ? req.query.error_description : null;
     const verifiedState = state ? consumeOAuthState(req, state) : null;
     const diagnostics = getDiscordOAuthDiagnostics();
 
-    console.info(`[auth] callback Discord recebido: code=${code ? "present" : "missing"} state=${state ? "present" : "missing"} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
+    console.info(`[auth] callback Discord recebido: code=${code ? "present" : "missing"} state=${state ? "present" : "missing"} error=${discordError ?? "none"} client_id=${diagnostics.clientId} redirect_uri=${diagnostics.redirectUri}.`);
+
+    if (discordError) {
+      console.warn(`[auth] callback recusado pelo Discord: error=${discordError} description=${discordErrorDescription ?? "none"}.`);
+      clearSessionAuthState(req, res);
+      await saveSession(req).catch(() => undefined);
+      return res.redirect(errorRedirectUrl(discordError === "access_denied" ? "denied" : "oauth"));
+    }
 
     if (!code || !state || !verifiedState) {
       console.warn("[auth] callback recusado: state ausente ou inválido.");
@@ -484,7 +570,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       issueAuthCookies(res, req.session.user, false);
       await saveSession(req);
       console.info(`[auth] oauth: sessão de cliente criada para ${discordUser.id}; redirect=${redirectTo}.`);
-      return res.redirect(authCallbackLandingUrl(redirectTo));
+      return res.redirect(cleanAppRedirectUrl(redirectTo));
     }
 
     if (verifiedState.type === "bot") {
@@ -565,17 +651,17 @@ authRouter.get("/discord/callback", async (req, res, next) => {
     }
 
     req.session.user = validatedUser;
-    req.session.verified = false;
+    req.session.verified = true;
     req.session.oauth2VerifiedAt = new Date().toISOString();
     req.session.oauthState = undefined;
     req.session.discordAccessToken = tokens.access_token;
     req.session.discordRefreshToken = undefined;
     req.session.accessValidatedAt = Date.now();
 
-    issueAuthCookies(res, req.session.user, false);
+    issueAuthCookies(res, req.session.user, true);
     await saveSession(req);
-    console.info(`[auth] oauth: sessão autenticada criada para ${discordUser.id}; aguardando verificação de acesso; redirect=${redirectTo}.`);
-    return res.redirect(authCallbackLandingUrl(redirectTo));
+    console.info(`[auth] oauth: sessão autenticada e verificada criada para ${discordUser.id}; redirect=${redirectTo}.`);
+    return res.redirect(cleanAppRedirectUrl(redirectTo));
   } catch (error) {
     console.error("[auth] oauth: falha no callback:", error instanceof Error ? error.message : error);
     clearAuthCookies(res);
