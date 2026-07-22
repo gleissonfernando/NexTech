@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
@@ -55,6 +55,12 @@ writeFileSync(path.join(target, "discloud.config"), [
 ].join("\n"));
 
 const runtimeEnv = {};
+for (const key of ["DISCORD_BOT_TOKEN"]) {
+  const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
+  if (value) {
+    runtimeEnv[key] = value;
+  }
+}
 for (const key of ["START_REGISTERED_DEV_BOTS"]) {
   const value = process.env[key]?.trim();
   if (value) {
@@ -63,6 +69,23 @@ for (const key of ["START_REGISTERED_DEV_BOTS"]) {
 }
 
 writeFileSync(path.join(target, ".nex-tech-runtime-env.json"), `${JSON.stringify(runtimeEnv, null, 2)}\n`);
+
+function explicitRuntimeConfigValue(key) {
+  const runtimeConfigFile = [".nex-tech-runtime-env.json", ".NexTech-runtime-env.json", ".orvitek-runtime-env.json"]
+    .find((candidate) => existsSync(path.join(root, candidate)));
+
+  if (!runtimeConfigFile) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(root, runtimeConfigFile), "utf8"));
+    const value = parsed?.[key];
+    return value === null || value === undefined ? "" : String(value).trim();
+  } catch {
+    return "";
+  }
+}
 
 writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   name: "nextech-discloud-runtime",
