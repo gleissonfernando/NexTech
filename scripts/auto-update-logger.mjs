@@ -14,17 +14,19 @@ export async function runAutoUpdateLogger(options = {}) {
   const token = readConfigValue("DISCORD_BOT_TOKEN");
   const currentCommit = git(["rev-parse", "HEAD"]).trim();
   const history = readHistory();
+  const existingRelease = history.releases.find((release) => release.commit === currentCommit);
 
-  if (history.releases.some((release) => release.commit === currentCommit)) {
+  if (existingRelease?.discordSentAt || existingRelease?.discordMessageId) {
     console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já registrada; envio ignorado.`);
     return { skipped: true };
   }
 
-  const previousCommit = history.releases[0]?.commit || safeGit(["rev-parse", "HEAD~1"]).trim();
+  const previousCommit = existingRelease?.previousCommit || history.releases.find((release) => release.commit !== currentCommit)?.commit || safeGit(["rev-parse", "HEAD~1"]).trim();
   const analysis = analyzeRelease(previousCommit, currentCommit);
-  const version = nextVersion(history.releases[0]?.version, readPackageVersion());
+  const version = existingRelease?.version || nextVersion(history.releases.find((release) => release.commit !== currentCommit)?.version, readPackageVersion());
   const publishedAt = new Date().toISOString();
   const release = {
+    ...(existingRelease ?? {}),
     id: currentCommit,
     version,
     commit: currentCommit,
@@ -42,11 +44,13 @@ export async function runAutoUpdateLogger(options = {}) {
     return { release, skipped: true };
   }
 
-  history.releases.unshift(release);
-  history.releases = history.releases.slice(0, 100);
-  writeHistory(history);
-
   if (!channelId || !token) {
+    upsertHistoryRelease(history, {
+      ...release,
+      discordChannelId: channelId || null,
+      discordSkippedReason: "UPDATE_CHANNEL_ID ou DISCORD_BOT_TOKEN não configurado."
+    });
+    writeHistory(history);
     console.log("[auto-update] UPDATE_CHANNEL_ID ou DISCORD_BOT_TOKEN não configurado; histórico salvo sem envio Discord.");
     return { release, skipped: true };
   }
@@ -54,7 +58,15 @@ export async function runAutoUpdateLogger(options = {}) {
   const bot = await fetchDiscordBot(token).catch(() => null);
   const payload = buildDiscordPayload({ analysis, bot, channelId, release });
 
-  await sendDiscordMessage(token, channelId, payload);
+  const message = await sendDiscordMessage(token, channelId, payload);
+  upsertHistoryRelease(history, {
+    ...release,
+    discordChannelId: channelId,
+    discordMessageId: message?.id ?? null,
+    discordSentAt: new Date().toISOString(),
+    discordSkippedReason: null
+  });
+  writeHistory(history);
   console.log(`[auto-update] changelog ${version} enviado para o canal ${channelId}.`);
   return { release, skipped: false };
 }
@@ -275,6 +287,7 @@ async function sendDiscordMessage(token, channelId, payload) {
     const body = await response.text().catch(() => "");
     throw new Error(`Discord changelog HTTP ${response.status}: ${body.slice(0, 500)}`);
   }
+  return response.json().catch(() => null);
 }
 
 function nextVersion(previousVersion, packageVersion) {
@@ -297,6 +310,15 @@ function readHistory() {
 function writeHistory(history) {
   mkdirSync(historyDir, { recursive: true });
   writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+}
+
+function upsertHistoryRelease(history, release) {
+  const index = history.releases.findIndex((item) => item.commit === release.commit);
+  if (index >= 0) {
+    history.releases.splice(index, 1);
+  }
+  history.releases.unshift(release);
+  history.releases = history.releases.slice(0, 100);
 }
 
 function readPackageVersion() {

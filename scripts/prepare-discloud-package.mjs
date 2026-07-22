@@ -55,7 +55,7 @@ writeFileSync(path.join(target, "discloud.config"), [
 ].join("\n"));
 
 const runtimeEnv = {};
-for (const key of ["DISCORD_BOT_TOKEN"]) {
+for (const key of ["DISCORD_BOT_TOKEN", "UPDATE_CHANNEL_ID", "AUTO_UPDATE_CHANNEL_ID"]) {
   const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
     runtimeEnv[key] = value;
