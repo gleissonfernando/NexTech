@@ -5,6 +5,8 @@ import {
     CalendarDays,
     CheckCircle2,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Circle,
     Copy,
     CreditCard,
@@ -2226,6 +2228,7 @@ function BotModuleWorkspace({
   onToggle: (moduleId: string, checked: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [moduleSectionPages, setModuleSectionPages] = useState<Record<string, number>>({});
   const categories = moduleDashboardCategories(modules);
   const categoryItems = flattenBotMenuItems(categories).filter((item) => modulesForMenu(item, modules, true).length > 0);
   const enabledModules = normalizeDevModuleIds(bot.enabledModules);
@@ -2288,6 +2291,10 @@ function BotModuleWorkspace({
     setExpandedGroupIds(readBotMenuGroupExpansion(bot.id, defaultExpandedGroups));
   }, [bot.id, defaultExpandedGroups.join("|")]);
 
+  useEffect(() => {
+    setModuleSectionPages({});
+  }, [activeMenuId, normalizedQuery]);
+
   function toggleFavorite(moduleId: string) {
     setFavoriteIds((current) => {
       const next = current.includes(moduleId)
@@ -2307,6 +2314,17 @@ function BotModuleWorkspace({
 
       writeBotMenuGroupExpansion(bot.id, next);
       return next;
+    });
+  }
+
+  function changeModuleSectionPage(sectionId: string, direction: -1 | 1, totalPages: number) {
+    setModuleSectionPages((current) => {
+      const currentPage = Math.min(current[sectionId] ?? 0, Math.max(totalPages - 1, 0));
+      const nextPage = Math.min(Math.max(currentPage + direction, 0), Math.max(totalPages - 1, 0));
+      return {
+        ...current,
+        [sectionId]: nextPage
+      };
     });
   }
 
@@ -2503,31 +2521,63 @@ function BotModuleWorkspace({
 
             {(activeMenuId === "database-maintenance" || activeMenuId === "system-emojis") && !normalizedQuery ? null : filteredModules.length ? (
               <div className="space-y-7">
-                {moduleSections.map((section) => (
-                  <section className="scroll-mt-6 space-y-3" id={`bot-menu-section-${section.id}`} key={section.id}>
-                    <div className="flex flex-col gap-2 border-b border-zinc-800/80 pb-3 sm:flex-row sm:items-end sm:justify-between">
-                      <div className="min-w-0">
-                        <h4 className="truncate text-sm font-bold uppercase tracking-[0.14em] text-[#FFEA70]" title={section.label}>{section.label}</h4>
-                        {section.description ? <p className="mt-1 line-clamp-1 text-xs font-medium text-zinc-500" title={section.description}>{section.description}</p> : null}
+                {moduleSections.map((section) => {
+                  const totalPages = Math.ceil(section.modules.length / MODULE_SECTION_PAGE_SIZE);
+                  const currentPage = Math.min(moduleSectionPages[section.id] ?? 0, Math.max(totalPages - 1, 0));
+                  const pageStart = currentPage * MODULE_SECTION_PAGE_SIZE;
+                  const pageModules = section.modules.slice(pageStart, pageStart + MODULE_SECTION_PAGE_SIZE);
+                  const activeCount = section.modules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length;
+
+                  return (
+                    <section className="scroll-mt-6 space-y-3" id={`bot-menu-section-${section.id}`} key={section.id}>
+                      <div className="flex flex-col gap-2 border-b border-zinc-800/80 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="min-w-0">
+                          <h4 className="truncate text-sm font-bold uppercase tracking-[0.14em] text-[#FFEA70]" title={section.label}>{section.label}</h4>
+                          {section.description ? <p className="mt-1 line-clamp-1 text-xs font-medium text-zinc-500" title={section.description}>{section.description}</p> : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="muted">{activeCount}/{section.modules.length} ativos</Badge>
+                          {totalPages > 1 ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                aria-label={`Página anterior de ${section.label}`}
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-800 bg-black/25 text-zinc-400 transition hover:border-[#FFEA70]/40 hover:text-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={currentPage === 0}
+                                onClick={() => changeModuleSectionPage(section.id, -1, totalPages)}
+                                type="button"
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </button>
+                              <button
+                                aria-label={`Próxima página de ${section.label}`}
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-800 bg-black/25 text-zinc-400 transition hover:border-[#FFEA70]/40 hover:text-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={currentPage >= totalPages - 1}
+                                onClick={() => changeModuleSectionPage(section.id, 1, totalPages)}
+                                type="button"
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                      <Badge variant="muted">{section.modules.filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length}/{section.modules.length} ativos</Badge>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                      {section.modules.map((module, index) => (
-                        <ModuleDashboardCard
-                          enabled={enabledSet.has(canonicalDevModuleId(module.id))}
-                          favorite={favoriteSet.has(module.id)}
-                          index={index}
-                          key={module.id}
-                          module={module}
-                          onToggle={onToggle}
-                          onToggleFavorite={toggleFavorite}
-                          status={bot.status}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
+                      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                        {pageModules.map((module, index) => (
+                          <ModuleDashboardCard
+                            enabled={enabledSet.has(canonicalDevModuleId(module.id))}
+                            favorite={favoriteSet.has(module.id)}
+                            index={pageStart + index}
+                            key={module.id}
+                            module={module}
+                            onToggle={onToggle}
+                            onToggleFavorite={toggleFavorite}
+                            status={bot.status}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             ) : (
               <EmptyBotMenuCategory label={normalizedQuery ? "Busca" : activeMenuId === "favorites" ? "Favoritos" : activeCategory?.label ?? "Categoria"} />
@@ -3410,7 +3460,7 @@ function ModuleDashboardCard({
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-white" title={module.label}>{module.label}</h3>
+            <h3 className="break-words text-sm font-bold leading-5 text-white" title={module.label}>{module.label}</h3>
             <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-zinc-500" title={moduleDescription(module.id)}>{moduleDescription(module.id)}</p>
           </div>
         </div>
@@ -5471,6 +5521,8 @@ type BotMenuCategoryGroup = {
   label: string;
   total: number;
 };
+
+const MODULE_SECTION_PAGE_SIZE = 6;
 
 function groupedBotMenuCategories(categories: BotMenuItem[], modules: DevModuleDefinition[], enabledModules: string[]): BotMenuCategoryGroup[] {
   const enabledSet = new Set(normalizeDevModuleIds(enabledModules));
