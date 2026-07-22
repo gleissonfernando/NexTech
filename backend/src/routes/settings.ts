@@ -68,6 +68,7 @@ const settingsSchema = z.object({
   ticketPanelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   ticketPanelPlaceholder: z.string().max(120).nullable().optional(),
   ticketPanelOptions: z.array(z.object({
+    categoryId: z.string().nullable().optional().default(null),
     description: z.string().max(100).nullable().optional().default(null),
     emoji: z.string().max(80).nullable().optional().default(null),
     enabled: z.boolean().optional().default(true),
@@ -1220,6 +1221,17 @@ async function validateGuildResources(
     && !(await isGuildCategoryChannel(guildId, input.ticketCategoryId, botToken))
   ) {
     throw createSettingsError("A categoria de tickets não pertence a este servidor.");
+  }
+
+  const ticketPanelCategoryIds = (input.ticketPanelOptions ?? [])
+    .map((option) => option.categoryId)
+    .filter((categoryId): categoryId is string => Boolean(categoryId));
+
+  if (ticketPanelCategoryIds.length) {
+    const categoryChecks = await Promise.all([...new Set(ticketPanelCategoryIds)].map((categoryId) => isGuildCategoryChannel(guildId, categoryId, botToken)));
+    if (!categoryChecks.every(Boolean)) {
+      throw createSettingsError("Uma das categorias temporárias do painel de tickets não pertence a este servidor.");
+    }
   }
 
   if (

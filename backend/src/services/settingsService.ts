@@ -108,6 +108,7 @@ export type GlobalLogConfigDto = {
 };
 
 export type TicketPanelOptionDto = {
+  categoryId: string | null;
   description: string | null;
   emoji: string | null;
   enabled: boolean;
@@ -330,6 +331,7 @@ const DEFAULT_TICKET_PANEL_INFO_TEXT = [
 const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione o tipo de atendimento";
 const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
   {
+    categoryId: null,
     description: "Abrir um atendimento com a equipe.",
     emoji: fixedSystemEmojiText("prancheta"),
     enabled: true,
@@ -1271,6 +1273,7 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
       seen.add(value);
 
       return {
+        categoryId: normalizeSnowflake(String(record.categoryId ?? "")),
         description: normalizeNullableText(record.description, 100),
         emoji: normalizeNullableSystemEmojiText(record.emoji),
         enabled: record.enabled !== false,

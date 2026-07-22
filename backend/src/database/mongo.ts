@@ -85,6 +85,7 @@ export type MongoGuildSettings = {
   ticketPanelColor?: string | null;
   ticketPanelPlaceholder?: string | null;
   ticketPanelOptions?: Array<{
+    categoryId?: string | null;
     description?: string | null;
     emoji?: string | null;
     enabled?: boolean;

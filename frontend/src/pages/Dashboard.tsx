@@ -7088,6 +7088,7 @@ function TicketPanelConfigurator({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [channels, setChannels] = useState<GuildLiveOptions["channels"]>([]);
+  const [categories, setCategories] = useState<NonNullable<GuildLiveOptions["categories"]>>([]);
   const [applicationEmojis, setApplicationEmojis] = useState<ApplicationEmojiItem[]>([]);
   const disabled = !guild || !settings || !canManage || saving || publishing;
 
@@ -7109,16 +7110,23 @@ function TicketPanelConfigurator({
   useEffect(() => {
     if (!guild) {
       setChannels([]);
+      setCategories([]);
       return;
     }
 
     let active = true;
     getGuildLiveOptions(guild.id, botId)
       .then((data) => {
-        if (active) setChannels(data.channels ?? []);
+        if (active) {
+          setChannels(data.channels ?? []);
+          setCategories(data.categories ?? []);
+        }
       })
       .catch(() => {
-        if (active) setChannels([]);
+        if (active) {
+          setChannels([]);
+          setCategories([]);
+        }
       });
 
     return () => {
@@ -7161,6 +7169,7 @@ function TicketPanelConfigurator({
       ticketPanelOptions: [
         ...current.ticketPanelOptions,
         {
+          categoryId: null,
           description: "Descreva este atendimento.",
           emoji: PANEL_EMOJIS.prancheta,
           enabled: true,
@@ -7296,9 +7305,26 @@ function TicketPanelConfigurator({
           </div>
 
           {draft.ticketPanelOptions.map((option, index) => (
-            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_120px_160px_auto]" key={`${option.value}-${index}`}>
+            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_180px_120px_160px_auto]" key={`${option.value}-${index}`}>
               <TicketField disabled={disabled} label="Nome" onChange={(value) => updateOption(index, { label: value, value: slugTicketOption(value, index) })} value={option.label} />
               <TicketField disabled={disabled} label="Descrição" onChange={(value) => updateOption(index, { description: value })} value={option.description ?? ""} />
+              <label className="block text-xs font-medium text-zinc-400">
+                Categoria temporária
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
+                  disabled={disabled}
+                  onChange={(event) => updateOption(index, { categoryId: event.target.value || null })}
+                  value={option.categoryId ?? ""}
+                >
+                  <option value="">Categoria padrão</option>
+                  {option.categoryId && !categories.some((category) => category.id === option.categoryId) ? (
+                    <option value={option.categoryId}>Categoria atual ({option.categoryId})</option>
+                  ) : null}
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </label>
               <TicketField disabled={disabled} label="Emoji" onChange={(value) => updateOption(index, { emoji: value })} value={option.emoji ?? ""} />
               <label className="block text-xs font-medium text-zinc-400">
                 Emoji da Dashboard
@@ -7856,6 +7882,7 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
     ticketPanelColor: settings?.ticketPanelColor ?? "#FFD500",
     ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione o tipo de atendimento",
     ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : [{
+      categoryId: null,
       description: "Abrir um atendimento com a equipe.",
       emoji: PANEL_EMOJIS.prancheta,
       enabled: true,
@@ -7868,6 +7895,7 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
 function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): TicketPanelOption {
   const label = option.label.trim() || `Atendimento ${index + 1}`;
   return {
+    categoryId: option.categoryId?.trim() || null,
     description: option.description?.trim() || null,
     emoji: option.emoji?.trim() || null,
     enabled: option.enabled !== false,

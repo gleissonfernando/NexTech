@@ -436,7 +436,9 @@ async function publishConfiguredTicketPanelUnlocked(client: Client, context: Bot
 }
 
 async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption) {
-  if (!settings.ticketCategoryId || !guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+  const categoryId = option.categoryId ?? settings.ticketCategoryId;
+
+  if (!categoryId || !guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     return null;
   }
 
@@ -450,7 +452,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
 
   return guild.channels.create({
     name: `ticket-${safeName}-${openerId.slice(-4)}`,
-    parent: settings.ticketCategoryId,
+    parent: categoryId,
     permissionOverwrites: [
       {
         id: guild.roles.everyone.id,

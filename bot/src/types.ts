@@ -119,6 +119,7 @@ export type GuildSettings = {
 };
 
 export type TicketPanelOption = {
+  categoryId?: string | null;
   description: string | null;
   emoji: string | null;
   enabled: boolean;
