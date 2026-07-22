@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { MongoZtkWebhookClan, MongoZtkWebhookEventType, MongoZtkWebhookLog, MongoZtkWebhookPlayerStat, MongoZtkWebhookReward } from "../database/mongo";
+import type { MongoZtkRecruiterRanking, MongoZtkWebhookClan, MongoZtkWebhookEventType, MongoZtkWebhookLog, MongoZtkWebhookPlayerStat, MongoZtkWebhookReward } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoomWithAck } from "../realtime/events";
 import { createLog } from "./logService";
@@ -395,7 +395,7 @@ export async function createZtkReward(guildId: string, botId: string | null, cla
 }
 
 export async function ingestZtkWebhookEvent(clanId: string, token: string, rawPayload: unknown, rawBody: string) {
-  const { ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats } = await getMongoCollections();
+  const { ztkRecruiterRankings, ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats } = await getMongoCollections();
   const clan = await ztkWebhookClans.findOne({ _id: clanId, webhookToken: token, webhookEnabled: true, active: true });
   if (!clan) {
     throw Object.assign(new Error("Webhook ZTK inválida, desativada ou não encontrada."), { statusCode: 404 });
@@ -446,6 +446,7 @@ export async function ingestZtkWebhookEvent(clanId: string, token: string, rawPa
 
   await ztkWebhookClans.updateOne({ _id: clan._id }, { $set: { lastEventAt: now, updatedAt: now } });
   await updatePlayerStats(ztkWebhookPlayerStats, clan, log);
+  await updateRecruiterRanking(ztkRecruiterRankings, clan, log);
   const rankings = {
     domination: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "dominations"),
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
@@ -519,7 +520,7 @@ export async function updateZtkRankingMessageState(
 }
 
 async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unknown, rawBody: string) {
-  const { ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats } = await getMongoCollections();
+  const { ztkRecruiterRankings, ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats } = await getMongoCollections();
   const parsed = parseZtkPayload(rawPayload, rawBody, clan.clanName);
   const dedupeKey = parsed.externalId || parsed.hash;
   const now = new Date();
@@ -565,6 +566,7 @@ async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unkno
 
   await ztkWebhookClans.updateOne({ _id: clan._id }, { $set: { lastEventAt: now, updatedAt: now } });
   await updatePlayerStats(ztkWebhookPlayerStats, clan, log);
+  await updateRecruiterRanking(ztkRecruiterRankings, clan, log);
   const rankings = {
     domination: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "dominations"),
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
@@ -582,6 +584,49 @@ async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unkno
     rankings
   });
   return { duplicate: false, event: toLogDto(log), message: "Evento registrado." };
+}
+
+async function updateRecruiterRanking(collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkRecruiterRankings"], clan: MongoZtkWebhookClan, log: MongoZtkWebhookLog) {
+  if (log.eventType !== "recruitment") return;
+  const recruiterName = sanitizeZtkRecruitmentName(log.recruiterName);
+  const recruitedName = sanitizeZtkRecruitmentName(log.playerName);
+  if (!recruiterName || !recruitedName) return;
+
+  const updatedAt = new Date();
+  const normalizedName = normalizeEntity(recruiterName);
+  const { date, time } = formatZtkEventDateParts(log.eventTimestamp);
+  const set: Partial<MongoZtkRecruiterRanking> = {
+    discord_id: clean(log.recruiterId, 80) || null,
+    nome: recruiterName,
+    ultima_data: date,
+    ultima_hora: time,
+    ultimo_recrutado: recruitedName,
+    updated_at: updatedAt
+  };
+
+  await collection.updateOne(
+    {
+      botId: clan.botId,
+      clan_id: clan._id,
+      guildId: clan.guildId,
+      normalized_nome: normalizedName
+    },
+    {
+      $inc: { total_recrutamentos: 1 },
+      $set: set,
+      $setOnInsert: {
+        _id: randomUUID(),
+        avatar: null,
+        botId: clan.botId,
+        cargo: null,
+        clan_id: clan._id,
+        created_at: updatedAt,
+        guildId: clan.guildId,
+        normalized_nome: normalizedName
+      }
+    },
+    { upsert: true }
+  );
 }
 
 async function updatePlayerStats(collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookPlayerStats"], clan: MongoZtkWebhookClan, log: MongoZtkWebhookLog) {
@@ -941,8 +986,7 @@ async function buildRecruitmentRankings(
         weeklyRecruitments: 1
       }
     },
-    { $sort: { totalRecruitments: -1, lastRecruitmentAt: -1, recruiterName: 1 } },
-    { $limit: ZTK_RANKING_LIMIT }
+    { $sort: { totalRecruitments: -1, lastRecruitmentAt: -1, recruiterName: 1 } }
   ]).toArray();
 
   const [statsDoc] = await collection.aggregate<{
@@ -1453,6 +1497,13 @@ function parseDate(value: string | null | undefined) {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatZtkEventDateParts(value: Date) {
+  return {
+    date: value.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+    time: value.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })
+  };
 }
 
 function num(value: string | undefined) {

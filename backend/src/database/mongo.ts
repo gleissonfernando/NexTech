@@ -3437,6 +3437,24 @@ export type MongoZtkWebhookPlayerStat = {
   updatedAt: Date;
 };
 
+export type MongoZtkRecruiterRanking = {
+  _id: string;
+  avatar: string | null;
+  botId: string;
+  cargo: string | null;
+  clan_id: string;
+  created_at: Date;
+  discord_id: string | null;
+  guildId: string;
+  nome: string;
+  normalized_nome: string;
+  total_recrutamentos: number;
+  ultima_data: string | null;
+  ultima_hora: string | null;
+  ultimo_recrutado: string | null;
+  updated_at: Date;
+};
+
 export type MongoZtkWebhookReward = {
   _id: string;
   active: boolean;
@@ -4707,6 +4725,7 @@ export async function getMongoCollections() {
     ztkWebhookClans: db.collection<MongoZtkWebhookClan>("ztk_webhook_clans"),
     ztkWebhookLogs: db.collection<MongoZtkWebhookLog>("ztk_webhook_logs"),
     ztkWebhookPlayerStats: db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats"),
+    ztkRecruiterRankings: db.collection<MongoZtkRecruiterRanking>("ranking_recrutadores"),
     ztkWebhookRewards: db.collection<MongoZtkWebhookReward>("ztk_webhook_rewards"),
     globalBlacklistSettings: db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings"),
     globalBlacklistEntries: db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries"),
@@ -5019,6 +5038,8 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, dominations: -1 }),
     db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, recruitments: -1 }),
     db.collection<MongoZtkWebhookPlayerStat>("ztk_webhook_player_stats").createIndex({ botId: 1, guildId: 1, clanId: 1, onlineSeconds: -1 }),
+    db.collection<MongoZtkRecruiterRanking>("ranking_recrutadores").createIndex({ botId: 1, guildId: 1, clan_id: 1, normalized_nome: 1 }, { unique: true }),
+    db.collection<MongoZtkRecruiterRanking>("ranking_recrutadores").createIndex({ botId: 1, guildId: 1, clan_id: 1, total_recrutamentos: -1, updated_at: -1 }),
     db.collection<MongoZtkWebhookReward>("ztk_webhook_rewards").createIndex({ botId: 1, guildId: 1, clanId: 1, rankingType: 1, createdAt: -1 }),
     db.collection<MongoGlobalBlacklistSafeBotSettings>("global_blacklist_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoGlobalBlacklistEntry>("global_blacklist_entries").createIndex({ userId: 1, active: 1 }),

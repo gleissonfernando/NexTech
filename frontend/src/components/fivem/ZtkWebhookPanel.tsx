@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Clipboard, Gift, Link2, Loader2, Megaphone, RefreshCw, Save, Settings, Trophy, Trash2, UserPlus } from "lucide-react";
+import { Award, BarChart3, CalendarClock, Clipboard, Clock3, Crown, Gift, Link2, Loader2, Megaphone, RefreshCw, Save, Search, Settings, Sparkles, Trophy, Trash2, UserPlus, Users, X } from "lucide-react";
 import {
   createZtkReward,
   createZtkWebhookClan,
@@ -40,6 +40,7 @@ const rankingLabels: Record<ZtkRankingType, string> = {
   recruitment: "Recrutamento"
 };
 const ZTK_RANKING_LIMIT = 10;
+type ZtkRecruiterRankingItem = ZtkWebhookDashboard["recruitmentRankings"]["recruiters"][number];
 
 export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("ranking");
@@ -412,57 +413,101 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
   const [dateFilter, setDateFilter] = useState("");
   const [selectedRecruiter, setSelectedRecruiter] = useState<string | null>(null);
   const [periodFilter, setPeriodFilter] = useState<"today" | "week" | "month" | "total">("total");
+
   const recruiters = dashboard?.recruitmentRankings.recruiters ?? [];
-  const recruitmentLogs = (dashboard?.logs ?? []).filter((log) => log.eventType === "recruitment");
-  const stats = dashboard?.recruitmentRankings.stats;
+  const recruitmentLogs = (dashboard?.logs ?? []).filter((log) => log.eventType === "recruitment" && log.recruiterName && log.playerName);
+  const stats = dashboard?.recruitmentRankings.stats ?? emptyRecruitmentStats();
   const filtered = useMemo(() => recruiters.filter((item) => {
     const recruiterOk = !recruiterQuery.trim() || normalizeSearch(item.recruiterName).includes(normalizeSearch(recruiterQuery));
     const recruitedOk = !recruitedQuery.trim() || item.recentRecruits.some((recruit) => normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery)));
     const dateOk = !dateFilter || item.recentRecruits.some((recruit) => recruit.recruitedAt.slice(0, 10) === dateFilter);
     return recruiterOk && recruitedOk && dateOk;
-  }).sort((a, b) => recruitmentPeriodValue(b, periodFilter) - recruitmentPeriodValue(a, periodFilter) || a.recruiterName.localeCompare(b.recruiterName)).slice(0, ZTK_RANKING_LIMIT), [dateFilter, periodFilter, recruitedQuery, recruiterQuery, recruiters]);
-  const activeRecruiter = filtered.find((item) => item.normalizedRecruiterName === selectedRecruiter) ?? filtered[0] ?? null;
-  const maxRecruitments = Math.max(1, ...filtered.map((item) => recruitmentPeriodValue(item, periodFilter)));
-  const medals = ["🥇", "🥈", "🥉"];
-  const activeHistory = (activeRecruiter?.recentRecruits ?? []).filter((recruit) => {
-    const recruitedOk = !recruitedQuery.trim() || normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery));
-    const dateOk = !dateFilter || recruit.recruitedAt.slice(0, 10) === dateFilter;
-    return recruitedOk && dateOk && periodAllows(recruit.recruitedAt, periodFilter);
-  });
+  }).sort((a, b) => recruitmentPeriodValue(b, periodFilter) - recruitmentPeriodValue(a, periodFilter) || a.recruiterName.localeCompare(b.recruiterName)), [dateFilter, periodFilter, recruitedQuery, recruiterQuery, recruiters]);
+  const leader = recruiters[0] ?? null;
+  const selectedRecruiterData = recruiters.find((item) => item.normalizedRecruiterName === selectedRecruiter) ?? null;
+  const maxRecruitments = Math.max(1, ...filtered.map((item) => recruitmentPeriodValue(item, periodFilter)), leader ? recruitmentPeriodValue(leader, periodFilter) : 0);
+  const profileHistory = selectedRecruiterData ? recruiterHistory(selectedRecruiterData, recruitmentLogs, periodFilter, recruitedQuery, dateFilter) : [];
+  const timeline = recruitmentLogs
+    .filter((log) => periodAllows(log.eventTimestamp, periodFilter))
+    .sort((a, b) => new Date(b.eventTimestamp).getTime() - new Date(a.eventTimestamp).getTime())
+    .slice(0, 12);
+  const averageDaily = stats.dailySeries.length ? Math.round((stats.total / stats.dailySeries.length) * 10) / 10 : stats.total;
 
   useEffect(() => {
-    if (!activeRecruiter) {
+    if (!selectedRecruiter) return;
+    if (!recruiters.some((item) => item.normalizedRecruiterName === selectedRecruiter)) {
       setSelectedRecruiter(null);
-      return;
     }
-    setSelectedRecruiter((current) => current && filtered.some((item) => item.normalizedRecruiterName === current) ? current : activeRecruiter.normalizedRecruiterName);
-  }, [activeRecruiter?.normalizedRecruiterName, filtered]);
+  }, [recruiters, selectedRecruiter]);
+
+  if (!dashboard) return <RecruitmentSkeleton />;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="overflow-hidden rounded-md border border-[#FFD500]/35 bg-[linear-gradient(135deg,rgba(255,213,0,0.26),rgba(24,24,27,0.92)_42%,rgba(59,130,246,0.18))] p-5 shadow-[0_0_38px_rgba(255,213,0,0.14)] backdrop-blur-xl">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <RecruiterAvatar item={leader} size="lg" />
+              <div className="min-w-0">
+                <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-[#FFD500]/30 bg-black/30 px-2 py-1 text-xs font-semibold uppercase text-[#FFEA70]">
+                  <Crown className="h-3.5 w-3.5" />
+                  Melhor Recrutador
+                </div>
+                <h3 className="truncate text-2xl font-bold text-white">{leader?.recruiterName ?? "Sem líder definido"}</h3>
+                <p className="mt-1 flex items-center gap-2 text-sm text-zinc-300"><Award className="h-4 w-4 text-[#FFEA70]" />{leader?.roleName ?? "Cargo não informado"}</p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[26rem]">
+              <div className="rounded-md border border-white/10 bg-black/35 p-3">
+                <p className="text-xs uppercase text-zinc-400">Total</p>
+                <p className="mt-1 text-3xl font-bold text-[#FFEA70]">{leader?.totalRecruitments ?? 0}</p>
+                <p className="text-xs text-zinc-400">recrutamentos</p>
+              </div>
+              <div className="rounded-md border border-white/10 bg-black/35 p-3">
+                <p className="flex items-center gap-1 text-xs uppercase text-zinc-400"><CalendarClock className="h-3.5 w-3.5" />Último</p>
+                <p className="mt-1 truncate text-lg font-semibold text-white">{leader?.recentRecruits[0]?.recruitedName ?? "Sem registro"}</p>
+                <p className="text-xs text-zinc-400">{leader?.lastRecruitmentAt ? formatRelativeDateTime(leader.lastRecruitmentAt) : "Sem data"}</p>
+              </div>
+              <div className="rounded-md border border-white/10 bg-black/35 p-3">
+                <p className="text-xs uppercase text-zinc-400">Posição</p>
+                <p className="mt-1 text-2xl font-bold text-[#FFEA70]">1º</p>
+                <p className="text-xs text-zinc-400">🥇 Lugar</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <Metric label="Total de recrutamentos" value={String(stats.total)} />
+          <Metric label="Hoje" value={String(stats.todayTotal)} />
+          <Metric label="Semana" value={String(stats.weekTotal)} />
+          <Metric label="Mês" value={String(stats.monthTotal)} />
+          <Metric label="Média diária" value={String(averageDaily)} />
+          <Metric label="Recrutadores ativos" value={String(recruiters.length)} />
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Ranking de Recrutamento ZTK</CardTitle>
-          <CardDescription>Dados isolados do clã {selectedClan.clanName}, atualizados pela webhook em tempo real.</CardDescription>
+          <CardTitle>Ranking de Recrutadores</CardTitle>
+          <CardDescription>Clã {selectedClan.clanName}. Os cards atualizam pelo WebSocket quando uma nova log de recrutamento é recebida.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <Metric label="Hoje" value={String(stats?.todayTotal ?? 0)} />
-            <Metric label="Semana" value={String(stats?.weekTotal ?? 0)} />
-            <Metric label="Mês" value={String(stats?.monthTotal ?? 0)} />
-            <Metric label="Total geral" value={String(stats?.total ?? 0)} />
-            <Metric label="Maior recrutador" value={stats?.topRecruiterName ?? "Sem dados"} />
-            <Metric label="Último recrutamento" value={stats?.lastRecruitmentAt ? `${stats.lastRecruiterName ?? "Não informado"} • ${formatDateTime(stats.lastRecruitmentAt)}` : "Sem dados"} />
-          </div>
-          <div className="grid gap-3 md:grid-cols-4">
-            <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setRecruiterQuery(event.target.value)} placeholder="Buscar recrutador" value={recruiterQuery} />
-            <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setRecruitedQuery(event.target.value)} placeholder="Buscar recrutado" value={recruitedQuery} />
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_160px_160px]">
+            <label className="relative">
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-zinc-500" />
+              <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] pl-9 pr-3 text-sm text-zinc-100" onChange={(event) => setRecruiterQuery(event.target.value)} placeholder="Buscar recrutador" value={recruiterQuery} />
+            </label>
+            <label className="relative">
+              <Users className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-zinc-500" />
+              <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] pl-9 pr-3 text-sm text-zinc-100" onChange={(event) => setRecruitedQuery(event.target.value)} placeholder="Buscar recrutado" value={recruitedQuery} />
+            </label>
             <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setDateFilter(event.target.value)} type="date" value={dateFilter} />
             <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setPeriodFilter(event.target.value as typeof periodFilter)} value={periodFilter}>
               <option value="total">Todo período</option>
               <option value="today">Hoje</option>
               <option value="week">7 dias</option>
-              <option value="month">30 dias</option>
+              <option value="month">Mês</option>
             </select>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -471,77 +516,251 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
             <Button onClick={() => exportRecruitments("json", recruitmentLogs)} size="sm" variant="secondary">Exportar JSON</Button>
             <Button onClick={() => window.print()} size="sm" variant="secondary">Exportar PDF</Button>
           </div>
-          <div className="discord-scrollbar max-h-[40rem] space-y-3 overflow-y-auto pr-1">
+          <div className="grid gap-3 xl:grid-cols-2">
             {filtered.map((item, index) => (
-              <button
-                className={`w-full rounded-md border p-3 text-left transition ${activeRecruiter?.normalizedRecruiterName === item.normalizedRecruiterName ? "border-[#FFD500]/45 bg-[#FFD500]/10" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"}`}
+              <RecruiterCard
+                active={selectedRecruiter === item.normalizedRecruiterName}
+                index={index}
+                item={item}
                 key={item.recruiterId ?? item.normalizedRecruiterName}
+                maxRecruitments={maxRecruitments}
                 onClick={() => setSelectedRecruiter(item.normalizedRecruiterName)}
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs font-bold text-zinc-300">
-                      {item.avatarUrl ? <img alt="" className="h-full w-full rounded-md object-cover" src={item.avatarUrl} /> : item.recruiterName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-zinc-100">{medals[index] ?? `${index + 1}º`} {item.recruiterName}</p>
-                      <p className="truncate text-xs text-zinc-500">{item.roleName ?? "Cargo não informado"}</p>
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-sm text-zinc-500">{recruitmentPeriodValue(item, periodFilter)} recrutamentos</span>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
-                  <div className="h-full rounded-full bg-[#FFD500]" style={{ width: `${Math.max(4, (recruitmentPeriodValue(item, periodFilter) / maxRecruitments) * 100)}%` }} />
-                </div>
-                <div className="mt-3 space-y-1">
-                  {item.recentRecruits.slice(0, 3).map((recruit) => (
-                    <p className="text-xs text-zinc-400" key={`${item.normalizedRecruiterName}-${recruit.recruitedName}-${recruit.recruitedAt}`}>• {recruit.recruitedName} • {formatDate(recruit.recruitedAt)}</p>
-                  ))}
-                </div>
-              </button>
+                period={periodFilter}
+              />
             ))}
-            {!filtered.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Nenhum recrutamento encontrado.</p> : null}
+            {!filtered.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Nenhum recrutador encontrado.</p> : null}
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Perfil do Recrutador</CardTitle>
-          <CardDescription>Histórico individual dos últimos recrutados registrados.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {activeRecruiter ? (
-            <>
-              <Metric label="Nome" value={activeRecruiter.recruiterName} />
-              <Metric label="Total recrutados" value={`${activeRecruiter.totalRecruitments} pessoas`} />
-              <Metric label="Primeiro recrutamento" value={activeRecruiter.firstRecruitmentAt ? formatDateTime(activeRecruiter.firstRecruitmentAt) : "Sem registro"} />
-              <Metric label="Último recrutamento" value={activeRecruiter.lastRecruitmentAt ? formatDateTime(activeRecruiter.lastRecruitmentAt) : "Sem registro"} />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Metric label="Hoje" value={String(activeRecruiter.todayRecruitments)} />
-                <Metric label="Semana" value={String(activeRecruiter.weeklyRecruitments)} />
-                <Metric label="Mês" value={String(activeRecruiter.monthlyRecruitments)} />
-              </div>
-              <DailyRecruitmentChart values={stats?.dailySeries ?? []} />
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-                <p className="mb-3 text-sm font-semibold text-zinc-100">Histórico</p>
-                <div className="discord-scrollbar max-h-[26rem] space-y-3 overflow-y-auto pr-1">
-                  {activeHistory.map((recruit, index) => (
-                    <div className="text-sm text-zinc-300" key={`${recruit.recruitedName}-${recruit.recruitedAt}`}>
-                      <p className="font-semibold text-zinc-100">{index + 1}. {recruit.recruitedName}</p>
-                      <p className="text-zinc-500">Data: {formatDate(recruit.recruitedAt)}</p>
-                      <p className="text-zinc-500">Horário: {formatTime(recruit.recruitedAt)}</p>
-                    </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tabela Geral</CardTitle>
+            <CardDescription>Ordenação automática por total no período selecionado.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-md border border-zinc-800">
+              <table className="min-w-[760px] w-full text-left text-sm">
+                <thead className="bg-zinc-950 text-xs uppercase text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-3">Posição</th>
+                    <th className="px-3 py-3">Avatar</th>
+                    <th className="px-3 py-3">Nome do Recrutador</th>
+                    <th className="px-3 py-3">Cargo</th>
+                    <th className="px-3 py-3">Total</th>
+                    <th className="px-3 py-3">Último Recrutado</th>
+                    <th className="px-3 py-3">Último Recrutamento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800 bg-black/30">
+                  {filtered.map((item, index) => (
+                    <tr className="cursor-pointer transition hover:bg-white/[0.03]" key={item.normalizedRecruiterName} onClick={() => setSelectedRecruiter(item.normalizedRecruiterName)}>
+                      <td className="px-3 py-3 font-semibold text-[#FFEA70]">{medalText(index + 1)}</td>
+                      <td className="px-3 py-3"><RecruiterAvatar item={item} size="sm" /></td>
+                      <td className="px-3 py-3 font-semibold text-zinc-100">{item.recruiterName}</td>
+                      <td className="px-3 py-3 text-zinc-400">{item.roleName ?? "Cargo não informado"}</td>
+                      <td className="px-3 py-3 text-lg font-bold text-[#FFEA70]">{recruitmentPeriodValue(item, periodFilter)}</td>
+                      <td className="px-3 py-3 text-zinc-300">{item.recentRecruits[0]?.recruitedName ?? "Sem registro"}</td>
+                      <td className="px-3 py-3 text-zinc-400">{item.lastRecruitmentAt ? formatDateTime(item.lastRecruitmentAt) : "Sem data"}</td>
+                    </tr>
                   ))}
-                  {!activeHistory.length ? <p className="text-sm text-zinc-500">Nenhum recrutamento encontrado nos filtros.</p> : null}
-                </div>
-              </div>
-            </>
-          ) : <p className="text-sm text-zinc-500">Selecione um recrutador.</p>}
-        </CardContent>
-      </Card>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Histórico em Tempo Real</CardTitle>
+            <CardDescription>Últimos recrutamentos recebidos pela webhook.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="discord-scrollbar max-h-[36rem] space-y-3 overflow-y-auto pr-1">
+              {timeline.map((log) => {
+                const recruiter = recruiters.find((item) => item.recruiterName === log.recruiterName) ?? null;
+                return (
+                  <div className="grid grid-cols-[44px_1fr] gap-3 rounded-md border border-zinc-800 bg-zinc-950/70 p-3" key={log.id}>
+                    <RecruiterAvatar item={recruiter} size="sm" name={log.recruiterName ?? "?"} />
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1 text-xs font-semibold text-[#FFEA70]"><Clock3 className="h-3.5 w-3.5" />{formatTime(log.eventTimestamp)}</p>
+                      <p className="mt-1 text-sm text-zinc-200"><span className="font-semibold text-white">{log.recruiterName}</span> recrutou <span className="font-semibold text-white">{log.playerName}</span></p>
+                      <p className="text-xs text-zinc-500">{formatDate(log.eventTimestamp)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {!timeline.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Nenhum evento recebido ainda.</p> : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <DailyRecruitmentChart values={stats.dailySeries} />
+      {selectedRecruiterData ? <RecruiterProfileModal history={profileHistory} item={selectedRecruiterData} onClose={() => setSelectedRecruiter(null)} stats={stats} /> : null}
     </div>
   );
+}
+
+function RecruitmentSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-40 animate-pulse rounded-md border border-zinc-800 bg-zinc-950/70" />
+      <div className="grid gap-3 md:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, index) => <div className="h-36 animate-pulse rounded-md border border-zinc-800 bg-zinc-950/70" key={index} />)}
+      </div>
+    </div>
+  );
+}
+
+function RecruiterCard({ active, index, item, maxRecruitments, onClick, period }: {
+  active: boolean;
+  index: number;
+  item: ZtkRecruiterRankingItem;
+  maxRecruitments: number;
+  onClick: () => void;
+  period: "today" | "week" | "month" | "total";
+}) {
+  const value = recruitmentPeriodValue(item, period);
+  const percent = Math.max(4, Math.round((value / maxRecruitments) * 100));
+  const lastRecruit = item.recentRecruits[0];
+  return (
+    <button
+      className={`group w-full rounded-md border p-4 text-left transition duration-300 ${active ? "border-[#FFD500]/50 bg-[#FFD500]/10 shadow-[0_0_24px_rgba(255,213,0,0.10)]" : "border-zinc-800 bg-zinc-950/80 hover:border-zinc-700 hover:bg-zinc-950"}`}
+      onClick={onClick}
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <RecruiterAvatar item={item} size="md" />
+          <div className="min-w-0">
+            <p className="truncate text-base font-bold text-zinc-100">{medalText(index + 1)} {item.recruiterName}</p>
+            <p className="mt-1 truncate text-xs text-zinc-500">{item.roleName ?? "Cargo não informado"}</p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-3xl font-black text-[#FFEA70] transition group-hover:scale-[1.03]">{value}</p>
+          <p className="text-xs uppercase text-zinc-500">Recrutamentos</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
+          <p className="text-xs uppercase text-zinc-500">Último</p>
+          <p className="truncate text-sm font-semibold text-zinc-200">{lastRecruit?.recruitedName ?? "Sem registro"}</p>
+          <p className="text-xs text-zinc-500">{lastRecruit ? formatRelativeDateTime(lastRecruit.recruitedAt) : "Sem data"}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <Sparkles className="h-4 w-4 text-[#FFEA70]" />
+          {percent}%
+        </div>
+      </div>
+      <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-zinc-800">
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,#FFD500,#3DDC84,#3B82F6)] transition-all duration-500" style={{ width: `${percent}%` }} />
+      </div>
+    </button>
+  );
+}
+
+function RecruiterAvatar({ item, name, size }: { item?: ZtkRecruiterRankingItem | null; name?: string | null; size: "sm" | "md" | "lg" }) {
+  const classes = {
+    sm: "h-10 w-10 text-xs",
+    md: "h-12 w-12 text-sm",
+    lg: "h-20 w-20 text-xl"
+  };
+  const label = item?.recruiterName ?? name ?? "?";
+  return (
+    <div className={`${classes[size]} flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-zinc-900 font-bold text-zinc-300 shadow-inner`}>
+      {item?.avatarUrl ? <img alt="" className="h-full w-full object-cover" src={item.avatarUrl} /> : label.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function RecruiterProfileModal({ history, item, onClose, stats }: {
+  history: Array<{ recruitedAt: string; recruitedName: string; recruitedPlayerId: string | null }>;
+  item: ZtkRecruiterRankingItem;
+  onClose: () => void;
+  stats: ZtkWebhookDashboard["recruitmentRankings"]["stats"];
+}) {
+  const averageDaily = stats.dailySeries.length ? Math.round((item.totalRecruitments / stats.dailySeries.length) * 10) / 10 : item.totalRecruitments;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 px-4 py-8 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-md border border-zinc-800 bg-[#09090b] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <RecruiterAvatar item={item} size="lg" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase text-[#FFEA70]">Perfil do Recrutador</p>
+              <h3 className="truncate text-2xl font-bold text-white">{item.recruiterName}</h3>
+              <p className="text-sm text-zinc-500">{item.roleName ?? "Cargo não informado"}{item.recruiterId ? ` • ${item.recruiterId}` : ""}</p>
+            </div>
+          </div>
+          <button className="rounded-md border border-zinc-800 p-2 text-zinc-400 transition hover:text-white" onClick={onClose} type="button">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="discord-scrollbar max-h-[calc(92vh-7rem)] overflow-y-auto p-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Total" value={String(item.totalRecruitments)} />
+            <Metric label="Primeiro" value={item.firstRecruitmentAt ? formatDate(item.firstRecruitmentAt) : "Sem registro"} />
+            <Metric label="Último" value={item.lastRecruitmentAt ? formatDateTime(item.lastRecruitmentAt) : "Sem registro"} />
+            <Metric label="Média diária" value={String(averageDaily)} />
+          </div>
+          <div className="mt-4">
+            <DailyRecruitmentChart values={stats.dailySeries} />
+          </div>
+          <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+            <p className="mb-3 text-sm font-semibold text-zinc-100">Membros recrutados</p>
+            <div className="discord-scrollbar max-h-80 space-y-2 overflow-y-auto pr-1">
+              {history.map((recruit, index) => (
+                <div className="grid gap-1 rounded-md border border-zinc-800 bg-black/30 p-3 text-sm text-zinc-300 sm:grid-cols-[40px_1fr_120px_90px]" key={`${recruit.recruitedName}-${recruit.recruitedAt}-${index}`}>
+                  <span className="font-semibold text-[#FFEA70]">{index + 1}.</span>
+                  <span className="font-semibold text-zinc-100">{recruit.recruitedName}</span>
+                  <span className="text-zinc-500">{formatDate(recruit.recruitedAt)}</span>
+                  <span className="text-zinc-500">{formatTime(recruit.recruitedAt)}</span>
+                </div>
+              ))}
+              {!history.length ? <p className="text-sm text-zinc-500">Nenhum recrutamento encontrado nos filtros atuais.</p> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function recruiterHistory(
+  item: ZtkRecruiterRankingItem,
+  logs: ZtkWebhookDashboard["logs"],
+  period: "today" | "week" | "month" | "total",
+  recruitedQuery: string,
+  dateFilter: string
+) {
+  const fromLogs = logs
+    .filter((log) => normalizeSearch(log.recruiterName ?? "") === normalizeSearch(item.recruiterName))
+    .map((log) => ({
+      recruitedAt: log.eventTimestamp,
+      recruitedName: log.playerName ?? "Não identificado",
+      recruitedPlayerId: log.playerId
+    }));
+  const source = fromLogs.length ? fromLogs : item.recentRecruits;
+  return source
+    .filter((recruit) => {
+      const recruitedOk = !recruitedQuery.trim() || normalizeSearch(recruit.recruitedName).includes(normalizeSearch(recruitedQuery));
+      const dateOk = !dateFilter || recruit.recruitedAt.slice(0, 10) === dateFilter;
+      return recruitedOk && dateOk && periodAllows(recruit.recruitedAt, period);
+    })
+    .sort((a, b) => new Date(b.recruitedAt).getTime() - new Date(a.recruitedAt).getTime());
+}
+
+function emptyRecruitmentStats(): ZtkWebhookDashboard["recruitmentRankings"]["stats"] {
+  return { dailySeries: [], lastRecruitmentAt: null, lastRecruiterName: null, monthTotal: 0, todayTotal: 0, topRecruiterName: null, total: 0, weekTotal: 0 };
+}
+
+function medalText(place: number) {
+  if (place === 1) return "🥇";
+  if (place === 2) return "🥈";
+  if (place === 3) return "🥉";
+  return `${place}º`;
 }
 
 function WebhookView({ canManage, clan, onCopy, onRegisterManual, onWebhookAction, savingKey }: { canManage: boolean; clan: ZtkWebhookClan; onCopy: () => void; onRegisterManual: (url: string) => Promise<void>; onWebhookAction: (action: "create" | "delete" | "disable" | "regenerate") => Promise<void>; savingKey: string | null }) {
@@ -910,6 +1129,16 @@ function formatTime(value: string) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function formatRelativeDateTime(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const day = sameDay(date, today) ? "Hoje" : sameDay(date, yesterday) ? "Ontem" : formatDate(value);
+  return `${day} • ${formatTime(value)}`;
 }
 
 function periodAllows(value: string, period: "today" | "week" | "month" | "total") {
