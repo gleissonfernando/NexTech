@@ -7279,10 +7279,10 @@ function TicketPanelConfigurator({
       onSettingsChange(saved);
       const published = await publishTicketPanel(guild.id, botId);
       onSettingsChange(published);
-      setStatus("Publicação do painel solicitada ao bot.");
-    } catch {
+      setStatus("Painel de ticket publicado/atualizado no Discord.");
+    } catch (error) {
       onSettingsChange(previous);
-      setError("Não foi possível publicar o painel de ticket.");
+      setError(readResponseMessage(error) ?? "Não foi possível publicar o painel de ticket.");
     } finally {
       setPublishing(false);
     }

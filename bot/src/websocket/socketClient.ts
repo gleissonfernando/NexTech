@@ -78,6 +78,7 @@ export type CoursePanelPublishEvent = { botId?: string | null; guildId: string; 
 export type CourseExamReviewedEvent = { actorId?: string | null; attemptId: string; botId?: string | null; courseId: string; guildId: string; status: "approved" | "rejected" };
 export type RhAdminPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type TicketPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
+export type TicketPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
 
 export type ZtkWebhookClanEvent = {
   active: boolean;
@@ -459,7 +460,7 @@ export class BotSocketClient {
   private coursePanelPublishHandler: ((payload: CoursePanelPublishEvent) => void) | null = null;
   private courseExamReviewedHandler: ((payload: CourseExamReviewedEvent) => void) | null = null;
   private rhAdminPanelPublishHandler: ((payload: RhAdminPanelPublishEvent) => void) | null = null;
-  private ticketPanelPublishHandler: ((payload: TicketPanelPublishEvent) => void) | null = null;
+  private ticketPanelPublishHandler: ((payload: TicketPanelPublishEvent, ack?: TicketPanelPublishAck) => void) | null = null;
   private ztkWebhookEventReceivedHandler: ((payload: ZtkWebhookEventReceivedEvent) => void) | null = null;
   private ztkWebhookRewardUpdatedHandler: ((payload: ZtkWebhookRewardUpdatedEvent) => void) | null = null;
   private ztkWebhookManageHandler: ((payload: ZtkWebhookManageEvent, ack?: ZtkWebhookManageAck) => void) | null = null;
@@ -835,7 +836,7 @@ export class BotSocketClient {
     this.socket?.on("rh-admin:panel_publish", handler);
   }
 
-  onTicketPanelPublish(handler: (payload: TicketPanelPublishEvent) => void) {
+  onTicketPanelPublish(handler: (payload: TicketPanelPublishEvent, ack?: TicketPanelPublishAck) => void) {
     this.ticketPanelPublishHandler = handler;
     this.socket?.off("tickets:panel_publish");
     this.socket?.on("tickets:panel_publish", handler);

@@ -2,7 +2,7 @@ import { Router, raw } from "express";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { isBotRequest, requireAuth, requireAuthOrBot, requireBot } from "../middleware/auth";
-import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom, emitRealtimeToRoomWithAck } from "../realtime/events";
 import { isDashboardDevUserId } from "../config/devOwner";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
 import { authorizeBotRuntimeModule, canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
@@ -875,13 +875,39 @@ settingsRouter.post("/:guildId/ticket-panel", requireAuth, async (req, res, next
       });
     }
 
-    emitRealtimeToRoom(devBotRealtimeRoom(botId), "tickets:panel_publish", {
+    const enabledOptions = settings.ticketPanelOptions.filter((option) => option.enabled);
+    if (!enabledOptions.length) {
+      return res.status(400).json({
+        message: "Configure pelo menos uma opção ativa para publicar o painel de tickets."
+      });
+    }
+
+    const optionsWithoutCategory = enabledOptions.filter((option) => !option.categoryId && !settings.ticketCategoryId);
+    if (optionsWithoutCategory.length) {
+      return res.status(400).json({
+        message: "Selecione a categoria dos canais temporários em cada opção do painel, ou configure uma categoria padrão para os tickets."
+      });
+    }
+
+    const responses = await emitRealtimeToRoomWithAck<
+      { botId: string; guildId: string; settings: typeof settings },
+      { error?: string; messageId?: string | null; ok: boolean }
+    >(devBotRealtimeRoom(botId), "tickets:panel_publish", {
       botId,
       guildId,
       settings
-    });
+    }, 20_000);
+
+    const success = responses.find((response) => response?.ok);
+    if (!success) {
+      const error = responses.find((response) => response?.error)?.error;
+      return res.status(409).json({
+        message: error || "O bot não confirmou a publicação do painel. Verifique se ele está online e com permissão para enviar mensagens no canal selecionado."
+      });
+    }
 
     return res.json({
+      messageId: success.messageId ?? settings.ticketPanelMessageId ?? null,
       settings
     });
   } catch (error) {

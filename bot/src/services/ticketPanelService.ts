@@ -21,9 +21,10 @@ import {
   type StringSelectMenuInteraction,
   type TextChannel
 } from "discord.js";
-import { env } from "../config/env";
+import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext, GuildSettings, PanelImageSettings, TicketPanelOption } from "../types";
 import { resetSelectMenuMessage } from "../utils/selectMenuReset";
+import type { TicketPanelPublishAck } from "../websocket/socketClient";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
@@ -85,10 +86,17 @@ export function startTicketPanelService(client: Client, context: BotContext) {
   if (ticketPanelServiceStarted) return;
   ticketPanelServiceStarted = true;
 
-  context.socket.onTicketPanelPublish((payload) => {
-    void publishConfiguredTicketPanel(client, context, payload.guildId).catch((error) => {
-      console.error(`[ticket-panel] falha ao publicar painel em ${payload.guildId}:`, error instanceof Error ? error.message : error);
-    });
+  context.socket.onTicketPanelPublish((payload, ack?: TicketPanelPublishAck) => {
+    const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+    if (!isBotModuleEnabled("tickets") || (payload.botId && runtimeBotId && payload.botId !== runtimeBotId)) return;
+
+    void publishConfiguredTicketPanel(client, context, payload.guildId)
+      .then((messageId) => ack?.({ ok: true, messageId }))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[ticket-panel] falha ao publicar painel em ${payload.guildId}:`, message);
+        ack?.({ ok: false, error: message });
+      });
   });
 }
 
