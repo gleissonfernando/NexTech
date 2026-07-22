@@ -775,7 +775,7 @@ const moduleCatalog: ModuleDefinition[] = [
     title: "Tickets",
     description: "Organiza atendimento em canais de suporte.",
     icon: TicketIcon,
-    view: "settings"
+    view: "tickets"
   },
   {
     id: "network",
@@ -863,7 +863,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "media-library": "emoji-cloner"
 };
 
-const settingsModuleIds = new Set(["tickets", "avisos", "network", "server-generator"]);
+const settingsModuleIds = new Set(["avisos", "network", "server-generator"]);
 const policeTranscriptViews = new Set<ViewId>([
   "police-absence",
   "police-actions",
@@ -1432,7 +1432,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
 
-        {activeView !== "overview" && activeView !== "plans" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" ? (
+        {activeView !== "overview" && activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" ? (
           <PanelImageSettings
             botId={activeBotId}
             canManage={canManageDashboard}
@@ -1934,6 +1934,18 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guild={selectedGuild}
           />
         ) : null}
+        {activeView === "tickets" ? (
+          <TicketsView
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "tickets", canManageDashboard)}
+            guild={selectedGuild}
+            onSettingsChange={setSettings}
+            onToggle={updateSetting}
+            savingKey={savingKey}
+            settings={settings}
+            tickets={tickets}
+          />
+        ) : null}
         {activeView === "settings" ? (
           <SettingsView
             botId={activeBotId}
@@ -1946,10 +1958,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guilds={scopedDashboardGuilds}
             loading={settingsLoading}
             onSettingsChange={setSettings}
-            onToggle={updateSetting}
-            savingKey={savingKey}
             settings={settings}
-            tickets={tickets}
           />
         ) : null}
       </motion.div>
@@ -6519,10 +6528,7 @@ function SettingsView({
   guilds,
   loading,
   onSettingsChange,
-  onToggle,
-  savingKey,
-  settings,
-  tickets
+  settings
 }: {
   botId?: string | null;
   bots: DashboardBot[];
@@ -6534,41 +6540,9 @@ function SettingsView({
   guilds: DashboardGuild[];
   loading: boolean;
   onSettingsChange: (settings: GuildSettings) => void;
-  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
-  savingKey: BooleanSettingKey | null;
   settings: GuildSettings | null;
-  tickets: Ticket[];
 }) {
   const blocks: JSX.Element[] = [];
-
-  if (enabledModules.includes("tickets")) {
-    blocks.push(
-      <div className="space-y-4" key="tickets">
-        <SimpleToggleCard
-          checked={Boolean(settings?.ticketEnabled)}
-          description={`${tickets.length} ticket(s) registrados neste servidor.`}
-          disabled={!settings || !canManageModule("tickets") || savingKey === "ticketEnabled"}
-          icon={TicketIcon}
-          onChange={(checked) => onToggle("ticketEnabled", checked)}
-          title="Tickets"
-        />
-        <PanelImageSettings
-          botId={botId}
-          canManage={canManageModule("tickets")}
-          guildId={guild?.id ?? null}
-          panelId="ticket"
-          panelLabel="Ticket"
-        />
-        <TicketPanelConfigurator
-          botId={botId}
-          canManage={canManageModule("tickets")}
-          guild={guild}
-          onSettingsChange={onSettingsChange}
-          settings={settings}
-        />
-      </div>
-    );
-  }
 
   if (enabledModules.includes("network")) {
     blocks.push(
@@ -6621,6 +6595,53 @@ function SettingsView({
   }
 
   return <div className="space-y-5">{blocks}</div>;
+}
+
+function TicketsView({
+  botId,
+  canManage,
+  guild,
+  onSettingsChange,
+  onToggle,
+  savingKey,
+  settings,
+  tickets
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  onSettingsChange: (settings: GuildSettings) => void;
+  onToggle: (key: BooleanSettingKey, checked: boolean) => void;
+  savingKey: BooleanSettingKey | null;
+  settings: GuildSettings | null;
+  tickets: Ticket[];
+}) {
+  return (
+    <div className="space-y-4">
+      <SimpleToggleCard
+        checked={Boolean(settings?.ticketEnabled)}
+        description={`${tickets.length} ticket(s) registrados neste servidor.`}
+        disabled={!settings || !canManage || savingKey === "ticketEnabled"}
+        icon={TicketIcon}
+        onChange={(checked) => onToggle("ticketEnabled", checked)}
+        title="Tickets"
+      />
+      <PanelImageSettings
+        botId={botId}
+        canManage={canManage}
+        guildId={guild?.id ?? null}
+        panelId="ticket"
+        panelLabel="Ticket"
+      />
+      <TicketPanelConfigurator
+        botId={botId}
+        canManage={canManage}
+        guild={guild}
+        onSettingsChange={onSettingsChange}
+        settings={settings}
+      />
+    </div>
+  );
 }
 
 function ManualRegistrationPanel({
@@ -10964,6 +10985,10 @@ function dashboardViewFromPath(path: string): ViewId {
     return "fivem-captcha";
   }
 
+  if (path === "/dashboard/tickets" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/tickets(?:\/|$)/i.test(path)) {
+    return "tickets";
+  }
+
   return "overview";
 }
 
@@ -10974,6 +10999,7 @@ function dashboardPathForView(slug: string, view: ViewId) {
   if (view === "fivem-hierarchy") return `${base}/hierarquia`;
   if (view === "ztk-webhook") return `${base}/ztk-webhook`;
   if (view === "fivem-captcha") return `${base}/fivem-captcha`;
+  if (view === "tickets") return `${base}/tickets`;
   return base;
 }
 
@@ -10984,6 +11010,10 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
 
   if (view === "settings") {
     return enabledModules.some((moduleId) => settingsModuleIds.has(moduleId));
+  }
+
+  if (view === "tickets") {
+    return hasReleasedModule(enabledModules, "tickets");
   }
 
   if (view === "entry-leave") {

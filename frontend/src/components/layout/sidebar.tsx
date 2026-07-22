@@ -118,6 +118,7 @@ export type ViewId =
   | "ztk-webhook"
   | "manual-registration"
   | "notifications"
+  | "tickets"
   | "entry-leave"
   | "auto-roles"
   | "application-emojis"
@@ -212,12 +213,13 @@ const navItems: NavItem[] = [
   { id: "fivem-captcha", label: "CAPTCHA FiveM", icon: ShieldCheck, moduleId: "fivem-captcha" },
   { id: "ztk-webhook", label: "ZTK Webhook", icon: Trophy, moduleId: "ztk-webhook" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
+  { id: "tickets", label: "Tickets", icon: Archive, moduleId: "tickets" },
   { id: "entry-leave", label: "Entrada/Saída", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },
   { id: "media-library", label: "Emojis & Sons", icon: Archive, moduleId: "emoji-cloner" },
   { id: "server-cloner", label: "Clonagem", icon: SmilePlus, moduleIds: ["emoji-cloner", "server-cloner"] },
   { id: "delete-channels", label: "Canais e cargos", icon: Trash2 },
-  { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["tickets", "avisos", "network", "server-generator"] }
+  { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["avisos", "network", "server-generator"] }
 ];
 
 function navSectionForItem(item: NavItem): NavSectionId {
