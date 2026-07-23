@@ -12,8 +12,11 @@ import {
 
 function settingsWithRoles(): ManualPaymentSettings {
   return {
+    allowedReceiptImageFormats: ["png", "jpg", "jpeg", "webp"],
+    allowReceiptPdf: true,
     approveRoleIds: ["approver-admin", "approver-staff"],
     attendanceCategoryId: null,
+    autoReceiptDetectionEnabled: true,
     bannerUrl: null,
     botId: "bot-runtime",
     color: "#22c55e",
@@ -34,6 +37,7 @@ function settingsWithRoles(): ManualPaymentSettings {
     pixQrCodeUrl: null,
     receiverBank: null,
     receiverName: null,
+    receiptChannelId: null,
     rejectRoleIds: ["reject-admin"],
     rejectionMessage: "recusado",
     salePanelChannelId: null,

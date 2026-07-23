@@ -23,7 +23,10 @@ type Props = {
 };
 
 const defaultDraft: SaveManualPaymentSettingsPayload = {
+  allowedReceiptImageFormats: ["png", "jpg", "jpeg", "webp"],
+  allowReceiptPdf: true,
   approveRoleIds: [],
+  autoReceiptDetectionEnabled: true,
   enabled: false,
   finalizeRoleIds: [],
   maxPaymentMinutes: 60,
@@ -31,6 +34,7 @@ const defaultDraft: SaveManualPaymentSettingsPayload = {
   customerReceiptMessage: "Recebemos o seu comprovante de pagamento com sucesso. Seu pagamento foi encaminhado para análise da nossa equipe.",
   paymentInstructions: "Envie uma foto ou imagem do comprovante de pagamento.",
   pixKeyType: "random",
+  receiptChannelId: null,
   rejectionMessage: "Seu pagamento foi recusado. Motivo: {reason}",
   services: []
 };
@@ -221,7 +225,8 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
               <ChannelSelect channels={channels} disabled={!canManage} label="Canal do painel de vendas" onChange={(value) => patch({ salePanelChannelId: value })} value={draft.salePanelChannelId ?? null} />
               <CategorySelect categories={categories} disabled={!canManage} label="Categoria dos tickets de compra" onChange={(value) => patch({ paymentCategoryId: value })} value={draft.paymentCategoryId ?? null} />
               <CategorySelect categories={categories} disabled={!canManage} label="Categoria dos projetos/atendimentos" onChange={(value) => patch({ attendanceCategoryId: value })} value={draft.attendanceCategoryId ?? null} />
-              <ChannelSelect channels={channels} disabled={!canManage} label="Canal de recebimento dos comprovantes" onChange={(value) => patch({ logChannelId: value })} value={draft.logChannelId ?? null} />
+              <ChannelSelect channels={channels} disabled={!canManage} label="Canal de recebimento dos comprovantes" onChange={(value) => patch({ receiptChannelId: value })} value={draft.receiptChannelId ?? null} />
+              <ChannelSelect channels={channels} disabled={!canManage} label="Canal de análise da equipe" onChange={(value) => patch({ logChannelId: value })} value={draft.logChannelId ?? null} />
               <ChannelSelect channels={channels} disabled={!canManage} label="Canal de suporte" onChange={(value) => patch({ supportPanelChannelId: value })} value={draft.supportPanelChannelId ?? null} />
               <RoleMultiSelect disabled={!canManage} label="Cargos da equipe" onChange={(values) => patch({ logViewRoleIds: values })} roles={roles} values={draft.logViewRoleIds ?? []} />
               <RoleMultiSelect disabled={!canManage} label="Cargo autorizado para aprovar pagamentos" onChange={(values) => patch({ approveRoleIds: values })} roles={roles} values={draft.approveRoleIds ?? []} />
@@ -230,7 +235,10 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
               <Field disabled={!canManage} label="Tempo máximo para análise" onChange={(value) => patch({ maxPaymentMinutes: Number(value) || 1 })} type="number" value={String(draft.maxPaymentMinutes ?? 60)} />
               <Field disabled={!canManage} label="Banner do painel" onChange={(value) => patch({ bannerUrl: value || null })} value={draft.bannerUrl ?? ""} />
               <Field disabled={!canManage} label="Cor dos embeds" onChange={(value) => patch({ color: value })} type="color" value={draft.color ?? "#22c55e"} />
+              <Toggle checked={draft.autoReceiptDetectionEnabled !== false} disabled={!canManage} label="Ativar detecção automática de comprovantes" onChange={(checked) => patch({ autoReceiptDetectionEnabled: checked })} />
+              <Toggle checked={draft.allowReceiptPdf !== false} disabled={!canManage} label="Permitir PDF como alternativa" onChange={(checked) => patch({ allowReceiptPdf: checked })} />
             </div>
+            <ReceiptFormatSelect disabled={!canManage} formats={draft.allowedReceiptImageFormats ?? ["png", "jpg", "jpeg", "webp"]} onChange={(formats) => patch({ allowedReceiptImageFormats: formats })} />
 
             <div className="grid gap-3 md:grid-cols-2">
               <Field disabled={!canManage} label="Chave Pix" onChange={(value) => patch({ pixKey: value || null })} value={draft.pixKey ?? ""} />
@@ -440,6 +448,34 @@ function RoleMultiSelect({ disabled, label, onChange, roles, values }: { disable
           </label>
         ))}
         {!roles.length ? <p className="text-xs text-zinc-600">Nenhum cargo carregado.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptFormatSelect({ disabled, formats, onChange }: { disabled?: boolean; formats: string[]; onChange: (values: string[]) => void }) {
+  const selected = new Set(formats);
+  const options = ["png", "jpg", "jpeg", "webp", "gif"];
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+      <p className="text-xs font-medium text-zinc-500">Formatos de imagem permitidos</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((format) => (
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-800 bg-black/25 px-3 py-2 text-xs uppercase text-zinc-300" key={format}>
+            <input
+              checked={selected.has(format)}
+              disabled={disabled}
+              onChange={() => {
+                const next = selected.has(format)
+                  ? formats.filter((item) => item !== format)
+                  : [...formats, format];
+                onChange(next.length ? next : ["png", "jpg", "jpeg", "webp"]);
+              }}
+              type="checkbox"
+            />
+            {format}
+          </label>
+        ))}
       </div>
     </div>
   );

@@ -3413,8 +3413,11 @@ export type ManualPaymentService = {
 
 export type ManualPaymentSettings = {
   id: string;
+  allowedReceiptImageFormats: string[];
+  allowReceiptPdf: boolean;
   approveRoleIds: string[];
   attendanceCategoryId: string | null;
+  autoReceiptDetectionEnabled: boolean;
   bannerUrl: string | null;
   botId: string;
   color: string;
@@ -3434,6 +3437,7 @@ export type ManualPaymentSettings = {
   pixQrCodeUrl: string | null;
   receiverBank: string | null;
   receiverName: string | null;
+  receiptChannelId: string | null;
   rejectRoleIds: string[];
   rejectionMessage: string;
   salePanelDescription: string;

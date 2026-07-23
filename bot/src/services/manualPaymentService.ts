@@ -27,8 +27,13 @@ const MAX_RECEIPT_SIZE = env.MANUAL_PAYMENT_MAX_RECEIPT_MB * 1024 * 1024;
 const RECEIPT_WARNING_COOLDOWN_MS = 20_000;
 const receiptProcessingLocks = new Set<string>();
 const receiptWarningCooldown = new Map<string, number>();
-const allowedReceiptImageMimeTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/webp"]);
-const allowedReceiptImageExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
+const receiptImageMimeTypesByFormat: Record<string, string[]> = {
+  gif: ["image/gif"],
+  jpeg: ["image/jpeg", "image/jpg", "image/pjpeg"],
+  jpg: ["image/jpeg", "image/jpg", "image/pjpeg"],
+  png: ["image/png"],
+  webp: ["image/webp"]
+};
 const allowedReceiptPdfMimeTypes = new Set(["application/pdf"]);
 const allowedReceiptPdfExtensions = new Set(["pdf"]);
 type ReceiptAttachmentLike = Pick<Attachment, "contentType" | "name" | "url">;
@@ -82,8 +87,18 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
       return null;
     });
     if (!runtime) return false;
-    const order = runtime.orders.find((item) => item.paymentChannelId === message.channelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(item.status));
-    if (!order) return false;
+    const attachments = receiptCandidatesFromMessage(message);
+    const order = findReceiptOrderForMessage(message, runtime.orders, runtime.settings);
+    if (!order) {
+      if (runtime.settings.receiptChannelId === message.channelId && attachments.length) {
+        await sendReceiptWarning(message, "order_not_found", "Não encontrei nenhuma compra aguardando pagamento vinculada ao seu usuário.");
+        return true;
+      }
+      return false;
+    }
+
+    const autoFlow = ["PENDING_PAYMENT", "REJECTED"].includes(order.status);
+    if (autoFlow && runtime.settings.autoReceiptDetectionEnabled === false) return false;
 
     await enforcePaymentChannelPrivacy(message.guild, runtime.settings, order);
 
@@ -98,7 +113,6 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
       return true;
     }
 
-    const attachments = receiptCandidatesFromMessage(message);
     if (attachments.length === 0) {
       await sendReceiptWarning(message, "missing_attachment", "Você precisa anexar uma foto do comprovante de pagamento.");
       logReceiptRejected("missing_attachment", message, order, []);
@@ -118,9 +132,9 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
     receiptProcessingLocks.add(lockKey);
 
     try {
-      const validAttachments = attachments.filter(isValidReceiptAttachment);
+      const validAttachments = attachments.filter((attachment) => isValidReceiptAttachmentForSettings(attachment, runtime.settings));
       if (!validAttachments.length) {
-        await sendReceiptWarning(message, "invalid_type", "Formato não suportado. Envie uma imagem (PNG, JPG, JPEG ou WEBP).");
+        await sendReceiptWarning(message, "invalid_type", `Formato não suportado. Envie uma imagem (${receiptFormatLabel(runtime.settings)}).`);
         logReceiptRejected("invalid_type", message, order, attachments);
         return true;
       }
@@ -180,15 +194,25 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
 }
 
 export function isValidReceiptAttachment(item: ReceiptAttachmentLike) {
+  return isValidReceiptAttachmentForSettings(item, null);
+}
+
+function isValidReceiptAttachmentForSettings(item: ReceiptAttachmentLike, settings: ManualPaymentSettings | null) {
   const contentType = item.contentType?.split(";")[0]?.toLowerCase() ?? "";
   const extension = receiptAttachmentExtension(item);
-  return isReceiptImageAttachment(item) || Boolean((contentType && allowedReceiptPdfMimeTypes.has(contentType)) || allowedReceiptPdfExtensions.has(extension));
+  return isReceiptImageAttachmentForSettings(item, settings) || Boolean(settings?.allowReceiptPdf !== false && ((contentType && allowedReceiptPdfMimeTypes.has(contentType)) || allowedReceiptPdfExtensions.has(extension)));
 }
 
 export function isReceiptImageAttachment(item: ReceiptAttachmentLike) {
+  return isReceiptImageAttachmentForSettings(item, null);
+}
+
+function isReceiptImageAttachmentForSettings(item: ReceiptAttachmentLike, settings: ManualPaymentSettings | null) {
   const contentType = item.contentType?.split(";")[0]?.toLowerCase() ?? "";
   const extension = receiptAttachmentExtension(item);
-  return allowedReceiptImageMimeTypes.has(contentType) || allowedReceiptImageExtensions.has(extension);
+  const formats = normalizedReceiptFormats(settings);
+  const mimeTypes = new Set(formats.flatMap((format) => receiptImageMimeTypesByFormat[format] ?? []));
+  return mimeTypes.has(contentType) || formats.includes(extension);
 }
 
 function getUrlPathname(value: string) {
@@ -271,9 +295,29 @@ function receiptCandidatesFromMessage(message: Message): ReceiptFileCandidate[] 
 function receiptMimeTypeFromExtension(extension: string) {
   if (extension === "png") return "image/png";
   if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "gif") return "image/gif";
   if (extension === "webp") return "image/webp";
   if (extension === "pdf") return "application/pdf";
   return null;
+}
+
+function findReceiptOrderForMessage(message: Message, orders: ManualPaymentOrder[], settings: ManualPaymentSettings) {
+  const eligible = orders.filter((order) => ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(order.status));
+  const channelOrder = eligible.find((order) => order.paymentChannelId === message.channelId);
+  if (channelOrder) return channelOrder;
+  if (settings.receiptChannelId !== message.channelId) return null;
+  return eligible
+    .filter((order) => order.userId === message.author.id && !order.proofMessageId)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null;
+}
+
+function normalizedReceiptFormats(settings: ManualPaymentSettings | null) {
+  const configured = settings?.allowedReceiptImageFormats?.length ? settings.allowedReceiptImageFormats : ["png", "jpg", "jpeg", "webp"];
+  return [...new Set(configured.map((format) => format.trim().toLowerCase()).filter((format) => receiptImageMimeTypesByFormat[format]))];
+}
+
+function receiptFormatLabel(settings: ManualPaymentSettings) {
+  return normalizedReceiptFormats(settings).map((format) => format.toUpperCase()).join(", ") || "PNG, JPG, JPEG ou WEBP";
 }
 
 function validateReceiptChannelPermissions(message: Message) {

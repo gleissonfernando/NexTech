@@ -13,6 +13,7 @@ import { createLog } from "./logService";
 import { savePersistentImage } from "./persistentImageStorageService";
 
 export const MANUAL_PAYMENTS_MODULE_ID = "manual-payments";
+const DEFAULT_RECEIPT_IMAGE_FORMATS = ["png", "jpg", "jpeg", "webp"] as const;
 
 export type ManualPaymentSettingsDto = Omit<MongoManualPaymentSettings, "_id" | "updatedAt"> & {
   id: string;
@@ -97,8 +98,11 @@ export async function ensureManualPaymentSettings(guildId: string, botId: string
 
   const settings: MongoManualPaymentSettings = {
     _id: randomUUID(),
+    allowedReceiptImageFormats: [...DEFAULT_RECEIPT_IMAGE_FORMATS],
+    allowReceiptPdf: true,
     approveRoleIds: [],
     attendanceCategoryId: null,
+    autoReceiptDetectionEnabled: true,
     bannerUrl: null,
     botId: resolvedBotId,
     color: "#22c55e",
@@ -118,6 +122,7 @@ export async function ensureManualPaymentSettings(guildId: string, botId: string
     pixQrCodeUrl: null,
     receiverBank: null,
     receiverName: null,
+    receiptChannelId: null,
     rejectRoleIds: [],
     rejectionMessage: "Seu pagamento foi recusado. Motivo: {reason}",
     salePanelChannelId: null,
@@ -302,7 +307,8 @@ export async function registerManualPaymentReceipt(guildId: string, botId: strin
   const current = await manualPaymentOrders.findOne({ _id: orderId, botId: settings.botId, guildId });
   if (!current) return null;
 
-  if (current.paymentChannelId !== input.channelId || current.userId !== input.customerId) {
+  const validReceiptChannel = current.paymentChannelId === input.channelId || settings.receiptChannelId === input.channelId;
+  if (!validReceiptChannel || current.userId !== input.customerId) {
     throw Object.assign(new Error("Comprovante não pertence a este pedido."), { statusCode: 403 });
   }
 
@@ -431,10 +437,14 @@ export async function getManualPaymentOrder(guildId: string, botId: string | nul
 function toSettingsDto(settings: MongoManualPaymentSettings): ManualPaymentSettingsDto {
   return {
     ...settings,
+    allowedReceiptImageFormats: normalizeReceiptFormats(settings.allowedReceiptImageFormats),
+    allowReceiptPdf: settings.allowReceiptPdf !== false,
     approvalMessage: settings.approvalMessage ?? "Seu pagamento foi aprovado. Seu pedido foi liberado para atendimento.",
+    autoReceiptDetectionEnabled: settings.autoReceiptDetectionEnabled !== false,
     customerReceiptMessage: settings.customerReceiptMessage ?? "Recebemos o seu comprovante de pagamento com sucesso. Seu pagamento foi encaminhado para análise da nossa equipe.",
     id: settings._id,
     pixCopyPasteCode: settings.pixCopyPasteCode ?? null,
+    receiptChannelId: settings.receiptChannelId ?? null,
     rejectionMessage: settings.rejectionMessage ?? "Seu pagamento foi recusado. Motivo: {reason}",
     updatedAt: settings.updatedAt.toISOString()
   };
@@ -498,7 +508,10 @@ function emitManualPaymentsUpdated(botId: string, guildId: string) {
 function normalizeSettingsInput(input: SaveManualPaymentSettingsInput) {
   return {
     ...input,
+    allowedReceiptImageFormats: input.allowedReceiptImageFormats ? normalizeReceiptFormats(input.allowedReceiptImageFormats) : undefined,
+    allowReceiptPdf: input.allowReceiptPdf,
     approvalMessage: input.approvalMessage?.trim(),
+    autoReceiptDetectionEnabled: input.autoReceiptDetectionEnabled,
     bannerUrl: normalizeNullable(input.bannerUrl),
     customerReceiptMessage: input.customerReceiptMessage?.trim(),
     logChannelId: normalizeNullable(input.logChannelId),
@@ -509,11 +522,18 @@ function normalizeSettingsInput(input: SaveManualPaymentSettingsInput) {
     pixQrCodeUrl: normalizeNullable(input.pixQrCodeUrl),
     receiverBank: normalizeNullable(input.receiverBank),
     receiverName: normalizeNullable(input.receiverName),
+    receiptChannelId: normalizeNullable(input.receiptChannelId),
     rejectionMessage: input.rejectionMessage?.trim(),
     salePanelChannelId: normalizeNullable(input.salePanelChannelId),
     supportPanelChannelId: normalizeNullable(input.supportPanelChannelId),
     services: input.services?.map(normalizeService).sort((a, b) => a.order - b.order)
   };
+}
+
+function normalizeReceiptFormats(values: readonly string[] | null | undefined) {
+  const allowed = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
+  const normalized = [...new Set((values ?? DEFAULT_RECEIPT_IMAGE_FORMATS).map((value) => value.trim().toLowerCase()).filter((value) => allowed.has(value)))];
+  return normalized.length ? normalized : [...DEFAULT_RECEIPT_IMAGE_FORMATS];
 }
 
 async function persistManualPaymentReceiptImage(
@@ -556,7 +576,7 @@ async function persistManualPaymentReceiptImage(
 function isReceiptImageAttachment(attachment: MongoManualPaymentReceiptAttachment) {
   const contentType = attachment.contentType?.split(";")[0]?.toLowerCase() ?? "";
   const extension = attachment.extension.trim().toLowerCase();
-  return ["image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/webp"].includes(contentType) || ["png", "jpg", "jpeg", "webp"].includes(extension);
+  return ["image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/webp", "image/gif"].includes(contentType) || ["png", "jpg", "jpeg", "webp", "gif"].includes(extension);
 }
 
 function mimeTypeFromReceiptExtension(extension: string) {
@@ -564,6 +584,7 @@ function mimeTypeFromReceiptExtension(extension: string) {
   if (normalized === "png") return "image/png";
   if (normalized === "jpg" || normalized === "jpeg") return "image/jpeg";
   if (normalized === "webp") return "image/webp";
+  if (normalized === "gif") return "image/gif";
   return "application/octet-stream";
 }
 

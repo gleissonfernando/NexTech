@@ -40,8 +40,11 @@ const serviceSchema = z.object({
   serviceType: z.string().min(1).max(80).default("serviço")
 });
 const settingsSchema = z.object({
+  allowedReceiptImageFormats: z.array(z.enum(["png", "jpg", "jpeg", "webp", "gif"])).max(10).optional(),
+  allowReceiptPdf: z.boolean().optional(),
   approveRoleIds: z.array(snowflake).max(100).optional(),
   attendanceCategoryId: optionalSnowflake,
+  autoReceiptDetectionEnabled: z.boolean().optional(),
   bannerUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   enabled: z.boolean().optional(),
@@ -59,6 +62,7 @@ const settingsSchema = z.object({
   pixQrCodeUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
   receiverBank: z.string().max(100).nullable().optional().or(z.literal("")),
   receiverName: z.string().max(100).nullable().optional().or(z.literal("")),
+  receiptChannelId: optionalSnowflake,
   rejectRoleIds: z.array(snowflake).max(100).optional(),
   rejectionMessage: z.string().max(1200).optional(),
   salePanelChannelId: optionalSnowflake,
@@ -268,6 +272,7 @@ function sanitizeSettings(input: z.infer<typeof settingsSchema>) {
     pixQrCodeUrl: input.pixQrCodeUrl || null,
     receiverBank: input.receiverBank || null,
     receiverName: input.receiverName || null,
+    receiptChannelId: input.receiptChannelId || null,
     salePanelChannelId: input.salePanelChannelId || null,
     salePanelMessageId: input.salePanelMessageId || null,
     services: input.services?.map((service, index): MongoManualPaymentService => ({
