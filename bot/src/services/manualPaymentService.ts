@@ -72,7 +72,15 @@ export async function handleManualPaymentMessage(message: Message, context: BotC
   if (!message.content.trim() && message.attachments.size === 0 && message.embeds.length === 0) return false;
 
   try {
-    const runtime = await context.api.getManualPaymentRuntime(message.guild.id).catch(() => null);
+    const runtime = await context.api.getManualPaymentRuntime(message.guild.id).catch((error) => {
+      console.warn("[manual-payments] falha ao carregar runtime para processar comprovante:", {
+        channelId: message.channelId,
+        error: error instanceof Error ? error.message : String(error),
+        guildId: message.guild?.id ?? null,
+        messageId: message.id
+      });
+      return null;
+    });
     if (!runtime) return false;
     const order = runtime.orders.find((item) => item.paymentChannelId === message.channelId && ["PENDING_PAYMENT", "REJECTED", "WAITING_STAFF_APPROVAL"].includes(item.status));
     if (!order) return false;

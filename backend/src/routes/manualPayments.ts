@@ -7,6 +7,7 @@ import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dash
 import { authorizeBotRuntimeModule, canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import {
   createManualPaymentOrder,
+  ensureManualPaymentSettings,
   getManualPaymentOrder,
   getManualPaymentRuntime,
   getManualPaymentsDashboard,
@@ -249,7 +250,10 @@ async function canManage(req: Request, guildId: string, botId: string | null) {
 
 async function assertRuntime(botId: string | null, guildId: string) {
   const authorization = await authorizeBotRuntimeModule({ botId, guildId, moduleId: MANUAL_PAYMENTS_MODULE_ID });
-  if (!authorization.allowed) throw Object.assign(new Error(authorization.reason), { statusCode: 403 });
+  if (authorization.allowed) return;
+  const settings = await ensureManualPaymentSettings(guildId, botId);
+  if (settings.enabled) return;
+  throw Object.assign(new Error(authorization.reason), { statusCode: 403 });
 }
 
 function sanitizeSettings(input: z.infer<typeof settingsSchema>) {
