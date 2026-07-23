@@ -315,6 +315,7 @@ export type DevBotDto = {
   guildIds: string[];
   status: MongoDevBotStatus;
   statusMessage: string | null;
+  maintenance: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
@@ -342,6 +343,7 @@ export type DashboardBotDto = Pick<
   | "guildIds"
   | "status"
   | "statusMessage"
+  | "maintenance"
   | "enabledModules"
   | "desiredOnline"
   | "accessLevel"
@@ -855,6 +857,12 @@ export async function createDevBot(input: CreateDevBotInput) {
     mainGuildChannelCount: detectedGuild.channelCount,
     status: "offline",
     statusMessage: "Token validado. Aguardando inicializacao.",
+    maintenance: false,
+    maintenanceActivatedAt: null,
+    maintenanceDeactivatedAt: null,
+    maintenanceUpdatedAt: null,
+    maintenanceUpdatedById: null,
+    maintenanceUpdatedByName: null,
     enabledModules: sanitizeModules(input.enabledModules ?? ["live"]),
     desiredOnline: true,
     createdBy: input.createdBy,
@@ -2694,6 +2702,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     guildIds: [...new Set(guildIds)],
     status: bot.status,
     statusMessage: bot.statusMessage ? maskSensitiveText(bot.statusMessage) : null,
+    maintenance: bot.maintenance === true,
     enabledModules: sanitizeModules(bot.enabledModules),
     desiredOnline: bot.desiredOnline !== false,
     accessLevel,
@@ -2823,6 +2832,7 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     guildIds: bot.guildIds,
     status: bot.status,
     statusMessage: bot.statusMessage,
+    maintenance: bot.maintenance,
     enabledModules: bot.enabledModules,
     desiredOnline: bot.desiredOnline,
     accessLevel: bot.accessLevel,

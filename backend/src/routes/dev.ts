@@ -606,10 +606,11 @@ devRouter.delete("/access/:userId", async (req, res, next) => {
   }
 });
 
-devRouter.get("/maintenance", async (_req, res, next) => {
+devRouter.get("/maintenance", async (req, res, next) => {
   try {
+    const botId = typeof req.query.botId === "string" && req.query.botId.trim() ? req.query.botId.trim() : null;
     return res.json({
-      maintenance: await getMaintenanceState()
+      maintenance: await getMaintenanceState(botId)
     });
   } catch (error) {
     return next(error);
@@ -620,21 +621,24 @@ devRouter.patch("/maintenance", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = z.object({
-      active: z.boolean()
+      active: z.boolean(),
+      botId: z.string().min(1).max(120)
     }).parse(req.body ?? {});
     const maintenance = await setMaintenanceMode({
       active: input.active,
       actorId: auth.user.discordId,
-      actorName: auth.user.globalName || auth.user.username
+      actorName: auth.user.globalName || auth.user.username,
+      botId: input.botId
     });
 
     await writeDevBotAudit(
       auth,
       auth.user.selectedGuildId ?? "global",
-      null,
+      input.botId,
       input.active ? "maintenance_enabled" : "maintenance_disabled",
-      input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.",
+      input.active ? "Modo de manutenção do bot ativado." : "Modo de manutenção do bot desativado.",
       {
+        botId: input.botId,
         maintenance: true
       }
     );
@@ -647,21 +651,26 @@ devRouter.patch("/maintenance", async (req, res, next) => {
   }
 });
 
-devRouter.post("/maintenance/alert", async (_req, res, next) => {
+devRouter.post("/maintenance/alert", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = z.object({
+      botId: z.string().min(1).max(120)
+    }).parse(req.body ?? {});
     const maintenance = await sendMaintenanceManualAlert({
       actorId: auth.user.discordId,
-      actorName: auth.user.globalName || auth.user.username
+      actorName: auth.user.globalName || auth.user.username,
+      botId: input.botId
     });
 
     await writeDevBotAudit(
       auth,
       auth.user.selectedGuildId ?? "global",
-      null,
+      input.botId,
       "maintenance_manual_alert",
       "Alerta manual de manutenção enviado.",
       {
+        botId: input.botId,
         maintenance: true
       }
     );

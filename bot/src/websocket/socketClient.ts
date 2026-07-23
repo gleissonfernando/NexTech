@@ -417,10 +417,13 @@ export type TagVerificationRunResult = {
 export type MaintenanceUpdatedEvent = {
   action: string;
   alertMessage?: string;
+  botId?: string | null;
   state: {
     active: boolean;
     activatedAt: string | null;
     affectedBots: number;
+    botId: string | null;
+    botName: string | null;
     deactivatedAt: string | null;
     updatedAt: string;
     updatedById: string | null;

@@ -16,6 +16,7 @@ import {
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { MaintenanceState } from "./apiClient";
+import { currentRuntimeBotId, env } from "../config/env";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import type { BotContext, GuildSettings } from "../types";
 
@@ -29,13 +30,13 @@ const MAINTENANCE_SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
 
 const MAINTENANCE_ALERT_MESSAGE = [
   "MANUTENÇÃO INICIADA",
-  "O sistema entrou em manutenção global.",
-  "Todos os serviços estão temporariamente indisponíveis.",
+  "Este bot entrou em manutenção.",
+  "Os serviços deste bot estão temporariamente indisponíveis.",
   "Aguarde a liberação oficial da equipe de desenvolvimento."
 ].join("\n");
 const MAINTENANCE_PANEL_TITLE = "MANUTENÇÃO INICIADA";
 const MAINTENANCE_PANEL_DESCRIPTION = [
-  "O sistema entrou em manutenção global.",
+  "Este bot entrou em manutenção.",
   "Todos os serviços do bot estão temporariamente indisponíveis.",
   "Aguarde a equipe finalizar a manutenção para utilizar novamente."
 ].join("\n");
@@ -48,6 +49,8 @@ let maintenanceState: MaintenanceState = {
   active: false,
   activatedAt: null,
   affectedBots: 0,
+  botId: null,
+  botName: null,
   deactivatedAt: null,
   updatedAt: new Date(0).toISOString(),
   updatedById: null,
@@ -91,6 +94,11 @@ export function startMaintenanceService(context: BotContext, options: { refreshI
   }
 
   context.socket.onMaintenanceUpdated((payload) => {
+    const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+    const payloadBotId = payload.botId ?? payload.state?.botId ?? null;
+    if (payloadBotId && runtimeBotId && payloadBotId !== runtimeBotId) {
+      return;
+    }
     const previousActive = maintenanceState.active;
     maintenanceState = payload.state;
     void applyMaintenanceState(context, previousActive, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE, payload.action)

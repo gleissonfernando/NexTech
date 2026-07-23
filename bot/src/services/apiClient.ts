@@ -857,6 +857,8 @@ export type MaintenanceState = {
   active: boolean;
   activatedAt: string | null;
   affectedBots: number;
+  botId: string | null;
+  botName: string | null;
   deactivatedAt: string | null;
   updatedAt: string;
   updatedById: string | null;

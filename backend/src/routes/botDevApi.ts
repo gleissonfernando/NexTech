@@ -131,10 +131,11 @@ const salesTicketPasswordRevealSchema = z.object({
 
 botDevApiRouter.use(requireBot);
 
-botDevApiRouter.get("/maintenance", async (_req, res, next) => {
+botDevApiRouter.get("/maintenance", async (req, res, next) => {
   try {
+    const botId = await resolveRequestBotId(req);
     return res.json({
-      maintenance: await getMaintenanceState()
+      maintenance: await getMaintenanceState(botId)
     });
   } catch (error) {
     return next(error);

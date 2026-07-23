@@ -1044,9 +1044,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   }, [initialBotSlug]);
 
   useEffect(() => {
+    setMaintenanceState(null);
+    if (!activeBotId) {
+      return;
+    }
+
     let mounted = true;
 
-    getDashboardMaintenanceState()
+    getDashboardMaintenanceState(activeBotId)
       .then((maintenance) => {
         if (mounted) setMaintenanceState(maintenance);
       })
@@ -1057,7 +1062,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [activeBotId]);
 
   useEffect(() => {
     if (dashboardProfileLoading || dashboardRouteError) {
@@ -1159,7 +1164,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       return;
     }
 
-    if (maintenanceState?.active) {
+    if (maintenanceState?.active && maintenanceState.botId === activeBotId) {
       setSettings(null);
       setLogs([]);
       setLives([]);
@@ -1215,7 +1220,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     return () => {
       mounted = false;
     };
-  }, [activeBotId, dashboardProfileLoading, dashboardRouteError, enabledModulesKey, logsModuleEnabled, maintenanceState?.active, panelBots.length, selectedGuildId, ticketsModuleEnabled]);
+  }, [activeBotId, dashboardProfileLoading, dashboardRouteError, enabledModulesKey, logsModuleEnabled, maintenanceState?.active, maintenanceState?.botId, panelBots.length, selectedGuildId, ticketsModuleEnabled]);
 
   useEffect(() => {
     const socket = createDashboardSocket();
@@ -1238,8 +1243,8 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         bots: current.bots.map((bot) => bot.id === updatedBot.id ? updatedBot : bot)
       } : current);
     });
-    socket.on("maintenance:updated", (payload: { state?: MaintenanceState }) => {
-      if (payload.state) {
+    socket.on("maintenance:updated", (payload: { botId?: string | null; state?: MaintenanceState }) => {
+      if (payload.state && (payload.botId ?? payload.state.botId ?? null) === activeBotId) {
         setMaintenanceState(payload.state);
       }
     });
@@ -1393,9 +1398,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     return <DashboardRouteError message={dashboardRouteError} />;
   }
 
-  if (maintenanceState?.active) {
-    return <DashboardMaintenanceScreen maintenance={maintenanceState} />;
-  }
+  const selectedBotInMaintenance = Boolean(maintenanceState?.active && maintenanceState.botId === activeBotId);
 
   return (
     <DashboardLayout
@@ -1422,9 +1425,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         <DashboardNoticeCenter
           activeView={activeView}
           bot={selectedBot}
-          maintenance={maintenanceState}
+          maintenance={selectedBotInMaintenance ? maintenanceState : null}
           planNotice={selectedBotPlanNotice}
         />
+
+        {selectedBotInMaintenance && maintenanceState ? (
+          <DashboardMaintenanceScreen maintenance={maintenanceState} />
+        ) : (
+          <>
 
         {activeView !== "overview" ? (
           <UserDashboardHeader
@@ -1961,6 +1969,8 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             settings={settings}
           />
         ) : null}
+          </>
+        )}
       </motion.div>
     </DashboardLayout>
   );
@@ -4732,7 +4742,7 @@ function DashboardNoticeCenter({
 
 function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceState }) {
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] px-4 py-10 text-white">
+    <section className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-[#FFD500]/20 bg-[#050505] px-4 py-10 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]" />
       <motion.section
         animate={{ opacity: 1, y: 0 }}
@@ -4743,9 +4753,9 @@ function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceS
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFD500]/30 bg-[#FFD500]/10">
           <ShieldAlert className="h-7 w-7 text-[#FFD500]" />
         </div>
-        <h1 className="mt-5 text-2xl font-black tracking-normal text-white">Sistema em manutenção</h1>
+        <h1 className="mt-5 text-2xl font-black tracking-normal text-white">Bot em manutenção</h1>
         <p className="mt-3 text-sm font-semibold leading-6 text-zinc-300">
-          A dashboard está temporariamente indisponível enquanto a equipe finaliza a manutenção.
+          {maintenance.botName ? `${maintenance.botName} está temporariamente indisponível.` : "Este bot está temporariamente indisponível."} Troque de bot pelo menu para acessar outro painel ativo.
         </p>
         <p className="mt-4 text-xs font-medium text-zinc-500">
           Iniciada em {maintenance.activatedAt ? formatFullDate(maintenance.activatedAt) : "horário não informado"}.
@@ -4755,7 +4765,7 @@ function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceS
           Verificar novamente
         </Button>
       </motion.section>
-    </main>
+    </section>
   );
 }
 

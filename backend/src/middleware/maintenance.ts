@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { isBotRequest } from "./auth";
 import { isMaintenanceActive, maintenanceBlockResponse } from "../services/maintenanceService";
+import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const ASSET_EXTENSIONS = new Set([
   ".css",
@@ -29,18 +30,20 @@ export async function maintenanceMiddleware(req: Request, res: Response, next: N
       return next();
     }
 
-    if (!(await isMaintenanceActive())) {
+    const botId = await resolveRequestBotId(req);
+    if (!botId || !(await isMaintenanceActive(botId))) {
       return next();
     }
 
     if (req.path.startsWith("/api") || req.path.startsWith("/webhooks")) {
       return res.status(503).json({
         ...maintenanceBlockResponse(),
+        botId,
         maintenance: true
       });
     }
 
-    return res.status(503).send(maintenanceHtml());
+    return next();
   } catch (error) {
     return next(error);
   }
@@ -59,12 +62,9 @@ function isMaintenanceBypass(req: Request) {
     || path.startsWith("/dev")
     || path.startsWith("/api/dev")
     || path.startsWith("/api/bot/maintenance")
+    || path.startsWith("/api/dashboard/maintenance")
     || path.startsWith("/uploads")
   ) {
-    return true;
-  }
-
-  if (method === "GET" && path === "/api/dashboard/maintenance") {
     return true;
   }
 

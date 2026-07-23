@@ -299,8 +299,10 @@ export async function getDashboardBySlug(slug: string) {
   return data;
 }
 
-export async function getDashboardMaintenanceState() {
-  const { data } = await api.get<{ maintenance: MaintenanceState }>("/dashboard/maintenance");
+export async function getDashboardMaintenanceState(botId?: string | null) {
+  const { data } = await api.get<{ maintenance: MaintenanceState }>("/dashboard/maintenance", {
+    params: botParams(botId)
+  });
   return data.maintenance;
 }
 
@@ -3031,20 +3033,25 @@ export async function stopAllDevBots() {
   return data;
 }
 
-export async function getMaintenanceState() {
-  const { data } = await api.get<{ maintenance: MaintenanceState }>("/dev/maintenance");
-  return data.maintenance;
-}
-
-export async function setMaintenanceMode(active: boolean) {
-  const { data } = await api.patch<{ maintenance: MaintenanceState }>("/dev/maintenance", {
-    active
+export async function getMaintenanceState(botId?: string | null) {
+  const { data } = await api.get<{ maintenance: MaintenanceState }>("/dev/maintenance", {
+    params: botParams(botId)
   });
   return data.maintenance;
 }
 
-export async function sendMaintenanceAlert() {
-  const { data } = await api.post<{ maintenance: MaintenanceState }>("/dev/maintenance/alert");
+export async function setMaintenanceMode(active: boolean, botId: string) {
+  const { data } = await api.patch<{ maintenance: MaintenanceState }>("/dev/maintenance", {
+    active,
+    botId
+  });
+  return data.maintenance;
+}
+
+export async function sendMaintenanceAlert(botId: string) {
+  const { data } = await api.post<{ maintenance: MaintenanceState }>("/dev/maintenance/alert", {
+    botId
+  });
   return data.maintenance;
 }
 

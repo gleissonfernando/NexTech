@@ -785,6 +785,7 @@ function devBotPlaceholder(appId: string, app: unknown): DevBotDto {
     guildIds: [],
     status: "offline",
     statusMessage: null,
+    maintenance: false,
     enabledModules: [],
     desiredOnline: true,
     accessLevel: "admin",

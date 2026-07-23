@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { getMongoCollections, type MongoMaintenanceLog, type MongoMaintenanceState } from "../database/mongo";
-import { emitRealtime, emitRealtimeToRoom, botRealtimeRoom } from "../realtime/events";
+import { getMongoCollections, type MongoDevBot, type MongoMaintenanceLog, type MongoMaintenanceState } from "../database/mongo";
+import { emitRealtime, emitRealtimeToRoom, devBotRealtimeRoom } from "../realtime/events";
 
 export type MaintenanceAction = "enabled" | "disabled" | "manual_alert";
 
@@ -8,6 +8,8 @@ export type MaintenanceStateDto = {
   active: boolean;
   activatedAt: string | null;
   affectedBots: number;
+  botId: string | null;
+  botName: string | null;
   deactivatedAt: string | null;
   logs: MaintenanceLogDto[];
   updatedAt: string;
@@ -21,6 +23,8 @@ export type MaintenanceLogDto = {
   active: boolean;
   actorId: string | null;
   actorName: string | null;
+  botId: string | null;
+  botName: string | null;
   createdAt: string;
   message: string;
 };
@@ -28,8 +32,8 @@ export type MaintenanceLogDto = {
 const STATE_ID = "global";
 const MAINTENANCE_STARTED_MESSAGE = [
   "⚠️ MANUTENÇÃO INICIADA",
-  "O sistema entrou em modo de manutenção global.",
-  "Todos os serviços estão temporariamente indisponíveis.",
+  "Este bot entrou em modo de manutenção.",
+  "Os serviços deste bot estão temporariamente indisponíveis.",
   "Aguarde a liberação oficial da equipe de desenvolvimento."
 ].join("\n");
 
@@ -37,6 +41,8 @@ let memoryState: MaintenanceStateDto = {
   active: false,
   activatedAt: null,
   affectedBots: 0,
+  botId: null,
+  botName: null,
   deactivatedAt: null,
   logs: [],
   updatedAt: new Date(0).toISOString(),
@@ -44,10 +50,10 @@ let memoryState: MaintenanceStateDto = {
   updatedByName: null
 };
 
-export async function getMaintenanceState(): Promise<MaintenanceStateDto> {
+export async function getMaintenanceState(botId?: string | null): Promise<MaintenanceStateDto> {
   const [state, logs, affectedBots] = await Promise.all([
-    readPersistedState(),
-    listMaintenanceLogs(),
+    readPersistedState(botId),
+    listMaintenanceLogs(botId),
     countDevBots()
   ]);
 
@@ -58,16 +64,18 @@ export async function getMaintenanceState(): Promise<MaintenanceStateDto> {
   };
 }
 
-export async function isMaintenanceActive() {
-  return (await readPersistedState()).active;
+export async function isMaintenanceActive(botId?: string | null) {
+  if (!botId) return false;
+  return (await readPersistedState(botId)).active;
 }
 
 export async function setMaintenanceMode(input: {
   active: boolean;
   actorId?: string | null;
   actorName?: string | null;
+  botId: string;
 }) {
-  const current = await getMaintenanceState();
+  const current = await getMaintenanceState(input.botId);
   const now = new Date();
   const actorId = input.actorId ?? null;
   const actorName = input.actorName ?? null;
@@ -81,7 +89,7 @@ export async function setMaintenanceMode(input: {
     updatedByName: actorName
   };
   const action: MaintenanceAction = input.active ? "enabled" : "disabled";
-  const message = input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.";
+  const message = input.active ? "Modo de manutenção do bot ativado." : "Modo de manutenção do bot desativado.";
 
   await persistState(next);
   await appendMaintenanceLog({
@@ -89,10 +97,12 @@ export async function setMaintenanceMode(input: {
     active: next.active,
     actorId,
     actorName,
+    botId: next.botId,
+    botName: next.botName,
     message
   });
 
-  const dto = await getMaintenanceState();
+  const dto = await getMaintenanceState(input.botId);
   emitMaintenanceUpdate(dto, input.active ? "maintenance:started" : "maintenance:ended");
   return dto;
 }
@@ -100,18 +110,21 @@ export async function setMaintenanceMode(input: {
 export async function sendMaintenanceManualAlert(input: {
   actorId?: string | null;
   actorName?: string | null;
+  botId: string;
 }) {
-  const state = await getMaintenanceState();
+  const state = await getMaintenanceState(input.botId);
 
   await appendMaintenanceLog({
     action: "manual_alert",
     active: state.active,
     actorId: input.actorId ?? null,
     actorName: input.actorName ?? null,
+    botId: state.botId,
+    botName: state.botName,
     message: "Alerta manual de manutenção enviado."
   });
 
-  const dto = await getMaintenanceState();
+  const dto = await getMaintenanceState(input.botId);
   emitMaintenanceUpdate(dto, "maintenance:manual_alert");
   return dto;
 }
@@ -127,33 +140,35 @@ function emitMaintenanceUpdate(state: MaintenanceStateDto, action: MaintenanceAc
   const payload = {
     action,
     alertMessage: MAINTENANCE_STARTED_MESSAGE,
+    botId: state.botId,
     state
   };
 
   emitRealtime("maintenance:updated", payload);
-  emitRealtimeToRoom(botRealtimeRoom(), "maintenance:updated", payload);
+  if (state.botId) {
+    emitRealtimeToRoom(devBotRealtimeRoom(state.botId), "maintenance:updated", payload);
+  }
 }
 
-async function readPersistedState(): Promise<Omit<MaintenanceStateDto, "affectedBots" | "logs">> {
+async function readPersistedState(botId?: string | null): Promise<Omit<MaintenanceStateDto, "affectedBots" | "logs">> {
   try {
-    const { maintenanceState } = await getMongoCollections();
+    const { devBots, maintenanceState } = await getMongoCollections();
+    if (botId) {
+      const bot = await devBots.findOne({ _id: botId });
+      if (!bot) return defaultState(botId);
+      return toBotStateDto(bot);
+    }
+
     const doc = await maintenanceState.findOne({ _id: STATE_ID });
 
     if (!doc) {
-      return {
-        active: false,
-        activatedAt: null,
-        deactivatedAt: null,
-        updatedAt: new Date(0).toISOString(),
-        updatedById: null,
-        updatedByName: null
-      };
+      return defaultState(null);
     }
 
     return toStateDto(doc);
   } catch (error) {
     console.warn("[maintenance] usando estado em memória:", error instanceof Error ? error.message : error);
-    return memoryState;
+    return botId ? defaultState(botId) : memoryState;
   }
 }
 
@@ -161,7 +176,28 @@ async function persistState(state: MaintenanceStateDto) {
   memoryState = state;
 
   try {
-    const { maintenanceState } = await getMongoCollections();
+    const { devBots, maintenanceState } = await getMongoCollections();
+    if (state.botId) {
+      const result = await devBots.updateOne(
+        { _id: state.botId },
+        {
+          $set: {
+            maintenance: state.active,
+            maintenanceActivatedAt: state.activatedAt ? new Date(state.activatedAt) : null,
+            maintenanceDeactivatedAt: state.deactivatedAt ? new Date(state.deactivatedAt) : null,
+            maintenanceUpdatedAt: new Date(state.updatedAt),
+            maintenanceUpdatedById: state.updatedById,
+            maintenanceUpdatedByName: state.updatedByName,
+            updatedAt: new Date(state.updatedAt)
+          }
+        }
+      );
+      if (!result.matchedCount) {
+        throw new Error("Bot não encontrado para atualizar manutenção.");
+      }
+      return;
+    }
+
     await maintenanceState.updateOne(
       { _id: STATE_ID },
       {
@@ -177,6 +213,9 @@ async function persistState(state: MaintenanceStateDto) {
       { upsert: true }
     );
   } catch (error) {
+    if (state.botId) {
+      throw error;
+    }
     console.warn("[maintenance] estado mantido em memória:", error instanceof Error ? error.message : error);
   }
 }
@@ -201,6 +240,8 @@ async function appendMaintenanceLog(input: Omit<MaintenanceLogDto, "id" | "creat
       active: log.active,
       actorId: log.actorId,
       actorName: log.actorName,
+      botId: log.botId,
+      botName: log.botName,
       createdAt: new Date(log.createdAt),
       message: log.message
     };
@@ -211,33 +252,61 @@ async function appendMaintenanceLog(input: Omit<MaintenanceLogDto, "id" | "creat
   }
 }
 
-async function listMaintenanceLogs() {
+async function listMaintenanceLogs(botId?: string | null) {
   try {
     const { maintenanceLogs } = await getMongoCollections();
-    const docs = await maintenanceLogs.find({}).sort({ createdAt: -1 }).limit(25).toArray();
+    const docs = await maintenanceLogs.find(botId ? { botId } : {}).sort({ createdAt: -1 }).limit(25).toArray();
     return docs.map(toLogDto);
   } catch {
-    return memoryState.logs;
+    return botId ? memoryState.logs.filter((log) => log.botId === botId) : memoryState.logs;
   }
 }
 
 async function countDevBots() {
   try {
     const { devBots } = await getMongoCollections();
-    return await devBots.countDocuments({});
+    return await devBots.countDocuments({ maintenance: true });
   } catch {
     return 0;
   }
+}
+
+function defaultState(botId: string | null, botName: string | null = null): Omit<MaintenanceStateDto, "affectedBots" | "logs"> {
+  return {
+    active: false,
+    activatedAt: null,
+    botId,
+    botName,
+    deactivatedAt: null,
+    updatedAt: new Date(0).toISOString(),
+    updatedById: null,
+    updatedByName: null
+  };
 }
 
 function toStateDto(doc: MongoMaintenanceState): Omit<MaintenanceStateDto, "affectedBots" | "logs"> {
   return {
     active: doc.active,
     activatedAt: doc.activatedAt?.toISOString() ?? null,
+    botId: null,
+    botName: null,
     deactivatedAt: doc.deactivatedAt?.toISOString() ?? null,
     updatedAt: doc.updatedAt.toISOString(),
     updatedById: doc.updatedById ?? null,
     updatedByName: doc.updatedByName ?? null
+  };
+}
+
+function toBotStateDto(bot: MongoDevBot): Omit<MaintenanceStateDto, "affectedBots" | "logs"> {
+  return {
+    active: bot.maintenance === true,
+    activatedAt: bot.maintenanceActivatedAt?.toISOString() ?? null,
+    botId: bot._id,
+    botName: bot.name,
+    deactivatedAt: bot.maintenanceDeactivatedAt?.toISOString() ?? null,
+    updatedAt: (bot.maintenanceUpdatedAt ?? bot.updatedAt ?? new Date(0)).toISOString(),
+    updatedById: bot.maintenanceUpdatedById ?? null,
+    updatedByName: bot.maintenanceUpdatedByName ?? null
   };
 }
 
@@ -248,6 +317,8 @@ function toLogDto(doc: MongoMaintenanceLog): MaintenanceLogDto {
     active: doc.active,
     actorId: doc.actorId,
     actorName: doc.actorName,
+    botId: doc.botId ?? null,
+    botName: doc.botName ?? null,
     createdAt: doc.createdAt.toISOString(),
     message: doc.message
   };

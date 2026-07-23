@@ -4475,6 +4475,12 @@ export type MongoDevBot = {
   mainGuildChannelCount?: number;
   status: MongoDevBotStatus;
   statusMessage?: string | null;
+  maintenance?: boolean;
+  maintenanceActivatedAt?: Date | null;
+  maintenanceDeactivatedAt?: Date | null;
+  maintenanceUpdatedAt?: Date | null;
+  maintenanceUpdatedById?: string | null;
+  maintenanceUpdatedByName?: string | null;
   enabledModules: string[];
   desiredOnline?: boolean;
   createdBy: string;
@@ -4566,6 +4572,8 @@ export type MongoMaintenanceLog = {
   active: boolean;
   actorId: string | null;
   actorName: string | null;
+  botId?: string | null;
+  botName?: string | null;
   createdAt: Date;
   message: string;
 };
