@@ -836,7 +836,7 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
   if (request.status !== "in_evaluation") {
-    await interaction.reply({ content: "Esta avaliação já foi enviada ou encerrada.", ephemeral: true });
+    await acknowledgeAlreadySubmittedEvaluation(interaction, context, request);
     return true;
   }
 
@@ -984,6 +984,10 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
   const [, , requestId, result] = interaction.customId.split(":");
   if (!requestId || (result !== "approved" && result !== "rejected")) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
+  if (request.status !== "in_evaluation") {
+    await acknowledgeAlreadySubmittedEvaluation(interaction, context, request);
+    return true;
+  }
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
@@ -1523,6 +1527,29 @@ async function ensurePromotionChannelAccess(guild: Guild, request: PolicePromoti
   }, { reason: `Acesso do cargo instrutor na promoção ${request.id}` }).catch(() => null)));
 }
 
+async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteraction<"cached">, context: BotContext, request: PolicePromotionRequest) {
+  const settings = await getSettings(context, interaction.guild.id);
+  const promotion = promotionFor(settings, request);
+  const message = ["pending_approval", "approved", "rejected"].includes(request.status)
+    ? "Este relatório já foi enviado para aprovação."
+    : "Esta promoção já foi encerrada.";
+  const payload = promotion
+    ? evaluationAlreadySubmittedPayload(request, promotion, interaction.guild, message)
+    : { content: message, ephemeral: true };
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.followUp({ content: message, ephemeral: true }).catch(() => null);
+  } else if (promotion) {
+    await interaction.reply(payload as any).catch(() => interaction.followUp({ content: message, ephemeral: true }).catch(() => null));
+  } else {
+    await interaction.reply({ content: message, ephemeral: true }).catch(() => null);
+  }
+
+  if (promotion && ["pending_approval", "approved", "rejected"].includes(request.status)) {
+    await deletePromotionTemporaryChannel(interaction.guild, context, request, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+  }
+}
+
 async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext, request: PolicePromotionRequest, actorId: string, actorName: string) {
   if (!request.channelId) return;
   const channel = await guild.channels.fetch(request.channelId).catch(() => null);
@@ -1801,6 +1828,27 @@ function evaluationSubmittedPayload(request: PolicePromotionRequest, promotion: 
       ].join("\n") }]
     }],
     flags: componentV2Flags(ephemeral)
+  };
+}
+
+function evaluationAlreadySubmittedPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, message: string): MessageCreateOptions {
+  return {
+    components: [{
+      type: 17,
+      accent_color: parseColor(promotion.color),
+      components: [{ type: 10, content: [
+        `# ${icon("visto", guild)} Relatório já processado`,
+        "",
+        message,
+        "",
+        `${icon("relogio", guild)} Status\n${statusLabel(request.status)}`,
+        "",
+        `${icon("homem", guild)} Instrutor\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Instrutor"}`,
+        "",
+        `${icon("calendario", guild)} Última atualização\n${formatDate(request.updatedAt)}`
+      ].join("\n") }]
+    }],
+    flags: componentV2Flags(true)
   };
 }
 
