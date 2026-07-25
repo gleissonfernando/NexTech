@@ -209,15 +209,27 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
       <Card>
         <CardHeader>
           <CardTitle>Configuração Geral</CardTitle>
-          <CardDescription>Canais padrão usados quando uma promoção não possuir canal próprio.</CardDescription>
+          <CardDescription>Canais do painel, aprovação, logs e tickets temporários.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <FivemResourceSelect disabled={disabled} label="Canal padrão do painel" options={channelOptions} prefix="#" value={data.settings.defaultPanelChannelId} onChange={(defaultPanelChannelId) => patchSettings({ defaultPanelChannelId })} />
           <FivemResourceSelect disabled={disabled} label="Categoria padrão dos tickets" options={categoryOptions} value={data.settings.defaultCategoryId} onChange={(defaultCategoryId) => patchSettings({ defaultCategoryId })} />
-          <FivemResourceSelect disabled={disabled} label="Canal padrão de aprovação" options={channelOptions} prefix="#" value={data.settings.defaultApprovalChannelId} onChange={(defaultApprovalChannelId) => patchSettings({ defaultApprovalChannelId })} />
+          <FivemResourceSelect disabled={disabled} label="Canal de aprovação" options={channelOptions} prefix="#" value={data.settings.defaultApprovalChannelId} onChange={(defaultApprovalChannelId) => patchSettings({ defaultApprovalChannelId })} />
           <FivemResourceSelect disabled={disabled} label="Canal padrão de histórico" options={channelOptions} prefix="#" value={data.settings.defaultHistoryChannelId} onChange={(defaultHistoryChannelId) => patchSettings({ defaultHistoryChannelId })} />
-          <FivemResourceSelect disabled={disabled} label="Canal padrão de logs" options={channelOptions} prefix="#" value={data.settings.defaultLogChannelId} onChange={(defaultLogChannelId) => patchSettings({ defaultLogChannelId })} />
+          <FivemResourceSelect disabled={disabled} label="Canal de logs" options={channelOptions} prefix="#" value={data.settings.defaultLogChannelId} onChange={(defaultLogChannelId) => patchSettings({ defaultLogChannelId })} />
           <Toggle disabled={disabled} label="Sistema de promoções ativo" value={data.settings.enabled} onChange={(enabled) => patchSettings({ enabled })} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cargos</CardTitle>
+          <CardDescription>Permissões globais usadas para assumir, enviar relatório, aprovar e reprovar promoções.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) de Instrutor" options={roleOptions} prefix="@" values={data.settings.instructorRoleIds ?? []} onChange={(instructorRoleIds) => patchSettings({ instructorRoleIds })} />
+          <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) que podem Aprovar" options={roleOptions} prefix="@" values={data.settings.approverRoleIds ?? []} onChange={(approverRoleIds) => patchSettings({ approverRoleIds })} />
+          <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) que podem Reprovar" options={roleOptions} prefix="@" values={data.settings.rejecterRoleIds ?? []} onChange={(rejecterRoleIds) => patchSettings({ rejecterRoleIds })} />
         </CardContent>
       </Card>
 
@@ -283,7 +295,7 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
                 <FivemResourceSelect disabled={disabled} label="Canal de logs" options={channelOptions} prefix="#" value={selected.logChannelId} onChange={(logChannelId) => patchPromotion(selected.id, { logChannelId })} />
                 <FivemResourceSelect disabled={disabled} label="Cargo concedido na aprovação" options={roleOptions} prefix="@" value={selected.grantedRoleId} onChange={(grantedRoleId) => patchPromotion(selected.id, { grantedRoleId })} />
                 <FivemResourceSelect disabled={disabled} label="Cargo removido na aprovação" options={roleOptions} prefix="@" value={selected.removedRoleId} onChange={(removedRoleId) => patchPromotion(selected.id, { removedRoleId })} />
-                <div className="lg:col-span-2"><FivemResourceMultiSelect disabled={disabled} label="Cargos dos instrutores avaliadores" options={roleOptions} prefix="@" values={selected.evaluatorRoleIds} onChange={(evaluatorRoleIds) => patchPromotion(selected.id, { evaluatorRoleIds })} /></div>
+                <div className="lg:col-span-2"><FivemResourceMultiSelect disabled={disabled} label="Cargos de instrutores desta promoção" options={roleOptions} prefix="@" values={selected.evaluatorRoleIds} onChange={(evaluatorRoleIds) => patchPromotion(selected.id, { evaluatorRoleIds })} /></div>
                 <div className="lg:col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
                   Para decidir uma promoção, configure cargos em aprovação e reprovação. Se esses campos ficarem vazios, o bot usa os cargos dos instrutores avaliadores como fallback.
                 </div>

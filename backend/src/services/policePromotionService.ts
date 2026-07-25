@@ -69,7 +69,7 @@ export type PolicePromotionEvaluationHistoryPageDto = {
 
 export type SavePolicePromotionSettingsInput = Partial<Pick<
   MongoPolicePromotionSettings,
-  "defaultApprovalChannelId" | "defaultCategoryId" | "defaultHistoryChannelId" | "defaultLogChannelId" | "defaultPanelChannelId" | "enabled" | "promotions"
+  "approverRoleIds" | "defaultApprovalChannelId" | "defaultCategoryId" | "defaultHistoryChannelId" | "defaultLogChannelId" | "defaultPanelChannelId" | "enabled" | "instructorRoleIds" | "promotions" | "rejecterRoleIds"
 >>;
 
 export type CreatePolicePromotionRequestInput = {
@@ -248,19 +248,34 @@ export async function updatePolicePromotionTicketState(botId: string, requestId:
   }, "request.ticket_updated", actor, input);
 }
 
-export async function assignPolicePromotionEvaluator(botId: string, requestId: string, input: { evaluatorId: string; evaluatorName: string }) {
+export async function assignPolicePromotionEvaluator(botId: string, requestId: string, input: { evaluatorId: string; evaluatorName: string; evaluatorRoleIds?: string[] }) {
+  const current = await getPolicePromotionRequest(botId, requestId);
+  const settings = await getPolicePromotionSettings(botId, current.guildId);
+  const promotion = settings.promotions.find((item) => item.id === current.promotionId);
+  if (!promotion || !hasAnyRole(input.evaluatorRoleIds ?? [], promotionInstructorRoleIds(settings, promotion))) {
+    throw Object.assign(new Error("Você não possui permissão para realizar esta promoção."), { statusCode: 403 });
+  }
+  if (current.status !== "ticket_open" || current.evaluatorId) {
+    throw Object.assign(new Error("Esta promoção já foi assumida."), { statusCode: 409 });
+  }
+
   return updateRequest(botId, requestId, {
     evaluationStartedAt: new Date(),
     evaluatorId: input.evaluatorId,
     evaluatorName: normalizeText(input.evaluatorName, 100),
     status: "in_evaluation"
-  }, "request.assigned", { actorId: input.evaluatorId, actorName: input.evaluatorName }, {});
+  }, "request.assigned", { actorId: input.evaluatorId, actorName: input.evaluatorName }, {}, { status: "ticket_open", evaluatorId: null });
 }
 
-export async function finishPolicePromotionEvaluation(botId: string, requestId: string, input: { evaluatorId: string; evaluationNotes: string; evaluationResult: "approved" | "rejected" }) {
+export async function finishPolicePromotionEvaluation(botId: string, requestId: string, input: { evaluatorId: string; evaluatorRoleIds?: string[]; evaluationNotes: string; evaluationResult: "approved" | "rejected" }) {
   const current = await getPolicePromotionRequest(botId, requestId);
   if (current.status !== "in_evaluation") throw Object.assign(new Error("Esta avaliação já foi enviada ou encerrada."), { statusCode: 409 });
   if (current.evaluatorId !== input.evaluatorId) throw Object.assign(new Error("Esta avaliação pertence a outro avaliador."), { statusCode: 403 });
+  const settings = await getPolicePromotionSettings(botId, current.guildId);
+  const promotion = settings.promotions.find((item) => item.id === current.promotionId);
+  if (!promotion || !hasAnyRole(input.evaluatorRoleIds ?? [], promotionInstructorRoleIds(settings, promotion))) {
+    throw Object.assign(new Error("Você não possui permissão para realizar esta promoção."), { statusCode: 403 });
+  }
   const evaluationAttemptNumber = await nextPolicePromotionAttemptNumber(botId, current.guildId, current.requesterId, current.createdAt);
   return updateRequest(botId, requestId, {
     evaluationEndedAt: new Date(),
@@ -268,7 +283,7 @@ export async function finishPolicePromotionEvaluation(botId: string, requestId: 
     evaluationNotes: normalizeText(input.evaluationNotes, 6000),
     evaluationResult: input.evaluationResult,
     status: "pending_approval"
-  }, "request.evaluation_finished", { actorId: input.evaluatorId }, { evaluationResult: input.evaluationResult });
+  }, "request.evaluation_finished", { actorId: input.evaluatorId }, { evaluationResult: input.evaluationResult }, { status: "in_evaluation", evaluatorId: input.evaluatorId, evaluationEndedAt: null });
 }
 
 export async function updatePolicePromotionApprovalMessage(botId: string, requestId: string, input: { approvalChannelId?: string | null; approvalMessageId?: string | null }) {
@@ -278,9 +293,14 @@ export async function updatePolicePromotionApprovalMessage(botId: string, reques
   }, "request.approval_message_updated", {}, input);
 }
 
-export async function decidePolicePromotionRequest(botId: string, requestId: string, input: { actorId: string; actorName: string; approvalReason?: string | null; result: "approved" | "rejected" }) {
+export async function decidePolicePromotionRequest(botId: string, requestId: string, input: { actorId: string; actorName: string; actorRoleIds?: string[]; approvalReason?: string | null; result: "approved" | "rejected" }) {
   const current = await getPolicePromotionRequest(botId, requestId);
   if (current.status !== "pending_approval") throw Object.assign(new Error("Esta solicitação não está aguardando aprovação."), { statusCode: 409 });
+  const settings = await getPolicePromotionSettings(botId, current.guildId);
+  const promotion = settings.promotions.find((item) => item.id === current.promotionId);
+  if (!promotion || !hasAnyRole(input.actorRoleIds ?? [], promotionDecisionRoleIds(settings, promotion, input.result))) {
+    throw Object.assign(new Error("Você não possui permissão para decidir esta promoção."), { statusCode: 403 });
+  }
   return updateRequest(botId, requestId, {
     approvalReason: normalizeText(input.approvalReason ?? "", 1000) || null,
     approvalResult: input.result,
@@ -288,7 +308,7 @@ export async function decidePolicePromotionRequest(botId: string, requestId: str
     approvedById: input.actorId,
     approvedByName: normalizeText(input.actorName, 100),
     status: input.result
-  }, input.result === "approved" ? "request.approved" : "request.rejected", { actorId: input.actorId, actorName: input.actorName }, { result: input.result });
+  }, input.result === "approved" ? "request.approved" : "request.rejected", { actorId: input.actorId, actorName: input.actorName }, { result: input.result }, { status: "pending_approval", approvalResult: null, approvedAt: null });
 }
 
 export async function closePolicePromotionRequest(botId: string, requestId: string, actor: ActorInput, status: "cancelled" | "closed" = "closed") {
@@ -359,17 +379,21 @@ export async function createPolicePromotionLog(botId: string, guildId: string, i
   emitRealtime("police-promotions:log_created", { botId, guildId, log: { ...row, id: row._id, createdAt: row.createdAt.toISOString() } });
 }
 
-async function updateRequest(botId: string, requestId: string, patch: Partial<MongoPolicePromotionRequest>, action: string, actor: ActorInput, metadata: Record<string, unknown>) {
+async function updateRequest(botId: string, requestId: string, patch: Partial<MongoPolicePromotionRequest>, action: string, actor: ActorInput, metadata: Record<string, unknown>, condition: Partial<MongoPolicePromotionRequest> = {}) {
   const { policePromotionRequests } = await getMongoCollections();
   const now = new Date();
   const history = historyEntry(action, actor.actorId ?? null, actor.actorName ?? null, metadata);
   const cleanedPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
   const updated = await policePromotionRequests.findOneAndUpdate(
-    { _id: requestId, botId },
+    { _id: requestId, botId, ...condition },
     { $set: { ...cleanedPatch, updatedAt: now }, $push: { history } },
     { returnDocument: "after" }
   );
-  if (!updated) throw Object.assign(new Error("Solicitação de promoção não encontrada."), { statusCode: 404 });
+  if (!updated) {
+    const exists = await policePromotionRequests.findOne({ _id: requestId, botId });
+    if (!exists) throw Object.assign(new Error("Solicitação de promoção não encontrada."), { statusCode: 404 });
+    throw Object.assign(new Error("Esta promoção já foi alterada por outra ação."), { statusCode: 409 });
+  }
   await createPolicePromotionLog(botId, updated.guildId, { action, actorId: actor.actorId, actorName: actor.actorName, metadata, requestId });
   return requestDto(updated);
 }
@@ -427,6 +451,7 @@ function defaultSettings(botId: string, guildId: string): MongoPolicePromotionSe
   const now = new Date();
   return {
     _id: `${botId}:${guildId}`,
+    approverRoleIds: [],
     botId,
     createdAt: now,
     defaultApprovalChannelId: null,
@@ -436,7 +461,9 @@ function defaultSettings(botId: string, guildId: string): MongoPolicePromotionSe
     defaultPanelChannelId: null,
     enabled: false,
     guildId,
+    instructorRoleIds: [],
     promotions: [defaultPromotion()],
+    rejecterRoleIds: [],
     updatedAt: now,
     updatedBy: null
   };
@@ -501,9 +528,12 @@ function settingsDto(row: MongoPolicePromotionSettings): PolicePromotionSettings
   const { _id, createdAt, updatedAt, ...rest } = row;
   return {
     ...rest,
+    approverRoleIds: uniqueSnowflakes(row.approverRoleIds ?? []),
     id: _id,
+    instructorRoleIds: uniqueSnowflakes(row.instructorRoleIds ?? []),
     createdAt: createdAt.toISOString(),
     promotions: sanitizePromotions(row.promotions),
+    rejecterRoleIds: uniqueSnowflakes(row.rejecterRoleIds ?? []),
     updatedAt: updatedAt.toISOString()
   };
 }
@@ -601,12 +631,15 @@ function buildPolicePromotionPanelPayload(settings: PolicePromotionSettingsDto, 
 
 function sanitizeSettingsInput(input: SavePolicePromotionSettingsInput) {
   const next: SavePolicePromotionSettingsInput = { ...input };
+  if (next.approverRoleIds !== undefined) next.approverRoleIds = uniqueSnowflakes(next.approverRoleIds);
   if (next.defaultApprovalChannelId !== undefined) next.defaultApprovalChannelId = normalizeSnowflake(next.defaultApprovalChannelId);
   if (next.defaultCategoryId !== undefined) next.defaultCategoryId = normalizeSnowflake(next.defaultCategoryId);
   if (next.defaultHistoryChannelId !== undefined) next.defaultHistoryChannelId = normalizeSnowflake(next.defaultHistoryChannelId);
   if (next.defaultLogChannelId !== undefined) next.defaultLogChannelId = normalizeSnowflake(next.defaultLogChannelId);
   if (next.defaultPanelChannelId !== undefined) next.defaultPanelChannelId = normalizeSnowflake(next.defaultPanelChannelId);
+  if (next.instructorRoleIds !== undefined) next.instructorRoleIds = uniqueSnowflakes(next.instructorRoleIds);
   if (next.promotions !== undefined) next.promotions = sanitizePromotions(next.promotions).slice(0, 50);
+  if (next.rejecterRoleIds !== undefined) next.rejecterRoleIds = uniqueSnowflakes(next.rejecterRoleIds);
   return next;
 }
 
@@ -763,6 +796,24 @@ function normalizeText(value: string, maxLength: number) {
 function normalizeSnowflake(value: string | null | undefined) {
   const text = value?.trim() ?? "";
   return /^\d{5,32}$/.test(text) ? text : null;
+}
+
+function promotionInstructorRoleIds(settings: PolicePromotionSettingsDto, promotion: MongoPolicePromotionDefinition) {
+  return uniqueSnowflakes([...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
+}
+
+function promotionDecisionRoleIds(settings: PolicePromotionSettingsDto, promotion: MongoPolicePromotionDefinition, result: "approved" | "rejected") {
+  const specificRoleIds = result === "approved"
+    ? [...(settings.approverRoleIds ?? []), ...(promotion.approvalRoleIds ?? [])]
+    : [...(settings.rejecterRoleIds ?? []), ...(promotion.rejectedRoleIds ?? [])];
+  const specific = uniqueSnowflakes(specificRoleIds);
+  if (specific.length) return specific;
+  return uniqueSnowflakes([...(settings.approverRoleIds ?? []), ...(settings.rejecterRoleIds ?? []), ...(promotion.approvalRoleIds ?? []), ...(promotion.rejectedRoleIds ?? []), ...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
+}
+
+function hasAnyRole(actorRoleIds: string[], allowedRoleIds: string[]) {
+  const actorRoles = new Set(uniqueSnowflakes(actorRoleIds));
+  return allowedRoleIds.length > 0 && allowedRoleIds.some((roleId) => actorRoles.has(roleId));
 }
 
 function uniqueSnowflakes(values: string[]) {

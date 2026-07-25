@@ -71,12 +71,15 @@ const promotionSchema = z.object({
   questions: z.array(questionSchema).max(100)
 });
 const settingsSchema = z.object({
+  approverRoleIds: z.array(snowflake).max(100).optional(),
   defaultApprovalChannelId: nullableSnowflake.optional(),
   defaultCategoryId: nullableSnowflake.optional(),
   defaultHistoryChannelId: nullableSnowflake.optional(),
   defaultLogChannelId: nullableSnowflake.optional(),
   defaultPanelChannelId: nullableSnowflake.optional(),
   enabled: z.boolean().optional(),
+  instructorRoleIds: z.array(snowflake).max(100).optional(),
+  rejecterRoleIds: z.array(snowflake).max(100).optional(),
   promotions: z.array(promotionSchema).max(50).optional()
 });
 const createRequestSchema = z.object({
@@ -211,7 +214,7 @@ policePromotionsRouter.post("/bot/requests/:requestId/assign", requireBot, async
   try {
     const botId = await botIdFor(req);
     await licensed(botId);
-    const input = z.object({ evaluatorId: snowflake, evaluatorName: z.string().min(1).max(100) }).parse(req.body);
+    const input = z.object({ evaluatorId: snowflake, evaluatorName: z.string().min(1).max(100), evaluatorRoleIds: z.array(snowflake).max(100).optional() }).parse(req.body);
     res.json({ request: await assignPolicePromotionEvaluator(botId, id.parse(req.params.requestId), input) });
   } catch (error) {
     next(error);
@@ -225,7 +228,8 @@ policePromotionsRouter.post("/bot/requests/:requestId/evaluation", requireBot, a
     const input = z.object({
       evaluationNotes: z.string().min(1).max(6000),
       evaluationResult: z.enum(["approved", "rejected"]),
-      evaluatorId: snowflake
+      evaluatorId: snowflake,
+      evaluatorRoleIds: z.array(snowflake).max(100).optional()
     }).parse(req.body);
     res.json({ request: await finishPolicePromotionEvaluation(botId, id.parse(req.params.requestId), input) });
   } catch (error) {
@@ -251,6 +255,7 @@ policePromotionsRouter.post("/bot/requests/:requestId/decision", requireBot, asy
     const input = z.object({
       actorId: snowflake,
       actorName: z.string().min(1).max(100),
+      actorRoleIds: z.array(snowflake).max(100).optional(),
       approvalReason: z.string().max(1000).nullable().optional(),
       result: z.enum(["approved", "rejected"])
     }).parse(req.body);

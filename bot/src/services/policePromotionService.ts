@@ -32,7 +32,6 @@ import { resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRende
 const MODULE_ID = "police-promotions";
 const PREFIX = "police_promotions";
 const SETTINGS_TTL_MS = 30_000;
-const EVALUATION_PANEL_DELETE_DELAY_MS = 15_000;
 const HISTORY_PAGE_SIZE = 3;
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
 const CUSTOM_EMOJI_PATTERN = /^<a?:[a-zA-Z0-9_]{2,32}:\d{5,32}>$/;
@@ -250,6 +249,8 @@ async function captureEvaluationStepMessage(message: Message, context: BotContex
   const settings = await getSettings(context, message.guild!.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) return false;
+  const member = await message.guild!.members.fetch(message.author.id).catch(() => null);
+  if (!canInstructPromotion(member, settings, promotion)) return false;
 
   draft.awaitingStep = undefined;
   draft.pending = { answer, messageId: message.id, step };
@@ -532,7 +533,7 @@ async function createPromotionTicket(guild: Guild, context: BotContext, settings
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: request.requesterId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
       { id: guild.members.me!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
-      ...promotion.evaluatorRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
+      ...promotionInstructorRoleIds(settings, promotion).map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
     ],
     type: ChannelType.GuildText
   });
@@ -550,31 +551,35 @@ async function assignEvaluation(interaction: ButtonInteraction<"cached">, contex
     const request = await requestFromInteraction(interaction, context);
     const settings = await getSettings(context, interaction.guild.id);
     const promotion = promotionFor(settings, request);
-    if (!promotion || !hasAnyRole(interaction.member as GuildMember, promotion.evaluatorRoleIds)) {
-      await interaction.followUp({ content: "Você não possui permissão para assumir esta avaliação.", ephemeral: true });
+    if (!promotion || !canInstructPromotion(interaction.member as GuildMember, settings, promotion)) {
+      await interaction.followUp({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
       return true;
     }
 
-    const updated = await context.api.assignPolicePromotionEvaluator(request.id, { evaluatorId: interaction.user.id, evaluatorName: displayName(interaction.member as GuildMember, interaction.user.username) });
+    const updated = await context.api.assignPolicePromotionEvaluator(request.id, {
+      evaluatorId: interaction.user.id,
+      evaluatorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      evaluatorRoleIds: memberRoleIds(interaction.member as GuildMember)
+    });
+    await sendPromotionLog(interaction.guild, settings, promotion, updated, "Promoção assumida", `<@${interaction.user.id}> assumiu a avaliação de <@${updated.requesterId}>.`).catch(() => null);
     await interaction.editReply(ticketPayload(updated, promotion, interaction.guild) as any);
   } catch (error) {
     console.error("[police-promotions] failed to assign evaluation", error);
-    await interaction.followUp({ content: "Não foi possível assumir esta avaliação agora. Verifique se o ticket ainda existe e tente novamente.", ephemeral: true }).catch(() => null);
+    await interaction.followUp({ content: errorMessage(error, "Não foi possível assumir esta avaliação agora. Verifique se o ticket ainda existe e tente novamente."), ephemeral: true }).catch(() => null);
   }
   return true;
 }
 
 async function openEvaluationModal(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const request = await requestFromInteraction(interaction, context);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Você não é o responsável por esta avaliação.", ephemeral: true });
-    return true;
-  }
-
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -590,10 +595,6 @@ async function openEvaluationStepModal(interaction: ButtonInteraction<"cached">,
   const [, , requestId, step] = interaction.customId.split(":");
   if (!requestId || !isEvaluationStep(step)) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
-    return true;
-  }
   if (request.status !== "in_evaluation") {
     await interaction.reply({ content: "Esta avaliação não está em preenchimento.", ephemeral: true });
     return true;
@@ -602,6 +603,10 @@ async function openEvaluationStepModal(interaction: ButtonInteraction<"cached">,
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
   const key = evaluationDraftKey(requestId, interaction.user.id);
@@ -637,15 +642,14 @@ async function handleEvaluationStepModal(interaction: ModalSubmitInteraction<"ca
   const [, , requestId, step] = interaction.customId.split(":");
   if (!requestId || !isEvaluationStep(step)) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Você não é o responsável por esta avaliação.", ephemeral: true });
-    return true;
-  }
-
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -662,10 +666,6 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
-    return true;
-  }
   if (request.status !== "in_evaluation") {
     await interaction.reply({ content: "Esta avaliação não está em preenchimento.", ephemeral: true });
     return true;
@@ -675,6 +675,10 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -716,14 +720,14 @@ async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached"
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
-    return true;
-  }
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
   const draft = evaluationQuestionnaireDrafts.get(evaluationDraftKey(requestId, interaction.user.id));
@@ -751,13 +755,13 @@ async function showEvaluationPanel(interaction: ButtonInteraction<"cached">, con
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
-    return true;
-  }
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) return true;
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    return true;
+  }
   const key = evaluationDraftKey(request.id, interaction.user.id);
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
   const cancelledStep = draft.pending?.step ?? draft.awaitingStep ?? null;
@@ -781,15 +785,14 @@ async function handleEvaluationReview(interaction: ButtonInteraction<"cached">, 
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Você não é o responsável por esta avaliação.", ephemeral: true });
-    return true;
-  }
-
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -828,10 +831,6 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
-    return true;
-  }
   if (request.status !== "in_evaluation") {
     await interaction.reply({ content: "Esta avaliação já foi enviada ou encerrada.", ephemeral: true });
     return true;
@@ -841,6 +840,10 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -867,12 +870,18 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   }
 
   await interaction.deferUpdate();
-  const updated = await context.api.finishPolicePromotionEvaluation(request.id, { evaluatorId: interaction.user.id, evaluationNotes: evaluation.draft.notes, evaluationResult: evaluation.draft.finalResult });
+  const updated = await context.api.finishPolicePromotionEvaluation(request.id, {
+    evaluatorId: interaction.user.id,
+    evaluatorRoleIds: memberRoleIds(interaction.member as GuildMember),
+    evaluationNotes: evaluation.draft.notes,
+    evaluationResult: evaluation.draft.finalResult
+  });
   evaluationDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   evaluationQuestionnaireDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   await sendApprovalPanel(interaction.guild, context, settings, promotion, updated);
+  await sendPromotionLog(interaction.guild, settings, promotion, updated, "Relatório enviado", `Relatório de <@${updated.requesterId}> enviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
   await interaction.editReply(evaluationSubmittedPayload(updated, promotion, interaction.guild, false) as any);
-  await updateAndScheduleSubmittedEvaluationPanel(interaction, updated, promotion);
+  await deletePromotionTemporaryChannel(interaction.guild, context, updated, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
   return true;
 }
 
@@ -880,8 +889,10 @@ async function cancelEvaluationQuestionnaire(interaction: ButtonInteraction<"cac
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
+  const settings = await getSettings(context, interaction.guild.id);
+  const promotion = promotionFor(settings, request);
+  if (!promotion || !canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
   await interaction.update({
@@ -905,8 +916,10 @@ async function confirmCancelEvaluationQuestionnaire(interaction: ButtonInteracti
   const requestId = interaction.customId.split(":")[2];
   if (requestId) {
     const request = await context.api.getPolicePromotionRequest(requestId);
-    if (request.evaluatorId !== interaction.user.id) {
-      await interaction.reply({ content: "Esta avaliação pertence a outro avaliador.", ephemeral: true });
+    const settings = await getSettings(context, interaction.guild.id);
+    const promotion = promotionFor(settings, request);
+    if (!promotion || !canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+      await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
       return true;
     }
     evaluationQuestionnaireDrafts.delete(evaluationDraftKey(requestId, interaction.user.id));
@@ -932,15 +945,14 @@ async function confirmCancelEvaluationQuestionnaire(interaction: ButtonInteracti
 async function handleEvaluationModal(interaction: ModalSubmitInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2]!;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Você não é o responsável por esta avaliação.", ephemeral: true });
-    return true;
-  }
-
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -968,8 +980,14 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
   const [, , requestId, result] = interaction.customId.split(":");
   if (!requestId || (result !== "approved" && result !== "rejected")) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
-  if (request.evaluatorId !== interaction.user.id) {
-    await interaction.reply({ content: "Você não é o responsável por esta avaliação.", ephemeral: true });
+  const settings = await getSettings(context, interaction.guild.id);
+  const promotion = promotionFor(settings, request);
+  if (!promotion) {
+    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    return true;
+  }
+  if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
+    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
 
@@ -983,18 +1001,17 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
     return true;
   }
 
-  const settings = await getSettings(context, interaction.guild.id);
-  const promotion = promotionFor(settings, request);
-  if (!promotion) {
-    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
-    return true;
-  }
-
   await interaction.deferUpdate();
-  const updated = await context.api.finishPolicePromotionEvaluation(request.id, { evaluatorId: interaction.user.id, evaluationNotes: draft.notes, evaluationResult: result });
+  const updated = await context.api.finishPolicePromotionEvaluation(request.id, {
+    evaluatorId: interaction.user.id,
+    evaluatorRoleIds: memberRoleIds(interaction.member as GuildMember),
+    evaluationNotes: draft.notes,
+    evaluationResult: result
+  });
   evaluationDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   evaluationQuestionnaireDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   await sendApprovalPanel(interaction.guild, context, settings, promotion, updated);
+  await sendPromotionLog(interaction.guild, settings, promotion, updated, "Relatório enviado", `Relatório de <@${updated.requesterId}> enviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
   await interaction.editReply({
     components: [{
       type: 17,
@@ -1003,14 +1020,15 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   } as any);
-  await updateAndScheduleSubmittedEvaluationPanel(interaction, updated, promotion);
+  await deletePromotionTemporaryChannel(interaction.guild, context, updated, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
   return true;
 }
 
 async function sendApprovalPanel(guild: Guild, context: BotContext, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, request: PolicePromotionRequest) {
-  const approvalChannelId = settings.defaultApprovalChannelId ?? promotion.historyChannelId ?? settings.defaultHistoryChannelId;
+  const approvalChannelId = settings.defaultApprovalChannelId;
+  if (!approvalChannelId) throw new Error("Canal de aprovação não configurado.");
   const channel = approvalChannelId ? await guild.channels.fetch(approvalChannelId).catch(() => null) : null;
-  if (!channel?.isTextBased() || channel.isDMBased()) return;
+  if (!channel?.isTextBased() || channel.isDMBased() || !("send" in channel)) throw new Error("Canal de aprovação inválido ou inacessível.");
   const sent = await channel.send(approvalPayload(request, promotion, guild) as any);
   await context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: sent.id }).catch(() => null);
 }
@@ -1023,7 +1041,7 @@ async function openDecisionModal(interaction: ButtonInteraction<"cached">, resul
   }
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
-  if (!promotion || !canDecidePromotion(interaction.member as GuildMember, promotion, result)) {
+  if (!promotion || !canDecidePromotion(interaction.member as GuildMember, settings, promotion, result)) {
     await interaction.reply({ content: "Você não possui permissão para decidir esta promoção.", ephemeral: true });
     return true;
   }
@@ -1053,7 +1071,7 @@ async function handleDecisionModal(interaction: ModalSubmitInteraction<"cached">
     await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
     return true;
   }
-  if (!canDecidePromotion(interaction.member as GuildMember, promotion, result)) {
+  if (!canDecidePromotion(interaction.member as GuildMember, settings, promotion, result)) {
     await interaction.reply({ content: "Você não possui permissão para decidir esta promoção.", ephemeral: true });
     return true;
   }
@@ -1061,12 +1079,14 @@ async function handleDecisionModal(interaction: ModalSubmitInteraction<"cached">
   const updated = await context.api.decidePolicePromotionRequest(request.id, {
     actorId: interaction.user.id,
     actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+    actorRoleIds: memberRoleIds(interaction.member as GuildMember),
     approvalReason: interaction.fields.getTextInputValue("reason") || null,
     result
   });
 
   if (result === "approved") await applyPromotionRoles(interaction.guild, promotion, updated);
   await notifyRequester(interaction.guild, updated, promotion).catch(() => null);
+  await sendPromotionLog(interaction.guild, settings, promotion, updated, result === "approved" ? "Promoção aprovada" : "Promoção reprovada", `<@${interaction.user.id}> ${result === "approved" ? "aprovou" : "reprovou"} a promoção de <@${updated.requesterId}>.`).catch(() => null);
   await interaction.reply({ content: result === "approved" ? "Promoção aprovada." : "Promoção reprovada.", ephemeral: true });
   if (interaction.message) await interaction.message.edit(approvalPayload(updated, promotion, interaction.guild, true) as any).catch(() => null);
   return true;
@@ -1080,7 +1100,7 @@ async function requestNewEvaluation(interaction: ButtonInteraction<"cached">, co
     await interaction.reply({ content: "Nova avaliação não está habilitada para esta promoção.", ephemeral: true });
     return true;
   }
-  if (!canDecidePromotion(interaction.member as GuildMember, promotion)) {
+  if (!canDecidePromotion(interaction.member as GuildMember, settings, promotion)) {
     await interaction.reply({ content: "Você não possui permissão para solicitar nova avaliação.", ephemeral: true });
     return true;
   }
@@ -1238,12 +1258,12 @@ function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromoti
   ].join("\n");
   const buttons = request.status === "ticket_open"
     ? new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:assign:${request.id}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Assumir Avaliação").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:assign:${request.id}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Assumir Promoção").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Cancelar").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`${PREFIX}:close:${request.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Secondary)
     )
     : new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:finish:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Avaliação").setStyle(ButtonStyle.Success).setDisabled(request.status !== "in_evaluation"),
+      new ButtonBuilder().setCustomId(`${PREFIX}:finish:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Preencher Relatório").setStyle(ButtonStyle.Success).setDisabled(request.status !== "in_evaluation"),
       new ButtonBuilder().setCustomId(`${PREFIX}:close:${request.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Secondary)
     );
   return {
@@ -1263,6 +1283,7 @@ function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromoti
 }
 
 function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, disabled = false): MessageCreateOptions {
+  const submittedAt = request.evaluationEndedAt ?? request.updatedAt;
   return {
     allowedMentions: { parse: [] },
     components: [{
@@ -1270,18 +1291,24 @@ function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromo
       accent_color: request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : parseColor(promotion.color),
       components: [
         { type: 10, content: [
-          `# ${icon("prancheta_acertos", guild)} Plain Clothes Day`,
-          `## Avaliação aguardando decisão`,
+          `# ${icon("prancheta_acertos", guild)} Relatório de Promoção`,
+          `## ${request.status === "approved" ? "Aprovado" : request.status === "rejected" ? "Reprovado" : "Aguardando aprovação"}`,
           DIVIDER,
-          `${icon("homem", guild)} Avaliado\n<@${request.requesterId}>`,
+          `${icon("homem", guild)} Nome do promovido\n${escapeMarkdown(request.requesterName)}`,
           "",
-          `${icon("prancheta", guild)} Patente Atual\n${escapeMarkdown(request.currentRank)}`,
+          `${icon("discord", guild)} Discord\n<@${request.requesterId}> (\`${request.requesterId}\`)`,
           "",
-          `${icon("trofeu", guild)} Patente Destino\n${escapeMarkdown(request.targetRank)}`,
+          `${icon("prancheta", guild)} Cargo anterior\n${escapeMarkdown(request.currentRank)}`,
           "",
-          `${icon("homem", guild)} Instrutor\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Não informado"}`,
+          `${icon("trofeu", guild)} Cargo promovido\n${escapeMarkdown(request.targetRank)}`,
           "",
-          `${icon("folha", guild)} Recomendação do avaliador\n${escapeMarkdown(request.evaluationResult === "approved" ? "Apto" : request.evaluationResult === "rejected" ? "Não apto" : "Aguardando decisão")}`,
+          `${icon("homem", guild)} Instrutor responsável\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Não informado"}`,
+          "",
+          `${icon("calendario", guild)} Data\n${formatHistoryDate(submittedAt)}`,
+          "",
+          `${icon("relogio", guild)} Horário\n${formatHistoryTime(submittedAt)}`,
+          "",
+          `${icon("folha", guild)} Resultado do relatório\n${escapeMarkdown(request.evaluationResult === "approved" ? "Apto" : request.evaluationResult === "rejected" ? "Não apto" : "Aguardando decisão")}`,
           "",
           `${icon("relogio", guild)} Status administrativo\n${request.status === "approved" ? "APROVADO" : request.status === "rejected" ? "REPROVADO" : "Aguardando análise administrativa"}`,
           request.approvedById ? `\n${icon("homem", guild)} Analisado por\n<@${request.approvedById}>` : "",
@@ -1295,6 +1322,8 @@ function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromo
         ].join("\n") },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: `## ${icon("folha", guild)} Respostas\n${answersText(request)}` },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: `## ${icon("relogio", guild)} Histórico completo\n${promotionHistoryText(request)}` },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(`${PREFIX}:approve:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar Promoção").setStyle(ButtonStyle.Success).setDisabled(disabled),
           new ButtonBuilder().setCustomId(`${PREFIX}:reject:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Reprovar Promoção").setStyle(ButtonStyle.Danger).setDisabled(disabled),
@@ -1339,8 +1368,8 @@ function evaluationResultPayload(request: PolicePromotionRequest, promotion: Pol
       components: [
         { type: 10, content: [`# ${icon("prancheta_caneta", guild)} Revisão da avaliação`, `Solicitação: \`${request.id}\``, "", draft.scoreLine, "", `Resultado final informado: **${approved ? "Apto" : "Não apto"}**`, "", "Envie a avaliação para a fila de aprovação da promoção."].join("\n") },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_result:${request.id}:approved`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Enviar como Apto").setStyle(ButtonStyle.Success).setDisabled(!approved),
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_result:${request.id}:rejected`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Enviar como Não apto").setStyle(ButtonStyle.Danger).setDisabled(approved)
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_result:${request.id}:approved`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Enviar Relatório Apto").setStyle(ButtonStyle.Success).setDisabled(!approved),
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_result:${request.id}:rejected`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Enviar Relatório Não apto").setStyle(ButtonStyle.Danger).setDisabled(approved)
         )
       ]
     }],
@@ -1379,6 +1408,30 @@ async function notifyRequester(guild: Guild, request: PolicePromotionRequest, pr
         ? [`# Parabéns!`, `Sua solicitação para promoção à patente de **${escapeMarkdown(request.targetRank)}** foi aprovada.`, "", `Responsável: ${request.approvedById ? `<@${request.approvedById}>` : "Administrador"}`, `Data: ${request.approvedAt ? formatDate(request.approvedAt) : formatDate(new Date().toISOString())}`, "", `Observações:\n${escapeMarkdown(request.approvalReason ?? "Nenhuma observação registrada.")}`].join("\n")
         : [`# Solicitação reprovada`, `Sua solicitação para promoção foi reprovada.`, "", `Motivo:\n${escapeMarkdown(request.approvalReason ?? "Não informado")}`, "", "Você poderá solicitar uma nova avaliação posteriormente."].join("\n")
       }]
+    }],
+    flags: MessageFlags.IsComponentsV2
+  } as any);
+}
+
+async function sendPromotionLog(guild: Guild, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, request: PolicePromotionRequest, title: string, description: string) {
+  const logChannelId = promotion.logChannelId ?? settings.defaultLogChannelId;
+  if (!logChannelId) return;
+  const channel = await guild.channels.fetch(logChannelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased() || !("send" in channel)) return;
+  await channel.send({
+    allowedMentions: { parse: [] },
+    components: [{
+      type: 17,
+      accent_color: parseColor(promotion.color),
+      components: [{ type: 10, content: [
+        `# ${icon("folha", guild)} ${escapeMarkdown(title)}`,
+        description,
+        "",
+        `${icon("homem", guild)} Promovido\n<@${request.requesterId}>`,
+        `${icon("trofeu", guild)} Promoção\n${escapeMarkdown(request.currentRank)} → ${escapeMarkdown(request.targetRank)}`,
+        `${icon("discord", guild)} Solicitação\n\`${request.id}\``,
+        `${icon("calendario", guild)} Data\n${formatDate(new Date().toISOString())}`
+      ].join("\n") }]
     }],
     flags: MessageFlags.IsComponentsV2
   } as any);
@@ -1428,23 +1481,29 @@ async function updateEvaluationChannelMessage(message: Message, request: PoliceP
   await message.channel.send(payload as any).catch(() => null);
 }
 
-async function updateAndScheduleSubmittedEvaluationPanel(interaction: ButtonInteraction<"cached">, request: PolicePromotionRequest, promotion: PolicePromotionDefinition) {
-  let panelMessage: Message | null = null;
-  if (interaction.channel?.isTextBased() && !interaction.channel.isDMBased() && "messages" in interaction.channel && request.channelMessageId) {
-    panelMessage = await interaction.channel.messages.fetch(request.channelMessageId).catch(() => null);
-    if (panelMessage && panelMessage.id !== interaction.message.id) {
-      await panelMessage.edit(ticketPayload(request, promotion, interaction.guild) as any).catch(() => null);
-    }
+async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext, request: PolicePromotionRequest, actorId: string, actorName: string) {
+  if (!request.channelId) return;
+  const channel = await guild.channels.fetch(request.channelId).catch(() => null);
+  await context.api.addPolicePromotionHistory(request.id, {
+    action: "request.temporary_channel_delete_requested",
+    actorId,
+    actorName,
+    metadata: { channelId: request.channelId }
+  }).catch(() => null);
+  let deleted = !channel;
+  if (channel && "delete" in channel) {
+    await channel.delete(`Relatório de promoção enviado para aprovação (${request.id})`).then(() => {
+      deleted = true;
+    }).catch(async (error) => {
+      await context.api.addPolicePromotionHistory(request.id, {
+        action: "request.temporary_channel_delete_failed",
+        actorId,
+        actorName,
+        metadata: { channelId: request.channelId, error: errorMessage(error, "Falha ao apagar canal temporário.") }
+      }).catch(() => null);
+    });
   }
-  scheduleEvaluationPanelDeletion(panelMessage ?? interaction.message);
-}
-
-function scheduleEvaluationPanelDeletion(message: Message | null | undefined) {
-  if (!message) return;
-  const timer = setTimeout(() => {
-    void message.delete().catch(() => null);
-  }, EVALUATION_PANEL_DELETE_DELAY_MS);
-  timer.unref?.();
+  if (deleted) await context.api.updatePolicePromotionTicketState(request.id, { channelId: null }).catch(() => null);
 }
 
 async function updateModalMessageOrReply(interaction: ModalSubmitInteraction<"cached">, payload: MessageCreateOptions) {
@@ -1473,22 +1532,39 @@ async function getSettings(context: BotContext, guildId: string) {
 
 function hasAnyRole(member: GuildMember | null, roleIds: string[]) {
   if (!member) return false;
-  if (member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   if (!roleIds.length) return false;
   return member.roles.cache.some((role) => roleIds.includes(role.id));
 }
 
-function canDecidePromotion(member: GuildMember | null, promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
-  return hasAnyRole(member, promotionDecisionRoleIds(promotion, result));
+function memberRoleIds(member: GuildMember | null) {
+  return member ? [...member.roles.cache.keys()] : [];
 }
 
-function promotionDecisionRoleIds(promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
+function canInstructPromotion(member: GuildMember | null, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition) {
+  return hasAnyRole(member, promotionInstructorRoleIds(settings, promotion));
+}
+
+function canManageEvaluation(member: GuildMember | null, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, request: PolicePromotionRequest, userId: string) {
+  return request.evaluatorId === userId && request.status === "in_evaluation" && canInstructPromotion(member, settings, promotion);
+}
+
+function canDecidePromotion(member: GuildMember | null, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
+  return hasAnyRole(member, promotionDecisionRoleIds(settings, promotion, result));
+}
+
+function promotionInstructorRoleIds(settings: PolicePromotionSettings, promotion: PolicePromotionDefinition) {
+  return uniqueStrings([...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
+}
+
+function promotionDecisionRoleIds(settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
   const approvalRoleIds = promotion.approvalRoleIds ?? [];
   const rejectedRoleIds = promotion.rejectedRoleIds ?? [];
-  const evaluatorRoleIds = promotion.evaluatorRoleIds ?? [];
-  const specificRoleIds = result === "approved" ? approvalRoleIds : result === "rejected" ? rejectedRoleIds : [];
+  const globalApprovalRoleIds = settings.approverRoleIds ?? [];
+  const globalRejectedRoleIds = settings.rejecterRoleIds ?? [];
+  const evaluatorRoleIds = promotionInstructorRoleIds(settings, promotion);
+  const specificRoleIds = result === "approved" ? [...globalApprovalRoleIds, ...approvalRoleIds] : result === "rejected" ? [...globalRejectedRoleIds, ...rejectedRoleIds] : [];
   if (specificRoleIds.length) return uniqueStrings(specificRoleIds);
-  const configuredDecisionRoleIds = uniqueStrings([...approvalRoleIds, ...rejectedRoleIds]);
+  const configuredDecisionRoleIds = uniqueStrings([...globalApprovalRoleIds, ...globalRejectedRoleIds, ...approvalRoleIds, ...rejectedRoleIds]);
   return configuredDecisionRoleIds.length ? configuredDecisionRoleIds : uniqueStrings(evaluatorRoleIds);
 }
 
@@ -1501,6 +1577,36 @@ function answersText(request: Pick<PolicePromotionRequest, "answers">) {
     const value = Array.isArray(answer.value) ? answer.value.join(", ") : answer.value;
     return `▸ **${escapeMarkdown(answer.label)}**\n${escapeMarkdown(value || "Não informado")}`;
   }).join("\n\n") || "Nenhuma resposta registrada.";
+}
+
+function promotionHistoryText(request: PolicePromotionRequest) {
+  const rows = request.history.map((entry) => {
+    const actor = entry.actorId ? `<@${entry.actorId}>` : entry.actorName ? escapeMarkdown(entry.actorName) : "Sistema";
+    return `• ${formatDate(entry.at)} - ${escapeMarkdown(historyActionLabel(entry.action))} - ${actor}`;
+  });
+  return clip(rows.join("\n") || "Nenhum histórico registrado.", 2800);
+}
+
+function historyActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    "request.approved": "Aprovado",
+    "request.assigned": "Instrutor assumiu",
+    "request.cancelled": "Cancelado",
+    "request.closed": "Fechado",
+    "request.created": "Solicitação criada",
+    "request.evaluation_cancelled": "Avaliação cancelada",
+    "request.evaluation_finished": "Relatório enviado",
+    "request.evaluation_step_cancelled": "Etapa cancelada",
+    "request.evaluation_step_pending": "Resposta aguardando confirmação",
+    "request.evaluation_step_saved": "Etapa salva",
+    "request.evaluation_step_started": "Etapa iniciada",
+    "request.rejected": "Reprovado",
+    "request.temporary_channel_delete_failed": "Falha ao apagar canal temporário",
+    "request.temporary_channel_delete_requested": "Canal temporário apagado",
+    "request.ticket_updated": "Ticket atualizado",
+    "ticket.message": "Mensagem no ticket"
+  };
+  return labels[action] ?? action;
 }
 
 const PCD_RATING_POINTS: Record<string, number> = {
@@ -1624,7 +1730,7 @@ function evaluationReviewPayload(request: PolicePromotionRequest, promotion: Pol
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: EVALUATION_STEPS.map((step, index) => `## ${index + 1}. ${escapeMarkdown(evaluationStepTitle(step))}\n${escapeMarkdown(evaluationStepAnswerFor(draft, step) || "Não informado")}`).join("\n\n") },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_submit:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar e enviar").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_submit:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Enviar Relatório").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`${PREFIX}:eval_panel:${request.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Voltar").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(`${PREFIX}:eval_cancel:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Cancelar avaliação").setStyle(ButtonStyle.Danger)
         )
@@ -2475,6 +2581,13 @@ function parseColor(value: string) {
 
 function clip(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength - 1) : value;
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  const responseMessage = error && typeof error === "object" && "response" in error
+    ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+    : null;
+  return responseMessage || (error instanceof Error ? error.message : fallback);
 }
 
 function escapeMarkdown(value: string) {

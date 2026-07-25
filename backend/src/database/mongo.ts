@@ -2643,12 +2643,15 @@ export type MongoPolicePromotionSettings = {
   botId: string;
   guildId: string;
   enabled: boolean;
+  approverRoleIds: string[];
   defaultApprovalChannelId: string | null;
   defaultCategoryId: string | null;
   defaultHistoryChannelId: string | null;
   defaultLogChannelId: string | null;
   defaultPanelChannelId: string | null;
+  instructorRoleIds: string[];
   promotions: MongoPolicePromotionDefinition[];
+  rejecterRoleIds: string[];
   createdAt: Date;
   updatedAt: Date;
   updatedBy: string | null;
