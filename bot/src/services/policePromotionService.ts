@@ -115,12 +115,11 @@ let serviceStarted = false;
 
 function promotionPanelInstructions(guild: Guild) {
   return [
-    `## ${icon("interrogacao", guild)} Modo explicativo`,
-    `1. Selecione a promoção desejada no menu abaixo.`,
-    `2. Responda todas as perguntas solicitadas pelo sistema.`,
-    `3. Um ticket privado será criado para a avaliação.`,
-    `4. Aguarde um instrutor assumir e finalizar a avaliação.`,
-    `5. Se for aprovado, a equipe aplicará os cargos configurados.`
+    `## ${icon("alerta", guild)} Regras para Solicitação`,
+    `• A solicitação só poderá ser realizada após **7 dias como Cadet**.`,
+    `• Certifique-se de que **todos os requisitos da promoção foram cumpridos** antes de enviar sua solicitação.`,
+    `• Solicitações enviadas **antes do prazo** ou sem os requisitos necessários serão **recusadas automaticamente**.`,
+    `• O envio da solicitação **não garante a promoção**. Toda avaliação será realizada pela equipe responsável.`
   ].join("\n");
 }
 
