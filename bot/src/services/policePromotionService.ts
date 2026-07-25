@@ -882,10 +882,11 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   });
   evaluationDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   evaluationQuestionnaireDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
-  await sendApprovalPanel(interaction.guild, context, settings, promotion, updated);
+  const delivered = await trySendApprovalPanel(interaction, context, settings, promotion, updated);
+  if (!delivered) return true;
   await sendPromotionLog(interaction.guild, settings, promotion, updated, "Relatório enviado", `Relatório de <@${updated.requesterId}> enviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
-  await interaction.editReply(evaluationSubmittedPayload(updated, promotion, interaction.guild, false) as any);
-  await deletePromotionTemporaryChannel(interaction.guild, context, updated, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+  await interaction.editReply(evaluationSubmittedPayload(delivered, promotion, interaction.guild, false) as any);
+  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
   return true;
 }
 
@@ -1018,7 +1019,8 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
   });
   evaluationDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
   evaluationQuestionnaireDrafts.delete(evaluationDraftKey(request.id, interaction.user.id));
-  await sendApprovalPanel(interaction.guild, context, settings, promotion, updated);
+  const delivered = await trySendApprovalPanel(interaction, context, settings, promotion, updated);
+  if (!delivered) return true;
   await sendPromotionLog(interaction.guild, settings, promotion, updated, "Relatório enviado", `Relatório de <@${updated.requesterId}> enviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
   await interaction.editReply({
     components: [{
@@ -1028,17 +1030,17 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   } as any);
-  await deletePromotionTemporaryChannel(interaction.guild, context, updated, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
   return true;
 }
 
 async function sendApprovalPanel(guild: Guild, context: BotContext, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, request: PolicePromotionRequest) {
-  const approvalChannelId = settings.defaultApprovalChannelId;
+  const approvalChannelId = settings.defaultApprovalChannelId ?? promotion.historyChannelId ?? settings.defaultHistoryChannelId;
   if (!approvalChannelId) throw new Error("Canal de aprovação não configurado.");
   const channel = approvalChannelId ? await guild.channels.fetch(approvalChannelId).catch(() => null) : null;
   if (!channel?.isTextBased() || channel.isDMBased() || !("send" in channel)) throw new Error("Canal de aprovação inválido ou inacessível.");
   const sent = await channel.send(approvalPayload(request, promotion, guild) as any);
-  await context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: sent.id }).catch(() => null);
+  return context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: sent.id });
 }
 
 async function openDecisionModal(interaction: ButtonInteraction<"cached">, result: "approved" | "rejected", context: BotContext) {
@@ -1527,12 +1529,39 @@ async function ensurePromotionChannelAccess(guild: Guild, request: PolicePromoti
   }, { reason: `Acesso do cargo instrutor na promoção ${request.id}` }).catch(() => null)));
 }
 
+async function trySendApprovalPanel(interaction: ButtonInteraction<"cached">, context: BotContext, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, request: PolicePromotionRequest) {
+  try {
+    return await sendApprovalPanel(interaction.guild, context, settings, promotion, request);
+  } catch (error) {
+    const message = errorMessage(error, "Não foi possível enviar o relatório para o canal de aprovação.");
+    await interaction.editReply(approvalSendFailedPayload(request, promotion, interaction.guild, message, false) as any).catch(() => null);
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.approval_send_failed",
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      metadata: { error: message }
+    }).catch(() => null);
+    return null;
+  }
+}
+
 async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteraction<"cached">, context: BotContext, request: PolicePromotionRequest) {
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   const message = ["pending_approval", "approved", "rejected"].includes(request.status)
     ? "Este relatório já foi enviado para aprovação."
     : "Esta promoção já foi encerrada.";
+
+  if (promotion && request.status === "pending_approval" && !request.approvalMessageId) {
+    await interaction.deferUpdate();
+    const delivered = await trySendApprovalPanel(interaction, context, settings, promotion, request);
+    if (!delivered) return;
+    await sendPromotionLog(interaction.guild, settings, promotion, delivered, "Relatório reenviado", `Relatório de <@${delivered.requesterId}> reenviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
+    await interaction.editReply(evaluationSubmittedPayload(delivered, promotion, interaction.guild, false) as any).catch(() => null);
+    await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+    return;
+  }
+
   const payload = promotion
     ? evaluationAlreadySubmittedPayload(request, promotion, interaction.guild, message)
     : { content: message, ephemeral: true };
@@ -1825,6 +1854,27 @@ function evaluationSubmittedPayload(request: PolicePromotionRequest, promotion: 
         `${icon("homem", guild)} Enviado por\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Instrutor"}`,
         "",
         `${icon("calendario", guild)} Data e horário\n${formatDate(now.toISOString())}`
+      ].join("\n") }]
+    }],
+    flags: componentV2Flags(ephemeral)
+  };
+}
+
+function approvalSendFailedPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, error: string, ephemeral = true): MessageCreateOptions {
+  return {
+    components: [{
+      type: 17,
+      accent_color: 0xef4444,
+      components: [{ type: 10, content: [
+        `# ${icon("exclamacao", guild)} Relatório não enviado`,
+        "",
+        "O relatório foi finalizado, mas o bot não conseguiu publicar no canal de aprovação.",
+        "",
+        `${icon("alerta", guild)} Motivo\n${escapeMarkdown(error)}`,
+        "",
+        `${icon("relogio", guild)} Status\n${statusLabel(request.status)}`,
+        "",
+        "Corrija o canal de aprovação ou as permissões do bot e clique novamente em **Enviar Relatório** neste painel."
       ].join("\n") }]
     }],
     flags: componentV2Flags(ephemeral)
