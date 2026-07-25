@@ -512,7 +512,10 @@ async function submitPromotionRequest(interaction: ButtonInteraction<"cached">, 
     requesterName: session.requesterName
   });
   formSessions.delete(sessionKey(interaction.guild.id, interaction.user.id));
-  const updated = await createPromotionTicket(interaction.guild, context, session.settings, session.promotion, request);
+  clearPolicePromotionSettingsCache(interaction.guild.id);
+  const ticketSettings = await getSettings(context, interaction.guild.id);
+  const ticketPromotion = promotionFor(ticketSettings, request) ?? session.promotion;
+  const updated = await createPromotionTicket(interaction.guild, context, ticketSettings, ticketPromotion, request);
   await interaction.editReply({
     components: [{
       type: 17,
@@ -561,6 +564,7 @@ async function assignEvaluation(interaction: ButtonInteraction<"cached">, contex
       evaluatorName: displayName(interaction.member as GuildMember, interaction.user.username),
       evaluatorRoleIds: memberRoleIds(interaction.member as GuildMember)
     });
+    await ensurePromotionChannelAccess(interaction.guild, updated, settings, promotion, interaction.user.id);
     await sendPromotionLog(interaction.guild, settings, promotion, updated, "Promoção assumida", `<@${interaction.user.id}> assumiu a avaliação de <@${updated.requesterId}>.`).catch(() => null);
     await interaction.editReply(ticketPayload(updated, promotion, interaction.guild) as any);
   } catch (error) {
@@ -1479,6 +1483,44 @@ async function updateEvaluationChannelMessage(message: Message, request: PoliceP
     return;
   }
   await message.channel.send(payload as any).catch(() => null);
+}
+
+async function ensurePromotionChannelAccess(guild: Guild, request: PolicePromotionRequest, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, evaluatorId: string | null = null) {
+  if (!request.channelId) return;
+  const channel = await guild.channels.fetch(request.channelId).catch(() => null);
+  if (!channel || !("permissionOverwrites" in channel)) return;
+
+  await channel.permissionOverwrites.edit(request.requesterId, {
+    AttachFiles: true,
+    ReadMessageHistory: true,
+    SendMessages: true,
+    ViewChannel: true
+  }, { reason: `Acesso do promovido na promoção ${request.id}` });
+
+  if (evaluatorId) {
+    await channel.permissionOverwrites.edit(evaluatorId, {
+      AttachFiles: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      ViewChannel: true
+    }, { reason: `Acesso do instrutor responsável na promoção ${request.id}` });
+  }
+
+  if (guild.members.me) {
+    await channel.permissionOverwrites.edit(guild.members.me.id, {
+      AttachFiles: true,
+      ManageChannels: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      ViewChannel: true
+    }, { reason: `Acesso do bot na promoção ${request.id}` });
+  }
+
+  await Promise.all(promotionInstructorRoleIds(settings, promotion).map((roleId) => channel.permissionOverwrites.edit(roleId, {
+    ReadMessageHistory: true,
+    SendMessages: true,
+    ViewChannel: true
+  }, { reason: `Acesso do cargo instrutor na promoção ${request.id}` }).catch(() => null)));
 }
 
 async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext, request: PolicePromotionRequest, actorId: string, actorName: string) {
