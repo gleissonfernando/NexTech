@@ -80,7 +80,7 @@ const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
 console.log("[release] Auto Update Logger...");
-await runAutoUpdateLogger().catch((error) => {
+await runAutoUpdateLogger({ force: true }).catch((error) => {
   console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
 });
 

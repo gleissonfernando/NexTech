@@ -8,6 +8,7 @@ const historyDir = path.join(root, ".release-history");
 const historyPath = path.join(historyDir, "auto-update-log.json");
 const discordApi = "https://discord.com/api/v10";
 const isDryRun = process.argv.includes("--dry-run");
+const isForceSend = process.argv.includes("--force") || process.env.AUTO_UPDATE_ALWAYS_SEND === "true";
 
 export async function runAutoUpdateLogger(options = {}) {
   const channelId = readConfigValue("UPDATE_CHANNEL_ID") || readConfigValue("AUTO_UPDATE_CHANNEL_ID");
@@ -15,8 +16,9 @@ export async function runAutoUpdateLogger(options = {}) {
   const currentCommit = git(["rev-parse", "HEAD"]).trim();
   const history = readHistory();
   const existingRelease = history.releases.find((release) => release.commit === currentCommit);
+  const forceSend = options.force === true || isForceSend;
 
-  if (existingRelease?.discordSentAt || existingRelease?.discordMessageId) {
+  if (!forceSend && (existingRelease?.discordSentAt || existingRelease?.discordMessageId)) {
     console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já registrada; envio ignorado.`);
     return { skipped: true };
   }
@@ -236,6 +238,9 @@ function buildDiscordPayload({ analysis, bot, release }) {
     ["📦 Recursos", analysis.summary.recursos],
     ["🗑 Recursos Removidos", analysis.summary.removidos]
   ].filter(([, items]) => items.length);
+  if (!sections.length) {
+    sections.push(["🔔 Atualização", ["Atualização operacional publicada automaticamente."]]);
+  }
   const content = [
     `# 🚀 ${escapeMarkdown(readConfigValue("UPDATE_APP_NAME") || "NEXTTECH")}`,
     `**Versão:** \`${release.version}\``,
