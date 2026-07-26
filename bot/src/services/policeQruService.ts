@@ -597,11 +597,12 @@ function rankingCommand(name: "rank" | "ranking"): BotCommand {
         await interaction.reply({ content: "Ranking não suportado.", ephemeral: true });
         return;
       }
-      const settings = await getSettings(context, interaction.guild.id);
+      let settings = await getSettings(context, interaction.guild.id);
       if (!canUseQru(interaction.member as GuildMember, settings, false)) {
         await interaction.reply({ content: "❌ Você não possui permissão para ver o ranking.", ephemeral: true });
         return;
       }
+      settings = await ensureQruRankingResetMarker(context, interaction.guild.id, settings);
       const ranking = await context.api.getPoliceQruRanking(interaction.guild.id, 20);
       await interaction.reply(rankingPayload(ranking, settings, false, interaction.guild, context.client) as any);
       const message = await interaction.fetchReply().catch(() => null);
@@ -639,33 +640,55 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
   const settings = fallbackSettings.rankingChannelId && fallbackSettings.rankingMessageId
     ? fallbackSettings
     : await context.api.getPoliceQruSettings(guildId).catch(() => fallbackSettings);
-  if (!settings.rankingChannelId || !settings.rankingMessageId) return;
+  if (!settings.rankingChannelId || !settings.rankingMessageId) return false;
 
   const channel = await context.client.channels.fetch(settings.rankingChannelId).catch(() => null);
-  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return;
+  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return false;
 
   const message = await channel.messages.fetch(settings.rankingMessageId).catch(() => null);
   if (!message) {
     await rememberRankingPanel(context, guildId, null, null).catch(() => null);
-    return;
+    return false;
   }
 
   const ranking = await context.api.getPoliceQruRanking(guildId, 20);
   const guild = context.client.guilds.cache.get(guildId) ?? null;
-  await message.edit(rankingPayload(ranking, settings, false, guild, context.client) as any).catch(() => null);
+  return await message.edit(rankingPayload(ranking, settings, false, guild, context.client) as any)
+    .then(() => true)
+    .catch((error) => {
+      console.warn(`[police-qru] failed to update ranking panel for guild ${guildId}:`, error);
+      return false;
+    });
+}
+
+async function ensureQruRankingResetMarker(context: BotContext, guildId: string, settings: PoliceQruSettings) {
+  if (settings.rankingResetAt) return settings;
+  const updated = await context.api.savePoliceQruSettings(guildId, { rankingResetAt: new Date().toISOString() });
+  settingsCache.set(`${MODULE_ID}:${guildId}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings: updated });
+  return updated;
 }
 
 async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
+  const stats = { checked: 0, resetMarkers: 0, skippedPanels: 0, updatedPanels: 0 };
   await Promise.allSettled(client.guilds.cache.map(async (guild) => {
     let settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
-    if (!settings?.rankingChannelId || !settings.rankingMessageId) return;
+    if (!settings) return;
+    stats.checked += 1;
     if (reason === "startup" && !settings.rankingResetAt) {
       const resetSettings = await context.api.savePoliceQruSettings(guild.id, { rankingResetAt: new Date().toISOString() }).catch(() => null);
-      if (resetSettings) settings = resetSettings;
+      if (resetSettings) {
+        settings = resetSettings;
+        stats.resetMarkers += 1;
+        settingsCache.set(`${MODULE_ID}:${guild.id}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings });
+      }
     }
-    await updateOfficialRankingPanel(context, guild.id, settings);
+    if (!settings.rankingChannelId || !settings.rankingMessageId) {
+      stats.skippedPanels += 1;
+      return;
+    }
+    if (await updateOfficialRankingPanel(context, guild.id, settings)) stats.updatedPanels += 1;
   }));
-  console.log(`[police-qru] ranking panels refreshed: ${reason}`);
+  console.log(`[police-qru] ranking panels refreshed: ${reason}`, stats);
 }
 
 async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"cached">["guild"]>, settings: PoliceQruSettings) {
