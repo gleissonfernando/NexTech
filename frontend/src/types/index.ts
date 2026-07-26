@@ -4292,7 +4292,7 @@ export type SystemMetricsResponse = {
 
 export type MaintenanceLog = {
   id: string;
-  action: "enabled" | "disabled" | "manual_alert";
+  action: "enabled" | "disabled" | "manual_alert" | "global_enabled" | "global_disabled" | "bot_released" | "bot_relocked";
   active: boolean;
   actorId: string | null;
   actorName: string | null;
@@ -4302,14 +4302,28 @@ export type MaintenanceLog = {
   message: string;
 };
 
+export type MaintenanceBot = {
+  avatarUrl: string | null;
+  id: string;
+  maintenance: boolean;
+  mainGuildName: string | null;
+  name: string;
+  released: boolean;
+  status: string | null;
+  updatedAt: string | null;
+};
+
 export type MaintenanceState = {
   active: boolean;
   activatedAt: string | null;
   affectedBots: number;
   botId: string | null;
   botName: string | null;
+  bots: MaintenanceBot[];
   deactivatedAt: string | null;
+  globalActive: boolean;
   logs: MaintenanceLog[];
+  releasedBotIds: string[];
   updatedAt: string;
   updatedById: string | null;
   updatedByName: string | null;

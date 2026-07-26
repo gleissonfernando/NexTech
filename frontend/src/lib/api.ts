@@ -3069,10 +3069,10 @@ export async function getMaintenanceState(botId?: string | null) {
   return data.maintenance;
 }
 
-export async function setMaintenanceMode(active: boolean, botId: string) {
+export async function setMaintenanceMode(active: boolean, botId?: string | null) {
   const { data } = await api.patch<{ maintenance: MaintenanceState }>("/dev/maintenance", {
     active,
-    botId
+    ...(botId ? { botId } : {})
   });
   return data.maintenance;
 }

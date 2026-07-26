@@ -4564,6 +4564,7 @@ export type MongoMaintenanceState = {
   active: boolean;
   activatedAt: Date | null;
   deactivatedAt: Date | null;
+  releasedBotIds?: string[];
   updatedAt: Date;
   updatedById: string | null;
   updatedByName: string | null;
@@ -4571,7 +4572,7 @@ export type MongoMaintenanceState = {
 
 export type MongoMaintenanceLog = {
   _id: string;
-  action: "enabled" | "disabled" | "manual_alert";
+  action: "enabled" | "disabled" | "manual_alert" | "global_enabled" | "global_disabled" | "bot_released" | "bot_relocked";
   active: boolean;
   actorId: string | null;
   actorName: string | null;

@@ -859,7 +859,19 @@ export type MaintenanceState = {
   affectedBots: number;
   botId: string | null;
   botName: string | null;
+  bots?: Array<{
+    avatarUrl: string | null;
+    id: string;
+    maintenance: boolean;
+    mainGuildName: string | null;
+    name: string;
+    released: boolean;
+    status: string | null;
+    updatedAt: string | null;
+  }>;
   deactivatedAt: string | null;
+  globalActive?: boolean;
+  releasedBotIds?: string[];
   updatedAt: string;
   updatedById: string | null;
   updatedByName: string | null;

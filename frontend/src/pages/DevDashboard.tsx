@@ -1994,7 +1994,6 @@ function MaintenancePanel() {
   const [saving, setSaving] = useState(false);
   const [alerting, setAlerting] = useState(false);
   const [bots, setBots] = useState<DevBot[]>([]);
-  const [selectedMaintenanceBotId, setSelectedMaintenanceBotId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [message, setMessage] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
 
@@ -2005,9 +2004,7 @@ function MaintenancePanel() {
       .then(async (botItems) => {
         if (!mounted) return;
         setBots(botItems);
-        const firstBotId = botItems[0]?.id ?? null;
-        setSelectedMaintenanceBotId((current) => current ?? firstBotId);
-        setMaintenance(firstBotId ? await getMaintenanceState(firstBotId) : await getMaintenanceState());
+        setMaintenance(await getMaintenanceState());
       })
       .catch(async () => {
         if (!mounted) return;
@@ -2022,8 +2019,11 @@ function MaintenancePanel() {
     socket.on("maintenance:updated", (payload: { botId?: string | null; state?: MaintenanceState; maintenance?: MaintenanceState }) => {
       const state = payload.state ?? payload.maintenance;
       if (state) {
-        setBots((current) => current.map((bot) => bot.id === state.botId ? { ...bot, maintenance: state.active } : bot));
-        setMaintenance((current) => current?.botId === state.botId ? state : current);
+        setMaintenance(state);
+        setBots((current) => current.map((bot) => {
+          const status = state.bots.find((item) => item.id === bot.id);
+          return status ? { ...bot, maintenance: status.maintenance } : bot;
+        }));
       }
     });
     socket.on("dev:bot_updated", (bot: DevBot) => {
@@ -2045,49 +2045,36 @@ function MaintenancePanel() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedMaintenanceBotId) return;
-    let mounted = true;
-    setLoading(true);
-    getMaintenanceState(selectedMaintenanceBotId)
-      .then((state) => {
-        if (mounted) setMaintenance(state);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [selectedMaintenanceBotId]);
-
-  async function handleToggle(active: boolean) {
+  async function handleGlobalToggle(active: boolean) {
     if (saving) return;
-    if (!selectedMaintenanceBotId) {
-      setMessage({ tone: "danger", text: "Selecione um bot para alterar a manutenção." });
-      return;
-    }
     const previous = maintenance;
 
     setMaintenance((current) => current ? {
       ...current,
       active,
+      affectedBots: active ? Math.max(current.affectedBots, bots.length) : 0,
+      bots: current.bots.map((bot) => ({ ...bot, maintenance: active, released: !active })),
+      globalActive: active,
+      releasedBotIds: active ? [] : current.bots.map((bot) => bot.id),
       activatedAt: active ? current.activatedAt ?? new Date().toISOString() : current.activatedAt,
       deactivatedAt: active ? null : new Date().toISOString(),
       updatedAt: new Date().toISOString()
     } : current);
     setMessage({
       tone: "warning",
-      text: active ? "Ativando manutenção deste bot..." : "Desativando manutenção deste bot..."
+      text: active ? "Ativando manutenção global..." : "Desativando manutenção global..."
     });
     setSaving(true);
     try {
-      const next = await setMaintenanceMode(active, selectedMaintenanceBotId);
+      const next = await setMaintenanceMode(active);
       setMaintenance(next);
-      setBots((current) => current.map((bot) => bot.id === selectedMaintenanceBotId ? { ...bot, maintenance: next.active } : bot));
+      setBots((current) => current.map((bot) => {
+        const status = next.bots.find((item) => item.id === bot.id);
+        return status ? { ...bot, maintenance: status.maintenance } : { ...bot, maintenance: active };
+      }));
       setMessage({
         tone: "success",
-        text: active ? "Manutenção do bot ativada." : "Manutenção do bot desativada."
+        text: active ? "Manutenção global ativada para todos os bots." : "Manutenção global desativada. Todos os bots foram liberados."
       });
     } catch (error) {
       setMaintenance(previous);
@@ -2100,15 +2087,39 @@ function MaintenancePanel() {
     }
   }
 
-  async function handleAlert() {
-    if (!selectedMaintenanceBotId) {
-      setMessage({ tone: "danger", text: "Selecione um bot para enviar o alerta." });
-      return;
+  async function handleBotToggle(botId: string, active: boolean) {
+    if (saving) return;
+    const previous = maintenance;
+    setMaintenance((current) => current ? {
+      ...current,
+      affectedBots: active ? current.affectedBots + 1 : Math.max(0, current.affectedBots - 1),
+      bots: current.bots.map((bot) => bot.id === botId ? { ...bot, maintenance: active, released: !active } : bot),
+      releasedBotIds: active ? current.releasedBotIds.filter((id) => id !== botId) : [...new Set([...current.releasedBotIds, botId])],
+      updatedAt: new Date().toISOString()
+    } : current);
+    setSaving(true);
+    setMessage({ tone: "warning", text: active ? "Colocando bot novamente em manutenção..." : "Liberando bot selecionado..." });
+    try {
+      const next = await setMaintenanceMode(active, botId);
+      setMaintenance(next);
+      setBots((current) => current.map((bot) => {
+        const status = next.bots.find((item) => item.id === bot.id);
+        return status ? { ...bot, maintenance: status.maintenance } : bot;
+      }));
+      setMessage({ tone: "success", text: active ? "Bot colocado novamente em manutenção." : "Bot liberado da manutenção." });
+    } catch (error) {
+      setMaintenance(previous);
+      setMessage({ tone: "danger", text: readRequestMessage(error) ?? "Não foi possível alterar a manutenção deste bot." });
+    } finally {
+      setSaving(false);
     }
+  }
+
+  async function handleAlert(botId: string) {
     setAlerting(true);
     try {
-      setMaintenance(await sendMaintenanceAlert(selectedMaintenanceBotId));
-      setMessage({ tone: "success", text: "Alerta manual enviado para o bot selecionado." });
+      setMaintenance(await sendMaintenanceAlert(botId));
+      setMessage({ tone: "success", text: "Alerta manual enviado para o bot." });
     } catch (error) {
       setMessage({ tone: "danger", text: readRequestMessage(error) ?? "Não foi possível enviar o alerta manual." });
     } finally {
@@ -2116,10 +2127,10 @@ function MaintenancePanel() {
     }
   }
 
-  const active = Boolean(maintenance?.active);
-  const selectedMaintenanceBot = bots.find((bot) => bot.id === selectedMaintenanceBotId) ?? bots[0] ?? null;
+  const globalActive = Boolean(maintenance?.globalActive ?? maintenance?.active);
+  const botRows = mergeMaintenanceBots(bots, maintenance);
   const since = maintenance?.activatedAt ? new Date(maintenance.activatedAt).getTime() : null;
-  const elapsed = active && since ? formatDuration(Math.max(0, now - since)) : "00:00:00";
+  const elapsed = globalActive && since ? formatDuration(Math.max(0, now - since)) : "00:00:00";
 
   return (
     <div className="min-w-0 space-y-6">
@@ -2128,48 +2139,28 @@ function MaintenancePanel() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${
-                active
+                globalActive
                   ? "border-red-400/35 bg-red-500/15 text-red-100 shadow-[0_0_34px_rgba(239,68,68,0.18)]"
                   : "border-emerald-400/35 bg-emerald-500/15 text-emerald-100 shadow-[0_0_34px_rgba(16,185,129,0.14)]"
               }`}>
                 <Wrench className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-xl font-bold text-white">Modo de Manutenção por Bot</CardTitle>
+                <CardTitle className="text-xl font-bold text-white">Modo de Manutenção Global</CardTitle>
                 <CardDescription className="mt-1 font-medium text-zinc-300">
-                  Bloqueia somente o bot selecionado. Os demais bots e a troca de painel continuam liberados.
+                  Ative a manutenção para todos os bots e libere individualmente apenas os bots que devem operar.
                 </CardDescription>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge className={active ? "border-red-400/30 bg-red-500/15 text-red-100" : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"} variant="muted">
-                {saving ? "Processando" : active ? "🔴 Em manutenção" : "🟢 Online"}
+              <Badge className={globalActive ? "border-red-400/30 bg-red-500/15 text-red-100" : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"} variant="muted">
+                {saving ? "Processando" : globalActive ? "🔴 Ativado" : "🟢 Desativado"}
               </Badge>
-              <Switch checked={active} disabled={loading || saving} onCheckedChange={(checked) => void handleToggle(checked)} />
+              <Switch checked={globalActive} disabled={loading || saving} onCheckedChange={(checked) => void handleGlobalToggle(checked)} />
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 p-5">
-          <div className="grid gap-2">
-            <p className="text-xs font-bold uppercase text-zinc-400">Bot selecionado</p>
-            <div className="flex flex-wrap gap-2">
-              {bots.map((bot) => (
-                <button
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                    bot.id === selectedMaintenanceBot?.id
-                      ? "border-[#FFD500]/45 bg-[#FFD500]/15 text-white"
-                      : "border-zinc-800 bg-black/35 text-zinc-300 hover:border-zinc-700"
-                  }`}
-                  key={bot.id}
-                  onClick={() => setSelectedMaintenanceBotId(bot.id)}
-                  type="button"
-                >
-                  {bot.name}
-                  {bot.maintenance ? <span className="ml-2 text-amber-200">manutenção</span> : null}
-                </button>
-              ))}
-            </div>
-          </div>
           {message ? (
             <div className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
               message.tone === "success"
@@ -2182,10 +2173,10 @@ function MaintenancePanel() {
             </div>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MaintenanceMetric label="Status do bot" value={active ? "Ativo" : "Inativo"} />
-          <MaintenanceMetric label="Bots em manutenção" value={String(maintenance?.affectedBots ?? 0)} />
-          <MaintenanceMetric label="Tempo em manutenção" value={elapsed} />
-          <MaintenanceMetric label="Última ativação" value={maintenance?.activatedAt ? formatDate(maintenance.activatedAt) : "Nunca"} />
+            <MaintenanceMetric label="Status global" value={globalActive ? "Ativado" : "Desativado"} />
+            <MaintenanceMetric label="Bots em manutenção" value={String(maintenance?.affectedBots ?? 0)} />
+            <MaintenanceMetric label="Bots liberados" value={String(botRows.filter((bot) => bot.released).length)} />
+            <MaintenanceMetric label="Tempo global" value={elapsed} />
           </div>
         </CardContent>
       </Card>
@@ -2194,22 +2185,18 @@ function MaintenancePanel() {
         <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0">
           <CardHeader>
             <CardTitle className="text-white">Controle e alerta</CardTitle>
-            <CardDescription className="font-medium text-zinc-300">Envie novamente o aviso para os canais configurados pelos bots.</CardDescription>
+            <CardDescription className="font-medium text-zinc-300">A manutenção global bloqueia funcionalidades; os bots liberados voltam a operar imediatamente.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button className="h-11 w-full bg-[#E5C000] text-white hover:bg-[#FFD500]" disabled={alerting} onClick={() => void handleAlert()}>
-              {alerting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
-              Enviar alerta para este bot
-            </Button>
             <div className="rounded-lg border border-zinc-800 bg-black/35 p-4">
-              <p className="text-sm font-bold text-white">Quem ativou</p>
+              <p className="text-sm font-bold text-white">Última alteração</p>
               <p className="mt-1 text-sm font-medium text-zinc-300">{maintenance?.updatedByName ?? "Nenhum registro"}</p>
               <p className="mt-1 font-mono text-xs text-zinc-400">{maintenance?.updatedById ?? "sem-id"}</p>
             </div>
             <div className="rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/[0.07] p-4 text-sm font-semibold leading-6 text-zinc-100">
               ❌ Sistema em manutenção<br />
-              Este bot está em manutenção no momento.<br />
-              Aguarde a nossa equipe finalizar a manutenção para realizar novamente.
+              Bots bloqueados não executam funcionalidades e exibem aviso no Dashboard.<br />
+              A tela de manutenção permanece acessível para liberação individual.
             </div>
           </CardContent>
         </Card>
@@ -2218,10 +2205,10 @@ function MaintenancePanel() {
       <Card className="border-[#FFD500]/20 bg-zinc-950/80 hover:translate-y-0">
         <CardHeader>
           <CardTitle className="text-white">Status em tempo real dos bots</CardTitle>
-          <CardDescription className="font-medium text-zinc-300">Cada bot possui manutenção independente.</CardDescription>
+          <CardDescription className="font-medium text-zinc-300">Libere ou recoloque bots em manutenção sem reiniciar a aplicação.</CardDescription>
         </CardHeader>
         <CardContent>
-          {active ? (
+          {globalActive ? (
             <div className="mb-4 grid gap-4 rounded-lg border border-amber-400/25 bg-amber-500/[0.08] p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
               <img
                 alt="Bot em manutenção"
@@ -2232,26 +2219,59 @@ function MaintenancePanel() {
                 <Badge className="border-amber-400/30 bg-amber-500/15 text-amber-100" variant="muted">
                   Atividade atual
                 </Badge>
-                <p className="mt-2 text-base font-bold text-white">Bot selecionado em manutenção</p>
+                <p className="mt-2 text-base font-bold text-white">Manutenção global ativada</p>
                 <p className="mt-1 text-sm font-medium leading-6 text-zinc-300">
-                  Somente este bot fica com o aviso ativo enquanto a manutenção estiver ligada.
+                  Todos os bots permanecem bloqueados, exceto os liberados manualmente nesta lista.
                 </p>
               </div>
             </div>
           ) : null}
 
-          {bots.length ? (
+          {loading ? (
+            <div className="flex min-h-28 items-center justify-center rounded-lg border border-zinc-800 bg-black/35">
+              <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
+            </div>
+          ) : botRows.length ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {bots.map((bot) => (
-                <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/35 p-3" key={bot.id}>
+              {botRows.map((bot) => (
+                <div className={`flex flex-col gap-3 rounded-lg border p-3 ${
+                  bot.maintenance
+                    ? "border-red-400/25 bg-red-500/[0.06]"
+                    : "border-emerald-400/25 bg-emerald-500/[0.06]"
+                }`} key={bot.id}>
+                  <div className="flex min-w-0 items-center gap-3">
                   <Avatar className="h-10 w-10 rounded-xl border border-zinc-700" fallback={bot.name} src={bot.avatarUrl} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-white">{bot.name}</p>
-                    <p className="truncate text-xs font-medium text-zinc-300">{bot.mainGuildName || bot.mainGuildId}</p>
+                    <p className="truncate text-xs font-medium text-zinc-300">{bot.mainGuildName || "Servidor principal"}</p>
                   </div>
-                  <Badge variant={isDevBotReadyStatus(bot.status) ? "success" : isDevBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
-                    {bot.maintenance ? "Manutenção" : devBotStatusLabel(bot.status)}
+                  <Badge className={bot.maintenance ? "border-red-400/30 bg-red-500/15 text-red-100" : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"} variant="muted">
+                    {bot.maintenance ? "🔴 Em manutenção" : "🟢 Liberado"}
                   </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={bot.status === "online" || bot.status === "ready" ? "success" : bot.status === "error" || bot.status === "invalid_token" ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
+                      {maintenanceBotStatusLabel(bot.status)}
+                    </Badge>
+                    <Button
+                      disabled={!globalActive || saving}
+                      onClick={() => void handleBotToggle(bot.id, !bot.maintenance)}
+                      size="sm"
+                      variant={bot.maintenance ? "default" : "outline"}
+                    >
+                      {bot.maintenance ? <ShieldCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                      {bot.maintenance ? "Liberar da Manutenção" : "Colocar Novamente em Manutenção"}
+                    </Button>
+                    <Button
+                      disabled={!globalActive || !bot.maintenance || alerting}
+                      onClick={() => void handleAlert(bot.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {alerting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                      Alerta
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2264,6 +2284,61 @@ function MaintenancePanel() {
       </Card>
     </div>
   );
+}
+
+type MaintenanceBotRow = {
+  avatarUrl: string | null;
+  id: string;
+  maintenance: boolean;
+  mainGuildName: string | null;
+  name: string;
+  released: boolean;
+  status: string | null;
+  updatedAt: string | null;
+};
+
+function mergeMaintenanceBots(bots: DevBot[], maintenance: MaintenanceState | null): MaintenanceBotRow[] {
+  const globalActive = Boolean(maintenance?.globalActive ?? maintenance?.active);
+  const maintenanceById = new Map((maintenance?.bots ?? []).map((bot) => [bot.id, bot]));
+  const rows: MaintenanceBotRow[] = bots.map((bot) => {
+    const state = maintenanceById.get(bot.id);
+    const active = state?.maintenance ?? (globalActive && bot.maintenance);
+    return {
+      avatarUrl: state?.avatarUrl ?? bot.avatarUrl,
+      id: bot.id,
+      maintenance: active,
+      mainGuildName: state?.mainGuildName ?? bot.mainGuildName ?? null,
+      name: state?.name ?? bot.name,
+      released: state?.released ?? !active,
+      status: state?.status ?? bot.status,
+      updatedAt: state?.updatedAt ?? bot.updatedAt
+    };
+  });
+  const knownIds = new Set(rows.map((bot) => bot.id));
+
+  for (const state of maintenanceById.values()) {
+    if (!knownIds.has(state.id)) {
+      rows.push(state);
+    }
+  }
+
+  return rows;
+}
+
+function maintenanceBotStatusLabel(status: string | null) {
+  const labels: Record<string, string> = {
+    authenticating: "Autenticando",
+    degraded: "Degradado",
+    error: "Erro",
+    invalid_token: "Token inválido",
+    offline: "Offline",
+    online: "Online",
+    ready: "Pronto",
+    starting: "Iniciando",
+    stopping: "Desligando"
+  };
+
+  return status ? labels[status] ?? status : "Cadastrado";
 }
 
 function MaintenanceMetric({ label, value }: { label: string; value: string }) {

@@ -622,24 +622,30 @@ devRouter.patch("/maintenance", async (req, res, next) => {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = z.object({
       active: z.boolean(),
-      botId: z.string().min(1).max(120)
+      botId: z.string().min(1).max(120).nullable().optional()
     }).parse(req.body ?? {});
+    const botId = typeof input.botId === "string" && input.botId.trim() ? input.botId.trim() : null;
     const maintenance = await setMaintenanceMode({
       active: input.active,
       actorId: auth.user.discordId,
       actorName: auth.user.globalName || auth.user.username,
-      botId: input.botId
+      botId
     });
 
     await writeDevBotAudit(
       auth,
       auth.user.selectedGuildId ?? "global",
-      input.botId,
-      input.active ? "maintenance_enabled" : "maintenance_disabled",
-      input.active ? "Modo de manutenção do bot ativado." : "Modo de manutenção do bot desativado.",
+      botId,
+      botId
+        ? input.active ? "maintenance_bot_relocked" : "maintenance_bot_released"
+        : input.active ? "maintenance_global_enabled" : "maintenance_global_disabled",
+      botId
+        ? input.active ? "Bot colocado novamente em manutenção." : "Bot liberado individualmente da manutenção."
+        : input.active ? "Modo de manutenção global ativado." : "Modo de manutenção global desativado.",
       {
-        botId: input.botId,
-        maintenance: true
+        botId,
+        maintenance: input.active,
+        scope: botId ? "bot" : "global"
       }
     );
 

@@ -1244,8 +1244,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       } : current);
     });
     socket.on("maintenance:updated", (payload: { botId?: string | null; state?: MaintenanceState }) => {
-      if (payload.state && (payload.botId ?? payload.state.botId ?? null) === activeBotId) {
-        setMaintenanceState(payload.state);
+      const payloadBotId = payload.botId ?? payload.state?.botId ?? null;
+      if (!payloadBotId || payloadBotId === activeBotId) {
+        void getDashboardMaintenanceState(activeBotId)
+          .then(setMaintenanceState)
+          .catch(() => undefined);
       }
     });
     socket.on("logs:new", (log: LogEntry) => {
