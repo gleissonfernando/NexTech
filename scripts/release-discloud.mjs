@@ -33,6 +33,23 @@ function run(command, args, options = {}) {
   return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }
 
+function commandAvailable(command) {
+  const result = process.platform === "win32"
+    ? spawnSync("where", [command], { cwd: root, shell: false, stdio: "ignore" })
+    : spawnSync("sh", ["-c", `command -v ${quoteShellArg(command)}`], { cwd: root, shell: false, stdio: "ignore" });
+
+  return result.status === 0;
+}
+
+function runDiscloud(args, options = {}) {
+  if (commandAvailable("discloud")) {
+    return run("discloud", args, options);
+  }
+
+  console.log("[release] CLI global da Discloud não encontrado; usando npx discloud-cli.");
+  return run("npx", ["--yes", "discloud-cli", ...args], options);
+}
+
 function quoteShellArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
 }
@@ -70,10 +87,10 @@ console.log(`[release] Enviando para origin/${branch}...`);
 run("git", ["push", "origin", branch]);
 
 console.log(`[release] Atualizando Discloud app ${appId}...`);
-run("discloud", ["app", "commit", appId], { cwd: path.join(root, ".discloud-package") });
+runDiscloud(["app", "commit", appId], { cwd: path.join(root, ".discloud-package") });
 
 console.log("[release] Status Discloud...");
-run("discloud", ["app", "status", appId]);
+runDiscloud(["app", "status", appId]);
 
 console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
