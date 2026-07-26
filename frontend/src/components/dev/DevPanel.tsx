@@ -300,6 +300,7 @@ type BotMenuId =
 type BotMenuGroupId =
   | "quick"
   | "geral"
+  | "streamer"
   | "sales"
   | "seguranca"
   | "voz"
@@ -853,10 +854,10 @@ const botMenuItems: BotMenuItem[] = [
     ]
   },
   {
-    group: "outros",
+    group: "streamer",
     id: "integrations",
-    label: "Integrações",
-    description: "Lives, clips e redes",
+    label: "Streamer",
+    description: "Lives, clips, sorteios e redes sociais",
     icon: Link2,
     moduleIds: ["live", "kick-integration", "clips", "kick-clips", "network", "x-monitor", "giveaway"]
   }
@@ -6592,6 +6593,7 @@ function moduleDashboardCategories(modules: DevModuleDefinition[]) {
 
 const botMenuGroupDefinitions: Array<{ compact?: boolean; id: BotMenuGroupId; label: string }> = [
   { id: "geral", label: "Geral" },
+  { id: "streamer", label: "Streamer" },
   { id: "sales", label: "Vendas e Pagamentos" },
   { id: "seguranca", label: "Segurança" },
   { id: "voz", label: "Voz", compact: true },
@@ -6814,7 +6816,7 @@ function readBotMenuGroupExpansion(botId: string, fallback: BotMenuGroupId[]) {
     const raw = window.localStorage.getItem(groupExpansionStorageKey(botId));
     const parsed = raw ? JSON.parse(raw) : null;
     if (!Array.isArray(parsed)) return [...new Set(fallback)];
-    const validGroupIds = new Set<BotMenuGroupId>(["quick", "geral", "sales", "seguranca", "voz", "fivem", "policia", "outros"]);
+    const validGroupIds = new Set<BotMenuGroupId>(["quick", "geral", "streamer", "sales", "seguranca", "voz", "fivem", "policia", "outros"]);
     const stored = parsed.filter((item): item is BotMenuGroupId => typeof item === "string" && validGroupIds.has(item as BotMenuGroupId));
     return stored.length ? [...new Set(stored)] : [...new Set(fallback)];
   } catch {

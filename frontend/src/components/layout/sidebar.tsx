@@ -137,10 +137,11 @@ export type NavItem = {
   moduleIds?: string[];
 };
 
-type NavSectionId = "user" | "security" | "police" | "fivem" | "server";
+type NavSectionId = "user" | "streamer" | "security" | "police" | "fivem" | "server";
 
 const navSectionLabels: Record<NavSectionId, string> = {
   user: "Usuário",
+  streamer: "Streamer",
   security: "Segurança",
   police: "Polícia",
   fivem: "FiveM",
@@ -284,6 +285,24 @@ const fivemViewIds = new Set<ViewId>([
   "manual-registration"
 ]);
 
+const streamerViewIds = new Set<ViewId>([
+  "lives",
+  "clips",
+  "kick-clips",
+  "giveaway",
+  "x-monitor"
+]);
+
+const streamerModuleIds = new Set([
+  "live",
+  "kick-integration",
+  "clips",
+  "kick-clips",
+  "network",
+  "x-monitor",
+  "giveaway"
+]);
+
 function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSectionId {
   const itemModuleIds = item.moduleIds ?? (item.moduleId ? [item.moduleId] : []);
   const releasedItemModuleIds = itemModuleIds.filter((moduleId) => enabledModuleSet.has(moduleId));
@@ -302,6 +321,10 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
 
   if (fivemViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => moduleId.startsWith("fivem-") || moduleId === "fivem" || moduleId === "fivem-fac")) {
     return "fivem";
+  }
+
+  if (streamerViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => streamerModuleIds.has(moduleId))) {
+    return "streamer";
   }
 
   if ([
@@ -333,7 +356,7 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
 }
 
 function groupNavItems(items: NavItem[], enabledModuleSet: Set<string>) {
-  const order: NavSectionId[] = ["user", "police", "fivem", "security", "server"];
+  const order: NavSectionId[] = ["user", "streamer", "police", "fivem", "security", "server"];
 
   return order
     .map((id) => ({

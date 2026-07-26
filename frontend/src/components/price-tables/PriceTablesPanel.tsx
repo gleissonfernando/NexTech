@@ -56,6 +56,13 @@ const PRICE_TABLE_PRESETS: PriceTablePreset[] = [
     title: "TABELA DE PREÇOS POLÍCIA - NexTech"
   },
   {
+    description: "Sistema Streamer para criadores de conteúdo, com avisos de live, integração Kick/Twitch, clipes, sorteios e redes sociais conectadas ao Discord.",
+    included: ["Detector de Lives", "Integração Kick", "Clipes Twitch/Kick", "Sorteios", "Rede Social dos Membros", "X Monitor", "Painéis de divulgação", "Logs e notificações"],
+    name: "Sistema Streamer",
+    systems: ["Avisos automáticos quando o streamer entrar ao vivo.", "Integração com Kick, Twitch, clipes e redes sociais.", "Sorteios para comunidade e eventos.", "Painéis editáveis para divulgação e engajamento.", "Configuração de canais por módulo diretamente pela Dashboard."],
+    title: "TABELA DE PREÇOS STREAMER - NexTech"
+  },
+  {
     description: "Sistema de vendas para divulgar serviços, planos, pagamentos e atendimento comercial de forma organizada pelo Discord.",
     included: ["Painel de Vendas", "Tabela de Preços", "Pagamentos Manuais", "Pagamento Automático", "Planos", "Cupons", "Histórico Financeiro", "Tickets de Venda"],
     name: "Sistema de Vendas",
