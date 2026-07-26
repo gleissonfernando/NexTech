@@ -69,7 +69,7 @@ export type PolicePromotionEvaluationHistoryPageDto = {
 
 export type SavePolicePromotionSettingsInput = Partial<Pick<
   MongoPolicePromotionSettings,
-  "approverRoleIds" | "defaultApprovalChannelId" | "defaultCategoryId" | "defaultHistoryChannelId" | "defaultLogChannelId" | "defaultPanelChannelId" | "enabled" | "instructorRoleIds" | "promotions" | "rejecterRoleIds"
+  "approverRoleIds" | "defaultApprovalChannelId" | "defaultCategoryId" | "defaultHistoryChannelId" | "defaultLogChannelId" | "defaultPanelChannelId" | "enabled" | "instructorRoleIds" | "promotions" | "quarantineRoleIds" | "rejecterRoleIds"
 >>;
 
 export type CreatePolicePromotionRequestInput = {
@@ -292,7 +292,7 @@ export async function updatePolicePromotionApprovalMessage(botId: string, reques
   }, "request.approval_message_updated", {}, input);
 }
 
-export async function decidePolicePromotionRequest(botId: string, requestId: string, input: { actorId: string; actorName: string; actorRoleIds?: string[]; approvalReason?: string | null; result: "approved" | "rejected" }) {
+export async function decidePolicePromotionRequest(botId: string, requestId: string, input: { actorId: string; actorName: string; actorRoleIds?: string[]; approvalReason?: string | null; result: "approved" | "rejected" | "quarantined" }) {
   const current = await getPolicePromotionRequest(botId, requestId);
   if (current.status !== "pending_approval") throw Object.assign(new Error("Esta solicitação não está aguardando aprovação."), { statusCode: 409 });
   const settings = await getPolicePromotionSettings(botId, current.guildId);
@@ -307,7 +307,7 @@ export async function decidePolicePromotionRequest(botId: string, requestId: str
     approvedById: input.actorId,
     approvedByName: normalizeText(input.actorName, 100),
     status: input.result
-  }, input.result === "approved" ? "request.approved" : "request.rejected", { actorId: input.actorId, actorName: input.actorName }, { result: input.result }, { status: "pending_approval", approvalResult: null, approvedAt: null });
+  }, input.result === "approved" ? "request.approved" : input.result === "rejected" ? "request.rejected" : "request.quarantined", { actorId: input.actorId, actorName: input.actorName }, { result: input.result }, { status: "pending_approval", approvalResult: null, approvedAt: null });
 }
 
 export async function closePolicePromotionRequest(botId: string, requestId: string, actor: ActorInput, status: "cancelled" | "closed" = "closed") {
@@ -462,6 +462,7 @@ function defaultSettings(botId: string, guildId: string): MongoPolicePromotionSe
     guildId,
     instructorRoleIds: [],
     promotions: [defaultPromotion()],
+    quarantineRoleIds: [],
     rejecterRoleIds: [],
     updatedAt: now,
     updatedBy: null
@@ -532,6 +533,7 @@ function settingsDto(row: MongoPolicePromotionSettings): PolicePromotionSettings
     instructorRoleIds: uniqueSnowflakes(row.instructorRoleIds ?? []),
     createdAt: createdAt.toISOString(),
     promotions: sanitizePromotions(row.promotions),
+    quarantineRoleIds: uniqueSnowflakes(row.quarantineRoleIds ?? []),
     rejecterRoleIds: uniqueSnowflakes(row.rejecterRoleIds ?? []),
     updatedAt: updatedAt.toISOString()
   };
@@ -638,6 +640,7 @@ function sanitizeSettingsInput(input: SavePolicePromotionSettingsInput) {
   if (next.defaultPanelChannelId !== undefined) next.defaultPanelChannelId = normalizeSnowflake(next.defaultPanelChannelId);
   if (next.instructorRoleIds !== undefined) next.instructorRoleIds = uniqueSnowflakes(next.instructorRoleIds);
   if (next.promotions !== undefined) next.promotions = sanitizePromotions(next.promotions).slice(0, 50);
+  if (next.quarantineRoleIds !== undefined) next.quarantineRoleIds = uniqueSnowflakes(next.quarantineRoleIds);
   if (next.rejecterRoleIds !== undefined) next.rejecterRoleIds = uniqueSnowflakes(next.rejecterRoleIds);
   return next;
 }
@@ -801,13 +804,15 @@ function promotionInstructorRoleIds(settings: PolicePromotionSettingsDto, promot
   return uniqueSnowflakes([...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
 }
 
-function promotionDecisionRoleIds(settings: PolicePromotionSettingsDto, promotion: MongoPolicePromotionDefinition, result: "approved" | "rejected") {
+function promotionDecisionRoleIds(settings: PolicePromotionSettingsDto, promotion: MongoPolicePromotionDefinition, result: "approved" | "rejected" | "quarantined") {
   const specificRoleIds = result === "approved"
     ? [...(settings.approverRoleIds ?? []), ...(promotion.approvalRoleIds ?? [])]
-    : [...(settings.rejecterRoleIds ?? []), ...(promotion.rejectedRoleIds ?? [])];
+    : result === "rejected"
+      ? [...(settings.rejecterRoleIds ?? []), ...(promotion.rejectedRoleIds ?? [])]
+      : [...(settings.quarantineRoleIds ?? []), ...(settings.rejecterRoleIds ?? []), ...(promotion.rejectedRoleIds ?? [])];
   const specific = uniqueSnowflakes(specificRoleIds);
   if (specific.length) return specific;
-  return uniqueSnowflakes([...(settings.approverRoleIds ?? []), ...(settings.rejecterRoleIds ?? []), ...(promotion.approvalRoleIds ?? []), ...(promotion.rejectedRoleIds ?? []), ...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
+  return uniqueSnowflakes([...(settings.approverRoleIds ?? []), ...(settings.rejecterRoleIds ?? []), ...(settings.quarantineRoleIds ?? []), ...(promotion.approvalRoleIds ?? []), ...(promotion.rejectedRoleIds ?? []), ...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
 }
 
 function hasAnyRole(actorRoleIds: string[], allowedRoleIds: string[]) {

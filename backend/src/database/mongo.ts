@@ -2652,6 +2652,7 @@ export type MongoPolicePromotionSettings = {
   defaultPanelChannelId: string | null;
   instructorRoleIds: string[];
   promotions: MongoPolicePromotionDefinition[];
+  quarantineRoleIds?: string[];
   rejecterRoleIds: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -2678,7 +2679,7 @@ export type MongoPolicePromotionRequest = {
   approvalChannelId: string | null;
   approvalMessageId: string | null;
   approvalReason: string | null;
-  approvalResult: "approved" | "rejected" | null;
+  approvalResult: "approved" | "rejected" | "quarantined" | null;
   approvedAt: Date | null;
   approvedById: string | null;
   approvedByName: string | null;
@@ -2706,7 +2707,7 @@ export type MongoPolicePromotionRequest = {
   requesterName: string;
   requestedDate: string;
   requestedTime: string;
-  status: "submitted" | "ticket_open" | "in_evaluation" | "pending_approval" | "approved" | "rejected" | "cancelled" | "closed";
+  status: "submitted" | "ticket_open" | "in_evaluation" | "pending_approval" | "approved" | "rejected" | "quarantined" | "cancelled" | "closed";
   targetRank: string;
   updatedAt: Date;
 };

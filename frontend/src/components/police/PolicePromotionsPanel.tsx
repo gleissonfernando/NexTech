@@ -230,6 +230,7 @@ export function PolicePromotionsPanel({ botId, canManage, guild }: { botId?: str
           <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) de Instrutor" options={roleOptions} prefix="@" values={data.settings.instructorRoleIds ?? []} onChange={(instructorRoleIds) => patchSettings({ instructorRoleIds })} />
           <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) que podem Aprovar" options={roleOptions} prefix="@" values={data.settings.approverRoleIds ?? []} onChange={(approverRoleIds) => patchSettings({ approverRoleIds })} />
           <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) que podem Reprovar" options={roleOptions} prefix="@" values={data.settings.rejecterRoleIds ?? []} onChange={(rejecterRoleIds) => patchSettings({ rejecterRoleIds })} />
+          <FivemResourceMultiSelect disabled={disabled} label="Cargo(s) que podem colocar em Quarentena" options={roleOptions} prefix="@" values={data.settings.quarantineRoleIds ?? []} onChange={(quarantineRoleIds) => patchSettings({ quarantineRoleIds })} />
         </CardContent>
       </Card>
 

@@ -90,6 +90,7 @@ type EvaluationDraft = {
   requestId: string;
   scoreLine: string;
 };
+type PromotionDecisionResult = "approved" | "rejected" | "quarantined";
 
 type EvaluationStep = "patrol" | "operational" | "conduct" | "notes" | "final";
 
@@ -210,6 +211,7 @@ export async function handlePolicePromotionInteraction(interaction: Interaction,
   if (action === "eval_result" && interaction.isButton()) return handleEvaluationResult(interaction, context);
   if (action === "approve" && interaction.isButton()) return openDecisionModal(interaction, "approved", context);
   if (action === "reject" && interaction.isButton()) return openDecisionModal(interaction, "rejected", context);
+  if (action === "quarantine" && interaction.isButton()) return openDecisionModal(interaction, "quarantined", context);
   if (action === "decision_modal" && interaction.isModalSubmit()) return handleDecisionModal(interaction, context);
   if (action === "new_eval" && interaction.isButton()) return requestNewEvaluation(interaction, context);
   if (action === "history_page" && interaction.isButton()) return handlePrincessHistoryPage(interaction, context);
@@ -935,15 +937,22 @@ async function confirmCancelEvaluationQuestionnaire(interaction: ButtonInteracti
       actorName: displayName(interaction.member as GuildMember, interaction.user.username),
       metadata: { channelId: interaction.channelId }
     }).catch(() => null);
+    const closed = await context.api.closePolicePromotionRequest(requestId, {
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      status: "cancelled"
+    });
+    await interaction.update({
+      components: [{
+        type: 17,
+        accent_color: 0xef4444,
+        components: [{ type: 10, content: `# ${icon("exclamacao", interaction.guild)} Avaliação cancelada\nO processo foi encerrado e o canal temporário será apagado automaticamente.` }]
+      }],
+      flags: MessageFlags.IsComponentsV2
+    } as any);
+    await deletePromotionTemporaryChannel(interaction.guild, context, closed, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Avaliação cancelada pelo instrutor");
+    return true;
   }
-  await interaction.update({
-    components: [{
-      type: 17,
-      accent_color: 0xef4444,
-      components: [{ type: 10, content: `# ${icon("exclamacao", interaction.guild)} Avaliação cancelada\nO rascunho desta sessão foi descartado.` }]
-    }],
-    flags: MessageFlags.IsComponentsV2
-  } as any);
   return true;
 }
 
@@ -1044,7 +1053,7 @@ async function sendApprovalPanel(guild: Guild, context: BotContext, settings: Po
   return context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: sent.id });
 }
 
-async function openDecisionModal(interaction: ButtonInteraction<"cached">, result: "approved" | "rejected", context: BotContext) {
+async function openDecisionModal(interaction: ButtonInteraction<"cached">, result: PromotionDecisionResult, context: BotContext) {
   const request = await context.api.getPolicePromotionRequest(interaction.customId.split(":")[2]!);
   if (request.status !== "pending_approval") {
     await interaction.reply({ content: "Esta solicitação não está aguardando aprovação.", ephemeral: true });
@@ -1059,11 +1068,11 @@ async function openDecisionModal(interaction: ButtonInteraction<"cached">, resul
 
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:decision_modal:${request.id}:${result}`)
-    .setTitle(result === "approved" ? "Aprovar Promoção" : "Reprovar Promoção");
+    .setTitle(result === "approved" ? "Aprovar Promoção" : result === "rejected" ? "Reprovar Promoção" : "Colocar em Quarentena");
   modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
     new TextInputBuilder()
       .setCustomId("reason")
-      .setLabel(result === "approved" ? "Motivo da aprovação" : "Motivo da reprovação")
+      .setLabel(result === "approved" ? "Motivo da aprovação" : result === "rejected" ? "Motivo da reprovação" : "Motivo da quarentena")
       .setMaxLength(1000)
       .setRequired(result === "rejected")
       .setStyle(TextInputStyle.Paragraph)
@@ -1074,7 +1083,7 @@ async function openDecisionModal(interaction: ButtonInteraction<"cached">, resul
 
 async function handleDecisionModal(interaction: ModalSubmitInteraction<"cached">, context: BotContext) {
   const [, , requestId, result] = interaction.customId.split(":");
-  if (!requestId || (result !== "approved" && result !== "rejected")) return true;
+  if (!requestId || !isPromotionDecisionResult(result)) return true;
   const request = await context.api.getPolicePromotionRequest(requestId);
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
@@ -1097,9 +1106,10 @@ async function handleDecisionModal(interaction: ModalSubmitInteraction<"cached">
 
   if (result === "approved") await applyPromotionRoles(interaction.guild, promotion, updated);
   await notifyRequester(interaction.guild, updated, promotion).catch(() => null);
-  await sendPromotionLog(interaction.guild, settings, promotion, updated, result === "approved" ? "Promoção aprovada" : "Promoção reprovada", `<@${interaction.user.id}> ${result === "approved" ? "aprovou" : "reprovou"} a promoção de <@${updated.requesterId}>.`).catch(() => null);
-  await interaction.reply({ content: result === "approved" ? "Promoção aprovada." : "Promoção reprovada.", ephemeral: true });
+  await sendPromotionLog(interaction.guild, settings, promotion, updated, decisionTitle(result), `<@${interaction.user.id}> ${decisionVerb(result)} a promoção de <@${updated.requesterId}>.`).catch(() => null);
+  await interaction.reply({ content: `${decisionTitle(result)}.`, ephemeral: true });
   if (interaction.message) await interaction.message.edit(approvalPayload(updated, promotion, interaction.guild, true) as any).catch(() => null);
+  await deletePromotionTemporaryChannel(interaction.guild, context, updated, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), decisionTitle(result));
   return true;
 }
 
@@ -1298,15 +1308,16 @@ function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromoti
 
 function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, disabled = false): MessageCreateOptions {
   const submittedAt = request.evaluationEndedAt ?? request.updatedAt;
+  const statusColor = request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : request.status === "quarantined" ? 0xf97316 : parseColor(promotion.color);
   return {
     allowedMentions: { parse: [] },
     components: [{
       type: 17,
-      accent_color: request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : parseColor(promotion.color),
+      accent_color: statusColor,
       components: [
         { type: 10, content: [
           `# ${icon("prancheta_acertos", guild)} Relatório de Promoção`,
-          `## ${request.status === "approved" ? "Aprovado" : request.status === "rejected" ? "Reprovado" : "Aguardando aprovação"}`,
+          `## ${approvalStatusLabel(request.status)}`,
           DIVIDER,
           `${icon("homem", guild)} Nome do promovido\n${escapeMarkdown(request.requesterName)}`,
           "",
@@ -1324,9 +1335,10 @@ function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromo
           "",
           `${icon("folha", guild)} Resultado do relatório\n${escapeMarkdown(request.evaluationResult === "approved" ? "Apto" : request.evaluationResult === "rejected" ? "Não apto" : "Aguardando decisão")}`,
           "",
-          `${icon("relogio", guild)} Status administrativo\n${request.status === "approved" ? "APROVADO" : request.status === "rejected" ? "REPROVADO" : "Aguardando análise administrativa"}`,
+          `${icon("relogio", guild)} Status administrativo\n${approvalStatusLabel(request.status)}`,
           request.approvedById ? `\n${icon("homem", guild)} Analisado por\n<@${request.approvedById}>` : "",
           request.approvedAt ? `\n${icon("calendario", guild)} Data da decisão\n${formatDate(request.approvedAt)}` : "",
+          request.approvalReason ? `\n${icon("folha", guild)} Motivo\n${escapeMarkdown(request.approvalReason)}` : "",
           "",
           `${icon("prancheta_caneta", guild)} Observações\n${escapeMarkdown(clip(request.evaluationNotes ?? "Nenhuma observação registrada.", 1800))}`,
           "",
@@ -1341,6 +1353,7 @@ function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromo
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(`${PREFIX}:approve:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar Promoção").setStyle(ButtonStyle.Success).setDisabled(disabled),
           new ButtonBuilder().setCustomId(`${PREFIX}:reject:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Reprovar Promoção").setStyle(ButtonStyle.Danger).setDisabled(disabled),
+          new ButtonBuilder().setCustomId(`${PREFIX}:quarantine:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Colocar em Quarentena").setStyle(ButtonStyle.Secondary).setDisabled(disabled),
           new ButtonBuilder().setCustomId(`${PREFIX}:new_eval:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Nova Avaliação").setStyle(ButtonStyle.Secondary).setDisabled(disabled || !promotion.requestNewEvaluationEnabled)
         )
       ]
@@ -1552,7 +1565,7 @@ async function trySendApprovalPanel(interaction: ButtonInteraction<"cached">, co
 async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteraction<"cached">, context: BotContext, request: PolicePromotionRequest) {
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
-  const message = ["pending_approval", "approved", "rejected"].includes(request.status)
+  const message = ["pending_approval", "approved", "rejected", "quarantined"].includes(request.status)
     ? "Este relatório já foi enviado para aprovação."
     : "Esta promoção já foi encerrada.";
 
@@ -1579,7 +1592,7 @@ async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteract
     await interaction.reply({ content: message, ephemeral: true }).catch(() => null);
   }
 
-  if (promotion && ["pending_approval", "approved", "rejected"].includes(request.status)) {
+  if (promotion && ["pending_approval", "approved", "rejected", "quarantined"].includes(request.status)) {
     await deletePromotionTemporaryChannel(interaction.guild, context, request, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Processo de promoção já encerrado");
   }
 }
@@ -1658,7 +1671,7 @@ function canManageEvaluation(member: GuildMember | null, settings: PolicePromoti
   return request.evaluatorId === userId && request.status === "in_evaluation" && canInstructPromotion(member, settings, promotion);
 }
 
-function canDecidePromotion(member: GuildMember | null, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
+function canDecidePromotion(member: GuildMember | null, settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: PromotionDecisionResult) {
   return hasAnyRole(member, promotionDecisionRoleIds(settings, promotion, result));
 }
 
@@ -1666,16 +1679,42 @@ function promotionInstructorRoleIds(settings: PolicePromotionSettings, promotion
   return uniqueStrings([...(settings.instructorRoleIds ?? []), ...(promotion.evaluatorRoleIds ?? [])]);
 }
 
-function promotionDecisionRoleIds(settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: "approved" | "rejected") {
+function promotionDecisionRoleIds(settings: PolicePromotionSettings, promotion: PolicePromotionDefinition, result?: PromotionDecisionResult) {
   const approvalRoleIds = promotion.approvalRoleIds ?? [];
   const rejectedRoleIds = promotion.rejectedRoleIds ?? [];
   const globalApprovalRoleIds = settings.approverRoleIds ?? [];
   const globalRejectedRoleIds = settings.rejecterRoleIds ?? [];
+  const globalQuarantineRoleIds = settings.quarantineRoleIds ?? [];
   const evaluatorRoleIds = promotionInstructorRoleIds(settings, promotion);
-  const specificRoleIds = result === "approved" ? [...globalApprovalRoleIds, ...approvalRoleIds] : result === "rejected" ? [...globalRejectedRoleIds, ...rejectedRoleIds] : [];
+  const specificRoleIds = result === "approved"
+    ? [...globalApprovalRoleIds, ...approvalRoleIds]
+    : result === "rejected"
+      ? [...globalRejectedRoleIds, ...rejectedRoleIds]
+      : result === "quarantined"
+        ? [...globalQuarantineRoleIds, ...globalRejectedRoleIds, ...rejectedRoleIds]
+        : [];
   if (specificRoleIds.length) return uniqueStrings(specificRoleIds);
-  const configuredDecisionRoleIds = uniqueStrings([...globalApprovalRoleIds, ...globalRejectedRoleIds, ...approvalRoleIds, ...rejectedRoleIds]);
+  const configuredDecisionRoleIds = uniqueStrings([...globalApprovalRoleIds, ...globalRejectedRoleIds, ...globalQuarantineRoleIds, ...approvalRoleIds, ...rejectedRoleIds]);
   return configuredDecisionRoleIds.length ? configuredDecisionRoleIds : uniqueStrings(evaluatorRoleIds);
+}
+
+function isPromotionDecisionResult(value: unknown): value is PromotionDecisionResult {
+  return value === "approved" || value === "rejected" || value === "quarantined";
+}
+
+function decisionTitle(result: PromotionDecisionResult) {
+  return result === "approved" ? "Promoção aprovada" : result === "rejected" ? "Promoção reprovada" : "Promoção em quarentena";
+}
+
+function decisionVerb(result: PromotionDecisionResult) {
+  return result === "approved" ? "aprovou" : result === "rejected" ? "reprovou" : "colocou em quarentena";
+}
+
+function approvalStatusLabel(status: PolicePromotionRequest["status"]) {
+  if (status === "approved") return "Aprovado";
+  if (status === "rejected") return "Reprovado";
+  if (status === "quarantined") return "Em Quarentena";
+  return "Aguardando Aprovação";
 }
 
 function uniqueStrings(values: string[]) {
@@ -2648,6 +2687,7 @@ function statusLabel(status: PolicePromotionRequest["status"]) {
     closed: "Fechado",
     in_evaluation: "Em Avaliação",
     pending_approval: "Aguardando Aprovação",
+    quarantined: "Em Quarentena",
     rejected: "Reprovado",
     submitted: "Enviado",
     ticket_open: "Aguardando Instrutor"

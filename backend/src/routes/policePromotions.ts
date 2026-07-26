@@ -79,6 +79,7 @@ const settingsSchema = z.object({
   defaultPanelChannelId: nullableSnowflake.optional(),
   enabled: z.boolean().optional(),
   instructorRoleIds: z.array(snowflake).max(100).optional(),
+  quarantineRoleIds: z.array(snowflake).max(100).optional(),
   rejecterRoleIds: z.array(snowflake).max(100).optional(),
   promotions: z.array(promotionSchema).max(50).optional()
 });
@@ -257,7 +258,7 @@ policePromotionsRouter.post("/bot/requests/:requestId/decision", requireBot, asy
       actorName: z.string().min(1).max(100),
       actorRoleIds: z.array(snowflake).max(100).optional(),
       approvalReason: z.string().max(1000).nullable().optional(),
-      result: z.enum(["approved", "rejected"])
+      result: z.enum(["approved", "rejected", "quarantined"])
     }).parse(req.body);
     res.json({ request: await decidePolicePromotionRequest(botId, id.parse(req.params.requestId), input) });
   } catch (error) {
