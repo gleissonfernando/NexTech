@@ -398,6 +398,7 @@ function resolveLocalUploadPath(localUrl: string, uploadsRoot: string) {
 function mimeTypeFromExtension(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".apng") return "image/apng";
+  if (ext === ".avif") return "image/avif";
   if (ext === ".3gp") return "video/3gpp";
   if (ext === ".avi") return "video/x-msvideo";
   if (ext === ".mkv") return "video/x-matroska";

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, FileVideo, Image, Load
 import { getPanelImageSettings, listPanelImageSettings, removePanelImage, savePanelImageSettings, uploadPanelImage } from "../../lib/api";
 import type {
   PanelImageLayoutMode,
+  PanelBannerMode,
   PanelImagePosition,
   PanelBlock,
   PanelImageSettings as PanelImageSettingsDto,
@@ -42,9 +43,9 @@ const PANELS: PanelDefinition[] = [
   { id: "logs", label: "Avisos e logs" }
 ];
 const PANEL_MEDIA_ACCEPT = [
-  "image/png", "image/apng", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+  "image/png", "image/apng", "image/avif", "image/jpeg", "image/jpg", "image/webp", "image/gif",
   "video/3gpp", "video/3gpp2", "video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/x-matroska", "video/mpeg", "video/mp2t", "video/x-flv", "video/x-ms-wmv", "video/ogg",
-  ".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".flv", ".wmv", ".ts", ".mts", ".3gp", ".3g2", ".ogv", ".asf", ".f4v", ".vob", ".rmvb", ".mxf"
+  ".png", ".apng", ".avif", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".flv", ".wmv", ".ts", ".mts", ".3gp", ".3g2", ".ogv", ".asf", ".f4v", ".vob", ".rmvb", ".mxf"
 ].join(",");
 const PANEL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const PANEL_VIDEO_MAX_BYTES = 15 * 1024 * 1024;
@@ -70,6 +71,17 @@ const sizeOptions: Array<{ label: string; value: PanelImageSize }> = [
   { label: "Media", value: "medium" },
   { label: "Grande", value: "large" },
   { label: "Banner completo", value: "full_banner" },
+  { label: "Personalizado", value: "custom" }
+];
+
+const bannerModeOptions: Array<{ label: string; value: PanelBannerMode }> = [
+  { label: "Automático", value: "auto" },
+  { label: "Grande", value: "large" },
+  { label: "Compacto", value: "compact" },
+  { label: "Horizontal", value: "horizontal" },
+  { label: "Vertical", value: "vertical" },
+  { label: "Quadrado", value: "square" },
+  { label: "Ultrawide", value: "ultrawide" },
   { label: "Personalizado", value: "custom" }
 ];
 
@@ -471,6 +483,13 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                 options={sizeOptions}
                 value={draft.imageSize}
               />
+              <SelectField
+                disabled={disabled}
+                label="Tipo de Banner"
+                onChange={(value) => updateDraft("bannerMode", value as PanelBannerMode)}
+                options={bannerModeOptions}
+                value={draft.bannerMode}
+              />
               {!componentsV2Only ? (
                 <SelectField
                   disabled={disabled || advancedPositions.has(draft.imagePosition)}
@@ -537,19 +556,19 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                 {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(draft.imagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão principal</span>
-                  <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão secundario</span>
-                </div>
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "bottom" ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
                     <InlineMediaPreview className="h-5 w-5 rounded-full" imageUrl={draft.imageUrl} settings={draft} />
-                    Rodapé do painel
+                    <span>{previewFooterText(draft)}</span>
                   </div>
                 ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão principal</span>
+                  <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Botão secundario</span>
+                </div>
               </div>
             </div>
 
@@ -887,16 +906,20 @@ function ImageTypeBadge({ settings }: { settings: PanelImageSettingsDto }) {
   const extension = (settings.imageExtension || extensionFromUrl(settings.imageUrl) || "").toLowerCase();
   const isVideo = isVideoMedia(settings.imageUrl, settings.imageMimeType);
   const isGif = settings.imageIsAnimated || settings.imageMimeType === "image/gif" || extension === "gif";
+  const banner = classifyBanner(settings);
+  const dimensions = banner.width && banner.height ? `${banner.width}x${banner.height}` : null;
   const label = isVideo ? `Vídeo ${extension ? extension.toUpperCase() : ""}`.trim() : isGif ? (settings.imageIsAnimated ? "GIF Animado" : "GIF") : extension ? extension.toUpperCase() : "Imagem";
   const icon = isVideo || isGif ? "🎞️" : "🖼️";
   const details = [
+    dimensions,
+    banner.kind,
     settings.imageMimeType,
     settings.imageSizeBytes ? formatBytes(settings.imageSizeBytes) : null
   ].filter(Boolean).join(" · ");
 
   return (
     <span className="rounded-md border border-zinc-800 bg-black px-2 py-1 text-zinc-300" title={details || undefined}>
-      {icon} {label}
+      {icon} {label}{dimensions ? ` · ${dimensions}` : ""}
     </span>
   );
 }
@@ -931,13 +954,20 @@ function isVideoMedia(imageUrl: string, mimeType?: string | null) {
 
 function previewMediaStyle(settings: PanelImageSettingsDto, baseStyle: CSSProperties): CSSProperties {
   if (["banner", "top", "below_title", "below_text", "middle", "bottom", "before_buttons", "above_buttons"].includes(settings.imagePosition)) {
+    const banner = classifyBanner(settings);
+    const compact = banner.mode === "compact";
+    const vertical = banner.kind === "vertical";
+    const square = banner.kind === "square";
     return {
       ...baseStyle,
       display: "block",
       height: isVideoMedia(settings.imageUrl, settings.imageMimeType) ? baseStyle.height ?? "auto" : "auto",
-      maxWidth: "100%",
+      marginLeft: "auto",
+      marginRight: "auto",
+      maxHeight: vertical ? "420px" : undefined,
+      maxWidth: compact ? "72%" : vertical ? "58%" : square ? "68%" : "100%",
       objectFit: "contain",
-      width: "100%"
+      width: compact || vertical || square ? "auto" : "100%"
     };
   }
 
@@ -945,6 +975,34 @@ function previewMediaStyle(settings: PanelImageSettingsDto, baseStyle: CSSProper
     ...baseStyle,
     objectFit: settings.mediaFit
   };
+}
+
+function classifyBanner(settings: PanelImageSettingsDto) {
+  const width = settings.mediaDiagnostics?.width ?? null;
+  const height = settings.mediaDiagnostics?.height ?? null;
+  const ratio = width && height ? width / height : null;
+  const automaticKind = ratio === null
+    ? "horizontal"
+    : ratio >= 2.1
+      ? "ultrawide"
+      : ratio > 1.15
+        ? "horizontal"
+        : ratio < 0.85
+          ? "vertical"
+          : "square";
+  const requested = settings.bannerMode ?? "auto";
+  const mode = requested === "compact" ? "compact" : requested === "large" ? "large" : "auto";
+  const kind = ["horizontal", "vertical", "square", "ultrawide"].includes(requested) ? requested : automaticKind;
+  return { height, kind, mode, ratio, width };
+}
+
+function previewFooterText(settings: PanelImageSettingsDto) {
+  const now = new Date();
+  const date = now.toLocaleDateString("pt-BR");
+  const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const banner = classifyBanner(settings);
+  const dimensions = banner.width && banner.height ? ` • ${banner.width}x${banner.height}` : "";
+  return `${date} ${time} • Servidor${dimensions}`;
 }
 
 async function validatePanelMediaUrl(imageUrl: string, mimeType?: string | null) {
@@ -1191,6 +1249,7 @@ function defaultSettings(guildId: string, botId: string, panelId: string): Panel
     customHeight: null,
     customWidth: null,
     guildId,
+    bannerMode: "auto",
     imageEnabled: false,
     imageExtension: null,
     imageIsAnimated: false,
@@ -1244,6 +1303,7 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
   return {
     customHeight: settings.imageSize === "custom" ? settings.customHeight : null,
     customWidth: settings.imageSize === "custom" ? settings.customWidth : null,
+    bannerMode: settings.bannerMode ?? "auto",
     blocks: componentsV2Only ? [] : settings.blocks ?? [],
     imageEnabled,
     imagePosition: imageEnabled ? settings.imagePosition : "none",

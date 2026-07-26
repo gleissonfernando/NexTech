@@ -4859,6 +4859,7 @@ export type MongoPlanAuditLog = {
 
 export type MongoGlobalPanelImagePosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 export type MongoGlobalPanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
+export type MongoGlobalPanelBannerMode = "auto" | "large" | "compact" | "horizontal" | "vertical" | "square" | "ultrawide" | "custom";
 export type MongoGlobalPanelImageLayoutMode = "embed" | "components_v2";
 export type MongoPanelBlock =
   | { editable?: boolean; id: string; order: number; type: "text"; content: string }
@@ -4878,6 +4879,7 @@ export type MongoPanelImageSettings = {
   imageUrl: string;
   imagePosition: MongoGlobalPanelImagePosition;
   imageSize: MongoGlobalPanelImageSize;
+  bannerMode?: MongoGlobalPanelBannerMode;
   customWidth: number | null;
   customHeight: number | null;
   layoutMode: MongoGlobalPanelImageLayoutMode;

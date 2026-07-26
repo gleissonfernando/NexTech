@@ -10,6 +10,7 @@ export type PanelVisualConfig = {
   imageExtension?: string | null;
   imageMimeType?: string | null;
   imagePosition?: PanelVisualPosition;
+  bannerMode?: "auto" | "large" | "compact" | "horizontal" | "vertical" | "square" | "ultrawide" | "custom";
   imageUrl?: string | null;
   mediaPosterUrl?: string | null;
   mediaThumbnailUrl?: string | null;
@@ -97,13 +98,14 @@ export function renderComponentsV2Panel(input: {
   if (!blockComponents.length && (media || extraMedia.length) && effectivePosition === "middle") pushMedia();
   fields.slice(split).forEach((content) => components.push({ type: 10, content }));
   if (!blockComponents.length && (media || extraMedia.length) && ["before_buttons", "above_buttons"].includes(effectivePosition)) pushMedia();
-  components.push(...actions);
   if (!blockComponents.length && (media || extraMedia.length) && effectivePosition === "bottom") pushMedia();
 
   const footer = mergeFooter(input.footer, footerImage);
+  appendFooterComponents(components, footer);
+  components.push(...actions);
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [buildV2Container({ accentColor: input.accentColor, components, footer })],
+    components: [buildV2Container({ accentColor: input.accentColor, components, footer: null })],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }
@@ -124,7 +126,7 @@ export function componentsV2Payload(input: {
 
 export function buildV2Container(input: { accentColor?: number; components: unknown[]; footer?: ComponentsV2FooterConfig }) {
   const components = [...input.components];
-  appendFooterComponents(components, input.footer ?? DEFAULT_PANEL_FOOTER);
+  if (input.footer !== null) appendFooterComponents(components, input.footer ?? DEFAULT_PANEL_FOOTER);
   return {
     type: 17,
     ...(typeof input.accentColor === "number" ? { accent_color: input.accentColor } : {}),

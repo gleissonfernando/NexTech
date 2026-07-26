@@ -816,6 +816,7 @@ export type AutomatedLogSettings = { id: string; botId: string; guildId: string;
 
 export type PanelImagePosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 export type PanelImageSize = "small" | "medium" | "large" | "full_banner" | "custom";
+export type PanelBannerMode = "auto" | "large" | "compact" | "horizontal" | "vertical" | "square" | "ultrawide" | "custom";
 export type PanelImageLayoutMode = "embed" | "components_v2";
 export type PanelBlock =
   | { editable?: boolean; id: string; order: number; type: "text"; content: string }
@@ -840,6 +841,7 @@ export type PanelImageSettings = {
   imageProcessingStatus: "stored" | "converted" | "failed" | null;
   imagePosition: PanelImagePosition;
   imageSize: PanelImageSize;
+  bannerMode: PanelBannerMode;
   imageSizeBytes: number | null;
   imageUploadedAt: string | null;
   imageUrl: string;
@@ -873,7 +875,7 @@ export type PanelImageSettings = {
 
 export type SavePanelImageSettingsPayload = Partial<Pick<
   PanelImageSettings,
-  "blocks" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
+  "bannerMode" | "blocks" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >>;
 
 export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<

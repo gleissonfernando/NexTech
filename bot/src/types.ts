@@ -247,6 +247,7 @@ export type PanelImageSettings = {
   imageMimeType?: string | null;
   imagePosition: import("./services/panelVisualRenderer").PanelVisualPosition;
   useGlobalDefault?: boolean;
+  bannerMode?: "auto" | "large" | "compact" | "horizontal" | "vertical" | "square" | "ultrawide" | "custom";
   imageSize: "small" | "medium" | "large" | "full_banner" | "custom";
   imageUrl: string;
   layoutMode: "embed" | "components_v2";

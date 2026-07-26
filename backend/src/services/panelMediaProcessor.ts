@@ -37,7 +37,7 @@ export type PanelMediaDiagnostics = {
 
 const nodeRequire = createRequire(__filename);
 const BROWSER_SAFE_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
-const BROWSER_SAFE_IMAGE_MIME_TYPES = new Set(["image/apng", "image/gif", "image/jpeg", "image/png", "image/webp"]);
+const BROWSER_SAFE_IMAGE_MIME_TYPES = new Set(["image/apng", "image/avif", "image/gif", "image/jpeg", "image/png", "image/webp"]);
 export const PANEL_VIDEO_MAX_DURATION_SECONDS = 15;
 const PROBE_TIMEOUT_MS = 20_000;
 const POSTER_TIMEOUT_MS = 30_000;
@@ -45,6 +45,7 @@ const CONVERSION_TIMEOUT_MS = Number(process.env.PANEL_MEDIA_CONVERSION_TIMEOUT_
 
 export const PANEL_MEDIA_MIME_EXTENSIONS: Record<string, string> = {
   "image/apng": "apng",
+  "image/avif": "avif",
   "image/gif": "gif",
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -89,6 +90,7 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
   }
 
   if (!isVideo) {
+    const dimensions = readImageDimensions(input.buffer, originalMimeType);
     return {
       animated: isAnimation,
       buffer: input.buffer,
@@ -98,9 +100,11 @@ export async function processPanelMedia(input: { buffer: Buffer; mimeType: strin
       diagnostics: mediaDiagnostics({
         browserCompatible: true,
         durationSeconds: null,
+        height: dimensions?.height ?? null,
         originalMimeType,
         outputMimeType: originalMimeType,
-        raw: ""
+        raw: "",
+        width: dimensions?.width ?? null
       }),
       mimeType: originalMimeType,
       originalMimeType,
@@ -353,9 +357,11 @@ function logPanelMedia(stage: string, metadata: Record<string, unknown>) {
 function mediaDiagnostics(input: {
   browserCompatible: boolean;
   durationSeconds: number | null;
+  height?: number | null;
   originalMimeType: string;
   outputMimeType: string;
   raw: string;
+  width?: number | null;
 }): PanelMediaDiagnostics {
   const parsed = parseProbeDetails(input.raw);
 
@@ -363,9 +369,11 @@ function mediaDiagnostics(input: {
     ...parsed,
     browserCompatible: input.browserCompatible,
     durationSeconds: input.durationSeconds,
+    height: input.height ?? parsed.height,
     originalMimeType: input.originalMimeType,
     outputMimeType: input.outputMimeType,
-    processingEngine: "Media Engine"
+    processingEngine: "Media Engine",
+    width: input.width ?? parsed.width
   };
 }
 
@@ -386,6 +394,56 @@ function parseProbeDetails(probeOutput: string) {
     videoCodec,
     width: resolutionMatch ? Number(resolutionMatch[1]) : null
   };
+}
+
+function readImageDimensions(buffer: Buffer, mimeType: string) {
+  if (mimeType === "image/png" || mimeType === "image/apng") return readPngDimensions(buffer);
+  if (mimeType === "image/jpeg") return readJpegDimensions(buffer);
+  if (mimeType === "image/gif") return readGifDimensions(buffer);
+  if (mimeType === "image/webp") return readWebpDimensions(buffer);
+  return null;
+}
+
+function readPngDimensions(buffer: Buffer) {
+  if (buffer.length < 24 || buffer.toString("ascii", 12, 16) !== "IHDR") return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+function readGifDimensions(buffer: Buffer) {
+  if (buffer.length < 10 || !/^GIF8[79]a$/.test(buffer.toString("ascii", 0, 6))) return null;
+  return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+}
+
+function readJpegDimensions(buffer: Buffer) {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) return null;
+    const marker = buffer[offset + 1] ?? 0;
+    const size = buffer.readUInt16BE(offset + 2);
+    if (size < 2) return null;
+    if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+      return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+    }
+    offset += 2 + size;
+  }
+  return null;
+}
+
+function readWebpDimensions(buffer: Buffer) {
+  if (buffer.length < 30 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WEBP") return null;
+  const type = buffer.toString("ascii", 12, 16);
+  if (type === "VP8X" && buffer.length >= 30) {
+    return { width: 1 + buffer.readUIntLE(24, 3), height: 1 + buffer.readUIntLE(27, 3) };
+  }
+  if (type === "VP8 " && buffer.length >= 30) {
+    return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+  }
+  if (type === "VP8L" && buffer.length >= 25) {
+    const bits = buffer.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  return null;
 }
 
 function resolveInputMimeType(buffer: Buffer, mimeType: string, originalName?: string | null) {

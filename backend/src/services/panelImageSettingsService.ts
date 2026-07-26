@@ -5,6 +5,7 @@ import {
   ensureGuild,
   getMongoCollections,
   type MongoGlobalPanelImageLayoutMode,
+  type MongoGlobalPanelBannerMode,
   type MongoGlobalPanelImagePosition,
   type MongoGlobalPanelImageSize,
   type MongoPanelBlock,
@@ -24,6 +25,7 @@ import { createLog } from "./logService";
 
 export type PanelImagePosition = MongoGlobalPanelImagePosition;
 export type PanelImageSize = MongoGlobalPanelImageSize;
+export type PanelBannerMode = MongoGlobalPanelBannerMode;
 export type PanelImageLayoutMode = MongoGlobalPanelImageLayoutMode;
 
 export type PanelImageSettingsDto = {
@@ -36,6 +38,7 @@ export type PanelImageSettingsDto = {
   imageExtension: string | null;
   imagePosition: PanelImagePosition;
   imageSize: PanelImageSize;
+  bannerMode: PanelBannerMode;
   imageUrl: string;
   imageMimeType: string | null;
   imageProcessingError: string | null;
@@ -62,7 +65,7 @@ export type PanelImageSettingsDto = {
 
 export type SavePanelImageSettingsInput = Partial<Pick<
   PanelImageSettingsDto,
-  "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
+  "bannerMode" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >> & { blocks?: MongoPanelBlock[] };
 
 const IMAGE_POSITIONS = new Set<PanelImagePosition>([
@@ -80,6 +83,7 @@ const IMAGE_POSITIONS = new Set<PanelImagePosition>([
   "none"
 ]);
 const IMAGE_SIZES = new Set<PanelImageSize>(["small", "medium", "large", "full_banner", "custom"]);
+const BANNER_MODES = new Set<PanelBannerMode>(["auto", "large", "compact", "horizontal", "vertical", "square", "ultrawide", "custom"]);
 const LAYOUT_MODES = new Set<PanelImageLayoutMode>(["embed", "components_v2"]);
 const UPLOADS_ROOT = path.resolve(__dirname, "../../uploads");
 const DEFAULT_SETTINGS = {
@@ -90,6 +94,7 @@ const DEFAULT_SETTINGS = {
   imageExtension: null,
   imagePosition: "none" as PanelImagePosition,
   imageSize: "medium" as PanelImageSize,
+  bannerMode: "auto" as PanelBannerMode,
   imageUrl: "",
   imageMimeType: null,
   imageProcessingError: null,
@@ -162,7 +167,7 @@ export async function savePanelImageSettings(
     panelId
   });
   const now = new Date();
-  const changed = (["customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "mediaAutoplay", "mediaControls", "mediaFit", "mediaLoop", "mediaMuted", "mediaPosterUrl", "mediaPreload", "mediaThumbnailUrl", "mediaVolume", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
+  const changed = (["bannerMode", "customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "mediaAutoplay", "mediaControls", "mediaFit", "mediaLoop", "mediaMuted", "mediaPosterUrl", "mediaPreload", "mediaThumbnailUrl", "mediaVolume", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
   const blocksChanged = JSON.stringify(current.blocks) !== JSON.stringify(next.blocks);
   const { panelImageSettings } = await getMongoCollections();
 
@@ -179,6 +184,7 @@ export async function savePanelImageSettings(
         imageEnabled: next.imageEnabled,
         imagePosition: next.imagePosition,
         imageSize: next.imageSize,
+        bannerMode: next.bannerMode,
         imageUrl: next.imageUrl,
         layoutMode: next.layoutMode,
         mediaAutoplay: next.mediaAutoplay,
@@ -303,6 +309,7 @@ export async function savePanelImageUpload(input: {
     imageEnabled: true,
     imagePosition: current.imagePosition === "none" ? defaultImagePositionForPanel(input.panelId) : current.imagePosition,
     imageSize: current.imageSize,
+    bannerMode: current.bannerMode,
     imageUrl: stored.publicUrl,
     layoutMode: current.layoutMode,
     mediaPosterUrl: stored.posterUrl ?? current.mediaPosterUrl,
@@ -339,6 +346,7 @@ export async function removePanelImageSettings(input: {
 function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsDto {
   const imagePosition = IMAGE_POSITIONS.has(settings.imagePosition) ? settings.imagePosition : DEFAULT_SETTINGS.imagePosition;
   const imageSize = IMAGE_SIZES.has(settings.imageSize) ? settings.imageSize : DEFAULT_SETTINGS.imageSize;
+  const bannerMode = BANNER_MODES.has(settings.bannerMode) ? settings.bannerMode : DEFAULT_SETTINGS.bannerMode;
   const layoutMode = resolveLayoutMode(
     LAYOUT_MODES.has(settings.layoutMode) ? settings.layoutMode : DEFAULT_SETTINGS.layoutMode,
     imagePosition
@@ -356,6 +364,7 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
     imageEnabled,
     imagePosition: imageEnabled ? imagePosition : "none",
     imageSize,
+    bannerMode,
     imageUrl: imageEnabled ? imageUrl : "",
     layoutMode,
     mediaAutoplay: settings.mediaAutoplay !== false,
@@ -477,6 +486,7 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
     imageExtension: extensionFromUrl(legacyImageUrl),
     imagePosition: settings.imagePosition ?? DEFAULT_SETTINGS.imagePosition,
     imageSize: settings.imageSize ?? DEFAULT_SETTINGS.imageSize,
+    bannerMode: settings.bannerMode ?? DEFAULT_SETTINGS.bannerMode,
     imageUrl: legacyImageUrl,
     imageMimeType: mimeTypeFromUrl(legacyImageUrl),
     imageProcessingError: null,
@@ -509,6 +519,7 @@ function extensionFromUrl(value: string) {
 function mimeTypeFromUrl(value: string) {
   const extension = extensionFromUrl(value);
   if (extension === "gif") return "image/gif";
+  if (extension === "avif") return "image/avif";
   if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
   if (extension === "mov") return "video/quicktime";
   if (extension === "mp4") return "video/mp4";

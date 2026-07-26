@@ -28,6 +28,7 @@ const settingsSchema = z.object({
     z.object({ altText: z.string().max(1024).nullable().optional(), attachmentName: z.string().max(255).nullable().optional(), imageUrl: z.string().max(2048).nullable().optional(), id: z.string().min(1).max(80), order: z.number().int(), text: z.string().max(4000), type: z.literal("footer") }),
     z.object({ buttons: z.array(z.object({ customId: z.string().max(100).optional(), disabled: z.boolean().optional(), label: z.string().max(80), style: z.enum(["primary", "secondary", "success", "danger", "link"]).optional(), url: z.string().max(2048).optional() })).min(1).max(5), id: z.string().min(1).max(80), order: z.number().int(), type: z.literal("action_row") })
   ])).max(30).optional(),
+  bannerMode: z.enum(["auto", "large", "compact", "horizontal", "vertical", "square", "ultrawide", "custom"]).optional(),
   customHeight: z.coerce.number().int().min(16).max(2000).nullable().optional(),
   customWidth: z.coerce.number().int().min(16).max(2000).nullable().optional(),
   imageEnabled: z.boolean().optional(),
