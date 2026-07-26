@@ -4619,7 +4619,7 @@ export type MongoDashboardAuditLog = {
 };
 
 export type MongoPlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "annual" | "lifetime" | "custom";
-export type MongoPaymentProvider = "disabled" | "mercadopago" | "pagbank" | "asaas" | "efi" | "custom";
+export type MongoPaymentProvider = "disabled" | "mercadopago" | "pagbank" | "stripe" | "asaas" | "efi" | "custom";
 export type MongoPlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type MongoPlanWorkspaceStatus = "active" | "suspended" | "cancelled";
 export type MongoPlanPaymentOrderStatus =

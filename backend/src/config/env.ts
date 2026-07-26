@@ -99,6 +99,13 @@ function applyPagBankEnvAliases() {
   applyEnvAlias("PAGBANK_BASE_URL", "PAGSEGURO_BASE_URL");
 }
 
+function applyStripeEnvAliases() {
+  applyEnvAlias("STRIPE_RESTRICTED_KEY", "STRIPE_API_KEY");
+  applyEnvAlias("STRIPE_PUBLISHABLE_KEY", "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "VITE_STRIPE_PUBLISHABLE_KEY");
+  applyEnvAlias("STRIPE_SUCCESS_URL", "STRIPE_CHECKOUT_SUCCESS_URL");
+  applyEnvAlias("STRIPE_CANCEL_URL", "STRIPE_CHECKOUT_CANCEL_URL");
+}
+
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -199,6 +206,7 @@ function isLocalUrl(value: string) {
 applyPackedEnv();
 applyMercadoPagoEnvAliases();
 applyPagBankEnvAliases();
+applyStripeEnvAliases();
 
 const configuredSiteOrigin =
   cleanEnvValue(process.env.SITE_ORIGIN)
@@ -261,7 +269,7 @@ const envSchema = z
     EPHEMERAL_TOKEN_REQUEST_LIMIT: z.coerce.number().int().min(1).max(5000).default(300),
     BOT_API_TOKEN: internalBotToken(),
     PAYMENTS_ENABLED: envBoolean(false),
-    PAYMENT_PROVIDER: z.enum(["disabled", "mercadopago", "pagbank"]).default("disabled"),
+    PAYMENT_PROVIDER: z.enum(["disabled", "mercadopago", "pagbank", "stripe"]).default("disabled"),
     MERCADOPAGO_ENV: z.enum(["test", "production"]).default("production"),
     MERCADOPAGO_ENABLED: envBoolean(false),
     MERCADOPAGO_PROD_ACCESS_TOKEN: z.string().optional().default(""),
@@ -290,6 +298,21 @@ const envSchema = z
     PAGBANK_WEBHOOK_URL: envOptionalUrl("PAGBANK_WEBHOOK_URL"),
     PAGBANK_BASE_URL: envUrl("PAGBANK_BASE_URL", "https://sandbox.api.pagseguro.com"),
     PAGBANK_TIMEOUT: z.coerce.number().int().min(1000).max(120000).default(30000),
+    STRIPE_RESTRICTED_KEY: z.string().optional().default(""),
+    STRIPE_SECRET_KEY: z.string().optional().default(""),
+    STRIPE_PUBLISHABLE_KEY: z.string().optional().default(""),
+    STRIPE_WEBHOOK_SECRET: z.string().optional().default(""),
+    STRIPE_SUCCESS_URL: envOptionalUrl("STRIPE_SUCCESS_URL"),
+    STRIPE_CANCEL_URL: envOptionalUrl("STRIPE_CANCEL_URL"),
+    STRIPE_WEBHOOK_URL: envOptionalUrl("STRIPE_WEBHOOK_URL"),
+    STRIPE_CURRENCY: z.enum(["BRL", "USD", "EUR"]).default("BRL"),
+    STRIPE_CHECKOUT_EXPIRATION_MINUTES: z.coerce.number().int().min(30).max(1440).default(30),
+    STRIPE_STATEMENT_DESCRIPTOR: z.string().optional().default("NEXTECH"),
+    STRIPE_INTEGRATION_IDENTIFIER: z.string().min(3).max(64).default("nextech_discord_bots"),
+    STRIPE_INVOICE_CREATION_ENABLED: envBoolean(true),
+    STRIPE_TAX_ENABLED: envBoolean(false),
+    STRIPE_TAX_REGISTRATION_ACTIVE: envBoolean(false),
+    STRIPE_TAX_ID_COLLECTION_ENABLED: envBoolean(false),
     PIX_EXPIRATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     PIX_DESCRIPTION: z.string().optional().default("Pagamento do Plano"),
     PAYMENTS_ALLOW_LIVE_CHARGES: envBoolean(false),
@@ -396,6 +419,9 @@ const envSchema = z
       MERCADOPAGO_FAILURE_URL: value.MERCADOPAGO_FAILURE_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/falha` : ""),
       MERCADOPAGO_WEBHOOK_URL: value.MERCADOPAGO_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/mercadopago/webhook` : ""),
       PAGBANK_WEBHOOK_URL: value.PAGBANK_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/pagbank/webhook` : ""),
+      STRIPE_SUCCESS_URL: value.STRIPE_SUCCESS_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/sucesso?provider=stripe&session_id={CHECKOUT_SESSION_ID}` : ""),
+      STRIPE_CANCEL_URL: value.STRIPE_CANCEL_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/falha?provider=stripe` : ""),
+      STRIPE_WEBHOOK_URL: value.STRIPE_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/stripe/webhook` : ""),
       TRANSCRIPT_BASE_URL: normalizedTranscriptBaseUrl || oauthFrontendUrl,
       TRANSCRIPT_PORT: value.TRANSCRIPT_PORT ?? value.PORT,
       DISCORD_REDIRECT_URI: effectiveDiscordRedirect,

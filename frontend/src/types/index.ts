@@ -4554,7 +4554,7 @@ export type CreateDevBotPayload = {
 };
 
 export type PlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "annual" | "lifetime" | "custom";
-export type PaymentProvider = "disabled" | "mercadopago" | "pagbank";
+export type PaymentProvider = "disabled" | "mercadopago" | "pagbank" | "stripe";
 export type PlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type PlanWorkspaceStatus = "active" | "suspended" | "cancelled";
 export type PaymentOrderStatus = "interest_registered" | "created" | "checkout_pending" | "pending" | "processing" | "in_process" | "approved" | "paid" | "cancelled" | "expired" | "rejected" | "failed" | "refunded" | "chargeback" | "charged_back" | "in_review" | "error";

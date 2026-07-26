@@ -432,7 +432,7 @@ export async function createPlanCheckoutInterest(planId: string, paymentMethod: 
     order: import("../types").PaymentOrder;
     payment: { enabled: boolean; message: string | null; provider: import("../types").PaymentProvider };
     plan: Plan;
-  }>("/payments/mercadopago/checkout", {
+  }>("/payments/create-checkout", {
     paymentMethod,
     planId
   });

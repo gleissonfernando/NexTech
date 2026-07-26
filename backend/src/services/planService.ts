@@ -1,11 +1,14 @@
 import { createCipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import type Stripe from "stripe";
 import { env } from "../config/env";
 import {
   getPaymentGatewayHealth,
   getMercadoPagoRuntimeConfig,
   getPagBankRuntimeConfig,
+  getStripeRuntimeConfig,
   requireMercadoPagoOperational,
-  requirePagBankOperational
+  requirePagBankOperational,
+  requireStripeOperational
 } from "../config/payments";
 import type {
   MongoBotCredential,
@@ -27,6 +30,12 @@ import { getMongoCollections } from "../database/mongo";
 import { buildAppUrl } from "../config/appUrl";
 import { MercadoPagoPaymentProvider, PaymentManager, type ProviderPayment, type ProviderPixOrderResult } from "./paymentProviderService";
 import type { MercadoPagoPixOrderResult } from "./mercadoPagoService";
+import {
+  createStripeCheckout,
+  getStripeCheckoutSession,
+  stripeSessionToProviderPayment,
+  validateStripeWebhookSignature
+} from "./stripeService";
 import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 
@@ -195,6 +204,12 @@ export type PagBankWebhookInput = {
   requestId?: string | null;
   signature?: string | null;
   webhookToken?: string | null;
+};
+
+export type StripeWebhookInput = {
+  rawBody: Buffer;
+  requestId?: string | null;
+  signature?: string | null;
 };
 
 const FEATURE_SEEDS: SavePlanFeatureInput[] = [
@@ -1062,11 +1077,26 @@ export async function reconcilePaymentOrder(orderId: string, actor: PlanActor) {
 
   if (order.provider === "pagbank" && order.providerOrderId) {
     const activeGateway = await resolveActivePaymentManager({ allowDisabled: true, provider: "pagbank" });
-    const provider = activeGateway.manager.getProvider();
+    const provider = (activeGateway as { manager: PaymentManager }).manager.getProvider();
     const providerOrder = await provider.getOrder(order.providerOrderId);
     const updatedOrder = await applyOfficialProviderOrderToOrder(order, providerOrder, "pagbank_admin_reconcile");
     await writePlanAudit(actor, "payment_reconciled", "payment", order._id, {
       provider: "pagbank",
+      providerOrderId: order.providerOrderId,
+      status: updatedOrder.status
+    });
+    return { order: toPaymentOrderDto(updatedOrder), reconciled: true };
+  }
+
+  if (order.provider === "stripe" && order.providerOrderId) {
+    const stripeConfig = requireStripeOperational({ allowDisabled: true });
+    const payment = await getStripeCheckoutSession(stripeConfig, order.providerOrderId);
+    const updatedOrder = await applyStripePaymentToOrder(order, payment, "stripe_admin_reconcile");
+    if (updatedOrder.status === "approved") {
+      await activatePaidOrderOnce(updatedOrder, plan, actor, "stripe_admin_reconcile");
+    }
+    await writePlanAudit(actor, "payment_reconciled", "payment", order._id, {
+      provider: "stripe",
       providerOrderId: order.providerOrderId,
       status: updatedOrder.status
     });
@@ -2090,7 +2120,7 @@ export async function processMercadoPagoWebhook(input: MercadoPagoWebhookInput) 
 export async function processPagBankWebhook(input: PagBankWebhookInput) {
   const { paymentEvents, paymentOrders, plans } = await getMongoCollections();
   const activeGateway = await resolveActivePaymentManager({ allowDisabled: true, provider: "pagbank" });
-  const provider = activeGateway.manager.getProvider();
+  const provider = (activeGateway as { manager: PaymentManager }).manager.getProvider();
   const now = new Date();
   const payload = isRecord(input.body) ? input.body : {};
   const orderId = readString(payload.id) ?? readNestedString(payload, ["order", "id"]) ?? null;
@@ -2192,6 +2222,216 @@ export async function processPagBankWebhook(input: PagBankWebhookInput) {
     }
     throw error;
   }
+}
+
+export async function processStripeWebhook(input: StripeWebhookInput) {
+  const { paymentEvents, paymentOrders, plans } = await getMongoCollections();
+  const stripeConfig = requireStripeOperational({ allowDisabled: true, requireWebhook: true });
+  const now = new Date();
+  const payloadHash = sha256(input.rawBody.toString("utf8"));
+
+  let validation;
+  try {
+    validation = validateStripeWebhookSignature({
+      config: stripeConfig,
+      rawBody: input.rawBody,
+      signature: input.signature ?? null
+    });
+  } catch (error) {
+    const eventDoc: MongoPaymentEvent = {
+      _id: randomUUID(),
+      attempts: 1,
+      createdAt: now,
+      environment: stripeConfig.environment,
+      eventId: null,
+      eventType: "stripe.invalid_signature",
+      lastError: "Assinatura Stripe inválida.",
+      orderId: null,
+      paymentId: null,
+      payloadHash,
+      processedAt: now,
+      provider: "stripe",
+      requestId: input.requestId ?? null,
+      result: "Assinatura Stripe inválida.",
+      signatureValid: false,
+      status: "failed"
+    };
+    await paymentEvents.insertOne(eventDoc);
+    throw Object.assign(error instanceof Error ? error : new Error("Assinatura Stripe inválida."), { statusCode: 401 });
+  }
+
+  const event = validation.event;
+  const eventId = event.id;
+  const eventType = event.type;
+  const session = isStripeCheckoutSessionEvent(event.type, event.data.object)
+    ? event.data.object
+    : null;
+  const eventDoc: MongoPaymentEvent = {
+    _id: randomUUID(),
+    attempts: 1,
+    createdAt: now,
+    environment: stripeConfig.environment,
+    eventId,
+    eventType,
+    lastError: null,
+    orderId: null,
+    paymentId: session?.id ?? null,
+    payloadHash,
+    processedAt: null,
+    provider: "stripe",
+    requestId: input.requestId ?? null,
+    result: null,
+    signatureValid: true,
+    status: "received"
+  };
+  const existingProcessed = await paymentEvents.findOne({
+    provider: "stripe",
+    environment: stripeConfig.environment,
+    eventId,
+    status: "processed"
+  });
+
+  if (existingProcessed) {
+    return { duplicate: true, event: mapPaymentEvent(existingProcessed), processed: true };
+  }
+
+  const insertedEvent = await paymentEvents.insertOne(eventDoc).then(() => eventDoc);
+
+  try {
+    if (!session) {
+      await markPaymentEvent(insertedEvent._id, "ignored", `Evento Stripe ignorado: ${eventType}.`);
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: `Evento Stripe ignorado: ${eventType}.`, processedAt: new Date() }),
+        processed: false
+      };
+    }
+
+    const payment = stripeSessionToProviderPayment(session);
+    if (eventType === "checkout.session.async_payment_failed") {
+      payment.rawStatus = eventType;
+      payment.status = "rejected";
+      payment.statusDetail = "async_payment_failed";
+    }
+    const externalReference = payment.externalReference;
+    if (!externalReference) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Checkout Stripe sem referência externa.");
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: "Checkout Stripe sem referência externa.", processedAt: new Date() }),
+        processed: false
+      };
+    }
+
+    const order = await paymentOrders.findOne({ _id: externalReference });
+    if (!order) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Pedido interno não encontrado.", null);
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, orderId: null, status: "ignored", result: "Pedido interno não encontrado.", processedAt: new Date() }),
+        processed: false
+      };
+    }
+
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { orderId: order._id, paymentId: payment.id } });
+    const updatedOrder = await applyStripePaymentToOrder(order, payment, "stripe_webhook");
+    let subscription = null;
+
+    if (updatedOrder.status === "approved" && !isPendingPaymentDiscordId(updatedOrder.discordId)) {
+      const plan = await plans.findOne({ _id: order.planId });
+      if (!plan) {
+        await markPaymentEvent(insertedEvent._id, "failed", "Plano do pedido não encontrado.", order._id);
+        throw httpError("Plano do pedido não encontrado.", 404);
+      }
+      subscription = await activatePaidOrderOnce(updatedOrder, plan, systemPaymentActor(), "stripe_webhook");
+    } else if (updatedOrder.status === "approved") {
+      await writePlanAudit(systemPaymentActor(), "payment_approved_waiting_discord_connection", "payment", order._id, {
+        provider: "stripe",
+        stripePaymentId: payment.id,
+        stripeSessionId: readString(payment.raw.id)
+      });
+    }
+
+    await markPaymentEvent(insertedEvent._id, "processed", `Stripe processado: ${payment.rawStatus}.`, order._id);
+    await writePlanAudit(systemPaymentActor(), "stripe_webhook_processed", "payment", order._id, {
+      paymentMethod: payment.method,
+      status: payment.rawStatus,
+      stripePaymentId: payment.id,
+      stripeSessionId: readString(payment.raw.id)
+    });
+
+    return {
+      duplicate: false,
+      event: mapPaymentEvent({ ...insertedEvent, orderId: order._id, paymentId: payment.id, processedAt: new Date(), result: `Stripe processado: ${payment.rawStatus}.`, status: "processed" }),
+      order: toPaymentOrderDto(updatedOrder),
+      processed: true,
+      subscription
+    };
+  } catch (error) {
+    if (!("statusCode" in Object(error))) {
+      await markPaymentEvent(insertedEvent._id, "failed", error instanceof Error ? error.message : String(error));
+    }
+    throw error;
+  }
+}
+
+async function applyStripePaymentToOrder(
+  order: MongoPaymentOrder,
+  payment: ProviderPayment,
+  source: string
+) {
+  const { paymentOrders } = await getMongoCollections();
+  const stripeConfig = getStripeRuntimeConfig();
+  const paymentEnvironment = typeof payment.raw.livemode === "boolean" ? payment.raw.livemode ? "production" : "test" : null;
+
+  if (payment.externalReference !== order.externalReference || order.provider !== "stripe") {
+    throw httpError("Referencia do pagamento Stripe divergente.", 409);
+  }
+  if (order.environment && order.environment !== stripeConfig.environment) {
+    throw httpError("Ambiente da ordem Stripe divergente.", 409);
+  }
+  if (paymentEnvironment && paymentEnvironment !== stripeConfig.environment) {
+    throw httpError("Ambiente do pagamento Stripe divergente.", 409);
+  }
+
+  if (payment.amountInCents !== order.amountInCents || payment.currency !== order.currency) {
+    await paymentOrders.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          notes: "Pagamento Stripe recusado por divergencia de valor ou moeda.",
+          providerOrderId: readString(payment.raw.id) ?? order.providerOrderId,
+          rawProviderStatus: payment.rawStatus,
+          status: "rejected",
+          statusHistory: appendStatusHistory(order, "rejected", `${source}_amount_mismatch`),
+          webhookSafeResponse: safeStripeWebhookResponse(payment.raw),
+          updatedAt: new Date()
+        }
+      }
+    );
+    throw httpError("Valor ou moeda divergente.", 409);
+  }
+
+  const nextStatus = providerStatusToOrderStatus(payment.status);
+  const update: Partial<MongoPaymentOrder> = {
+    approvedAt: nextStatus === "approved" ? order.approvedAt ?? new Date() : order.approvedAt ?? null,
+    cancelledAt: nextStatus === "cancelled" ? order.cancelledAt ?? new Date() : order.cancelledAt ?? null,
+    paidAt: nextStatus === "approved" ? order.paidAt ?? new Date() : order.paidAt ?? null,
+    paymentMethod: payment.method,
+    paymentType: payment.paymentType,
+    providerOrderId: readString(payment.raw.id) ?? order.providerOrderId,
+    rawProviderStatus: payment.rawStatus,
+    refundedAt: nextStatus === "refunded" ? order.refundedAt ?? new Date() : order.refundedAt ?? null,
+    rejectedAt: nextStatus === "rejected" ? order.rejectedAt ?? new Date() : order.rejectedAt ?? null,
+    status: nextStatus,
+    statusDetail: payment.statusDetail,
+    statusHistory: appendStatusHistory(order, nextStatus, source),
+    webhookSafeResponse: safeStripeWebhookResponse(payment.raw),
+    updatedAt: new Date()
+  };
+
+  await paymentOrders.updateOne({ _id: order._id }, { $set: update });
+  return (await paymentOrders.findOne({ _id: order._id })) ?? { ...order, ...update, status: nextStatus };
 }
 
 async function applyOfficialPaymentToOrder(
@@ -2777,6 +3017,8 @@ export async function savePaymentSettings(input: SavePaymentSettingsInput, actor
   const current = await ensurePaymentSettings();
   const now = new Date();
   const mercadoPagoConfig = getMercadoPagoRuntimeConfig();
+  const pagBankConfig = getPagBankRuntimeConfig();
+  const stripeConfig = getStripeRuntimeConfig();
   const requestedProvider = normalizePaymentProviderInput(input.provider ?? current.provider);
   const patch: Partial<MongoPaymentSettings> = {
     approvedRedirectUrl: input.approvedRedirectUrl === undefined ? current.approvedRedirectUrl ?? null : normalizeValidUrl(input.approvedRedirectUrl, "URL de pagamento aprovado"),
@@ -2788,7 +3030,11 @@ export async function savePaymentSettings(input: SavePaymentSettingsInput, actor
     pendingRedirectUrl: input.pendingRedirectUrl === undefined ? current.pendingRedirectUrl ?? null : normalizeValidUrl(input.pendingRedirectUrl, "URL de pagamento pendente"),
     plansPublicUrl: input.plansPublicUrl === undefined ? current.plansPublicUrl ?? null : normalizeValidUrl(input.plansPublicUrl, "URL publica de planos"),
     provider: requestedProvider,
-    publicKey: requestedProvider === "pagbank" ? getPagBankRuntimeConfig().publicKey : mercadoPagoConfig.publicKey,
+    publicKey: requestedProvider === "pagbank"
+      ? pagBankConfig.publicKey
+      : requestedProvider === "stripe"
+        ? stripeConfig.publishableKey
+        : mercadoPagoConfig.publicKey,
     successRedirectUrl: input.successRedirectUrl === undefined ? current.successRedirectUrl ?? null : normalizeValidUrl(input.successRedirectUrl, "URL de redirecionamento após pagamento"),
     supportDiscordUrl: input.supportDiscordUrl === undefined ? current.supportDiscordUrl ?? null : normalizeValidUrl(input.supportDiscordUrl, "URL do Discord de suporte"),
     updatedAt: now,
@@ -2817,7 +3063,7 @@ export async function savePaymentSettings(input: SavePaymentSettingsInput, actor
 }
 
 function normalizePaymentProviderInput(provider: MongoPaymentProvider) {
-  if (provider === "mercadopago" || provider === "pagbank") {
+  if (provider === "mercadopago" || provider === "pagbank" || provider === "stripe") {
     return provider;
   }
   return resolveEnvPaymentProvider();
@@ -2834,6 +3080,7 @@ async function ensurePaymentSettings(): Promise<MongoPaymentSettings> {
   const now = new Date();
   const mercadoPagoConfig = getMercadoPagoRuntimeConfig();
   const pagBankConfig = getPagBankRuntimeConfig();
+  const stripeConfig = getStripeRuntimeConfig();
   const envProvider = resolveEnvPaymentProvider();
   const settings: MongoPaymentSettings = {
     _id: "global",
@@ -2846,7 +3093,11 @@ async function ensurePaymentSettings(): Promise<MongoPaymentSettings> {
     pendingRedirectUrl: env.MERCADOPAGO_PENDING_URL || buildAppUrl("/pagamento/pendente"),
     plansPublicUrl: buildAppUrl("/planos"),
     provider: envProvider,
-    publicKey: envProvider === "pagbank" ? pagBankConfig.publicKey : mercadoPagoConfig.publicKey,
+    publicKey: envProvider === "pagbank"
+      ? pagBankConfig.publicKey
+      : envProvider === "stripe"
+        ? stripeConfig.publishableKey
+        : mercadoPagoConfig.publicKey,
     secretEncrypted: null,
     successRedirectUrl: env.MERCADOPAGO_SUCCESS_URL || buildAppUrl("/pagamento/sucesso"),
     supportDiscordUrl: null,
@@ -2867,6 +3118,10 @@ async function createPlanPayment(
 ): Promise<PlanPaymentCreationResult> {
   if (order.provider === "pagbank") {
     return createPagBankPlanPayment(plan, order, buyer, paymentMethod);
+  }
+
+  if (order.provider === "stripe") {
+    return createStripePlanPayment(plan, order, buyer);
   }
 
   return createMercadoPagoPlanPayment(plan, order, buyer, paymentMethod);
@@ -2945,7 +3200,7 @@ async function createPagBankPlanPayment(
   }
 
   const activeGateway = await resolveActivePaymentManager({ provider: "pagbank" });
-  const provider = activeGateway.manager.getProvider();
+  const provider = (activeGateway as { manager: PaymentManager }).manager.getProvider();
   const settings = await ensurePaymentSettings();
   const notificationUrl = activeGateway.pagBankConfig.webhookUrl || buildAppUrl("/api/payments/pagbank/webhook");
 
@@ -3007,6 +3262,57 @@ async function createPagBankPlanPayment(
     sandboxCheckoutUrl: checkout.sandboxCheckoutUrl,
     statusDetail: null,
     statusSource: "pagbank_checkout_created"
+  };
+}
+
+async function createStripePlanPayment(
+  plan: MongoPlan,
+  order: MongoPaymentOrder,
+  buyer: CheckoutBuyer
+): Promise<PlanPaymentCreationResult> {
+  if (order.provider !== "stripe") {
+    throw httpError("Provider de pagamento não suportado para Stripe.", 400);
+  }
+
+  const stripeConfig = requireStripeOperational();
+  const settings = await ensurePaymentSettings();
+  const checkout = await createStripeCheckout(stripeConfig, {
+    amountInCents: order.amountInCents,
+    cancelUrl: settings.cancelRedirectUrl ?? settings.failureRedirectUrl ?? stripeConfig.cancelUrl ?? buildAppUrl("/pagamento/falha"),
+    currencyId: plan.currency,
+    description: plan.shortDescription || plan.description || plan.name,
+    externalReference: order._id,
+    idempotencyKey: order.idempotencyKey,
+    itemId: plan._id,
+    itemTitle: plan.name,
+    metadata: {
+      business: "nextech",
+      discord_id: buyer.discordId,
+      payment_order_id: order._id,
+      plan_id: plan._id,
+      plan_slug: plan.slug
+    },
+    notificationUrl: stripeConfig.webhookUrl || buildAppUrl("/api/payments/stripe/webhook"),
+    payerEmail: mercadoPagoPayerEmail(buyer),
+    paymentExpiration: order.expiresAt ?? null,
+    successUrl: stripeSuccessUrl(settings.approvedRedirectUrl ?? settings.successRedirectUrl ?? stripeConfig.successUrl ?? buildAppUrl("/pagamento/sucesso"))
+  });
+
+  return {
+    checkoutUrl: checkout.checkoutUrl,
+    mercadoPagoPaymentId: null,
+    notes: stripeConfig.automaticTaxEnabled
+      ? "Checkout Stripe criado com invoice e cálculo automatico de impostos. Redirecione o comprador para o checkout."
+      : "Checkout Stripe criado com invoice. Redirecione o comprador para o checkout.",
+    paymentMethod: null,
+    paymentType: null,
+    pixCode: null,
+    providerOrderId: checkout.preferenceId,
+    qrCode: null,
+    rawProviderStatus: checkout.rawStatus,
+    sandboxCheckoutUrl: checkout.sandboxCheckoutUrl,
+    statusDetail: null,
+    statusSource: "stripe_checkout_created"
   };
 }
 
@@ -3122,6 +3428,14 @@ function mercadoPagoPayerEmail(buyer: CheckoutBuyer) {
 
   const normalizedId = buyer.discordId.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
   return `checkout-${normalizedId}@nextech.discloud.app`;
+}
+
+function stripeSuccessUrl(url: string) {
+  if (url.includes("{CHECKOUT_SESSION_ID}")) {
+    return url;
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}provider=stripe&session_id={CHECKOUT_SESSION_ID}`;
 }
 
 async function assertWorkspaceAccess(workspaceId: string, auth: DashboardAuth) {
@@ -3517,9 +3831,26 @@ function safeOrderWebhookResponse(raw: Record<string, unknown>) {
   };
 }
 
+function safeStripeWebhookResponse(raw: Record<string, unknown>) {
+  return {
+    amount_total: typeof raw.amount_total === "number" ? raw.amount_total : null,
+    client_reference_id: readString(raw.client_reference_id),
+    currency: readString(raw.currency),
+    id: readString(raw.id),
+    livemode: typeof raw.livemode === "boolean" ? raw.livemode : null,
+    payment_intent: typeof raw.payment_intent === "string" ? raw.payment_intent : readNestedString(raw, ["payment_intent", "id"]),
+    payment_status: readString(raw.payment_status),
+    status: readString(raw.status)
+  };
+}
+
 function isMercadoPagoOrderWebhook(payload: Record<string, unknown>, resourceType?: string | null) {
   const type = resourceType?.trim().toLowerCase() || readString(payload.type)?.toLowerCase();
   return type === "order";
+}
+
+function isStripeCheckoutSessionEvent(type: string, value: unknown): value is Stripe.Checkout.Session {
+  return type.startsWith("checkout.session.") && isRecord(value) && value.object === "checkout.session";
 }
 
 function readFirstPayment(raw: Record<string, unknown>) {
@@ -3670,8 +4001,23 @@ function toPaymentSettingsDto(settings: MongoPaymentSettings): PaymentSettingsDt
   const { _id, secretEncrypted, updatedAt, webhookSecretEncrypted, ...rest } = settings;
   const mercadoPagoConfig = getMercadoPagoRuntimeConfig();
   const pagBankConfig = getPagBankRuntimeConfig();
+  const stripeConfig = getStripeRuntimeConfig();
   const provider = resolveStoredPaymentProvider(settings.provider);
-  const providerConfig = provider === "pagbank" ? pagBankConfig : mercadoPagoConfig;
+  const providerPublicKey = provider === "pagbank"
+    ? pagBankConfig.publicKey
+    : provider === "stripe"
+      ? stripeConfig.publishableKey
+      : mercadoPagoConfig.publicKey;
+  const credentialsConfigured = provider === "pagbank"
+    ? pagBankConfig.credentialsConfigured
+    : provider === "stripe"
+      ? stripeConfig.credentialsConfigured
+      : mercadoPagoConfig.credentialsConfigured;
+  const webhookConfigured = provider === "pagbank"
+    ? pagBankConfig.webhookConfigured
+    : provider === "stripe"
+      ? stripeConfig.webhookConfigured
+      : mercadoPagoConfig.webhookConfigured;
   void secretEncrypted;
   void webhookSecretEncrypted;
   return {
@@ -3679,14 +4025,14 @@ function toPaymentSettingsDto(settings: MongoPaymentSettings): PaymentSettingsDt
     enabled: isResolvedPaymentProviderEnabled(provider, mercadoPagoConfig),
     id: _id,
     provider,
-    publicKey: providerConfig.publicKey,
-    secretConfigured: providerConfig.credentialsConfigured,
+    publicKey: providerPublicKey,
+    secretConfigured: credentialsConfigured,
     updatedAt: updatedAt.toISOString(),
-    webhookSecretConfigured: providerConfig.webhookConfigured
+    webhookSecretConfigured: webhookConfigured
   };
 }
 
-async function resolveActivePaymentManager(options: { allowDisabled?: boolean; provider?: "mercadopago" | "pagbank" } = {}) {
+async function resolveActivePaymentManager(options: { allowDisabled?: boolean; provider?: "mercadopago" | "pagbank" | "stripe" } = {}) {
   const settings = await ensurePaymentSettings();
   const requestedProvider = options.provider ?? resolveStoredPaymentProvider(settings.provider);
 
@@ -3716,14 +4062,29 @@ async function resolveActivePaymentManager(options: { allowDisabled?: boolean; p
     };
   }
 
+  if (requestedProvider === "stripe") {
+    const mercadoPagoConfig = getMercadoPagoRuntimeConfig();
+    const pagBankConfig = getPagBankRuntimeConfig();
+    const stripeConfig = requireStripeOperational({ allowDisabled: options.allowDisabled });
+    return {
+      checkoutExpirationMinutes: stripeConfig.checkoutExpirationMinutes,
+      enabled: stripeConfig.enabled || Boolean(options.allowDisabled),
+      environment: stripeConfig.environment,
+      mercadoPagoConfig,
+      pagBankConfig,
+      provider: "stripe" as const,
+      stripeConfig
+    };
+  }
+
   throw httpError("Pagamento temporariamente indisponível.", 503);
 }
 
-function resolveStoredPaymentProvider(provider: MongoPaymentProvider): "mercadopago" | "pagbank" | "disabled" {
+function resolveStoredPaymentProvider(provider: MongoPaymentProvider): "mercadopago" | "pagbank" | "stripe" | "disabled" {
   if (isPaymentDisabledByEnv()) return "disabled";
-  if (provider === "mercadopago" || provider === "pagbank") return provider;
+  if (provider === "mercadopago" || provider === "pagbank" || provider === "stripe") return provider;
   const envProvider = resolveEnvPaymentProvider();
-  return envProvider === "mercadopago" || envProvider === "pagbank" ? envProvider : "disabled";
+  return envProvider === "mercadopago" || envProvider === "pagbank" || envProvider === "stripe" ? envProvider : "disabled";
 }
 
 function resolveEnvPaymentProvider(): MongoPaymentProvider {
@@ -3733,6 +4094,10 @@ function resolveEnvPaymentProvider(): MongoPaymentProvider {
 
   if (env.PAYMENT_PROVIDER === "pagbank") {
     return "pagbank";
+  }
+
+  if (env.PAYMENT_PROVIDER === "stripe") {
+    return "stripe";
   }
 
   if (env.PAYMENT_PROVIDER === "mercadopago" || env.MERCADOPAGO_ENABLED) {
@@ -3745,6 +4110,9 @@ function resolveEnvPaymentProvider(): MongoPaymentProvider {
 function isResolvedPaymentProviderEnabled(provider: MongoPaymentProvider, mercadoPagoConfig: ReturnType<typeof getMercadoPagoRuntimeConfig>) {
   if (provider === "pagbank") {
     return getPagBankRuntimeConfig().enabled;
+  }
+  if (provider === "stripe") {
+    return getStripeRuntimeConfig().enabled;
   }
   return provider === "mercadopago" && mercadoPagoConfig.enabled;
 }

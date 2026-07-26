@@ -12,6 +12,7 @@ import {
   listMyPaymentOrders,
   processPagBankWebhook,
   processMercadoPagoWebhook,
+  processStripeWebhook,
   reconcilePaymentOrder,
   retryPublicPaymentOrder,
   retryPaymentOrder,
@@ -40,6 +41,16 @@ paymentsRouter.post("/mercadopago/checkout", checkoutRateLimit, async (req, res,
   }
 });
 
+paymentsRouter.post("/stripe/checkout", checkoutRateLimit, async (req, res, next) => {
+  try {
+    const input = checkoutSchema.parse(req.body ?? {});
+    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod);
+    return sendCheckoutResult(res, result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 paymentsRouter.post("/create-checkout", checkoutRateLimit, async (req, res, next) => {
   try {
     const input = checkoutSchema.parse(req.body ?? {});
@@ -51,6 +62,17 @@ paymentsRouter.post("/create-checkout", checkoutRateLimit, async (req, res, next
 });
 
 paymentsRouter.post("/mercadopago/checkout/authenticated", requireAuthenticated, checkoutRateLimit, async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = checkoutSchema.parse(req.body ?? {});
+    const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth), input.paymentMethod);
+    return sendCheckoutResult(res, result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+paymentsRouter.post("/stripe/checkout/authenticated", requireAuthenticated, checkoutRateLimit, async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = checkoutSchema.parse(req.body ?? {});
@@ -111,9 +133,11 @@ paymentsRouter.get("/me", requireAuthenticated, async (_req, res, next) => {
 paymentsRouter.post("/mercadopago/webhook", handleMercadoPagoWebhook);
 paymentsRouter.post("/mercado-pago/webhook", handleMercadoPagoWebhook);
 paymentsRouter.post("/pagbank/webhook", handlePagBankWebhook);
+paymentsRouter.post("/stripe/webhook", handleStripeWebhook);
 paymentWebhooksRouter.post("/mercadopago", handleMercadoPagoWebhook);
 paymentWebhooksRouter.post("/mercado-pago", handleMercadoPagoWebhook);
 paymentWebhooksRouter.post("/pagbank", handlePagBankWebhook);
+paymentWebhooksRouter.post("/stripe", handleStripeWebhook);
 
 paymentAdminRouter.use(requireAuth, requireAdminAccess);
 
@@ -172,6 +196,27 @@ async function handlePagBankWebhook(req: Request, res: Response, next: NextFunct
       requestId: req.get("x-request-id") ?? null,
       signature: req.get("x-signature") ?? req.get("x-pagbank-signature") ?? null,
       webhookToken: req.get("x-webhook-token") ?? req.get("x-pagbank-token") ?? readQuery(req.query.token)
+    });
+
+    return res.status(result.processed || result.duplicate ? 200 : 202).json({
+      duplicate: result.duplicate,
+      processed: result.processed
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function handleStripeWebhook(req: Request, res: Response, next: NextFunction) {
+  try {
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      return res.status(400).json({ message: "Corpo bruto ausente para validar webhook Stripe." });
+    }
+    const result = await processStripeWebhook({
+      rawBody,
+      requestId: req.get("request-id") ?? req.get("x-request-id") ?? null,
+      signature: req.get("stripe-signature") ?? null
     });
 
     return res.status(result.processed || result.duplicate ? 200 : 202).json({

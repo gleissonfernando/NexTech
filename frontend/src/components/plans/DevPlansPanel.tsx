@@ -142,7 +142,7 @@ export function DevPlansPanel() {
         failureRedirectUrl: next.paymentSettings.failureRedirectUrl ?? "",
         pendingRedirectUrl: next.paymentSettings.pendingRedirectUrl ?? "",
         plansPublicUrl: next.paymentSettings.plansPublicUrl ?? "",
-        provider: next.paymentSettings.provider === "pagbank" ? "pagbank" : "mercadopago",
+        provider: next.paymentSettings.provider === "pagbank" || next.paymentSettings.provider === "stripe" ? next.paymentSettings.provider : "mercadopago",
         successRedirectUrl: next.paymentSettings.successRedirectUrl ?? "",
         supportDiscordUrl: next.paymentSettings.supportDiscordUrl ?? ""
       });
@@ -559,7 +559,7 @@ type PaymentFormState = {
   failureRedirectUrl: string;
   pendingRedirectUrl: string;
   plansPublicUrl: string;
-  provider: "mercadopago" | "pagbank";
+  provider: "mercadopago" | "pagbank" | "stripe";
   successRedirectUrl: string;
   supportDiscordUrl: string;
 };
@@ -585,6 +585,7 @@ function PaymentSettingsForm({ busy, form, onChange, onSubmit, settings }: { bus
             >
               <option value="mercadopago">Mercado Pago</option>
               <option value="pagbank">PagBank</option>
+              <option value="stripe">Stripe</option>
             </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -610,6 +611,7 @@ function PaymentSettingsForm({ busy, form, onChange, onSubmit, settings }: { bus
 
 function gatewayLabel(provider: DevPlansDashboard["paymentSettings"]["provider"]) {
   if (provider === "pagbank") return "PagBank";
+  if (provider === "stripe") return "Stripe";
   if (provider === "mercadopago") return "Mercado Pago";
   return "desativado";
 }

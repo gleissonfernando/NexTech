@@ -123,6 +123,7 @@ writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
     shoukaku: "^4.3.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    stripe: "^22.3.2",
     ws: "^8.21.0",
     yauzl: "^3.2.0",
     zod: "^3.24.1"
