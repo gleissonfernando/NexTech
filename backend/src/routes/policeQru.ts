@@ -142,7 +142,6 @@ policeQruRouter.get("/:guildId/ranking", requireAuth, async (req, res, next) => 
 policeQruRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next) => {
   try {
     const botId = await botIdFor(req);
-    await licensed(botId);
     res.json({ settings: await getPoliceQruSettings(botId, snowflake.parse(req.params.guildId)) });
   } catch (error) {
     next(error);
@@ -153,7 +152,6 @@ policeQruRouter.patch("/bot/:guildId/settings", requireBot, async (req, res, nex
   try {
     const botId = await botIdFor(req);
     const guildId = snowflake.parse(req.params.guildId);
-    await licensed(botId);
     res.json({ settings: await savePoliceQruSettings(botId, guildId, settingsSchema.parse(req.body), null) });
   } catch (error) {
     next(error);
@@ -225,7 +223,6 @@ policeQruRouter.patch("/bot/records/:recordId/message", requireBot, async (req, 
 policeQruRouter.get("/bot/:guildId/ranking", requireBot, async (req, res, next) => {
   try {
     const botId = await botIdFor(req);
-    await licensed(botId);
     res.json({ ranking: await getPoliceQruRanking(botId, snowflake.parse(req.params.guildId), Number(req.query.limit ?? 20)) });
   } catch (error) {
     next(error);
