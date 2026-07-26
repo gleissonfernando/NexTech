@@ -148,6 +148,67 @@
     animation: none;
   }
 
+  .landing-terminal {
+    transform: perspective(1000px) rotateY(var(--terminal-rotation, 0deg)) translateX(var(--terminal-offset, 0px));
+    transition:
+      transform 360ms ease-out,
+      border-color 360ms ease-out,
+      box-shadow 360ms ease-out;
+    will-change: transform;
+  }
+
+  .landing-terminal:hover {
+    border-color: rgba(255, 213, 0, 0.42);
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5), 0 0 42px rgba(255, 213, 0, 0.16);
+  }
+
+  .landing-terminal__content {
+    transform: translateX(calc(var(--terminal-offset, 0px) * 0.35));
+    transition: transform 360ms ease-out;
+  }
+
+  .terminal-caret {
+    animation: terminal-caret-blink 900ms steps(2, end) infinite;
+  }
+
+  .server-marquee__track {
+    animation: server-marquee-scroll 34s linear infinite;
+    will-change: transform;
+  }
+
+  .server-marquee:hover .server-marquee__track {
+    animation-play-state: paused;
+  }
+
+  .feature-card {
+    perspective: 1200px;
+  }
+
+  .feature-card__inner {
+    min-height: 23rem;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 600ms ease;
+  }
+
+  .feature-card:hover .feature-card__inner,
+  .feature-card:focus-within .feature-card__inner,
+  .feature-card__inner[aria-expanded="true"] {
+    transform: rotateY(180deg);
+  }
+
+  .feature-card__front,
+  .feature-card__back {
+    backface-visibility: hidden;
+    inset: 0;
+    min-height: 23rem;
+    position: absolute;
+  }
+
+  .feature-card__back {
+    transform: rotateY(180deg);
+  }
+
   .plans-grid-transition {
     animation: plans-grid-in 240ms ease-out both;
   }
@@ -155,9 +216,27 @@
 
 @keyframes nex-tech-gradient { to { background-position: 220% center; } }
 
+@keyframes terminal-caret-blink {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
+}
+
+@keyframes server-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .nex-tech-gradient-text, .terminal-response-line { animation: none !important; }
+  .nex-tech-gradient-text, .terminal-response-line, .terminal-caret, .server-marquee__track { animation: none !important; }
+  .landing-terminal, .landing-terminal__content { transform: none !important; }
+  .feature-card:hover .feature-card__inner,
+  .feature-card:focus-within .feature-card__inner {
+    transform: none;
+  }
+  .feature-card__inner[aria-expanded="true"] {
+    transform: rotateY(180deg);
+  }
   .nex-tech-home *, .nex-tech-home *::before, .nex-tech-home *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 

@@ -6,6 +6,7 @@ import {
   Gauge,
   Headphones,
   KeyRound,
+  Layers3,
   Link2,
   Loader2,
   LogIn,
@@ -18,15 +19,17 @@ import {
   Server,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Terminal,
   Wrench,
   X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import type { AuthResponse } from "../types";
 
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
+const LANDING_SERVERS_REFRESH_MS = 60_000;
 
 type LoginProps = {
   auth: AuthResponse | null;
@@ -36,14 +39,30 @@ type LoginProps = {
   verifying: boolean;
 };
 
-type PublicServer = {
-  botId?: string;
-  botName?: string;
+type PublicConnectedServer = {
+  botNames: string[];
+  connectedBots: number;
+  guildId: string;
   iconUrl: string | null;
-  id: string;
   memberCount: number;
   name: string;
-  status?: string;
+  online: boolean;
+};
+
+type PublicConnectedServersResponse = {
+  generatedAt: string;
+  servers: PublicConnectedServer[];
+  totalBots: number;
+  totalUniqueServers: number;
+};
+
+type PublicMarketingFeature = {
+  category: string;
+  fullDescription: string;
+  icon: string;
+  id: string;
+  shortDescription: string;
+  title: string;
 };
 
 type PublicStatusService = {
@@ -61,49 +80,118 @@ type PublicStatusSnapshot = {
 };
 
 type LandingMetrics = {
-  botsCreated: number | null;
   responseTimeMs: number | null;
   updatedAt: string | null;
   uptimePercent: number | null;
 };
 
-type TerminalResponseLine = {
-  text: string;
-  tone?: "status" | "muted";
+type ServerState = {
+  error: boolean;
+  loading: boolean;
+  value: PublicConnectedServersResponse | null;
 };
 
-type TerminalSequence = {
-  command: string;
-  response: TerminalResponseLine[];
+type MarketingFeatureState = {
+  loading: boolean;
+  value: PublicMarketingFeature[];
 };
 
-const terminalSequences: [TerminalSequence, ...TerminalSequence[]] = [
+type TerminalBlock = {
+  category: string;
+  lines: string[];
+};
+
+const fallbackServers: PublicConnectedServersResponse = {
+  generatedAt: new Date(0).toISOString(),
+  servers: [],
+  totalBots: 0,
+  totalUniqueServers: 0
+};
+
+const fallbackFeatures: [PublicMarketingFeature, PublicMarketingFeature, PublicMarketingFeature] = [
   {
-    command: "$ GET /auth/discord/dashboard",
-    response: [
-      { text: "302 Discord OAuth2", tone: "status" },
-      { text: "GET /dashboard/session" },
-      { text: "{" },
-      { text: '  "user": "discord:authorized",' },
-      { text: '  "access": "verified",' },
-      { text: '  "modules": ["logs", "tickets", "courses"]' },
-      { text: "}" },
-      { text: 'dashboard: "online"' },
-      { text: 'redirect: "/dashboard"' }
+    category: "Automação",
+    fullDescription: "Crie sistemas de tickets, cursos, ações, verificações, logs e outros módulos integrados ao Discord e à dashboard NexTech.",
+    icon: "bot",
+    id: "automation",
+    shortDescription: "Automatize tarefas, processos e fluxos do seu servidor.",
+    title: "Automação completa"
+  },
+  {
+    category: "Dashboard",
+    fullDescription: "Controle configurações, canais, cargos, módulos e integrações sem precisar alterar o código manualmente.",
+    icon: "monitor",
+    id: "central-control",
+    shortDescription: "Gerencie bots, servidores e permissões em um único painel.",
+    title: "Controle centralizado"
+  },
+  {
+    category: "Monitoramento",
+    fullDescription: "Visualize bots online, servidores conectados, tempo de resposta, logs operacionais e informações essenciais da plataforma.",
+    icon: "gauge",
+    id: "monitoring",
+    shortDescription: "Acompanhe status, desempenho e atividade em tempo real.",
+    title: "Monitoramento inteligente"
+  }
+];
+
+const terminalBlocks: TerminalBlock[] = [
+  {
+    category: "Inicialização",
+    lines: [
+      "> Inicializando NexTech Runtime...",
+      "> Conectando módulos seguros...",
+      "> Carregando componentes V2...",
+      "const nexTech = await createAutomation({",
+      '  platform: "Discord",',
+      '  dashboard: true,',
+      '  monitoring: "realtime",',
+      '  security: "enabled"',
+      "});",
+      "> Sistema disponível."
     ]
   },
   {
-    command: "$ POST /api/v1/panels/sync",
-    response: [
-      { text: "{" },
-      { text: '  "server": "NextTech",' },
-      { text: '  "modules": ["tickets", "payments", "welcome"]' },
-      { text: '  "mode": "components-v2"' },
-      { text: "}" },
-      { text: "200 Synced", tone: "status" },
-      { text: 'cache: "updated"' },
-      { text: 'status: "online"' },
-      { text: 'deploy: "ready"' }
+    category: "Componentes V2",
+    lines: [
+      "> Preparando painel de componentes...",
+      "> Verificando permissões públicas...",
+      "await nexTech.modules.register([",
+      '  "tickets",',
+      '  "logs",',
+      '  "courses",',
+      '  "actions",',
+      '  "verification"',
+      "]);",
+      "> Componentes sincronizados."
+    ]
+  },
+  {
+    category: "Monitoramento",
+    lines: [
+      "> Sincronizando métricas da dashboard...",
+      "> Validando status operacional...",
+      "const status = await nexTech.deploy();",
+      "console.log({",
+      '  gateway: "connected",',
+      '  dashboard: "online",',
+      '  components: "synchronized",',
+      '  responseTime: "42ms"',
+      "});",
+      "> Deploy visual concluído."
+    ]
+  },
+  {
+    category: "Segurança",
+    lines: [
+      "> Validando escopos seguros...",
+      "> Aplicando políticas de cache...",
+      "await nexTech.security.configure({",
+      '  tokens: "hidden",',
+      '  publicDataOnly: true,',
+      '  rateLimit: "enabled"',
+      "});",
+      "> Nenhum segredo exposto."
     ]
   }
 ];
@@ -113,8 +201,6 @@ const terminalRuntimeRows = [
   { label: "Bot Discord", value: "online", width: "w-[82%]" },
   { label: "Componentes V2", value: "sincronizado", width: "w-[88%]" }
 ];
-
-const LANDING_SERVERS_REFRESH_MS = 60_000;
 
 const solutionCards = [
   {
@@ -146,17 +232,6 @@ const solutionCards = [
   }
 ];
 
-const resources = [
-  { description: "Criação, validação e ativação em poucos cliques.", icon: Rocket, title: "Crie em Milissegundos" },
-  { description: "Ajustes finos para módulos, permissões e mensagens.", icon: Settings2, title: "Muitas Configurações" },
-  { description: "Status, logs e operação em tempo real.", icon: Gauge, title: "Monitoramento" },
-  { description: "Gerencie bots, servidores e acessos sem sair do painel.", icon: MonitorCog, title: "Controle Total" },
-  { description: "Estruture contas e identidades para cada operação.", icon: ShieldCheck, title: "Criação de Contas" },
-  { description: "Integre seu fluxo com endpoints diretos e previsíveis.", icon: PlugZap, title: "API Simples e Poderosa" },
-  { description: "Gere links e convites de forma automática.", icon: Link2, title: "Link de Convite Automático" },
-  { description: "Conecte moderação, logs, vendas, FiveM e integrações sociais.", icon: Network, title: "Múltiplos Modos/Integrações" }
-];
-
 const steps = [
   { description: "Entre com Discord e valide seu acesso à plataforma.", icon: KeyRound, title: "Obtenha seu Token" },
   { description: "Escolha módulos, permissões, canais e comportamento do bot.", icon: PanelTop, title: "Configure seu Bot" },
@@ -170,9 +245,9 @@ export function Login({
   onVerify,
   verifying
 }: LoginProps) {
-  const [publicServers, setPublicServers] = useState<PublicServer[]>([]);
+  const [servers, setServers] = useState<ServerState>({ error: false, loading: true, value: null });
+  const [features, setFeatures] = useState<MarketingFeatureState>({ loading: true, value: fallbackFeatures });
   const [landingMetrics, setLandingMetrics] = useState<LandingMetrics>({
-    botsCreated: null,
     responseTimeMs: null,
     updatedAt: null,
     uptimePercent: null
@@ -180,27 +255,25 @@ export function Login({
   const currentYear = new Date().getFullYear();
   const verificationPending = Boolean(auth && !auth.access.verified);
   const startLabel = verifying ? "Verificando..." : verificationPending ? "Verificar acesso" : "Entrar na Dashboard";
-  const stats = buildLandingStats(landingMetrics, publicServers);
+  const serverData = servers.value ?? fallbackServers;
+  const stats = buildLandingStats(landingMetrics, serverData);
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
 
     const loadServers = async () => {
       try {
-        const response = await fetch("/api/health/servers", { cache: "no-store" });
+        const response = await fetch("/api/public/connected-servers", {
+          cache: "no-store",
+          signal: controller.signal
+        });
         if (!response.ok) throw new Error("Falha ao carregar servidores");
-        const data = await response.json() as { servers?: PublicServer[] };
+        const data = await response.json() as PublicConnectedServersResponse;
         if (!active) return;
-
-        const servers = data.servers ?? [];
-        setPublicServers(servers);
-        setLandingMetrics((current) => ({
-          ...current,
-          botsCreated: servers.length,
-          updatedAt: current.updatedAt ?? new Date().toISOString()
-        }));
+        setServers({ error: false, loading: false, value: normalizeServersResponse(data) });
       } catch {
-        // Mantém a última leitura válida na landing pública.
+        if (active) setServers((current) => ({ ...current, error: !current.value, loading: false }));
       }
     };
 
@@ -209,7 +282,33 @@ export function Login({
 
     return () => {
       active = false;
+      controller.abort();
       window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    async function loadFeatures() {
+      try {
+        const response = await fetch("/api/public/marketing-features", {
+          cache: "no-store",
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error("Falha ao carregar recursos");
+        const data = await response.json() as { features?: PublicMarketingFeature[] };
+        if (active) setFeatures({ loading: false, value: ensureThreeFeatures(data.features ?? []) });
+      } catch {
+        if (active) setFeatures({ loading: false, value: fallbackFeatures });
+      }
+    }
+
+    void loadFeatures();
+    return () => {
+      active = false;
+      controller.abort();
     };
   }, []);
 
@@ -218,12 +317,11 @@ export function Login({
 
     function applyStatus(snapshot: PublicStatusSnapshot) {
       if (!active) return;
-      setLandingMetrics((current) => ({
-        ...current,
+      setLandingMetrics({
         responseTimeMs: getLandingResponseTime(snapshot),
         updatedAt: snapshot.generatedAt ?? new Date().toISOString(),
         uptimePercent: getLandingUptime(snapshot)
-      }));
+      });
     }
 
     const loadStatus = async () => {
@@ -237,30 +335,11 @@ export function Login({
     };
 
     void loadStatus();
-
-    if (typeof EventSource === "undefined") {
-      const interval = window.setInterval(() => { void loadStatus(); }, 5_000);
-      return () => {
-        active = false;
-        window.clearInterval(interval);
-      };
-    }
-
-    const source = new EventSource("/api/public/status/events");
-    source.addEventListener("status-update", (event) => {
-      try {
-        applyStatus(JSON.parse(event.data) as PublicStatusSnapshot);
-      } catch {
-        // Ignora eventos inválidos sem quebrar a landing pública.
-      }
-    });
-    source.onerror = () => {
-      void loadStatus();
-    };
+    const interval = window.setInterval(() => { void loadStatus(); }, 10_000);
 
     return () => {
       active = false;
-      source.close();
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -269,7 +348,6 @@ export function Login({
       onVerify();
       return;
     }
-
     onLoginDiscord();
   }
 
@@ -290,62 +368,63 @@ export function Login({
   }
 
   return (
-    <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0A0A0A] text-white">
+    <main className="nex-tech-home min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0A0A0A] text-white">
       <div className="fixed inset-0 -z-10 bg-[#0A0A0A]" />
-
       <Header entering={verifying} onStart={handleStart} onNavigate={scrollTo} />
 
-      <section id="inicio" className="relative mx-auto grid min-h-screen w-full max-w-[100vw] items-center gap-10 overflow-hidden px-4 pb-16 pt-32 text-center sm:max-w-7xl sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.95fr)] lg:px-8 lg:text-left">
-        <div className="flex w-full min-w-0 max-w-[21rem] flex-col items-center justify-self-center lg:max-w-none lg:items-start">
-          <Reveal delay={0.1} className="inline-flex w-full max-w-[20rem] items-center justify-center rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-center text-xs font-medium leading-5 text-[#FFEA70] sm:w-auto sm:max-w-full sm:text-sm">
-            A plataforma #1 de automação para Discord
-          </Reveal>
+      <section id="inicio" className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center overflow-hidden px-4 pb-16 pt-32 text-center sm:px-6 lg:px-8">
+        <Reveal delay={0.1} className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-center text-xs font-semibold leading-5 text-[#FFEA70] sm:text-sm">
+          <Sparkles className="h-4 w-4" />
+          Plataforma completa de automação para Discord
+        </Reveal>
 
-          <Reveal delay={0.2} className="mt-8 w-full max-w-[21rem] sm:max-w-5xl">
-            <h1 className="max-w-full text-3xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
-              Automatize seu servidor{" "}
-              <span className="inline-block text-[#FFD500]">
-                do seu jeito
-              </span>
-            </h1>
-          </Reveal>
+        <Reveal delay={0.2} className="mt-8 w-full max-w-5xl">
+          <h1 className="mx-auto max-w-5xl text-4xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
+            Automação inteligente para o seu servidor{" "}
+            <span className="text-[#FFD500]">do seu jeito</span>
+          </h1>
+        </Reveal>
 
-          <Reveal delay={0.3} className="w-full max-w-[21rem] sm:max-w-5xl">
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#B3B3B3] sm:text-lg lg:mx-0">
-              {verificationPending
-                ? "Confirme a segunda etapa de autenticação para liberar a dashboard deste usuário."
-                : "Entre pela Dashboard com OAuth2 do Discord, configure seus bots e controle módulos, permissões, canais e logs em tempo real."}
-            </p>
-          </Reveal>
+        <Reveal delay={0.3} className="w-full max-w-3xl">
+          <p className="mx-auto mt-6 text-base leading-8 text-[#B3B3B3] sm:text-lg">
+            {verificationPending
+              ? "Confirme a segunda etapa de autenticação para liberar a dashboard deste usuário."
+              : "Centralize o gerenciamento dos seus bots, servidores, módulos, permissões e integrações em uma plataforma rápida, segura e totalmente personalizável."}
+          </p>
+        </Reveal>
 
-          <Reveal delay={0.4} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
-            <Button className="h-12 min-w-44" disabled={verifying} onClick={handleStart}>
-              {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-              {startLabel}
+        <Reveal delay={0.4} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Button className="h-12 min-w-44" disabled={verifying} onClick={handleStart}>
+            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+            {startLabel}
+          </Button>
+          <Button className="h-12 min-w-44" onClick={() => scrollTo("solucoes")} variant="outline">
+            Ver Soluções
+          </Button>
+        </Reveal>
+
+        {error ? (
+          <Reveal delay={0.45} className="mt-5 w-full max-w-2xl rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-4 text-sm font-medium text-red-100">
+            <p>{error}</p>
+            <Button asChild className="mt-3 h-10 w-full sm:w-auto" variant="outline">
+              <a href={SUPPORT_URL} rel="noreferrer" target="_blank">
+                <Headphones className="h-4 w-4" />
+                Falar com suporte
+              </a>
             </Button>
-            <Button className="h-12 min-w-44" onClick={() => scrollTo("solucoes")} variant="outline">
-              Ver Soluções
-            </Button>
           </Reveal>
-          {error ? (
-            <Reveal delay={0.45} className="mt-5 w-full max-w-2xl rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-4 text-sm font-medium text-red-100">
-              <p>{error}</p>
-              <Button asChild className="mt-3 h-10 w-full sm:w-auto" variant="outline">
-                <a href={SUPPORT_URL} rel="noreferrer" target="_blank">
-                  <Headphones className="h-4 w-4" />
-                  Falar com suporte
-                </a>
-              </Button>
-            </Reveal>
-          ) : null}
-        </div>
+        ) : null}
 
-        <Reveal delay={0.5} className="w-full max-w-3xl justify-self-center lg:max-w-none">
+        <Reveal delay={0.5} className="mt-12 w-full max-w-5xl">
           <TerminalMockup metrics={landingMetrics} />
+        </Reveal>
+
+        <Reveal delay={0.58} className="mt-8 w-full max-w-4xl">
+          <RuntimeIndicators data={serverData} metrics={landingMetrics} />
         </Reveal>
       </section>
 
-      <PublicServerMarquee servers={publicServers} />
+      <ConnectedServersSection state={servers} />
 
       <section id="solucoes" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
@@ -361,37 +440,13 @@ export function Login({
         </div>
 
         <Reveal className="mt-24 grid gap-10 py-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-14">
-          {stats.map((stat, index) => (
-            <StatCounter delay={index * 120} key={stat.label} {...stat} />
+          {stats.map((stat) => (
+            <StatCounter key={stat.label} {...stat} />
           ))}
         </Reveal>
       </section>
 
-      <section id="docs" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionHeading
-          subtitle="Ferramentas para criar, operar e escalar bots com menos trabalho manual."
-          title="Recursos Poderosos"
-        />
-
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {resources.map((resource, index) => {
-            const featured = resource.title === "Controle Total";
-            return (
-            <Reveal
-              className={`rounded-lg border bg-[#141414] p-5 transition-colors duration-150 hover:border-[#FFD500]/45 ${featured ? "border-[#FFD500]/36 sm:col-span-2 lg:col-span-2" : "border-[#FFD500]/18"}`}
-              delay={index * 0.035}
-              key={resource.title}
-            >
-              <span className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500]">
-                <resource.icon className="h-6 w-6" />
-              </span>
-              <h3 className="mt-5 text-base font-bold text-white">{resource.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">{resource.description}</p>
-            </Reveal>
-            );
-          })}
-        </div>
-      </section>
+      <PowerfulFeaturesSection features={features.value} loading={features.loading} onStart={handleStart} />
 
       <section id="como-funciona" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
@@ -437,11 +492,11 @@ export function Login({
             </Button>
           </div>
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3 text-sm text-[#B3B3B3]">
-            <span>⚡ Acesso instantâneo</span>
+            <span>Acesso instantâneo</span>
             <span className="text-[#FFD500]/50">·</span>
-            <span>🎧 Suporte 24/7</span>
+            <span>Suporte 24/7</span>
             <span className="text-[#FFD500]/50">·</span>
-            <span>📄 API documentada</span>
+            <span>API documentada</span>
           </div>
         </Reveal>
       </section>
@@ -452,11 +507,20 @@ export function Login({
 }
 
 function Header({ entering, onNavigate, onStart }: { entering: boolean; onNavigate: (id: string) => void; onStart: () => void }) {
-  const [scrolled, setScrolled] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        setIsScrolled(window.scrollY > 42);
+        ticking = false;
+      });
+    };
+
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -473,9 +537,9 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
 
   return (
     <header
-      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition-colors duration-200 sm:px-6 lg:px-8 ${scrolled ? "border-[#FFD500]/18 bg-[#0A0A0A]/95 py-3 shadow-[0_12px_34px_rgba(0,0,0,0.34)]" : "border-transparent bg-[#0A0A0A]/82 py-4"}`}
+      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition-[background-color,border-color,box-shadow,padding] duration-300 sm:px-6 lg:px-8 ${isScrolled ? "border-transparent bg-transparent py-3" : "border-[#FFD500]/12 bg-[#0A0A0A]/86 py-4"}`}
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+      <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4">
         <button className="flex items-center gap-2 text-left" onClick={() => onNavigate("inicio")} type="button">
           <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-[#FFD500]/30 bg-[#050505] shadow-[0_0_22px_rgba(255,213,0,0.18)]">
             <img alt="NexTech" className="h-full w-full object-cover object-center" src="/brand/nextech.png" />
@@ -483,7 +547,11 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
           <span className="text-xl font-black text-[#FFD500] drop-shadow-[0_0_18px_rgba(255,213,0,0.28)]">Nex Tech</span>
         </button>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-[#FFD500]/15 bg-black/35 p-1 md:flex">
+        <nav className={`hidden items-center gap-1 border p-1 transition-[transform,border-radius,background-color,box-shadow,backdrop-filter] duration-300 md:flex ${
+          isScrolled
+            ? "fixed left-1/2 top-3 -translate-x-1/2 rounded-full border-[#FFD500]/22 bg-[#0A0A0A]/72 shadow-[0_14px_38px_rgba(0,0,0,0.44)] backdrop-blur-xl"
+            : "rounded-full border-[#FFD500]/15 bg-black/35"
+        }`}>
           {nav.map(([label, id]) => (
             <button className="rounded-full px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={id} onClick={() => { setMenuOpen(false); onNavigate(id); }} type="button">
               {label}
@@ -522,30 +590,89 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
   );
 }
 
-function SectionHeading({ badge, subtitle, title }: { badge?: string; subtitle: string; title: string }) {
-  const titleClassName = title === "Como Funciona"
-    ? "como-funciona-title text-4xl text-white sm:text-5xl"
-    : "text-4xl font-black text-white sm:text-5xl";
-
-  return (
-    <Reveal className="mx-auto max-w-3xl text-center">
-      {badge ? <p className="mx-auto mb-4 inline-flex rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-medium text-[#FFEA70]">{badge}</p> : null}
-      <h2 className={titleClassName}>{title}</h2>
-      <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-[#B3B3B3]">{subtitle}</p>
-    </Reveal>
-  );
-}
-
 function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
-  const sequence = terminalSequences[0];
+  const reducedMotion = usePrefersReducedMotion();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(true);
+  const [blockIndex, setBlockIndex] = useState(0);
+  const [lineIndex, setLineIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
+  const block = terminalBlocks[blockIndex % terminalBlocks.length] ?? terminalBlocks[0]!;
+  const displayedLines = useMemo(() => {
+    const completed = block.lines.slice(0, lineIndex);
+    const current = block.lines[lineIndex] ?? "";
+    return current ? [...completed, current.slice(0, charIndex)] : completed;
+  }, [block.lines, charIndex, lineIndex]);
   const terminalMetrics = [
     { label: "Gateway", value: formatMilliseconds(metrics.responseTimeMs, "ao vivo"), tone: "text-[#3DDC84]" },
     { label: "Uptime", value: formatPercent(metrics.uptimePercent, "ao vivo"), tone: "text-[#FFEA70]" },
-    { label: "Bots", value: metrics.botsCreated === null ? "ao vivo" : metrics.botsCreated.toLocaleString("pt-BR"), tone: "text-white" }
+    { label: "Runtime", value: "seguro", tone: "text-white" }
   ];
 
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry?.isIntersecting ?? true), { threshold: 0.2 });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (reducedMotion) {
+      setLineIndex(block.lines.length);
+      setCharIndex(0);
+      const timer = window.setTimeout(() => {
+        setBlockIndex((current) => (current + 1) % terminalBlocks.length);
+        setLineIndex(0);
+      }, 6000);
+      return () => window.clearTimeout(timer);
+    }
+
+    const currentLine = block.lines[lineIndex] ?? "";
+    const isLineDone = charIndex >= currentLine.length;
+    const isBlockDone = lineIndex >= block.lines.length;
+    const delay = isBlockDone ? 2600 : isLineDone ? 360 : 18 + Math.round(Math.random() * 22);
+    const timer = window.setTimeout(() => {
+      if (isBlockDone) {
+        setBlockIndex((current) => (current + 1) % terminalBlocks.length);
+        setLineIndex(0);
+        setCharIndex(0);
+        return;
+      }
+      if (isLineDone) {
+        setLineIndex((current) => current + 1);
+        setCharIndex(0);
+        return;
+      }
+      setCharIndex((current) => current + 1);
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [block.lines, blockIndex, charIndex, lineIndex, reducedMotion, visible]);
+
+  function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
+    if (reducedMotion || window.matchMedia("(pointer: coarse)").matches) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = (event.clientX - bounds.left) / bounds.width - 0.5;
+    event.currentTarget.style.setProperty("--terminal-offset", `${Math.round(ratio * 16)}px`);
+    event.currentTarget.style.setProperty("--terminal-rotation", `${(ratio * 5).toFixed(2)}deg`);
+  }
+
+  function handleMouseLeave(event: MouseEvent<HTMLDivElement>) {
+    event.currentTarget.style.setProperty("--terminal-offset", "0px");
+    event.currentTarget.style.setProperty("--terminal-rotation", "0deg");
+  }
+
   return (
-    <div className="relative overflow-hidden rounded-lg border border-[#FFD500]/22 bg-[#080808] text-left shadow-[0_18px_54px_rgba(0,0,0,0.46)]">
+    <div
+      className="landing-terminal relative overflow-hidden rounded-lg border border-[#FFD500]/22 bg-[#080808] text-left shadow-[0_18px_54px_rgba(0,0,0,0.46)]"
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
+      ref={containerRef}
+      style={{ "--terminal-offset": "0px", "--terminal-rotation": "0deg" } as CSSProperties}
+    >
       <div className="relative flex items-center gap-3 border-b border-[#FFD500]/15 bg-[#111111]/95 px-4 py-3">
         <div className="flex shrink-0 items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#FFD900]" />
@@ -554,21 +681,23 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
         </div>
         <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-zinc-400">
           <Terminal className="h-4 w-4 text-[#FFD500]" />
-          <span className="truncate">nex-tech-cli ~ nextech.discloud.app</span>
+          <span className="truncate">nextech-runtime ~ visual-safe-demo</span>
         </div>
       </div>
 
-      <div className="relative grid gap-0 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <div aria-label="Demonstração do terminal Nex Tech" aria-live="off" className="min-h-[23rem] p-5 font-mono text-sm leading-7">
+      <div className="landing-terminal__content relative grid gap-0 lg:grid-cols-[minmax(0,1fr)_16rem]">
+        <div aria-label="Simulação visual segura do terminal NexTech" aria-live="off" className="min-h-[24rem] max-h-[30rem] overflow-hidden p-5 font-mono text-sm leading-7">
           <div className="mb-5 flex flex-wrap gap-2 font-sans text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-400">
-            <span className="rounded-md border border-[#FFD500]/20 bg-[#FFD500]/10 px-2.5 py-1 text-[#FFEA70]">auth</span>
-            <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">dashboard</span>
-            <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">discord api</span>
+            <span className="rounded-md border border-[#FFD500]/20 bg-[#FFD500]/10 px-2.5 py-1 text-[#FFEA70]">{block.category}</span>
+            <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">componentes v2</span>
+            <span className="rounded-md border border-zinc-800 bg-black/40 px-2.5 py-1">demo segura</span>
           </div>
-          <TerminalCommandLine command={sequence.command} />
-          {sequence.response.map((line, index) => (
-            <TerminalResponseItem key={`${line.text}-${index}`} line={line} />
-          ))}
+          <div className="min-h-[18rem]">
+            {displayedLines.map((line, index) => (
+              <TerminalResponseItem key={`${block.category}-${index}`} text={line} />
+            ))}
+            {!reducedMotion ? <span className="terminal-caret ml-1 inline-block h-4 w-2 bg-[#FFD500]" /> : null}
+          </div>
           <div className="mt-5 grid gap-2 font-sans text-xs text-zinc-400 sm:grid-cols-3">
             {terminalMetrics.map((metric) => (
               <div className="rounded-md border border-zinc-900 bg-black/35 px-3 py-2" key={metric.label}>
@@ -600,43 +729,48 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
           <div className="mt-6 rounded-md border border-[#FFD500]/15 bg-[#FFD500]/5 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-white">
               <Check className="h-4 w-4 text-[#3DDC84]" />
-              Atualizacao segura
+              Código apenas visual
             </div>
-            <p className="mt-2 text-xs leading-5 text-zinc-400">Painel validado, cache limpo e rotas prontas para uso.</p>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">A animação não executa comandos, não consulta dados privados e não expõe credenciais.</p>
           </div>
         </div>
       </div>
 
-      <div className="relative flex items-center justify-between border-t border-[#FFD500]/15 bg-[#0d0d0d]/90 px-4 py-3 text-xs text-zinc-400">
-        <span>request_id: nex-tech-live-demo</span>
+      <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-[#FFD500]/15 bg-[#0d0d0d]/90 px-4 py-3 text-xs text-zinc-400">
+        <span>request_id: nextech-visual-demo</span>
         <span className="flex items-center gap-2 text-[#3DDC84]">
           <span className="h-2.5 w-2.5 rounded-full bg-[#3DDC84]" />
-          Online
+          Simulação segura
         </span>
       </div>
     </div>
   );
 }
 
-function TerminalCommandLine({ command }: { command: string }) {
-  const hasPrompt = command.startsWith("$");
+function RuntimeIndicators({ data, metrics }: { data: PublicConnectedServersResponse; metrics: LandingMetrics }) {
+  const items = [
+    { label: "Servidores únicos", value: data.totalUniqueServers ? data.totalUniqueServers.toLocaleString("pt-BR") : "ao vivo" },
+    { label: "Bots conectados", value: data.totalBots ? data.totalBots.toLocaleString("pt-BR") : "ao vivo" },
+    { label: "Resposta média", value: formatMilliseconds(metrics.responseTimeMs, "ao vivo") }
+  ];
 
   return (
-    <p className="flex min-h-7 min-w-0 items-center whitespace-pre-wrap text-zinc-100">
-      {hasPrompt ? <span className="text-[#FFD900]">$</span> : null}
-      <span>{hasPrompt ? command.slice(1) : command}</span>
-    </p>
+    <div className="grid gap-3 sm:grid-cols-3">
+      {items.map((item) => (
+        <div className="rounded-lg border border-[#FFD500]/15 bg-[#141414]/86 px-4 py-3" key={item.label}>
+          <p className="text-xs font-bold uppercase text-zinc-500">{item.label}</p>
+          <p className="mt-1 text-xl font-black text-white">{item.value}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 
-function TerminalResponseItem({ line }: { line: TerminalResponseLine }) {
-  if (line.tone === "status") {
-    return <p className="terminal-response-line min-h-7 whitespace-pre-wrap text-[#3DDC84]">{line.text}</p>;
-  }
-
+function TerminalResponseItem({ text }: { text: string }) {
+  const lineClass = text.startsWith(">") ? "text-[#3DDC84]" : text.includes('"') || text.includes(":") ? "text-zinc-300" : "text-zinc-400";
   return (
-    <p className="terminal-response-line min-h-7 whitespace-pre-wrap text-zinc-300">
-      <TerminalHighlightedLine text={line.text} />
+    <p className={`min-h-7 whitespace-pre-wrap break-words ${lineClass}`}>
+      <TerminalHighlightedLine text={text} />
     </p>
   );
 }
@@ -644,9 +778,7 @@ function TerminalResponseItem({ line }: { line: TerminalResponseLine }) {
 function TerminalHighlightedLine({ text }: { text: string }) {
   const match = text.match(/^(\s*)("[^"]+"|[A-Za-z_][\w-]*)(:)(.*)$/);
   if (!match) return <>{text}</>;
-
   const [, leading, key, colon, rest] = match;
-
   return (
     <>
       {leading}
@@ -654,6 +786,144 @@ function TerminalHighlightedLine({ text }: { text: string }) {
       <span className="text-zinc-500">{colon}</span>
       {rest}
     </>
+  );
+}
+
+function ConnectedServersSection({ state }: { state: ServerState }) {
+  const data = state.value ?? fallbackServers;
+
+  return (
+    <section aria-label="Servidores conectados" className="relative border-y border-[#FFD500]/12 bg-black/30 py-12">
+      <div className="mx-auto max-w-4xl px-4 text-center">
+        <h2 className="text-2xl font-black text-white sm:text-3xl">Servidores conectados à NexTech</h2>
+        <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">Bots ativos e servidores gerenciados através da plataforma.</p>
+      </div>
+
+      <div className="mt-8">
+        {state.loading ? <ServerSkeletonMarquee /> : null}
+        {!state.loading && state.error ? (
+          <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">Não foi possível carregar os servidores agora. Tentaremos novamente em breve.</p>
+        ) : null}
+        {!state.loading && !state.error && !data.servers.length ? (
+          <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">Nenhum servidor conectado foi encontrado no momento.</p>
+        ) : null}
+        {!state.loading && data.servers.length ? <ServerMarquee servers={data.servers} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function ServerSkeletonMarquee() {
+  return (
+    <div className="mx-auto flex max-w-6xl justify-center gap-4 overflow-hidden px-4">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div className="h-28 w-64 shrink-0 animate-pulse rounded-lg border border-[#FFD500]/12 bg-[#141414]" key={index} />
+      ))}
+    </div>
+  );
+}
+
+function ServerMarquee({ servers }: { servers: PublicConnectedServer[] }) {
+  const items = servers.length >= 4 ? servers : [...servers, ...servers, ...servers].slice(0, Math.max(servers.length, 4));
+  const marqueeItems = [...items, ...items];
+
+  return (
+    <div className="server-marquee overflow-hidden">
+      <div className="server-marquee__track flex w-max gap-4 px-4">
+        {marqueeItems.map((server, index) => (
+          <ServerCard key={`${server.guildId}-${index}`} server={server} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ServerCard({ server }: { server: PublicConnectedServer }) {
+  return (
+    <div className="flex w-72 shrink-0 items-center gap-4 rounded-lg border border-[#FFD500]/18 bg-[#141414] p-4 shadow-[0_0_28px_rgba(255,213,0,0.08)]">
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/28 bg-[#080808]">
+        {server.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={server.iconUrl} /> : <Server aria-hidden="true" className="h-6 w-6 text-[#FFD500]" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-white" title={server.name}>{server.name}</p>
+        <p className="mt-1 text-xs font-medium text-zinc-400">{server.memberCount.toLocaleString("pt-BR")} membros</p>
+        <p className="mt-1 text-xs font-semibold text-[#FFEA70]">{server.connectedBots} {server.connectedBots === 1 ? "bot conectado" : "bots conectados"}</p>
+      </div>
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${server.online ? "bg-emerald-400" : "bg-zinc-600"}`} title={server.online ? "Online" : "Offline"} />
+    </div>
+  );
+}
+
+function PowerfulFeaturesSection({ features, loading, onStart }: { features: PublicMarketingFeature[]; loading: boolean; onStart: () => void }) {
+  return (
+    <section id="docs" className="home-section mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <SectionHeading
+        subtitle="Três pilares selecionados com dados públicos e fallback local para manter a landing sempre completa."
+        title="Recursos Poderosos"
+      />
+
+      <div className="mt-12 grid gap-5 lg:grid-cols-3">
+        {(loading ? fallbackFeatures : ensureThreeFeatures(features)).map((feature, index) => (
+          <FlipFeatureCard feature={feature} index={index} key={feature.id} onStart={onStart} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FlipFeatureCard({ feature, index, onStart }: { feature: PublicMarketingFeature; index: number; onStart: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = iconForFeature(feature.icon);
+
+  return (
+    <Reveal className="feature-card min-h-[23rem]" delay={index * 0.08}>
+      <button
+        aria-expanded={expanded}
+        className="feature-card__inner h-full w-full text-left"
+        onClick={() => setExpanded((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setExpanded(false);
+        }}
+        type="button"
+      >
+        <div className="feature-card__front rounded-lg border border-[#FFD500]/20 bg-[#141414] p-6">
+          <span className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500]">
+            <Icon className="h-6 w-6" />
+          </span>
+          <p className="mt-5 text-sm font-semibold text-[#FFEA70]">{feature.category}</p>
+          <h3 className="mt-2 text-2xl font-black text-white">{feature.title}</h3>
+          <p className="mt-4 text-sm leading-6 text-[#B3B3B3]">{feature.shortDescription}</p>
+          <p className="mt-8 text-xs font-bold uppercase text-zinc-500">Passe o mouse para saber mais</p>
+        </div>
+        <div className="feature-card__back rounded-lg border border-[#FFD500]/35 bg-[#111111] p-6">
+          <p className="text-sm font-semibold text-[#FFEA70]">{feature.category}</p>
+          <h3 className="mt-2 text-2xl font-black text-white">{feature.title}</h3>
+          <p className="mt-4 text-sm leading-7 text-[#D7D7D7]">{feature.fullDescription}</p>
+          <div className="mt-6 space-y-2 text-sm text-zinc-300">
+            <p className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-[#FFD500]" /> Configuração centralizada</p>
+            <p className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-[#FFD500]" /> Integração com Discord</p>
+            <p className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-[#FFD500]" /> Operação em tempo real</p>
+          </div>
+          <span className="mt-7 inline-flex h-10 items-center justify-center rounded-lg bg-[#FFD500] px-4 text-sm font-bold text-black" onClick={(event) => { event.stopPropagation(); onStart(); }} role="button" tabIndex={-1}>
+            Conhecer solução
+          </span>
+        </div>
+      </button>
+    </Reveal>
+  );
+}
+
+function SectionHeading({ badge, subtitle, title }: { badge?: string; subtitle: string; title: string }) {
+  const titleClassName = title === "Como Funciona"
+    ? "como-funciona-title text-4xl text-white sm:text-5xl"
+    : "text-4xl font-black text-white sm:text-5xl";
+
+  return (
+    <Reveal className="mx-auto max-w-3xl text-center">
+      {badge ? <p className="mx-auto mb-4 inline-flex rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-medium text-[#FFEA70]">{badge}</p> : null}
+      <h2 className={titleClassName}>{title}</h2>
+      <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-[#B3B3B3]">{subtitle}</p>
+    </Reveal>
   );
 }
 
@@ -696,7 +966,6 @@ function StatCounter({
   value
 }: {
   decimals?: number;
-  delay?: number;
   displayOverride?: string;
   label: string;
   prefix?: string;
@@ -713,14 +982,12 @@ function StatCounter({
   );
 }
 
-function buildLandingStats(metrics: LandingMetrics, servers: PublicServer[]) {
-  const hasBotCount = metrics.botsCreated !== null || servers.length > 0;
-  const botsCreated = metrics.botsCreated ?? servers.length;
+function buildLandingStats(metrics: LandingMetrics, data: PublicConnectedServersResponse) {
   const responseTime = metrics.responseTimeMs;
   const uptime = metrics.uptimePercent;
 
   return [
-    { displayOverride: hasBotCount ? undefined : "ao vivo", label: "Bots Criados", prefix: "+", value: botsCreated },
+    { displayOverride: data.totalBots ? undefined : "ao vivo", label: "Bots Criados", prefix: "+", value: data.totalBots },
     {
       decimals: uptime !== null && uptime % 1 !== 0 ? 1 : 0,
       displayOverride: uptime === null ? "ao vivo" : undefined,
@@ -746,11 +1013,9 @@ function getLandingResponseTime(snapshot: PublicStatusSnapshot) {
   const services = getLandingServices(snapshot);
   const botService = services.find((service) => service.id === "discord-bot");
   if (typeof botService?.responseTimeMs === "number") return Math.max(0, Math.round(botService.responseTimeMs));
-
   const samples = services
     .map((service) => service.responseTimeMs)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-
   if (!samples.length) return null;
   return Math.max(0, Math.round(samples.reduce((total, value) => total + value, 0) / samples.length));
 }
@@ -760,10 +1025,86 @@ function getLandingUptime(snapshot: PublicStatusSnapshot) {
     .filter((service) => service.currentStatus !== "unknown")
     .map((service) => service.uptimePercentage)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-
   if (!samples.length) return null;
   const average = samples.reduce((total, value) => total + value, 0) / samples.length;
   return Math.round(average * 10) / 10;
+}
+
+function normalizeServersResponse(data: PublicConnectedServersResponse): PublicConnectedServersResponse {
+  return {
+    generatedAt: data.generatedAt,
+    servers: (data.servers ?? []).slice(0, 24).map((server) => ({
+      botNames: (server.botNames ?? []).slice(0, 6).map((name) => sanitizeText(name, 80)),
+      connectedBots: clampNumber(server.connectedBots, 0, 100),
+      guildId: sanitizeText(server.guildId, 40),
+      iconUrl: safePublicImageUrl(server.iconUrl),
+      memberCount: clampNumber(server.memberCount, 0, 1_000_000),
+      name: sanitizeText(server.name, 80) || "Servidor NexTech",
+      online: Boolean(server.online)
+    })),
+    totalBots: clampNumber(data.totalBots, 0, 1000),
+    totalUniqueServers: clampNumber(data.totalUniqueServers, 0, 1000)
+  };
+}
+
+function ensureThreeFeatures(features: PublicMarketingFeature[]) {
+  const normalized = features.slice(0, 3).map((feature) => ({
+    category: sanitizeText(feature.category, 40),
+    fullDescription: sanitizeText(feature.fullDescription, 280),
+    icon: sanitizeText(feature.icon, 32),
+    id: sanitizeText(feature.id, 64),
+    shortDescription: sanitizeText(feature.shortDescription, 140),
+    title: sanitizeText(feature.title, 70)
+  }));
+  const byId = new Map(normalized.map((feature) => [feature.id, feature]));
+  for (const fallback of fallbackFeatures) {
+    if (byId.size >= 3) break;
+    byId.set(fallback.id, fallback);
+  }
+  return [...byId.values()].slice(0, 3);
+}
+
+function iconForFeature(icon: string) {
+  const icons = {
+    bot: Bot,
+    gauge: Gauge,
+    headphones: Headphones,
+    monitor: MonitorCog,
+    shield: ShieldCheck
+  };
+  return icons[icon as keyof typeof icons] ?? Layers3;
+}
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(query.matches);
+    const handleChange = () => setReduced(query.matches);
+    query.addEventListener?.("change", handleChange);
+    return () => query.removeEventListener?.("change", handleChange);
+  }, []);
+
+  return reduced;
+}
+
+function sanitizeText(value: string | null | undefined, maxLength: number) {
+  return String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function safePublicImageUrl(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.hostname === "cdn.discordapp.com" || url.hostname === "media.discordapp.net" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? Math.round(value) : min));
 }
 
 function formatStatNumber(value: number, decimals: number) {
@@ -781,46 +1122,13 @@ function formatPercent(value: number | null, fallback: string) {
   return value === null ? fallback : `${formatStatNumber(value, value % 1 === 0 ? 0 : 1)}%`;
 }
 
-function PublicServerMarquee({ servers }: { servers: PublicServer[] }) {
-  if (!servers.length) return null;
-  const items = servers.slice(0, 10);
-
-  return (
-    <section aria-label="Bots cadastrados" className="relative border-y border-[#FFD500]/12 bg-black/30 py-10">
-      <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[.22em] text-[#FFD500]">
-        {servers.length} {servers.length === 1 ? "bot cadastrado" : "bots cadastrados na Nex Tech"}
-      </p>
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-8 px-4 sm:gap-10">
-        <PublicServerGroup servers={items} />
-      </div>
-    </section>
-  );
-}
-
-function PublicServerGroup({ servers }: { servers: PublicServer[] }) {
-  return (
-    <>
-      {servers.map((server, index) => (
-        <div className="flex w-36 shrink-0 flex-col items-center text-center" key={`${server.botId ?? server.id}-${index}`}>
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#FFD500]/28 bg-[#141414]">
-            {server.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={server.iconUrl} /> : <Server aria-hidden="true" className="h-6 w-6 text-[#FFD500]" />}
-          </div>
-          <p className="mt-3 w-full truncate text-sm font-semibold text-zinc-200" title={server.botName ?? server.name}>{server.botName ?? server.name}</p>
-          <p className="mt-1 w-full truncate text-xs font-medium text-[#FFD500]" title={server.name}>{server.name}</p>
-          <p className="mt-1 text-[11px] font-medium text-zinc-400">{server.memberCount.toLocaleString("pt-BR")} membros</p>
-        </div>
-      ))}
-    </>
-  );
-}
-
 function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: (id: string) => void }) {
   return (
     <footer className="border-t border-[#FFD500]/15 bg-[#050505] px-4 py-12 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
         <div>
           <button className="text-2xl font-black text-[#FFD500]" onClick={() => onNavigate("inicio")} type="button">Nex Tech</button>
-          <p className="mt-3 text-sm text-zinc-400">Desde {currentYear} — Transforma</p>
+          <p className="mt-3 text-sm text-zinc-400">Desde {currentYear}</p>
           <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">Plataforma para criação, controle e gerenciamento de bots conectados ao Discord.</p>
         </div>
         <FooterColumn title="Navegação" links={[["Início", "inicio"], ["Soluções", "solucoes"], ["Status", "status"], ["Documentação", "docs"], ["Dashboard", "inicio"]]} onNavigate={onNavigate} />
@@ -852,6 +1160,6 @@ function FooterColumn({ links, onNavigate, title }: { links: Array<[string, stri
   );
 }
 
-function Reveal({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+function Reveal({ children, className, delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
   return <div className={className} style={delay ? { transitionDelay: `${delay * 1000}ms` } : undefined}>{children}</div>;
 }

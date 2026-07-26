@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getPublicConnectedServers, getPublicMarketingFeatures } from "../services/publicLandingService";
 import { getPublicStatusSnapshot } from "../services/publicStatusService";
 
 export const publicStatusRouter = Router();
@@ -6,6 +7,24 @@ export const publicStatusRouter = Router();
 publicStatusRouter.get("/status", async (_req, res, next) => {
   try {
     return res.json(await getPublicStatusSnapshot());
+  } catch (error) {
+    return next(publicStatusError(error));
+  }
+});
+
+publicStatusRouter.get("/connected-servers", async (_req, res, next) => {
+  try {
+    res.setHeader("Cache-Control", "public, max-age=20, stale-while-revalidate=40");
+    return res.json(await getPublicConnectedServers());
+  } catch (error) {
+    return next(publicStatusError(error));
+  }
+});
+
+publicStatusRouter.get("/marketing-features", async (_req, res, next) => {
+  try {
+    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+    return res.json(await getPublicMarketingFeatures());
   } catch (error) {
     return next(publicStatusError(error));
   }
