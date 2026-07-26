@@ -39,9 +39,13 @@ type GuildSystemEmojiCache = {
 
 const runtimeEmojis = new Map<string, RuntimeEmoji>();
 const guildEmojiCaches = new Map<string, GuildSystemEmojiCache>();
-const fixedSystemEmojiKeyById = new Map<string, SystemEmojiKey>(
-  Object.entries(FIXED_SYSTEM_EMOJI_BY_KEY).map(([key, item]) => [item.emojiId, key as SystemEmojiKey])
-);
+const fixedSystemEmojiKeyById = new Map<string, SystemEmojiKey>();
+
+for (const [key, item] of Object.entries(FIXED_SYSTEM_EMOJI_BY_KEY) as Array<[SystemEmojiKey, (typeof FIXED_SYSTEM_EMOJI_BY_KEY)[SystemEmojiKey]]>) {
+  if (!fixedSystemEmojiKeyById.has(item.emojiId)) {
+    fixedSystemEmojiKeyById.set(item.emojiId, key);
+  }
+}
 
 const unicodeReplacementPairs: Array<[RegExp, SystemEmojiKey]> = [
   [/✅|✔️|✔/g, "visto"],

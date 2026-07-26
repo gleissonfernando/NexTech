@@ -1,10 +1,10 @@
 import { MessageFlags, type GuildMember, type PartialGuildMember } from "discord.js";
 import { env } from "../config/env";
-import { normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import type { BotContext, MemberPanelSection, PanelImageSettings } from "../types";
 import { ensureGuildEmojiCache, resolveComponentEmoji } from "../utils/componentEmoji";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import { buildV2Container, renderPanelBlocks, resolvePanelImageUrl } from "./panelVisualRenderer";
+import { replaceSystemEmojis } from "./systemEmojiService";
 
 type MemberPanelMode = "welcome" | "leave";
 
@@ -295,21 +295,21 @@ function normalizePanelSections(
     .slice(0, 8)
     .map((section) => ({
       description: renderTemplate(section.description, variables),
-      emoji: section.emoji ? resolvePanelEmoji(member.guild, section.emoji) : "",
+      emoji: section.emoji ? resolveMemberPanelEmoji(member.guild, section.emoji) : "",
       title: renderTemplate(section.title, variables)
     }))
     .filter((section) => section.title || section.description);
 }
 
-function resolvePanelEmoji(memberGuild: GuildMember["guild"], value: string) {
+export function resolveMemberPanelEmoji(memberGuild: GuildMember["guild"], value: string) {
   const normalized = value.trim();
   if (!normalized) return "";
 
-  const fromGuild = resolveComponentEmoji(memberGuild, normalized, "");
-  if (fromGuild) return fromGuild;
+  const systemInput = /^:/.test(normalized) || /^<a?:/i.test(normalized) ? normalized : `:${normalized}:`;
+  const fromSystem = replaceSystemEmojis(systemInput, memberGuild, memberGuild.client);
+  if (fromSystem !== systemInput) return fromSystem;
 
-  const fixed = normalizeFixedSystemEmojiText(/^:/.test(normalized) || /^<a?:/i.test(normalized) ? normalized : `:${normalized}:`);
-  return resolveComponentEmoji(memberGuild, fixed, "");
+  return resolveComponentEmoji(memberGuild, normalized, "");
 }
 
 function resolveImageUrl(value: string | null) {

@@ -1954,7 +1954,7 @@ function evaluationAlreadySubmittedPayload(request: PolicePromotionRequest, prom
 }
 
 function evaluationStepButton(requestId: string, draft: EvaluationQuestionnaireDraft, step: EvaluationStep, label: string, guild: Guild) {
-  const completed = Boolean(evaluationStepAnswerFor(draft, step));
+  const completed = isEvaluationStepCompleted(draft, step);
   const active = draft.awaitingStep === step || draft.pending?.step === step;
   const captureOpen = Boolean(draft.awaitingStep || draft.pending);
   const available = !captureOpen && nextAvailableEvaluationStep(draft) === step;
@@ -1963,7 +1963,15 @@ function evaluationStepButton(requestId: string, draft: EvaluationQuestionnaireD
     .setEmoji(systemComponentEmoji(completed ? "visto" : active ? "relogio" : available ? "prancheta" : "porta", guild))
     .setLabel(label)
     .setStyle(completed ? ButtonStyle.Success : active ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    .setDisabled(completed || active || !available);
+    .setDisabled(isEvaluationStepButtonDisabled(draft, step));
+}
+
+export function isEvaluationStepButtonDisabled(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
+  const completed = isEvaluationStepCompleted(draft, step);
+  const active = draft.awaitingStep === step || draft.pending?.step === step;
+  const captureOpen = Boolean(draft.awaitingStep || draft.pending);
+  const available = !captureOpen && nextAvailableEvaluationStep(draft) === step;
+  return completed || active || !available;
 }
 
 function evaluationStepModal(requestId: string, step: EvaluationStep, draft: EvaluationQuestionnaireDraft) {
