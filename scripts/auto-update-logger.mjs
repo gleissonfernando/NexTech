@@ -228,35 +228,33 @@ function looksLikeModuleLabel(value) {
 function buildDiscordPayload({ analysis, bot, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#FFD500");
   const bannerUrl = readConfigValue("UPDATE_PANEL_BANNER_URL");
-  const footer = readConfigValue("UPDATE_PANEL_FOOTER") || "Atualização publicada automaticamente pela NextTech.";
+  const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
+  const footer = readConfigValue("UPDATE_PANEL_FOOTER") || `Atenciosamente, ${appName} 💜`;
+  const observation = readConfigValue("UPDATE_PANEL_OBSERVATION")
+    || "Atualização publicada automaticamente com correções, melhorias e ajustes gerais do sistema.";
+  const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const sections = [
-    ["✨ Novidades", analysis.summary.novidades],
-    ["🔧 Melhorias", analysis.summary.melhorias],
-    ["🐞 Correções", analysis.summary.correcoes],
-    ["⚙️ Alterações Técnicas", analysis.summary.tecnicas],
-    ["📦 Recursos", analysis.summary.recursos],
-    ["🗑 Recursos Removidos", analysis.summary.removidos]
-  ].filter(([, items]) => items.length);
+    ["🔧 Correções", analysis.summary.correcoes],
+    ["🤖 Melhorias", analysis.summary.melhorias],
+    ["🆕 Novidades", [...analysis.summary.novidades, ...analysis.summary.recursos]],
+    ["🗑 Recursos Removidos", analysis.summary.removidos],
+    ...(showTechnical ? [["⚙️ Alterações Técnicas", analysis.summary.tecnicas]] : [])
+  ].map(([title, items]) => [title, unique(items).slice(0, 12)]).filter(([, items]) => items.length);
+
   if (!sections.length) {
-    sections.push(["🔔 Atualização", ["Atualização operacional publicada automaticamente."]]);
+    sections.push(["🤖 Melhorias", ["Atualização operacional publicada automaticamente."]]);
   }
+
   const content = [
-    `# 🚀 ${escapeMarkdown(readConfigValue("UPDATE_APP_NAME") || "NEXTTECH")}`,
-    `**Versão:** \`${release.version}\``,
-    `**Data:** ${date.toLocaleDateString("pt-BR")}`,
-    `**Hora:** ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
-    `**Alterações detectadas:** ${release.changeCount}`,
-    bot?.username ? `**Bot:** ${escapeMarkdown(bot.username)}` : null,
+    `## ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
     "",
-    ...sections.flatMap(([title, items]) => [
-      "━━━━━━━━━━━━━━━━━━",
-      `## ${title}`,
-      ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 180)}`)
-    ]),
-    "━━━━━━━━━━━━━━━━━━",
-    `-# ${escapeMarkdown(footer)}`
-  ].filter(Boolean).join("\n").slice(0, 3900);
+    ...sections.flatMap(([title, items]) => formatUpdateSection(title, items)),
+    "📣 **Observação**",
+    `• ${escapeMarkdown(observation).slice(0, 260)}`,
+    "",
+    `-# **${escapeMarkdown(footer)}**`
+  ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
 
   const components = [];
   if (bannerUrl) {
@@ -269,6 +267,22 @@ function buildDiscordPayload({ analysis, bot, release }) {
     components: [{ type: 17, accent_color: color, components }],
     flags: 32768
   };
+}
+
+function formatUpdateSection(title, items) {
+  return [
+    `**${title}**`,
+    ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
+    ""
+  ];
+}
+
+function formatUpdateDate(date) {
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
 }
 
 async function fetchDiscordBot(token) {
