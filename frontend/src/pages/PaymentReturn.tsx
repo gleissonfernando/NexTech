@@ -90,12 +90,12 @@ export function PaymentReturnPage({ status }: PaymentReturnPageProps) {
     setLoadingOrder(true);
     try {
       const next = await retryPaymentOrder(order.id);
-      if (next.checkoutUrl) {
-        window.location.assign(next.checkoutUrl);
+      if (next.pixCode || next.qrCode) {
+        window.location.assign(`/pagamento/pix/${encodeURIComponent(next.id)}`);
         return;
       }
-      if (next.pixCode || next.qrCode || next.providerOrderId) {
-        window.location.assign(`/pagamento/pix/${encodeURIComponent(next.id)}`);
+      if (next.checkoutUrl) {
+        window.location.assign(next.checkoutUrl);
         return;
       }
       setOrder(next);

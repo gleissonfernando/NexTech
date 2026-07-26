@@ -6,9 +6,11 @@ import {
   getMercadoPagoRuntimeConfig,
   getPagBankRuntimeConfig,
   getStripeRuntimeConfig,
+  getAsaasRuntimeConfig,
   requireMercadoPagoOperational,
   requirePagBankOperational,
-  requireStripeOperational
+  requireStripeOperational,
+  requireAsaasOperational
 } from "../config/payments";
 import type {
   MongoBotCredential,
@@ -36,6 +38,14 @@ import {
   stripeSessionToProviderPayment,
   validateStripeWebhookSignature
 } from "./stripeService";
+import {
+  AsaasPaymentService,
+  asaasPaymentToProviderPayment,
+  validateAsaasWebhookToken,
+  type AsaasPayment
+} from "./payments/asaasPaymentService";
+import { PaymentService, checkoutMethodToPaymentMethod } from "./payments/paymentService";
+import { PAYMENT_METHODS } from "./payments/types";
 import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 
@@ -210,6 +220,13 @@ export type StripeWebhookInput = {
   rawBody: Buffer;
   requestId?: string | null;
   signature?: string | null;
+};
+
+export type AsaasWebhookInput = {
+  body: unknown;
+  eventId?: string | null;
+  requestId?: string | null;
+  webhookToken?: string | null;
 };
 
 const FEATURE_SEEDS: SavePlanFeatureInput[] = [
@@ -584,7 +601,7 @@ async function createCheckoutInterestForBuyer(
     throw httpError("Plano não encontrado.", 404);
   }
 
-  const activeGateway = await resolveActivePaymentManager();
+  const activeGateway = resolvePaymentGatewayForCheckoutMethod(options.paymentMethod);
   const selectedProvider = activeGateway.provider;
   const paymentsEnabled = activeGateway.enabled;
   const now = new Date();
@@ -609,11 +626,9 @@ async function createCheckoutInterestForBuyer(
   const checkoutExpiresAt = shouldCreateCheckout
     ? new Date(now.getTime() + activeGateway.checkoutExpirationMinutes * 60_000)
     : null;
-  const reusableMethodQuery = selectedProvider === "stripe"
-    ? { checkoutUrl: { $ne: null }, paymentMethod: options.paymentMethod === "pix" ? "pix" : "card" }
-    : options.paymentMethod === "pix"
-      ? { pixCode: { $ne: null } }
-      : { checkoutUrl: { $ne: null } };
+  const reusableMethodQuery = options.paymentMethod === "pix"
+    ? { paymentMethod: "pix", $or: [{ pixCode: { $ne: null } }, { checkoutUrl: { $ne: null } }] }
+    : { checkoutUrl: { $ne: null }, paymentMethod: { $in: ["card", "credit_card", "debit_card"] } };
   const reusableOrder = options.reusePendingOrder && paymentsEnabled && shouldCreateCheckout
     ? await paymentOrders.findOne({
       amountInCents,
@@ -912,7 +927,8 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
   if (!plan) throw httpError("Plano do pedido não encontrado.", 404);
 
   const now = new Date();
-  const activeGateway = await resolveActivePaymentManager();
+  const retryPaymentMethod = order.pixCode || order.paymentMethod === "pix" || order.provider === "asaas" ? "pix" : "checkout";
+  const activeGateway = resolvePaymentGatewayForCheckoutMethod(retryPaymentMethod);
   const retryOrder: MongoPaymentOrder = {
     ...order,
     checkoutUrl: null,
@@ -932,13 +948,14 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
     email: auth.user.email ?? null,
     name: auth.user.globalName || auth.user.username || null,
     userId: auth.user.id || auth.user.discordId
-  }, order.pixCode || order.paymentMethod === "pix" ? "pix" : "checkout");
+  }, retryPaymentMethod);
   const statusHistory = appendStatusHistory(retryOrder, "pending", `retry_${checkout.statusSource}`);
   const updated = await paymentOrders.findOneAndUpdate(
     { _id: order._id, discordId: auth.user.discordId },
     {
       $set: {
         checkoutUrl: checkout.checkoutUrl,
+        environment: retryOrder.environment,
         expiresAt: retryOrder.expiresAt,
         idempotencyKey: retryOrder.idempotencyKey,
         mercadoPagoPaymentId: checkout.mercadoPagoPaymentId,
@@ -946,6 +963,7 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
         paymentMethod: checkout.paymentMethod,
         paymentType: checkout.paymentType,
         pixCode: checkout.pixCode,
+        provider: retryOrder.provider,
         providerOrderId: checkout.providerOrderId,
         qrCode: checkout.qrCode,
         rawProviderStatus: checkout.rawProviderStatus,
@@ -985,7 +1003,8 @@ export async function retryPublicPaymentOrder(orderId: string, actor: PlanActor)
   if (!plan) throw httpError("Plano do pedido não encontrado.", 404);
 
   const now = new Date();
-  const activeGateway = await resolveActivePaymentManager();
+  const retryPaymentMethod = order.pixCode || order.paymentMethod === "pix" || order.provider === "asaas" ? "pix" : "checkout";
+  const activeGateway = resolvePaymentGatewayForCheckoutMethod(retryPaymentMethod);
   const retryOrder: MongoPaymentOrder = {
     ...order,
     checkoutUrl: null,
@@ -1005,13 +1024,14 @@ export async function retryPublicPaymentOrder(orderId: string, actor: PlanActor)
     email: null,
     name: null,
     userId: order.userId
-  }, order.pixCode || order.paymentMethod === "pix" ? "pix" : "checkout");
+  }, retryPaymentMethod);
   const statusHistory = appendStatusHistory(retryOrder, "pending", `public_retry_${checkout.statusSource}`);
   const updated = await paymentOrders.findOneAndUpdate(
     { _id: order._id, discordId: order.discordId },
     {
       $set: {
         checkoutUrl: checkout.checkoutUrl,
+        environment: retryOrder.environment,
         expiresAt: retryOrder.expiresAt,
         idempotencyKey: retryOrder.idempotencyKey,
         mercadoPagoPaymentId: checkout.mercadoPagoPaymentId,
@@ -1019,6 +1039,7 @@ export async function retryPublicPaymentOrder(orderId: string, actor: PlanActor)
         paymentMethod: checkout.paymentMethod,
         paymentType: checkout.paymentType,
         pixCode: checkout.pixCode,
+        provider: retryOrder.provider,
         providerOrderId: checkout.providerOrderId,
         qrCode: checkout.qrCode,
         rawProviderStatus: checkout.rawProviderStatus,
@@ -1101,6 +1122,22 @@ export async function reconcilePaymentOrder(orderId: string, actor: PlanActor) {
     }
     await writePlanAudit(actor, "payment_reconciled", "payment", order._id, {
       provider: "stripe",
+      providerOrderId: order.providerOrderId,
+      status: updatedOrder.status
+    });
+    return { order: toPaymentOrderDto(updatedOrder), reconciled: true };
+  }
+
+  if (order.provider === "asaas" && order.providerOrderId) {
+    const asaasConfig = requireAsaasOperational({ allowDisabled: true });
+    const service = new AsaasPaymentService(asaasConfig);
+    const payment = await service.getPayment(order.providerOrderId);
+    const updatedOrder = await applyAsaasPaymentToOrder(order, payment, "asaas_admin_reconcile");
+    if (updatedOrder.status === "approved") {
+      await activatePaidOrderOnce(updatedOrder, plan, actor, "asaas_admin_reconcile");
+    }
+    await writePlanAudit(actor, "payment_reconciled", "payment", order._id, {
+      provider: "asaas",
       providerOrderId: order.providerOrderId,
       status: updatedOrder.status
     });
@@ -2379,6 +2416,179 @@ export async function processStripeWebhook(input: StripeWebhookInput) {
   }
 }
 
+export async function processAsaasWebhook(input: AsaasWebhookInput) {
+  const { paymentEvents, paymentOrders, plans } = await getMongoCollections();
+  const asaasConfig = requireAsaasOperational({ allowDisabled: true });
+  const now = new Date();
+  const payload = isRecord(input.body) ? input.body : {};
+  const paymentPayload = isRecord(payload.payment) ? payload.payment as unknown as AsaasPayment : null;
+  const paymentId = readString(paymentPayload?.id);
+  const eventType = readString(payload.event) ?? readString(payload.type) ?? readString(paymentPayload?.status) ?? "asaas.webhook";
+  const eventId = input.eventId ?? readString(payload.id) ?? (paymentId ? `${eventType}:${paymentId}` : input.requestId ?? null);
+  const payloadHash = sha256(JSON.stringify(payload));
+  const eventDoc: MongoPaymentEvent = {
+    _id: randomUUID(),
+    attempts: 1,
+    createdAt: now,
+    environment: asaasConfig.environment,
+    eventId,
+    eventType,
+    lastError: null,
+    orderId: null,
+    paymentId,
+    payloadHash,
+    processedAt: null,
+    provider: "asaas",
+    requestId: input.requestId ?? null,
+    result: null,
+    signatureValid: false,
+    status: "received"
+  };
+  const existingProcessed = eventId
+    ? await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, eventId, status: "processed" })
+    : await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, payloadHash, status: "processed" });
+
+  if (existingProcessed) {
+    return { duplicate: true, event: mapPaymentEvent(existingProcessed), processed: true };
+  }
+
+  const insertedEvent = await paymentEvents.insertOne(eventDoc).then(() => eventDoc);
+
+  try {
+    const signatureValid = validateAsaasWebhookToken(asaasConfig, input.webhookToken ?? null);
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { signatureValid } });
+    if (!signatureValid) {
+      await markPaymentEvent(insertedEvent._id, "failed", "Token webhook Asaas inválido.");
+      throw Object.assign(new Error("Token webhook Asaas inválido."), { statusCode: 401 });
+    }
+
+    if (!paymentPayload) {
+      await markPaymentEvent(insertedEvent._id, "ignored", `Evento Asaas ignorado sem payment: ${eventType}.`);
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, status: "ignored", result: `Evento Asaas ignorado sem payment: ${eventType}.`, processedAt: new Date() }),
+        processed: false
+      };
+    }
+
+    const payment = asaasPaymentToProviderPayment(paymentPayload, paymentId ?? undefined);
+    const externalReference = payment.externalReference;
+    const order = externalReference
+      ? await paymentOrders.findOne({ _id: externalReference })
+      : payment.id
+        ? await paymentOrders.findOne({ provider: "asaas", providerOrderId: payment.id })
+        : null;
+
+    if (!order) {
+      await markPaymentEvent(insertedEvent._id, "ignored", "Pedido Asaas interno não encontrado.", null);
+      return {
+        duplicate: false,
+        event: mapPaymentEvent({ ...insertedEvent, orderId: null, status: "ignored", result: "Pedido Asaas interno não encontrado.", processedAt: new Date() }),
+        processed: false
+      };
+    }
+
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { orderId: order._id, paymentId: payment.id } });
+    const updatedOrder = await applyAsaasPaymentToOrder(order, payment, "asaas_webhook");
+    let subscription = null;
+
+    if (updatedOrder.status === "approved" && !isPendingPaymentDiscordId(updatedOrder.discordId)) {
+      const plan = await plans.findOne({ _id: order.planId });
+      if (!plan) {
+        await markPaymentEvent(insertedEvent._id, "failed", "Plano do pedido não encontrado.", order._id);
+        throw httpError("Plano do pedido não encontrado.", 404);
+      }
+      subscription = await activatePaidOrderOnce(updatedOrder, plan, systemPaymentActor(), "asaas_webhook");
+    } else if (updatedOrder.status === "approved") {
+      await writePlanAudit(systemPaymentActor(), "payment_approved_waiting_discord_connection", "payment", order._id, {
+        asaasPaymentId: payment.id,
+        provider: "asaas"
+      });
+    }
+
+    await markPaymentEvent(insertedEvent._id, "processed", `Asaas processado: ${payment.rawStatus}.`, order._id);
+    await writePlanAudit(systemPaymentActor(), "asaas_webhook_processed", "payment", order._id, {
+      asaasPaymentId: payment.id,
+      paymentMethod: payment.method,
+      status: payment.rawStatus
+    });
+
+    return {
+      duplicate: false,
+      event: mapPaymentEvent({ ...insertedEvent, orderId: order._id, paymentId: payment.id, processedAt: new Date(), result: `Asaas processado: ${payment.rawStatus}.`, status: "processed" }),
+      order: toPaymentOrderDto(updatedOrder),
+      processed: true,
+      subscription
+    };
+  } catch (error) {
+    if (!("statusCode" in Object(error))) {
+      await markPaymentEvent(insertedEvent._id, "failed", error instanceof Error ? error.message : String(error));
+    }
+    throw error;
+  }
+}
+
+async function applyAsaasPaymentToOrder(
+  order: MongoPaymentOrder,
+  payment: ProviderPayment,
+  source: string
+) {
+  const { paymentOrders } = await getMongoCollections();
+  const asaasConfig = getAsaasRuntimeConfig();
+
+  if (payment.externalReference && payment.externalReference !== order.externalReference && payment.externalReference !== order._id) {
+    throw httpError("Referencia do pagamento Asaas divergente.", 409);
+  }
+  if (order.provider !== "asaas") {
+    throw httpError("Provider do pedido não é Asaas.", 409);
+  }
+  if (order.environment && order.environment !== asaasConfig.environment) {
+    throw httpError("Ambiente da ordem Asaas divergente.", 409);
+  }
+
+  if (payment.amountInCents !== order.amountInCents || payment.currency !== order.currency) {
+    await paymentOrders.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          notes: "Pagamento Asaas recusado por divergencia de valor ou moeda.",
+          providerOrderId: payment.id ?? order.providerOrderId,
+          rawProviderStatus: payment.rawStatus,
+          status: "rejected",
+          statusHistory: appendStatusHistory(order, "rejected", `${source}_amount_mismatch`),
+          webhookSafeResponse: safeAsaasWebhookResponse(payment.raw),
+          updatedAt: new Date()
+        }
+      }
+    );
+    throw httpError("Valor ou moeda divergente.", 409);
+  }
+
+  const nextStatus = providerStatusToOrderStatus(payment.status);
+  const paidAt = nextStatus === "approved"
+    ? order.paidAt ?? readAsaasPaidAt(payment.raw) ?? new Date()
+    : order.paidAt ?? null;
+  const update: Partial<MongoPaymentOrder> = {
+    approvedAt: nextStatus === "approved" ? order.approvedAt ?? paidAt : order.approvedAt ?? null,
+    cancelledAt: nextStatus === "cancelled" ? order.cancelledAt ?? new Date() : order.cancelledAt ?? null,
+    paidAt,
+    paymentMethod: payment.method,
+    paymentType: payment.paymentType,
+    providerOrderId: payment.id ?? order.providerOrderId,
+    rawProviderStatus: payment.rawStatus,
+    refundedAt: nextStatus === "refunded" ? order.refundedAt ?? new Date() : order.refundedAt ?? null,
+    rejectedAt: nextStatus === "rejected" ? order.rejectedAt ?? new Date() : order.rejectedAt ?? null,
+    status: nextStatus,
+    statusDetail: payment.statusDetail,
+    statusHistory: appendStatusHistory(order, nextStatus, source),
+    webhookSafeResponse: safeAsaasWebhookResponse(payment.raw),
+    updatedAt: new Date()
+  };
+
+  await paymentOrders.updateOne({ _id: order._id }, { $set: update });
+  return (await paymentOrders.findOne({ _id: order._id })) ?? { ...order, ...update, status: nextStatus };
+}
+
 async function applyStripePaymentToOrder(
   order: MongoPaymentOrder,
   payment: ProviderPayment,
@@ -3101,7 +3311,9 @@ async function ensurePaymentSettings(): Promise<MongoPaymentSettings> {
       ? pagBankConfig.publicKey
       : envProvider === "stripe"
         ? stripeConfig.publishableKey
-        : mercadoPagoConfig.publicKey,
+        : envProvider === "asaas"
+          ? null
+          : mercadoPagoConfig.publicKey,
     secretEncrypted: null,
     successRedirectUrl: env.MERCADOPAGO_SUCCESS_URL || buildAppUrl("/pagamento/sucesso"),
     supportDiscordUrl: null,
@@ -3120,15 +3332,58 @@ async function createPlanPayment(
   buyer: CheckoutBuyer,
   paymentMethod: CheckoutPaymentMethod
 ): Promise<PlanPaymentCreationResult> {
-  if (order.provider === "pagbank") {
-    return createPagBankPlanPayment(plan, order, buyer, paymentMethod);
+  const method = checkoutMethodToPaymentMethod(paymentMethod);
+  if (method === PAYMENT_METHODS.PIX && order.provider !== "asaas") {
+    throw httpError("Provider Pix deve ser Asaas.", 400);
+  }
+  if (method !== PAYMENT_METHODS.PIX && order.provider !== "stripe") {
+    throw httpError("Provider de cartão deve ser Stripe.", 400);
   }
 
-  if (order.provider === "stripe") {
-    return createStripePlanPayment(plan, order, buyer, paymentMethod);
-  }
+  const settings = await ensurePaymentSettings();
+  const service = new PaymentService();
+  const payment = await service.createPayment({
+    amountInCents: order.amountInCents,
+    cancelUrl: settings.cancelRedirectUrl ?? settings.failureRedirectUrl ?? getStripeRuntimeConfig().cancelUrl ?? buildAppUrl("/pagamento/falha"),
+    currency: plan.currency,
+    description: plan.shortDescription || plan.description || plan.name,
+    expiresAt: order.expiresAt ?? null,
+    idempotencyKey: order.idempotencyKey,
+    itemId: plan._id,
+    itemTitle: plan.name,
+    metadata: {
+      business: "nextech",
+      discord_id: buyer.discordId,
+      payment_order_id: order._id,
+      payment_method: method,
+      plan_id: plan._id,
+      plan_slug: plan.slug
+    },
+    method,
+    notificationUrl: method === PAYMENT_METHODS.PIX
+      ? getAsaasRuntimeConfig().webhookUrl || buildAppUrl("/api/payments/asaas/webhook")
+      : getStripeRuntimeConfig().webhookUrl || buildAppUrl("/api/payments/stripe/webhook"),
+    orderId: order._id,
+    payer: buyer,
+    successUrl: method === PAYMENT_METHODS.PIX
+      ? settings.approvedRedirectUrl ?? settings.successRedirectUrl ?? buildAppUrl(`/pagamento/sucesso?external_reference=${encodeURIComponent(order._id)}`)
+      : stripeSuccessUrl(settings.approvedRedirectUrl ?? settings.successRedirectUrl ?? getStripeRuntimeConfig().successUrl ?? buildAppUrl("/pagamento/sucesso"))
+  });
 
-  return createMercadoPagoPlanPayment(plan, order, buyer, paymentMethod);
+  return {
+    checkoutUrl: payment.checkoutUrl,
+    mercadoPagoPaymentId: null,
+    notes: payment.notes,
+    paymentMethod: payment.paymentMethod,
+    paymentType: payment.paymentType,
+    pixCode: payment.pixCode,
+    providerOrderId: payment.providerOrderId,
+    qrCode: payment.qrCode,
+    rawProviderStatus: payment.rawProviderStatus,
+    sandboxCheckoutUrl: payment.sandboxCheckoutUrl,
+    statusDetail: payment.statusDetail,
+    statusSource: payment.statusSource
+  };
 }
 
 async function createMercadoPagoPlanCheckoutPreference(
@@ -3850,6 +4105,26 @@ function safeStripeWebhookResponse(raw: Record<string, unknown>) {
   };
 }
 
+function safeAsaasWebhookResponse(raw: Record<string, unknown>) {
+  return {
+    billingType: readString(raw.billingType),
+    confirmedDate: readString(raw.confirmedDate),
+    externalReference: readString(raw.externalReference),
+    id: readString(raw.id),
+    invoiceUrl: readString(raw.invoiceUrl),
+    paymentDate: readString(raw.paymentDate),
+    status: readString(raw.status),
+    value: typeof raw.value === "number" ? raw.value : Number(raw.value) || null
+  };
+}
+
+function readAsaasPaidAt(raw: Record<string, unknown>) {
+  const value = readString(raw.confirmedDate) ?? readString(raw.paymentDate) ?? readString(raw.clientPaymentDate);
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function isMercadoPagoOrderWebhook(payload: Record<string, unknown>, resourceType?: string | null) {
   const type = resourceType?.trim().toLowerCase() || readString(payload.type)?.toLowerCase();
   return type === "order";
@@ -4094,9 +4369,44 @@ function resolveStoredPaymentProvider(provider: MongoPaymentProvider): "mercadop
   return "disabled";
 }
 
+function resolvePaymentGatewayForCheckoutMethod(paymentMethod: CheckoutPaymentMethod) {
+  if (isPaymentDisabledByEnv()) {
+    return {
+      checkoutExpirationMinutes: env.PIX_EXPIRATION_MINUTES,
+      enabled: false,
+      environment: "test" as const,
+      provider: "disabled" as const
+    };
+  }
+
+  if (paymentMethod === "pix") {
+    const asaasConfig = getAsaasRuntimeConfig();
+    return {
+      asaasConfig,
+      checkoutExpirationMinutes: asaasConfig.checkoutExpirationMinutes,
+      enabled: asaasConfig.status === "operational",
+      environment: asaasConfig.environment,
+      provider: "asaas" as const
+    };
+  }
+
+  const stripeConfig = getStripeRuntimeConfig();
+  return {
+    checkoutExpirationMinutes: stripeConfig.checkoutExpirationMinutes,
+    enabled: stripeConfig.status === "operational",
+    environment: stripeConfig.environment,
+    provider: "stripe" as const,
+    stripeConfig
+  };
+}
+
 function resolveEnvPaymentProvider(): MongoPaymentProvider {
   if (isPaymentDisabledByEnv()) {
     return "disabled";
+  }
+
+  if (env.PAYMENT_PROVIDER === "asaas") {
+    return "asaas";
   }
 
   if (env.PAYMENT_PROVIDER === "pagbank") {
@@ -4120,6 +4430,9 @@ function isResolvedPaymentProviderEnabled(provider: MongoPaymentProvider, mercad
   }
   if (provider === "stripe") {
     return getStripeRuntimeConfig().enabled;
+  }
+  if (provider === "asaas") {
+    return getAsaasRuntimeConfig().enabled;
   }
   return provider === "mercadopago" && mercadoPagoConfig.enabled;
 }

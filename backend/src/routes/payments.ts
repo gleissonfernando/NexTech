@@ -10,6 +10,7 @@ import {
   getPublicPaymentOrderStatus,
   listAdminPaymentOrders,
   listMyPaymentOrders,
+  processAsaasWebhook,
   processPagBankWebhook,
   processMercadoPagoWebhook,
   processStripeWebhook,
@@ -25,7 +26,8 @@ export const paymentWebhooksRouter = Router();
 export const paymentAdminRouter = Router();
 
 const checkoutSchema = z.object({
-  paymentMethod: z.enum(["checkout", "pix"]).default("checkout"),
+  paymentMethod: z.enum(["checkout", "pix", "card", "credit_card", "debit_card"]).default("checkout")
+    .transform((value) => value === "pix" ? "pix" as const : "checkout" as const),
   planId: z.string().min(1).max(120)
 });
 
@@ -134,10 +136,12 @@ paymentsRouter.post("/mercadopago/webhook", handleMercadoPagoWebhook);
 paymentsRouter.post("/mercado-pago/webhook", handleMercadoPagoWebhook);
 paymentsRouter.post("/pagbank/webhook", handlePagBankWebhook);
 paymentsRouter.post("/stripe/webhook", handleStripeWebhook);
+paymentsRouter.post("/asaas/webhook", handleAsaasWebhook);
 paymentWebhooksRouter.post("/mercadopago", handleMercadoPagoWebhook);
 paymentWebhooksRouter.post("/mercado-pago", handleMercadoPagoWebhook);
 paymentWebhooksRouter.post("/pagbank", handlePagBankWebhook);
 paymentWebhooksRouter.post("/stripe", handleStripeWebhook);
+paymentWebhooksRouter.post("/asaas", handleAsaasWebhook);
 
 paymentAdminRouter.use(requireAuth, requireAdminAccess);
 
@@ -217,6 +221,28 @@ async function handleStripeWebhook(req: Request, res: Response, next: NextFuncti
       rawBody,
       requestId: req.get("request-id") ?? req.get("x-request-id") ?? null,
       signature: req.get("stripe-signature") ?? null
+    });
+
+    return res.status(result.processed || result.duplicate ? 200 : 202).json({
+      duplicate: result.duplicate,
+      processed: result.processed
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function handleAsaasWebhook(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await processAsaasWebhook({
+      body: req.body,
+      eventId: readQuery(req.query.event_id) ?? readQuery(req.query.id),
+      requestId: req.get("x-request-id") ?? null,
+      webhookToken: req.get("x-webhook-token")
+        ?? req.get("x-asaas-webhook-token")
+        ?? req.get("asaas-access-token")
+        ?? req.get("access_token")
+        ?? readQuery(req.query.token)
     });
 
     return res.status(result.processed || result.duplicate ? 200 : 202).json({

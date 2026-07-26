@@ -79,12 +79,12 @@ export function PlansPanel() {
     try {
       const result = await createPlanCheckoutInterest(plan.slug);
       setNotice(result.payment.message || "Interesse registrado.");
-      if (result.order.checkoutUrl) {
-        window.location.href = result.order.checkoutUrl;
+      if (result.order.pixCode || result.order.qrCode) {
+        window.location.href = `/pagamento/pix/${encodeURIComponent(result.order.id)}`;
         return;
       }
-      if (result.order.pixCode || result.order.qrCode || result.order.providerOrderId) {
-        window.location.href = `/pagamento/pix/${encodeURIComponent(result.order.id)}`;
+      if (result.order.checkoutUrl) {
+        window.location.href = result.order.checkoutUrl;
         return;
       }
       await load();

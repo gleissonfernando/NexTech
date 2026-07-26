@@ -45,12 +45,12 @@ export function PublicPlansPage() {
 
     try {
       const result = await createPlanCheckoutInterest(plan.id, paymentMethod === "pix" ? "pix" : "checkout");
-      if (result.order.checkoutUrl) {
-        window.location.assign(result.order.checkoutUrl);
+      if (result.order.pixCode || result.order.qrCode) {
+        window.location.assign(`/pagamento/pix/${encodeURIComponent(result.order.id)}`);
         return;
       }
-      if (result.order.pixCode || result.order.qrCode || result.order.providerOrderId) {
-        window.location.assign(`/pagamento/pix/${encodeURIComponent(result.order.id)}`);
+      if (result.order.checkoutUrl) {
+        window.location.assign(result.order.checkoutUrl);
         return;
       }
 

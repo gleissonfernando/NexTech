@@ -66,6 +66,22 @@ export type StripeRuntimeConfig = {
   integrationIdentifier: string;
 };
 
+export type AsaasRuntimeConfig = {
+  apiKey: string | null;
+  apiKeyFingerprint: string | null;
+  baseUrl: string;
+  checkoutExpirationMinutes: number;
+  credentialsConfigured: boolean;
+  enabled: boolean;
+  environment: "test" | "production";
+  errors: string[];
+  status: "disabled" | "misconfigured" | "operational";
+  timeoutMs: number;
+  webhookConfigured: boolean;
+  webhookToken: string | null;
+  webhookUrl: string;
+};
+
 export function getMercadoPagoRuntimeConfig(): MercadoPagoRuntimeConfig {
   const environment = env.MERCADOPAGO_ENV;
   const accessToken = clean(environment === "test" ? env.MERCADOPAGO_TEST_ACCESS_TOKEN : env.MERCADOPAGO_PROD_ACCESS_TOKEN);
@@ -227,9 +243,59 @@ export function getStripeHealth() {
   };
 }
 
+export function getAsaasRuntimeConfig(): AsaasRuntimeConfig {
+  const apiKey = clean(env.ASAAS_API_KEY);
+  const webhookToken = clean(env.ASAAS_WEBHOOK_TOKEN);
+  const baseUrl = env.ASAAS_BASE_URL || "https://api-sandbox.asaas.com/v3";
+  const environment = /sandbox/i.test(baseUrl) ? "test" : "production";
+  const errors: string[] = [];
+
+  if (!apiKey) errors.push("ASAAS_API_KEY ausente.");
+  if (environment === "production" && !env.PAYMENTS_ALLOW_LIVE_CHARGES) {
+    errors.push("PAYMENTS_ALLOW_LIVE_CHARGES precisa estar true para criar cobrancas Asaas em produção.");
+  }
+
+  const enabled = env.PAYMENTS_ENABLED;
+  const credentialsConfigured = Boolean(apiKey);
+  const webhookConfigured = Boolean(webhookToken || env.ASAAS_WEBHOOK_URL);
+
+  return {
+    apiKey,
+    apiKeyFingerprint: apiKey ? fingerprint(apiKey) : null,
+    baseUrl,
+    checkoutExpirationMinutes: env.ASAAS_CHECKOUT_EXPIRATION_MINUTES,
+    credentialsConfigured,
+    enabled,
+    environment,
+    errors,
+    status: !enabled ? "disabled" : errors.length ? "misconfigured" : "operational",
+    timeoutMs: env.ASAAS_TIMEOUT,
+    webhookConfigured,
+    webhookToken,
+    webhookUrl: env.ASAAS_WEBHOOK_URL
+  };
+}
+
+export function getAsaasHealth() {
+  const config = getAsaasRuntimeConfig();
+  return {
+    provider: "asaas" as const,
+    enabled: config.enabled,
+    environment: config.environment,
+    credentialsConfigured: config.credentialsConfigured,
+    webhookConfigured: config.webhookConfigured,
+    status: config.status
+  };
+}
+
 export function getPaymentGatewayHealth() {
   return {
     activeProvider: env.PAYMENT_PROVIDER,
+    routing: {
+      card: "stripe" as const,
+      pix: "asaas" as const
+    },
+    asaas: getAsaasHealth(),
     mercadoPago: getMercadoPagoHealth(),
     pagBank: getPagBankHealth(),
     stripe: getStripeHealth()
@@ -289,6 +355,24 @@ export function requireStripeOperational(options: { allowDisabled?: boolean; req
 
   if (!options.allowDisabled && config.environment === "production" && !env.PAYMENTS_ALLOW_LIVE_CHARGES) {
     throw paymentConfigError("Cobrancas Stripe live bloqueadas por PAYMENTS_ALLOW_LIVE_CHARGES.", 503);
+  }
+
+  return config;
+}
+
+export function requireAsaasOperational(options: { allowDisabled?: boolean; requireWebhook?: boolean } = {}) {
+  const config = getAsaasRuntimeConfig();
+
+  if (!options.allowDisabled && !config.enabled) {
+    throw paymentConfigError("Asaas está desativado no servidor.", 503);
+  }
+
+  if (!config.apiKey || !config.credentialsConfigured || (options.requireWebhook && !config.webhookConfigured)) {
+    throw paymentConfigError("Asaas indisponível por credenciais ausentes ou inválidas.", 503);
+  }
+
+  if (!options.allowDisabled && config.environment === "production" && !env.PAYMENTS_ALLOW_LIVE_CHARGES) {
+    throw paymentConfigError("Cobrancas Asaas de produção bloqueadas por PAYMENTS_ALLOW_LIVE_CHARGES.", 503);
   }
 
   return config;

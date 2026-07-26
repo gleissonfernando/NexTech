@@ -106,6 +106,12 @@ function applyStripeEnvAliases() {
   applyEnvAlias("STRIPE_CANCEL_URL", "STRIPE_CHECKOUT_CANCEL_URL");
 }
 
+function applyAsaasEnvAliases() {
+  applyEnvAlias("ASAAS_API_KEY", "ASAAS_ACCESS_TOKEN", "ASAAS_TOKEN");
+  applyEnvAlias("ASAAS_WEBHOOK_TOKEN", "ASAAS_WEBHOOK_SECRET");
+  applyEnvAlias("ASAAS_WEBHOOK_URL", "ASAAS_NOTIFICATION_URL");
+}
+
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -207,6 +213,7 @@ applyPackedEnv();
 applyMercadoPagoEnvAliases();
 applyPagBankEnvAliases();
 applyStripeEnvAliases();
+applyAsaasEnvAliases();
 
 const configuredSiteOrigin =
   cleanEnvValue(process.env.SITE_ORIGIN)
@@ -269,7 +276,7 @@ const envSchema = z
     EPHEMERAL_TOKEN_REQUEST_LIMIT: z.coerce.number().int().min(1).max(5000).default(300),
     BOT_API_TOKEN: internalBotToken(),
     PAYMENTS_ENABLED: envBoolean(false),
-    PAYMENT_PROVIDER: z.enum(["disabled", "mercadopago", "pagbank", "stripe"]).default("disabled"),
+    PAYMENT_PROVIDER: z.enum(["disabled", "mercadopago", "pagbank", "stripe", "asaas"]).default("disabled"),
     MERCADOPAGO_ENV: z.enum(["test", "production"]).default("production"),
     MERCADOPAGO_ENABLED: envBoolean(false),
     MERCADOPAGO_PROD_ACCESS_TOKEN: z.string().optional().default(""),
@@ -313,6 +320,12 @@ const envSchema = z
     STRIPE_TAX_ENABLED: envBoolean(false),
     STRIPE_TAX_REGISTRATION_ACTIVE: envBoolean(false),
     STRIPE_TAX_ID_COLLECTION_ENABLED: envBoolean(false),
+    ASAAS_API_KEY: z.string().optional().default(""),
+    ASAAS_BASE_URL: envUrl("ASAAS_BASE_URL", "https://api-sandbox.asaas.com/v3"),
+    ASAAS_WEBHOOK_TOKEN: z.string().optional().default(""),
+    ASAAS_WEBHOOK_URL: envOptionalUrl("ASAAS_WEBHOOK_URL"),
+    ASAAS_TIMEOUT: z.coerce.number().int().min(1000).max(120000).default(30000),
+    ASAAS_CHECKOUT_EXPIRATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     PIX_EXPIRATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     PIX_DESCRIPTION: z.string().optional().default("Pagamento do Plano"),
     PAYMENTS_ALLOW_LIVE_CHARGES: envBoolean(false),
@@ -422,6 +435,7 @@ const envSchema = z
       STRIPE_SUCCESS_URL: value.STRIPE_SUCCESS_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/sucesso?provider=stripe&session_id={CHECKOUT_SESSION_ID}` : ""),
       STRIPE_CANCEL_URL: value.STRIPE_CANCEL_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/falha?provider=stripe` : ""),
       STRIPE_WEBHOOK_URL: value.STRIPE_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/stripe/webhook` : ""),
+      ASAAS_WEBHOOK_URL: value.ASAAS_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/asaas/webhook` : ""),
       TRANSCRIPT_BASE_URL: normalizedTranscriptBaseUrl || oauthFrontendUrl,
       TRANSCRIPT_PORT: value.TRANSCRIPT_PORT ?? value.PORT,
       DISCORD_REDIRECT_URI: effectiveDiscordRedirect,
