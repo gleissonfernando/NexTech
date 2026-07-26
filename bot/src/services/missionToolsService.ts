@@ -73,6 +73,7 @@ const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
 
 let serviceStarted = false;
 let panelRequestCheckRunning = false;
+let panelRequestChecksPaused = false;
 let moduleInactiveNoticeLogged = false;
 const handledPanelRequests = new Map<string, string>();
 const panelPublishPromises = new Map<string, Promise<MissionToolsSettings>>();
@@ -98,6 +99,7 @@ export function startMissionToolsService(client: Client, context: BotContext) {
       return;
     }
 
+    resumeMissionToolsPanelChecks();
     console.log(`[mission-tools] settings updated for ${payload.guildId}.`);
   });
 
@@ -106,6 +108,7 @@ export function startMissionToolsService(client: Client, context: BotContext) {
       return;
     }
 
+    resumeMissionToolsPanelChecks();
     void publishRequestedMissionToolsPanel(client, context, payload.guildId).catch((error) => {
       console.error(`[mission-tools] failed to publish panel in ${payload.guildId}:`, errorMessage(error));
     });
@@ -126,11 +129,25 @@ export function startMissionToolsService(client: Client, context: BotContext) {
       });
   });
 
+  context.socket.onDevModuleUpdated((payload) => {
+    if (!isPayloadForThisBot(payload.botId)) {
+      return;
+    }
+
+    if (!payload.enabledModules.includes(MODULE_ID)) {
+      pauseMissionToolsPanelChecks();
+      return;
+    }
+
+    resumeMissionToolsPanelChecks();
+    void processPendingMissionToolsPanelRequests(client, context);
+  });
+
   void context.api.getActiveMissionToolsConfigs()
     .then((configs) => console.log(`[mission-tools] ${configs.length} active configuration(s) loaded.`))
     .catch((error) => {
       if (isMissionToolsInactiveError(error)) {
-        logMissionToolsInactiveOnce();
+        pauseMissionToolsPanelChecks();
         return;
       }
 
@@ -1021,7 +1038,7 @@ async function publishMissionToolsPanel(client: Client, context: BotContext, gui
 }
 
 async function processPendingMissionToolsPanelRequests(client: Client, context: BotContext) {
-  if (panelRequestCheckRunning || !isBotModuleEnabled(MODULE_ID)) {
+  if (panelRequestCheckRunning || panelRequestChecksPaused || !isBotModuleEnabled(MODULE_ID)) {
     return;
   }
 
@@ -1047,7 +1064,7 @@ async function processPendingMissionToolsPanelRequests(client: Client, context: 
     }
   } catch (error) {
     if (isMissionToolsInactiveError(error)) {
-      logMissionToolsInactiveOnce();
+      pauseMissionToolsPanelChecks();
       return;
     }
 
@@ -1836,13 +1853,20 @@ function isMissionToolsInactiveError(error: unknown) {
   return status === 403 && /mission tools/i.test(message) && /ativado|liberado/i.test(message);
 }
 
-function logMissionToolsInactiveOnce() {
+function pauseMissionToolsPanelChecks() {
+  panelRequestChecksPaused = true;
+
   if (moduleInactiveNoticeLogged) {
     return;
   }
 
   moduleInactiveNoticeLogged = true;
   console.info("[mission-tools] module is not enabled for this bot; background panel checks are idle.");
+}
+
+function resumeMissionToolsPanelChecks() {
+  panelRequestChecksPaused = false;
+  moduleInactiveNoticeLogged = false;
 }
 
 function truncate(value: string, maxLength: number) {
