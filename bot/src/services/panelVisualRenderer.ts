@@ -168,19 +168,8 @@ export function createV2Footer(footer: ComponentsV2FooterConfig) {
   const normalized = typeof footer === "string" ? { text: footer } : footer;
   if (normalized.enabled === false) return null;
   const text = normalized.text ?? "";
-  const rawImage = normalized.image ?? normalized.iconURL ?? normalized.iconUrl ?? null;
-  const image = resolvePanelImageUrl(rawImage);
   const content = `-# ${text}`.slice(0, 4000) || "-# ";
-  if (!image) return { type: 10, content };
-  return {
-    type: 9,
-    components: [{ type: 10, content }],
-    accessory: {
-      type: 11,
-      media: { url: image },
-      description: normalized.description || "Imagem de rodapé"
-    }
-  };
+  return { type: 10, content };
 }
 
 export function resolvePanelImageUrl(value: string | null, media?: Pick<PanelVisualConfig, "imageExtension" | "imageMimeType"> | null) {

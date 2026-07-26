@@ -387,11 +387,9 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
   const configuredMedia = [
     resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail"),
     resolveTicketPanelMedia(settings.ticketPanelBannerImage ?? settings.ticketPanelImage, "below_title"),
-    resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "bottom"),
-    resolveTicketPanelMedia(settings.ticketPanelFooterImage, "footer")
+    resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "bottom")
   ].filter((item): item is PanelImageSettings & { imageUrl: string } => Boolean(item));
   const logoImage = configuredMedia.find((item) => ["thumbnail", "side"].includes(item.imagePosition)) ?? null;
-  const footerImageUrl = resolveTicketFooterImage(configuredMedia.find((item) => item.imagePosition === "footer") ?? null);
   const banners = configuredMedia.filter((item) => !["footer", "none", "side", "thumbnail"].includes(item.imagePosition));
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
@@ -407,7 +405,6 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     fields: contentBlocks.slice(2),
     footer: {
       description: "Imagem de rodapé do painel",
-      image: footerImageUrl,
       text: settings.ticketPanelFooterText?.trim() || "NexTech"
     },
     guild,
@@ -690,22 +687,6 @@ function resolveTicketPanelMedia(panelImage: PanelImageSettings | null, fallback
     ? { ...panelImage, imagePosition: panelImage.imagePosition === "none" ? fallbackPosition : panelImage.imagePosition, imageUrl }
     : null;
 }
-
-function resolveTicketFooterImage(panelImage: (PanelImageSettings & { imageUrl: string }) | null) {
-  if (!panelImage) return null;
-  if (isVideoPanelImage(panelImage)) {
-    return resolvePanelMediaUrlValue(panelImage.mediaPosterUrl ?? panelImage.mediaThumbnailUrl ?? null);
-  }
-  return panelImage.imageUrl;
-}
-
-function isVideoPanelImage(panelImage: PanelImageSettings) {
-  if (panelImage.imageMimeType?.startsWith("video/")) return true;
-  const extension = panelImage.imageExtension?.trim().toLowerCase();
-  return Boolean(extension && VIDEO_PANEL_EXTENSIONS.has(extension)) || /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(panelImage.imageUrl);
-}
-
-const VIDEO_PANEL_EXTENSIONS = new Set(["3gp", "3g2", "asf", "avi", "f4v", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "mts", "mxf", "ogv", "rmvb", "ts", "vob", "webm", "wmv"]);
 
 function mediaGalleryComponent(imageUrl: string) {
   return {
