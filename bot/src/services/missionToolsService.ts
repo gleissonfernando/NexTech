@@ -73,6 +73,7 @@ const USER_TOKEN_FEATURES_DISABLED_MESSAGE =
 
 let serviceStarted = false;
 let panelRequestCheckRunning = false;
+let moduleInactiveNoticeLogged = false;
 const handledPanelRequests = new Map<string, string>();
 const panelPublishPromises = new Map<string, Promise<MissionToolsSettings>>();
 const panelRequestErrorLogAt = new Map<string, number>();
@@ -127,7 +128,14 @@ export function startMissionToolsService(client: Client, context: BotContext) {
 
   void context.api.getActiveMissionToolsConfigs()
     .then((configs) => console.log(`[mission-tools] ${configs.length} active configuration(s) loaded.`))
-    .catch((error) => console.warn("[mission-tools] settings could not be loaded:", errorMessage(error)));
+    .catch((error) => {
+      if (isMissionToolsInactiveError(error)) {
+        logMissionToolsInactiveOnce();
+        return;
+      }
+
+      console.warn("[mission-tools] settings could not be loaded:", errorMessage(error));
+    });
 
   void processPendingMissionToolsPanelRequests(client, context);
   const interval = setInterval(() => {
@@ -1038,6 +1046,11 @@ async function processPendingMissionToolsPanelRequests(client: Client, context: 
       });
     }
   } catch (error) {
+    if (isMissionToolsInactiveError(error)) {
+      logMissionToolsInactiveOnce();
+      return;
+    }
+
     console.warn("[mission-tools] failed to check pending requests:", errorMessage(error));
   } finally {
     panelRequestCheckRunning = false;
@@ -1809,6 +1822,27 @@ function readRequestErrorMessage(error: unknown) {
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+function isMissionToolsInactiveError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return false;
+  }
+
+  const response = (error as { response?: { status?: unknown } }).response;
+  const status = typeof response?.status === "number" ? response.status : null;
+  const message = readRequestErrorMessage(error) ?? "";
+
+  return status === 403 && /mission tools/i.test(message) && /ativado|liberado/i.test(message);
+}
+
+function logMissionToolsInactiveOnce() {
+  if (moduleInactiveNoticeLogged) {
+    return;
+  }
+
+  moduleInactiveNoticeLogged = true;
+  console.info("[mission-tools] module is not enabled for this bot; background panel checks are idle.");
 }
 
 function truncate(value: string, maxLength: number) {
