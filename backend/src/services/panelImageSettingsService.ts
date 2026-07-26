@@ -551,15 +551,11 @@ function normalizeBlock(block: MongoPanelBlock, index: number): MongoPanelBlock 
 }
 
 function legacyBlocks(panelId: string, imageEnabled: boolean, imageUrl: string, position: PanelImagePosition): MongoPanelBlock[] {
-  if (!imageEnabled || !imageUrl || position === "none") return [];
-  const order = position === "top" || position === "banner" ? 0 : position === "middle" ? 2 : 10;
-  if (position === "thumbnail" || position === "side" || position === "footer") {
-    if (position === "footer") {
-      return [{ altText: "Imagem de rodapé", id: `${panelId}_legacy_footer`, imageUrl, order, text: "-# Rodapé do painel", type: "footer" }];
-    }
-    return [{ accessory: { kind: "thumbnail", url: imageUrl }, id: `${panelId}_legacy_section`, order, texts: ["## Imagem do painel"], type: "section" }];
-  }
-  return [{ id: `${panelId}_legacy_media`, items: [{ description: "Banner do painel", url: imageUrl }], order, type: "media_gallery" }];
+  void panelId;
+  void imageEnabled;
+  void imageUrl;
+  void position;
+  return [];
 }
 
 function normalizeAttachmentName(value: string | null | undefined) {
