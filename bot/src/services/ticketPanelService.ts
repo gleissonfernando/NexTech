@@ -388,6 +388,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
   const logoImage = resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail");
   const primaryBanner = resolveTicketPanelMedia(settings.ticketPanelBannerImage ?? settings.ticketPanelImage, "below_title");
   const secondaryBanner = resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "bottom");
+  const footerImageUrl = resolveImageUrl(settings.ticketPanelFooterImage);
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(TICKET_PANEL_CUSTOM_ID)
@@ -400,6 +401,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     description: contentBlocks[1] ?? "",
     extraImages: [primaryBanner, secondaryBanner],
     fields: contentBlocks.slice(2),
+    footerImage: footerImageUrl,
     guild,
     image: logoImage,
     moduleId: "ticket",

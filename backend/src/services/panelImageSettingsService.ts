@@ -239,6 +239,11 @@ function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
     "fivem-general": "fivem:fac:panel_publish",
     "manual-registration": "manual-registration:panel_publish",
     "mission-tools": "mission-tools:panel_publish",
+    "ticket": "tickets:panel_publish",
+    "ticket-logo": "tickets:panel_publish",
+    "ticket-banner": "tickets:panel_publish",
+    "ticket-banner-secondary": "tickets:panel_publish",
+    "ticket-footer": "tickets:panel_publish",
     courses: "courses:panel_publish"
   };
   if (panelId === "global-default") {
@@ -254,6 +259,14 @@ function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
 
 function refreshPanelId(panelId: string) {
   return panelId.replace(/-banner-\d+$/i, "");
+}
+
+function defaultImagePositionForPanel(panelId: string): PanelImagePosition {
+  if (panelId === "ticket-logo") return "thumbnail";
+  if (panelId === "ticket-banner") return "below_title";
+  if (panelId === "ticket-banner-secondary") return "bottom";
+  if (panelId === "ticket-footer") return "footer";
+  return "banner";
 }
 
 function hierarchyPanelIdFromImagePanelId(panelId: string) {
@@ -288,7 +301,7 @@ export async function savePanelImageUpload(input: {
 
   return savePanelImageSettings(input.guildId, input.botId, input.panelId, {
     imageEnabled: true,
-    imagePosition: current.imagePosition === "none" ? "banner" : current.imagePosition,
+    imagePosition: current.imagePosition === "none" ? defaultImagePositionForPanel(input.panelId) : current.imagePosition,
     imageSize: current.imageSize,
     imageUrl: stored.publicUrl,
     layoutMode: current.layoutMode,

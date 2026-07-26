@@ -52,6 +52,7 @@ export type GuildSettingsDto = {
   ticketPanelLogoImage: PanelImageSettingsDto | null;
   ticketPanelBannerImage: PanelImageSettingsDto | null;
   ticketPanelSecondaryBannerImage: PanelImageSettingsDto | null;
+  ticketPanelFooterImage: PanelImageSettingsDto | null;
   ticketPanelTitle: string | null;
   ticketPanelDescription: string | null;
   ticketPanelInfoText: string | null;
@@ -482,6 +483,7 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     ticketPanelLogoImage: null,
     ticketPanelBannerImage: null,
     ticketPanelSecondaryBannerImage: null,
+    ticketPanelFooterImage: null,
     ticketPanelTitle: DEFAULT_TICKET_PANEL_TITLE,
     ticketPanelDescription: DEFAULT_TICKET_PANEL_DESCRIPTION,
     ticketPanelInfoText: DEFAULT_TICKET_PANEL_INFO_TEXT,
@@ -954,6 +956,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     ticketPanelLogoImage: null,
     ticketPanelBannerImage: null,
     ticketPanelSecondaryBannerImage: null,
+    ticketPanelFooterImage: null,
     ticketPanelTitle: normalizePanelText(settings.ticketPanelTitle) || defaults.ticketPanelTitle,
     ticketPanelDescription: normalizePanelMessage(settings.ticketPanelDescription) || defaults.ticketPanelDescription,
     ticketPanelInfoText: normalizePanelText(settings.ticketPanelInfoText) || defaults.ticketPanelInfoText,
@@ -1029,6 +1032,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelLogoImage: null,
       ticketPanelBannerImage: null,
       ticketPanelSecondaryBannerImage: null,
+      ticketPanelFooterImage: null,
       welcomePanelImage: null
     };
   }
@@ -1040,14 +1044,16 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelImage,
       ticketPanelLogoImage,
       ticketPanelBannerImage,
-      ticketPanelSecondaryBannerImage
+      ticketPanelSecondaryBannerImage,
+      ticketPanelFooterImage
     ] = await Promise.all([
       getPanelImageSettings(settings.guildId, settings.botId, "welcome"),
       getPanelImageSettings(settings.guildId, settings.botId, "leave"),
       getPanelImageSettings(settings.guildId, settings.botId, "ticket"),
       getPanelImageSettings(settings.guildId, settings.botId, "ticket-logo"),
       getPanelImageSettings(settings.guildId, settings.botId, "ticket-banner"),
-      getPanelImageSettings(settings.guildId, settings.botId, "ticket-banner-secondary")
+      getPanelImageSettings(settings.guildId, settings.botId, "ticket-banner-secondary"),
+      getPanelImageSettings(settings.guildId, settings.botId, "ticket-footer")
     ]);
 
     return {
@@ -1057,6 +1063,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelLogoImage: ticketPanelLogoImage.imageEnabled ? ticketPanelLogoImage : null,
       ticketPanelBannerImage: ticketPanelBannerImage.imageEnabled ? ticketPanelBannerImage : null,
       ticketPanelSecondaryBannerImage: ticketPanelSecondaryBannerImage.imageEnabled ? ticketPanelSecondaryBannerImage : null,
+      ticketPanelFooterImage: ticketPanelFooterImage.imageEnabled ? ticketPanelFooterImage : null,
       welcomePanelImage: welcomePanelImage.imageEnabled ? welcomePanelImage : null
     };
   } catch (error) {
@@ -1068,6 +1075,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelLogoImage: null,
       ticketPanelBannerImage: null,
       ticketPanelSecondaryBannerImage: null,
+      ticketPanelFooterImage: null,
       welcomePanelImage: null
     };
   }

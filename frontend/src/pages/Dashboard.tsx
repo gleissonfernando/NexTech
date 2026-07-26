@@ -6741,9 +6741,10 @@ function TicketsView({
         guildId={guild?.id ?? null}
         panelLabel="Ticket"
         panelSlots={[
-          { id: "ticket-logo", label: "Logo superior" },
-          { id: "ticket-banner", label: "Banner principal" },
-          { id: "ticket-banner-secondary", label: "Segundo banner ou vídeo" }
+          { defaultPosition: "thumbnail", id: "ticket-logo", label: "Logo superior" },
+          { defaultPosition: "below_title", id: "ticket-banner", label: "Banner principal" },
+          { defaultPosition: "bottom", id: "ticket-banner-secondary", label: "Segundo banner ou vídeo" },
+          { defaultPosition: "footer", id: "ticket-footer", label: "Rodapé do painel" }
         ]}
       />
       <TicketPanelConfigurator

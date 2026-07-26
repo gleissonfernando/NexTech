@@ -24,6 +24,7 @@ type PanelImageSettingsProps = {
 };
 
 type PanelDefinition = {
+  defaultPosition?: PanelImagePosition;
   id: string;
   label: string;
 };
@@ -81,7 +82,7 @@ const advancedPositions = new Set<PanelImagePosition>(["top", "below_title", "mi
 
 export function PanelImageSettings({ botId, canManage, componentsV2Only = false, guildId, panelId, panelLabel, panelSlots }: PanelImageSettingsProps) {
   const multiSlotMode = Boolean(panelSlots?.length);
-  const fixedPanels = panelSlots?.length ? panelSlots.slice(0, 3) : panelId ? [{ id: panelId, label: panelLabel ?? panelLabelForId(panelId) }] : null;
+  const fixedPanels = panelSlots?.length ? panelSlots : panelId ? [{ id: panelId, label: panelLabel ?? panelLabelForId(panelId) }] : null;
   const panelChoices = fixedPanels ?? PANELS;
   const requestedPanelId = fixedPanels?.[0]?.id ?? panelId ?? PANELS[0]?.id ?? "welcome";
   const panelSlotsKey = fixedPanels?.map((panel) => panel.id).join("|") ?? "";
@@ -151,7 +152,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
     setDraft((current) => ({
       ...current,
       imageEnabled: value.trim() ? true : current.imageEnabled,
-      imagePosition: value.trim() && current.imagePosition === "none" ? "banner" : current.imagePosition,
+      imagePosition: value.trim() && current.imagePosition === "none" ? selectedPanel.defaultPosition ?? "banner" : current.imagePosition,
       imageUrl: value,
       useGlobalDefault: value.trim() && selectedPanelId !== "global-default" ? false : current.useGlobalDefault
     }));

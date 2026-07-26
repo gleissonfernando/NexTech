@@ -182,6 +182,7 @@ export type GuildSettings = {
   ticketPanelLogoImage: PanelImageSettings | null;
   ticketPanelBannerImage: PanelImageSettings | null;
   ticketPanelSecondaryBannerImage: PanelImageSettings | null;
+  ticketPanelFooterImage: PanelImageSettings | null;
   ticketPanelTitle: string | null;
   ticketPanelDescription: string | null;
   ticketPanelInfoText: string | null;
