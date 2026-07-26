@@ -116,6 +116,31 @@ const DEFAULT_SETTINGS = {
   useGlobalDefault: true
 };
 
+const PANEL_VISUAL_REFRESH_EVENTS: Record<string, string[]> = {
+  "auto-activity-clock": ["auto-activity-clock:panel_refresh"],
+  courses: ["courses:panel_publish"],
+  "fivem-captcha": ["fivem-captcha:panel_publish"],
+  "fivem-finance": ["fivem:finance:panel_publish"],
+  "fivem-general": ["fivem:fac:panel_publish"],
+  "fivem-orders": ["fivem:orders:panel_publish"],
+  "fivem-washing": ["fivem:orders:panel_publish"],
+  "fivem-drugs": ["fivem:orders:panel_publish"],
+  "fivem-goals": ["fivem:goals:panel_publish"],
+  "manual-payments": ["manual-payments:panel_publish"],
+  "manual-registration": ["manual-registration:panel_publish"],
+  "mission-tools": ["mission-tools:panel_publish"],
+  "nextech-invites": ["nextech-invites:panel_publish"],
+  "police-promotions": ["police-promotions:panel_publish"],
+  "price-tables": ["price-tables:panel_publish"],
+  "rh-admin": ["rh-admin:panel_publish"],
+  "sales-tickets": ["sales-tickets:panel_publish"],
+  ticket: ["tickets:panel_publish"],
+  "ticket-logo": ["tickets:panel_publish"],
+  "ticket-banner": ["tickets:panel_publish"],
+  "ticket-banner-secondary": ["tickets:panel_publish"],
+  "ticket-footer": ["tickets:panel_publish"]
+};
+
 export function defaultPanelImageSettings(guildId: string, botId: string, panelId: string): PanelImageSettingsDto {
   return {
     botId,
@@ -232,35 +257,26 @@ export async function savePanelImageSettings(
 }
 
 function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
+  const visualPayload = { botId, guildId, panelId };
+  emitRealtimeToRoom(devBotRealtimeRoom(botId), "panel-visual:updated", visualPayload);
+
   const hierarchyPanelId = hierarchyPanelIdFromImagePanelId(panelId);
   if (hierarchyPanelId !== undefined) {
     emitRealtimeToRoom(devBotRealtimeRoom(botId), "fivem:hierarchy:panel_update", { botId, guildId, ...(hierarchyPanelId ? { panelId: hierarchyPanelId } : {}) });
     return;
   }
 
-  const events: Record<string, string> = {
-    "auto-activity-clock": "auto-activity-clock:panel_refresh",
-    "fivem-orders": "fivem:orders:panel_publish",
-    "fivem-finance": "fivem:finance:panel_publish",
-    "fivem-general": "fivem:fac:panel_publish",
-    "manual-registration": "manual-registration:panel_publish",
-    "mission-tools": "mission-tools:panel_publish",
-    "ticket": "tickets:panel_publish",
-    "ticket-logo": "tickets:panel_publish",
-    "ticket-banner": "tickets:panel_publish",
-    "ticket-banner-secondary": "tickets:panel_publish",
-    "ticket-footer": "tickets:panel_publish",
-    courses: "courses:panel_publish"
-  };
   if (panelId === "global-default") {
-    for (const event of new Set(Object.values(events))) {
+    for (const event of new Set(Object.values(PANEL_VISUAL_REFRESH_EVENTS).flat())) {
       emitRealtimeToRoom(devBotRealtimeRoom(botId), event, { botId, guildId });
     }
     return;
   }
 
-  const event = events[refreshPanelId(panelId)];
-  if (event) emitRealtimeToRoom(devBotRealtimeRoom(botId), event, { botId, guildId });
+  const events = PANEL_VISUAL_REFRESH_EVENTS[refreshPanelId(panelId)] ?? [];
+  for (const event of events) {
+    emitRealtimeToRoom(devBotRealtimeRoom(botId), event, { botId, guildId });
+  }
 }
 
 function refreshPanelId(panelId: string) {
