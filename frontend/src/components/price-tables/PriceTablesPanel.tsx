@@ -6,11 +6,12 @@ import { Switch } from "../ui/switch";
 import {
   createPriceTable,
   deletePriceTableApi,
+  getGuildLiveOptions,
   getPriceTablesDashboard,
   publishPriceTable,
   updatePriceTable
 } from "../../lib/api";
-import type { DashboardGuild, PriceTable, PriceTableItem, PriceTableRequest, SavePriceTablePayload } from "../../types";
+import type { DashboardGuild, GuildCategoryOption, GuildChannelOption, PriceTable, PriceTableItem, PriceTableRequest, SavePriceTablePayload } from "../../types";
 
 type Props = {
   botId: string | null;
@@ -31,29 +32,43 @@ const emptyItem = (order: number): PriceTableItem => ({
   priceText: null
 });
 
-const POLICE_PRICE_TABLE_PRESETS: Array<{
+type PriceTablePreset = {
   description: string;
-  moduleId: string;
+  included: string[];
+  name: string;
+  systems: string[];
   title: string;
-}> = [
-  { moduleId: "police-absences", title: "Ausência Policial", description: "Solicitações, aprovação e histórico de ausências para oficiais." },
-  { moduleId: "police-actions", title: "Ações Policiais", description: "Operações policiais com participantes, painel e relatórios separados." },
-  { moduleId: "police-iab", title: "Denúncias Corregedoria", description: "Denúncias anônimas ou identificadas com órgãos, logs e auditoria." },
-  { moduleId: "police-subpoenas", title: "Intimação", description: "Intimações institucionais com DMs, prazos e competência por órgão." },
-  { moduleId: "police-patrol-reports", title: "Relatórios Policiais", description: "Relatórios de patrulhamento exclusivos para oficiais." },
-  { moduleId: "police-qru", title: "Registro de QRU", description: "Registro de QRUs com evidências, oficiais envolvidos e ranking automático." },
-  { moduleId: "police-promotions", title: "Promoções de Patente", description: "Solicitações de promoção com avaliação, aprovação, cargos e histórico." },
-  { moduleId: "vehicle-abandonment", title: "Abandono de Veículo", description: "Registros automáticos de veículos abandonados por imagem." },
-  { moduleId: "police-hidden-channel", title: "Canal Oculto", description: "Canal anônimo policial com logs administrativos." },
-  { moduleId: "visible-message", title: "Mensagem Visível", description: "Mensagens com nome e avatar do usuário autorizado via webhook." },
-  { moduleId: "message-control", title: "Controle de Mensagem", description: "Controle operacional de mensagens autorizadas pela equipe policial." },
-  { moduleId: "police-dm", title: "Barra DM", description: "Envio de mensagens privadas com painel visual, permissões e logs." },
-  { moduleId: "police-open-duty", title: "Notificar / Ponto Aberto", description: "Notificações policiais por DM, canal mencionado e alertas administrativos." },
-  { moduleId: "police-time-clock", title: "Relógio de Ponto", description: "Registro de ponto policial com controle e histórico." },
-  { moduleId: "police-daf-roster", title: "Escala DAF", description: "Escalas operacionais do DAF organizadas pelo painel." },
-  { moduleId: "auto-activity-clock", title: "Ponto Automático", description: "Controle automático de atividade e serviço para operação policial." },
-  { moduleId: "police-courses", title: "Cursos Policiais", description: "Cursos, provas e avaliações para oficiais." },
-  { moduleId: "police-hr", title: "RH Administrativo", description: "Gestão de RH, registros e processos administrativos policiais." }
+};
+
+const PRICE_TABLE_PRESETS: PriceTablePreset[] = [
+  {
+    description: "Sistema completo para facções e organizações FiveM, com recursos para controle operacional, membros, pedidos, metas e registros internos.",
+    included: ["Facções e famílias", "Ausências FAC", "Ações FAC", "Hierarquia V2", "Encomendas", "Lavagem", "Drogas", "Munição", "Financeiro", "Metas", "CAPTCHA FiveM", "Pedido de Set"],
+    name: "Sistema de Facções",
+    systems: ["Controle de membros, cargos e operação das facções.", "Ausências com aprovação e logs.", "Ações com participantes, relatórios e histórico.", "Pedidos, entregas, lavagem, drogas, munição e financeiro.", "Metas por membro com registro e acompanhamento."],
+    title: "TABELA DE PREÇOS FACÇÕES - NexTech"
+  },
+  {
+    description: "Sistema policial completo para servidores RP, centralizando operação, RH, QRU, promoções, relatórios e automações administrativas.",
+    included: ["Ausência Policial", "Ações Policiais", "Corregedoria/IAB", "Intimações", "Relatórios Policiais", "QRU", "Promoções de Patente", "Abandono de Veículo", "Canal Oculto", "Mensagem Visível", "Barra DM", "Ponto/Relógio", "Escala DAF", "Cursos Policiais", "RH Administrativo"],
+    name: "Sistema de Polícia",
+    systems: ["Fluxo completo para corporações policiais.", "Avaliação, aprovação e histórico de promoções.", "QRUs com evidências, oficiais envolvidos e ranking.", "Relatórios, ponto, escala, RH e cursos.", "Denúncias, intimações, canal oculto e mensagens oficiais."],
+    title: "TABELA DE PREÇOS POLÍCIA - NexTech"
+  },
+  {
+    description: "Sistema de vendas para divulgar serviços, planos, pagamentos e atendimento comercial de forma organizada pelo Discord.",
+    included: ["Painel de Vendas", "Tabela de Preços", "Pagamentos Manuais", "Pagamento Automático", "Planos", "Cupons", "Histórico Financeiro", "Tickets de Venda"],
+    name: "Sistema de Vendas",
+    systems: ["Cards e tabelas editáveis pela Dashboard.", "Planos, valores, recorrência e descrição dos serviços.", "Pagamentos manuais e automáticos.", "Histórico e logs financeiros.", "Atendimento comercial integrado ao Discord."],
+    title: "TABELA DE PREÇOS VENDAS - NexTech"
+  },
+  {
+    description: "Sistema de segurança para proteger o servidor, controlar riscos, automatizar verificações e registrar ações importantes.",
+    included: ["Moderação", "SelfBot Protection", "Segurança por idade de conta", "Anti Abuse", "Anti Ban", "Servidores Suspeitos", "Blacklist Global", "Permissões Avançadas", "Limpeza de Convites", "URL Personalizada", "Anti Disconnect", "Verificação de Tag", "URL na Bio"],
+    name: "Sistema de Segurança",
+    systems: ["Proteção contra selfbot, abuso e riscos de raid.", "Controle de permissões e ações administrativas.", "Verificações automáticas por tag, bio e idade da conta.", "Blacklist global e servidores suspeitos.", "Logs e alertas para equipe responsável."],
+    title: "TABELA DE PREÇOS SEGURANÇA - NexTech"
+  }
 ];
 
 export function PriceTablesPanel({ botId, canManage, guild }: Props) {
@@ -64,16 +79,21 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [options, setOptions] = useState<{ categories: GuildCategoryOption[]; channels: GuildChannelOption[] }>({ categories: [], channels: [] });
   const selected = useMemo(() => tables.find((table) => table.id === selectedId) ?? null, [selectedId, tables]);
   const preview = { ...selected, ...draft } as PriceTable | null;
 
   useEffect(() => {
     if (!botId || !guild) return;
     setLoading(true);
-    getPriceTablesDashboard(botId, guild.id)
-      .then((data) => {
+    Promise.all([
+      getPriceTablesDashboard(botId, guild.id),
+      getGuildLiveOptions(guild.id, botId).catch(() => ({ categories: [], channels: [], roles: [] }))
+    ])
+      .then(([data, guildOptions]) => {
         setTables(data.tables);
         setRequests(data.requests);
+        setOptions({ categories: guildOptions.categories ?? [], channels: guildOptions.channels ?? [] });
         const first = data.tables[0] ?? null;
         setSelectedId(first?.id ?? null);
         setDraft(first ? toPayload(first) : null);
@@ -103,29 +123,28 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
     }
   }
 
-  async function createPoliceTables() {
+  async function createPresetTables(presets: PriceTablePreset[]) {
     if (!botId || !guild) return;
     setSaving(true);
     try {
       const existingNames = new Set(tables.map((table) => table.name.trim().toLowerCase()));
       const created: PriceTable[] = [];
-      for (const preset of POLICE_PRICE_TABLE_PRESETS) {
-        const name = `Polícia - ${preset.title}`;
-        if (existingNames.has(name.toLowerCase())) continue;
-        const table = await createPriceTable(botId, guild.id, policePresetPayload(preset));
+      for (const preset of presets) {
+        if (existingNames.has(preset.name.toLowerCase())) continue;
+        const table = await createPriceTable(botId, guild.id, presetPayload(preset));
         created.push(table);
-        existingNames.add(name.toLowerCase());
+        existingNames.add(preset.name.toLowerCase());
       }
 
       if (created.length) {
         setTables((current) => [...created, ...current]);
         selectTable(created[0]!);
-        setMessage(`${created.length} tabela(s) da Polícia criada(s) com valor mensal padrão de R$ 30,00.`);
+        setMessage(`${created.length} tabela(s) criada(s) com valor mensal padrão de R$ 30,00.`);
       } else {
-        setMessage("Todas as tabelas da Polícia já existem.");
+        setMessage("Essas tabelas já existem.");
       }
     } catch (error) {
-      setMessage(readError(error, "Não foi possível criar as tabelas da Polícia."));
+      setMessage(readError(error, "Não foi possível criar as tabelas prontas."));
     } finally {
       setSaving(false);
     }
@@ -215,7 +234,14 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
         </CardHeader>
         <CardContent className="space-y-3">
           <Button className="w-full" disabled={!canManage || saving} onClick={() => void createNewTable()} type="button"><Plus className="mr-2 h-4 w-4" />Criar produto</Button>
-          <Button className="w-full" disabled={!canManage || saving} onClick={() => void createPoliceTables()} type="button" variant="secondary"><Plus className="mr-2 h-4 w-4" />Criar módulos da Polícia</Button>
+          <Button className="w-full" disabled={!canManage || saving} onClick={() => void createPresetTables(PRICE_TABLE_PRESETS)} type="button" variant="secondary"><Plus className="mr-2 h-4 w-4" />Criar todos prontos</Button>
+          <div className="grid gap-2">
+            {PRICE_TABLE_PRESETS.map((preset) => (
+              <Button className="w-full justify-start" disabled={!canManage || saving} key={preset.name} onClick={() => void createPresetTables([preset])} size="sm" type="button" variant="outline">
+                <Plus className="mr-2 h-4 w-4" />{preset.name}
+              </Button>
+            ))}
+          </div>
           {tables.map((table) => (
             <button className={`w-full rounded-lg border p-3 text-left text-sm ${selectedId === table.id ? "border-[#FFD500]/50 bg-[#FFD500]/10 text-white" : "border-zinc-800 bg-zinc-950 text-zinc-400"}`} key={table.id} onClick={() => selectTable(table)} type="button">
               <span className="block truncate font-semibold">{table.name}</span>
@@ -231,16 +257,16 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
           <Card>
             <CardHeader>
               <CardTitle>Editor do painel de vendas</CardTitle>
-              <CardDescription>Um painel e um ticket independente para cada produto. Alterações salvas atualizam somente esta mensagem.</CardDescription>
+              <CardDescription>Painéis informativos por sistema, sem botão de compra. Cada tabela pode ser publicada em um canal diferente.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Nome da tabela" value={draft.name ?? ""} onChange={(value) => patch({ name: value })} disabled={!canManage} />
                 <Field label="Titulo principal" value={draft.title ?? ""} onChange={(value) => patch({ title: value })} disabled={!canManage} />
-                <Field label="Canal Discord" value={draft.discordChannelId ?? ""} onChange={(value) => patch({ discordChannelId: value || null })} disabled={!canManage} />
-                <Field label="Categoria atendimento" value={draft.supportCategoryId ?? ""} onChange={(value) => patch({ supportCategoryId: value || null })} disabled={!canManage} />
+                <ChannelSelect channels={options.channels} disabled={!canManage} label="Canal de publicação" onChange={(value) => patch({ discordChannelId: value })} value={draft.discordChannelId ?? null} />
+                <CategorySelect categories={options.categories} disabled={!canManage} label="Categoria de atendimento" onChange={(value) => patch({ supportCategoryId: value })} value={draft.supportCategoryId ?? null} />
                 <Field label="Cargos da equipe (IDs separados por virgula)" value={(draft.supportRoleIds ?? []).join(", ")} onChange={(value) => patch({ supportRoleIds: value.split(",").map((id) => id.trim()).filter(Boolean) })} disabled={!canManage} />
-                <Field label="Canal de logs" value={draft.logChannelId ?? ""} onChange={(value) => patch({ logChannelId: value || null })} disabled={!canManage} />
+                <ChannelSelect channels={options.channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} value={draft.logChannelId ?? null} />
                 <Field label="URL do banner" value={draft.imageUrl ?? ""} onChange={(value) => patch({ imageUrl: value || null })} disabled={!canManage} />
                 <Field label="Cor destaque" value={draft.color ?? "#FFD500"} onChange={(value) => patch({ color: value })} disabled={!canManage} />
               </div>
@@ -324,13 +350,13 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
                 {preview.imageUrl && preview.imagePosition !== "none" ? <img alt="" className="h-36 w-full object-cover" src={preview.imageUrl} /> : null}
                 <div className="space-y-4 border-l-4 border-[#9B35FF] p-4">
                   <div className="border-b border-white/10 pb-3">
-                    <h3 className="text-lg font-extrabold text-white">{preview.panelEmojis.products} {preview.title}</h3>
+                    <h3 className="text-lg font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, "💜")} {preview.title}</h3>
                     <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-relaxed text-white">{preview.description}</p>
                   </div>
-                  <PreviewSection icon={preview.panelEmojis.products} title={preview.panelSections.includedTitle} lines={preview.panelSections.includedItems.map((item) => `- ${item}`)} />
-                  <PreviewSection icon={preview.panelEmojis.systems} title={preview.panelSections.systemsTitle} lines={preview.panelSections.systemsText.split(/\r?\n/)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.products, "💜")} title={preview.panelSections.includedTitle} lines={preview.panelSections.includedItems.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.systems, "🛡️")} title={preview.panelSections.systemsTitle} lines={preview.panelSections.systemsText.split(/\r?\n/)} />
                   <div className="space-y-2">
-                    <p className="text-sm font-extrabold text-white">{preview.panelEmojis.products} Planos</p>
+                    <p className="text-sm font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, "💜")} Planos</p>
                     {preview.items.filter((item) => item.active).sort((a, b) => a.order - b.order).map((item) => (
                       <div className={`border-l-4 py-1 pl-3 text-sm font-bold ${item.highlight ? "border-[#9B35FF] text-white" : "border-white/20 text-zinc-200"}`} key={item.id}>
                         <div className="flex items-start justify-between gap-3">
@@ -342,9 +368,9 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
                       </div>
                     ))}
                   </div>
-                  <PreviewSection icon={preview.panelEmojis.advantages} title={preview.panelSections.advantagesTitle} lines={preview.panelSections.advantages.map((item) => `- ${item}`)} />
-                  <PreviewSection icon={preview.panelEmojis.support} title={preview.panelSections.supportTitle} lines={preview.panelSections.supportText.split(/\r?\n/)} />
-                  {preview.footerText ? <p className="border-t border-white/10 pt-3 text-xs font-bold italic text-white">{preview.panelEmojis.support} {preview.footerText}</p> : null}
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.advantages, "💎")} title={preview.panelSections.advantagesTitle} lines={preview.panelSections.advantages.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.support, "🌀")} title={preview.panelSections.supportTitle} lines={preview.panelSections.supportText.split(/\r?\n/)} />
+                  {preview.footerText ? <p className="border-t border-white/10 pt-3 text-xs font-bold italic text-white">{displayEmoji(preview.panelEmojis.support, "🌀")} {preview.footerText}</p> : null}
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -367,6 +393,30 @@ function Field({ disabled, label, onChange, type = "text", value }: { disabled?:
 
 function Textarea({ disabled, label, onChange, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; value: string }) {
   return <label className="block text-xs font-medium text-zinc-500">{label}<textarea className="mt-1 min-h-24 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:border-[#FFD500]/50" disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
+}
+
+function ChannelSelect({ channels, disabled, label, onChange, value }: { channels: GuildChannelOption[]; disabled?: boolean; label: string; onChange: (value: string | null) => void; value: string | null }) {
+  return (
+    <label className="block text-xs font-medium text-zinc-500">
+      {label}
+      <select className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]/50" disabled={disabled} onChange={(event) => onChange(event.target.value || null)} value={value ?? ""}>
+        <option value="">Selecionar canal</option>
+        {channels.map((channel) => <option key={channel.id} value={channel.id}># {channel.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function CategorySelect({ categories, disabled, label, onChange, value }: { categories: GuildCategoryOption[]; disabled?: boolean; label: string; onChange: (value: string | null) => void; value: string | null }) {
+  return (
+    <label className="block text-xs font-medium text-zinc-500">
+      {label}
+      <select className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]/50" disabled={disabled} onChange={(event) => onChange(event.target.value || null)} value={value ?? ""}>
+        <option value="">Selecionar categoria</option>
+        {categories.map((category) => <option key={category.id} value={category.id}>📁 {category.name}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function Select({ disabled, label, onChange, options, value }: { disabled?: boolean; label: string; onChange: (value: string) => void; options: string[]; value: string }) {
@@ -397,7 +447,14 @@ function lines(value: string) {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
-function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]): SavePriceTablePayload {
+function displayEmoji(value: string | null | undefined, fallback: string) {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+  if (/^<a?:[^:]+:\d+>$/.test(normalized)) return fallback;
+  return normalized;
+}
+
+function presetPayload(preset: PriceTablePreset): SavePriceTablePayload {
   return {
     buttonText: {
       plans: "Ver Planos",
@@ -408,7 +465,7 @@ function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]):
     currency: "BRL",
     currencyFormat: "R$",
     description: [
-      `Sistema policial **${preset.title}** para servidores RP.`,
+      `**${preset.name}** para servidores RP e comunidades Discord.`,
       "Inclui configuração pela Dashboard, publicação em canal próprio e suporte para deixar o módulo pronto para uso."
     ].join("\n"),
     discordChannelId: null,
@@ -424,13 +481,13 @@ function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]):
         description: preset.description,
         highlight: true,
         id: crypto.randomUUID(),
-        name: preset.title,
+        name: preset.name,
         order: 0,
         price: 30,
         priceText: "R$ 30,00"
       }
     ],
-    name: `Polícia - ${preset.title}`,
+    name: preset.name,
     panelEmojis: {
       advantages: "💎",
       products: "💜",
@@ -446,7 +503,7 @@ function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]):
       ],
       advantagesTitle: "Melhorias",
       includedItems: [
-        `Módulo ${preset.moduleId}`,
+        ...preset.included,
         "Painel em Componentes V2",
         "Configuração editável",
         "Suporte mensal"
@@ -454,10 +511,10 @@ function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]):
       includedTitle: "Incluso",
       supportText: "Abra um ticket para contratar, tirar dúvidas ou solicitar personalizações.",
       supportTitle: "Atendimento",
-      systemsText: `- ${preset.title} — R$ 30,00 por mês\n- Configuração e publicação em canal definido pela Dashboard`,
+      systemsText: preset.systems.map((item) => `- ${item}`).join("\n"),
       systemsTitle: "Sistema"
     },
-    title: `TABELA DE PREÇOS ${preset.title.toUpperCase()} - NexTech`
+    title: preset.title
   };
 }
 

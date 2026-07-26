@@ -1,13 +1,10 @@
 import {
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ChannelType,
   ContainerBuilder,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
-  SectionBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
@@ -84,17 +81,8 @@ function createPanelPayload(table: PriceTable) {
     new TextDisplayBuilder().setContent(`${emoji.products} **Planos**\n${products}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${emoji.advantages} **${sections.advantagesTitle}**\n${list(sections.advantages)}`)
-  ).addSeparatorComponents(separator()).addSectionComponents(
-    new SectionBuilder().addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${emoji.support} **${sections.supportTitle}**\n${supportText}`)
-    ).setButtonAccessory(
-      new ButtonBuilder().setCustomId(`${PREFIX}:support:${table.id}`).setEmoji(systemComponentEmoji("acessar")).setLabel(table.buttonText.support || "Abrir Ticket").setStyle(ButtonStyle.Primary)
-    )
-  ).addActionRowComponents(
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:plans:${table.id}`).setEmoji(systemComponentEmoji("caixa")).setLabel(table.buttonText.plans || "Ver Planos").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:quote:${table.id}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel(table.buttonText.quote || "Solicitar Orçamento").setStyle(ButtonStyle.Primary)
-    )
+  ).addSeparatorComponents(separator()).addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${emoji.support} **${sections.supportTitle}**\n${supportText}`)
   );
   if (table.footerText) container.addSeparatorComponents(separator()).addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${table.footerText}`));
   return { components: [container], flags: MessageFlags.IsComponentsV2 as const };
