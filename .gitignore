@@ -20,6 +20,8 @@ dev-logs
 logs
 .release-history/
 .reference/
+.agents/
+skills-lock.json
 .codex-screenshots/
 my-mercadopago-app/
 .DS_Store
