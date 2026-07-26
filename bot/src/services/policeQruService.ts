@@ -27,6 +27,7 @@ import type { PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./api
 const MODULE_ID = "police-qru";
 const PREFIX = "police_qru";
 const SETTINGS_TTL_MS = 30_000;
+const RANKING_WEEK_CHECK_INTERVAL_MS = 60_000;
 const IMAGE_EXTENSIONS = new Set(["gif", "jpg", "jpeg", "png", "webp"]);
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const MAX_EVIDENCE_FILES = 10;
@@ -55,6 +56,8 @@ type QruSession = {
 
 const settingsCache = new Map<string, { expiresAt: number; settings: PoliceQruSettings }>();
 const sessions = new Map<string, QruSession>();
+let rankingServiceStarted = false;
+let lastRankingWeekKey = policeQruWeekKey();
 
 export const qruCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -110,6 +113,20 @@ export const qruCommand: BotCommand = {
 
 export const rankCommand: BotCommand = rankingCommand("rank");
 export const rankingCommandQru: BotCommand = rankingCommand("ranking");
+
+export function startPoliceQruRankingService(client: BotContext["client"], context: BotContext) {
+  if (rankingServiceStarted) return;
+  rankingServiceStarted = true;
+
+  void refreshAllOfficialRankingPanels(client, context, "startup");
+  const interval = setInterval(() => {
+    const currentWeekKey = policeQruWeekKey();
+    if (currentWeekKey === lastRankingWeekKey) return;
+    lastRankingWeekKey = currentWeekKey;
+    void refreshAllOfficialRankingPanels(client, context, "weekly_reset");
+  }, RANKING_WEEK_CHECK_INTERVAL_MS);
+  interval.unref();
+}
 
 export async function handlePoliceQruInteraction(interaction: Interaction, context: BotContext) {
   if (!isBotModuleEnabled(MODULE_ID)) {
@@ -619,6 +636,15 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
   await message.edit(rankingPayload(ranking, settings, false, guild, context.client) as any).catch(() => null);
 }
 
+async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
+  await Promise.allSettled(client.guilds.cache.map(async (guild) => {
+    const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
+    if (!settings?.rankingChannelId || !settings.rankingMessageId) return;
+    await updateOfficialRankingPanel(context, guild.id, settings);
+  }));
+  console.log(`[police-qru] ranking panels refreshed: ${reason}`);
+}
+
 async function resolveTemporaryCategoryId(guild: NonNullable<ButtonInteraction<"cached">["guild"]>, settings: PoliceQruSettings) {
   if (!settings.temporaryCategoryId) return null;
   const channel = await guild.channels.fetch(settings.temporaryCategoryId).catch(() => null);
@@ -854,6 +880,7 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
   const others = visibleRanking.slice(3).map((entry) => `${systemEmojiText("VORTEX1505360210200049", guild, client)} **${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
   const totalVisible = visibleRanking.reduce((total, entry) => total + entry.total, 0);
   const updatedAt = Math.floor(Date.now() / 1000);
+  const period = policeQruWeekPeriodLabel();
   return {
     allowedMentions: { parse: [] },
     components: [{
@@ -862,8 +889,9 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
       components: [
         { type: 10, content: [
           `# ${trophy} Ranking de QRUs`,
-          full ? "Ranking completo temporário." : "Painel oficial com atualização automática após cada QRU confirmada.",
+          full ? "Ranking completo temporário da semana atual." : "Painel oficial com atualização automática. Zera toda segunda-feira.",
           "",
+          `**Período:** ${period}`,
           `**${clock} Última atualização:** <t:${updatedAt}:f>`,
           `**${officersIcon} Oficiais listados:** ${visibleRanking.length}`,
           `**${checklist} QRUs no recorte:** ${totalVisible}`,
@@ -871,11 +899,7 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
           `## ${trophy} Pódio`,
           podium,
           ...(others ? ["", `## ${listIcon} Demais posições`, others] : [])
-        ].join("\n") },
-        ...(full ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:rank_refresh`).setEmoji(systemComponentEmoji("relogio", guild, client)).setLabel("Atualizar").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId(`${PREFIX}:rank_full`).setEmoji(systemComponentEmoji("folha", guild, client)).setLabel("Ver Completo").setStyle(ButtonStyle.Primary)
-        )])
+        ].join("\n") }
       ]
     }],
     flags: MessageFlags.IsComponentsV2
@@ -1164,6 +1188,34 @@ function medal(position: number, guild?: NonNullable<ButtonInteraction<"cached">
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+function policeQruWeekKey(now = new Date()) {
+  return startOfPoliceQruWeek(now).toISOString().slice(0, 10);
+}
+
+function policeQruWeekPeriodLabel(now = new Date()) {
+  const start = startOfPoliceQruWeek(now);
+  const end = new Date(start.getTime() + 7 * 86_400_000 - 1);
+  const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" });
+  return `${formatter.format(start)} até ${formatter.format(end)}`;
+}
+
+function startOfPoliceQruWeek(now = new Date()) {
+  const saoPauloOffsetMs = -3 * 60 * 60 * 1000;
+  const local = new Date(now.getTime() + saoPauloOffsetMs);
+  const localDay = local.getUTCDay();
+  const daysSinceMonday = (localDay + 6) % 7;
+  const mondayLocalMidnight = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate() - daysSinceMonday,
+    0,
+    0,
+    0,
+    0
+  );
+  return new Date(mondayLocalMidnight - saoPauloOffsetMs);
 }
 
 function parseColor(value: string) {

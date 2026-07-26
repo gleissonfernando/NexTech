@@ -336,6 +336,7 @@ export async function listPoliceQruRecords(botId: string, guildId: string, searc
 
 export async function getPoliceQruRanking(botId: string, guildId: string, limit = 20): Promise<PoliceQruRankingEntryDto[]> {
   const { policeQruRecords } = await getMongoCollections();
+  const weekStart = startOfPoliceQruWeek();
   const rows = await policeQruRecords.aggregate<{
     _id: string;
     firstQruAt: Date;
@@ -343,7 +344,7 @@ export async function getPoliceQruRanking(botId: string, guildId: string, limit 
     officerName: string;
     total: number;
   }>([
-    { $match: { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
+    { $match: { botId, guildId, createdAt: { $gte: weekStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
     { $unwind: "$officers" },
     {
       $group: {
@@ -411,8 +412,7 @@ async function getPoliceQruStats(botId: string, guildId: string) {
   const now = new Date();
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date(todayStart);
-  weekStart.setDate(weekStart.getDate() - 6);
+  const weekStart = startOfPoliceQruWeek(now);
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
 
   const [total, qrusToday, qrusWeek, qrusMonth, officerCount, topAuthorRows] = await Promise.all([
@@ -437,6 +437,23 @@ async function getPoliceQruStats(botId: string, guildId: string) {
     topAuthor: topAuthorRows[0] ? { id: topAuthorRows[0]._id, name: topAuthorRows[0].name, total: topAuthorRows[0].total } : null,
     total
   };
+}
+
+function startOfPoliceQruWeek(now = new Date()) {
+  const saoPauloOffsetMs = -3 * 60 * 60 * 1000;
+  const local = new Date(now.getTime() + saoPauloOffsetMs);
+  const localDay = local.getUTCDay();
+  const daysSinceMonday = (localDay + 6) % 7;
+  const mondayLocalMidnight = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate() - daysSinceMonday,
+    0,
+    0,
+    0,
+    0
+  );
+  return new Date(mondayLocalMidnight - saoPauloOffsetMs);
 }
 
 async function listPoliceQruLogs(botId: string, guildId: string, limit = 50) {

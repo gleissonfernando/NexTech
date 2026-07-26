@@ -23,7 +23,7 @@ import { startZtkWebhookService } from "../services/ztkWebhookService";
 import { startPolicePatrolReportService } from "../services/policePatrolReportService";
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
 import { clearVehicleAbandonmentSettingsCache } from "../services/vehicleAbandonmentService";
-import { clearPoliceQruSettingsCache } from "../services/policeQruService";
+import { clearPoliceQruSettingsCache, startPoliceQruRankingService } from "../services/policeQruService";
 import { clearPolicePromotionSettingsCache, startPolicePromotionService } from "../services/policePromotionService";
 import { clearMessageControlCache } from "../services/messageControlService";
 import { clearVisibleMessageCache } from "../services/visibleMessageService";
@@ -366,6 +366,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("fivem-captcha", isBotModuleEnabled("fivem-captcha"), () => startFivemCaptchaService(client, context));
   startRuntimeService("faction-chest", isBotModuleEnabled("faction-chest"), () => startFactionChestService(client, context));
   startRuntimeService("police-patrol-reports", isBotModuleEnabled("police-patrol-reports"), () => startPolicePatrolReportService(client, context));
+  startRuntimeService("police-qru-ranking", isBotModuleEnabled("police-qru"), () => startPoliceQruRankingService(client, context));
   startRuntimeService("police-promotions", isBotModuleEnabled("police-promotions"), () => startPolicePromotionService(client, context));
   startRuntimeService("manual-registration", isBotModuleEnabled("manual-registration"), () => startManualRegistrationService(client, context));
   startRuntimeService("image-anti-spam", isBotModuleEnabled("image-anti-spam") && !isSelfBotModuleEnabled(), () => startImageAntiSpamService(context));
