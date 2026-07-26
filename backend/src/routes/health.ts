@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { env } from "../config/env";
-import { getMercadoPagoHealth } from "../config/payments";
+import { getPaymentGatewayHealth } from "../config/payments";
 import { getMongoDb } from "../database/mongo";
 import { getRedisClient } from "../database/redis";
 import { metricsSnapshot } from "../services/monitoringService";
@@ -200,25 +200,31 @@ function mailHealth() {
 }
 
 function paymentsHealth() {
+  const gateway = getPaymentGatewayHealth();
   const provider = resolvePaymentHealthProvider();
-  const supported = provider === "disabled" || provider === "mercadopago";
 
-  if (provider === "mercadopago") {
-    const mercadoPago = getMercadoPagoHealth();
+  if (provider === "disabled") {
     return {
-      enabled: mercadoPago.enabled,
-      ok: mercadoPago.status === "operational",
+      enabled: false,
+      ok: true,
       provider,
-      status: mercadoPago.status,
-      mercadoPago
+      status: "disabled",
+      ...gateway
     };
   }
 
+  const active = provider === "stripe"
+    ? gateway.stripe
+    : provider === "pagbank"
+      ? gateway.pagBank
+      : gateway.mercadoPago;
+
   return {
-    enabled: false,
-    ok: supported,
+    enabled: active.enabled,
+    ok: active.status === "operational",
     provider,
-    status: supported ? "disabled" : "unsupported_provider"
+    status: active.status,
+    ...gateway
   };
 }
 
@@ -227,9 +233,9 @@ function resolvePaymentHealthProvider() {
     return "disabled";
   }
 
-  if (env.PAYMENT_PROVIDER === "mercadopago" || env.MERCADOPAGO_ENABLED) {
-    return "mercadopago";
+  if (env.PAYMENT_PROVIDER !== "disabled") {
+    return env.PAYMENT_PROVIDER;
   }
 
-  return env.PAYMENT_PROVIDER;
+  return env.MERCADOPAGO_ENABLED ? "mercadopago" : "disabled";
 }

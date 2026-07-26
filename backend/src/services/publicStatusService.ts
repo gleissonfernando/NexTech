@@ -1,4 +1,4 @@
-import { getMercadoPagoHealth } from "../config/payments";
+import { getPaymentGatewayHealth } from "../config/payments";
 import { getMongoDb } from "../database/mongo";
 import { getRedisClient } from "../database/redis";
 import { backgroundJobHealth } from "./backgroundJobService";
@@ -223,7 +223,12 @@ async function checkRedis() {
 }
 
 function getPaymentStatus(): PublicServiceState {
-  const payments = getMercadoPagoHealth();
+  const gateway = getPaymentGatewayHealth();
+  const payments = gateway.activeProvider === "stripe"
+    ? gateway.stripe
+    : gateway.activeProvider === "pagbank"
+      ? gateway.pagBank
+      : gateway.mercadoPago;
   if (!payments.enabled) return "unknown";
   if (payments.status === "operational") return "operational";
   return "partial_outage";
