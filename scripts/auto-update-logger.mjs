@@ -34,6 +34,8 @@ export async function runAutoUpdateLogger(options = {}) {
     commit: currentCommit,
     previousCommit: previousCommit || null,
     author: git(["log", "-1", "--format=%an <%ae>", currentCommit]).trim() || null,
+    commitSubject: git(["log", "-1", "--format=%s", currentCommit]).trim() || null,
+    commitBody: git(["log", "-1", "--format=%b", currentCommit]).trim() || null,
     publishedAt,
     changeCount: analysis.changeCount,
     summary: analysis.summary,
@@ -277,6 +279,7 @@ function buildDiscordPayload({ analysis, bot, release }) {
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const sections = [
+    ["📌 O que mudou", buildReleaseChangeSummary(release, analysis)],
     ["🔧 Correções", analysis.summary.correcoes],
     ["🤖 Melhorias", analysis.summary.melhorias],
     ["🆕 Novidades", [...analysis.summary.novidades, ...analysis.summary.recursos]],
@@ -285,7 +288,7 @@ function buildDiscordPayload({ analysis, bot, release }) {
   ].map(([title, items]) => [title, unique(items).slice(0, 12)]).filter(([, items]) => items.length);
 
   if (!sections.length) {
-    sections.push(["🤖 Melhorias", ["Atualização operacional publicada automaticamente."]]);
+    sections.push(["📌 O que mudou", ["Atualização publicada com alterações registradas no repositório."]]);
   }
 
   const content = [
@@ -309,6 +312,30 @@ function buildDiscordPayload({ analysis, bot, release }) {
     components: [{ type: 17, accent_color: color, components }],
     flags: 32768
   };
+}
+
+function buildReleaseChangeSummary(release, analysis) {
+  const items = [];
+  if (release.commitSubject) {
+    items.push(release.commitSubject);
+  }
+
+  const changedFiles = analysis.files
+    .filter((file) => file.status !== "removed")
+    .slice(0, 6)
+    .map((file) => {
+      const label = classifyFile(file.path);
+      const operation = file.status === "created" ? "criado" : file.status === "renamed" ? "renomeado" : "atualizado";
+      return `${label ? `${label} ` : ""}${operation}: ${friendlyPath(file.path)}`;
+    });
+
+  items.push(...changedFiles);
+
+  if (!items.length && release.commitBody) {
+    items.push(...release.commitBody.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 4));
+  }
+
+  return items;
 }
 
 function formatUpdateSection(title, items) {
