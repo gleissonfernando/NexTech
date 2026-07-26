@@ -31,6 +31,31 @@ const emptyItem = (order: number): PriceTableItem => ({
   priceText: null
 });
 
+const POLICE_PRICE_TABLE_PRESETS: Array<{
+  description: string;
+  moduleId: string;
+  title: string;
+}> = [
+  { moduleId: "police-absences", title: "Ausência Policial", description: "Solicitações, aprovação e histórico de ausências para oficiais." },
+  { moduleId: "police-actions", title: "Ações Policiais", description: "Operações policiais com participantes, painel e relatórios separados." },
+  { moduleId: "police-iab", title: "Denúncias Corregedoria", description: "Denúncias anônimas ou identificadas com órgãos, logs e auditoria." },
+  { moduleId: "police-subpoenas", title: "Intimação", description: "Intimações institucionais com DMs, prazos e competência por órgão." },
+  { moduleId: "police-patrol-reports", title: "Relatórios Policiais", description: "Relatórios de patrulhamento exclusivos para oficiais." },
+  { moduleId: "police-qru", title: "Registro de QRU", description: "Registro de QRUs com evidências, oficiais envolvidos e ranking automático." },
+  { moduleId: "police-promotions", title: "Promoções de Patente", description: "Solicitações de promoção com avaliação, aprovação, cargos e histórico." },
+  { moduleId: "vehicle-abandonment", title: "Abandono de Veículo", description: "Registros automáticos de veículos abandonados por imagem." },
+  { moduleId: "police-hidden-channel", title: "Canal Oculto", description: "Canal anônimo policial com logs administrativos." },
+  { moduleId: "visible-message", title: "Mensagem Visível", description: "Mensagens com nome e avatar do usuário autorizado via webhook." },
+  { moduleId: "message-control", title: "Controle de Mensagem", description: "Controle operacional de mensagens autorizadas pela equipe policial." },
+  { moduleId: "police-dm", title: "Barra DM", description: "Envio de mensagens privadas com painel visual, permissões e logs." },
+  { moduleId: "police-open-duty", title: "Notificar / Ponto Aberto", description: "Notificações policiais por DM, canal mencionado e alertas administrativos." },
+  { moduleId: "police-time-clock", title: "Relógio de Ponto", description: "Registro de ponto policial com controle e histórico." },
+  { moduleId: "police-daf-roster", title: "Escala DAF", description: "Escalas operacionais do DAF organizadas pelo painel." },
+  { moduleId: "auto-activity-clock", title: "Ponto Automático", description: "Controle automático de atividade e serviço para operação policial." },
+  { moduleId: "police-courses", title: "Cursos Policiais", description: "Cursos, provas e avaliações para oficiais." },
+  { moduleId: "police-hr", title: "RH Administrativo", description: "Gestão de RH, registros e processos administrativos policiais." }
+];
+
 export function PriceTablesPanel({ botId, canManage, guild }: Props) {
   const [tables, setTables] = useState<PriceTable[]>([]);
   const [requests, setRequests] = useState<PriceTableRequest[]>([]);
@@ -73,6 +98,34 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
       setMessage("Tabela criada.");
     } catch (error) {
       setMessage(readError(error, "Não foi possível criar a tabela."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createPoliceTables() {
+    if (!botId || !guild) return;
+    setSaving(true);
+    try {
+      const existingNames = new Set(tables.map((table) => table.name.trim().toLowerCase()));
+      const created: PriceTable[] = [];
+      for (const preset of POLICE_PRICE_TABLE_PRESETS) {
+        const name = `Polícia - ${preset.title}`;
+        if (existingNames.has(name.toLowerCase())) continue;
+        const table = await createPriceTable(botId, guild.id, policePresetPayload(preset));
+        created.push(table);
+        existingNames.add(name.toLowerCase());
+      }
+
+      if (created.length) {
+        setTables((current) => [...created, ...current]);
+        selectTable(created[0]!);
+        setMessage(`${created.length} tabela(s) da Polícia criada(s) com valor mensal padrão de R$ 30,00.`);
+      } else {
+        setMessage("Todas as tabelas da Polícia já existem.");
+      }
+    } catch (error) {
+      setMessage(readError(error, "Não foi possível criar as tabelas da Polícia."));
     } finally {
       setSaving(false);
     }
@@ -162,6 +215,7 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
         </CardHeader>
         <CardContent className="space-y-3">
           <Button className="w-full" disabled={!canManage || saving} onClick={() => void createNewTable()} type="button"><Plus className="mr-2 h-4 w-4" />Criar produto</Button>
+          <Button className="w-full" disabled={!canManage || saving} onClick={() => void createPoliceTables()} type="button" variant="secondary"><Plus className="mr-2 h-4 w-4" />Criar módulos da Polícia</Button>
           {tables.map((table) => (
             <button className={`w-full rounded-lg border p-3 text-left text-sm ${selectedId === table.id ? "border-[#FFD500]/50 bg-[#FFD500]/10 text-white" : "border-zinc-800 bg-zinc-950 text-zinc-400"}`} key={table.id} onClick={() => selectTable(table)} type="button">
               <span className="block truncate font-semibold">{table.name}</span>
@@ -266,32 +320,31 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
               <CardDescription>{preview.discordChannelId ? `Canal ${preview.discordChannelId}` : "Canal não configurado"}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
+              <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#31323a]">
                 {preview.imageUrl && preview.imagePosition !== "none" ? <img alt="" className="h-36 w-full object-cover" src={preview.imageUrl} /> : null}
-                <div className="space-y-4 p-4">
-                  <div>
-                    <p className="text-xs font-bold text-zinc-400">{preview.panelEmojis.products} PLANO</p>
-                    <h3 className="text-lg font-bold text-white">{preview.title}</h3>
-                    <p className="mt-1 text-sm text-zinc-400">{preview.description}</p>
+                <div className="space-y-4 border-l-4 border-[#9B35FF] p-4">
+                  <div className="border-b border-white/10 pb-3">
+                    <h3 className="text-lg font-extrabold text-white">{preview.panelEmojis.products} {preview.title}</h3>
+                    <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-relaxed text-white">{preview.description}</p>
                   </div>
-                  <div className="border-t border-zinc-800 pt-3 text-sm text-zinc-300"><b>{preview.panelEmojis.products} {preview.panelSections.includedTitle}</b><p className="mt-2 whitespace-pre-line">{preview.panelSections.includedItems.map((item) => `• ${item}`).join('\n')}</p></div>
-                  <div className="border-t border-zinc-800 pt-3 text-sm text-zinc-300"><b>{preview.panelEmojis.systems} {preview.panelSections.systemsTitle}</b><p className="mt-2 whitespace-pre-line">{preview.panelSections.systemsText}</p></div>
-                  <div className="border-t border-zinc-800 pt-3 text-sm text-zinc-300"><b>{preview.panelEmojis.advantages} {preview.panelSections.advantagesTitle}</b><p className="mt-2 whitespace-pre-line">{preview.panelSections.advantages.map((item) => `• ${item}`).join('\n')}</p></div>
-                  <div className="border-t border-zinc-800 pt-3 text-sm text-zinc-300"><b>{preview.panelEmojis.support} {preview.panelSections.supportTitle}</b><p className="mt-2">{preview.panelSections.supportText}</p></div>
+                  <PreviewSection icon={preview.panelEmojis.products} title={preview.panelSections.includedTitle} lines={preview.panelSections.includedItems.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={preview.panelEmojis.systems} title={preview.panelSections.systemsTitle} lines={preview.panelSections.systemsText.split(/\r?\n/)} />
                   <div className="space-y-2">
+                    <p className="text-sm font-extrabold text-white">{preview.panelEmojis.products} Planos</p>
                     {preview.items.filter((item) => item.active).sort((a, b) => a.order - b.order).map((item) => (
-                      <div className={`rounded-lg border p-3 ${item.highlight ? "border-[#FFD500]/40 bg-[#FFD500]/10" : "border-zinc-800 bg-zinc-900/60"}`} key={item.id}>
+                      <div className={`border-l-4 py-1 pl-3 text-sm font-bold ${item.highlight ? "border-[#9B35FF] text-white" : "border-white/20 text-zinc-200"}`} key={item.id}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-white">{item.name}</p>
-                            <p className="mt-1 text-xs text-zinc-500">{item.description}</p>
+                            <p>- {item.name} — {formatPrice(preview, item)}{billingSuffixPreview(item)}</p>
+                            {item.description ? <p className="mt-1 text-xs text-zinc-300">{item.description}</p> : null}
                           </div>
-                          <p className="shrink-0 text-sm font-bold text-emerald-300">{formatPrice(preview, item)}</p>
                         </div>
                       </div>
                     ))}
                   </div>
-                  {preview.footerText ? <p className="text-xs text-zinc-500">{preview.footerText}</p> : null}
+                  <PreviewSection icon={preview.panelEmojis.advantages} title={preview.panelSections.advantagesTitle} lines={preview.panelSections.advantages.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={preview.panelEmojis.support} title={preview.panelSections.supportTitle} lines={preview.panelSections.supportText.split(/\r?\n/)} />
+                  {preview.footerText ? <p className="border-t border-white/10 pt-3 text-xs font-bold italic text-white">{preview.panelEmojis.support} {preview.footerText}</p> : null}
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -328,8 +381,84 @@ function IconButton({ disabled, icon: Icon, onClick }: { disabled?: boolean; ico
   return <button className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 text-zinc-400 transition hover:border-[#FFD500]/40 hover:text-white disabled:opacity-50" disabled={disabled} onClick={onClick} type="button"><Icon className="h-4 w-4" /></button>;
 }
 
+function PreviewSection({ icon, lines, title }: { icon: string; lines: string[]; title: string }) {
+  const visibleLines = lines.map((line) => line.trim()).filter(Boolean);
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-extrabold text-white">{icon} {title}</p>
+      <div className="border-l-4 border-[#9B35FF] py-1 pl-3 text-sm font-bold leading-relaxed text-zinc-200">
+        {(visibleLines.length ? visibleLines : ["- Consulte nossa equipe"]).map((line, index) => <p key={`${title}-${index}`}>{line}</p>)}
+      </div>
+    </div>
+  );
+}
+
 function lines(value: string) {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+function policePresetPayload(preset: typeof POLICE_PRICE_TABLE_PRESETS[number]): SavePriceTablePayload {
+  return {
+    buttonText: {
+      plans: "Ver Planos",
+      quote: "Solicitar Orçamento",
+      support: "Abrir Ticket"
+    },
+    color: "#9B35FF",
+    currency: "BRL",
+    currencyFormat: "R$",
+    description: [
+      `Sistema policial **${preset.title}** para servidores RP.`,
+      "Inclui configuração pela Dashboard, publicação em canal próprio e suporte para deixar o módulo pronto para uso."
+    ].join("\n"),
+    discordChannelId: null,
+    footerText: "Para orçamentos personalizados, dúvidas ou demonstrações, basta abrir um ticket e nossa equipe irá atender rapidinho.",
+    imagePosition: "none",
+    imageUrl: null,
+    isActive: true,
+    items: [
+      {
+        active: true,
+        billingText: "mês",
+        billingType: "monthly",
+        description: preset.description,
+        highlight: true,
+        id: crypto.randomUUID(),
+        name: preset.title,
+        order: 0,
+        price: 30,
+        priceText: "R$ 30,00"
+      }
+    ],
+    name: `Polícia - ${preset.title}`,
+    panelEmojis: {
+      advantages: "💎",
+      products: "💜",
+      support: "🌀",
+      systems: "🛡️"
+    },
+    panelSections: {
+      advantages: [
+        "Configuração completa pela Dashboard.",
+        "Publicação em canal individual.",
+        "Atualização automática ao salvar alterações.",
+        "Suporte para implantação e ajustes."
+      ],
+      advantagesTitle: "Melhorias",
+      includedItems: [
+        `Módulo ${preset.moduleId}`,
+        "Painel em Componentes V2",
+        "Configuração editável",
+        "Suporte mensal"
+      ],
+      includedTitle: "Incluso",
+      supportText: "Abra um ticket para contratar, tirar dúvidas ou solicitar personalizações.",
+      supportTitle: "Atendimento",
+      systemsText: `- ${preset.title} — R$ 30,00 por mês\n- Configuração e publicação em canal definido pela Dashboard`,
+      systemsTitle: "Sistema"
+    },
+    title: `TABELA DE PREÇOS ${preset.title.toUpperCase()} - NexTech`
+  };
 }
 
 function patchSection(
@@ -352,6 +481,11 @@ function formatPrice(table: PriceTable, item: PriceTableItem) {
   if (table.currency === "USD") return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(item.price);
   if (table.currency === "EUR") return new Intl.NumberFormat("de-DE", { currency: "EUR", style: "currency" }).format(item.price);
   return `${table.currencyFormat}${item.price.toFixed(2)}`;
+}
+
+function billingSuffixPreview(item: PriceTableItem) {
+  if (item.billingText) return ` / ${item.billingText}`;
+  return ({ custom: "", monthly: " / mensal", one_time: " / unico", weekly: " / semanal" } as const)[item.billingType];
 }
 
 function readError(error: unknown, fallback: string) {

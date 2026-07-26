@@ -50,9 +50,10 @@ async function publishPriceTablePanel(guild: Guild, context: BotContext, tableId
   const payload = createPanelPayload(table);
   if (table.messageId && "messages" in channel) {
     const message = await channel.messages.fetch(table.messageId).catch(() => null);
-    if (!message) return null;
-    await message.edit(payload);
-    return channel.id;
+    if (message) {
+      await message.edit(payload);
+      return channel.id;
+    }
   }
   const message = await channel.send(payload);
   await context.api.updatePriceTablePanelState(guild.id, table.id, message.id);
@@ -68,26 +69,44 @@ function createPanelPayload(table: PriceTable) {
     support: systemEmojiText("interrogacao"),
     systems: systemEmojiText("caixa")
   };
-  const products = activeItems.slice(0, 20).map((item) => `• **${item.name}** — ${formatPrice(table, item)}${billingSuffix(item)}${item.description ? `\n  ${item.description}` : ""}`).join("\n") || "• Consulte nossa equipe";
-  const list = (items: string[]) => items.filter(Boolean).map((item) => `• ${item}`).join("\n") || "• Consulte nossa equipe";
+  const products = quoteLines(activeItems.slice(0, 20).map((item) => `- **${item.name}** — ${formatPrice(table, item)}${billingSuffix(item)}${item.description ? `\n${item.description}` : ""}`)) || "> - Consulte nossa equipe";
+  const list = (items: string[]) => quoteLines(items.filter(Boolean).map((item) => `- ${item}`)) || "> - Consulte nossa equipe";
+  const systemsText = quoteLines(sections.systemsText.split(/\r?\n/).filter(Boolean)) || "> - Consulte nossa equipe";
+  const supportText = quoteLines(sections.supportText.split(/\r?\n/).filter(Boolean)) || "> Abra um ticket para falar com nossa equipe.";
   const separator = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large);
   const container = new ContainerBuilder().setAccentColor(parseColor(table.color)).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${emoji.products} PLANO\n## ${table.title}\n${table.description ?? ""}`)
+    new TextDisplayBuilder().setContent(`# ${emoji.products} ${table.title}\n${table.description ?? ""}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`## ${emoji.products} ${sections.includedTitle}\n${list(sections.includedItems)}`)
+    new TextDisplayBuilder().setContent(`${emoji.products} **${sections.includedTitle}**\n${list(sections.includedItems)}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`## ${emoji.systems} ${sections.systemsTitle}\n${sections.systemsText}\n\n${products}`)
+    new TextDisplayBuilder().setContent(`${emoji.systems} **${sections.systemsTitle}**\n${systemsText}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`## ${emoji.advantages} ${sections.advantagesTitle}\n${list(sections.advantages)}`)
+    new TextDisplayBuilder().setContent(`${emoji.products} **Planos**\n${products}`)
+  ).addSeparatorComponents(separator()).addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${emoji.advantages} **${sections.advantagesTitle}**\n${list(sections.advantages)}`)
   ).addSeparatorComponents(separator()).addSectionComponents(
     new SectionBuilder().addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`## ${emoji.support} ${sections.supportTitle}\n${sections.supportText}`)
+      new TextDisplayBuilder().setContent(`${emoji.support} **${sections.supportTitle}**\n${supportText}`)
     ).setButtonAccessory(
       new ButtonBuilder().setCustomId(`${PREFIX}:support:${table.id}`).setEmoji(systemComponentEmoji("acessar")).setLabel(table.buttonText.support || "Abrir Ticket").setStyle(ButtonStyle.Primary)
+    )
+  ).addActionRowComponents(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`${PREFIX}:plans:${table.id}`).setEmoji(systemComponentEmoji("caixa")).setLabel(table.buttonText.plans || "Ver Planos").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:quote:${table.id}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel(table.buttonText.quote || "Solicitar Orçamento").setStyle(ButtonStyle.Primary)
     )
   );
   if (table.footerText) container.addSeparatorComponents(separator()).addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${table.footerText}`));
   return { components: [container], flags: MessageFlags.IsComponentsV2 as const };
+}
+
+function quoteLines(lines: string[]) {
+  return lines
+    .flatMap((line) => line.split(/\r?\n/))
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `> ${line}`)
+    .join("\n");
 }
 
 async function showQuoteModal(interaction: ButtonInteraction, context: BotContext) {
