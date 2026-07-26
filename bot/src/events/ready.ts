@@ -467,7 +467,7 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
 }
 
 function isReportSystemModuleEnabled() {
-  return isBotModuleEnabled("police-iab") || isBotModuleEnabled("police-subpoenas") || isBotModuleEnabled("tickets");
+  return isBotModuleEnabled("police-iab") || isBotModuleEnabled("police-subpoenas");
 }
 
 function runtimeModuleSignature(active: boolean, botId: string | null | undefined, moduleIds: string[]) {

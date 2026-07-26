@@ -7,7 +7,7 @@ export const sistemaCommand: BotCommand = {
     .setName("sistema")
     .setDescription("Abre o painel administrativo do Sistema de Corregedoria."),
   execute: openReportSystemAdmin,
-  moduleId: "tickets"
+  moduleId: "police-iab"
 };
 
 export const iabCommand: BotCommand = {

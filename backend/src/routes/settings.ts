@@ -803,7 +803,7 @@ settingsRouter.post("/:guildId/report-system-panel", requireAuth, async (req, re
 
     const canManageReportSystem =
       await canManageModule(req, res, guildId, botId, "police-iab")
-      || await canManageModule(req, res, guildId, botId, "tickets");
+      || await canManageModule(req, res, guildId, botId, "police-subpoenas");
 
     if (!canManageReportSystem) {
       return res.status(403).json({
@@ -1111,7 +1111,7 @@ async function canPatchSettings(
     ticketPanelColor: ["tickets"],
     ticketPanelPlaceholder: ["tickets"],
     ticketPanelOptions: ["tickets"],
-    reportSystem: ["police-iab", "police-subpoenas", "tickets"],
+    reportSystem: ["police-iab", "police-subpoenas"],
     logChannelId: ["logs"],
     discordLogsEnabled: ["logs"],
     siteLogsEnabled: ["logs"],
