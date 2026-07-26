@@ -49,6 +49,7 @@ export function renderComponentsV2Panel(input: {
   extraImages?: Array<PanelVisualConfig | null | undefined>;
   fields?: string[];
   footer?: ComponentsV2FooterConfig;
+  footerContainer?: boolean;
   footerImage?: string | null;
   guild?: unknown;
   image?: PanelVisualConfig | null;
@@ -111,11 +112,12 @@ export function renderComponentsV2Panel(input: {
   if (!blockComponents.length && (media || extraMedia.length) && effectivePosition === "bottom") pushMedia();
 
   const footer = mergeFooter(input.footer === undefined ? getRuntimeFooter(input.guild) : input.footer, footerImage);
-  appendFooterComponents(components, footer);
   components.push(...actions);
+  const footerContainer = input.footerContainer ? createV2FooterContainer(footer, input.accentColor) : null;
+  if (!input.footerContainer) appendFooterComponents(components, footer);
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [buildV2Container({ accentColor: input.accentColor, components, footer: null })],
+    components: [buildV2Container({ accentColor: input.accentColor, components, footer: null }), ...(footerContainer ? [footerContainer] : [])],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }
@@ -184,6 +186,16 @@ export function createV2Footer(footer: ComponentsV2FooterConfig) {
       media: { url: image },
       description: normalized.description || "Imagem de rodapé"
     }
+  };
+}
+
+export function createV2FooterContainer(footer: ComponentsV2FooterConfig, accentColor?: number) {
+  const footerComponent = createV2Footer(footer);
+  if (!footerComponent) return null;
+  return {
+    type: 17,
+    ...(typeof accentColor === "number" ? { accent_color: accentColor } : {}),
+    components: [footerComponent]
   };
 }
 
