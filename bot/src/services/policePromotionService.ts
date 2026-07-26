@@ -885,7 +885,8 @@ async function submitEvaluationReview(interaction: ButtonInteraction<"cached">, 
   if (!delivered) return true;
   await sendPromotionLog(interaction.guild, settings, promotion, updated, "Relatório enviado", `Relatório de <@${updated.requesterId}> enviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
   await interaction.editReply(evaluationSubmittedPayload(delivered, promotion, interaction.guild, false) as any);
-  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+  await confirmPromotionFinalization(interaction, delivered);
+  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Relatório enviado para aprovação");
   return true;
 }
 
@@ -1029,7 +1030,8 @@ async function handleEvaluationResult(interaction: ButtonInteraction<"cached">, 
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   } as any);
-  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+  await confirmPromotionFinalization(interaction, delivered);
+  await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Relatório enviado para aprovação");
   return true;
 }
 
@@ -1130,11 +1132,14 @@ async function closeTicket(interaction: ButtonInteraction<"cached">, context: Bo
   }
   await context.api.closePolicePromotionRequest(request.id, { actorId: interaction.user.id, actorName: interaction.user.username, status });
   await interaction.reply({ content: status === "cancelled" ? "Solicitação cancelada. O canal será removido." : "Ticket fechado. O canal será removido.", ephemeral: true });
-  setTimeout(() => {
-    if (interaction.channel && !interaction.channel.isDMBased() && "delete" in interaction.channel) {
-      void interaction.channel.delete().catch(() => null);
-    }
-  }, 3000).unref?.();
+  await deletePromotionTemporaryChannel(
+    interaction.guild,
+    context,
+    request,
+    interaction.user.id,
+    displayName(interaction.member as GuildMember, interaction.user.username),
+    status === "cancelled" ? "Promoção cancelada" : "Ticket de promoção fechado"
+  );
   return true;
 }
 
@@ -1557,7 +1562,8 @@ async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteract
     if (!delivered) return;
     await sendPromotionLog(interaction.guild, settings, promotion, delivered, "Relatório reenviado", `Relatório de <@${delivered.requesterId}> reenviado por <@${interaction.user.id}> para aprovação.`).catch(() => null);
     await interaction.editReply(evaluationSubmittedPayload(delivered, promotion, interaction.guild, false) as any).catch(() => null);
-    await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+    await confirmPromotionFinalization(interaction, delivered);
+    await deletePromotionTemporaryChannel(interaction.guild, context, delivered, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Relatório reenviado para aprovação");
     return;
   }
 
@@ -1574,11 +1580,18 @@ async function acknowledgeAlreadySubmittedEvaluation(interaction: ButtonInteract
   }
 
   if (promotion && ["pending_approval", "approved", "rejected"].includes(request.status)) {
-    await deletePromotionTemporaryChannel(interaction.guild, context, request, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username));
+    await deletePromotionTemporaryChannel(interaction.guild, context, request, interaction.user.id, displayName(interaction.member as GuildMember, interaction.user.username), "Processo de promoção já encerrado");
   }
 }
 
-async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext, request: PolicePromotionRequest, actorId: string, actorName: string) {
+async function confirmPromotionFinalization(interaction: ButtonInteraction<"cached">, request: PolicePromotionRequest) {
+  await interaction.followUp({
+    content: `Relatório enviado para aprovação com sucesso. O canal temporário ${request.channelId ? `<#${request.channelId}>` : "da promoção"} será apagado automaticamente.`,
+    ephemeral: true
+  }).catch(() => null);
+}
+
+async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext, request: PolicePromotionRequest, actorId: string, actorName: string, reason = "Processo de promoção encerrado") {
   if (!request.channelId) return;
   const channel = await guild.channels.fetch(request.channelId).catch(() => null);
   await context.api.addPolicePromotionHistory(request.id, {
@@ -1589,7 +1602,7 @@ async function deletePromotionTemporaryChannel(guild: Guild, context: BotContext
   }).catch(() => null);
   let deleted = !channel;
   if (channel && "delete" in channel) {
-    await channel.delete(`Relatório de promoção enviado para aprovação (${request.id})`).then(() => {
+    await channel.delete(`${reason} (${request.id})`).then(() => {
       deleted = true;
     }).catch(async (error) => {
       await context.api.addPolicePromotionHistory(request.id, {
