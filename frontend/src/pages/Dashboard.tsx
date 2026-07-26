@@ -4480,30 +4480,19 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Verificação inteligente por CAPTCHA integrada ao fluxo FiveM.", id: "fivem-captcha", permissions: "Admin FiveM", title: "CAPTCHA FiveM" },
-    { builtIn: true, description: "Paineis oficiais V2 sincronizados por cargos.", id: "fivem-hierarchy", permissions: "Admin Polícia", title: "Paineis de Hierarquia V2" },
-    { builtIn: true, description: "Ações profissionais da FAC com painel, participantes e relatórios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Ações FAC" },
-    { builtIn: true, description: "Solicitacoes e aprovação de ausências para oficiais.", id: "police-absences", permissions: "Admin Polícia", title: "Ausência Policial" },
-    { builtIn: true, description: "Operações policiais com painel, participantes e relatórios separados.", id: "police-actions", permissions: "Admin Polícia", title: "Ações Políciais" },
-    { builtIn: true, description: "Relatórios de patrulhamento exclusivos para oficiais.", id: "police-patrol-reports", permissions: "Admin Polícia", title: "Relatórios Políciais" },
-    { builtIn: true, description: "Registro de QRUs com evidências, oficiais envolvidos e ranking automático.", id: "police-qru", permissions: "Admin Polícia", title: "Registro de QRU" },
-    { builtIn: true, description: "Solicitações de promoção com avaliação, aprovação, cargos e histórico.", id: "police-promotions", permissions: "Admin Polícia", title: "Promoções de Patente" },
-    { builtIn: true, description: "Registros automáticos de veículos abandonados por imagem.", id: "vehicle-abandonment", permissions: "Admin Polícia", title: "Abandono de Veículo" },
-    { builtIn: true, description: "Canal anonimo policial com logs administrativos.", id: "police-hidden-channel", permissions: "Admin Polícia", title: "Canal Oculto" },
-    { builtIn: true, description: "Mensagens com nome e avatar do usuário autorizado via webhook.", id: "visible-message", permissions: "Admin Polícia", title: "Mensagem Visível" },
-    { builtIn: true, description: "Envio de mensagens privadas com painel visual e logs.", id: "police-dm", permissions: "Admin Polícia", title: "Barra DM" },
-    { builtIn: true, description: "Denuncias anonimas/identificadas com órgãos, logs e auditoria.", id: "police-iab", permissions: "Admin Polícia", title: "Denuncias Corregedoria" },
-    { builtIn: true, description: "Intimacoes institucionais com DMs, prazos e competência por órgão.", id: "police-subpoenas", permissions: "Admin Polícia", title: "Intimacao" },
-    { builtIn: true, description: "Notificações policiais por DM, canal mencionado, contador de avisos verbais e alertas administrativos.", id: "police-open-duty", permissions: "Admin Polícia", title: "Notificar / Ponto Aberto" }
+    { builtIn: true, description: "Paineis oficiais V2 sincronizados por cargos.", id: "fivem-hierarchy", permissions: "Admin FiveM", title: "Paineis de Hierarquia V2" },
+    { builtIn: true, description: "Ações profissionais da FAC com painel, participantes e relatórios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Ações FAC" }
   ];
   const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
   const enabled = new Set(enabledModules.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
 
   return catalog
+    .filter((module) => isFivemCatalogModule(module.id))
     .filter((module) => enabled.has(module.id))
     .filter((module) => {
       if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences" && module.id !== "police-absences" && module.id !== "police-actions" && module.id !== "police-patrol-reports" && module.id !== "police-qru" && module.id !== "police-promotions" && module.id !== "vehicle-abandonment" && module.id !== "police-hidden-channel" && module.id !== "visible-message" && module.id !== "police-dm" && module.id !== "police-iab" && module.id !== "police-subpoenas" && module.id !== "police-open-duty";
+      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences";
     })
     .map((module) => ({
       description: module.description,
@@ -4511,6 +4500,10 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
       id: module.id,
       label: userFivemModuleLabel(module)
     }));
+}
+
+function isFivemCatalogModule(moduleId: string) {
+  return moduleId === "fivem" || moduleId.startsWith("fivem-") || moduleId === "ztk-webhook" || moduleId === "manual-registration";
 }
 
 function fivemIconForModule(moduleId: string) {

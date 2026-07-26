@@ -225,50 +225,82 @@ const navItems: NavItem[] = [
   { id: "settings", label: "Configurações", icon: Settings, moduleIds: ["avisos", "network", "server-generator"] }
 ];
 
-function navSectionForItem(item: NavItem): NavSectionId {
-  if (
-    item.id === "fivem-hierarchy"
-    || item.id === "police-absence"
-    || item.id === "police-actions"
-    || item.id === "police-iab"
-    || item.id === "police-subpoenas"
-    || item.id === "police-patrol-reports"
-    || item.id === "police-qru"
-    || item.id === "police-promotions"
-    || item.id === "vehicle-abandonment"
-    || item.id === "police-hidden-channel"
-    || item.id === "visible-message"
-    || item.id === "message-control"
-    || item.id === "police-dm"
-    || item.id === "police-open-duty"
-    || item.id === "police-time-clock"
-    || item.id === "police-daf-roster"
-    || item.id === "auto-activity-clock"
-    || item.id === "courses"
-    || item.id === "rh-admin"
-    || item.moduleId === "fivem-hierarchy"
-    || item.moduleId === "police-absences"
-    || item.moduleId === "police-actions"
-    || item.moduleId === "police-iab"
-    || item.moduleId === "police-subpoenas"
-    || item.moduleId === "police-patrol-reports"
-    || item.moduleId === "police-qru"
-    || item.moduleId === "police-promotions"
-    || item.moduleId === "vehicle-abandonment"
-    || item.moduleId === "police-hidden-channel"
-    || item.moduleId === "visible-message"
-    || item.moduleId === "message-control"
-    || item.moduleId === "police-dm"
-    || item.moduleId === "police-open-duty"
-    || item.moduleId === "police-time-clock"
-    || item.moduleId === "police-daf-roster"
-    || item.moduleId === "auto-activity-clock"
-    || item.moduleId === "rh-admin"
-  ) {
+const policeViewIds = new Set<ViewId>([
+  "police-absence",
+  "police-actions",
+  "police-iab",
+  "police-subpoenas",
+  "police-patrol-reports",
+  "police-qru",
+  "police-promotions",
+  "vehicle-abandonment",
+  "police-hidden-channel",
+  "visible-message",
+  "message-control",
+  "police-dm",
+  "police-open-duty",
+  "police-time-clock",
+  "police-daf-roster",
+  "auto-activity-clock"
+]);
+
+const policeModuleIds = new Set([
+  "police-absences",
+  "police-actions",
+  "police-iab",
+  "police-subpoenas",
+  "police-patrol-reports",
+  "police-qru",
+  "police-promotions",
+  "vehicle-abandonment",
+  "police-hidden-channel",
+  "visible-message",
+  "message-control",
+  "police-dm",
+  "police-open-duty",
+  "police-time-clock",
+  "police-daf-roster",
+  "auto-activity-clock",
+  "police-courses",
+  "police-hr"
+]);
+
+const fivemViewIds = new Set<ViewId>([
+  "fivem",
+  "fivem-absence",
+  "fivem-hierarchy",
+  "fivem-actions",
+  "fivem-orders",
+  "fivem-families",
+  "fivem-washing",
+  "fivem-ammo",
+  "fivem-drug",
+  "fivem-weapon",
+  "fivem-custom",
+  "fivem-finance",
+  "fivem-goals",
+  "fivem-captcha",
+  "ztk-webhook",
+  "manual-registration"
+]);
+
+function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSectionId {
+  const itemModuleIds = item.moduleIds ?? (item.moduleId ? [item.moduleId] : []);
+  const releasedItemModuleIds = itemModuleIds.filter((moduleId) => enabledModuleSet.has(moduleId));
+
+  if (item.id === "courses") {
+    return releasedItemModuleIds.includes("police-courses") ? "police" : "user";
+  }
+
+  if (item.id === "rh-admin") {
     return "police";
   }
 
-  if (item.id.startsWith("fivem") || item.id === "ztk-webhook" || item.id === "manual-registration") {
+  if (policeViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => policeModuleIds.has(moduleId))) {
+    return "police";
+  }
+
+  if (fivemViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => moduleId.startsWith("fivem-") || moduleId === "fivem" || moduleId === "fivem-fac")) {
     return "fivem";
   }
 
@@ -300,13 +332,13 @@ function navSectionForItem(item: NavItem): NavSectionId {
   return "user";
 }
 
-function groupNavItems(items: NavItem[]) {
+function groupNavItems(items: NavItem[], enabledModuleSet: Set<string>) {
   const order: NavSectionId[] = ["user", "police", "fivem", "security", "server"];
 
   return order
     .map((id) => ({
       id,
-      items: items.filter((item) => navSectionForItem(item) === id),
+      items: items.filter((item) => navSectionForItem(item, enabledModuleSet) === id),
       label: navSectionLabels[id]
     }))
     .filter((section) => section.items.length > 0);
@@ -484,7 +516,7 @@ function BotManagementSidebar({
     if (item.moduleId) return enabledModuleSet.has(item.moduleId);
     return Boolean(item.moduleIds?.some((moduleId) => enabledModuleSet.has(moduleId)));
   });
-  const botNavSections = groupNavItems(botNavItems);
+  const botNavSections = groupNavItems(botNavItems, enabledModuleSet);
 
   if (isCollapsed) {
     return (
