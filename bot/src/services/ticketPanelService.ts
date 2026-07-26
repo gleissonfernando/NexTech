@@ -382,8 +382,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
   const contentBlocks = [
     `## ${settings.ticketPanelTitle || "Central de Suporte"}`,
     settings.ticketPanelDescription || "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
-    settings.ticketPanelInfoText,
-    settings.ticketPanelFooterText ? `-# ${settings.ticketPanelFooterText}` : null
+    settings.ticketPanelInfoText
   ].filter((block): block is string => Boolean(block?.trim()));
   const configuredMedia = [
     resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail"),
@@ -406,6 +405,11 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     description: contentBlocks[1] ?? "",
     extraImages: banners,
     fields: contentBlocks.slice(2),
+    footer: {
+      description: "Imagem de rodapé do painel",
+      image: footerImageUrl,
+      text: settings.ticketPanelFooterText?.trim() || "NexTech"
+    },
     footerImage: footerImageUrl,
     guild,
     image: logoImage,
