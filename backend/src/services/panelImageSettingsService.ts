@@ -90,6 +90,13 @@ const UPLOADS_ROOT = path.resolve(__dirname, "../../uploads");
 const FOOTER_IMAGE_PANEL_IDS = new Set(["global-footer", "ticket-footer"]);
 const FOOTER_IMAGE_SIZE_PX = 32;
 const DEFAULT_FOOTER_TEXT = "NexTech";
+const LOCKED_PANEL_POSITIONS: Partial<Record<string, PanelImagePosition>> = {
+  "global-footer": "footer",
+  "ticket-banner": "below_title",
+  "ticket-banner-secondary": "bottom",
+  "ticket-footer": "footer",
+  "ticket-logo": "thumbnail"
+};
 const DEFAULT_SETTINGS = {
   customHeight: null,
   customWidth: null,
@@ -373,7 +380,8 @@ export async function removePanelImageSettings(input: {
 
 function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsDto {
   const footerImagePanel = isFooterImagePanel(settings.panelId);
-  const imagePosition = IMAGE_POSITIONS.has(settings.imagePosition) ? settings.imagePosition : DEFAULT_SETTINGS.imagePosition;
+  const lockedPosition = lockedPanelPosition(settings.panelId);
+  const imagePosition = lockedPosition ?? (IMAGE_POSITIONS.has(settings.imagePosition) ? settings.imagePosition : DEFAULT_SETTINGS.imagePosition);
   const imageSize = footerImagePanel ? "custom" : IMAGE_SIZES.has(settings.imageSize) ? settings.imageSize : DEFAULT_SETTINGS.imageSize;
   const bannerMode = BANNER_MODES.has(settings.bannerMode) ? settings.bannerMode : DEFAULT_SETTINGS.bannerMode;
   const layoutMode = resolveLayoutMode(
@@ -419,6 +427,10 @@ function normalizeFooterText(value: string | null | undefined, panelId: string) 
 
 function isFooterImagePanel(panelId: string) {
   return FOOTER_IMAGE_PANEL_IDS.has(panelId);
+}
+
+function lockedPanelPosition(panelId: string) {
+  return LOCKED_PANEL_POSITIONS[panelId] ?? null;
 }
 
 function isAllowedFooterUpload(mimeType: string, originalName?: string | null) {
@@ -522,6 +534,7 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
   const persistentOrRemote = isPersistentImageUrl(settings.imageUrl) || /^https?:\/\//i.test(settings.imageUrl ?? "");
   const imageEnabled = settings.imageEnabled === true && persistentOrRemote;
   const legacyImageUrl = persistentOrRemote ? normalizeImageUrl(settings.imageUrl) : "";
+  const imagePosition = lockedPanelPosition(settings.panelId) ?? settings.imagePosition ?? DEFAULT_SETTINGS.imagePosition;
   return {
     blocks: normalizeBlocks(settings.blocks?.length ? settings.blocks : legacyBlocks(settings.panelId, imageEnabled, legacyImageUrl, settings.imagePosition)),
     botId: settings.botId,
@@ -531,7 +544,7 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
     footerText: normalizeFooterText(settings.footerText, settings.panelId),
     imageEnabled,
     imageExtension: extensionFromUrl(legacyImageUrl),
-    imagePosition: settings.imagePosition ?? DEFAULT_SETTINGS.imagePosition,
+    imagePosition: imageEnabled ? imagePosition : "none",
     imageSize: settings.imageSize ?? DEFAULT_SETTINGS.imageSize,
     bannerMode: settings.bannerMode ?? DEFAULT_SETTINGS.bannerMode,
     imageUrl: legacyImageUrl,

@@ -686,7 +686,7 @@ function resolvePanelMediaUrlValue(value: string | null | undefined) {
 function resolveTicketPanelMedia(panelImage: PanelImageSettings | null, fallbackPosition: PanelImageSettings["imagePosition"]) {
   const imageUrl = resolveImageUrl(panelImage);
   return panelImage && imageUrl
-    ? { ...panelImage, imagePosition: panelImage.imagePosition === "none" ? fallbackPosition : panelImage.imagePosition, imageUrl }
+    ? { ...panelImage, imagePosition: fallbackPosition, imageUrl }
     : null;
 }
 

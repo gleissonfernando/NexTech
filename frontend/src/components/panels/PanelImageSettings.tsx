@@ -152,8 +152,11 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
   const fixedPanel = fixedPanels?.length === 1 ? fixedPanels[0] : null;
   const selectedPanel = panelChoices.find((panel) => panel.id === selectedPanelId) ?? panelChoices[0]!;
   const selectedFooterImagePanel = isFooterImagePanel(selectedPanelId);
+  const lockedImagePosition = selectedPanel.defaultPosition ?? null;
+  const positionSelectionLocked = Boolean(lockedImagePosition);
   const disabled = !canManage || !guildId || !botId || loading || saving || uploading;
-  const effectiveLayoutMode = componentsV2Only || advancedPositions.has(draft.imagePosition) ? "components_v2" : draft.layoutMode;
+  const effectiveImagePosition = lockedImagePosition ?? draft.imagePosition;
+  const effectiveLayoutMode = componentsV2Only || advancedPositions.has(effectiveImagePosition) ? "components_v2" : draft.layoutMode;
   const previewStyle = previewImageStyle(draft.imageSize, draft.customWidth, draft.customHeight);
 
   useEffect(() => {
@@ -205,9 +208,9 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
     setDraft((current) => ({
       ...current,
       imageEnabled: value.trim() ? true : current.imageEnabled,
-      imagePosition: selectedFooterImagePanel
+      imagePosition: lockedImagePosition ?? (selectedFooterImagePanel
         ? "footer"
-        : value.trim() && current.imagePosition === "none" ? selectedPanel.defaultPosition ?? "banner" : current.imagePosition,
+        : value.trim() && current.imagePosition === "none" ? selectedPanel.defaultPosition ?? "banner" : current.imagePosition),
       imageSize: selectedFooterImagePanel ? "custom" : current.imageSize,
       imageUrl: value,
       customHeight: selectedFooterImagePanel ? FOOTER_IMAGE_SIZE_PX : current.customHeight,
@@ -235,11 +238,15 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
         ...(key !== "useGlobalDefault" && selectedPanelId !== "global-default" ? { useGlobalDefault: false } : {})
       };
 
-      if (key === "imagePosition" && advancedPositions.has(value as PanelImagePosition)) {
+      if (key === "imagePosition" && lockedImagePosition) {
+        next.imagePosition = lockedImagePosition;
+      }
+
+      if (key === "imagePosition" && advancedPositions.has((lockedImagePosition ?? value) as PanelImagePosition)) {
         next.layoutMode = "components_v2";
       }
 
-      if (key === "imagePosition" && value === "none") {
+      if (key === "imagePosition" && !lockedImagePosition && value === "none") {
         next.imageEnabled = false;
       }
 
@@ -294,7 +301,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       return;
     }
 
-    const nextPayload = payload ?? buildPayload(draft, effectiveLayoutMode, componentsV2Only);
+    const nextPayload = payload ?? buildPayload(draft, effectiveLayoutMode, componentsV2Only, lockedImagePosition);
 
     if (nextPayload.imageEnabled && !String(nextPayload.imageUrl ?? "").trim()) {
       setStatus(null);
@@ -532,11 +539,11 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
               </div>
 
               <SelectField
-                disabled={disabled || selectedFooterImagePanel}
+                disabled={disabled || selectedFooterImagePanel || positionSelectionLocked}
                 label="Posicao"
                 onChange={(value) => updateDraft("imagePosition", value as PanelImagePosition)}
                 options={positionOptions}
-                value={draft.imagePosition}
+                value={effectiveImagePosition}
               />
               <SelectField
                 disabled={disabled || selectedFooterImagePanel}
@@ -596,7 +603,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
 
             <div className="rounded-lg border border-zinc-900 bg-black p-4">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                {draft.imageEnabled && draft.imageUrl && ["top", "banner"].includes(draft.imagePosition) ? (
+                {draft.imageEnabled && draft.imageUrl && ["top", "banner"].includes(effectiveImagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 <div className="flex items-start gap-3">
@@ -606,22 +613,22 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                       Texto do painel mantendo o layout atual. A imagem segue a posição e o tamanho selecionados.
                     </p>
                   </div>
-                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "thumbnail" ? (
+                  {draft.imageEnabled && draft.imageUrl && effectiveImagePosition === "thumbnail" ? (
                     <InlineMediaPreview className="h-20 w-20" imageUrl={draft.imageUrl} settings={draft} />
                   ) : null}
-                  {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "side" ? <InlineMediaPreview className="h-28 w-36" imageUrl={draft.imageUrl} settings={draft} /> : null}
+                  {draft.imageEnabled && draft.imageUrl && effectiveImagePosition === "side" ? <InlineMediaPreview className="h-28 w-36" imageUrl={draft.imageUrl} settings={draft} /> : null}
                 </div>
-                {draft.imageEnabled && draft.imageUrl && ["below_title", "below_text"].includes(draft.imagePosition) ? (
+                {draft.imageEnabled && draft.imageUrl && ["below_title", "below_text"].includes(effectiveImagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(draft.imagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} /></> : null}
-                {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(draft.imagePosition) ? (
+                {draft.imageEnabled && draft.imageUrl && ["middle"].includes(effectiveImagePosition) ? <><p className="mt-3 text-sm text-zinc-400">Campos extras do painel</p><PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} /></> : null}
+                {draft.imageEnabled && draft.imageUrl && ["before_buttons", "above_buttons"].includes(effectiveImagePosition) ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "bottom" ? (
+                {draft.imageEnabled && draft.imageUrl && effectiveImagePosition === "bottom" ? (
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
-                {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
+                {draft.imageEnabled && draft.imageUrl && effectiveImagePosition === "footer" ? (
                   <div className="mt-4 flex items-center justify-start gap-2.5 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
                     <InlineMediaPreview className="h-8 min-h-8 w-8 min-w-8 max-h-8 max-w-8 rounded-md" imageUrl={draft.imageUrl} settings={draft} />
                     <span className="flex items-center">{previewFooterText(draft, selectedPanelId)}</span>
@@ -1368,10 +1375,11 @@ function panelLabelForId(panelId: string) {
   return PANELS.find((panel) => panel.id === panelId)?.label ?? panelId;
 }
 
-function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLayoutMode, componentsV2Only = false): SavePanelImageSettingsPayload {
+function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLayoutMode, componentsV2Only = false, lockedImagePosition: PanelImagePosition | null = null): SavePanelImageSettingsPayload {
   const imageUrl = settings.imageUrl.trim();
-  const imageEnabled = settings.imageEnabled && settings.imagePosition !== "none" && Boolean(imageUrl);
   const footerImagePanel = isFooterImagePanel(settings.panelId);
+  const imagePosition = lockedImagePosition ?? (footerImagePanel ? "footer" : settings.imagePosition);
+  const imageEnabled = settings.imageEnabled && imagePosition !== "none" && Boolean(imageUrl);
 
   return {
     customHeight: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : settings.imageSize === "custom" ? settings.customHeight : null,
@@ -1380,7 +1388,7 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
     bannerMode: settings.bannerMode ?? "auto",
     blocks: footerImagePanel || componentsV2Only ? [] : settings.blocks ?? [],
     imageEnabled,
-    imagePosition: imageEnabled ? footerImagePanel ? "footer" : settings.imagePosition : "none",
+    imagePosition: imageEnabled ? imagePosition : "none",
     imageSize: footerImagePanel ? "custom" : settings.imageSize,
     imageUrl: imageEnabled ? imageUrl : "",
     layoutMode: footerImagePanel ? "components_v2" : layoutMode,
