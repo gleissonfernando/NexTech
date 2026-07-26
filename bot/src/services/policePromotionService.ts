@@ -2329,15 +2329,15 @@ function setEvaluationStepAnswer(draft: EvaluationQuestionnaireDraft, step: Eval
 }
 
 function completedEvaluationSteps(draft: EvaluationQuestionnaireDraft) {
-  return EVALUATION_STEPS.filter((step) => Boolean(evaluationStepAnswerFor(draft, step)));
+  return EVALUATION_STEPS.filter((step) => isEvaluationStepCompleted(draft, step));
 }
 
 function nextAvailableEvaluationStep(draft: EvaluationQuestionnaireDraft) {
-  return EVALUATION_STEPS.find((step) => !evaluationStepAnswerFor(draft, step)) ?? null;
+  return EVALUATION_STEPS.find((step) => !isEvaluationStepCompleted(draft, step)) ?? null;
 }
 
 function evaluationStepStatusIcon(draft: EvaluationQuestionnaireDraft, step: EvaluationStep, guild: Guild) {
-  if (evaluationStepAnswerFor(draft, step)) return icon("visto", guild);
+  if (isEvaluationStepCompleted(draft, step)) return icon("visto", guild);
   if (draft.pending?.step === step) return icon("alerta", guild);
   if (draft.awaitingStep === step) return icon("relogio", guild);
   if (nextAvailableEvaluationStep(draft) === step) return icon("relogio", guild);
@@ -2347,8 +2347,16 @@ function evaluationStepStatusIcon(draft: EvaluationQuestionnaireDraft, step: Eva
 function missingEvaluationQuestionnaireSteps(draft: EvaluationQuestionnaireDraft | null | undefined) {
   if (!draft) return ["Patrulha", "Operacional", "Conduta", "Observações", "Final"];
   return EVALUATION_STEPS
-    .filter((step) => !evaluationStepAnswerFor(draft, step))
+    .filter((step) => !isEvaluationStepCompleted(draft, step))
     .map((step) => evaluationStepTitle(step));
+}
+
+function isEvaluationStepCompleted(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
+  const answer = evaluationStepAnswerFor(draft, step).trim();
+  if (!answer) return false;
+  if (step !== "final") return true;
+  const finalDecision = parseFinalDecision(answer);
+  return Boolean(finalDecision.result && finalDecision.justification);
 }
 
 function oneLineEvaluationValue(value: string) {
@@ -2551,16 +2559,25 @@ function parseIntervention(text: string) {
 function parseFinalDecision(text: string) {
   const normalized = normalizePlainText(text).replace(/\s+/g, " ");
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const resultAnswer = extractValueAfterAnyLabel(lines, ["resultado", "o cadet esta apto para se tornar officer", "apto"]);
+  const resultAnswer = extractValueAfterAnyLabel(lines, ["resultado final", "resultado", "decisao", "o cadet esta apto para se tornar officer", "apto"]) || extractStandaloneDecision(lines);
   const normalizedResultAnswer = normalizePlainText(resultAnswer).replace(/\s+/g, " ");
   const decisionSource = normalizedResultAnswer || normalized;
-  const result = /\b(nao|reprovado|reprovacao|inapto)\b/.test(decisionSource)
+  const result = /\b(nao|não|nao apto|não apto|reprovado|reprovada|reprovacao|reprovação|inapto|inapta)\b/.test(decisionSource)
     ? "rejected"
-    : /\b(sim|aprovado|aprovacao|apto)\b/.test(decisionSource)
+    : /\b(sim|aprovado|aprovada|aprovacao|aprovação|apto|apta)\b/.test(decisionSource)
       ? "approved"
       : null;
   const justification = extractValueAfterLabel(lines, "justificativa") || text.trim();
   return { justification: justification.length >= 10 ? clip(justification, 800) : "", result };
+}
+
+function extractStandaloneDecision(lines: string[]) {
+  for (const line of lines) {
+    const normalized = normalizePlainText(line).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+    if (/^(sim|aprovado|aprovada|apto|apta)$/.test(normalized)) return normalized;
+    if (/^(nao|não|reprovado|reprovada|inapto|inapta|nao apto|não apto)$/.test(normalized)) return normalized;
+  }
+  return "";
 }
 
 function extractValueAfterAnyLabel(lines: string[], labels: string[]) {
