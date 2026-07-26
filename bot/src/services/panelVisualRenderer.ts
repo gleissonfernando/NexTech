@@ -88,16 +88,17 @@ export function renderComponentsV2Panel(input: {
     components.push(...extraMedia);
   };
 
-  if (blockComponents.length) components.push(...blockComponents);
   if (useThumbnailLayout) {
     components.push({ type: 9, components: [{ type: 10, content: titleText }], accessory: { type: 11, media: { url: thumbnailUrl }, description: input.title } });
     components.push(...extraMedia);
   } else {
     components.push({ type: 10, content: titleText });
   }
+  if (hasPanelBody({ actions, blockComponents, extraMedia, fields, media })) components.push(separatorComponent());
   if (!blockComponents.length && (media || extraMedia.length) && ["top", "banner"].includes(effectivePosition)) pushMedia();
   if (!blockComponents.length && (media || extraMedia.length) && ["thumbnail", "side"].includes(effectivePosition) && !useThumbnailLayout) pushMedia();
   if (!blockComponents.length && (media || extraMedia.length) && ["below_title", "below_text"].includes(effectivePosition)) pushMedia();
+  if (blockComponents.length) components.push(...blockComponents);
 
   const split = Math.ceil(fields.length / 2);
   fields.slice(0, split).forEach((content) => components.push({ type: 10, content }));
@@ -141,9 +142,14 @@ export function buildV2Container(input: { accentColor?: number; components: unkn
 }
 
 export function renderPanelFromBlocks(input: { accentColor: number; blocks: PanelBlock[]; footer?: ComponentsV2FooterConfig }) {
+  const rendered = renderPanelBlocks(input.blocks);
+  const actions = rendered.filter(isActionRowComponent);
+  const components = rendered.filter((component) => !isActionRowComponent(component));
+  appendFooterComponents(components, input.footer ?? DEFAULT_PANEL_FOOTER);
+  components.push(...actions);
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [buildV2Container({ accentColor: input.accentColor, components: renderPanelBlocks(input.blocks), footer: input.footer })],
+    components: [buildV2Container({ accentColor: input.accentColor, components, footer: null })],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }
@@ -185,7 +191,16 @@ export function resolvePanelImageUrl(value: string | null, media?: Pick<PanelVis
 }
 
 function mediaBlock(url: string, description: string) { return { type: 12, items: [{ media: { url }, description }] }; }
+function separatorComponent() { return { type: 14, divider: true, spacing: 1 }; }
 function normalizePosition(position: PanelVisualPosition | undefined): PanelVisualPosition { return position && position !== "none" ? position : "none"; }
+
+function hasPanelBody(input: { actions: unknown[]; blockComponents: unknown[]; extraMedia: unknown[]; fields: string[]; media: unknown | null }) {
+  return Boolean(input.media || input.extraMedia.length || input.blockComponents.length || input.fields.some((field) => field.trim()) || input.actions.length);
+}
+
+function isActionRowComponent(component: unknown) {
+  return Boolean(component && typeof component === "object" && (component as { type?: unknown }).type === 1);
+}
 
 function normalizePanelBlocks(blocks: PanelBlock[] | null | undefined) {
   return (blocks ?? [])
