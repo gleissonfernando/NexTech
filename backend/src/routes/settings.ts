@@ -807,7 +807,7 @@ settingsRouter.post("/:guildId/report-system-panel", requireAuth, async (req, re
 
     if (!canManageReportSystem) {
       return res.status(403).json({
-        message: "O módulo Denuncias Corregedoria não foi liberado para este bot."
+        message: "O módulo Corregedoria não foi liberado para este bot."
       });
     }
 

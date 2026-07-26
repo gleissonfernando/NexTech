@@ -22,7 +22,7 @@ export async function publishReportSystemPanelToDiscord(settings: GuildSettingsD
     : null;
 
   if (!report.enabled) {
-    throw new Error("Ative o sistema Denuncias Corregedoria antes de publicar o painel.");
+    throw new Error("Ative o sistema Corregedoria antes de publicar o painel.");
   }
 
   if (!report.panelChannelId) {

@@ -32,7 +32,7 @@ const cooldowns = new Map<string, number>();
 const drafts = new Map<string, { guildId: string; message: string; observation: string; targetId: string; title: string }>();
 
 export const dmBarCommand: BotCommand = {
-  data: new SlashCommandBuilder().setName("dm").setDescription("Envia uma DM visual para um membro autorizado pelo sistema Barra DM."),
+  data: new SlashCommandBuilder().setName("dm").setDescription("Envia uma DM visual para um membro autorizado pelos Avisos Administrativos."),
   moduleId: MODULE_ID,
   async execute(interaction, context) {
     await openDmBar(interaction, context);
@@ -53,7 +53,7 @@ export async function openDmBar(interaction: ChatInputCommandInteraction, contex
 
   const select = new UserSelectMenuBuilder().setCustomId(`${PREFIX}:target`).setPlaceholder("Selecione o usuário que receberá a DM").setMinValues(1).setMaxValues(1);
   return interaction.reply({
-    components: [{ type: 17, accent_color: color(config.accentColor), components: [{ type: 10, content: replaceSystemEmojis(`# ${config.emoji || systemEmojiText("discord", interaction.guild)} Barra DM\nSelecione o usuário que receberá a mensagem privada.`, interaction.guild) }, new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select)] }],
+    components: [{ type: 17, accent_color: color(config.accentColor), components: [{ type: 10, content: replaceSystemEmojis(`# ${config.emoji || systemEmojiText("discord", interaction.guild)} Avisos Administrativos\nSelecione o usuário que receberá a mensagem privada.`, interaction.guild) }, new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select)] }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
 }
@@ -213,7 +213,7 @@ async function sendLogChannel(interaction: ButtonInteraction, config: DmBarConfi
   if (!channel?.isTextBased() || channel.isDMBased()) return;
   const payload = renderComponentsV2Panel({
     accentColor: status === "sent" ? 0x22c55e : 0xef4444,
-    description: "Registro interno do sistema Barra DM.",
+    description: "Registro interno dos Avisos Administrativos.",
     fields: [
       `**Status:** ${status}\n**Enviado por:** <@${interaction.user.id}> (${interaction.user.id})\n**Recebeu:** <@${target.id}> (${target.id})\n**Data:** <t:${Math.floor(Date.now() / 1000)}:F>`,
       `**Titulo:** ${draft.title}\n**Conteúdo:**\n${draft.message.slice(0, 1500)}${error ? `\n**Erro:** ${error}` : ""}`
@@ -221,7 +221,7 @@ async function sendLogChannel(interaction: ButtonInteraction, config: DmBarConfi
     guild: interaction.guild,
     image: config.mainImageUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: resolvePanelImageUrl(config.mainImageUrl) } : null,
     moduleId: MODULE_ID,
-    title: `${systemEmojiText("folha", interaction.guild)} Log Barra DM`
+    title: `${systemEmojiText("folha", interaction.guild)} Log Avisos Administrativos`
   });
   await channel.send({ ...payload, allowedMentions: { users: [interaction.user.id, target.id] } }).catch(() => null);
 }

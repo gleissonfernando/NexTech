@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Save, Send, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    createPriceTable,
+    deletePriceTableApi,
+    getGuildLiveOptions,
+    getPriceTablesDashboard,
+    publishPriceTable,
+    updatePriceTable
+} from "../../lib/api";
+import type { DashboardGuild, GuildCategoryOption, GuildChannelOption, PriceTable, PriceTableItem, PriceTableRequest, SavePriceTablePayload } from "../../types";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
-import {
-  createPriceTable,
-  deletePriceTableApi,
-  getGuildLiveOptions,
-  getPriceTablesDashboard,
-  publishPriceTable,
-  updatePriceTable
-} from "../../lib/api";
-import type { DashboardGuild, GuildCategoryOption, GuildChannelOption, PriceTable, PriceTableItem, PriceTableRequest, SavePriceTablePayload } from "../../types";
 
 type Props = {
   botId: string | null;
@@ -43,14 +43,14 @@ type PriceTablePreset = {
 const PRICE_TABLE_PRESETS: PriceTablePreset[] = [
   {
     description: "Sistema completo para facções e organizações FiveM, com recursos para controle operacional, membros, pedidos, metas e registros internos.",
-    included: ["Facções e famílias", "Ausências FAC", "Ações FAC", "Hierarquia V2", "Encomendas", "Lavagem", "Drogas", "Munição", "Financeiro", "Metas", "CAPTCHA FiveM", "Pedido de Set"],
+    included: ["Facções e famílias", "Ausências FAC", "Ações FAC", "hierarquia", "Encomendas", "Lavagem", "Drogas", "Munição", "Financeiro", "Metas", "CAPTCHA FiveM", "Pedido de Set"],
     name: "Sistema de Facções",
     systems: ["Controle de membros, cargos e operação das facções.", "Ausências com aprovação e logs.", "Ações com participantes, relatórios e histórico.", "Pedidos, entregas, lavagem, drogas, munição e financeiro.", "Metas por membro com registro e acompanhamento."],
     title: "TABELA DE PREÇOS FACÇÕES - NexTech"
   },
   {
     description: "Sistema policial completo para servidores RP, centralizando operação, RH, QRU, promoções, relatórios e automações administrativas.",
-    included: ["Ausência Policial", "Ações Policiais", "Corregedoria/IAB", "Intimações", "Relatórios Policiais", "QRU", "Promoções de Patente", "Abandono de Veículo", "Canal Oculto", "Mensagem Visível", "Barra DM", "Ponto/Relógio", "Escala DAF", "Cursos Policiais", "RH Administrativo"],
+    included: ["Ausência Policial", "Ações Policiais", "Corregedoria", "Intimações", "Relatórios Policiais", "QRU", "Promoções de Patente", "Abandono de Veículo", "Canal Oculto", "Mensagem Visível", "Avisos Administrativos", "Ponto/Relógio", "Escala DAF", "Cursos Policiais", "Departamento de RH"],
     name: "Sistema de Polícia",
     systems: ["Fluxo completo para corporações policiais.", "Avaliação, aprovação e histórico de promoções.", "QRUs com evidências, oficiais envolvidos e ranking.", "Relatórios, ponto, escala, RH e cursos.", "Denúncias, intimações, canal oculto e mensagens oficiais."],
     title: "TABELA DE PREÇOS POLÍCIA - NexTech"

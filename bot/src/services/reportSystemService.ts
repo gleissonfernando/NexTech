@@ -515,7 +515,7 @@ async function handleReportTicketButton(interaction: ButtonInteraction, context:
   if (action === "cancel-confirm") {
     await interaction.deferUpdate();
     await logIabEvent(context, interaction.guild!, settings, topic, "Cancelado", `Denúncia anonima cancelada por <@${interaction.user.id}> antes do envio.`, interaction.user.id);
-    await textChannel.delete("Denúncia IAB cancelada antes do envio.").catch(() => null);
+    await textChannel.delete("Denúncia Corregedoria cancelada antes do envio.").catch(() => null);
     return;
   }
   if (action === "claim") {
@@ -713,7 +713,7 @@ async function finishReport(context: BotContext, guild: Guild, settings: GuildSe
   await channel.permissionOverwrites.edit(channel.guild.roles.everyone.id, { SendMessages: false }).catch(() => null);
   const nextTopic = { ...topic, status: status === "Finalizado" ? "closed" as const : "archived" as const };
   await channel.setTopic(makeTopic(nextTopic)).catch(() => null);
-  if (deleteChannel) await channel.delete(`Denúncia IAB finalizada por ${actorId}`).catch(() => null);
+  if (deleteChannel) await channel.delete(`Denúncia Corregedoria finalizada por ${actorId}`).catch(() => null);
   else if (managementMessage) await managementMessage.edit(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status, undefined, guild) as never).catch(() => null);
   else await channel.send(createManagementPayload(settings, { ...ticket, status: finalStatus }, nextTopic, status, undefined, guild)).catch(() => null);
 }
@@ -1110,7 +1110,7 @@ async function logIabEvent(context: BotContext, guild: Guild, settings: GuildSet
     ],
     image: report.thumbnailUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: report.thumbnailUrl } : null,
     moduleId: "iab-log",
-    title: `IAB | ${action}`
+    title: `Corregedoria | ${action}`
   })).catch(() => null);
 }
 
@@ -1169,7 +1169,7 @@ async function resolveReportTopic(channel: TextChannel, context: BotContext, set
   if (!ticket || ticket.status === "CLOSED") return null;
 
   const categoryId = ticket.categoryId ?? "iab";
-  const categoryName = ticket.categoryName ?? "IAB";
+  const categoryName = ticket.categoryName ?? "Corregedoria";
   const mode: ReportMode = /anonim|anonima|anonymous/i.test(ticket.subject) || ticket.status === "PENDING" ? "anonymous" : "identified";
   const status: ReportTopic["status"] = ticket.status === "ARCHIVED"
     ? "archived"
@@ -1757,11 +1757,11 @@ function createAdminPayload(settings: GuildSettings, section: string) {
   return reportComponentsV2Panel({
     accentColor: parseColor(report.panelColor),
     actions: sectionActions(section, report),
-    description: "IAB Config. Configure cargos, categorias, logs, banners, órgãos e publicação do painel. As alterações são salvas na mesma configuração usada pela dashboard.",
+    description: "Corregedoria Config. Configure cargos, categorias, logs, banners, órgãos e publicação do painel. As alterações são salvas na mesma configuração usada pela dashboard.",
     fields,
     image: null,
     moduleId: "iab-admin",
-    title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} IAB Config`)
+    title: replaceSystemEmojis(`${report.panelEmoji ?? systemEmojiText("alerta")} Corregedoria Config`)
   });
 }
 

@@ -54,8 +54,8 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
 
   const lastLog = useMemo(() => data?.logs.find((log) => log.status === "sent" || log.status === "test") ?? null, [data]);
 
-  if (!botId || !guild) return <Empty text="Selecione um bot e servidor para configurar a Barra DM." />;
-  if (loading || !data) return <Empty loading text="Carregando Barra DM..." />;
+  if (!botId || !guild) return <Empty text="Selecione um bot e servidor para configurar os Avisos Administrativos." />;
+  if (loading || !data) return <Empty loading text="Carregando Avisos Administrativos..." />;
 
   const config = data.config;
   const patch = (next: Partial<DmBarConfig>) => {
@@ -91,7 +91,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
     finally { setSaving(false); }
   }
   async function reset() {
-    if (!confirm("Restaurar padrão da Barra DM?")) return;
+    if (!confirm("Restaurar padrão dos Avisos Administrativos?")) return;
     setSaving(true);
     try { const next = await resetDmBarConfig(guild!.id, botId!); latestConfig.current = next; setData((current) => current ? { ...current, config: next } : current); setDirty(false); }
     catch (error) { setMessage(readMessage(error)); }
@@ -112,7 +112,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
   }
 
   return <div className="space-y-5">
-    <Card><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-emerald-300" />Barra DM</CardTitle><CardDescription>Envio de mensagens privadas com painel visual, permissões, imagens e logs.</CardDescription></div><Button disabled={!canManage || saving || !dirty} onClick={() => void save()} size="sm">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar alterações</Button></div></CardHeader></Card>
+    <Card><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-emerald-300" />Avisos Administrativos</CardTitle><CardDescription>Envio de mensagens privadas com painel visual, permissões, imagens e logs.</CardDescription></div><Button disabled={!canManage || saving || !dirty} onClick={() => void save()} size="sm">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar alterações</Button></div></CardHeader></Card>
     {message ? <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-white">{message}</div> : null}
     {dirty ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">Salvando alterações automaticamente. O botão Salvar alterações também aplica agora.</div> : null}
     <div className="grid gap-3 sm:grid-cols-5">
@@ -150,7 +150,7 @@ export function DmBarPanel({ botId, canManage, guild }: { botId?: string | null;
       <label className="flex items-center justify-between rounded-lg border border-zinc-800 p-3 text-sm text-white">Mostrar ID do usuário<Switch checked={config.showTargetId} disabled={!canManage} onCheckedChange={(showTargetId) => patch({ showTargetId })} /></label>
     </CardContent></Card>
     <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
-      <Card><CardHeader><CardTitle>Histórico</CardTitle></CardHeader><CardContent className="space-y-2">{data.logs.map((log) => <div className="rounded-lg border border-zinc-800 p-3" key={log.id}><p className="text-sm font-semibold text-white">{log.title} · {log.status}</p><p className="mt-1 truncate text-xs text-zinc-500">Autor {log.senderId} → {log.targetId ?? "sem alvo"} · {new Date(log.sentAt).toLocaleString("pt-BR")}</p></div>)}{!data.logs.length ? <p className="py-8 text-center text-zinc-500">Nenhum log da Barra DM.</p> : null}</CardContent></Card>
+      <Card><CardHeader><CardTitle>Histórico</CardTitle></CardHeader><CardContent className="space-y-2">{data.logs.map((log) => <div className="rounded-lg border border-zinc-800 p-3" key={log.id}><p className="text-sm font-semibold text-white">{log.title} · {log.status}</p><p className="mt-1 truncate text-xs text-zinc-500">Autor {log.senderId} → {log.targetId ?? "sem alvo"} · {new Date(log.sentAt).toLocaleString("pt-BR")}</p></div>)}{!data.logs.length ? <p className="py-8 text-center text-zinc-500">Nenhum log dos Avisos Administrativos.</p> : null}</CardContent></Card>
       <Card><CardHeader><CardTitle>Pré-visualização</CardTitle></CardHeader><CardContent><Preview config={config} guildName={guild.name} /><div className="mt-4 flex flex-col gap-2"><Button disabled={!canManage || saving} onClick={() => void save()}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar alterações</Button><Button disabled={!canManage || saving} onClick={() => void reset()} variant="outline"><RefreshCw className="h-4 w-4" />Restaurar padrão</Button></div></CardContent></Card>
     </div>
   </div>;
@@ -163,5 +163,5 @@ function Textarea({ disabled, label, onChange, value }: { disabled: boolean; lab
 function ImageUpload({ disabled, label, onRemove, onUpload, url }: { disabled: boolean; label: string; onRemove: () => void; onUpload: (file: File | null) => void; url: string | null }) { return <div className="rounded-lg border border-zinc-800 p-3"><p className="text-xs font-medium text-zinc-400">{label}</p>{url ? <img className="mt-3 max-h-40 rounded-lg object-contain" src={url} /> : <div className="mt-3 flex h-28 items-center justify-center rounded-lg bg-black text-zinc-600"><ImageIcon className="h-6 w-6" /></div>}<div className="mt-3 flex gap-2"><input accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" disabled={disabled} onChange={(event) => onUpload(event.target.files?.[0] ?? null)} type="file" /><Button disabled={disabled || !url} onClick={onRemove} size="sm" variant="destructive"><Trash2 className="h-4 w-4" /></Button></div></div>; }
 function Preview({ config, guildName }: { config: DmBarConfig; guildName: string }) { const text = applyVars(stripSenderLines(config.descriptionTemplate), guildName); return <div className="rounded-lg border border-zinc-800 bg-[#101114] p-4"><p className="text-lg font-bold text-white">{applyVars(config.titleTemplate, guildName)}</p>{config.mainImageUrl ? <img className="my-3 max-h-40 rounded-md object-cover" src={config.mainImageUrl} /> : null}<p className="whitespace-pre-wrap text-sm text-zinc-300">{text}</p>{config.footerEnabled ? <div className="mt-4 border-t border-zinc-700 pt-3 text-xs text-zinc-500">{config.emoji} {applyVars(stripSenderLines(config.footerText), guildName)}</div> : null}</div>; }
 function stripSenderLines(value: string) { return value.split(/\r?\n/).filter((line) => !/\{autor(?:_nome)?\}|\{id_autor\}|enviado\s+por/i.test(line)).join("\n").replace(/\n{3,}/g, "\n\n").trim(); }
-function applyVars(value: string, guildName: string) { return value.replaceAll("{usuário}", "@Usuário").replaceAll("{usuario_nome}", "Usuário").replaceAll("{usuario_nick}", "Usuário").replaceAll("{autor}", "").replaceAll("{autor_nome}", "").replaceAll("{servidor}", guildName).replaceAll("{data}", new Date().toLocaleDateString("pt-BR")).replaceAll("{hora}", new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })).replaceAll("{mensagem}", "Mensagem de exemplo da Barra DM.").replaceAll("{id_usuario}", "123456789").replaceAll("{id_autor}", ""); }
+function applyVars(value: string, guildName: string) { return value.replaceAll("{usuário}", "@Usuário").replaceAll("{usuario_nome}", "Usuário").replaceAll("{usuario_nick}", "Usuário").replaceAll("{autor}", "").replaceAll("{autor_nome}", "").replaceAll("{servidor}", guildName).replaceAll("{data}", new Date().toLocaleDateString("pt-BR")).replaceAll("{hora}", new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })).replaceAll("{mensagem}", "Mensagem de exemplo dos Avisos Administrativos.").replaceAll("{id_usuario}", "123456789").replaceAll("{id_autor}", ""); }
 function readMessage(error: unknown) { return (error as any)?.response?.data?.message ?? "Não foi possível concluir a operação."; }

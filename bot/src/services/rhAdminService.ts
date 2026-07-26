@@ -35,7 +35,7 @@ import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const MODULE_ID = "rh-admin";
-const MODULE_DENIED = "O módulo RH Administrativo não está liberado para este servidor. Entre em contato com a administração do bot.";
+const MODULE_DENIED = "O módulo Departamento de RH não está liberado para este servidor. Entre em contato com a administração do bot.";
 const IDS = {
   absence: "rh_absence",
   adornment: "rh_adornment",
@@ -66,8 +66,8 @@ let dueCheckRunning = false;
 export const rhAdminCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("rh")
-    .setDescription("Gerencia o RH Administrativo.")
-    .addSubcommand((subcommand) => subcommand.setName("config").setDescription("Abre a configuração do RH Administrativo.")),
+    .setDescription("Gerencia o Departamento de RH.")
+    .addSubcommand((subcommand) => subcommand.setName("config").setDescription("Abre a configuração do Departamento de RH.")),
   moduleId: MODULE_ID,
   async execute(interaction, context) {
     if (interaction.options.getSubcommand() !== "config") return;
@@ -114,7 +114,7 @@ async function openConfig(interaction: ChatInputCommandInteraction | ButtonInter
   });
   if (!settings) return;
   if (!(await canConfigure(interaction, settings))) {
-    await replyOrUpdate(interaction, { content: "Você não tem permissão para configurar o RH Administrativo.", flags: MessageFlags.Ephemeral });
+    await replyOrUpdate(interaction, { content: "Você não tem permissão para configurar o Departamento de RH.", flags: MessageFlags.Ephemeral });
     return;
   }
   const payload = configPanel(settings, notice);
@@ -243,16 +243,16 @@ async function publishMainPanel(interaction: ButtonInteraction, context: BotCont
   await ensureGuildEmojiCache(interaction.guild);
   const message = await channel.send(mainPanel(settings, interaction.guild));
   await context.api.saveRhAdminSettings(interaction.guildId!, { mainPanelMessageId: message.id }, interaction.user.id);
-  await interaction.editReply("Painel RH Administrativo publicado com sucesso.");
+  await interaction.editReply("Painel Departamento de RH publicado com sucesso.");
 }
 
 async function publishDashboardMainPanel(client: Client, context: BotContext, guildId: string) {
   const settings = await context.api.getRhAdminSettings(guildId);
-  if (!settings.enabled) throw new Error("RH Administrativo is disabled.");
-  if (!settings.panelChannelId) throw new Error("RH panel channel is not configured.");
+  if (!settings.enabled) throw new Error("Departamento de RH is disabled.");
+  if (!settings.panelChannelId) throw new Error("Departamento de RH panel channel is not configured.");
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
   const channel = await guild?.channels.fetch(settings.panelChannelId).catch(() => null);
-  if (!channel?.isTextBased() || !("send" in channel)) throw new Error("RH panel channel is invalid or missing send permission.");
+  if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Departamento de RH panel channel is invalid or missing send permission.");
   await ensureGuildEmojiCache(guild);
   const payload = mainPanel(settings, guild);
   const message = settings.mainPanelMessageId && "messages" in channel
@@ -291,7 +291,7 @@ async function submitAbsence(interaction: ModalSubmitInteraction, context: BotCo
   const message = await channel.send(absenceReviewPanel(absence, settings, interaction.guild));
   await context.api.updateRhAbsenceMessage(interaction.guildId!, absence.id, { reviewChannelId: channel.id, reviewMessageId: message.id });
   await sendRhLog(interaction.guild!, context, settings, `Solicitação de ausência enviada.\nDuração: ${formatAbsenceDuration(absence)}`, interaction.user.id, interaction.user.id, "rh.absence_requested");
-  await interaction.editReply("Sua solicitação de ausência foi enviada para análise do RH.");
+  await interaction.editReply("Sua solicitação de ausência foi enviada para análise do Departamento de RH.");
 }
 
 async function submitAdornment(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -314,7 +314,7 @@ async function submitAdornment(interaction: ModalSubmitInteraction, context: Bot
   const message = await channel.send(adornmentPanel(adornment, settings));
   await context.api.updateRhAdornmentMessage(interaction.guildId!, adornment.id, { channelId: channel.id, messageId: message.id });
   await sendRhLog(interaction.guild!, context, settings, "Solicitação de adorno enviada.", interaction.user.id, interaction.user.id, "rh.adornment_requested");
-  await interaction.editReply("Sua solicitação de adorno foi enviada ao RH.");
+  await interaction.editReply("Sua solicitação de adorno foi enviada ao Departamento de RH.");
 }
 
 async function approveAbsence(interaction: ButtonInteraction, context: BotContext, absenceId: string) {
@@ -369,7 +369,7 @@ async function applyAbsenceRole(interaction: ButtonInteraction, context: BotCont
   if (!settings.absenceRoleId) return;
   const member = await interaction.guild!.members.fetch(absence.userId).catch(() => null);
   if (!member) return;
-  await member.roles.add(settings.absenceRoleId, "Ausência aprovada pelo RH Administrativo")
+  await member.roles.add(settings.absenceRoleId, "Ausência aprovada pelo Departamento de RH")
     .then(() => context.api.markRhAbsenceRoleAdded(interaction.guildId!, absence.id, true))
     .catch(() => context.api.createRhAdminLog(interaction.guildId!, { action: "rh.absence_role_add_error", description: "Erro ao adicionar cargo de ausência.", status: "error", userId: absence.userId }));
 }
@@ -420,12 +420,12 @@ function mainPanel(settings: RhAdminSettings, guild: Guild | null | undefined = 
     fields: [
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n## 📌 Antes de continuar\nLeia atentamente as informações abaixo antes de enviar sua solicitação.",
       "──────────────────────────────\n## 📅 Solicitação de Ausência\nRegistre um afastamento temporário das atividades da corporação.\n\n**Informações obrigatórias**\n• Data de início: `DD/MM`\n• Data de retorno: `DD/MM/AAAA`\n• Motivo da ausência",
-      `──────────────────────────────\n## 🎖️ Solicitação de Adorno\n${settings.adornmentDescription}\n\n**Requisitos**\n• Envie a numeração in-game.\n• Informe um link público da imagem.\n• A imagem deve estar pública e acessível.\n• O pedido será analisado pelo RH.`,
+      `──────────────────────────────\n## 🎖️ Solicitação de Adorno\n${settings.adornmentDescription}\n\n**Requisitos**\n• Envie a numeração in-game.\n• Informe um link público da imagem.\n• A imagem deve estar pública e acessível.\n• O pedido será analisado pelo Departamento de RH.`,
       "──────────────────────────────\n**Ações disponíveis**\nUse os botões abaixo para iniciar sua solicitação."
     ],
     image: panelBannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: panelBannerUrl } : null,
     moduleId: MODULE_ID,
-    title: `${systemEmojiText("homem", guild)} RH Administrativo`
+    title: `${systemEmojiText("homem", guild)} Departamento de RH`
   });
 }
 
@@ -442,10 +442,10 @@ function configPanel(settings: RhAdminSettings, notice?: string) {
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.view).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Ver Configurações Atuais").setStyle(ButtonStyle.Secondary))
     ],
-    description: "Configure ausências, adornos, permissões, canais de análise e logs do RH Administrativo.",
+    description: "Configure ausências, adornos, permissões, canais de análise e logs do Departamento de RH.",
     fields: [notice ? `**${notice}**` : "", `Sistema: ${settings.systemName}`, `Painel: ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "não configurado"}`, `Análise de ausências: ${settings.absenceReviewChannelId ? `<#${settings.absenceReviewChannelId}>` : "não configurado"}`].filter(Boolean),
     moduleId: MODULE_ID,
-    title: "Configuração | RH Administrativo"
+    title: "Configuração | Departamento de RH"
   });
 }
 
@@ -462,10 +462,10 @@ function channelsPanel(settings: RhAdminSettings, notice?: string) {
       channelSelect(IDS.selectGeneralLog, "Canal de logs gerais"),
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))
     ],
-    description: "Defina onde o RH publica painéis, recebe solicitações e registra auditoria.",
+    description: "Defina onde o Departamento de RH publica painéis, recebe solicitações e registra auditoria.",
     fields: [notice ? `**${notice}**` : "", `Painel: ${channel(settings.panelChannelId)}`, `Ausências: ${channel(settings.absenceReviewChannelId)} | Logs: ${channel(settings.absenceLogChannelId)}`, `Adornos: ${channel(settings.adornmentReviewChannelId)} | Logs: ${channel(settings.adornmentLogChannelId)}`].filter(Boolean),
     moduleId: MODULE_ID,
-    title: "RH Administrativo > Canais"
+    title: "Departamento de RH > Canais"
   });
 }
 
@@ -474,16 +474,16 @@ function rolesPanel(settings: RhAdminSettings, notice?: string) {
     accentColor: parseColor(settings.color),
     actions: [
       new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.selectAbsenceRole).setPlaceholder("Cargo de ausência").setMinValues(0).setMaxValues(1)),
-      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.selectConfigRoles).setPlaceholder("Cargos que configuram RH").setMinValues(0).setMaxValues(10)),
+      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.selectConfigRoles).setPlaceholder("Cargos que configuram Departamento de RH").setMinValues(0).setMaxValues(10)),
       new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(IDS.selectApproverRoles).setPlaceholder("Cargos que aprovam ausências").setMinValues(0).setMaxValues(10)),
-      new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(IDS.selectConfigUsers).setPlaceholder("Usuários que configuram RH").setMinValues(0).setMaxValues(10)),
+      new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(IDS.selectConfigUsers).setPlaceholder("Usuários que configuram Departamento de RH").setMinValues(0).setMaxValues(10)),
       new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(IDS.selectApproverUsers).setPlaceholder("Usuários que aprovam ausências").setMinValues(0).setMaxValues(10)),
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))
     ],
-    description: "Defina quem configura o RH, quem aprova ausências e qual cargo temporário será aplicado.",
+    description: "Defina quem configura o Departamento de RH, quem aprova ausências e qual cargo temporário será aplicado.",
     fields: [notice ? `**${notice}**` : "", `Cargo de ausência: ${settings.absenceRoleId ? `<@&${settings.absenceRoleId}>` : "não configurado"}`, `Configuração: ${mentions(settings.configUserIds, "user")} ${mentions(settings.configRoleIds, "role")}`, `Aprovação: ${mentions(settings.approverUserIds, "user")} ${mentions(settings.approverRoleIds, "role")}`].filter(Boolean),
     moduleId: MODULE_ID,
-    title: "RH Administrativo > Permissões"
+    title: "Departamento de RH > Permissões"
   });
 }
 
@@ -491,7 +491,7 @@ function summaryPanel(settings: RhAdminSettings) {
   return renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
     actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary))],
-    description: "Resumo da configuração atual do RH Administrativo.",
+    description: "Resumo da configuração atual do Departamento de RH.",
     fields: [
       `Status: ${settings.enabled ? "Ativo" : "Desativado"}\nNome: ${settings.systemName}\nCor: ${settings.color}`,
       `Painel principal: ${channel(settings.panelChannelId)}\nBanner: ${settings.panelBannerUrl || "não configurado"}`,
@@ -511,7 +511,7 @@ function absenceReviewPanel(absence: RhAdminAbsence, settings: RhAdminSettings, 
       new ButtonBuilder().setCustomId(`rh_absence_approve:${absence.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`rh_absence_reject:${absence.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Recusar").setStyle(ButtonStyle.Danger)
     )] : [],
-    description: "Nova solicitação de ausência encaminhada para análise do RH.",
+    description: "Nova solicitação de ausência encaminhada para análise do Departamento de RH.",
     fields: [
       `Solicitante: <@${absence.userId}>\nNome no servidor: ${absence.serverName}\nID do Discord: \`${absence.userId}\``,
       `Data de início: \`${absence.startDate}\`\nData de retorno: \`${absence.returnDate}\`\nDuração: **${formatAbsenceDuration(absence)}**\nMotivo: ${absence.reason}`,
@@ -531,7 +531,7 @@ function adornmentPanel(adornment: RhAdminAdornment, settings: RhAdminSettings) 
     fields: [
       `${settings.mentionAdornmentUser ? `Solicitante: <@${adornment.userId}>` : `Solicitante: ${adornment.serverName}`}\nNome no servidor: ${adornment.serverName}\nID do Discord: \`${adornment.userId}\``,
       `Numeração in-game do adorno: \`${adornment.number}\`\nObservação: ${adornment.observation || "Sem observação"}\nData da solicitação: ${new Date(adornment.createdAt).toLocaleString("pt-BR")}`,
-      "North Police Department • RH Administrativo"
+      "North Police Department • Departamento de RH"
     ],
     image: renderableImageUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: renderableImageUrl } : null,
     moduleId: MODULE_ID,
@@ -544,10 +544,10 @@ function dmAbsenceApproved(interaction: ButtonInteraction, absence: RhAdminAbsen
   return interaction.guild!.members.fetch(absence.userId).then((member) => member.send(renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
     description: `Olá, **${absence.serverName}**.\n${settings.approvalDmText}\n\n**Período da ausência:**\nInício: \`${absence.startDate}\`\nRetorno: \`${absence.returnDate}\`\nDuração: **${formatAbsenceDuration(absence)}**\n\nDurante esse período, você recebeu o cargo de ausência configurado pela administração.\n\nAo final do período, o sistema removerá automaticamente o cargo de ausência.`,
-    fields: ["North Police Department • RH Administrativo"],
+    fields: ["North Police Department • Departamento de RH"],
     image: (settings.approvalDmBannerUrl || settings.dmBannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.approvalDmBannerUrl || settings.dmBannerUrl! } : null,
     moduleId: MODULE_ID,
-    title: "RH Administrativo | Ausência Aprovada"
+    title: "Departamento de RH | Ausência Aprovada"
   }))).catch(() => null);
 }
 
@@ -555,11 +555,11 @@ function dmAbsenceRejected(interaction: ModalSubmitInteraction, absence: RhAdmin
   if (!settings.sendAbsenceDm) return Promise.resolve(null);
   return interaction.guild!.members.fetch(absence.userId).then((member) => member.send(renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
-    description: `Olá, **${absence.serverName}**.\n${settings.rejectionDmText}\n\n**Motivo informado:**\n\`${absence.rejectionReason || "Sem motivo informado."}\`\n\nCaso necessário, entre em contato com a equipe responsável pelo RH.`,
-    fields: ["North Police Department • RH Administrativo"],
+    description: `Olá, **${absence.serverName}**.\n${settings.rejectionDmText}\n\n**Motivo informado:**\n\`${absence.rejectionReason || "Sem motivo informado."}\`\n\nCaso necessário, entre em contato com a equipe responsável pelo Departamento de RH.`,
+    fields: ["North Police Department • Departamento de RH"],
     image: (settings.rejectionDmBannerUrl || settings.dmBannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.rejectionDmBannerUrl || settings.dmBannerUrl! } : null,
     moduleId: MODULE_ID,
-    title: "RH Administrativo | Ausência Recusada"
+    title: "Departamento de RH | Ausência Recusada"
   }))).catch(() => null);
 }
 
@@ -567,10 +567,10 @@ function dmFinishedPanel(absence: RhAdminAbsence, settings: RhAdminSettings) {
   return renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
     description: `Olá, **${absence.serverName}**.\n${settings.finishedDmText}\n\nO cargo de ausência foi removido automaticamente pelo sistema.\n\n**Data de retorno registrada:** \`${absence.returnDate}\`\n**Duração registrada:** ${formatAbsenceDuration(absence)}`,
-    fields: ["North Police Department • RH Administrativo"],
+    fields: ["North Police Department • Departamento de RH"],
     image: (settings.finishedDmBannerUrl || settings.dmBannerUrl) ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.finishedDmBannerUrl || settings.dmBannerUrl! } : null,
     moduleId: MODULE_ID,
-    title: "RH Administrativo | Ausência Finalizada"
+    title: "Departamento de RH | Ausência Finalizada"
   });
 }
 
@@ -585,7 +585,7 @@ async function sendRhLog(guild: { channels: { fetch(id: string): Promise<unknown
     description,
     fields: [`Usuário envolvido: ${userId ? `<@${userId}>` : "não informado"}\nResponsável: ${actorId ? `<@${actorId}>` : "Sistema"}\nServidor: ${guild.name}\nData: ${new Date().toLocaleString("pt-BR")}\nStatus: ${status}`],
     moduleId: MODULE_ID,
-    title: "Log | RH Administrativo"
+    title: "Log | Departamento de RH"
   })).catch(() => null);
 }
 

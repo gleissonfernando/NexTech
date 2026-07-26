@@ -1,99 +1,259 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { motion } from "framer-motion";
 import {
-  Activity,
-  AtSign,
-  BadgeCheck,
-  Bell,
-  Bot,
-  BookOpen,
-  Boxes,
-  Building2,
-  CalendarClock,
-  Car,
-  CheckCircle2,
-  ChevronRight,
-  CircleDollarSign,
-  Clock3,
-  Copy,
-  CreditCard,
-  Edit3,
-  EyeOff,
-  Film,
-  Gift,
-  Globe2,
-  Hash,
-  Headphones,
-  ImageIcon,
-  ListChecks,
-  Loader2,
-  LockKeyhole,
-  MessageCircle,
-  Mic2,
-  Music2,
-  PlayCircle,
-  Plus,
-  SmilePlus,
-  Plug,
-  Radio,
-  RefreshCw,
-  ScrollText,
-  Search,
-  Send,
-  Server,
-  Settings,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  SlidersHorizontal,
-  TableProperties,
-  TicketIcon,
-  Trophy,
-  Trash2,
-  Upload,
-  UserMinus,
-  UserPlus,
-  Users,
-  XCircle
+    Activity,
+    AtSign,
+    BadgeCheck,
+    Bell,
+    BookOpen,
+    Bot,
+    Boxes,
+    Building2,
+    CalendarClock,
+    Car,
+    CheckCircle2,
+    ChevronRight,
+    CircleDollarSign,
+    Clock3,
+    CreditCard,
+    Edit3,
+    EyeOff,
+    Film,
+    Gift,
+    Globe2,
+    Hash,
+    Headphones,
+    ImageIcon,
+    ListChecks,
+    Loader2,
+    LockKeyhole,
+    MessageCircle,
+    Mic2,
+    Music2,
+    Plug,
+    Plus,
+    Radio,
+    RefreshCw,
+    ScrollText,
+    Search,
+    Send,
+    Server,
+    Settings,
+    Shield,
+    ShieldAlert,
+    ShieldCheck,
+    SlidersHorizontal,
+    SmilePlus,
+    TableProperties,
+    TicketIcon,
+    Trash2,
+    Trophy,
+    Upload,
+    UserMinus,
+    UserPlus,
+    Users,
+    XCircle
 } from "lucide-react";
-import { DashboardLayout } from "../components/layout/dashboard-layout";
-import { DashboardHome } from "../components/dashboard/DashboardHome";
-import type { ViewId } from "../components/layout/sidebar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { CoursesPanel } from "../components/courses/CoursesPanel";
+import { DashboardHome } from "../components/dashboard/DashboardHome";
+import { DmBarPanel } from "../components/fivem/DmBarPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
-import { PolicePatrolReportsPanel } from "../components/fivem/PolicePatrolReportsPanel";
-import { PoliceQruPanel } from "../components/police/PoliceQruPanel";
-import { PolicePromotionsPanel } from "../components/police/PolicePromotionsPanel";
-import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
-import { PoliceHiddenChannelPanel } from "../components/fivem/PoliceHiddenChannelPanel";
-import { VisibleMessagePanel } from "../components/fivem/VisibleMessagePanel";
-import { DmBarPanel } from "../components/fivem/DmBarPanel";
-import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotificationsPanel";
 import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
-import { Pd7Panel } from "../components/fivem/Pd7Panel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
+import { Pd7Panel } from "../components/fivem/Pd7Panel";
+import { PoliceHiddenChannelPanel } from "../components/fivem/PoliceHiddenChannelPanel";
+import { PolicePatrolReportsPanel } from "../components/fivem/PolicePatrolReportsPanel";
+import { VisibleMessagePanel } from "../components/fivem/VisibleMessagePanel";
 import { ZtkWebhookPanel } from "../components/fivem/ZtkWebhookPanel";
 import { GiveawayPanel } from "../components/giveaway/GiveawayPanel";
+import { DashboardLayout } from "../components/layout/dashboard-layout";
+import type { ViewId } from "../components/layout/sidebar";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
-import { TranscriptSettingsCard } from "../components/TranscriptSettingsCard";
-import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
+import { ManualPaymentsPanel } from "../components/manual-payments/ManualPaymentsPanel";
 import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
+import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
+import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
 import { CustomPanelsPanel } from "../components/panels/CustomPanelsPanel";
 import { PanelImageSettings } from "../components/panels/PanelImageSettings";
-import { ManualPaymentsPanel } from "../components/manual-payments/ManualPaymentsPanel";
 import { PaymentGatewayPanel } from "../components/payments/PaymentGatewayPanel";
+import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotificationsPanel";
+import { PolicePromotionsPanel } from "../components/police/PolicePromotionsPanel";
+import { PoliceQruPanel } from "../components/police/PoliceQruPanel";
+import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
 import { PriceTablesPanel } from "../components/price-tables/PriceTablesPanel";
 import { RhAdminPanel } from "../components/rh-admin/RhAdminPanel";
-import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
+import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { AccountAgeSecurityPanel } from "../components/security/AccountAgeSecurityPanel";
 import { AntiBanPanel } from "../components/security/AntiBanPanel";
 import { SelfBotProtectionPanel } from "../components/security/SelfBotProtectionPanel";
-import { AutoRolesPanel } from "../components/roles/AutoRolesPanel";
 import { KickIntegrationPanel } from "../components/social/KickIntegrationPanel";
+import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
+import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
+import { XMonitorPanel } from "../components/social/XMonitorPanel";
+import { TranscriptSettingsCard } from "../components/TranscriptSettingsCard";
+import { Avatar } from "../components/ui/avatar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Switch } from "../components/ui/switch";
+import { WelcomePanel } from "../components/welcome/WelcomePanel";
+import {
+    addMessageControlUser,
+    clearMessageControlUsers,
+    cloneEmojiToGuild,
+    cloneSelectedEmojiCloneBotToken,
+    createFivemGoalConfig,
+    createManualRegistrationSubmission,
+    createServerBackup,
+    deleteAutoActivityClockCity,
+    deleteFivemGoalConfig,
+    deleteFivemHierarchyPanel,
+    deleteGuildChannels,
+    deleteLiveDetectionSettings,
+    deleteManualRegistrationSubmission,
+    deleteServerBackup,
+    downloadEmojiZip,
+    fetchEmojiCloneBotTokenEmojis,
+    getAdvancedModuleConfig,
+    getApplicationEmojiSettings,
+    getApplicationEmojis,
+    getAutoActivityClockDashboard,
+    getClipsConfig,
+    getCustomerPlansDashboard,
+    getDashboardBotGuildConfig,
+    getDashboardBySlug,
+    getDashboardMaintenanceState,
+    getDashboardMe,
+    getEmojiLibrary,
+    getFivemGoals,
+    getFivemHierarchy,
+    getFivemModules,
+    getGlobalBlacklistDashboard,
+    getGuildLiveOptions,
+    getGuildMemberOptions,
+    getGuildSettings,
+    getKickNotifications,
+    getLiveDetectionSettings,
+    getLives,
+    getLogs,
+    getManualRegistrationDashboard,
+    getMessageControlDashboard,
+    getPoliceTimeClockDashboard,
+    getSelfBotProtection,
+    getServerBackupDashboard,
+    getSocialNotifications,
+    getTickets,
+    getXMonitor,
+    listPanelImageSettings,
+    patchGuildSettings,
+    previewServerBackupRestore,
+    publishAdvancedModulePanel,
+    publishFivemGoalPanel,
+    publishManualRegistrationPanel,
+    publishReportSystemPanel,
+    publishRulesPanel,
+    publishTicketPanel,
+    refreshApplicationEmojis,
+    refreshFivemHierarchyOfficialMessage,
+    releaseDashboardBotGuildModule,
+    removeAllApplicationEmojis,
+    removeMessageControlUser,
+    removePanelImage,
+    resendEmojiFromLibrary,
+    restoreServerBackup,
+    runTagVerificationNow,
+    saveAdvancedModuleConfig,
+    saveAutoActivityClockCity,
+    saveAutoActivityClockSettings,
+    saveFivemGoalSettings,
+    saveFivemHierarchyPanel,
+    saveGlobalBlacklistSettings,
+    saveLiveDetectionSettings,
+    saveManualRegistrationSettings,
+    saveMessageControlSettings,
+    savePoliceTimeClockSettings,
+    saveServerBackupSettings,
+    setMessageControlUserStatus,
+    syncApplicationEmojis,
+    updateApplicationEmojiSettings,
+    updateBotGuildConfig,
+    updateFivemGoalConfig,
+    updateSelectedDashboardGuild,
+    uploadPanelImage,
+    validateEmojiCloneBotToken
+} from "../lib/api";
+import { hierarchyPanelDraftId, isLocalHierarchyPanelId } from "../lib/fivemHierarchy";
+import { createDashboardSocket } from "../lib/socket";
+import type {
+    ApplicationEmojiItem,
+    ApplicationEmojiPage,
+    ApplicationEmojiSettings,
+    AuthResponse,
+    AutoActivityClockDashboard,
+    BotGuildConfig,
+    BotStatus,
+    ClipSent,
+    ClipsConfig,
+    CustomerPlansDashboard,
+    DashboardBot,
+    DashboardGuild,
+    DashboardMeGuild,
+    DashboardMeResponse,
+    EmojiCloneRemoteEmoji,
+    EmojiLibraryItem,
+    FivemGoalConfig,
+    FivemGoalEntry,
+    FivemGoalField,
+    FivemGoalItem,
+    FivemGoalReport,
+    FivemGoalSettings,
+    FivemGoalSubmission,
+    FivemHierarchyPanel as FivemHierarchyPanelType,
+    FivemModuleDefinition,
+    GlobalBlacklistEntry,
+    GlobalBlacklistHistory,
+    GlobalBlacklistSafeBotSettings,
+    GuildCategoryOption,
+    GuildChannelOption,
+    GuildLiveOptions,
+    GuildMemberOption,
+    GuildRoleOption,
+    GuildSettings,
+    GuildVoiceChannelOption,
+    KickNotification,
+    LiveDetectionSettings,
+    LiveEvent,
+    LogCategory,
+    LogEntry,
+    MaintenanceState,
+    ManualRegistrationField,
+    ManualRegistrationLog,
+    ManualRegistrationSetRole,
+    ManualRegistrationSettings,
+    ManualRegistrationSubmission,
+    MessageControlDashboard,
+    MessageControlStatus,
+    MessageControlUser,
+    PanelImageSettings as PanelImageSettingsType,
+    PoliceTimeClockDashboard,
+    ReportSystemCategory,
+    SelfBotProtectionSettings,
+    ServerBackupDashboard,
+    ServerBackupRestoreJob,
+    ServerBackupRestoreMode,
+    ServerBackupRestorePart,
+    ServerBackupRestorePreview,
+    ServerBackupSettings,
+    ServerBackupSnapshot,
+    SocialNotification,
+    Ticket,
+    TicketPanelOption,
+    XAccount
+} from "../types";
 
 const PANEL_EMOJIS = {
   alerta: "<:alerta:1525682173246574692>",
@@ -103,168 +263,6 @@ const PANEL_EMOJIS = {
 } as const;
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
 const PANEL_MEDIA_ACCEPT = "image/png,image/apng,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/mp2t,video/x-flv,video/x-ms-wmv,video/ogg,.png,.apng,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.avi,.mkv,.webm,.m4v,.mpeg,.mpg,.flv,.wmv,.ts,.mts,.3gp,.ogv,.asf,.f4v,.vob,.rmvb,.mxf";
-import { LiveNotificationsPanel } from "../components/social/LiveNotificationsPanel";
-import { MemberSocialNetworkPanel } from "../components/social/MemberSocialNetworkPanel";
-import { XMonitorPanel } from "../components/social/XMonitorPanel";
-import { WelcomePanel } from "../components/welcome/WelcomePanel";
-import { Avatar } from "../components/ui/avatar";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Switch } from "../components/ui/switch";
-import { hierarchyPanelDraftId, isLocalHierarchyPanelId } from "../lib/fivemHierarchy";
-import { createDashboardSocket } from "../lib/socket";
-import {
-  downloadEmojiZip,
-  cloneEmojiToGuild,
-  cloneSelectedEmojiCloneBotToken,
-  addMessageControlUser,
-  clearMessageControlUsers,
-  createFivemGoalConfig,
-  createManualRegistrationSubmission,
-  deleteManualRegistrationSubmission,
-  deleteFivemGoalConfig,
-  deleteGuildChannels,
-  deleteFivemHierarchyPanel,
-  deleteAutoActivityClockCity,
-  deleteLiveDetectionSettings,
-  fetchEmojiCloneBotTokenEmojis,
-  getAdvancedModuleConfig,
-  getApplicationEmojiSettings,
-  getApplicationEmojis,
-  getAutoActivityClockDashboard,
-  getClipsConfig,
-  getCustomerPlansDashboard,
-  getDashboardBySlug,
-  getDashboardBotGuildConfig,
-  getDashboardMe,
-  getDashboardMaintenanceState,
-  getFivemModules,
-  getFivemGoals,
-  getFivemHierarchy,
-  getGlobalBlacklistDashboard,
-  getGuildLiveOptions,
-  getGuildMemberOptions,
-  getGuildSettings,
-  getEmojiLibrary,
-  getKickNotifications,
-  getLiveDetectionSettings,
-  getLives,
-  getLogs,
-  getManualRegistrationDashboard,
-  getMessageControlDashboard,
-  getPoliceTimeClockDashboard,
-  getSelfBotProtection,
-  getServerBackupDashboard,
-  getSocialNotifications,
-  getTickets,
-  getXMonitor,
-  patchGuildSettings,
-  listPanelImageSettings,
-  publishReportSystemPanel,
-  publishAdvancedModulePanel,
-  publishFivemGoalPanel,
-  publishManualRegistrationPanel,
-  publishRulesPanel,
-  publishTicketPanel,
-  refreshFivemHierarchyOfficialMessage,
-  refreshApplicationEmojis,
-  removeAllApplicationEmojis,
-  removePanelImage,
-  releaseDashboardBotGuildModule,
-  resendEmojiFromLibrary,
-  saveAdvancedModuleConfig,
-  saveAutoActivityClockCity,
-  saveAutoActivityClockSettings,
-  saveFivemGoalSettings,
-  saveFivemHierarchyPanel,
-  saveGlobalBlacklistSettings,
-  saveLiveDetectionSettings,
-  saveManualRegistrationSettings,
-  saveMessageControlSettings,
-  savePoliceTimeClockSettings,
-  saveServerBackupSettings,
-  syncApplicationEmojis,
-  updateFivemGoalConfig,
-  updateSelectedDashboardGuild,
-  updateApplicationEmojiSettings,
-  updateBotGuildConfig,
-  removeMessageControlUser,
-  setMessageControlUserStatus,
-  uploadPanelImage,
-  createServerBackup,
-  deleteServerBackup,
-  previewServerBackupRestore,
-  restoreServerBackup,
-  runTagVerificationNow,
-  validateEmojiCloneBotToken
-} from "../lib/api";
-import type {
-  ApplicationEmojiItem,
-  ApplicationEmojiPage,
-  ApplicationEmojiSettings,
-  AutoActivityClockDashboard,
-  AuthResponse,
-  BotStatus,
-  BotGuildConfig,
-  ClipSent,
-  ClipsConfig,
-  CustomerPlansDashboard,
-  DashboardBot,
-  DashboardGuild,
-  DashboardMeGuild,
-  DashboardMeResponse,
-  FivemModuleDefinition,
-  FivemGoalConfig,
-  FivemGoalEntry,
-  FivemGoalField,
-  FivemGoalItem,
-  FivemGoalReport,
-  FivemGoalSubmission,
-  FivemHierarchyPanel as FivemHierarchyPanelType,
-  FivemGoalSettings,
-  GlobalBlacklistEntry,
-  GlobalBlacklistHistory,
-  GlobalBlacklistSafeBotSettings,
-  GuildChannelOption,
-  GuildCategoryOption,
-  GuildMemberOption,
-  GuildLiveOptions,
-  GuildRoleOption,
-  GuildSettings,
-  GuildVoiceChannelOption,
-  ReportSystemCategory,
-  EmojiCloneRemoteEmoji,
-  EmojiLibraryItem,
-  KickNotification,
-  LiveDetectionSettings,
-  LiveEvent,
-  LogEntry,
-  LogCategory,
-  ManualRegistrationField,
-  ManualRegistrationLog,
-  ManualRegistrationSettings,
-  ManualRegistrationSetRole,
-  ManualRegistrationSubmission,
-  MaintenanceState,
-  MessageControlDashboard,
-  MessageControlStatus,
-  MessageControlUser,
-  PanelImageSettings as PanelImageSettingsType,
-  PoliceTimeClockDashboard,
-  SelfBotProtectionSettings,
-  ServerBackupDashboard,
-  ServerBackupRestoreMode,
-  ServerBackupRestoreJob,
-  ServerBackupRestorePart,
-  ServerBackupRestorePreview,
-  ServerBackupSettings,
-  ServerBackupSnapshot,
-  SocialNotification,
-  Ticket,
-  TicketPanelOption,
-  XAccount
-} from "../types";
 
 type DashboardProps = {
   auth: AuthResponse;
@@ -579,8 +577,8 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "fivem-hierarchy",
-    title: "Paineis de Hierarquia V2",
-    description: "Mensagens oficiais de hierarquia V2 sincronizadas pelos cargos do servidor.",
+    title: "Paineis de hierarquia",
+    description: "Mensagens oficiais de hierarquia sincronizadas pelos cargos do servidor.",
     icon: Users,
     view: "fivem-hierarchy"
   },
@@ -642,7 +640,7 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "police-dm",
-    title: "Barra DM",
+    title: "Avisos Administrativos",
     description: "Envio de mensagens privadas com painel visual, permissões e logs.",
     icon: UserPlus,
     view: "police-dm"
@@ -684,15 +682,15 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "rh-admin",
-    title: "RH Administrativo",
+    title: "Departamento de RH",
     description: "Solicitações de ausência, adornos, análise de RH, cargos temporários e logs policiais.",
     icon: ShieldCheck,
     view: "rh-admin"
   },
   {
     id: "police-iab",
-    title: "Denuncias Corregedoria",
-    description: "Painel IAB com denuncias anonimas, órgãos, logs e auditoria policial.",
+    title: "Corregedoria",
+    description: "Painel da Corregedoria com denuncias anonimas, órgãos, logs e auditoria policial.",
     icon: ShieldAlert,
     view: "police-iab"
   },
@@ -3535,7 +3533,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
       })
       .catch(() => {
         if (active && scopeRequestId === scopeRequestRef.current && scopeKeyRef.current === scopeKey) {
-          setError("Não foi possível carregar os Paineis de Hierarquia V2.");
+          setError("Não foi possível carregar os Paineis de hierarquia.");
         }
       })
       .finally(() => {
@@ -3569,12 +3567,12 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
           if (payload.action === "panel.state_updated") {
             lastPanelStateAtRef.current = Date.now();
             setSyncRequested(false);
-            if (!dirtyRef.current) setMessage("Painel de Hierarquia V2 sincronizado.");
+            if (!dirtyRef.current) setMessage("Painel de hierarquia sincronizado.");
           }
         })
         .catch(() => {
           if (active && scopeKeyRef.current === scopeKey) {
-            setError("Não foi possível atualizar os Paineis de Hierarquia V2 em tempo real.");
+            setError("Não foi possível atualizar os Paineis de hierarquia em tempo real.");
           }
         });
     };
@@ -3780,7 +3778,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
 
   async function removePanel() {
     if (!guild || !draft || isLocalHierarchyPanelId(draft.id) || busy || savingRef.current || officialMessageRefreshRef.current) return;
-    if (!window.confirm("Excluir este Painel de Hierarquia V2?")) return;
+    if (!window.confirm("Excluir este Painel de hierarquia?")) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -3793,7 +3791,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
       setDraft(next[0] ?? createEmptyHierarchyPanel(guild.id, botId));
       markDirty(false);
       setSyncRequested(false);
-      setMessage("Painel de Hierarquia V2 excluido.");
+      setMessage("Painel de hierarquia excluido.");
     } catch {
       setError("Não foi possível excluir o painel.");
     } finally {
@@ -3807,7 +3805,7 @@ function FivemHierarchyPanel({ botId, canManage, guild }: { botId?: string | nul
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-emerald-300" /> Paineis de Hierarquia V2</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-emerald-300" /> Paineis de hierarquia</CardTitle>
             <CardDescription>Mensagens oficiais com membros agrupados por cargos e sincronização automática.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -3950,7 +3948,7 @@ function createEmptyHierarchyPanel(guildId: string, botId?: string | null): Five
     logChannelId: null,
     managerRoleIds: [],
     managerUserIds: [],
-    name: "Painel de Hierarquia V2",
+    name: "Painel de hierarquia",
     panelChannelId: null,
     panelMessageId: null,
     panelVersion: 2,
@@ -4480,7 +4478,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Verificação inteligente por CAPTCHA integrada ao fluxo FiveM.", id: "fivem-captcha", permissions: "Admin FiveM", title: "CAPTCHA FiveM" },
-    { builtIn: true, description: "Paineis oficiais V2 sincronizados por cargos.", id: "fivem-hierarchy", permissions: "Admin FiveM", title: "Paineis de Hierarquia V2" },
+    { builtIn: true, description: "Paineis oficiais V2 sincronizados por cargos.", id: "fivem-hierarchy", permissions: "Admin FiveM", title: "Paineis de hierarquia" },
     { builtIn: true, description: "Ações profissionais da FAC com painel, participantes e relatórios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Ações FAC" }
   ];
   const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
@@ -7616,10 +7614,10 @@ function PoliceIabPanel({
     try {
       const saved = await patchGuildSettings(guild.id, { reportSystem: payload }, botId);
       onSettingsChange(saved);
-      setMessage("Denuncias Corregedoria salvas.");
+      setMessage("Corregedoria salva.");
     } catch (error) {
       onSettingsChange(previous);
-      setMessage(readResponseMessage(error) ?? "Não foi possível salvar Denuncias Corregedoria.");
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar Corregedoria.");
     } finally {
       setSaving(false);
     }
@@ -7640,7 +7638,7 @@ function PoliceIabPanel({
       onSettingsChange(saved);
       const published = await publishReportSystemPanel(guild.id, botId);
       onSettingsChange(published);
-      setMessage("Painel Denuncias Corregedoria publicado no Discord.");
+      setMessage("Painel Corregedoria publicado no Discord.");
     } catch (error) {
       setMessage(readResponseMessage(error) ?? "Não foi possível publicar o painel. Confira canal e permissões do bot.");
     } finally {
@@ -7653,7 +7651,7 @@ function PoliceIabPanel({
       <Card>
         <CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm font-medium text-zinc-300">
           <Loader2 className="h-5 w-5 animate-spin" />
-          Carregando Denuncias Corregedoria...
+          Carregando Corregedoria...
         </CardContent>
       </Card>
     );
@@ -7678,8 +7676,8 @@ function PoliceIabPanel({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-red-300" /> Denuncias Corregedoria</CardTitle>
-              <CardDescription>Configura o painel IAB, órgãos, anonimato, logs e cargos autorizados.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-red-300" /> Corregedoria</CardTitle>
+              <CardDescription>Configura o painel da Corregedoria, órgãos, anonimato, logs e cargos autorizados.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex h-9 items-center gap-2 rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">

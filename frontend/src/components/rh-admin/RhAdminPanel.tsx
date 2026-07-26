@@ -42,7 +42,7 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
       setDashboard(nextDashboard);
       setOptions(nextOptions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar o RH Administrativo.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o Departamento de RH.");
     } finally {
       setLoading(false);
     }
@@ -63,7 +63,7 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
   async function publishPanel() {
     if (!dashboard) return;
     if (!dashboard.settings.panelChannelId) {
-      setError("Configure o canal de publicação antes de publicar o painel RH.");
+      setError("Configure o canal de publicação antes de publicar o painel Departamento de RH.");
       return;
     }
     setPublishing(true);
@@ -71,16 +71,16 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
     try {
       const settings = await publishRhAdminPanel(botId, guildId);
       setDashboard({ ...dashboard, settings });
-      setMessage("Painel RH enviado para publicação.");
+      setMessage("Painel Departamento de RH enviado para publicação.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível publicar o painel RH.");
+      setError(err instanceof Error ? err.message : "Não foi possível publicar o painel Departamento de RH.");
     } finally {
       setPublishing(false);
     }
   }
 
   if (loading || !dashboard) {
-    return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando RH Administrativo...</CardContent></Card>;
+    return <Card><CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm text-zinc-400"><Loader2 className="h-5 w-5 animate-spin" />Carregando Departamento de RH...</CardContent></Card>;
   }
 
   const settings = dashboard.settings;
@@ -92,7 +92,7 @@ export function RhAdminPanel({ botId, canManage, guildId }: RhAdminPanelProps) {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-sky-300" /> RH Administrativo</CardTitle>
+          <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-sky-300" /> Departamento de RH</CardTitle>
           <Badge variant={settings.enabled ? "success" : "muted"}>{settings.enabled ? "Ativo" : "Bloqueado"}</Badge>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">

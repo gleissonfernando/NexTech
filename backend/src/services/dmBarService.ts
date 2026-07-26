@@ -117,7 +117,7 @@ export async function saveDmBarConfig(botId: string, guildId: string, input: Par
 
   await ensureGuild(guildId);
   await dmBarConfigs.updateOne({ botId, guildId }, { $set: next }, { upsert: true });
-  await createDmBarLog(botId, guildId, { senderId: actorId ?? "0", targetId: null, title: "Configuração alterada", message: "Configuração da Barra DM atualizada.", status: "test", errorReason: null });
+  await createDmBarLog(botId, guildId, { senderId: actorId ?? "0", targetId: null, title: "Configuração alterada", message: "Configuração dos Avisos Administrativos atualizada.", status: "test", errorReason: null });
   emitUpdated(botId, guildId);
   return toConfigDto(next);
 }

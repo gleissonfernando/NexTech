@@ -425,8 +425,8 @@ const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
 const REPORT_BUTTON_KEYS: ReportSystemButtonKey[] = ["claim", "reply", "status", "requestEvidence", "addMember", "removeMember", "transcript", "close", "reopen", "delete"];
 const REPORT_LOG_KEYS: ReportSystemLogKey[] = ["opened", "closed", "replies", "statusChanged", "messagesDeleted", "anonymous", "admin"];
 const DEFAULT_REPORT_CATEGORIES: ReportSystemCategoryDto[] = [
-  { channelOrCategoryId: null, color: "#dc2626", description: "Casos contra oficiais encaminhados para IAB.", emoji: fixedSystemEmojiText("alerta"), enabled: true, escalateToCategoryId: "conselho", id: "iab", judgeLabel: "Denuncias contra oficiais", logChannelId: null, name: "I.A.B.", order: 1, responsibleRoleIds: [] },
-  { channelOrCategoryId: null, color: "#7f1d1d", description: "Casos contra IAB encaminhados para Conselho.", emoji: fixedSystemEmojiText("interrogacao"), enabled: true, escalateToCategoryId: "alto-comando", id: "conselho", judgeLabel: "Denuncias contra membros da I.A.B.", logChannelId: null, name: "Conselho", order: 2, responsibleRoleIds: [] },
+  { channelOrCategoryId: null, color: "#dc2626", description: "Casos contra oficiais encaminhados para Corregedoria.", emoji: fixedSystemEmojiText("alerta"), enabled: true, escalateToCategoryId: "conselho", id: "iab", judgeLabel: "Denuncias contra oficiais", logChannelId: null, name: "Corregedoria", order: 1, responsibleRoleIds: [] },
+  { channelOrCategoryId: null, color: "#7f1d1d", description: "Casos contra Corregedoria encaminhados para Conselho.", emoji: fixedSystemEmojiText("interrogacao"), enabled: true, escalateToCategoryId: "alto-comando", id: "conselho", judgeLabel: "Denuncias contra membros da Corregedoria", logChannelId: null, name: "Conselho", order: 2, responsibleRoleIds: [] },
   { channelOrCategoryId: null, color: "#111827", description: "Casos contra Conselho encaminhados para Alto Comando.", emoji: fixedSystemEmojiText("trofeu"), enabled: true, escalateToCategoryId: "comissario", id: "alto-comando", judgeLabel: "Denuncias contra membros do Conselho", logChannelId: null, name: "Alto Comando", order: 3, responsibleRoleIds: [] },
   { channelOrCategoryId: null, color: "#0f172a", description: "Ultima instancia de competencia.", emoji: fixedSystemEmojiText("trofeu_alt"), enabled: true, escalateToCategoryId: null, id: "comissario", judgeLabel: "Denuncias contra membros do Alto Comando", logChannelId: null, name: "Comissario", order: 4, responsibleRoleIds: [] }
 ];
@@ -1495,7 +1495,7 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     allowAnonymousStaffReplies: true,
     anonymousAvatarUrl: null,
     anonymousEmbedColor: "#dc2626",
-    anonymousInvestigatorName: "Equipe IAB",
+    anonymousInvestigatorName: "Equipe Corregedoria",
     anonymousReporterName: "Denunciante Anonimo",
     auditChannelId: null,
     buttonText: "Abrir denúncia",
@@ -1514,7 +1514,7 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     defaultDeadline: "24 horas",
     dmBannerUrl: null,
     enabled: true,
-    footerText: "Denúncias IAB • Sigilo institucional • Auditoria autorizada",
+    footerText: "Corregedoria • Sigilo institucional • Auditoria autorizada",
     finishedCategoryId: null,
     hcmdCategoryId: null,
     hcmdLogChannelId: null,
@@ -1527,14 +1527,14 @@ function defaultReportSystemSettings(): ReportSystemSettingsDto {
     logChannelId: null,
     logs: Object.fromEntries(REPORT_LOG_KEYS.map((key) => [key, true])) as Record<ReportSystemLogKey, boolean>,
     mentionRoleIds: [],
-    name: "IAB",
+    name: "Corregedoria",
     openMessage: "Sua denúncia foi aberta. Envie as informações, provas e aguarde a equipe autorizada.",
     panelChannelId: null,
     panelColor: "#F8C537",
     panelDescription: "Selecione o órgão competente para abrir uma denúncia ou intimação com segurança. Denúncias anônimas preservam a identidade no canal operacional; logs autorizados mantêm auditoria real.",
     panelEmoji: fixedSystemEmojiText("alerta"),
     panelPlaceholder: "Selecione o órgão competente",
-    panelTitle: "Denúncias IAB",
+    panelTitle: "Corregedoria",
     subpoenaCategoryId: null,
     subpoenaDmText: "Você recebeu uma intimacao institucional. Acesse o canal indicado e responda dentro do prazo.",
     subpoenaPanelBannerUrl: null,

@@ -130,7 +130,7 @@ rhAdminRouter.get("/:guildId", async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
-    if (!botId || isBotRequest(req) || !(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para ver o RH Administrativo." });
+    if (!botId || isBotRequest(req) || !(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para ver o Departamento de RH." });
     return res.json(await getRhAdminDashboard(botId, guildId));
   } catch (error) {
     return next(error);
@@ -141,7 +141,7 @@ rhAdminRouter.patch("/:guildId/settings", async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
-    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para configurar o RH Administrativo." });
+    if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para configurar o Departamento de RH." });
     const settings = await saveRhAdminSettings(botId, guildId, sanitizeSettings(settingsSchema.parse(req.body ?? {})), res.locals.dashboardAuth.user.discordId);
     return res.json({ settings });
   } catch (error) {
@@ -323,7 +323,7 @@ async function assertRuntime(botId: string | null, guildId: string) {
   const validGuildId = snowflake.parse(guildId);
   if (!botId) throw Object.assign(new Error("Bot não identificado."), { statusCode: 403 });
   const authorization = await authorizeBotRuntimeModule({ botId, guildId: validGuildId, moduleId: RH_ADMIN_MODULE_ID });
-  if (!authorization.allowed) throw Object.assign(new Error("O módulo RH Administrativo não está liberado para este servidor. Entre em contato com a administração do bot."), { statusCode: 403 });
+  if (!authorization.allowed) throw Object.assign(new Error("O módulo Departamento de RH não está liberado para este servidor. Entre em contato com a administração do bot."), { statusCode: 403 });
   return botId;
 }
 

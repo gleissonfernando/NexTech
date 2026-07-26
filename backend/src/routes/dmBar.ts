@@ -49,7 +49,7 @@ const logSchema = z.object({
   senderId: snowflake,
   status: z.enum(["sent", "failed", "denied", "cancelled", "test"]),
   targetId: snowflake.nullable().optional(),
-  title: z.string().max(180).default("Barra DM")
+  title: z.string().max(180).default("Avisos Administrativos")
 });
 
 export const dmBarRouter = Router();
@@ -135,6 +135,6 @@ async function licensed(botId: string) {
 async function authorize(user: any, botId: string, guildId: string, manage: boolean) {
   await licensed(botId);
   const allowed = manage ? await canUseDevBotModule(user, botId, guildId, DM_BAR_MODULE_ID) : await canReadDevBotModule(user, botId, guildId, DM_BAR_MODULE_ID);
-  if (!allowed) throw routeError("Sem permissão para Barra DM.", 403);
+  if (!allowed) throw routeError("Sem permissão para Avisos Administrativos.", 403);
 }
 function routeError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

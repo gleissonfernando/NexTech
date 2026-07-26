@@ -66,7 +66,7 @@ const COMPETENCE_LABEL: Record<Competence, string> = {
   comissario: "Comissário",
   conselho: "Conselho",
   hcmd: "High Command",
-  iab: "IAB"
+  iab: "Corregedoria"
 };
 
 export const policeSubpoenaCommand: BotCommand = {
@@ -401,7 +401,7 @@ async function submitNote(interaction: ModalSubmitInteraction, _context: BotCont
 
 function resolveCompetence(member: GuildMember, selected: Competence, report: ReportSystemSettings) {
   if (hasAnyRole(member, orgRoleIds(report, "hcmd"))) return { finalCompetence: "comissario" as const, reason: "caso redirecionado por envolver membro do High Command" };
-  if (hasAnyRole(member, orgRoleIds(report, "iab"))) return { finalCompetence: "conselho" as const, reason: "caso redirecionado por envolver membro da IAB" };
+  if (hasAnyRole(member, orgRoleIds(report, "iab"))) return { finalCompetence: "conselho" as const, reason: "caso redirecionado por envolver membro da Corregedoria" };
   return { finalCompetence: selected, reason: null };
 }
 
@@ -715,7 +715,7 @@ function competenceSelect(customId: string, placeholder: string) {
       .setCustomId(customId)
       .setPlaceholder(placeholder)
       .addOptions([
-        option("iab", "IAB"),
+        option("iab", "Corregedoria"),
         option("conselho", "Conselho"),
         option("hcmd", "High Command"),
         option("comissario", "Comissário")
@@ -732,7 +732,7 @@ function hasAnyRole(member: GuildMember, roleIds: string[]) { return roleIds.som
 function canUseCommand(member: GuildMember, report: ReportSystemSettings) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; const ids = [...report.competenceCommandRoleIds, ...report.permissionRoleIds, ...report.adminRoleIds, ...allOrgRoleIds(report)]; return !ids.length || hasAnyRole(member, ids); }
 function canManageCompetence(member: GuildMember, report: ReportSystemSettings, competence: Competence) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; return hasAnyRole(member, orgRoleIds(report, competence)); }
 function canManageCase(member: GuildMember, report: ReportSystemSettings, state: CaseState) { if (member.permissions.has(PermissionFlagsBits.Administrator)) return true; return canManageCompetence(member, report, state.finalCompetence); }
-function subpoenaStaffDisplayName(report: ReportSystemSettings, state: CaseState) { return state.finalCompetence === "iab" ? report.anonymousInvestigatorName || "Equipe IAB" : `Equipe ${COMPETENCE_LABEL[state.finalCompetence]}`; }
+function subpoenaStaffDisplayName(report: ReportSystemSettings, state: CaseState) { return state.finalCompetence === "iab" ? report.anonymousInvestigatorName || "Equipe Corregedoria" : `Equipe ${COMPETENCE_LABEL[state.finalCompetence]}`; }
 function orgRoleIds(report: ReportSystemSettings, competence: Competence) { const fallback = competence === "iab" ? [...report.viewRoleIds, ...report.replyRoleIds, ...report.adminRoleIds] : []; return [...new Set((competence === "iab" ? report.iabRoleIds : competence === "conselho" ? report.conselhoRoleIds : competence === "hcmd" ? report.hcmdRoleIds : report.comissarioRoleIds).concat(fallback))]; }
 function allOrgRoleIds(report: ReportSystemSettings) { return [...new Set([...orgRoleIds(report, "iab"), ...orgRoleIds(report, "conselho"), ...orgRoleIds(report, "hcmd"), ...orgRoleIds(report, "comissario")])]; }
 async function resolveSubpoenaParent(guild: Guild, report: ReportSystemSettings) {

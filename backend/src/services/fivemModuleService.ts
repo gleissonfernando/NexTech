@@ -109,10 +109,10 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
-    description: "Canal de denuncias IAB com triagem, auditoria e acompanhamento pela equipe policial.",
+    description: "Canal da Corregedoria com triagem, auditoria e acompanhamento pela equipe policial.",
     id: "police-iab",
     permissions: "Admin Polícia, Corregedoria",
-    title: "Denúncia IAB"
+    title: "Corregedoria"
   },
   {
     builtIn: true,
@@ -182,7 +182,7 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
     description: "Solicitacoes de ausência, adornos, aprovação, cargo temporário e logs administrativos de RH.",
     id: "rh-admin",
     permissions: "Admin Polícia, RH",
-    title: "RH Administrativo"
+    title: "Departamento de RH"
   },
   {
     builtIn: true,

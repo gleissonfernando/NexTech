@@ -57,7 +57,7 @@ export async function getRhAdminSettings(botId: string | null, guildId: string) 
     botId,
     guildId,
     enabled: true,
-    systemName: "RH Administrativo | North Police Department",
+    systemName: "Departamento de RH | North Police Department",
     color: "#1d4ed8",
     panelChannelId: null,
     absencePanelChannelId: null,
@@ -80,10 +80,10 @@ export async function getRhAdminSettings(botId: string | null, guildId: string) 
     rejectionDmBannerUrl: null,
     finishedDmBannerUrl: null,
     adornmentBannerUrl: null,
-    panelDescription: "Bem-vindo ao sistema de RH Administrativo.\nPor este painel, você poderá solicitar uma ausência temporária ou registrar uma solicitação de adorno.\nLeia as informações com atenção antes de enviar sua solicitação.",
-    adornmentDescription: "Envie a numeração in-game do adorno e um link válido de imagem para análise do RH.",
-    approvalDmText: "Sua solicitação de ausência foi aprovada pelo RH Administrativo.",
-    rejectionDmText: "Sua solicitação de ausência foi recusada pelo RH Administrativo.",
+    panelDescription: "Bem-vindo ao sistema de Departamento de RH.\nPor este painel, você poderá solicitar uma ausência temporária ou registrar uma solicitação de adorno.\nLeia as informações com atenção antes de enviar sua solicitação.",
+    adornmentDescription: "Envie a numeração in-game do adorno e um link válido de imagem para análise do Departamento de RH.",
+    approvalDmText: "Sua solicitação de ausência foi aprovada pelo Departamento de RH.",
+    rejectionDmText: "Sua solicitação de ausência foi recusada pelo Departamento de RH.",
     finishedDmText: "O período da sua ausência foi finalizado.",
     sendAbsenceDm: true,
     mentionAdornmentUser: true,
@@ -114,15 +114,15 @@ export async function saveRhAdminSettings(botId: string | null, guildId: string,
       guildId
     }
   }, { upsert: true });
-  await logRhAdminAction(botId, guildId, "rh.settings_saved", actorId, actorId, "Configuração do RH Administrativo alterada.", "success", input);
+  await logRhAdminAction(botId, guildId, "rh.settings_saved", actorId, actorId, "Configuração do Departamento de RH alterada.", "success", input);
   emitRealtime("rh-admin:settings", { botId, guildId });
   return getRhAdminSettings(botId, guildId);
 }
 
 export async function requestRhAdminPanelPublish(botId: string, guildId: string, actorId: string | null) {
   const settings = await getRhAdminSettings(botId, guildId);
-  if (!settings.enabled) throw new Error("Ative o RH Administrativo antes de publicar o painel.");
-  if (!settings.panelChannelId) throw new Error("Configure o canal de publicação do painel RH.");
+  if (!settings.enabled) throw new Error("Ative o Departamento de RH antes de publicar o painel.");
+  if (!settings.panelChannelId) throw new Error("Configure o canal de publicação do painel Departamento de RH.");
 
   const { rhAdminSettings } = await getMongoCollections();
   const requestedAt = new Date();
@@ -141,7 +141,7 @@ export async function requestRhAdminPanelPublish(botId: string, guildId: string,
 
   const nextSettings = await getRhAdminSettings(botId, guildId);
   emitRealtimeToRoom(devBotRealtimeRoom(botId), "rh-admin:panel_publish", { botId, guildId, settings: nextSettings });
-  await logRhAdminAction(botId, guildId, "rh.panel_publish_requested", null, actorId, "Publicação do painel RH solicitada pela dashboard.", "info", { channelId: nextSettings.panelChannelId });
+  await logRhAdminAction(botId, guildId, "rh.panel_publish_requested", null, actorId, "Publicação do painel Departamento de RH solicitada pela dashboard.", "info", { channelId: nextSettings.panelChannelId });
   return nextSettings;
 }
 
