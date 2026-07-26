@@ -71,7 +71,8 @@ export const qruCommand: BotCommand = {
         { name: "Publicar painel", value: "painel" },
         { name: "Registrar QRU", value: "registrar" },
         { name: "Perfil individual", value: "perfil" },
-        { name: "Pesquisar registros", value: "pesquisar" }
+        { name: "Pesquisar registros", value: "pesquisar" },
+        { name: "Zerar ranking", value: "zerar-ranking" }
       ))
     .addUserOption((option) => option.setName("usuario").setDescription("Usuário para perfil ou pesquisa.").setRequired(false))
     .addStringOption((option) => option.setName("bo").setDescription("Número do B.O para pesquisa.").setRequired(false))
@@ -98,6 +99,11 @@ export const qruCommand: BotCommand = {
 
     if (action === "pesquisar") {
       await showQruSearch(interaction, context, settings);
+      return;
+    }
+
+    if (action === "zerar-ranking") {
+      await resetQruRanking(interaction, context, settings);
       return;
     }
 
@@ -558,6 +564,19 @@ async function showQruSearch(interaction: ChatInputCommandInteraction, context: 
   await interaction.reply(searchPayload(records, settings) as any);
 }
 
+async function resetQruRanking(interaction: ChatInputCommandInteraction, context: BotContext, settings: PoliceQruSettings) {
+  if (!interaction.guild || !interaction.inCachedGuild()) return;
+  if (!canApproveQru(interaction.member as GuildMember, settings)) {
+    await interaction.reply({ content: "❌ Você não possui permissão para zerar o ranking de QRU.", ephemeral: true });
+    return;
+  }
+
+  const updated = await context.api.savePoliceQruSettings(interaction.guild.id, { rankingResetAt: new Date().toISOString() });
+  settingsCache.set(`${MODULE_ID}:${interaction.guild.id}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings: updated });
+  await updateOfficialRankingPanel(context, interaction.guild.id, updated);
+  await interaction.reply({ content: "✅ Ranking de QRU zerado. O painel fixo foi atualizado automaticamente.", ephemeral: true });
+}
+
 function rankingCommand(name: "rank" | "ranking"): BotCommand {
   return {
     data: new SlashCommandBuilder()
@@ -638,8 +657,12 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
 
 async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
   await Promise.allSettled(client.guilds.cache.map(async (guild) => {
-    const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
+    let settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
     if (!settings?.rankingChannelId || !settings.rankingMessageId) return;
+    if (reason === "startup" && !settings.rankingResetAt) {
+      const resetSettings = await context.api.savePoliceQruSettings(guild.id, { rankingResetAt: new Date().toISOString() }).catch(() => null);
+      if (resetSettings) settings = resetSettings;
+    }
     await updateOfficialRankingPanel(context, guild.id, settings);
   }));
   console.log(`[police-qru] ranking panels refreshed: ${reason}`);
@@ -880,7 +903,7 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
   const others = visibleRanking.slice(3).map((entry) => `${systemEmojiText("VORTEX1505360210200049", guild, client)} **${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
   const totalVisible = visibleRanking.reduce((total, entry) => total + entry.total, 0);
   const updatedAt = Math.floor(Date.now() / 1000);
-  const period = policeQruWeekPeriodLabel();
+  const period = policeQruWeekPeriodLabel(settings);
   return {
     allowedMentions: { parse: [] },
     components: [{
@@ -1194,11 +1217,18 @@ function policeQruWeekKey(now = new Date()) {
   return startOfPoliceQruWeek(now).toISOString().slice(0, 10);
 }
 
-function policeQruWeekPeriodLabel(now = new Date()) {
-  const start = startOfPoliceQruWeek(now);
+function policeQruWeekPeriodLabel(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
+  const start = policeQruRankingPeriodStart(settings, now);
   const end = new Date(start.getTime() + 7 * 86_400_000 - 1);
   const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" });
   return `${formatter.format(start)} até ${formatter.format(end)}`;
+}
+
+function policeQruRankingPeriodStart(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
+  const weekStart = startOfPoliceQruWeek(now);
+  if (!settings.rankingResetAt) return weekStart;
+  const resetAt = new Date(settings.rankingResetAt);
+  return !Number.isNaN(resetAt.getTime()) && resetAt > weekStart ? resetAt : weekStart;
 }
 
 function startOfPoliceQruWeek(now = new Date()) {

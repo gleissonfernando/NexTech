@@ -4,9 +4,10 @@ import { emitRealtime } from "../realtime/events";
 
 export const POLICE_QRU_MODULE_ID = "police-qru";
 
-export type PoliceQruSettingsDto = Omit<MongoPoliceQruSettings, "_id" | "createdAt" | "updatedAt"> & {
+export type PoliceQruSettingsDto = Omit<MongoPoliceQruSettings, "_id" | "createdAt" | "rankingResetAt" | "updatedAt"> & {
   id: string;
   createdAt: string;
+  rankingResetAt: string | null;
   updatedAt: string;
 };
 
@@ -63,6 +64,7 @@ export type SavePoliceQruSettingsInput = Partial<Pick<
   | "recordChannelId"
   | "rankingChannelId"
   | "rankingMessageId"
+  | "rankingResetAt"
   | "supervisorRoleIds"
   | "teamRoleId"
   | "temporaryCategoryId"
@@ -135,6 +137,7 @@ export async function savePoliceQruSettings(botId: string, guildId: string, inpu
     ...current,
     _id: current.id,
     createdAt: new Date(current.createdAt),
+    rankingResetAt: current.rankingResetAt ? new Date(current.rankingResetAt) : null,
     updatedAt: now,
     updatedBy: actorId,
     ...sanitizeSettingsInput(input)
@@ -335,8 +338,9 @@ export async function listPoliceQruRecords(botId: string, guildId: string, searc
 }
 
 export async function getPoliceQruRanking(botId: string, guildId: string, limit = 20): Promise<PoliceQruRankingEntryDto[]> {
-  const { policeQruRecords } = await getMongoCollections();
-  const weekStart = startOfPoliceQruWeek();
+  const { policeQruRecords, policeQruSettings } = await getMongoCollections();
+  const settings = await policeQruSettings.findOne({ _id: `${botId}:${guildId}` });
+  const cutoff = policeQruRankingCutoff(settings);
   const rows = await policeQruRecords.aggregate<{
     _id: string;
     firstQruAt: Date;
@@ -344,7 +348,7 @@ export async function getPoliceQruRanking(botId: string, guildId: string, limit 
     officerName: string;
     total: number;
   }>([
-    { $match: { botId, guildId, createdAt: { $gte: weekStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
+    { $match: { botId, guildId, createdAt: { $gte: cutoff }, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
     { $unwind: "$officers" },
     {
       $group: {
@@ -408,11 +412,12 @@ export async function createPoliceQruLog(botId: string, guildId: string, input: 
 }
 
 async function getPoliceQruStats(botId: string, guildId: string) {
-  const { policeQruRecords } = await getMongoCollections();
+  const { policeQruRecords, policeQruSettings } = await getMongoCollections();
   const now = new Date();
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
-  const weekStart = startOfPoliceQruWeek(now);
+  const settings = await policeQruSettings.findOne({ _id: `${botId}:${guildId}` });
+  const weekStart = policeQruRankingCutoff(settings, now);
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
 
   const [total, qrusToday, qrusWeek, qrusMonth, officerCount, topAuthorRows] = await Promise.all([
@@ -456,6 +461,12 @@ function startOfPoliceQruWeek(now = new Date()) {
   return new Date(mondayLocalMidnight - saoPauloOffsetMs);
 }
 
+function policeQruRankingCutoff(settings?: Pick<MongoPoliceQruSettings, "rankingResetAt"> | null, now = new Date()) {
+  const weekStart = startOfPoliceQruWeek(now);
+  const resetAt = settings?.rankingResetAt instanceof Date ? settings.rankingResetAt : null;
+  return resetAt && resetAt > weekStart ? resetAt : weekStart;
+}
+
 async function listPoliceQruLogs(botId: string, guildId: string, limit = 50) {
   const { policeQruLogs } = await getMongoCollections();
   return (await policeQruLogs.find({ botId, guildId }).sort({ createdAt: -1 }).limit(limit).toArray()).map((log) => ({
@@ -487,6 +498,7 @@ function defaultSettings(botId: string, guildId: string): MongoPoliceQruSettings
     panelTitle: "🚔 Sistema de Registro de QRU",
     rankingChannelId: null,
     rankingMessageId: null,
+    rankingResetAt: null,
     recordChannelId: null,
     supervisorRoleIds: [],
     teamRoleId: null,
@@ -505,6 +517,7 @@ function settingsDto(row: MongoPoliceQruSettings): PoliceQruSettingsDto {
     createdAt: createdAt.toISOString(),
     rankingChannelId: row.rankingChannelId ?? null,
     rankingMessageId: row.rankingMessageId ?? null,
+    rankingResetAt: row.rankingResetAt?.toISOString() ?? null,
     updatedAt: updatedAt.toISOString()
   };
 }
@@ -539,6 +552,7 @@ function sanitizeSettingsInput(input: SavePoliceQruSettingsInput) {
   if (next.logChannelId !== undefined) next.logChannelId = normalizeSnowflake(next.logChannelId);
   if (next.rankingChannelId !== undefined) next.rankingChannelId = normalizeSnowflake(next.rankingChannelId);
   if (next.rankingMessageId !== undefined) next.rankingMessageId = normalizeSnowflake(next.rankingMessageId);
+  if (next.rankingResetAt !== undefined) next.rankingResetAt = normalizeDate(next.rankingResetAt);
   if (next.temporaryCategoryId !== undefined) next.temporaryCategoryId = normalizeSnowflake(next.temporaryCategoryId);
   if (next.teamRoleId !== undefined) next.teamRoleId = normalizeSnowflake(next.teamRoleId);
   if (next.color !== undefined) next.color = /^#[0-9a-f]{6}$/i.test(next.color) ? next.color : "#2563eb";
@@ -548,6 +562,16 @@ function sanitizeSettingsInput(input: SavePoliceQruSettingsInput) {
   if (next.panelMessage !== undefined) next.panelMessage = normalizeText(next.panelMessage, 1200) || "Clique no botão abaixo para iniciar o atendimento da ocorrência.";
   if (next.panelImageUrl !== undefined) next.panelImageUrl = next.panelImageUrl?.trim() || null;
   return next;
+}
+
+function normalizeDate(value: unknown) {
+  if (value === null) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value.trim()) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
 }
 
 function uniqueOfficers(officers: MongoPoliceQruOfficer[]) {

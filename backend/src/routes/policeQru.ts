@@ -45,6 +45,7 @@ const settingsSchema = z.object({
   recordChannelId: nullableSnowflake.optional(),
   rankingChannelId: nullableSnowflake.optional(),
   rankingMessageId: nullableSnowflake.optional(),
+  rankingResetAt: z.preprocess((value) => typeof value === "string" ? new Date(value) : value, z.date().nullable()).optional(),
   supervisorRoleIds: z.array(snowflake).max(100).optional(),
   teamRoleId: nullableSnowflake.optional(),
   temporaryCategoryId: nullableSnowflake.optional()

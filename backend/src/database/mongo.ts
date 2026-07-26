@@ -2542,6 +2542,7 @@ export type MongoPoliceQruSettings = {
   panelMessage: string;
   rankingChannelId?: string | null;
   rankingMessageId?: string | null;
+  rankingResetAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   updatedBy: string | null;
