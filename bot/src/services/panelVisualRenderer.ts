@@ -20,6 +20,7 @@ export type PanelBlock =
   | { divider?: boolean; id: string; order: number; spacing?: "small" | "large" | number; type: "separator" }
   | { id: string; items: Array<{ description?: string | null; spoiler?: boolean; url: string }>; order: number; type: "media_gallery" }
   | { accessory?: { kind: "thumbnail"; description?: string | null; url: string } | { kind: "button"; customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string } | null; id: string; order: number; texts: string[]; type: "section" }
+  | { altText?: string | null; attachmentName?: string | null; imageUrl?: string | null; id: string; order: number; text: string; type: "footer" }
   | { buttons: Array<{ customId?: string; disabled?: boolean; label: string; style?: "primary" | "secondary" | "success" | "danger" | "link"; url?: string }>; id: string; order: number; type: "action_row" };
 
 export type ComponentsV2FooterConfig = {
@@ -202,6 +203,13 @@ function renderPanelBlock(block: PanelBlock) {
       if (!texts.length) return null;
       const accessory = renderSectionAccessory(block.accessory);
       return accessory ? { type: 9, components: texts, accessory } : { type: 10, content: texts.map((item) => item.content).join("\n").slice(0, 4000) };
+    }
+    if (block.type === "footer") {
+      return createV2Footer({
+        description: block.altText,
+        image: block.imageUrl || (block.attachmentName ? `attachment://${block.attachmentName}` : null),
+        text: block.text
+      });
     }
     if (block.type === "action_row") {
       const buttons = block.buttons.map(renderButtonComponent).filter(Boolean).slice(0, 5);

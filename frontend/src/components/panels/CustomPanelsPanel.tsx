@@ -188,6 +188,7 @@ export function CustomPanelsPanel({ botId, canManage, guild }: { botId: string |
     setError(null);
     try {
       const payload = buildPayload();
+      await validateCustomPanelMedia(payload);
       const panel = draft.id
         ? await updateCustomPanelApi(activeBotId, guildId, draft.id, payload)
         : await createCustomPanelApi(activeBotId, guildId, payload);
@@ -209,6 +210,7 @@ export function CustomPanelsPanel({ botId, canManage, guild }: { botId: string |
     setSaving(true);
     setError(null);
     try {
+      await validateCustomPanelMedia(buildPayload());
       const panel = await publishCustomPanelApi(activeBotId, guildId, draft.id);
       upsertPanel(panel);
       selectPanel(panel);
@@ -354,6 +356,8 @@ export function CustomPanelsPanel({ botId, canManage, guild }: { botId: string |
           <TextArea label="Mensagem depois da embed" onChange={(afterMessage) => setDraft((current) => ({ ...current, afterMessage }))} rows={3} value={draft.afterMessage ?? ""} />
           <TextArea label="Componentes V2 em JSON" onChange={setComponentsJson} rows={10} value={componentsJson} />
 
+          <CustomPanelPreview draft={draft} />
+
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManage || saving} onClick={() => void savePanel()} type="button">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button>
             <Button disabled={!canManage || saving || !draft.channelId} onClick={() => void publishPanel()} type="button"><Send className="mr-2 h-4 w-4" />Publicar Painel</Button>
@@ -385,4 +389,89 @@ function formatComponents(components: CustomPanelComponent[] | undefined) {
 function readApiError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
+}
+
+function CustomPanelPreview({ draft }: { draft: Draft }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <p className="mb-3 text-sm font-semibold text-white">Preview Components V2</p>
+      <div className="rounded-lg border-l-4 bg-[#101012] p-4" style={{ borderLeftColor: /^#[0-9a-f]{6}$/i.test(draft.color ?? "") ? draft.color! : "#FFD500" }}>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold text-white">{draft.emoji ? `${draft.emoji} ` : ""}{draft.name || "Painel"}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{draft.description || "Descrição do painel."}</p>
+          </div>
+          {draft.thumbnailUrl ? <img alt="Thumbnail" className="h-20 w-20 rounded-md border border-zinc-800 object-cover" src={draft.thumbnailUrl} /> : null}
+        </div>
+        {draft.bannerUrl ? <MediaPreview className="mt-4 block w-full rounded-md border border-zinc-800 object-contain" url={draft.bannerUrl} /> : null}
+        {draft.beforeMessage ? <p className="mt-4 whitespace-pre-wrap text-sm text-zinc-300">{draft.beforeMessage}</p> : null}
+        {draft.afterMessage ? <p className="mt-4 whitespace-pre-wrap text-sm text-zinc-400">{draft.afterMessage}</p> : null}
+        {draft.footerText ? <p className="mt-4 border-t border-zinc-800 pt-3 text-xs text-zinc-500">{draft.footerText}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function MediaPreview({ className, url }: { className: string; url: string }) {
+  if (isVideoUrl(url)) {
+    return <video className={className} controls muted playsInline preload="metadata" src={url} />;
+  }
+  return <img alt="Banner" className={className} src={url} />;
+}
+
+async function validateCustomPanelMedia(payload: SaveCustomPanelPayload) {
+  if (payload.thumbnailUrl) {
+    assertHttpMediaUrl(payload.thumbnailUrl, "Thumbnail/Rodapé");
+    if (isVideoUrl(payload.thumbnailUrl)) throw new Error("Thumbnail/Rodapé deve ser imagem. Use vídeo somente no banner.");
+    await loadMediaUrl(payload.thumbnailUrl, false);
+  }
+  if (payload.bannerUrl) {
+    assertHttpMediaUrl(payload.bannerUrl, "Banner");
+    await loadMediaUrl(payload.bannerUrl, isVideoUrl(payload.bannerUrl));
+  }
+}
+
+function assertHttpMediaUrl(url: string, label: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return;
+  } catch {
+    // Fall through to the friendly validation message below.
+  }
+  throw new Error(`${label}: use uma URL http/https válida.`);
+}
+
+function loadMediaUrl(url: string, video: boolean) {
+  return new Promise<void>((resolve, reject) => {
+    let media: HTMLImageElement | HTMLVideoElement | null = null;
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("A mídia demorou demais para carregar. Confira a URL."));
+    }, 8000);
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      if (!media) return;
+      media.onload = null;
+      media.onerror = null;
+      if (media instanceof HTMLVideoElement) media.onloadedmetadata = null;
+    };
+    if (video) {
+      const element = document.createElement("video");
+      media = element;
+      element.onloadedmetadata = () => { cleanup(); resolve(); };
+      element.onerror = () => { cleanup(); reject(new Error("Não foi possível carregar o vídeo do banner.")); };
+      element.preload = "metadata";
+      element.src = url;
+      return;
+    }
+    const image = new Image();
+    media = image;
+    image.onload = () => { cleanup(); resolve(); };
+    image.onerror = () => { cleanup(); reject(new Error("Não foi possível carregar a imagem configurada.")); };
+    image.src = url;
+  });
+}
+
+function isVideoUrl(url: string) {
+  return /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(url);
 }

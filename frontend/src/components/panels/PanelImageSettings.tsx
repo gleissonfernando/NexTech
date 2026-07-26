@@ -241,6 +241,16 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
       return;
     }
 
+    if (nextPayload.imageEnabled && nextPayload.imageUrl) {
+      try {
+        await validatePanelMediaUrl(nextPayload.imageUrl, draft.imageMimeType);
+      } catch (validationError) {
+        setStatus(null);
+        setError(readErrorMessage(validationError, "A mídia informada não carregou. Confira a URL e tente novamente."));
+        return;
+      }
+    }
+
     setSaving(true);
     setStatus(null);
     setError(null);
@@ -708,10 +718,11 @@ function PreviewImage({
   alt: string;
   imageUrl: string;
   settings: PanelImageSettingsDto;
-  style: { height: string; maxWidth: string; width: string };
+  style: CSSProperties;
 }) {
+  const displayStyle = previewMediaStyle(settings, style);
   if (isVideoMedia(imageUrl, settings.imageMimeType)) {
-    return <SmartVideoPreview alt={alt} className="mt-4" imageUrl={imageUrl} settings={settings} style={style} />;
+    return <SmartVideoPreview alt={alt} className="mt-4" imageUrl={imageUrl} settings={settings} style={displayStyle} />;
   }
 
   return (
@@ -719,7 +730,7 @@ function PreviewImage({
       alt={alt}
       className="mt-4 rounded-md border border-zinc-800"
       src={dashboardImageUrl(imageUrl)}
-      style={{ ...style, objectFit: settings.mediaFit }}
+      style={displayStyle}
     />
   );
 }
@@ -915,6 +926,60 @@ function VideoDiagnosticsReport({ items }: { items: Array<{ label: string; statu
 function isVideoMedia(imageUrl: string, mimeType?: string | null) {
   if (mimeType?.startsWith("video/")) return true;
   return /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(imageUrl);
+}
+
+function previewMediaStyle(settings: PanelImageSettingsDto, baseStyle: CSSProperties): CSSProperties {
+  if (["banner", "top", "below_title", "below_text", "middle", "bottom", "before_buttons", "above_buttons"].includes(settings.imagePosition)) {
+    return {
+      ...baseStyle,
+      display: "block",
+      height: isVideoMedia(settings.imageUrl, settings.imageMimeType) ? baseStyle.height ?? "auto" : "auto",
+      maxWidth: "100%",
+      objectFit: "contain",
+      width: "100%"
+    };
+  }
+
+  return {
+    ...baseStyle,
+    objectFit: settings.mediaFit
+  };
+}
+
+async function validatePanelMediaUrl(imageUrl: string, mimeType?: string | null) {
+  const url = dashboardImageUrl(imageUrl.trim());
+  if (!/^https?:\/\//i.test(url) && !url.startsWith("/api/persistent-images/")) {
+    throw new Error("Use uma URL http/https válida ou envie uma mídia pelo upload.");
+  }
+  if (isVideoMedia(url, mimeType)) {
+    await readRemoteVideoMetadata(url);
+    return;
+  }
+  await loadImageUrl(url);
+}
+
+function loadImageUrl(url: string) {
+  return new Promise<void>((resolve, reject) => {
+    const image = new window.Image();
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("A imagem demorou demais para carregar."));
+    }, VIDEO_METADATA_TIMEOUT_MS);
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+    };
+    image.onload = () => {
+      cleanup();
+      resolve();
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error("Não foi possível carregar a imagem. Confira a URL."));
+    };
+    image.src = url;
+  });
 }
 
 async function runVideoDiagnostics(settings: PanelImageSettingsDto) {

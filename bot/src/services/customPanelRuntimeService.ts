@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   StringSelectMenuBuilder,
   type Client,
   type GuildTextBasedChannel,
@@ -12,6 +11,7 @@ import {
 import { currentRuntimeBotId, env } from "../config/env";
 import type { CustomPanel, CustomPanelComponent, ApiClient } from "./apiClient";
 import { assertPanelChannelPermissions, pinPanelMessage } from "./panelDeliveryService";
+import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import type { BotSocketClient, CustomPanelUpdateEvent } from "../websocket/socketClient";
 
 type WritableGuildTextChannel = GuildTextBasedChannel;
@@ -92,30 +92,29 @@ async function syncCustomPanel(client: Client, api: ApiClient, panel: CustomPane
 }
 
 function buildPanelMessage(panel: CustomPanel): MessageCreateOptions {
-  const embed = new EmbedBuilder()
-    .setTitle(`${panel.emoji ? `${panel.emoji} ` : ""}${panel.name}`.slice(0, 256))
-    .setDescription(panel.description.slice(0, 4096))
-    .setColor(parseColor(panel.color))
-    .setTimestamp(new Date());
-
-  if (panel.thumbnailUrl) embed.setThumbnail(panel.thumbnailUrl);
-  if (panel.bannerUrl) embed.setImage(panel.bannerUrl);
-  if (panel.footerText) embed.setFooter({ text: panel.footerText.slice(0, 2048) });
-  if (panel.authorName) embed.setAuthor({ name: panel.authorName.slice(0, 256) });
-
-  const content = [panel.mentionRoleId ? `<@&${panel.mentionRoleId}>` : "", panel.beforeMessage ?? "", panel.afterMessage ?? ""]
-    .filter(Boolean)
-    .join("\n")
-    .slice(0, 2000);
-
+  const actions = buildComponents(panel);
+  const fields = [
+    panel.mentionRoleId ? `<@&${panel.mentionRoleId}>` : null,
+    panel.beforeMessage,
+    panel.afterMessage
+  ].filter((item): item is string => Boolean(item?.trim()));
+  const payload = renderComponentsV2Panel({
+    accentColor: parseColor(panel.color),
+    actions,
+    description: panel.description.slice(0, 3900),
+    extraImages: [panel.bannerUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: panel.bannerUrl } : null],
+    fields,
+    footer: panel.footerText ? { text: panel.footerText.slice(0, 2048) } : null,
+    image: panel.thumbnailUrl ? { imageEnabled: true, imagePosition: "thumbnail", imageUrl: panel.thumbnailUrl } : null,
+    moduleId: "panels",
+    title: `${panel.emoji ? `${panel.emoji} ` : ""}${panel.name}`.slice(0, 256)
+  });
   return {
+    ...payload,
     allowedMentions: {
       parse: [],
       roles: panel.mentionRoleId ? [panel.mentionRoleId] : []
-    },
-    components: buildComponents(panel),
-    content,
-    embeds: [embed]
+    }
   };
 }
 
