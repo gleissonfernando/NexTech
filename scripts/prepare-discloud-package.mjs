@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { buildCurrentReleaseMetadata } from "./auto-update-logger.mjs";
 
 const root = process.cwd();
 const target = path.join(root, ".discloud-package");
@@ -31,6 +32,7 @@ mkdirSync(path.join(target, "frontend"), { recursive: true });
 
 cpSync(path.join(root, "index.js"), path.join(target, "index.js"));
 cpSync(path.join(root, "scripts/start-production.mjs"), path.join(target, "scripts/start-production.mjs"));
+cpSync(path.join(root, "scripts/auto-update-logger.mjs"), path.join(target, "scripts/auto-update-logger.mjs"));
 cpSync(path.join(root, "backend/dist"), path.join(target, "backend/dist"), { recursive: true });
 if (existsSync(path.join(root, "backend/assets"))) {
   cpSync(path.join(root, "backend/assets"), path.join(target, "backend/assets"), { recursive: true });
@@ -69,6 +71,7 @@ for (const key of ["START_REGISTERED_DEV_BOTS"]) {
 }
 
 writeFileSync(path.join(target, ".nex-tech-runtime-env.json"), `${JSON.stringify(runtimeEnv, null, 2)}\n`);
+writeFileSync(path.join(target, ".nex-tech-release.json"), `${JSON.stringify(buildCurrentReleaseMetadata(), null, 2)}\n`);
 
 function explicitRuntimeConfigValue(key) {
   const runtimeConfigFile = [".nex-tech-runtime-env.json", ".NexTech-runtime-env.json", ".orvitek-runtime-env.json"]

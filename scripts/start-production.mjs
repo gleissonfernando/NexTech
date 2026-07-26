@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { runAutoUpdateLogger } from "./auto-update-logger.mjs";
 
 const children = new Set();
 loadRuntimeConfigFile();
@@ -201,6 +202,7 @@ function startProcess(name, command, args, options = {}) {
 }
 
 let shuttingDown = false;
+let autoUpdateLoggerStarted = false;
 
 function shutdown(code = 0) {
   shuttingDown = true;
@@ -226,6 +228,7 @@ function startBotAfterBackendReady() {
         return;
       }
 
+      publishAutoUpdateLogOnce();
       startProcess("bot", "node", [process.env.BOT_SHARDING_ENABLED === "true" ? "bot/dist/shard.js" : "bot/dist/index.js"], { restartOnCleanExit: false });
     })
     .catch((error) => {
@@ -263,4 +266,15 @@ async function waitForBackendReady(timeoutMs = 45_000) {
   }
 
   throw new Error(lastError || "timeout aguardando /health");
+}
+
+function publishAutoUpdateLogOnce() {
+  if (autoUpdateLoggerStarted || process.env.AUTO_UPDATE_ON_START === "false") {
+    return;
+  }
+
+  autoUpdateLoggerStarted = true;
+  runAutoUpdateLogger().catch((error) => {
+    console.warn("[start] auto update logger ignorado:", error instanceof Error ? error.message : error);
+  });
 }

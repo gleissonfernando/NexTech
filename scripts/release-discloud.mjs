@@ -96,10 +96,14 @@ console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
-console.log("[release] Auto Update Logger...");
-await runAutoUpdateLogger({ force: true }).catch((error) => {
-  console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
-});
+if (process.env.AUTO_UPDATE_RELEASE_FALLBACK === "true") {
+  console.log("[release] Auto Update Logger fallback...");
+  await runAutoUpdateLogger().catch((error) => {
+    console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
+  });
+} else {
+  console.log("[release] Auto Update Logger será executado automaticamente no startup de produção.");
+}
 
 console.log("[release] Concluido.");
 

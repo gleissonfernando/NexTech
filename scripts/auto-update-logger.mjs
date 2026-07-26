@@ -6,26 +6,58 @@ import { fileURLToPath } from "node:url";
 const root = process.cwd();
 const historyDir = path.join(root, ".release-history");
 const historyPath = path.join(historyDir, "auto-update-log.json");
+const releaseMetadataPath = path.join(root, ".nex-tech-release.json");
 const discordApi = "https://discord.com/api/v10";
 const isDryRun = process.argv.includes("--dry-run");
 const isForceSend = process.argv.includes("--force") || process.env.AUTO_UPDATE_ALWAYS_SEND === "true";
 
+export function buildCurrentReleaseMetadata() {
+  const currentCommit = currentReleaseCommit(null);
+  const previousCommit = safeGit(["rev-parse", "HEAD~1"]).trim();
+  const analysis = currentCommit ? analyzeReleaseSafely(previousCommit, currentCommit, null) : normalizeAnalysis({});
+  const history = readHistory();
+  const existingRelease = currentCommit ? history.releases.find((release) => release.commit === currentCommit) : null;
+  const previousVersion = history.releases.find((release) => release.commit !== currentCommit)?.version;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    version: existingRelease?.version || nextVersion(previousVersion, readPackageVersion()),
+    commit: currentCommit || null,
+    previousCommit: previousCommit || null,
+    author: currentCommit ? safeGit(["log", "-1", "--format=%an <%ae>", currentCommit]).trim() || null : null,
+    commitSubject: currentCommit ? safeGit(["log", "-1", "--format=%s", currentCommit]).trim() || null : null,
+    commitBody: currentCommit ? safeGit(["log", "-1", "--format=%b", currentCommit]).trim() || null : null,
+    analysis
+  };
+}
+
 export async function runAutoUpdateLogger(options = {}) {
   const channelId = readConfigValue("UPDATE_CHANNEL_ID") || readConfigValue("AUTO_UPDATE_CHANNEL_ID");
   const token = readConfigValue("DISCORD_BOT_TOKEN");
-  const currentCommit = git(["rev-parse", "HEAD"]).trim();
+  const metadata = readReleaseMetadata();
+  const currentCommit = currentReleaseCommit(metadata);
   const history = readHistory();
   const existingRelease = history.releases.find((release) => release.commit === currentCommit);
   const forceSend = options.force === true || isForceSend;
+
+  if (!currentCommit) {
+    console.log("[auto-update] commit atual indisponível; envio ignorado.");
+    return { skipped: true };
+  }
 
   if (!forceSend && (existingRelease?.discordSentAt || existingRelease?.discordMessageId)) {
     console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já registrada; envio ignorado.`);
     return { skipped: true };
   }
 
-  const previousCommit = existingRelease?.previousCommit || history.releases.find((release) => release.commit !== currentCommit)?.commit || safeGit(["rev-parse", "HEAD~1"]).trim();
-  const analysis = analyzeRelease(previousCommit, currentCommit);
-  const version = existingRelease?.version || nextVersion(history.releases.find((release) => release.commit !== currentCommit)?.version, readPackageVersion());
+  const previousCommit = existingRelease?.previousCommit
+    || history.releases.find((release) => release.commit !== currentCommit)?.commit
+    || metadata?.previousCommit
+    || safeGit(["rev-parse", "HEAD~1"]).trim();
+  const analysis = analyzeReleaseSafely(previousCommit, currentCommit, metadata);
+  const version = existingRelease?.version
+    || metadata?.version
+    || nextVersion(history.releases.find((release) => release.commit !== currentCommit)?.version, readPackageVersion());
   const publishedAt = new Date().toISOString();
   const release = {
     ...(existingRelease ?? {}),
@@ -33,9 +65,9 @@ export async function runAutoUpdateLogger(options = {}) {
     version,
     commit: currentCommit,
     previousCommit: previousCommit || null,
-    author: git(["log", "-1", "--format=%an <%ae>", currentCommit]).trim() || null,
-    commitSubject: git(["log", "-1", "--format=%s", currentCommit]).trim() || null,
-    commitBody: git(["log", "-1", "--format=%b", currentCommit]).trim() || null,
+    author: metadata?.author ?? (safeGit(["log", "-1", "--format=%an <%ae>", currentCommit]).trim() || null),
+    commitSubject: metadata?.commitSubject ?? (safeGit(["log", "-1", "--format=%s", currentCommit]).trim() || null),
+    commitBody: metadata?.commitBody ?? (safeGit(["log", "-1", "--format=%b", currentCommit]).trim() || null),
     publishedAt,
     changeCount: analysis.changeCount,
     summary: analysis.summary,
@@ -61,6 +93,17 @@ export async function runAutoUpdateLogger(options = {}) {
 
   const bot = await fetchDiscordBot(token).catch(() => null);
   const payload = buildDiscordPayload({ analysis, bot, channelId, release });
+
+  if (!forceSend && await hasRecentDiscordRelease(token, channelId, currentCommit).catch(() => false)) {
+    upsertHistoryRelease(history, {
+      ...release,
+      discordChannelId: channelId,
+      discordSkippedReason: "Atualização já encontrada nas mensagens recentes do canal."
+    });
+    writeHistory(history);
+    console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já encontrada no canal; envio ignorado.`);
+    return { release, skipped: true };
+  }
 
   const message = await sendDiscordMessage(token, channelId, payload);
   upsertHistoryRelease(history, {
@@ -105,6 +148,51 @@ function analyzeRelease(previousCommit, currentCommit) {
     functions,
     modules,
     summary
+  };
+}
+
+function analyzeReleaseSafely(previousCommit, currentCommit, metadata) {
+  if (metadata?.analysis) {
+    return normalizeAnalysis(metadata.analysis);
+  }
+
+  try {
+    return analyzeRelease(previousCommit, currentCommit);
+  } catch (error) {
+    console.warn("[auto-update] diff git indisponível; usando resumo básico:", error instanceof Error ? error.message : String(error));
+    return normalizeAnalysis({
+      changeCount: metadata?.files?.length ?? 0,
+      files: metadata?.files ?? [],
+      summary: {
+        novidades: [],
+        melhorias: [],
+        correcoes: metadata?.commitSubject ? [metadata.commitSubject] : [],
+        tecnicas: [],
+        recursos: [],
+        removidos: []
+      }
+    });
+  }
+}
+
+function normalizeAnalysis(analysis) {
+  const summary = analysis?.summary && typeof analysis.summary === "object" ? analysis.summary : {};
+  const files = Array.isArray(analysis?.files) ? analysis.files : [];
+  return {
+    apis: Array.isArray(analysis?.apis) ? analysis.apis : [],
+    changeCount: Number.isFinite(Number(analysis?.changeCount)) ? Number(analysis.changeCount) : files.length,
+    database: Array.isArray(analysis?.database) ? analysis.database : [],
+    files,
+    functions: Array.isArray(analysis?.functions) ? analysis.functions : [],
+    modules: Array.isArray(analysis?.modules) ? analysis.modules : [],
+    summary: {
+      novidades: Array.isArray(summary.novidades) ? summary.novidades : [],
+      melhorias: Array.isArray(summary.melhorias) ? summary.melhorias : [],
+      correcoes: Array.isArray(summary.correcoes) ? summary.correcoes : [],
+      tecnicas: Array.isArray(summary.tecnicas) ? summary.tecnicas : [],
+      recursos: Array.isArray(summary.recursos) ? summary.recursos : [],
+      removidos: Array.isArray(summary.removidos) ? summary.removidos : []
+    }
   };
 }
 
@@ -298,6 +386,7 @@ function buildDiscordPayload({ analysis, bot, release }) {
     "📣 **Observação**",
     `• ${escapeMarkdown(observation).slice(0, 260)}`,
     "",
+    `-# Versão ${escapeMarkdown(release.version)} • commit ${release.commit.slice(0, 8)}`,
     `-# **${escapeMarkdown(footer)}**`
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
 
@@ -378,6 +467,25 @@ async function sendDiscordMessage(token, channelId, payload) {
   return response.json().catch(() => null);
 }
 
+async function hasRecentDiscordRelease(token, channelId, commit) {
+  if (!commit) return false;
+  const response = await fetch(`${discordApi}/channels/${encodeURIComponent(channelId)}/messages?limit=50`, {
+    headers: { Authorization: `Bot ${token}` }
+  });
+  if (!response.ok) return false;
+  const messages = await response.json().catch(() => []);
+  if (!Array.isArray(messages)) return false;
+  const shortCommit = commit.slice(0, 8);
+  return messages.some((message) => {
+    const text = JSON.stringify({
+      content: message?.content,
+      components: message?.components,
+      embeds: message?.embeds
+    });
+    return text.includes(commit) || text.includes(shortCommit);
+  });
+}
+
 function nextVersion(previousVersion, packageVersion) {
   const source = previousVersion || `v${packageVersion || "1.0.0"}`;
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(source);
@@ -415,6 +523,24 @@ function readPackageVersion() {
   } catch {
     return "1.0.0";
   }
+}
+
+function readReleaseMetadata() {
+  if (!existsSync(releaseMetadataPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(releaseMetadataPath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentReleaseCommit(metadata) {
+  return safeGit(["rev-parse", "HEAD"]).trim()
+    || process.env.RELEASE_COMMIT?.trim()
+    || process.env.DISCORD_RELEASE_COMMIT?.trim()
+    || (typeof metadata?.commit === "string" ? metadata.commit.trim() : "")
+    || "";
 }
 
 function readConfigValue(key) {
