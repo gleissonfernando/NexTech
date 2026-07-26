@@ -23,6 +23,59 @@ const DEFAULT_CATEGORIES = [
   "Personalizados"
 ];
 
+const DEFAULT_PANEL_TEMPLATES: Record<string, Array<{
+  beforeMessage: string;
+  components: MongoCustomPanelComponent[];
+  description: string;
+  emoji: string;
+  footerText: string;
+  name: string;
+  panelType: string;
+}>> = {
+  administracao: [
+    defaultPanelTemplate("Painel Staff", "📋", "Central administrativa para ações de equipe, avisos internos e solicitações operacionais.", "staff"),
+    defaultPanelTemplate("Painel Moderador", "🛡️", "Área de suporte para moderação, análise de denúncias e acompanhamento de ocorrências.", "moderation"),
+    defaultPanelTemplate("Painel Verificação", "✅", "Painel para iniciar processos de verificação e liberação de acesso.", "verification"),
+    defaultPanelTemplate("Painel Boas-vindas", "👋", "Mensagem inicial para orientar novos membros e apresentar os canais principais.", "welcome")
+  ],
+  policia: [
+    defaultPanelTemplate("Painel Polícia", "🚓", "Central de acesso para serviços, solicitações e processos internos da corporação.", "police"),
+    defaultPanelTemplate("Painel Promoções", "📈", "Solicitação e acompanhamento de avaliações de promoção da corporação.", "police-promotions"),
+    defaultPanelTemplate("Painel Ausências", "📅", "Registro de ausências, afastamentos e justificativas operacionais.", "police-absences")
+  ],
+  fivem: [
+    defaultPanelTemplate("Painel FiveM", "🎮", "Acesso rápido aos sistemas operacionais do servidor FiveM.", "fivem"),
+    defaultPanelTemplate("Painel Facção", "🏷️", "Solicitações e ações voltadas para organizações e facções.", "faction")
+  ],
+  tickets: [
+    defaultPanelTemplate("Painel Tickets", "🎫", "Abra um atendimento com a equipe responsável pelo assunto selecionado.", "tickets"),
+    defaultPanelTemplate("Painel Suporte", "🧰", "Canal central para dúvidas, problemas técnicos e solicitações gerais.", "support")
+  ],
+  vendas: [
+    defaultPanelTemplate("Painel Vendas", "💳", "Consulte planos, benefícios e abra uma solicitação de compra.", "sales"),
+    defaultPanelTemplate("Painel Planos", "📦", "Veja os planos disponíveis e escolha a melhor opção para o seu servidor.", "plans")
+  ],
+  seguranca: [
+    defaultPanelTemplate("Painel Segurança", "🔒", "Ações de proteção, denúncias e validações de segurança do servidor.", "security"),
+    defaultPanelTemplate("Painel Denúncias", "🚨", "Envie uma denúncia para análise da equipe responsável.", "reports")
+  ],
+  rh: [
+    defaultPanelTemplate("Painel RH", "📁", "Solicitações de recursos humanos, registros internos e acompanhamento de equipe.", "rh"),
+    defaultPanelTemplate("Painel Recrutamento", "📝", "Inicie processos de inscrição, recrutamento ou registro manual.", "recruitment")
+  ],
+  streamer: [
+    defaultPanelTemplate("Painel Streamer", "📺", "Divulgação, notificações e ferramentas para criadores de conteúdo.", "streamer"),
+    defaultPanelTemplate("Painel Lives", "🔴", "Acompanhe lives, avisos e integrações de transmissão.", "live")
+  ],
+  comunidade: [
+    defaultPanelTemplate("Painel Comunidade", "🌐", "Informações, links úteis e ações públicas para a comunidade.", "community"),
+    defaultPanelTemplate("Painel Eventos", "🎉", "Divulgue eventos, inscrições e ações especiais do servidor.", "events")
+  ],
+  personalizados: [
+    defaultPanelTemplate("Painel Personalizado", "✨", "Modelo livre para criar um painel sob medida para o seu servidor.", "custom")
+  ]
+};
+
 type ServiceError = Error & { statusCode?: number };
 
 export type SaveCustomPanelCategoryInput = {
@@ -379,24 +432,91 @@ function normalizePanelPatch(input: Partial<SaveCustomPanelInput>): Partial<Mong
 }
 
 async function ensureDefaultCategories(guildId: string, botId: string | null) {
-  const { customPanelCategories } = await getMongoCollections();
-  const existing = await customPanelCategories.countDocuments({ ...scopeQuery(guildId, botId), deletedAt: { $exists: false } });
-  if (existing > 0) return;
+  const { customPanelCategories, customPanels } = await getMongoCollections();
+  const scope = scopeQuery(guildId, botId);
+  const existingCategories = await customPanelCategories.find({ ...scope, deletedAt: { $exists: false } }).toArray();
+  const existingSlugs = new Set(existingCategories.map((category) => category.slug));
 
   const now = new Date();
-  await customPanelCategories.insertMany(DEFAULT_CATEGORIES.map((name, index) => ({
+  const missingCategories = DEFAULT_CATEGORIES
+    .map((name, index) => ({ name, order: index + 1, slug: slugify(name) }))
+    .filter((category) => !existingSlugs.has(category.slug))
+    .map(({ name, order, slug }) => ({
     _id: randomUUID(),
     botId,
     guildId,
     name,
-    slug: slugify(name),
+    slug,
     description: null,
-    order: index + 1,
+    order,
     createdBy: null,
     updatedBy: null,
     createdAt: now,
     updatedAt: now
-  })));
+  }));
+
+  if (missingCategories.length) await customPanelCategories.insertMany(missingCategories);
+
+  const panelCount = await customPanels.countDocuments({ ...scope, deletedAt: { $exists: false } });
+  if (panelCount > 0) return;
+
+  const categories = missingCategories.length
+    ? await customPanelCategories.find({ ...scope, deletedAt: { $exists: false } }).toArray()
+    : existingCategories;
+  const categoriesBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const defaultPanels = Object.entries(DEFAULT_PANEL_TEMPLATES).flatMap(([categorySlug, templates]) => {
+    const category = categoriesBySlug.get(categorySlug);
+    if (!category) return [];
+    return templates.map((template): MongoCustomPanel => ({
+      _id: randomUUID(),
+      afterMessage: null,
+      authorName: "NexTech",
+      bannerUrl: null,
+      beforeMessage: template.beforeMessage,
+      botId,
+      categoryId: category._id,
+      channelId: null,
+      color: "#FFD500",
+      components: template.components,
+      createdAt: now,
+      createdBy: null,
+      description: template.description,
+      emoji: template.emoji,
+      footerText: template.footerText,
+      guildId,
+      lastPublishedAt: null,
+      mentionRoleId: null,
+      messageId: null,
+      name: template.name,
+      panelType: template.panelType,
+      published: false,
+      publishRequestedAt: null,
+      thumbnailUrl: null,
+      updatedAt: now,
+      updatedBy: null
+    }));
+  });
+
+  if (defaultPanels.length) await customPanels.insertMany(defaultPanels);
+}
+
+function defaultPanelTemplate(name: string, emoji: string, description: string, panelType: string) {
+  return {
+    beforeMessage: "Escolha uma opção abaixo.",
+    components: [{
+      customId: `custom_panel:${panelType}:open`,
+      disabled: false,
+      emoji,
+      label: "Abrir",
+      style: "secondary",
+      type: "button"
+    } satisfies MongoCustomPanelComponent],
+    description,
+    emoji,
+    footerText: "NexTech • Painel configurável",
+    name,
+    panelType
+  };
 }
 
 async function assertCategoryExists(guildId: string, botId: string | null, categoryId: string) {
