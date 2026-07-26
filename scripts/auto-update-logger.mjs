@@ -140,6 +140,8 @@ function categorizeChanges(input) {
     buckets.recursos.push("Interface/painel em Componentes V2 atualizado.");
   }
 
+  addKnownChangeSummaries(buckets, input.files, addedText, input.removedLines.join("\n").toLowerCase());
+
   for (const file of modified.slice(0, 10)) {
     const label = classifyFile(file.path);
     if (label) buckets.tecnicas.push(`${label}: ${friendlyPath(file.path)}`);
@@ -148,6 +150,46 @@ function categorizeChanges(input) {
   return Object.fromEntries(
     Object.entries(buckets).map(([key, value]) => [key, unique(value).slice(0, 10)])
   );
+}
+
+function addKnownChangeSummaries(buckets, files, addedText, removedText) {
+  const paths = new Set(files.map((file) => file.path.replace(/\\/g, "/")));
+  const hasPath = (...targets) => targets.some((target) => paths.has(target));
+
+  if (hasPath("backend/src/middleware/auth.ts")) {
+    buckets.correcoes.push("Corrigido o retorno de autenticação para sessões ausentes, expiradas, token inválido e acesso negado.");
+  }
+
+  if (hasPath("backend/src/routes/auth.ts")) {
+    buckets.correcoes.push("Rotas de login, verificação e renovação agora retornam códigos de erro consistentes para o painel.");
+  }
+
+  if (hasPath("backend/src/services/userService.ts") && /session_/.test(addedText)) {
+    buckets.melhorias.push("Eventos de sessão invalidada agora informam o motivo correto para o painel do usuário.");
+  }
+
+  if (
+    hasPath("backend/src/services/devBotService.ts", "backend/src/services/settingsService.ts")
+    && /invalidate.*dashboard.*session/i.test(removedText)
+  ) {
+    buckets.melhorias.push("Atualizações de bots e permissões deixam de derrubar sessões ativas sem necessidade.");
+  }
+
+  if (hasPath("frontend/src/hooks/useAuth.ts")) {
+    buckets.correcoes.push("Painel agora diferencia sessão expirada, sessão revogada e logout, exibindo a mensagem correta.");
+  }
+
+  if (hasPath("frontend/src/lib/api.ts")) {
+    buckets.correcoes.push("Cliente da API agora trata códigos de autenticação e acesso negado sem esconder o erro real.");
+  }
+
+  if (hasPath("scripts/auto-update-logger.mjs")) {
+    buckets.melhorias.push("Painel automático de atualizações reformulado para publicar categorias e bullets mais claros.");
+  }
+
+  if (hasPath("scripts/release-discloud.mjs")) {
+    buckets.melhorias.push("Release manual agora usa fallback automático para o CLI da Discloud e mantém o painel de atualizações ativo.");
+  }
 }
 
 function parseChangedFiles(nameStatus, numStat) {
