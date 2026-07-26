@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { Router } from "express";
+import { z } from "zod";
 import { env } from "../config/env";
 import {
   buildDiscordAuthUrl,
@@ -30,11 +31,22 @@ import { clearStoredDiscordTokens, invalidateDashboardSession, rotateDashboardSe
 import type { AuthSessionUser } from "../types/session";
 import { getDevBot, getDevBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
 import { canAccessDevDashboard } from "../services/devPermissionService";
+import {
+  EPHEMERAL_TOKEN_SCOPES,
+  extractBearerToken,
+  issueEphemeralAccessToken,
+  revokeEphemeralAccessToken,
+  validateEphemeralAccessToken
+} from "../services/ephemeralAccessTokenService";
 
 export const authRouter = Router();
 const errorPath = "/auth/error";
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const AUTH_STAGE_TIMEOUT_MS = 15_000;
+const ephemeralTokenRequestSchema = z.object({
+  audience: z.string().trim().min(1).max(120).optional(),
+  scopes: z.array(z.enum(EPHEMERAL_TOKEN_SCOPES)).max(12).optional()
+});
 
 function isApiAuthMount(req: Request) {
   return req.baseUrl.replace(/\/+$/, "") === "/api/auth";
@@ -802,6 +814,89 @@ authRouter.get("/me", async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+authRouter.post("/token", requireAuthenticated, async (req, res, next) => {
+  try {
+    const input = ephemeralTokenRequestSchema.parse(req.body ?? {});
+    const issued = issueEphemeralAccessToken({
+      audience: input.audience,
+      requestedScopes: input.scopes,
+      sessionId: req.sessionID,
+      user: res.locals.dashboardAuth.user
+    });
+
+    if (!issued.ok) {
+      res.setHeader("Retry-After", String(issued.retryAfterSeconds));
+      return res.status(429).json({
+        success: false,
+        error: "RATE_LIMITED",
+        message: "Temporary access token generation limit exceeded."
+      });
+    }
+
+    return res.json({
+      success: true,
+      token: issued.token,
+      tokenType: issued.tokenType,
+      expiresInSeconds: issued.expiresInSeconds,
+      expiresAt: issued.expiresAt,
+      issuedAt: issued.issuedAt,
+      jti: issued.jti,
+      scopes: issued.scopes
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+authRouter.get("/validate", (req, res) => {
+  const validation = validateEphemeralAccessToken(extractBearerToken(req.header("authorization")), {
+    audience: typeof req.query.audience === "string" ? req.query.audience : null,
+    requiredScopes: typeof req.query.scope === "string" ? [req.query.scope] : null
+  });
+
+  if (!validation.ok) {
+    return res.status(validation.status).json({
+      success: false,
+      error: validation.code,
+      message: validation.message
+    });
+  }
+
+  return res.json({
+    success: true,
+    token: {
+      audience: validation.payload.aud,
+      expiresAt: new Date(validation.payload.exp * 1000).toISOString(),
+      issuedAt: new Date(validation.payload.iat * 1000).toISOString(),
+      issuer: validation.payload.iss,
+      jti: validation.payload.jti,
+      scopes: validation.payload.scopes,
+      sessionId: validation.payload.sid,
+      userId: validation.payload.sub,
+      version: validation.payload.ver
+    },
+    remainingRequests: validation.remainingRequests
+  });
+});
+
+authRouter.post("/revoke", (req, res) => {
+  const result = revokeEphemeralAccessToken(extractBearerToken(req.header("authorization")));
+
+  if (!result.ok) {
+    return res.status(result.status).json({
+      success: false,
+      error: result.code,
+      message: result.message
+    });
+  }
+
+  return res.json({
+    success: true,
+    revoked: true,
+    jti: result.jti
+  });
 });
 
 authRouter.post("/refresh", async (req, res, next) => {

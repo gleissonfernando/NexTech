@@ -323,6 +323,58 @@ export async function checkSiteAccess(botSlug?: string | null) {
   return data.validation;
 }
 
+export type EphemeralTokenScope = "api:read" | "api:write" | "dashboard:read" | "dashboard:write" | "dev:read" | "dev:write";
+
+export type EphemeralTokenIssueResponse = {
+  success: true;
+  token: string;
+  tokenType: "Bearer";
+  expiresInSeconds: number;
+  expiresAt: string;
+  issuedAt: string;
+  jti: string;
+  scopes: EphemeralTokenScope[];
+};
+
+export type EphemeralTokenValidationResponse = {
+  success: true;
+  token: {
+    audience: string;
+    expiresAt: string;
+    issuedAt: string;
+    issuer: string;
+    jti: string;
+    scopes: EphemeralTokenScope[];
+    sessionId: string;
+    userId: string;
+    version: number;
+  };
+  remainingRequests: number;
+};
+
+export async function issueEphemeralAccessToken(payload: { audience?: string | null; scopes?: EphemeralTokenScope[] } = {}) {
+  const { data } = await api.post<EphemeralTokenIssueResponse>("/auth/token", payload);
+  return data;
+}
+
+export async function validateEphemeralAccessToken(token: string, options: { audience?: string | null; scope?: EphemeralTokenScope | null } = {}) {
+  const { data } = await api.get<EphemeralTokenValidationResponse>("/auth/validate", {
+    headers: { Authorization: `Bearer ${token}` },
+    params: {
+      audience: options.audience || undefined,
+      scope: options.scope || undefined
+    }
+  });
+  return data;
+}
+
+export async function revokeEphemeralAccessToken(token: string) {
+  const { data } = await api.post<{ success: true; revoked: true; jti: string }>("/auth/revoke", undefined, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
 export async function getDashboardMe() {
   const { data } = await api.get<DashboardMeResponse>("/dashboard/me");
   return data;
