@@ -249,5 +249,14 @@ function buildV2Container(input: { accentColor: number; components: unknown[]; f
 function createV2Footer(footer: { enabled?: boolean; image?: string | null; text?: string | null } | null | undefined) {
   if (!footer || footer.enabled === false) return null;
   const content = `-# ${footer.text ?? "NexTech"}`.slice(0, 4000) || "-# ";
-  return { type: 10, content };
+  if (!footer.image) return { type: 10, content };
+  return {
+    type: 9,
+    components: [{ type: 10, content }],
+    accessory: {
+      type: 11,
+      media: { url: footer.image },
+      description: "Imagem de rodapé"
+    }
+  };
 }

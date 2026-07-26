@@ -384,6 +384,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     settings.ticketPanelDescription || "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
     settings.ticketPanelInfoText
   ].filter((block): block is string => Boolean(block?.trim()));
+  const footerImageUrl = resolveTicketFooterImage(settings.ticketPanelFooterImage);
   const configuredMedia = [
     resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail"),
     resolveTicketPanelMedia(settings.ticketPanelBannerImage ?? settings.ticketPanelImage, "below_title"),
@@ -405,6 +406,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     fields: contentBlocks.slice(2),
     footer: {
       description: "Imagem de rodapé do painel",
+      image: footerImageUrl,
       text: settings.ticketPanelFooterText?.trim() || "NexTech"
     },
     guild,
@@ -687,6 +689,23 @@ function resolveTicketPanelMedia(panelImage: PanelImageSettings | null, fallback
     ? { ...panelImage, imagePosition: panelImage.imagePosition === "none" ? fallbackPosition : panelImage.imagePosition, imageUrl }
     : null;
 }
+
+function resolveTicketFooterImage(panelImage: PanelImageSettings | null) {
+  const imageUrl = resolveImageUrl(panelImage);
+  if (!panelImage || !imageUrl) return null;
+  if (isVideoPanelImage(panelImage)) {
+    return resolvePanelMediaUrlValue(panelImage.mediaPosterUrl ?? panelImage.mediaThumbnailUrl ?? null);
+  }
+  return imageUrl;
+}
+
+function isVideoPanelImage(panelImage: PanelImageSettings) {
+  if (panelImage.imageMimeType?.startsWith("video/")) return true;
+  const extension = panelImage.imageExtension?.trim().toLowerCase();
+  return Boolean(extension && VIDEO_PANEL_EXTENSIONS.has(extension)) || /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(panelImage.imageUrl);
+}
+
+const VIDEO_PANEL_EXTENSIONS = new Set(["3gp", "3g2", "asf", "avi", "f4v", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "mts", "mxf", "ogv", "rmvb", "ts", "vob", "webm", "wmv"]);
 
 function mediaGalleryComponent(imageUrl: string) {
   return {

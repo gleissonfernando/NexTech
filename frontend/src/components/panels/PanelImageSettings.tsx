@@ -606,9 +606,9 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
-                  <div className="mt-4 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
-                    <span>{previewFooterText(draft)}</span>
-                    <p className="mt-2 text-[11px] leading-4 text-amber-200/80">Components V2 não possui footer icon nativo; esta imagem não será renderizada como thumbnail separada.</p>
+                  <div className="mt-4 flex items-center justify-start gap-2.5 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
+                    <InlineMediaPreview className="h-8 min-h-8 w-8 min-w-8 max-h-8 max-w-8 rounded-md" imageUrl={draft.imageUrl} settings={draft} />
+                    <span className="flex items-center">{previewFooterText(draft)}</span>
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
