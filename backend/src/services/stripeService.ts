@@ -15,6 +15,7 @@ export type CreateStripeCheckoutInput = {
   notificationUrl: string;
   payerEmail?: string | null;
   paymentExpiration?: Date | null;
+  paymentMethodPreference?: "card" | "pix" | null;
   successUrl: string;
 };
 
@@ -60,6 +61,7 @@ export async function createStripeCheckout(config: StripeRuntimeConfig, input: C
     cancel_url: input.cancelUrl,
     client_reference_id: input.externalReference,
     currency: input.currencyId.toLowerCase(),
+    excluded_payment_method_types: stripeExcludedPaymentMethodTypes(input.paymentMethodPreference),
     expires_at: input.paymentExpiration ? Math.floor(input.paymentExpiration.getTime() / 1000) : undefined,
     integration_identifier: config.integrationIdentifier,
     invoice_creation: {
@@ -103,7 +105,13 @@ export async function createStripeCheckout(config: StripeRuntimeConfig, input: C
     requestOptions.idempotencyKey = input.idempotencyKey;
   }
 
-  const session = await stripe.checkout.sessions.create(params, requestOptions);
+  const session = await stripe.checkout.sessions.create(params, requestOptions).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (input.paymentMethodPreference === "pix" && /no valid payment method types/i.test(message)) {
+      throw Object.assign(new Error("Pix Stripe indisponível. Ative Pix nos métodos de pagamento da Stripe para usar este botão."), { statusCode: 503 });
+    }
+    throw error;
+  });
   const checkoutUrl = session.url;
   if (!checkoutUrl) {
     throw Object.assign(new Error("Stripe não retornou URL de checkout."), { statusCode: 502 });
@@ -118,6 +126,18 @@ export async function createStripeCheckout(config: StripeRuntimeConfig, input: C
     sandboxCheckoutUrl: session.livemode ? null : checkoutUrl,
     status: stripeSessionStatusToInternal(session)
   };
+}
+
+function stripeExcludedPaymentMethodTypes(
+  preference?: CreateStripeCheckoutInput["paymentMethodPreference"]
+): Stripe.Checkout.SessionCreateParams.ExcludedPaymentMethodType[] | undefined {
+  if (preference === "pix") {
+    return ["card"];
+  }
+  if (preference === "card") {
+    return ["pix"];
+  }
+  return undefined;
 }
 
 export async function getStripeCheckoutSession(config: StripeRuntimeConfig, sessionId: string): Promise<ProviderPayment> {

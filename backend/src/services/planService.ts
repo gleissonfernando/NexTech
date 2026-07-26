@@ -609,6 +609,11 @@ async function createCheckoutInterestForBuyer(
   const checkoutExpiresAt = shouldCreateCheckout
     ? new Date(now.getTime() + activeGateway.checkoutExpirationMinutes * 60_000)
     : null;
+  const reusableMethodQuery = selectedProvider === "stripe"
+    ? { checkoutUrl: { $ne: null }, paymentMethod: options.paymentMethod === "pix" ? "pix" : "card" }
+    : options.paymentMethod === "pix"
+      ? { pixCode: { $ne: null } }
+      : { checkoutUrl: { $ne: null } };
   const reusableOrder = options.reusePendingOrder && paymentsEnabled && shouldCreateCheckout
     ? await paymentOrders.findOne({
       amountInCents,
@@ -619,11 +624,7 @@ async function createCheckoutInterestForBuyer(
       planId: plan._id,
       provider: selectedProvider,
       status: { $in: ["created", "checkout_pending", "pending", "in_process", "in_review"] },
-      $or: [
-        options.paymentMethod === "pix"
-          ? { pixCode: { $ne: null } }
-          : { checkoutUrl: { $ne: null } }
-      ]
+      ...reusableMethodQuery
     })
     : null;
 
@@ -735,7 +736,10 @@ async function createCheckoutInterestForBuyer(
         planSlug: plan.slug,
         provider: selectedProvider
       });
-      throw httpError("Não foi possível iniciar o pagamento. Tente novamente em alguns instantes.", 503);
+      const publicMessage = "statusCode" in Object(error)
+        ? message
+        : "Não foi possível iniciar o pagamento. Tente novamente em alguns instantes.";
+      throw httpError(publicMessage, 503);
     });
     order.checkoutUrl = checkout.checkoutUrl;
     order.notes = checkout.notes;
@@ -3121,7 +3125,7 @@ async function createPlanPayment(
   }
 
   if (order.provider === "stripe") {
-    return createStripePlanPayment(plan, order, buyer);
+    return createStripePlanPayment(plan, order, buyer, paymentMethod);
   }
 
   return createMercadoPagoPlanPayment(plan, order, buyer, paymentMethod);
@@ -3268,7 +3272,8 @@ async function createPagBankPlanPayment(
 async function createStripePlanPayment(
   plan: MongoPlan,
   order: MongoPaymentOrder,
-  buyer: CheckoutBuyer
+  buyer: CheckoutBuyer,
+  paymentMethod: CheckoutPaymentMethod
 ): Promise<PlanPaymentCreationResult> {
   if (order.provider !== "stripe") {
     throw httpError("Provider de pagamento não suportado para Stripe.", 400);
@@ -3295,6 +3300,7 @@ async function createStripePlanPayment(
     notificationUrl: stripeConfig.webhookUrl || buildAppUrl("/api/payments/stripe/webhook"),
     payerEmail: mercadoPagoPayerEmail(buyer),
     paymentExpiration: order.expiresAt ?? null,
+    paymentMethodPreference: paymentMethod === "pix" ? "pix" : "card",
     successUrl: stripeSuccessUrl(settings.approvedRedirectUrl ?? settings.successRedirectUrl ?? stripeConfig.successUrl ?? buildAppUrl("/pagamento/sucesso"))
   });
 
@@ -3304,8 +3310,8 @@ async function createStripePlanPayment(
     notes: stripeConfig.automaticTaxEnabled
       ? "Checkout Stripe criado com invoice e cálculo automatico de impostos. Redirecione o comprador para o checkout."
       : "Checkout Stripe criado com invoice. Redirecione o comprador para o checkout.",
-    paymentMethod: null,
-    paymentType: null,
+    paymentMethod: paymentMethod === "pix" ? "pix" : "card",
+    paymentType: paymentMethod === "pix" ? "pix" : "card",
     pixCode: null,
     providerOrderId: checkout.preferenceId,
     qrCode: null,
