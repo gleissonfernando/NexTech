@@ -34,6 +34,10 @@ const PREFIX = "police_promotions";
 const SETTINGS_TTL_MS = 30_000;
 const HISTORY_PAGE_SIZE = 3;
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
+const DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT = 4000;
+const APPROVAL_COMPONENT_DISPLAYABLE_TEXT_TARGET = DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT - 300;
+const APPROVAL_ACTION_DISPLAYABLE_TEXT_RESERVE = 250;
+const TRUNCATED_COMPONENT_TEXT_NOTICE = "\n... (texto resumido para respeitar o limite do Discord)";
 const CUSTOM_EMOJI_PATTERN = /^<a?:[a-zA-Z0-9_]{2,32}:\d{5,32}>$/;
 const SYSTEM_PROMOTION_EMOJI_KEYS = new Set<SystemEmojiKey>([
   "visto",
@@ -1306,50 +1310,61 @@ function ticketPayload(request: PolicePromotionRequest, promotion: PolicePromoti
   };
 }
 
-function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, disabled = false): MessageCreateOptions {
+export function approvalPayload(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, disabled = false): MessageCreateOptions {
   const submittedAt = request.evaluationEndedAt ?? request.updatedAt;
   const statusColor = request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : request.status === "quarantined" ? 0xf97316 : parseColor(promotion.color);
+  const answerHeader = `## ${icon("folha", guild)} Respostas\n`;
+  const historyHeader = `## ${icon("relogio", guild)} Histórico completo\n`;
+  const buildMainContent = (reason: string, notes: string) => [
+    `# ${icon("prancheta_acertos", guild)} Relatório de Promoção`,
+    `## ${approvalStatusLabel(request.status)}`,
+    DIVIDER,
+    `${icon("homem", guild)} Nome do promovido\n${escapeMarkdown(request.requesterName)}`,
+    "",
+    `${icon("discord", guild)} Discord\n<@${request.requesterId}> (\`${request.requesterId}\`)`,
+    "",
+    `${icon("prancheta", guild)} Cargo anterior\n${escapeMarkdown(request.currentRank)}`,
+    "",
+    `${icon("trofeu", guild)} Cargo promovido\n${escapeMarkdown(request.targetRank)}`,
+    "",
+    `${icon("homem", guild)} Instrutor responsável\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Não informado"}`,
+    "",
+    `${icon("calendario", guild)} Data\n${formatHistoryDate(submittedAt)}`,
+    "",
+    `${icon("relogio", guild)} Horário\n${formatHistoryTime(submittedAt)}`,
+    "",
+    `${icon("folha", guild)} Resultado do relatório\n${escapeMarkdown(request.evaluationResult === "approved" ? "Apto" : request.evaluationResult === "rejected" ? "Não apto" : "Aguardando decisão")}`,
+    "",
+    `${icon("relogio", guild)} Status administrativo\n${approvalStatusLabel(request.status)}`,
+    request.approvedById ? `\n${icon("homem", guild)} Analisado por\n<@${request.approvedById}>` : "",
+    request.approvedAt ? `\n${icon("calendario", guild)} Data da decisão\n${formatDate(request.approvedAt)}` : "",
+    request.approvalReason ? `\n${icon("folha", guild)} Motivo\n${reason}` : "",
+    "",
+    `${icon("prancheta_caneta", guild)} Observações\n${notes}`,
+    "",
+    `${icon("relogio", guild)} Tempo da avaliação\n${evaluationDuration(request)}`,
+    "",
+    `${icon("discord", guild)} ID da solicitação\n\`${request.id}\``
+  ].join("\n");
+  const fixedDisplayableTextLength = buildMainContent("", "").length + answerHeader.length + historyHeader.length;
+  const sectionBudget = APPROVAL_COMPONENT_DISPLAYABLE_TEXT_TARGET - APPROVAL_ACTION_DISPLAYABLE_TEXT_RESERVE - fixedDisplayableTextLength;
+  const sections = limitPromotionApprovalDisplayTextSections([
+    { key: "answers", content: answersText(request), minLength: 500, maxLength: 1500 },
+    { key: "notes", content: escapeMarkdown(request.evaluationNotes ?? "Nenhuma observação registrada."), minLength: 260, maxLength: 1000 },
+    { key: "reason", content: request.approvalReason ? escapeMarkdown(request.approvalReason) : "", minLength: 180, maxLength: 600 },
+    { key: "history", content: promotionHistoryText(request, 1600), minLength: 240, maxLength: 900 }
+  ], sectionBudget);
   return {
     allowedMentions: { parse: [] },
     components: [{
       type: 17,
       accent_color: statusColor,
       components: [
-        { type: 10, content: [
-          `# ${icon("prancheta_acertos", guild)} Relatório de Promoção`,
-          `## ${approvalStatusLabel(request.status)}`,
-          DIVIDER,
-          `${icon("homem", guild)} Nome do promovido\n${escapeMarkdown(request.requesterName)}`,
-          "",
-          `${icon("discord", guild)} Discord\n<@${request.requesterId}> (\`${request.requesterId}\`)`,
-          "",
-          `${icon("prancheta", guild)} Cargo anterior\n${escapeMarkdown(request.currentRank)}`,
-          "",
-          `${icon("trofeu", guild)} Cargo promovido\n${escapeMarkdown(request.targetRank)}`,
-          "",
-          `${icon("homem", guild)} Instrutor responsável\n${request.evaluatorId ? `<@${request.evaluatorId}>` : "Não informado"}`,
-          "",
-          `${icon("calendario", guild)} Data\n${formatHistoryDate(submittedAt)}`,
-          "",
-          `${icon("relogio", guild)} Horário\n${formatHistoryTime(submittedAt)}`,
-          "",
-          `${icon("folha", guild)} Resultado do relatório\n${escapeMarkdown(request.evaluationResult === "approved" ? "Apto" : request.evaluationResult === "rejected" ? "Não apto" : "Aguardando decisão")}`,
-          "",
-          `${icon("relogio", guild)} Status administrativo\n${approvalStatusLabel(request.status)}`,
-          request.approvedById ? `\n${icon("homem", guild)} Analisado por\n<@${request.approvedById}>` : "",
-          request.approvedAt ? `\n${icon("calendario", guild)} Data da decisão\n${formatDate(request.approvedAt)}` : "",
-          request.approvalReason ? `\n${icon("folha", guild)} Motivo\n${escapeMarkdown(request.approvalReason)}` : "",
-          "",
-          `${icon("prancheta_caneta", guild)} Observações\n${escapeMarkdown(clip(request.evaluationNotes ?? "Nenhuma observação registrada.", 1800))}`,
-          "",
-          `${icon("relogio", guild)} Tempo da avaliação\n${evaluationDuration(request)}`,
-          "",
-          `${icon("discord", guild)} ID da solicitação\n\`${request.id}\``
-        ].join("\n") },
+        { type: 10, content: buildMainContent(sections.reason, sections.notes) },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: `## ${icon("folha", guild)} Respostas\n${answersText(request)}` },
+        { type: 10, content: `${answerHeader}${sections.answers}` },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: `## ${icon("relogio", guild)} Histórico completo\n${promotionHistoryText(request)}` },
+        { type: 10, content: `${historyHeader}${sections.history}` },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(`${PREFIX}:approve:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar Promoção").setStyle(ButtonStyle.Success).setDisabled(disabled),
           new ButtonBuilder().setCustomId(`${PREFIX}:reject:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Reprovar Promoção").setStyle(ButtonStyle.Danger).setDisabled(disabled),
@@ -1728,12 +1743,61 @@ function answersText(request: Pick<PolicePromotionRequest, "answers">) {
   }).join("\n\n") || "Nenhuma resposta registrada.";
 }
 
-function promotionHistoryText(request: PolicePromotionRequest) {
+function promotionHistoryText(request: PolicePromotionRequest, maxLength = 2800) {
   const rows = request.history.map((entry) => {
     const actor = entry.actorId ? `<@${entry.actorId}>` : entry.actorName ? escapeMarkdown(entry.actorName) : "Sistema";
     return `• ${formatDate(entry.at)} - ${escapeMarkdown(historyActionLabel(entry.action))} - ${actor}`;
   });
-  return clip(rows.join("\n") || "Nenhum histórico registrado.", 2800);
+  return clipWithNotice(rows.join("\n") || "Nenhum histórico registrado.", maxLength);
+}
+
+export function limitPromotionApprovalDisplayTextSections<T extends string>(
+  sections: ReadonlyArray<{ key: T; content: string; minLength: number; maxLength: number }>,
+  availableLength: number
+): Record<T, string> {
+  const available = Math.max(0, Math.floor(availableLength));
+  const normalized = sections.map((section) => {
+    const desiredLength = Math.min(section.content.length, Math.max(0, section.maxLength));
+    return {
+      ...section,
+      desiredLength,
+      minLength: Math.min(desiredLength, Math.max(0, section.minLength))
+    };
+  });
+  const desiredTotal = normalized.reduce((total, section) => total + section.desiredLength, 0);
+  const output = {} as Record<T, string>;
+
+  if (desiredTotal <= available) {
+    for (const section of normalized) output[section.key] = clipWithNotice(section.content, section.desiredLength);
+    return output;
+  }
+
+  let budgets = normalized.map((section) => section.minLength);
+  let used = budgets.reduce((total, value) => total + value, 0);
+
+  if (used > available) {
+    let remaining = available;
+    budgets = normalized.map((section, index) => {
+      const remainingSections = normalized.length - index;
+      const budget = Math.min(section.desiredLength, Math.floor(remaining / remainingSections));
+      remaining -= budget;
+      return budget;
+    });
+  } else {
+    let remaining = available - used;
+    budgets = normalized.map((section, index) => {
+      const budget = budgets[index] ?? 0;
+      const extra = Math.min(section.desiredLength - budget, remaining);
+      remaining -= extra;
+      return budget + extra;
+    });
+  }
+
+  normalized.forEach((section, index) => {
+    output[section.key] = clipWithNotice(section.content, budgets[index] ?? 0);
+  });
+
+  return output;
 }
 
 function historyActionLabel(action: string) {
@@ -2798,6 +2862,28 @@ function parseColor(value: string) {
 
 function clip(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength - 1) : value;
+}
+
+function clipWithNotice(value: string, maxLength: number) {
+  if (maxLength <= 0) return "";
+  if (value.length <= maxLength) return value;
+  if (maxLength <= TRUNCATED_COMPONENT_TEXT_NOTICE.length) return value.slice(0, maxLength);
+  return `${value.slice(0, maxLength - TRUNCATED_COMPONENT_TEXT_NOTICE.length).trimEnd()}${TRUNCATED_COMPONENT_TEXT_NOTICE}`;
+}
+
+export function displayableComponentTextSize(value: unknown): number {
+  if (Array.isArray(value)) return value.reduce((total, item) => total + displayableComponentTextSize(item), 0);
+  if (!value || typeof value !== "object") return 0;
+
+  let total = 0;
+  const component = value as Record<string, unknown>;
+  for (const key of ["content", "label", "placeholder", "description", "title"]) {
+    if (typeof component[key] === "string") total += component[key].length;
+  }
+  for (const childKey of ["components", "items", "options"]) {
+    total += displayableComponentTextSize(component[childKey]);
+  }
+  return total;
 }
 
 function errorMessage(error: unknown, fallback: string) {
