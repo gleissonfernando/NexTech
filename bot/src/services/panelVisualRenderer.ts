@@ -64,7 +64,12 @@ export function renderComponentsV2Panel(input: {
     ...(input.extraImages ?? []).flatMap((image) => renderableBlocks(image))
   ]);
   const extraMedia = blockComponents.length ? [] : (input.extraImages ?? [])
-    .map((image) => image?.imageEnabled ? resolvePanelImageUrl(image.imageUrl ?? null) : null)
+    .map((image) => {
+      const url = image?.imageEnabled ? resolvePanelImageUrl(image.imageUrl ?? null, image) : null;
+      if (!url) return null;
+      if (isVideoMedia(image, url)) return resolvePanelImageUrl(image?.mediaPosterUrl ?? image?.mediaThumbnailUrl ?? null) ?? null;
+      return url;
+    })
     .filter((url): url is string => Boolean(url))
     .slice(0, 2)
     .map((url) => mediaBlock(url, input.title));
@@ -72,7 +77,8 @@ export function renderComponentsV2Panel(input: {
   const actions = input.actions ?? [];
   const fields = input.fields ?? [];
   const components: unknown[] = [];
-  const media = imageUrl ? mediaBlock(imageUrl, input.title) : null;
+  const mediaUrl = imageUrl && isVideo && posterUrl ? posterUrl : imageUrl;
+  const media = mediaUrl ? mediaBlock(mediaUrl, input.title) : null;
   const thumbnailUrl = isVideo ? posterUrl : imageUrl;
   const useThumbnailLayout = Boolean(media && thumbnailUrl && ["thumbnail", "side"].includes(position));
   const effectivePosition = videoFooterPosition ? "bottom" : position;
@@ -83,13 +89,13 @@ export function renderComponentsV2Panel(input: {
   };
 
   if (blockComponents.length) components.push(...blockComponents);
-  if (!blockComponents.length && (media || extraMedia.length) && ["top", "banner"].includes(effectivePosition)) pushMedia();
   if (useThumbnailLayout) {
     components.push({ type: 9, components: [{ type: 10, content: titleText }], accessory: { type: 11, media: { url: thumbnailUrl }, description: input.title } });
     components.push(...extraMedia);
   } else {
     components.push({ type: 10, content: titleText });
   }
+  if (!blockComponents.length && (media || extraMedia.length) && ["top", "banner"].includes(effectivePosition)) pushMedia();
   if (!blockComponents.length && (media || extraMedia.length) && ["thumbnail", "side"].includes(effectivePosition) && !useThumbnailLayout) pushMedia();
   if (!blockComponents.length && (media || extraMedia.length) && ["below_title", "below_text"].includes(effectivePosition)) pushMedia();
 
