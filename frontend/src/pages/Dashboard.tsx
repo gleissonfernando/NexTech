@@ -7209,6 +7209,7 @@ function TicketPanelConfigurator({
     setDraft(ticketPanelDraft(settings));
   }, [
     settings?.guildId,
+    settings?.ticketCategoryId,
     settings?.ticketPanelChannelId,
     settings?.ticketPanelMessageId,
     settings?.ticketPanelTitle,
@@ -7334,7 +7335,7 @@ function TicketPanelConfigurator({
   }
 
   async function publish() {
-    if (!guild || !settings || disabled || !draft.ticketPanelChannelId) return;
+    if (!guild || !settings || disabled || !draft.ticketPanelChannelId || !hasTicketCategoryForEveryOption(draft)) return;
 
     const previous = settings;
     const payload = buildPayload();
@@ -7370,7 +7371,7 @@ function TicketPanelConfigurator({
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Salvar
           </Button>
-          <Button disabled={disabled || !settings?.ticketEnabled || !draft.ticketPanelChannelId} onClick={() => void publish()} size="sm" type="button" variant="outline">
+          <Button disabled={disabled || !settings?.ticketEnabled || !draft.ticketPanelChannelId || !hasTicketCategoryForEveryOption(draft)} onClick={() => void publish()} size="sm" type="button" variant="outline">
             {publishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
             Publicar/Atualizar
           </Button>
@@ -7395,6 +7396,23 @@ function TicketPanelConfigurator({
               ))}
             </select>
           </label>
+          <label className="block text-xs font-medium text-zinc-400">
+            Categoria padrão dos tickets
+            <select
+              className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
+              disabled={disabled}
+              onChange={(event) => setDraft((current) => ({ ...current, ticketCategoryId: event.target.value || null }))}
+              value={draft.ticketCategoryId ?? ""}
+            >
+              <option value="">Selecione uma categoria</option>
+              {draft.ticketCategoryId && !categories.some((category) => category.id === draft.ticketCategoryId) ? (
+                <option value={draft.ticketCategoryId}>Categoria atual ({draft.ticketCategoryId})</option>
+              ) : null}
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
           <TicketField disabled={disabled} label="Titulo" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelTitle: value }))} value={draft.ticketPanelTitle ?? ""} />
           <TicketField disabled={disabled} label="Placeholder do menu" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelPlaceholder: value }))} value={draft.ticketPanelPlaceholder ?? ""} />
           <TicketField disabled={disabled} label="Cor neon" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelColor: value }))} type="color" value={draft.ticketPanelColor} />
@@ -7403,6 +7421,7 @@ function TicketPanelConfigurator({
 
         <div className="rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/5 px-3 py-2 text-xs text-zinc-300">
           Mensagem oficial: {settings?.ticketPanelMessageId ? settings.ticketPanelMessageId : "não publicada"}
+          {!hasTicketCategoryForEveryOption(draft) ? <span className="ml-2 text-amber-200">Configure a categoria padrão ou uma categoria em cada opção.</span> : null}
         </div>
 
         <TicketArea disabled={disabled} label="Descrição principal" onChange={(value) => setDraft((current) => ({ ...current, ticketPanelDescription: value }))} value={draft.ticketPanelDescription ?? ""} />
@@ -7975,6 +7994,7 @@ function normalizeReportCategory(category: ReportSystemCategory, index: number):
 
 type TicketPanelDraft = Pick<
   GuildSettings,
+  | "ticketCategoryId"
   | "ticketPanelChannelId"
   | "ticketPanelTitle"
   | "ticketPanelDescription"
@@ -7987,6 +8007,7 @@ type TicketPanelDraft = Pick<
 
 function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
   return {
+    ticketCategoryId: settings?.ticketCategoryId ?? null,
     ticketPanelChannelId: settings?.ticketPanelChannelId ?? null,
     ticketPanelTitle: settings?.ticketPanelTitle ?? "Central de Suporte",
     ticketPanelDescription: settings?.ticketPanelDescription ?? "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
@@ -8003,6 +8024,10 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
       value: "suporte"
     }]).map(normalizeTicketOptionDraft)
   };
+}
+
+function hasTicketCategoryForEveryOption(draft: TicketPanelDraft) {
+  return Boolean(draft.ticketCategoryId || draft.ticketPanelOptions.every((option) => option.categoryId));
 }
 
 function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): TicketPanelOption {
