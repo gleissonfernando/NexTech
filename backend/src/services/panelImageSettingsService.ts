@@ -86,6 +86,8 @@ const IMAGE_SIZES = new Set<PanelImageSize>(["small", "medium", "large", "full_b
 const BANNER_MODES = new Set<PanelBannerMode>(["auto", "large", "compact", "horizontal", "vertical", "square", "ultrawide", "custom"]);
 const LAYOUT_MODES = new Set<PanelImageLayoutMode>(["embed", "components_v2"]);
 const UPLOADS_ROOT = path.resolve(__dirname, "../../uploads");
+const FOOTER_IMAGE_PANEL_IDS = new Set(["ticket-footer"]);
+const FOOTER_IMAGE_SIZE_PX = 32;
 const DEFAULT_SETTINGS = {
   customHeight: null,
   customWidth: null,
@@ -148,7 +150,7 @@ export function defaultPanelImageSettings(guildId: string, botId: string, panelI
     panelId,
     updatedAt: null,
     ...DEFAULT_SETTINGS,
-    useGlobalDefault: panelId !== "global-default"
+    useGlobalDefault: panelId !== "global-default" && !isFooterImagePanel(panelId)
   };
 }
 
@@ -360,40 +362,46 @@ export async function removePanelImageSettings(input: {
 }
 
 function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsDto {
+  const footerImagePanel = isFooterImagePanel(settings.panelId);
   const imagePosition = IMAGE_POSITIONS.has(settings.imagePosition) ? settings.imagePosition : DEFAULT_SETTINGS.imagePosition;
-  const imageSize = IMAGE_SIZES.has(settings.imageSize) ? settings.imageSize : DEFAULT_SETTINGS.imageSize;
+  const imageSize = footerImagePanel ? "custom" : IMAGE_SIZES.has(settings.imageSize) ? settings.imageSize : DEFAULT_SETTINGS.imageSize;
   const bannerMode = BANNER_MODES.has(settings.bannerMode) ? settings.bannerMode : DEFAULT_SETTINGS.bannerMode;
   const layoutMode = resolveLayoutMode(
     LAYOUT_MODES.has(settings.layoutMode) ? settings.layoutMode : DEFAULT_SETTINGS.layoutMode,
-    imagePosition
+    footerImagePanel ? "footer" : imagePosition
   );
   const imageUrl = normalizeImageUrl(settings.imageUrl);
-  const imageEnabled = settings.imageEnabled === true && Boolean(imageUrl) && imagePosition !== "none";
+  const imageEnabled = settings.imageEnabled === true && Boolean(imageUrl) && (footerImagePanel || imagePosition !== "none");
   const mediaPosterUrl = normalizeImageUrl(settings.mediaPosterUrl);
   const mediaThumbnailUrl = normalizeImageUrl(settings.mediaThumbnailUrl);
 
   return {
     ...settings,
-    blocks: normalizeBlocks(settings.blocks),
-    customHeight: imageSize === "custom" ? clampDimension(settings.customHeight) : null,
-    customWidth: imageSize === "custom" ? clampDimension(settings.customWidth) : null,
+    blocks: footerImagePanel ? [] : normalizeBlocks(settings.blocks),
+    customHeight: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : imageSize === "custom" ? clampDimension(settings.customHeight) : null,
+    customWidth: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : imageSize === "custom" ? clampDimension(settings.customWidth) : null,
     imageEnabled,
-    imagePosition: imageEnabled ? imagePosition : "none",
+    imagePosition: imageEnabled ? footerImagePanel ? "footer" : imagePosition : "none",
     imageSize,
     bannerMode,
     imageUrl: imageEnabled ? imageUrl : "",
-    layoutMode,
+    layoutMode: footerImagePanel ? "components_v2" : layoutMode,
     mediaAutoplay: settings.mediaAutoplay !== false,
     mediaControls: settings.mediaControls === true,
-    mediaFit: settings.mediaFit === "contain" ? "contain" : "cover",
+    mediaFit: footerImagePanel ? "contain" : settings.mediaFit === "contain" ? "contain" : "cover",
     mediaLoop: settings.mediaLoop !== false,
     mediaMuted: settings.mediaMuted !== false,
     mediaDiagnostics: settings.mediaDiagnostics ?? null,
     mediaPosterUrl: mediaPosterUrl || null,
     mediaPreload: settings.mediaPreload === "none" || settings.mediaPreload === "auto" ? settings.mediaPreload : "metadata",
     mediaThumbnailUrl: mediaThumbnailUrl || null,
-    mediaVolume: Math.min(1, Math.max(0, Number(settings.mediaVolume) || 0))
+    mediaVolume: Math.min(1, Math.max(0, Number(settings.mediaVolume) || 0)),
+    useGlobalDefault: footerImagePanel ? false : settings.useGlobalDefault
   };
+}
+
+function isFooterImagePanel(panelId: string) {
+  return FOOTER_IMAGE_PANEL_IDS.has(panelId);
 }
 
 function resolveLayoutMode(layoutMode: PanelImageLayoutMode, imagePosition: PanelImagePosition) {

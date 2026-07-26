@@ -410,7 +410,6 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
       image: footerImageUrl,
       text: settings.ticketPanelFooterText?.trim() || "NexTech"
     },
-    footerImage: footerImageUrl,
     guild,
     image: logoImage,
     moduleId: "ticket",

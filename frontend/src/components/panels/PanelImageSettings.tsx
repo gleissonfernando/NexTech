@@ -126,6 +126,8 @@ const layoutOptions: Array<{ label: string; value: PanelImageLayoutMode }> = [
 ];
 
 const advancedPositions = new Set<PanelImagePosition>(["top", "below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons"]);
+const FOOTER_IMAGE_PANEL_IDS = new Set(["ticket-footer"]);
+const FOOTER_IMAGE_SIZE_PX = 32;
 
 export function PanelImageSettings({ botId, canManage, componentsV2Only = false, guildId, panelId, panelLabel, panelSlots }: PanelImageSettingsProps) {
   const multiSlotMode = Boolean(panelSlots?.length);
@@ -146,6 +148,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
   const [diagnosing, setDiagnosing] = useState(false);
   const fixedPanel = fixedPanels?.length === 1 ? fixedPanels[0] : null;
   const selectedPanel = panelChoices.find((panel) => panel.id === selectedPanelId) ?? panelChoices[0]!;
+  const selectedFooterImagePanel = isFooterImagePanel(selectedPanelId);
   const disabled = !canManage || !guildId || !botId || loading || saving || uploading;
   const effectiveLayoutMode = componentsV2Only || advancedPositions.has(draft.imagePosition) ? "components_v2" : draft.layoutMode;
   const previewStyle = previewImageStyle(draft.imageSize, draft.customWidth, draft.customHeight);
@@ -199,8 +202,15 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
     setDraft((current) => ({
       ...current,
       imageEnabled: value.trim() ? true : current.imageEnabled,
-      imagePosition: value.trim() && current.imagePosition === "none" ? selectedPanel.defaultPosition ?? "banner" : current.imagePosition,
+      imagePosition: selectedFooterImagePanel
+        ? "footer"
+        : value.trim() && current.imagePosition === "none" ? selectedPanel.defaultPosition ?? "banner" : current.imagePosition,
+      imageSize: selectedFooterImagePanel ? "custom" : current.imageSize,
       imageUrl: value,
+      customHeight: selectedFooterImagePanel ? FOOTER_IMAGE_SIZE_PX : current.customHeight,
+      customWidth: selectedFooterImagePanel ? FOOTER_IMAGE_SIZE_PX : current.customWidth,
+      blocks: selectedFooterImagePanel ? [] : current.blocks,
+      layoutMode: selectedFooterImagePanel ? "components_v2" : current.layoutMode,
       useGlobalDefault: value.trim() && selectedPanelId !== "global-default" ? false : current.useGlobalDefault
     }));
   }
@@ -330,14 +340,15 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
     logPanelUpload("selection", file, selectedPanelId);
 
     try {
-      await validatePanelMediaBeforeUpload(file, (message) => setStatus(message));
-      logPanelUpload("upload:start", file, selectedPanelId);
+      const uploadFile = await preparePanelUploadFile(file, selectedPanelId, (message) => setStatus(message));
+      await validatePanelMediaBeforeUpload(uploadFile, (message) => setStatus(message));
+      logPanelUpload("upload:start", uploadFile, selectedPanelId);
       setStatus("Enviando...\n░░░░░░░░░░ 0%");
-      const saved = await uploadPanelImage(guildId, selectedPanelId, file, botId, (percent) => {
+      const saved = await uploadPanelImage(guildId, selectedPanelId, uploadFile, botId, (percent) => {
         setUploadProgress(percent);
         setStatus(percent >= 100 ? "Upload concluído. Processando no servidor..." : `Enviando...\n${progressBar(percent)} ${percent}%`);
       });
-      logPanelUpload("upload:complete", file, selectedPanelId);
+      logPanelUpload("upload:complete", uploadFile, selectedPanelId);
       setSettingsByPanel((current) => ({
         ...current,
         [saved.panelId]: saved
@@ -505,14 +516,14 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
               </div>
 
               <SelectField
-                disabled={disabled}
+                disabled={disabled || selectedFooterImagePanel}
                 label="Posicao"
                 onChange={(value) => updateDraft("imagePosition", value as PanelImagePosition)}
                 options={positionOptions}
                 value={draft.imagePosition}
               />
               <SelectField
-                disabled={disabled}
+                disabled={disabled || selectedFooterImagePanel}
                 label="Tamanho"
                 onChange={(value) => updateDraft("imageSize", value as PanelImageSize)}
                 options={sizeOptions}
@@ -595,9 +606,9 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                   <PreviewImage alt={selectedPanel.label} imageUrl={draft.imageUrl} settings={draft} style={previewStyle} />
                 ) : null}
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
-                  <div className="mt-4 flex items-center gap-2 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
-                    <InlineMediaPreview className="h-5 w-5 rounded-full" imageUrl={draft.imageUrl} settings={draft} />
-                    <span>{previewFooterText(draft)}</span>
+                  <div className="mt-4 flex items-center justify-start gap-2.5 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
+                    <InlineMediaPreview className="h-8 min-h-8 w-8 min-w-8 max-h-8 max-w-8 rounded-md" imageUrl={draft.imageUrl} settings={draft} />
+                    <span className="flex items-center">{previewFooterText(draft)}</span>
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -792,7 +803,7 @@ function PreviewImage({
 
 function InlineMediaPreview({ className, imageUrl, settings }: { className: string; imageUrl: string; settings: PanelImageSettingsDto }) {
   const classes = `${className} shrink-0 rounded-md border border-zinc-800`;
-  const style = { objectFit: settings.mediaFit };
+  const style = { objectFit: settings.imagePosition === "footer" ? "contain" : settings.mediaFit };
   if (isVideoMedia(imageUrl, settings.imageMimeType)) {
     return <SmartVideoPreview className={className} compact imageUrl={imageUrl} settings={settings} style={style} />;
   }
@@ -1334,17 +1345,18 @@ function panelLabelForId(panelId: string) {
 function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLayoutMode, componentsV2Only = false): SavePanelImageSettingsPayload {
   const imageUrl = settings.imageUrl.trim();
   const imageEnabled = settings.imageEnabled && settings.imagePosition !== "none" && Boolean(imageUrl);
+  const footerImagePanel = isFooterImagePanel(settings.panelId);
 
   return {
-    customHeight: settings.imageSize === "custom" ? settings.customHeight : null,
-    customWidth: settings.imageSize === "custom" ? settings.customWidth : null,
+    customHeight: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : settings.imageSize === "custom" ? settings.customHeight : null,
+    customWidth: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : settings.imageSize === "custom" ? settings.customWidth : null,
     bannerMode: settings.bannerMode ?? "auto",
-    blocks: componentsV2Only ? [] : settings.blocks ?? [],
+    blocks: footerImagePanel || componentsV2Only ? [] : settings.blocks ?? [],
     imageEnabled,
-    imagePosition: imageEnabled ? settings.imagePosition : "none",
-    imageSize: settings.imageSize,
+    imagePosition: imageEnabled ? footerImagePanel ? "footer" : settings.imagePosition : "none",
+    imageSize: footerImagePanel ? "custom" : settings.imageSize,
     imageUrl: imageEnabled ? imageUrl : "",
-    layoutMode,
+    layoutMode: footerImagePanel ? "components_v2" : layoutMode,
     mediaAutoplay: settings.mediaAutoplay,
     mediaControls: settings.mediaControls,
     mediaFit: settings.mediaFit,
@@ -1354,8 +1366,58 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
     mediaPreload: settings.mediaPreload,
     mediaThumbnailUrl: settings.mediaThumbnailUrl,
     mediaVolume: settings.mediaVolume,
-    useGlobalDefault: settings.useGlobalDefault
+    useGlobalDefault: footerImagePanel ? false : settings.useGlobalDefault
   };
+}
+
+function isFooterImagePanel(panelId: string) {
+  return FOOTER_IMAGE_PANEL_IDS.has(panelId);
+}
+
+async function preparePanelUploadFile(file: File, panelId: string, onStatus: (message: string) => void) {
+  if (!isFooterImagePanel(panelId) || !file.type.startsWith("image/") || typeof document === "undefined") {
+    return file;
+  }
+
+  onStatus(`Redimensionando imagem do rodapé para ${FOOTER_IMAGE_SIZE_PX}x${FOOTER_IMAGE_SIZE_PX}px...`);
+  return resizeImageFileToFooterIcon(file);
+}
+
+async function resizeImageFileToFooterIcon(file: File) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageElement(objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = FOOTER_IMAGE_SIZE_PX;
+    canvas.height = FOOTER_IMAGE_SIZE_PX;
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+
+    context.clearRect(0, 0, FOOTER_IMAGE_SIZE_PX, FOOTER_IMAGE_SIZE_PX);
+    const scale = Math.min(FOOTER_IMAGE_SIZE_PX / image.naturalWidth, FOOTER_IMAGE_SIZE_PX / image.naturalHeight);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const left = Math.round((FOOTER_IMAGE_SIZE_PX - width) / 2);
+    const top = Math.round((FOOTER_IMAGE_SIZE_PX - height) / 2);
+    context.drawImage(image, left, top, width, height);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Não foi possível redimensionar a imagem do rodapé.")), "image/png");
+    });
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "footer";
+    return new File([blob], `${baseName}-32x32.png`, { lastModified: Date.now(), type: "image/png" });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function loadImageElement(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Não foi possível ler a imagem selecionada."));
+    image.src = url;
+  });
 }
 
 function previewImageStyle(size: PanelImageSize, customWidth: number | null, customHeight: number | null) {
