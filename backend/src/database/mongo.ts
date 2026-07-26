@@ -4877,6 +4877,7 @@ export type MongoPanelImageSettings = {
   botId: string;
   guildId: string;
   panelId: string;
+  footerText?: string | null;
   imageEnabled: boolean;
   imageUrl: string;
   imagePosition: MongoGlobalPanelImagePosition;

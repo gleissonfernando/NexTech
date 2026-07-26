@@ -834,6 +834,7 @@ export type PanelImageSettings = {
   botId: string;
   customHeight: number | null;
   customWidth: number | null;
+  footerText: string | null;
   guildId: string;
   imageEnabled: boolean;
   imageExtension: string | null;
@@ -878,7 +879,7 @@ export type PanelImageSettings = {
 
 export type SavePanelImageSettingsPayload = Partial<Pick<
   PanelImageSettings,
-  "bannerMode" | "blocks" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
+  "bannerMode" | "blocks" | "customHeight" | "customWidth" | "footerText" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >>;
 
 export type SaveSelfBotProtectionSettingsPayload = Partial<Omit<

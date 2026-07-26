@@ -11,6 +11,7 @@ import { startDiscordLogDelivery } from "../services/discordLogDeliveryService";
 import { startDatabaseMaintenanceService } from "../services/databaseMaintenanceService";
 import { startFivemFacService } from "../services/fivemFacService";
 import { startFivemGoalService } from "../services/fivemGoalService";
+import { startFooterRuntimeService } from "../services/footerRuntimeService";
 import { startFivemFinanceService } from "../services/fivemFinanceService";
 import { startFivemOrderService } from "../services/fivemOrderService";
 import { startFivemHierarchyService } from "../services/fivemHierarchyService";
@@ -148,6 +149,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     }
   });
   startGuildSettingsCache(context);
+  startFooterRuntimeService(client, context);
   context.socket.onSettingsUpdated((settings) => {
     void handleSafeBotSettingsUpdated(settings, client, context);
   });

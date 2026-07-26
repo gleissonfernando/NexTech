@@ -36,6 +36,7 @@ export type PanelImageSettingsDto = {
   guildId: string;
   imageEnabled: boolean;
   imageExtension: string | null;
+  footerText: string | null;
   imagePosition: PanelImagePosition;
   imageSize: PanelImageSize;
   bannerMode: PanelBannerMode;
@@ -65,7 +66,7 @@ export type PanelImageSettingsDto = {
 
 export type SavePanelImageSettingsInput = Partial<Pick<
   PanelImageSettingsDto,
-  "bannerMode" | "customHeight" | "customWidth" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
+  "bannerMode" | "customHeight" | "customWidth" | "footerText" | "imageEnabled" | "imagePosition" | "imageSize" | "imageUrl" | "layoutMode" | "mediaAutoplay" | "mediaControls" | "mediaFit" | "mediaLoop" | "mediaMuted" | "mediaPosterUrl" | "mediaPreload" | "mediaThumbnailUrl" | "mediaVolume" | "useGlobalDefault"
 >> & { blocks?: MongoPanelBlock[] };
 
 const IMAGE_POSITIONS = new Set<PanelImagePosition>([
@@ -86,14 +87,16 @@ const IMAGE_SIZES = new Set<PanelImageSize>(["small", "medium", "large", "full_b
 const BANNER_MODES = new Set<PanelBannerMode>(["auto", "large", "compact", "horizontal", "vertical", "square", "ultrawide", "custom"]);
 const LAYOUT_MODES = new Set<PanelImageLayoutMode>(["embed", "components_v2"]);
 const UPLOADS_ROOT = path.resolve(__dirname, "../../uploads");
-const FOOTER_IMAGE_PANEL_IDS = new Set(["ticket-footer"]);
+const FOOTER_IMAGE_PANEL_IDS = new Set(["global-footer", "ticket-footer"]);
 const FOOTER_IMAGE_SIZE_PX = 32;
+const DEFAULT_FOOTER_TEXT = "NexTech";
 const DEFAULT_SETTINGS = {
   customHeight: null,
   customWidth: null,
   blocks: [] as MongoPanelBlock[],
   imageEnabled: false,
   imageExtension: null,
+  footerText: null,
   imagePosition: "none" as PanelImagePosition,
   imageSize: "medium" as PanelImageSize,
   bannerMode: "auto" as PanelBannerMode,
@@ -140,7 +143,8 @@ const PANEL_VISUAL_REFRESH_EVENTS: Record<string, string[]> = {
   "ticket-logo": ["tickets:panel_publish"],
   "ticket-banner": ["tickets:panel_publish"],
   "ticket-banner-secondary": ["tickets:panel_publish"],
-  "ticket-footer": ["tickets:panel_publish"]
+  "ticket-footer": ["tickets:panel_publish"],
+  "global-footer": []
 };
 
 export function defaultPanelImageSettings(guildId: string, botId: string, panelId: string): PanelImageSettingsDto {
@@ -150,6 +154,7 @@ export function defaultPanelImageSettings(guildId: string, botId: string, panelI
     panelId,
     updatedAt: null,
     ...DEFAULT_SETTINGS,
+    footerText: panelId === "global-footer" ? DEFAULT_FOOTER_TEXT : DEFAULT_SETTINGS.footerText,
     useGlobalDefault: panelId !== "global-default" && !isFooterImagePanel(panelId)
   };
 }
@@ -194,7 +199,7 @@ export async function savePanelImageSettings(
     panelId
   });
   const now = new Date();
-  const changed = (["bannerMode", "customHeight", "customWidth", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "mediaAutoplay", "mediaControls", "mediaFit", "mediaLoop", "mediaMuted", "mediaPosterUrl", "mediaPreload", "mediaThumbnailUrl", "mediaVolume", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
+  const changed = (["bannerMode", "customHeight", "customWidth", "footerText", "imageEnabled", "imagePosition", "imageSize", "imageUrl", "layoutMode", "mediaAutoplay", "mediaControls", "mediaFit", "mediaLoop", "mediaMuted", "mediaPosterUrl", "mediaPreload", "mediaThumbnailUrl", "mediaVolume", "useGlobalDefault"] as const).some((key) => current[key] !== next[key]);
   const blocksChanged = JSON.stringify(current.blocks) !== JSON.stringify(next.blocks);
   const { panelImageSettings } = await getMongoCollections();
 
@@ -207,6 +212,7 @@ export async function savePanelImageSettings(
         blocks: next.blocks,
         customHeight: next.customHeight,
         customWidth: next.customWidth,
+        footerText: next.footerText,
         guildId,
         imageEnabled: next.imageEnabled,
         imagePosition: next.imagePosition,
@@ -268,7 +274,7 @@ function emitPanelRefresh(guildId: string, botId: string, panelId: string) {
     return;
   }
 
-  if (panelId === "global-default") {
+  if (panelId === "global-default" || panelId === "global-footer") {
     for (const event of new Set(Object.values(PANEL_VISUAL_REFRESH_EVENTS).flat())) {
       emitRealtimeToRoom(devBotRealtimeRoom(botId), event, { botId, guildId });
     }
@@ -289,7 +295,7 @@ function defaultImagePositionForPanel(panelId: string): PanelImagePosition {
   if (panelId === "ticket-logo") return "thumbnail";
   if (panelId === "ticket-banner") return "below_title";
   if (panelId === "ticket-banner-secondary") return "bottom";
-  if (panelId === "ticket-footer") return "footer";
+  if (panelId === "global-footer" || panelId === "ticket-footer") return "footer";
   return "banner";
 }
 
@@ -309,6 +315,10 @@ export async function savePanelImageUpload(input: {
   originalName?: string | null;
   panelId: string;
 }) {
+  if (isFooterImagePanel(input.panelId) && !isAllowedFooterUpload(input.mimeType, input.originalName)) {
+    throw Object.assign(new Error("O rodapé aceita apenas PNG, JPG, JPEG, WEBP ou GIF."), { statusCode: 400 });
+  }
+
   const current = await getPanelImageSettings(input.guildId, input.botId, input.panelId);
   const stored = await savePersistentImage({
     actorId: input.actorId,
@@ -380,6 +390,7 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
     blocks: footerImagePanel ? [] : normalizeBlocks(settings.blocks),
     customHeight: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : imageSize === "custom" ? clampDimension(settings.customHeight) : null,
     customWidth: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : imageSize === "custom" ? clampDimension(settings.customWidth) : null,
+    footerText: normalizeFooterText(settings.footerText, settings.panelId),
     imageEnabled,
     imagePosition: imageEnabled ? footerImagePanel ? "footer" : imagePosition : "none",
     imageSize,
@@ -400,8 +411,19 @@ function normalizeSettings(settings: PanelImageSettingsDto): PanelImageSettingsD
   };
 }
 
+function normalizeFooterText(value: string | null | undefined, panelId: string) {
+  const text = value?.trim() ?? "";
+  if (text) return text.slice(0, 180);
+  return panelId === "global-footer" ? DEFAULT_FOOTER_TEXT : null;
+}
+
 function isFooterImagePanel(panelId: string) {
   return FOOTER_IMAGE_PANEL_IDS.has(panelId);
+}
+
+function isAllowedFooterUpload(mimeType: string, originalName?: string | null) {
+  if (/^image\/(gif|jpe?g|png|webp)$/i.test(mimeType)) return true;
+  return /\.(gif|jpe?g|png|webp)$/i.test(originalName ?? "");
 }
 
 function resolveLayoutMode(layoutMode: PanelImageLayoutMode, imagePosition: PanelImagePosition) {
@@ -506,6 +528,7 @@ function toDto(settings: MongoPanelImageSettings): PanelImageSettingsDto {
     customHeight: settings.customHeight ?? null,
     customWidth: settings.customWidth ?? null,
     guildId: settings.guildId,
+    footerText: normalizeFooterText(settings.footerText, settings.panelId),
     imageEnabled,
     imageExtension: extensionFromUrl(legacyImageUrl),
     imagePosition: settings.imagePosition ?? DEFAULT_SETTINGS.imagePosition,

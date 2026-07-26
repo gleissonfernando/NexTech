@@ -32,6 +32,7 @@ type PanelDefinition = {
 
 const PANELS: PanelDefinition[] = [
   { id: "global-default", label: "Padrão visual global" },
+  { id: "global-footer", label: "Configuração de Rodapé", defaultPosition: "footer" },
   { id: "welcome", label: "Boas-vindas" },
   { id: "leave", label: "Saída" },
   { id: "rules", label: "Regras" },
@@ -126,8 +127,10 @@ const layoutOptions: Array<{ label: string; value: PanelImageLayoutMode }> = [
 ];
 
 const advancedPositions = new Set<PanelImagePosition>(["top", "below_title", "middle", "bottom", "before_buttons", "below_text", "above_buttons"]);
-const FOOTER_IMAGE_PANEL_IDS = new Set(["ticket-footer"]);
+const FOOTER_IMAGE_PANEL_IDS = new Set(["global-footer", "ticket-footer"]);
 const FOOTER_IMAGE_SIZE_PX = 32;
+const DEFAULT_FOOTER_TEXT = "NexTech";
+const FOOTER_MEDIA_ACCEPT = "image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif";
 
 export function PanelImageSettings({ botId, canManage, componentsV2Only = false, guildId, panelId, panelLabel, panelSlots }: PanelImageSettingsProps) {
   const multiSlotMode = Boolean(panelSlots?.length);
@@ -411,8 +414,8 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
               <Image className="h-5 w-5 text-zinc-300" />
             </div>
             <div>
-              <CardTitle>{multiSlotMode ? `Banners do painel: ${panelLabel ?? selectedPanel.label}` : fixedPanel ? `Imagem do painel: ${selectedPanel.label}` : "Imagens dos painéis"}</CardTitle>
-              <CardDescription>{multiSlotMode ? `Configure até ${panelChoices.length} banner(s) deste painel.` : fixedPanel ? "Configure a imagem deste painel." : `${savedCount} painel(is) com imagem configurada.`}</CardDescription>
+              <CardTitle>{selectedPanelId === "global-footer" ? "Configuração de Rodapé" : multiSlotMode ? `Banners do painel: ${panelLabel ?? selectedPanel.label}` : fixedPanel ? `Imagem do painel: ${selectedPanel.label}` : "Imagens dos painéis"}</CardTitle>
+              <CardDescription>{selectedPanelId === "global-footer" ? "Configure o texto e a imagem de rodapé usados nos painéis Components V2 deste servidor." : multiSlotMode ? `Configure até ${panelChoices.length} banner(s) deste painel.` : fixedPanel ? "Configure a imagem deste painel." : `${savedCount} painel(is) com imagem configurada.`}</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -456,9 +459,22 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
           ) : null}
 
           <div className="space-y-4">
-            {selectedPanelId !== "global-default" ? <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300"><span><strong className="block text-zinc-100">Usar padrão visual global</strong>Desative para personalizar somente este módulo.</span><Switch checked={draft.useGlobalDefault} disabled={disabled} onCheckedChange={(checked) => updateDraft("useGlobalDefault", checked)} /></label> : null}
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs leading-5 text-blue-100">Topo/banner destacam a imagem primeiro; thumbnail/lateral mantêm o texto ao lado; meio e abaixo do título dividem o conteúdo; antes dos botões destaca a ação; final e rodapé encerram o painel.</div>
+            {selectedPanelId !== "global-default" && !selectedFooterImagePanel ? <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300"><span><strong className="block text-zinc-100">Usar padrão visual global</strong>Desative para personalizar somente este módulo.</span><Switch checked={draft.useGlobalDefault} disabled={disabled} onCheckedChange={(checked) => updateDraft("useGlobalDefault", checked)} /></label> : null}
+            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs leading-5 text-blue-100">{selectedFooterImagePanel ? "O rodapé é salvo por servidor e aplicado automaticamente nos novos painéis Components V2. O Discord pode posicionar a imagem conforme os limites oficiais do Components V2." : "Topo/banner destacam a imagem primeiro; thumbnail/lateral mantêm o texto ao lado; meio e abaixo do título dividem o conteúdo; antes dos botões destaca a ação; final e rodapé encerram o painel."}</div>
             {draft.imageInvalidReason ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">{draft.imageInvalidReason}</div> : null}
+            {selectedFooterImagePanel ? (
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium text-zinc-200">Texto do rodapé</span>
+                <input
+                  className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]/60"
+                  disabled={disabled}
+                  maxLength={180}
+                  onChange={(event) => updateDraft("footerText", event.target.value)}
+                  placeholder={DEFAULT_FOOTER_TEXT}
+                  value={draft.footerText ?? ""}
+                />
+              </label>
+            ) : null}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {!fixedPanel ? <label className="grid gap-2 text-sm">
                 <span className="font-medium text-zinc-200">Painel</span>
@@ -481,7 +497,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                     {uploading ? "Enviando..." : "Enviar mídia"}
                     <input
-                      accept={PANEL_MEDIA_ACCEPT}
+                      accept={selectedFooterImagePanel ? FOOTER_MEDIA_ACCEPT : PANEL_MEDIA_ACCEPT}
                       className="hidden"
                       disabled={disabled}
                       onChange={(event) => {
@@ -502,7 +518,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span>PNG • JPG • WEBP • GIF • MP4 • WEBM • MOV • AVI • MKV • M4V</span>
+                  <span>{selectedFooterImagePanel ? "PNG • JPG • WEBP • GIF" : "PNG • JPG • WEBP • GIF • MP4 • WEBM • MOV • AVI • MKV • M4V"}</span>
                   {draft.imageUrl ? <ImageTypeBadge settings={draft} /> : null}
                 </div>
                 {uploading ? (
@@ -554,14 +570,14 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
               )}
             </div>
 
-            {draft.imageSize === "custom" ? (
+            {draft.imageSize === "custom" && !selectedFooterImagePanel ? (
               <div className="grid gap-4 sm:grid-cols-2">
                 <NumberField disabled={disabled} label="Largura" onChange={(value) => updateDraft("customWidth", value)} value={draft.customWidth ?? 320} />
                 <NumberField disabled={disabled} label="Altura" onChange={(value) => updateDraft("customHeight", value)} value={draft.customHeight ?? 180} />
               </div>
             ) : null}
 
-            <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-4">
+            {!selectedFooterImagePanel ? <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-4">
               <p className="text-sm font-semibold text-zinc-100">Reprodução de mídia</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <ToggleField disabled={disabled} label="Loop" onChange={(value) => updateDraft("mediaLoop", value)} value={draft.mediaLoop} />
@@ -576,7 +592,7 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                   <input className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]/60" disabled={disabled} onChange={(event) => updateDraft("mediaPosterUrl", event.target.value || null)} placeholder="Gerado automaticamente ou URL" value={draft.mediaPosterUrl ?? draft.mediaThumbnailUrl ?? ""} />
                 </label>
               </div>
-            </div>
+            </div> : null}
 
             <div className="rounded-lg border border-zinc-900 bg-black p-4">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-950 p-4">
@@ -608,7 +624,12 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
                 {draft.imageEnabled && draft.imageUrl && draft.imagePosition === "footer" ? (
                   <div className="mt-4 flex items-center justify-start gap-2.5 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
                     <InlineMediaPreview className="h-8 min-h-8 w-8 min-w-8 max-h-8 max-w-8 rounded-md" imageUrl={draft.imageUrl} settings={draft} />
-                    <span className="flex items-center">{previewFooterText(draft)}</span>
+                    <span className="flex items-center">{previewFooterText(draft, selectedPanelId)}</span>
+                  </div>
+                ) : null}
+                {(!draft.imageEnabled || !draft.imageUrl) && selectedFooterImagePanel ? (
+                  <div className="mt-4 flex items-center justify-start gap-2.5 border-t border-zinc-900 pt-3 text-xs text-zinc-500">
+                    <span className="flex items-center">{previewFooterText(draft, selectedPanelId)}</span>
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -681,13 +702,13 @@ export function PanelImageSettings({ botId, canManage, componentsV2Only = false,
         <div className="flex flex-wrap items-center gap-3 border-t border-zinc-900 pt-4">
           <Button disabled={disabled} onClick={() => void save()} type="button">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar imagem
+            {selectedFooterImagePanel ? "Salvar rodapé" : "Salvar imagem"}
           </Button>
           <Button disabled={disabled || (!draft.imageEnabled && !draft.imageUrl)} onClick={removeImage} type="button" variant="outline">
             <Trash2 className="h-4 w-4" />
-            Remover imagem
+            {selectedFooterImagePanel ? "Remover imagem do rodapé" : "Remover imagem"}
           </Button>
-          <Button disabled={disabled} onClick={() => { setDraft(defaultSettings(guildId ?? "", botId ?? "", selectedPanelId)); setStatus("Padrão restaurado. Clique em salvar para confirmar."); }} type="button" variant="ghost">Restaurar padrão</Button>
+          <Button disabled={disabled} onClick={() => { setDraft(defaultSettings(guildId ?? "", botId ?? "", selectedPanelId)); setStatus("Padrão restaurado. Clique em salvar para confirmar."); }} type="button" variant="ghost">{selectedFooterImagePanel ? "Restaurar rodapé padrão" : "Restaurar padrão"}</Button>
           {draft.imageUrl && isVideoMedia(draft.imageUrl, draft.imageMimeType) ? (
             <Button disabled={diagnosing} onClick={() => void diagnoseVideo()} type="button" variant="outline">
               {diagnosing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileVideo className="h-4 w-4" />}
@@ -1042,7 +1063,11 @@ function classifyBanner(settings: PanelImageSettingsDto) {
   return { height, kind, mode, ratio, width };
 }
 
-function previewFooterText(settings: PanelImageSettingsDto) {
+function previewFooterText(settings: PanelImageSettingsDto, panelId: string) {
+  if (isFooterImagePanel(panelId)) {
+    return settings.footerText?.trim() || DEFAULT_FOOTER_TEXT;
+  }
+
   const now = new Date();
   const date = now.toLocaleDateString("pt-BR");
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -1294,6 +1319,7 @@ function defaultSettings(guildId: string, botId: string, panelId: string): Panel
     botId,
     customHeight: null,
     customWidth: null,
+    footerText: panelId === "global-footer" ? DEFAULT_FOOTER_TEXT : null,
     guildId,
     bannerMode: "auto",
     imageEnabled: false,
@@ -1321,7 +1347,7 @@ function defaultSettings(guildId: string, botId: string, panelId: string): Panel
     mediaVolume: 0,
     panelId,
     updatedAt: null,
-    useGlobalDefault: panelId !== "global-default"
+    useGlobalDefault: panelId !== "global-default" && !isFooterImagePanel(panelId)
   };
 }
 
@@ -1350,6 +1376,7 @@ function buildPayload(settings: PanelImageSettingsDto, layoutMode: PanelImageLay
   return {
     customHeight: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : settings.imageSize === "custom" ? settings.customHeight : null,
     customWidth: footerImagePanel ? FOOTER_IMAGE_SIZE_PX : settings.imageSize === "custom" ? settings.customWidth : null,
+    footerText: footerImagePanel ? settings.footerText?.trim() || DEFAULT_FOOTER_TEXT : settings.footerText,
     bannerMode: settings.bannerMode ?? "auto",
     blocks: footerImagePanel || componentsV2Only ? [] : settings.blocks ?? [],
     imageEnabled,
@@ -1375,12 +1402,26 @@ function isFooterImagePanel(panelId: string) {
 }
 
 async function preparePanelUploadFile(file: File, panelId: string, onStatus: (message: string) => void) {
-  if (!isFooterImagePanel(panelId) || !file.type.startsWith("image/") || typeof document === "undefined") {
+  if (!isFooterImagePanel(panelId)) {
+    return file;
+  }
+
+  if (!isFooterImageFile(file)) {
+    throw new Error("O rodapé aceita apenas PNG, JPG, JPEG, WEBP ou GIF.");
+  }
+
+  if (typeof document === "undefined") {
     return file;
   }
 
   onStatus(`Redimensionando imagem do rodapé para ${FOOTER_IMAGE_SIZE_PX}x${FOOTER_IMAGE_SIZE_PX}px...`);
   return resizeImageFileToFooterIcon(file);
+}
+
+function isFooterImageFile(file: File) {
+  const mime = file.type.toLowerCase();
+  if (/^image\/(gif|jpe?g|png|webp)$/i.test(mime)) return true;
+  return /\.(gif|jpe?g|png|webp)$/i.test(file.name);
 }
 
 async function resizeImageFileToFooterIcon(file: File) {

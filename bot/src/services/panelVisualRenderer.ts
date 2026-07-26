@@ -1,5 +1,6 @@
 import { MessageFlags } from "discord.js";
 import { env } from "../config/env";
+import { getRuntimeFooter } from "./footerRuntimeService";
 
 export type PanelVisualPosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 const MAX_V2_COMPONENTS = 40;
@@ -30,6 +31,8 @@ export type ComponentsV2FooterConfig = {
   iconURL?: string | null;
   iconUrl?: string | null;
   image?: string | null;
+  imageExtension?: string | null;
+  imageMimeType?: string | null;
   text?: string | null;
 } | string | null | undefined;
 
@@ -107,7 +110,7 @@ export function renderComponentsV2Panel(input: {
   if (!blockComponents.length && (media || extraMedia.length) && ["before_buttons", "above_buttons"].includes(effectivePosition)) pushMedia();
   if (!blockComponents.length && (media || extraMedia.length) && effectivePosition === "bottom") pushMedia();
 
-  const footer = mergeFooter(input.footer, footerImage);
+  const footer = mergeFooter(input.footer === undefined ? getRuntimeFooter(input.guild) : input.footer, footerImage);
   appendFooterComponents(components, footer);
   components.push(...actions);
   return {
@@ -123,6 +126,7 @@ export function componentsV2Payload(input: {
   components: unknown[];
   ephemeral?: boolean;
   footer?: ComponentsV2FooterConfig;
+  guild?: unknown;
 }) {
   return {
     ...(input.allowedMentions === undefined ? { allowedMentions: { parse: [] as never[] } } : { allowedMentions: input.allowedMentions }),
@@ -131,9 +135,9 @@ export function componentsV2Payload(input: {
   };
 }
 
-export function buildV2Container(input: { accentColor?: number; components: unknown[]; footer?: ComponentsV2FooterConfig }) {
+export function buildV2Container(input: { accentColor?: number; components: unknown[]; footer?: ComponentsV2FooterConfig; guild?: unknown }) {
   const components = [...input.components];
-  if (input.footer !== null) appendFooterComponents(components, input.footer ?? DEFAULT_PANEL_FOOTER);
+  if (input.footer !== null) appendFooterComponents(components, input.footer ?? getRuntimeFooter(input.guild) ?? DEFAULT_PANEL_FOOTER);
   return {
     type: 17,
     ...(typeof input.accentColor === "number" ? { accent_color: input.accentColor } : {}),
@@ -141,11 +145,11 @@ export function buildV2Container(input: { accentColor?: number; components: unkn
   };
 }
 
-export function renderPanelFromBlocks(input: { accentColor: number; blocks: PanelBlock[]; footer?: ComponentsV2FooterConfig }) {
+export function renderPanelFromBlocks(input: { accentColor: number; blocks: PanelBlock[]; footer?: ComponentsV2FooterConfig; guild?: unknown }) {
   const rendered = renderPanelBlocks(input.blocks);
   const actions = rendered.filter(isActionRowComponent);
   const components = rendered.filter((component) => !isActionRowComponent(component));
-  appendFooterComponents(components, input.footer ?? DEFAULT_PANEL_FOOTER);
+  appendFooterComponents(components, input.footer ?? getRuntimeFooter(input.guild) ?? DEFAULT_PANEL_FOOTER);
   components.push(...actions);
   return {
     allowedMentions: { parse: [] as never[] },
@@ -169,7 +173,7 @@ export function createV2Footer(footer: ComponentsV2FooterConfig) {
   if (normalized.enabled === false) return null;
   const text = normalized.text ?? "";
   const rawImage = normalized.image ?? normalized.iconURL ?? normalized.iconUrl ?? null;
-  const image = resolvePanelImageUrl(rawImage);
+  const image = resolvePanelImageUrl(rawImage, normalized);
   const content = `-# ${text}`.slice(0, 4000) || "-# ";
   if (!image) return { type: 10, content };
   return {

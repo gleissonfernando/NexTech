@@ -3274,7 +3274,7 @@ export class ApiClient {
   }
 
   async getPanelVisualSettings(guildId: string, panelId: string) {
-    const { data } = await this.http.get<{ settings: { blocks?: import("./panelVisualRenderer").PanelBlock[]; imageEnabled: boolean; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault: boolean } }>(`/panel-images/bot/${guildId}/${encodeURIComponent(panelId)}`);
+    const { data } = await this.http.get<{ settings: { blocks?: import("./panelVisualRenderer").PanelBlock[]; footerText?: string | null; imageEnabled: boolean; imageExtension?: string | null; imageMimeType?: string | null; imagePosition: import("./panelVisualRenderer").PanelVisualPosition; imageUrl: string; useGlobalDefault: boolean } }>(`/panel-images/bot/${guildId}/${encodeURIComponent(panelId)}`);
     return data.settings;
   }
 

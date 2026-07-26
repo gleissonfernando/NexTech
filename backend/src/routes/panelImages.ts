@@ -31,6 +31,7 @@ const settingsSchema = z.object({
   bannerMode: z.enum(["auto", "large", "compact", "horizontal", "vertical", "square", "ultrawide", "custom"]).optional(),
   customHeight: z.coerce.number().int().min(16).max(2000).nullable().optional(),
   customWidth: z.coerce.number().int().min(16).max(2000).nullable().optional(),
+  footerText: z.string().max(180).nullable().optional(),
   imageEnabled: z.boolean().optional(),
   imagePosition: z.enum(["banner", "thumbnail", "top", "below_title", "middle", "bottom", "side", "footer", "before_buttons", "below_text", "above_buttons", "none"]).optional(),
   imageSize: z.enum(["small", "medium", "large", "full_banner", "custom"]).optional(),

@@ -1453,14 +1453,26 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
 
         {activeView !== "overview" && activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" && isViewAllowed(activeView, enabledModules) ? (
-          <PanelImageSettings
-            botId={activeBotId}
-            canManage={canManageDashboard}
-            guildId={selectedGuild?.id ?? null}
-            panelId={policePanelImageSlotsForView(activeView) ? undefined : activeView === "settings" ? "global-default" : visualPanelIdForView(activeView)}
-            panelLabel={policePanelImageSlotsForView(activeView) ? "Polícia" : activeView === "settings" ? "Padrão visual global" : `Configuração Visual do Painel — ${activeView}`}
-            panelSlots={policePanelImageSlotsForView(activeView) ?? undefined}
-          />
+          <>
+            <PanelImageSettings
+              botId={activeBotId}
+              canManage={canManageDashboard}
+              guildId={selectedGuild?.id ?? null}
+              panelId={policePanelImageSlotsForView(activeView) ? undefined : activeView === "settings" ? "global-default" : visualPanelIdForView(activeView)}
+              panelLabel={policePanelImageSlotsForView(activeView) ? "Polícia" : activeView === "settings" ? "Padrão visual global" : `Configuração Visual do Painel — ${activeView}`}
+              panelSlots={policePanelImageSlotsForView(activeView) ?? undefined}
+            />
+            {activeView === "settings" ? (
+              <PanelImageSettings
+                botId={activeBotId}
+                canManage={canManageDashboard}
+                componentsV2Only
+                guildId={selectedGuild?.id ?? null}
+                panelId="global-footer"
+                panelLabel="Configuração de Rodapé"
+              />
+            ) : null}
+          </>
         ) : null}
 
         {activeView === "overview" ? (

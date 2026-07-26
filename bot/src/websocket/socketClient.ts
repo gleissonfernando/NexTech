@@ -18,6 +18,12 @@ export type CustomPanelUpdateEvent = {
   panelId: string;
 };
 
+export type PanelVisualUpdatedEvent = {
+  botId?: string | null;
+  guildId: string;
+  panelId: string;
+};
+
 export type XMonitorUpdateEvent = {
   action: string;
   botId?: string | null;
@@ -461,6 +467,7 @@ export class BotSocketClient {
   private socket: Socket | null = null;
   private socialPanelUpdateHandler: ((payload: SocialPanelUpdateEvent) => void) | null = null;
   private customPanelUpdateHandler: ((payload: CustomPanelUpdateEvent) => void) | null = null;
+  private panelVisualUpdatedHandler: ((payload: PanelVisualUpdatedEvent) => void) | null = null;
   private xMonitorUpdateHandler: ((payload: XMonitorUpdateEvent) => void) | null = null;
   private xMonitorPostHandler: ((payload: XMonitorPostEvent) => void) | null = null;
   private fivemFacSettingsHandler: ((payload: FivemFacSettingsEvent) => void) | null = null;
@@ -573,6 +580,10 @@ export class BotSocketClient {
 
     if (this.customPanelUpdateHandler) {
       this.socket.on("panels:updated", this.customPanelUpdateHandler);
+    }
+
+    if (this.panelVisualUpdatedHandler) {
+      this.socket.on("panel-visual:updated", this.panelVisualUpdatedHandler);
     }
 
     if (this.xMonitorUpdateHandler) {
@@ -1037,6 +1048,12 @@ export class BotSocketClient {
   onSettingsUpdated(handler: (payload: SettingsUpdatedEvent) => void) {
     this.settingsUpdatedHandlers.add(handler);
     this.socket?.on("settings:updated", handler);
+  }
+
+  onPanelVisualUpdated(handler: (payload: PanelVisualUpdatedEvent) => void) {
+    this.panelVisualUpdatedHandler = handler;
+    this.socket?.off("panel-visual:updated");
+    this.socket?.on("panel-visual:updated", handler);
   }
 
   onLiveDetectionSettingsUpdated(handler: (payload: LiveDetectionSettingsEvent) => void) {
