@@ -139,7 +139,7 @@ const terminalBlocks: TerminalBlock[] = [
   {
     category: "Inicialização",
     lines: [
-      "> Inicializando NexTech Runtime...",
+      "> Inicializando NexTech Core...",
       "> Conectando módulos seguros...",
       "> Carregando componentes V2...",
       "const nexTech = await createAutomation({",
@@ -194,12 +194,6 @@ const terminalBlocks: TerminalBlock[] = [
       "> Nenhum segredo exposto."
     ]
   }
-];
-
-const terminalRuntimeRows = [
-  { label: "Dashboard", value: "operacional", width: "w-[94%]" },
-  { label: "Bot Discord", value: "online", width: "w-[82%]" },
-  { label: "Componentes V2", value: "sincronizado", width: "w-[88%]" }
 ];
 
 const solutionCards = [
@@ -368,8 +362,8 @@ export function Login({
   }
 
   return (
-    <main className="nex-tech-home min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0A0A0A] text-white">
-      <div className="fixed inset-0 -z-10 bg-[#0A0A0A]" />
+    <main className="nex-tech-home min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#050505] text-white">
+      <div className="fixed inset-0 -z-10 bg-[#050505]" />
       <Header entering={verifying} onStart={handleStart} onNavigate={scrollTo} />
 
       <section id="inicio" className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center overflow-hidden px-4 pb-16 pt-32 text-center sm:px-6 lg:px-8">
@@ -416,12 +410,9 @@ export function Login({
         ) : null}
 
         <Reveal delay={0.5} className="mt-12 w-full max-w-5xl">
-          <TerminalMockup metrics={landingMetrics} />
+          <TerminalMockup />
         </Reveal>
 
-        <Reveal delay={0.58} className="mt-8 w-full max-w-4xl">
-          <RuntimeIndicators data={serverData} metrics={landingMetrics} />
-        </Reveal>
       </section>
 
       <ConnectedServersSection state={servers} />
@@ -537,7 +528,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
 
   return (
     <header
-      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition-[background-color,border-color,box-shadow,padding] duration-300 sm:px-6 lg:px-8 ${isScrolled ? "border-transparent bg-transparent py-3" : "border-[#FFD500]/12 bg-[#0A0A0A]/86 py-4"}`}
+      className={`fixed left-0 right-0 top-0 z-50 border-b px-4 transition-[background-color,border-color,box-shadow,padding] duration-300 sm:px-6 lg:px-8 ${isScrolled ? "border-transparent bg-transparent py-3" : "border-[#FFD500]/12 bg-[#050505]/88 py-4"}`}
     >
       <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4">
         <button className="flex items-center gap-2 text-left" onClick={() => onNavigate("inicio")} type="button">
@@ -549,7 +540,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
 
         <nav className={`hidden items-center gap-1 border p-1 transition-[transform,border-radius,background-color,box-shadow,backdrop-filter] duration-300 md:flex ${
           isScrolled
-            ? "fixed left-1/2 top-3 -translate-x-1/2 rounded-full border-[#FFD500]/22 bg-[#0A0A0A]/72 shadow-[0_14px_38px_rgba(0,0,0,0.44)] backdrop-blur-xl"
+            ? "fixed left-1/2 top-3 -translate-x-1/2 rounded-full border-[#FFD500]/22 bg-[#050505]/78 shadow-[0_14px_38px_rgba(0,0,0,0.44)] backdrop-blur-xl"
             : "rounded-full border-[#FFD500]/15 bg-black/35"
         }`}>
           {nav.map(([label, id]) => (
@@ -574,7 +565,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
         </button>
       </div>
       {menuOpen ? (
-        <div className="mx-auto mt-3 grid max-w-7xl gap-2 rounded-lg border border-[#FFD500]/20 bg-[#0A0A0A]/98 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.42)] md:hidden">
+        <div className="mx-auto mt-3 grid max-w-7xl gap-2 rounded-lg border border-[#FFD500]/20 bg-[#050505]/98 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.42)] md:hidden">
           {nav.map(([label, id]) => (
             <button className="rounded-lg px-3 py-3 text-left text-sm font-semibold text-zinc-200 transition hover:bg-[#FFD500]/10 hover:text-[#FFEA70]" key={`mobile-${id}`} onClick={() => { setMenuOpen(false); onNavigate(id); }} type="button">
               {label}
@@ -590,7 +581,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
   );
 }
 
-function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
+function TerminalMockup() {
   const reducedMotion = usePrefersReducedMotion();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(true);
@@ -603,12 +594,6 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
     const current = block.lines[lineIndex] ?? "";
     return current ? [...completed, current.slice(0, charIndex)] : completed;
   }, [block.lines, charIndex, lineIndex]);
-  const terminalMetrics = [
-    { label: "Gateway", value: formatMilliseconds(metrics.responseTimeMs, "ao vivo"), tone: "text-[#3DDC84]" },
-    { label: "Uptime", value: formatPercent(metrics.uptimePercent, "ao vivo"), tone: "text-[#FFEA70]" },
-    { label: "Runtime", value: "seguro", tone: "text-white" }
-  ];
-
   useEffect(() => {
     const element = containerRef.current;
     if (!element || typeof IntersectionObserver === "undefined") return;
@@ -667,13 +652,13 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
 
   return (
     <div
-      className="landing-terminal relative overflow-hidden rounded-lg border border-[#FFD500]/22 bg-[#080808] text-left shadow-[0_18px_54px_rgba(0,0,0,0.46)]"
+      className="landing-terminal relative overflow-hidden rounded-lg border border-[#FFD500]/28 bg-[#050505] text-left shadow-[0_18px_54px_rgba(0,0,0,0.58)]"
       onMouseLeave={handleMouseLeave}
       onMouseMove={handleMouseMove}
       ref={containerRef}
       style={{ "--terminal-offset": "0px", "--terminal-rotation": "0deg" } as CSSProperties}
     >
-      <div className="relative flex items-center gap-3 border-b border-[#FFD500]/15 bg-[#111111]/95 px-4 py-3">
+      <div className="relative flex items-center gap-3 border-b border-[#FFD500]/18 bg-[#080808] px-4 py-3">
         <div className="flex shrink-0 items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#FFD900]" />
           <span className="h-3 w-3 rounded-full bg-[#4B4B4B]" />
@@ -681,11 +666,11 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
         </div>
         <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-zinc-400">
           <Terminal className="h-4 w-4 text-[#FFD500]" />
-          <span className="truncate">nextech-runtime ~ visual-safe-demo</span>
+          <span className="truncate">nextech-terminal ~ visual-demo</span>
         </div>
       </div>
 
-      <div className="landing-terminal__content relative grid gap-0 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <div className="landing-terminal__content relative">
         <div aria-label="Simulação visual segura do terminal NexTech" aria-live="off" className="min-h-[24rem] max-h-[30rem] overflow-hidden p-5 font-mono text-sm leading-7">
           <div className="mb-5 flex flex-wrap gap-2 font-sans text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-400">
             <span className="rounded-md border border-[#FFD500]/20 bg-[#FFD500]/10 px-2.5 py-1 text-[#FFEA70]">{block.category}</span>
@@ -698,76 +683,22 @@ function TerminalMockup({ metrics }: { metrics: LandingMetrics }) {
             ))}
             {!reducedMotion ? <span className="terminal-caret ml-1 inline-block h-4 w-2 bg-[#FFD500]" /> : null}
           </div>
-          <div className="mt-5 grid gap-2 font-sans text-xs text-zinc-400 sm:grid-cols-3">
-            {terminalMetrics.map((metric) => (
-              <div className="rounded-md border border-zinc-900 bg-black/35 px-3 py-2" key={metric.label}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-zinc-500">{metric.label}</p>
-                <p className={`mt-1 text-base font-black ${metric.tone}`}>{metric.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="border-t border-[#FFD500]/15 bg-black/25 p-5 lg:border-l lg:border-t-0">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#FFD500]">Runtime</p>
-            <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[11px] font-bold text-emerald-300">live</span>
-          </div>
-          <div className="mt-5 space-y-4">
-            {terminalRuntimeRows.map((row) => (
-              <div key={row.label}>
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                  <span className="font-semibold text-white">{row.label}</span>
-                  <span className="text-zinc-500">{row.value}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
-                  <span className={`block h-full rounded-full bg-[#3DDC84] ${row.width}`} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-md border border-[#FFD500]/15 bg-[#FFD500]/5 p-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-white">
-              <Check className="h-4 w-4 text-[#3DDC84]" />
-              Código apenas visual
-            </div>
-            <p className="mt-2 text-xs leading-5 text-zinc-400">A animação não executa comandos, não consulta dados privados e não expõe credenciais.</p>
-          </div>
         </div>
       </div>
 
-      <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-[#FFD500]/15 bg-[#0d0d0d]/90 px-4 py-3 text-xs text-zinc-400">
+      <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-[#FFD500]/15 bg-[#080808] px-4 py-3 text-xs text-zinc-500">
         <span>request_id: nextech-visual-demo</span>
-        <span className="flex items-center gap-2 text-[#3DDC84]">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#3DDC84]" />
-          Simulação segura
+        <span className="flex items-center gap-2 text-[#FFEA70]">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#FFD500]" />
+          Terminal visual
         </span>
       </div>
     </div>
   );
 }
 
-function RuntimeIndicators({ data, metrics }: { data: PublicConnectedServersResponse; metrics: LandingMetrics }) {
-  const items = [
-    { label: "Servidores únicos", value: data.totalUniqueServers ? data.totalUniqueServers.toLocaleString("pt-BR") : "ao vivo" },
-    { label: "Bots conectados", value: data.totalBots ? data.totalBots.toLocaleString("pt-BR") : "ao vivo" },
-    { label: "Resposta média", value: formatMilliseconds(metrics.responseTimeMs, "ao vivo") }
-  ];
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {items.map((item) => (
-        <div className="rounded-lg border border-[#FFD500]/15 bg-[#141414]/86 px-4 py-3" key={item.label}>
-          <p className="text-xs font-bold uppercase text-zinc-500">{item.label}</p>
-          <p className="mt-1 text-xl font-black text-white">{item.value}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function TerminalResponseItem({ text }: { text: string }) {
-  const lineClass = text.startsWith(">") ? "text-[#3DDC84]" : text.includes('"') || text.includes(":") ? "text-zinc-300" : "text-zinc-400";
+  const lineClass = text.startsWith(">") ? "text-[#FFEA70]" : text.includes('"') || text.includes(":") ? "text-zinc-200" : "text-zinc-400";
   return (
     <p className={`min-h-7 whitespace-pre-wrap break-words ${lineClass}`}>
       <TerminalHighlightedLine text={text} />
@@ -849,7 +780,7 @@ function ServerCard({ server }: { server: PublicConnectedServer }) {
         <p className="mt-1 text-xs font-medium text-zinc-400">{server.memberCount.toLocaleString("pt-BR")} membros</p>
         <p className="mt-1 text-xs font-semibold text-[#FFEA70]">{server.connectedBots} {server.connectedBots === 1 ? "bot conectado" : "bots conectados"}</p>
       </div>
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${server.online ? "bg-emerald-400" : "bg-zinc-600"}`} title={server.online ? "Online" : "Offline"} />
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${server.online ? "bg-[#FFD500]" : "bg-zinc-600"}`} title={server.online ? "Online" : "Offline"} />
     </div>
   );
 }
