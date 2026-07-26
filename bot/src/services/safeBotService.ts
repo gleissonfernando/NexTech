@@ -163,6 +163,11 @@ async function reconcileSafeBotSetup(guild: Guild, context: BotContext, knownSet
     roleId: role.id,
     roleName: role.name
   }).catch((error) => {
+    if (isSafeBotRoleHierarchyError(error)) {
+      console.info(`[safe-bot] setup pendente no servidor ${guild.id}: ${errorMessage(error)}`);
+      return settings ?? null;
+    }
+
     console.warn(`[safe-bot] não foi possível sincronizar setup no servidor ${guild.id}:`, errorMessage(error));
     return settings ?? null;
   });
@@ -1670,6 +1675,27 @@ function truncate(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
+function readRequestErrorMessage(error: unknown) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return null;
+  }
+
+  const response = (error as { response?: { data?: { message?: unknown } } }).response;
+  return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+function isSafeBotRoleHierarchyError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return false;
+  }
+
+  const response = (error as { response?: { status?: unknown } }).response;
+  const status = typeof response?.status === "number" ? response.status : null;
+  const message = readRequestErrorMessage(error) ?? "";
+
+  return status === 400 && /cargo self bot/i.test(message) && /gerenciar cargos/i.test(message);
+}
+
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return readRequestErrorMessage(error) ?? (error instanceof Error ? error.message : String(error));
 }
