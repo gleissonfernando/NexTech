@@ -179,6 +179,9 @@ export type GuildSettings = {
   ticketPanelChannelId: string | null;
   ticketPanelMessageId: string | null;
   ticketPanelImage: PanelImageSettings | null;
+  ticketPanelLogoImage: PanelImageSettings | null;
+  ticketPanelBannerImage: PanelImageSettings | null;
+  ticketPanelSecondaryBannerImage: PanelImageSettings | null;
   ticketPanelTitle: string | null;
   ticketPanelDescription: string | null;
   ticketPanelInfoText: string | null;

@@ -385,14 +385,26 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     settings.ticketPanelInfoText,
     settings.ticketPanelFooterText ? `-# ${settings.ticketPanelFooterText}` : null
   ].filter((block): block is string => Boolean(block?.trim()));
-  const imageUrl = resolveImageUrl(settings.ticketPanelImage);
+  const logoImage = resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail");
+  const primaryBanner = resolveTicketPanelMedia(settings.ticketPanelBannerImage ?? settings.ticketPanelImage, "below_title");
+  const secondaryBanner = resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "bottom");
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(TICKET_PANEL_CUSTOM_ID)
           .setPlaceholder(settings.ticketPanelPlaceholder || "Selecione o tipo de atendimento")
           .addOptions(options.map(toSelectOption))
       );
-  return renderComponentsV2Panel({ accentColor: parseColor(settings.ticketPanelColor), actions: [action], description: contentBlocks[1] ?? "", fields: contentBlocks.slice(2), guild, image: settings.ticketPanelImage && imageUrl ? { ...settings.ticketPanelImage, imageUrl } : null, moduleId: "ticket", title: `${systemEmojiText("interrogacao", guild)} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}` });
+  return renderComponentsV2Panel({
+    accentColor: parseColor(settings.ticketPanelColor),
+    actions: [action],
+    description: contentBlocks[1] ?? "",
+    extraImages: [primaryBanner, secondaryBanner],
+    fields: contentBlocks.slice(2),
+    guild,
+    image: logoImage,
+    moduleId: "ticket",
+    title: `${systemEmojiText("interrogacao", guild)} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}`
+  });
 }
 
 async function publishConfiguredTicketPanelUnlocked(client: Client, context: BotContext, guildId: string) {
@@ -657,6 +669,11 @@ function resolveImageUrl(panelImage: PanelImageSettings | null) {
 
   const backendOrigin = env.BACKEND_API_URL ? new URL(env.BACKEND_API_URL).origin : "";
   return backendOrigin ? `${backendOrigin}${panelImage.imageUrl.startsWith("/") ? panelImage.imageUrl : `/${panelImage.imageUrl}`}` : null;
+}
+
+function resolveTicketPanelMedia(panelImage: PanelImageSettings | null, imagePosition: PanelImageSettings["imagePosition"]) {
+  const imageUrl = resolveImageUrl(panelImage);
+  return panelImage && imageUrl ? { ...panelImage, imagePosition, imageUrl } : null;
 }
 
 function mediaGalleryComponent(imageUrl: string) {

@@ -6737,9 +6737,14 @@ function TicketsView({
       <PanelImageSettings
         botId={botId}
         canManage={canManage}
+        componentsV2Only
         guildId={guild?.id ?? null}
-        panelId="ticket"
         panelLabel="Ticket"
+        panelSlots={[
+          { id: "ticket-logo", label: "Logo superior" },
+          { id: "ticket-banner", label: "Banner principal" },
+          { id: "ticket-banner-secondary", label: "Segundo banner ou vídeo" }
+        ]}
       />
       <TicketPanelConfigurator
         botId={botId}
