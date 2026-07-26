@@ -4926,6 +4926,65 @@ export type MongoPersistentImage = {
   uploadedBy: string | null;
 };
 
+export type MongoCustomPanelCategory = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  order: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  deletedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoCustomPanelComponent = {
+  customId?: string | null;
+  disabled?: boolean;
+  emoji?: string | null;
+  label?: string | null;
+  maxValues?: number | null;
+  minValues?: number | null;
+  options?: Array<{ description?: string | null; emoji?: string | null; label: string; value: string }>;
+  placeholder?: string | null;
+  style?: "primary" | "secondary" | "success" | "danger" | "link";
+  type: "button" | "select" | "modal" | "dropdown" | "url_button" | "link_button";
+  url?: string | null;
+};
+
+export type MongoCustomPanel = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  color: string;
+  thumbnailUrl: string | null;
+  bannerUrl: string | null;
+  footerText: string | null;
+  authorName: string | null;
+  emoji: string | null;
+  panelType: string;
+  channelId: string | null;
+  mentionRoleId: string | null;
+  beforeMessage: string | null;
+  afterMessage: string | null;
+  components: MongoCustomPanelComponent[];
+  messageId: string | null;
+  published: boolean;
+  publishRequestedAt: Date | null;
+  lastPublishedAt: Date | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  deletedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const globalForMongo = globalThis as unknown as {
   mongoClient?: MongoClient;
   mongoIndexes?: Promise<void>;
@@ -5074,6 +5133,8 @@ export async function getMongoCollections() {
     kickApiConfigs: db.collection<MongoKickApiConfig>("kick_api_configs"),
     socialMembers: db.collection<MongoSocialMember>("social_members"),
     socialPanels: db.collection<MongoSocialPanel>("social_panels"),
+    customPanelCategories: db.collection<MongoCustomPanelCategory>("custom_panel_categories"),
+    customPanels: db.collection<MongoCustomPanel>("custom_panels"),
     xAccounts: db.collection<MongoXAccount>("x_accounts"),
     xPostsSent: db.collection<MongoXPostSent>("x_posts_sent"),
     clipsConfig: db.collection<MongoClipsConfig>("clips_config"),
@@ -5419,6 +5480,14 @@ async function createMongoIndexes(db: Db) {
     ),
     db.collection<MongoPersistentImage>("persistent_images").createIndex({ guildId: 1, moduleId: 1, imageType: 1, uploadedAt: -1 }),
     db.collection<MongoPersistentImage>("persistent_images").createIndex({ createdAt: -1 }),
+    db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex(
+      { botId: 1, guildId: 1, slug: 1 },
+      { unique: true, partialFilterExpression: { deletedAt: { $exists: false } } }
+    ),
+    db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex({ botId: 1, guildId: 1, order: 1, updatedAt: -1 }),
+    db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, categoryId: 1, updatedAt: -1 }),
+    db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, published: 1, updatedAt: -1 }),
+    db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, messageId: 1 }),
     ensureSocialNotificationIndexes(db),
     ensureKickApiIndexes(db),
     ensureSocialNetworkIndexes(db),

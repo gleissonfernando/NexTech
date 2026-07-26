@@ -2230,6 +2230,88 @@ export type SocialPanel = {
   lastPublishedAt: string | null;
 };
 
+export type CustomPanelComponent = {
+  customId?: string | null;
+  disabled?: boolean;
+  emoji?: string | null;
+  label?: string | null;
+  maxValues?: number | null;
+  minValues?: number | null;
+  options?: Array<{ description?: string | null; emoji?: string | null; label: string; value: string }>;
+  placeholder?: string | null;
+  style?: "primary" | "secondary" | "success" | "danger" | "link";
+  type: "button" | "select" | "modal" | "dropdown" | "url_button" | "link_button";
+  url?: string | null;
+};
+
+export type CustomPanelCategory = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomPanel = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  color: string;
+  thumbnailUrl: string | null;
+  bannerUrl: string | null;
+  footerText: string | null;
+  authorName: string | null;
+  emoji: string | null;
+  panelType: string;
+  channelId: string | null;
+  mentionRoleId: string | null;
+  beforeMessage: string | null;
+  afterMessage: string | null;
+  components: CustomPanelComponent[];
+  messageId: string | null;
+  published: boolean;
+  publishRequestedAt: string | null;
+  lastPublishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomPanelsDashboard = {
+  categories: CustomPanelCategory[];
+  panels: CustomPanel[];
+};
+
+export type SaveCustomPanelCategoryPayload = {
+  description?: string | null;
+  name: string;
+  order?: number | null;
+};
+
+export type SaveCustomPanelPayload = {
+  afterMessage?: string | null;
+  authorName?: string | null;
+  bannerUrl?: string | null;
+  beforeMessage?: string | null;
+  categoryId: string;
+  channelId?: string | null;
+  color?: string | null;
+  components?: CustomPanelComponent[];
+  description?: string | null;
+  emoji?: string | null;
+  footerText?: string | null;
+  mentionRoleId?: string | null;
+  name: string;
+  panelType?: string | null;
+  thumbnailUrl?: string | null;
+};
+
 export type SocialNetworkResponse = {
   members: SocialMember[];
   panel: SocialPanel | null;

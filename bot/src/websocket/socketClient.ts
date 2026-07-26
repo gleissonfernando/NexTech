@@ -11,6 +11,13 @@ export type SocialPanelUpdateEvent = {
   panelId: string;
 };
 
+export type CustomPanelUpdateEvent = {
+  action: "draft" | "publish" | "remove" | "update";
+  botId?: string | null;
+  guildId: string;
+  panelId: string;
+};
+
 export type XMonitorUpdateEvent = {
   action: string;
   botId?: string | null;
@@ -453,6 +460,7 @@ export type VoiceRecorderStopEvent = {
 export class BotSocketClient {
   private socket: Socket | null = null;
   private socialPanelUpdateHandler: ((payload: SocialPanelUpdateEvent) => void) | null = null;
+  private customPanelUpdateHandler: ((payload: CustomPanelUpdateEvent) => void) | null = null;
   private xMonitorUpdateHandler: ((payload: XMonitorUpdateEvent) => void) | null = null;
   private xMonitorPostHandler: ((payload: XMonitorPostEvent) => void) | null = null;
   private fivemFacSettingsHandler: ((payload: FivemFacSettingsEvent) => void) | null = null;
@@ -561,6 +569,10 @@ export class BotSocketClient {
 
     if (this.socialPanelUpdateHandler) {
       this.socket.on("socials:update", this.socialPanelUpdateHandler);
+    }
+
+    if (this.customPanelUpdateHandler) {
+      this.socket.on("panels:updated", this.customPanelUpdateHandler);
     }
 
     if (this.xMonitorUpdateHandler) {
@@ -761,6 +773,12 @@ export class BotSocketClient {
     this.socialPanelUpdateHandler = handler;
     this.socket?.off("socials:update");
     this.socket?.on("socials:update", handler);
+  }
+
+  onCustomPanelUpdate(handler: (payload: CustomPanelUpdateEvent) => void) {
+    this.customPanelUpdateHandler = handler;
+    this.socket?.off("panels:updated");
+    this.socket?.on("panels:updated", handler);
   }
 
   onXMonitorUpdate(handler: (payload: XMonitorUpdateEvent) => void) {

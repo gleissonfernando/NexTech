@@ -82,6 +82,7 @@ import { TranscriptSettingsCard } from "../components/TranscriptSettingsCard";
 import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
+import { CustomPanelsPanel } from "../components/panels/CustomPanelsPanel";
 import { PanelImageSettings } from "../components/panels/PanelImageSettings";
 import { ManualPaymentsPanel } from "../components/manual-payments/ManualPaymentsPanel";
 import { PaymentGatewayPanel } from "../components/payments/PaymentGatewayPanel";
@@ -400,6 +401,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Cria tabelas de preços com itens, valores, preview e publicação no Discord.",
     icon: TableProperties,
     view: "price-tables"
+  },
+  {
+    id: "panels",
+    title: "Painéis",
+    description: "Cria categorias e painéis customizados com embed, mensagens e Componentes V2.",
+    icon: ImageIcon,
+    view: "panels"
   },
   {
     id: "mission-tools",
@@ -860,6 +868,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "payment-gateway": "payment-gateway",
   "manual-payments": "manual-payments",
   "price-tables": "price-tables",
+  panels: "panels",
   courses: "courses",
   "application-emojis": "emoji-cloner",
   "media-library": "emoji-cloner"
@@ -1445,7 +1454,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           />
         ) : null}
 
-        {activeView !== "overview" && activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" ? (
+        {activeView !== "overview" && activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" && isViewAllowed(activeView, enabledModules) ? (
           <PanelImageSettings
             botId={activeBotId}
             canManage={canManageDashboard}
@@ -1538,6 +1547,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PriceTablesPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "price-tables", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "panels" ? (
+          <CustomPanelsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "panels", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -1816,7 +1832,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             />
           )
         ) : null}
-        {activeView === "police-dm" ? (
+        {activeView === "police-dm" && hasReleasedModule(enabledModules, "police-dm") ? (
           <DmBarPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "police-dm", canManageDashboard)}

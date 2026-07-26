@@ -90,6 +90,9 @@ import type {
   MaintenanceState,
   BotCredential,
   CustomerPlansDashboard,
+  CustomPanel,
+  CustomPanelCategory,
+  CustomPanelsDashboard,
   DevPlansDashboard,
   NexTechSale,
   NexTechSaleStatus,
@@ -114,6 +117,8 @@ import type {
   PublicKickClips,
   RhAdminDashboard,
   SaveClipsConfigPayload,
+  SaveCustomPanelCategoryPayload,
+  SaveCustomPanelPayload,
   SaveCoursePayload,
   SaveCourseExamQuestionPayload,
   SaveCourseExamSettingsPayload,
@@ -2837,6 +2842,83 @@ export async function deletePriceTableApi(botId: string, guildId: string, tableI
     { params: botParams(botId) }
   );
   return data.table;
+}
+
+export async function getCustomPanelsDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<CustomPanelsDashboard>(`/panels/${encodeURIComponent(guildId)}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function createCustomPanelCategoryApi(botId: string, guildId: string, payload: SaveCustomPanelCategoryPayload) {
+  const { data } = await api.post<{ category: CustomPanelCategory }>(
+    `/panels/${encodeURIComponent(guildId)}/categories`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.category;
+}
+
+export async function updateCustomPanelCategoryApi(botId: string, guildId: string, categoryId: string, payload: Partial<SaveCustomPanelCategoryPayload>) {
+  const { data } = await api.patch<{ category: CustomPanelCategory }>(
+    `/panels/${encodeURIComponent(guildId)}/categories/${encodeURIComponent(categoryId)}`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.category;
+}
+
+export async function deleteCustomPanelCategoryApi(botId: string, guildId: string, categoryId: string) {
+  const { data } = await api.delete<{ category: CustomPanelCategory }>(
+    `/panels/${encodeURIComponent(guildId)}/categories/${encodeURIComponent(categoryId)}`,
+    { params: botParams(botId) }
+  );
+  return data.category;
+}
+
+export async function createCustomPanelApi(botId: string, guildId: string, payload: SaveCustomPanelPayload) {
+  const { data } = await api.post<{ panel: CustomPanel }>(
+    `/panels/${encodeURIComponent(guildId)}/panels`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.panel;
+}
+
+export async function updateCustomPanelApi(botId: string, guildId: string, panelId: string, payload: Partial<SaveCustomPanelPayload>) {
+  const { data } = await api.patch<{ panel: CustomPanel }>(
+    `/panels/${encodeURIComponent(guildId)}/panels/${encodeURIComponent(panelId)}`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.panel;
+}
+
+export async function duplicateCustomPanelApi(botId: string, guildId: string, panelId: string) {
+  const { data } = await api.post<{ panel: CustomPanel }>(
+    `/panels/${encodeURIComponent(guildId)}/panels/${encodeURIComponent(panelId)}/duplicate`,
+    undefined,
+    { params: botParams(botId) }
+  );
+  return data.panel;
+}
+
+export async function deleteCustomPanelApi(botId: string, guildId: string, panelId: string) {
+  const { data } = await api.delete<{ panel: CustomPanel }>(
+    `/panels/${encodeURIComponent(guildId)}/panels/${encodeURIComponent(panelId)}`,
+    { params: botParams(botId) }
+  );
+  return data.panel;
+}
+
+export async function publishCustomPanelApi(botId: string, guildId: string, panelId: string) {
+  const { data } = await api.post<{ panel: CustomPanel }>(
+    `/panels/${encodeURIComponent(guildId)}/panels/${encodeURIComponent(panelId)}/publish`,
+    undefined,
+    { params: botParams(botId), timeout: 45000 }
+  );
+  return data.panel;
 }
 
 export async function publishPriceTable(botId: string, guildId: string, tableId: string) {

@@ -128,7 +128,9 @@ async function botIdFor(req: any) {
 async function licensed(botId: string) {
   const permissions = await getBotApiPermissions(botId);
   if (!permissions) throw routeError("Bot não encontrado.", 404);
-  if (!permissions.enabledModules.includes(DM_BAR_MODULE_ID)) throw routeError("Barra DM não liberado.", 403);
+  if (!permissions.enabledModules.includes(DM_BAR_MODULE_ID)) {
+    throw routeError("Acesso não autorizado: Barra de Mensagem não liberada para este bot.", 403);
+  }
 }
 async function authorize(user: any, botId: string, guildId: string, manage: boolean) {
   await licensed(botId);

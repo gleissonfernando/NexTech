@@ -140,6 +140,8 @@ function isBotRuntimePath(path: string) {
     || path.startsWith("/giveaways/bot/")
     || path.startsWith("/api/socials/bot/")
     || path.startsWith("/socials/bot/")
+    || path.startsWith("/api/panels/bot/")
+    || path.startsWith("/panels/bot/")
     || path.startsWith("/api/x-monitor/bot/")
     || path.startsWith("/x-monitor/bot/")
     || path.startsWith("/api/fivem/bot/")

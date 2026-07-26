@@ -18,6 +18,7 @@ import {
   Film,
   Gift,
   Hash,
+  ImageIcon,
   ListTree,
   ListChecks,
   LockKeyhole,
@@ -61,6 +62,7 @@ export type ViewId =
   | "payment-gateway"
   | "manual-payments"
   | "price-tables"
+  | "panels"
   | "courses"
   | "rh-admin"
   | "mission-tools"
@@ -157,6 +159,7 @@ const navItems: NavItem[] = [
   { id: "payment-gateway", label: "Pagamento Automático", icon: CreditCard, moduleId: "payment-gateway" },
   { id: "manual-payments", label: "Pagamento Manual", icon: CreditCard, moduleId: "manual-payments" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },
+  { id: "panels", label: "Painéis", icon: ImageIcon, moduleId: "panels" },
   { id: "courses", label: "Cursos", icon: BookOpen, moduleIds: ["courses", "police-courses"] },
   { id: "rh-admin", label: "RH Administrativo", icon: ShieldCheck, moduleIds: ["rh-admin", "police-hr"] },
   { id: "mission-tools", label: "Mission Tools", icon: ListChecks, moduleId: "mission-tools" },

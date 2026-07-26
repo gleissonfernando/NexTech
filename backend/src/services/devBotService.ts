@@ -47,6 +47,7 @@ export const DEV_MODULES = [
   { id: "nextech-invites", label: "Sistema de Convites NextTech" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "price-tables", label: "Tabela de Precos" },
+  { id: "panels", label: "Sistema de Painéis" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },

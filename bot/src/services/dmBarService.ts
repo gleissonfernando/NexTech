@@ -26,6 +26,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 
 const MODULE_ID = "police-dm";
 const PREFIX = "dm_bar";
+const MODULE_DISABLED_MESSAGE = "Acesso não autorizado: Barra de Mensagem não liberada para este bot.";
 const cache = new Map<string, { config: DmBarConfig; expiresAt: number }>();
 const cooldowns = new Map<string, number>();
 const drafts = new Map<string, { guildId: string; message: string; observation: string; targetId: string; title: string }>();
@@ -40,6 +41,7 @@ export const dmBarCommand: BotCommand = {
 
 export async function openDmBar(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild || !interaction.member) return interaction.reply({ content: "Use este comando dentro de um servidor.", ephemeral: true });
+  if (!isBotModuleEnabled(MODULE_ID)) return interaction.reply({ content: MODULE_DISABLED_MESSAGE, ephemeral: true });
   const config = await getConfig(context, interaction.guild.id);
   if (!config.enabled) return interaction.reply({ content: "O sistema de DM está temporariamente desativado.", ephemeral: true });
   if (!canUse(interaction.member as GuildMember, interaction.user.id, config)) {
@@ -60,6 +62,10 @@ export async function handleDmBarInteraction(interaction: Interaction, context: 
   if (!interaction.guild || !interaction.isRepliable() || !("customId" in interaction)) return false;
   const customId = String(interaction.customId);
   if (!customId.startsWith(`${PREFIX}:`)) return false;
+  if (!isBotModuleEnabled(MODULE_ID)) {
+    await interaction.reply({ content: MODULE_DISABLED_MESSAGE, ephemeral: true }).catch(() => undefined);
+    return true;
+  }
   if (interaction.isUserSelectMenu() && customId === `${PREFIX}:target`) return selectTarget(interaction, context);
   if (interaction.isModalSubmit() && customId.startsWith(`${PREFIX}:modal:`)) return submitModal(interaction, context, customId.slice(`${PREFIX}:modal:`.length));
   if (interaction.isButton() && customId.startsWith(`${PREFIX}:send:`)) return sendDraft(interaction, context, customId.slice(`${PREFIX}:send:`.length));

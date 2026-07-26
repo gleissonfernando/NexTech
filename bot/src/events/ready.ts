@@ -55,6 +55,7 @@ import {
 } from "../services/safeBotService";
 import { clearRuntimeModuleAuthorization } from "../services/runtimeModuleGuard";
 import { startSelfBotProtectionService } from "../services/selfBotProtectionService";
+import { startCustomPanelSync } from "../services/customPanelRuntimeService";
 import { startSocialNetworkPanelSync } from "../services/socialNetworkPanelService";
 import { startSocialNotificationMonitor } from "../services/socialNotificationMonitor";
 import { validateSystemEmojisOnStartup } from "../services/systemEmojiService";
@@ -337,6 +338,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   });
   startRuntimeService("kick-integration", isBotModuleEnabled("live") || isBotModuleEnabled("kick-integration"), () => startKickNotificationMonitor(client, context.api));
   startRuntimeService("network", isBotModuleEnabled("network"), () => startSocialNetworkPanelSync(client, context.api, context.socket));
+  startRuntimeService("panels", isBotModuleEnabled("panels"), () => startCustomPanelSync(client, context.api, context.socket));
   startRuntimeService("x-monitor", isBotModuleEnabled("x-monitor"), () => startXMonitor(client, context.api, context.socket));
   startRuntimeService("clips", isBotModuleEnabled("clips") || isBotModuleEnabled("kick-clips"), () => startClipsMonitor(client, context.api));
   startRuntimeService("giveaway", isBotModuleEnabled("giveaway"), () => startGiveawayService(client, context.api, context.socket));
