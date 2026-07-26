@@ -22,7 +22,7 @@ const guildIdSchema = z.string().regex(/^\d{5,32}$/);
 const backupIdSchema = z.string().min(8).max(120);
 const snowflakeSchema = z.string().regex(/^\d{5,32}$/);
 const optionalSnowflakeSchema = z.union([snowflakeSchema, z.literal(""), z.null()]).optional();
-const restorePartSchema = z.enum(["roles", "channels", "permissions", "emojis", "stickers", "settings", "panels"]);
+const restorePartSchema = z.enum(["roles", "channels", "permissions", "messages", "emojis", "stickers", "settings", "panels"]);
 
 const settingsSchema = z.object({
   autoEnabled: z.boolean().optional(),
@@ -35,7 +35,7 @@ const settingsSchema = z.object({
 const restoreSchema = z.object({
   confirmation: z.string().optional(),
   mode: z.enum(["merge", "missing", "replace", "clear"]).default("merge"),
-  parts: z.array(restorePartSchema).max(7).default(["roles", "channels", "permissions", "emojis", "stickers", "settings", "panels"]),
+  parts: z.array(restorePartSchema).max(8).default(["roles", "channels", "permissions", "messages", "emojis", "stickers", "settings", "panels"]),
   targetGuildId: optionalSnowflakeSchema
 });
 

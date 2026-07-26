@@ -1540,6 +1540,7 @@ export type MongoServerBackupSnapshot = {
     categories: number;
     channels: number;
     emojis: number;
+    messages?: number;
     roles: number;
     stickers: number;
   };

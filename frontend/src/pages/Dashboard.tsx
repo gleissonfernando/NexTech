@@ -2301,6 +2301,7 @@ const serverBackupParts: Array<{ id: ServerBackupRestorePart; label: string }> =
   { id: "roles", label: "Cargos" },
   { id: "channels", label: "Canais" },
   { id: "permissions", label: "Permissões" },
+  { id: "messages", label: "Mensagens" },
   { id: "emojis", label: "Emojis" },
   { id: "stickers", label: "Stickers" },
   { id: "settings", label: "Configurações do bot" },
@@ -2565,7 +2566,7 @@ function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; 
                     <Badge variant="muted">{backup.kind === "manual" ? "Manual" : "Automático"}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-zinc-500">{formatDate(backup.createdAt)} - criado por {backup.createdBy ?? "sistema"}</p>
-                  <p className="mt-2 text-sm text-zinc-300">{backup.counts.roles} cargos, {backup.counts.categories} categorias, {backup.counts.channels} canais, {backup.counts.emojis} emojis, {backup.counts.stickers} stickers</p>
+                  <p className="mt-2 text-sm text-zinc-300">{backup.counts.roles} cargos, {backup.counts.categories} categorias, {backup.counts.channels} canais, {backup.counts.messages ?? 0} mensagens, {backup.counts.emojis} emojis, {backup.counts.stickers} stickers</p>
                   {backup.statusMessage ? <p className="mt-2 text-xs text-amber-300">{backup.statusMessage}</p> : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -2590,7 +2591,7 @@ function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; 
               <select className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-[#FFD500]/60" disabled={!canManage} onChange={(event) => { setSendBackupId(event.target.value); setSendPreview(null); setSendConfirmation(""); }} value={sendBackupId}>
                 <option value="">Selecione um backup</option>
                 {(dashboard?.backups ?? []).map((backup) => (
-                  <option key={backup.id} value={backup.id}>{backup.guildName} - {formatDate(backup.createdAt)} - {backup.counts.roles} cargos / {backup.counts.channels} canais</option>
+                  <option key={backup.id} value={backup.id}>{backup.guildName} - {formatDate(backup.createdAt)} - {backup.counts.roles} cargos / {backup.counts.channels} canais / {backup.counts.messages ?? 0} mensagens</option>
                 ))}
               </select>
             </label>
@@ -2623,7 +2624,7 @@ function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; 
           {sendPreview ? (
             <div className="rounded-lg border border-zinc-800 bg-black/40 p-4 text-sm text-zinc-300">
               <p className="font-semibold text-white">Origem {sendPreview.sourceGuildId} para destino {sendPreview.targetGuildId}</p>
-              <p className="mt-2">Serão restaurados: {sendPreview.summary.roles} cargos, {sendPreview.summary.categories} categorias, {sendPreview.summary.channels} canais, {sendPreview.summary.emojis} emojis, {sendPreview.summary.stickers} stickers e {sendPreview.summary.settings} configurações.</p>
+              <p className="mt-2">Serão restaurados: {sendPreview.summary.roles} cargos, {sendPreview.summary.categories} categorias, {sendPreview.summary.channels} canais, {sendPreview.summary.messages} mensagens, {sendPreview.summary.emojis} emojis, {sendPreview.summary.stickers} stickers e {sendPreview.summary.settings} configurações.</p>
               {sendPreview.missingPermissions.length ? <p className="mt-2 text-red-300">Permissões faltando: {sendPreview.missingPermissions.join(", ")}</p> : <p className="mt-2 text-emerald-300">Destino validado para restauração.</p>}
               {sendPreview.warnings.map((warning) => <p className="mt-1 text-amber-300" key={warning}>{warning}</p>)}
             </div>
@@ -2663,7 +2664,7 @@ function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; 
             <Button disabled={workingBackupId === selectedBackup.id || !selectedParts.length} onClick={() => void previewRestore(selectedBackup)} variant="secondary">{workingBackupId === selectedBackup.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Atualizar previa</Button>
             {preview ? (
               <div className="rounded-lg border border-zinc-800 bg-black/40 p-4 text-sm text-zinc-300">
-                <p className="font-semibold text-white">Previa: {preview.summary.roles} cargos, {preview.summary.categories} categorias, {preview.summary.channels} canais, {preview.summary.emojis} emojis, {preview.summary.stickers} stickers e {preview.summary.settings} configurações.</p>
+                <p className="font-semibold text-white">Previa: {preview.summary.roles} cargos, {preview.summary.categories} categorias, {preview.summary.channels} canais, {preview.summary.messages} mensagens, {preview.summary.emojis} emojis, {preview.summary.stickers} stickers e {preview.summary.settings} configurações.</p>
                 {preview.missingPermissions.length ? <p className="mt-2 text-red-300">Permissões faltando: {preview.missingPermissions.join(", ")}</p> : <p className="mt-2 text-emerald-300">Permissões principais validadas.</p>}
                 {preview.warnings.map((warning) => <p className="mt-1 text-amber-300" key={warning}>{warning}</p>)}
               </div>
@@ -2690,7 +2691,7 @@ function ServerBackupPanel({ botId, canManage, guild }: { botId: string | null; 
                 </div>
                 {result?.summary ? (
                   <p className="mt-2 text-zinc-300">
-                    Restaurados: {result.summary.roles} cargos, {result.summary.categories} categorias, {result.summary.channels} canais, {result.summary.permissions} permissões, {result.summary.emojis ?? 0} emojis, {result.summary.stickers ?? 0} stickers, {result.summary.settings} configurações. Reutilizados: {result.summary.reused ?? 0}. Falhas: {result.summary.failed}.
+                    Restaurados: {result.summary.roles} cargos, {result.summary.categories} categorias, {result.summary.channels} canais, {result.summary.permissions} permissões, {result.summary.messages ?? 0} mensagens, {result.summary.emojis ?? 0} emojis, {result.summary.stickers ?? 0} stickers, {result.summary.settings} configurações. Reutilizados: {result.summary.reused ?? 0}. Falhas: {result.summary.failed}.
                   </p>
                 ) : null}
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800" aria-label={`Progresso ${job.progress ?? result?.progressPercent ?? 0}%`}>

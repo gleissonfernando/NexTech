@@ -8,11 +8,13 @@ import { enqueueBackgroundJob, type BackgroundJobContext } from "./backgroundJob
 
 const DISCORD_API = "https://discord.com/api/v10";
 const MODULE_ID = "server-backup";
-const RESTORE_PARTS = ["roles", "channels", "permissions", "emojis", "stickers", "settings", "panels"] as const;
+const RESTORE_PARTS = ["roles", "channels", "permissions", "messages", "emojis", "stickers", "settings", "panels"] as const;
 const RESTORE_MODES = ["merge", "missing", "replace", "clear"] as const;
 const SNAPSHOT_VERSION = 2;
 const MAX_EMBEDDED_ASSET_BYTES = 7 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES = 1024 * 1024;
+const MESSAGE_CLONE_LIMIT_PER_CHANNEL = Math.max(1, Math.min(100, Number(process.env.SERVER_BACKUP_MESSAGE_LIMIT_PER_CHANNEL ?? 50)));
+const MESSAGE_REPLAY_DELAY_MS = 1250;
 const SERVICE_STARTED_AT = new Date();
 const AUTO_BACKUP_TICK_MS = 5 * 60_000;
 let schedulerStarted = false;
@@ -61,7 +63,7 @@ type RestoreResult = {
   };
   progressPercent: number;
   progress: Array<{ at: string; message: string; status: "running" | "completed" | "warning" | "failed"; step: string }>;
-  summary: { roles: number; categories: number; channels: number; permissions: number; emojis: number; stickers: number; settings: number; reused: number; failed: number };
+  summary: { roles: number; categories: number; channels: number; permissions: number; messages: number; emojis: number; stickers: number; settings: number; reused: number; failed: number };
 };
 
 export type RestorePreview = {
@@ -74,6 +76,7 @@ export type RestorePreview = {
   summary: {
     categories: number;
     channels: number;
+    messages: number;
     emojis: number;
     roles: number;
     settings: number;
@@ -255,7 +258,7 @@ export async function processQueuedServerBackupCapture(payload: Record<string, u
       guildId: pending.guildId,
       userId: pending.createdBy,
       type: status === "completed" ? "server-backup.created" : "server-backup.created_partial",
-      message: `Backup ${status === "completed" ? "criado" : "criado com avisos"}: ${counts.roles} cargos, ${counts.channels} canais, ${counts.emojis} emojis e ${counts.stickers} stickers.`,
+      message: `Backup ${status === "completed" ? "criado" : "criado com avisos"}: ${counts.roles} cargos, ${counts.channels} canais, ${counts.messages} mensagens, ${counts.emojis} emojis e ${counts.stickers} stickers.`,
       metadata: { attempt: context.attempt, backupId: snapshotId, checksum, counts, snapshotVersion: SNAPSHOT_VERSION, warnings: assetWarnings }
     }).catch(() => null);
   } catch (error) {
@@ -349,6 +352,7 @@ export async function previewServerBackupRestore(input: { botId: string; botToke
   const roles = Array.isArray(snapshot.roles) ? snapshot.roles.filter((role: any) => role.name !== "@everyone") : [];
   const channels = Array.isArray(snapshot.channels) ? snapshot.channels : [];
   const emojis = Array.isArray(snapshot.emojis) ? snapshot.emojis : [];
+  const messages = countSnapshotMessages(snapshot.messages);
   const preview: RestorePreview = {
     backupId: input.backupId,
     canRestore: validation.missingPermissions.length === 0,
@@ -360,6 +364,7 @@ export async function previewServerBackupRestore(input: { botId: string; botToke
       categories: channels.filter((channel: any) => channel.type === 4).length,
       channels: channels.filter((channel: any) => channel.type !== 4).length,
       emojis: emojis.length,
+      messages,
       roles: roles.length,
       settings: Object.keys(snapshot.internalSettings ?? {}).length,
       stickers: Array.isArray(snapshot.stickers) ? snapshot.stickers.length : 0
@@ -486,7 +491,7 @@ function failedRestoreResult(error: unknown): RestoreResult {
     idMap: { categories: {}, channels: {}, emojis: {}, roles: {}, stickers: {} },
     progress: [{ at: new Date().toISOString(), message, status: "failed", step: "fatal" }],
     progressPercent: 100,
-    summary: { roles: 0, categories: 0, channels: 0, permissions: 0, emojis: 0, stickers: 0, settings: 0, reused: 0, failed: 1 }
+    summary: { roles: 0, categories: 0, channels: 0, permissions: 0, messages: 0, emojis: 0, stickers: 0, settings: 0, reused: 0, failed: 1 }
   };
 }
 
@@ -510,6 +515,7 @@ async function captureSnapshot(botToken: string, botId: string, guildId: string)
     const metadata = pick(sticker, ["id", "name", "description", "tags", "type", "format_type", "available", "guild_id"]);
     return attachAssetData(metadata, stickerAssetUrl(sticker), assetBudget, `sticker:${sticker.name ?? sticker.id}`);
   });
+  const capturedMessages = await captureSnapshotMessages(botToken, Array.isArray(channels) ? channels : []);
   if (typeof guild.icon === "string" && guild.icon) {
     Object.assign(guildData, await captureNamedAsset(guildIconUrl(guildId, guild.icon), assetBudget, "icone do servidor", "iconData"));
   }
@@ -524,12 +530,105 @@ async function captureSnapshot(botToken: string, botId: string, guildId: string)
     guild: guildData,
     roles: Array.isArray(roles) ? roles.map((role) => pick(role, ["id", "name", "color", "colors", "hoist", "icon", "unicode_emoji", "position", "permissions", "managed", "mentionable", "tags"])) : [],
     channels: Array.isArray(channels) ? channels.map((channel) => pick(channel, ["id", "type", "name", "position", "parent_id", "permission_overwrites", "topic", "nsfw", "rate_limit_per_user", "bitrate", "user_limit", "rtc_region", "video_quality_mode", "default_auto_archive_duration", "available_tags", "default_reaction_emoji", "default_thread_rate_limit_per_user", "default_sort_order", "default_forum_layout", "flags"])) : [],
+    messages: capturedMessages,
     emojis: capturedEmojis,
     stickers: capturedStickers,
     webhooks: Array.isArray(webhooks) ? webhooks.map((webhook) => pick(webhook, ["id", "type", "name", "channel_id", "avatar", "application_id"])) : [],
     internalSettings: moduleConfig?.modules ?? {},
     assetWarnings: assetBudget.warnings
   };
+}
+
+async function captureSnapshotMessages(botToken: string, channels: any[]) {
+  const textChannels = channels.filter((channel) => isMessageCloneableChannel(channel));
+  return mapInBatches(textChannels, 2, async (channel) => {
+    try {
+      const messages = await discordGet(botToken, `/channels/${channel.id}/messages?limit=${MESSAGE_CLONE_LIMIT_PER_CHANNEL}`).catch(() => []);
+      return {
+        channelId: channel.id,
+        channelName: channel.name,
+        messages: Array.isArray(messages)
+          ? messages
+            .filter((message) => isReplayableMessage(message))
+            .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+            .map(snapshotMessage)
+          : [],
+        status: "completed"
+      };
+    } catch (error) {
+      return {
+        channelId: channel.id,
+        channelName: channel.name,
+        error: errorMessage(error),
+        messages: [],
+        status: "failed"
+      };
+    }
+  });
+}
+
+function isMessageCloneableChannel(channel: any) {
+  return [0, 5].includes(Number(channel?.type)) && typeof channel?.id === "string";
+}
+
+function isReplayableMessage(message: any) {
+  if (!message || typeof message !== "object") return false;
+  if (![0, 19].includes(Number(message.type ?? 0))) return false;
+  return Boolean(readString(message, "content") || (Array.isArray(message.embeds) && message.embeds.length) || (Array.isArray(message.attachments) && message.attachments.length));
+}
+
+function snapshotMessage(message: any) {
+  return {
+    id: readString(message, "id"),
+    author: {
+      avatar: message.author?.avatar ?? null,
+      avatarUrl: message.author?.id && message.author?.avatar ? `https://cdn.discordapp.com/avatars/${message.author.id}/${message.author.avatar}.${String(message.author.avatar).startsWith("a_") ? "gif" : "png"}?size=128` : null,
+      discriminator: message.author?.discriminator ?? null,
+      id: message.author?.id ?? null,
+      username: String(message.author?.global_name || message.author?.username || "Usuário").slice(0, 80)
+    },
+    attachments: Array.isArray(message.attachments) ? message.attachments.map((attachment: any) => ({
+      filename: readString(attachment, "filename"),
+      url: readString(attachment, "url")
+    })).filter((attachment: any) => attachment.url) : [],
+    content: (readString(message, "content") ?? "").slice(0, 1800),
+    createdAt: readString(message, "timestamp"),
+    embeds: sanitizeEmbeds(message.embeds)
+  };
+}
+
+function sanitizeEmbeds(source: unknown) {
+  if (!Array.isArray(source)) return [];
+  return source.slice(0, 10).map((embed) => {
+    if (!embed || typeof embed !== "object") return null;
+    const value = embed as Record<string, any>;
+    const fields = Array.isArray(value.fields)
+      ? value.fields.slice(0, 25).map((field) => ({
+        inline: Boolean(field?.inline),
+        name: String(field?.name ?? "Campo").slice(0, 256),
+        value: String(field?.value ?? "-").slice(0, 1024)
+      }))
+      : undefined;
+    return {
+      author: value.author ? {
+        icon_url: readString(value.author, "icon_url") || undefined,
+        name: readString(value.author, "name") || undefined,
+        url: readString(value.author, "url") || undefined
+      } : undefined,
+      color: Number.isFinite(value.color) ? value.color : undefined,
+      description: readString(value, "description")?.slice(0, 4096) || undefined,
+      fields,
+      footer: value.footer ? {
+        icon_url: readString(value.footer, "icon_url") || undefined,
+        text: readString(value.footer, "text") || undefined
+      } : undefined,
+      image: value.image?.url ? { url: String(value.image.url) } : undefined,
+      thumbnail: value.thumbnail?.url ? { url: String(value.thumbnail.url) } : undefined,
+      timestamp: readString(value, "timestamp") || undefined,
+      title: readString(value, "title")?.slice(0, 256) || undefined,
+      url: readString(value, "url") || undefined
+    };
+  }).filter(Boolean);
 }
 
 async function mapInBatches<T, TResult>(items: T[], batchSize: number, mapper: (item: T) => Promise<TResult>) {
@@ -609,7 +708,7 @@ async function executeRestore(
     idMap: { categories: {}, channels: {}, emojis: {}, roles: {}, stickers: {} },
     progressPercent: 0,
     progress: [],
-    summary: { roles: 0, categories: 0, channels: 0, permissions: 0, emojis: 0, stickers: 0, settings: 0, reused: 0, failed: 0 }
+    summary: { roles: 0, categories: 0, channels: 0, permissions: 0, messages: 0, emojis: 0, stickers: 0, settings: 0, reused: 0, failed: 0 }
   };
   addRestoreProgress(result, "start", "running", "Iniciando restauração.");
   await checkpoint(result, 5, startedAt, onProgress);
@@ -756,12 +855,20 @@ async function executeRestore(
     await checkpoint(result, 72, startedAt, onProgress);
   }
 
+  if (parts.includes("messages")) {
+    addRestoreProgress(result, "messages", "running", "Restaurando mensagens via webhook nos canais mapeados.");
+    await restoreMessages(botToken, snapshot.messages, result);
+    result.completedSteps.push("messages");
+    addRestoreProgress(result, "messages", "completed", `${result.summary.messages} mensagem(ns) restaurada(s).`);
+    await checkpoint(result, 78, startedAt, onProgress);
+  }
+
   if (parts.includes("emojis")) {
     addRestoreProgress(result, "emojis", "running", "Restaurando emojis incorporados ao backup.");
     await restoreEmojis(botToken, guildId, snapshot.emojis, mode, result);
     result.completedSteps.push("emojis");
     addRestoreProgress(result, "emojis", "completed", `${result.summary.emojis} emoji(s) restaurado(s).`);
-    await checkpoint(result, 82, startedAt, onProgress);
+    await checkpoint(result, 84, startedAt, onProgress);
   }
 
   if (parts.includes("stickers")) {
@@ -769,7 +876,7 @@ async function executeRestore(
     await restoreStickers(botToken, guildId, snapshot.stickers, mode, result);
     result.completedSteps.push("stickers");
     addRestoreProgress(result, "stickers", "completed", `${result.summary.stickers} sticker(s) restaurado(s).`);
-    await checkpoint(result, 88, startedAt, onProgress);
+    await checkpoint(result, 90, startedAt, onProgress);
   }
 
   if (parts.includes("settings")) {
@@ -784,7 +891,7 @@ async function executeRestore(
     }
     result.completedSteps.push("settings");
     addRestoreProgress(result, "settings", "completed", `${result.summary.settings} configuração(oes) interna(s) restaurada(s).`);
-    await checkpoint(result, 96, startedAt, onProgress);
+    await checkpoint(result, 97, startedAt, onProgress);
   }
   if (parts.includes("panels")) {
     result.completedSteps.push("panels");
@@ -817,6 +924,7 @@ async function validateRestorePermissions(botToken: string, guildId: string, par
   if (parts.includes("channels") || parts.includes("permissions") || mode === "clear") required.set("Gerenciar Canais", 0x10n);
   if (parts.includes("settings")) required.set("Gerenciar Servidor", 0x20n);
   if (parts.includes("emojis") || parts.includes("stickers")) required.set("Gerenciar Emojis e Stickers", 0x40000000n);
+  if (parts.includes("messages")) required.set("Gerenciar Webhooks", 0x20000000n);
   const administrator = (permissions & 0x8n) === 0x8n;
   const missingPermissions = administrator ? [] : [...required].filter(([, bit]) => (permissions & bit) !== bit).map(([name]) => String(name));
   if ((parts.includes("roles") || parts.includes("permissions") || mode === "clear") && botHighestRolePosition <= 1) {
@@ -986,6 +1094,54 @@ async function restoreStickers(botToken: string, guildId: string, source: unknow
       addRestoreError(result, `sticker:${sticker?.name ?? sticker?.id ?? "desconhecido"}`, errorMessage(error));
     }
   }
+}
+
+async function restoreMessages(botToken: string, source: unknown, result: RestoreResult) {
+  const channelSnapshots = Array.isArray(source) ? source : [];
+  for (const channelSnapshot of channelSnapshots) {
+    const targetChannelId = result.idMap.channels[channelSnapshot?.channelId];
+    const messages = Array.isArray(channelSnapshot?.messages) ? channelSnapshot.messages : [];
+    if (!targetChannelId || !messages.length) continue;
+    let webhook: any = null;
+    try {
+      webhook = await discordPost(botToken, `/channels/${targetChannelId}/webhooks`, {
+        name: "NexTech Clone"
+      });
+      if (!webhook?.id || !webhook?.token) throw new Error("Webhook não retornou token temporário.");
+      for (const message of messages) {
+        try {
+          const payload = replayMessagePayload(message);
+          if (!payload) continue;
+          await discordExecuteWebhook(webhook.id, webhook.token, payload);
+          result.summary.messages += 1;
+          await wait(MESSAGE_REPLAY_DELAY_MS);
+        } catch (error) {
+          addRestoreError(result, `message:${channelSnapshot.channelName ?? channelSnapshot.channelId}:${message?.id ?? "desconhecida"}`, errorMessage(error));
+        }
+      }
+    } catch (error) {
+      addRestoreError(result, `messages:${channelSnapshot?.channelName ?? channelSnapshot?.channelId ?? "canal"}`, errorMessage(error));
+    } finally {
+      if (webhook?.id) {
+        await discordDelete(botToken, `/webhooks/${webhook.id}`).catch(() => null);
+      }
+    }
+  }
+}
+
+function replayMessagePayload(message: any) {
+  const attachments = Array.isArray(message?.attachments) ? message.attachments.filter((attachment: any) => readString(attachment, "url")) : [];
+  const attachmentLinks = attachments.map((attachment: any) => `${readString(attachment, "filename") || "arquivo"}: ${readString(attachment, "url")}`).join("\n");
+  const content = [readString(message, "content"), attachmentLinks].filter(Boolean).join("\n").slice(0, 2000);
+  const embeds = sanitizeEmbeds(message?.embeds);
+  if (!content && !embeds.length) return null;
+  return {
+    allowed_mentions: { parse: [] },
+    avatar_url: readString(message?.author, "avatarUrl") || undefined,
+    content: content || undefined,
+    embeds,
+    username: readString(message?.author, "username") || "Usuário"
+  };
 }
 
 async function restoreGuildSettings(botToken: string, guildId: string, guild: any, idMap: RestoreResult["idMap"]) {
@@ -1167,6 +1323,28 @@ async function discordPostMultipart(token: string, path: string, input: { descri
   return discordRequest(token, "POST", path, form);
 }
 
+async function discordExecuteWebhook(webhookId: string, webhookToken: string, body: Record<string, unknown>, attempt = 0): Promise<any> {
+  try {
+    const response = await axios.request({
+      data: body,
+      method: "POST",
+      timeout: 30_000,
+      url: `${DISCORD_API}/webhooks/${webhookId}/${webhookToken}?wait=true`
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && attempt < 3) {
+      const retryAfterSeconds = Number(error.response?.data?.retry_after);
+      const retryable = error.response?.status === 429 || (error.response?.status ?? 0) >= 500;
+      if (retryable) {
+        await wait(Number.isFinite(retryAfterSeconds) ? Math.ceil(retryAfterSeconds * 1000) : 1000 * (attempt + 1));
+        return discordExecuteWebhook(webhookId, webhookToken, body, attempt + 1);
+      }
+    }
+    throw error;
+  }
+}
+
 async function discordRequest(token: string, method: string, path: string, data?: unknown, attempt = 0): Promise<any> {
   try {
     const response = await axios.request({
@@ -1227,9 +1405,16 @@ function countSnapshot(snapshot: any) {
     categories: channels.filter((channel: any) => channel.type === 4).length,
     channels: channels.filter((channel: any) => channel.type !== 4).length,
     emojis: Array.isArray(snapshot.emojis) ? snapshot.emojis.length : 0,
+    messages: countSnapshotMessages(snapshot.messages),
     roles: Array.isArray(snapshot.roles) ? snapshot.roles.length : 0,
     stickers: Array.isArray(snapshot.stickers) ? snapshot.stickers.length : 0
   };
+}
+
+function countSnapshotMessages(source: unknown) {
+  return Array.isArray(source)
+    ? source.reduce((total, channel) => total + (Array.isArray(channel?.messages) ? channel.messages.length : 0), 0)
+    : 0;
 }
 
 function frequencyMs(frequency: ServerBackupSettingsDto["frequency"]) {

@@ -379,7 +379,7 @@ export type EmojiCloneRemoteEmoji = {
 };
 
 export type ServerBackupFrequency = "6h" | "12h" | "daily" | "weekly" | "monthly";
-export type ServerBackupRestorePart = "roles" | "channels" | "permissions" | "emojis" | "stickers" | "settings" | "panels";
+export type ServerBackupRestorePart = "roles" | "channels" | "permissions" | "messages" | "emojis" | "stickers" | "settings" | "panels";
 export type ServerBackupRestoreMode = "merge" | "missing" | "replace" | "clear";
 
 export type ServerBackupSettings = {
@@ -400,6 +400,7 @@ export type ServerBackupSnapshot = {
     categories: number;
     channels: number;
     emojis: number;
+    messages?: number;
     roles: number;
     stickers: number;
   };
@@ -426,6 +427,7 @@ export type ServerBackupRestorePreview = {
     categories: number;
     channels: number;
     emojis: number;
+    messages: number;
     roles: number;
     settings: number;
     stickers: number;
@@ -455,6 +457,7 @@ export type ServerBackupRestoreResult = {
     channels: number;
     emojis: number;
     failed: number;
+    messages: number;
     permissions: number;
     reused: number;
     roles: number;
