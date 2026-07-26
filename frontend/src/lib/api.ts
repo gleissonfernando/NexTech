@@ -231,18 +231,43 @@ type RetryRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
+type ApiErrorResponse = {
+  code?: unknown;
+  message?: unknown;
+  supportUrl?: unknown;
+};
+
+const AUTH_FAILURE_CODES = new Set(["SESSION_EXPIRED", "SESSION_REVOKED", "SESSION_INVALIDATED", "SESSION_LOGGED_OUT", "SESSION_MISSING"]);
+const DASHBOARD_ACCESS_DENIED_CODES = new Set(["DASHBOARD_ACCESS_DENIED"]);
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config as RetryRequestConfig | undefined;
     const responseStatus = error.response?.status;
-    const responseData = error.response?.data as { message?: unknown; supportUrl?: unknown } | undefined;
+    const responseData = error.response?.data as ApiErrorResponse | undefined;
+    const responseCode = typeof responseData?.code === "string" ? responseData.code : "";
     const responseMessage = typeof responseData?.message === "string" ? responseData.message : "";
+
+    if (responseStatus && responseStatus >= 400) {
+      console.error("[API ERROR]", {
+        code: responseCode || null,
+        method: originalRequest?.method,
+        status: responseStatus,
+        url: originalRequest?.url
+      });
+    }
 
     if (
       responseStatus === 403
       && typeof window !== "undefined"
-      && (typeof responseData?.supportUrl === "string" || responseMessage.includes("Você não possui acesso a esta dashboard"))
+      && (
+        DASHBOARD_ACCESS_DENIED_CODES.has(responseCode)
+        || (
+          !responseCode
+          && (typeof responseData?.supportUrl === "string" || responseMessage.includes("Você não possui acesso a esta dashboard"))
+        )
+      )
     ) {
       window.dispatchEvent(new CustomEvent("dashboard:access-denied", {
         detail: {
@@ -252,6 +277,10 @@ api.interceptors.response.use(
     }
 
     if (!originalRequest || responseStatus !== 401 || originalRequest._retry) {
+      throw error;
+    }
+
+    if (!AUTH_FAILURE_CODES.has(responseCode)) {
       throw error;
     }
 

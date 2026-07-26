@@ -159,7 +159,7 @@ export function useAuth() {
     }
 
     const socket = createDashboardSocket();
-    const onSessionInvalidated = (payload: { all?: unknown; discordIds?: unknown; reason?: unknown; sessionId?: unknown }) => {
+    const onSessionInvalidated = (payload: { all?: unknown; code?: unknown; discordIds?: unknown; reason?: unknown; sessionId?: unknown }) => {
       const discordIds = Array.isArray(payload.discordIds) ? payload.discordIds : [];
       const currentSessionId = auth.user.sessionId ?? null;
       const matchesAll = payload.all === true;
@@ -170,12 +170,24 @@ export function useAuth() {
         return;
       }
 
+      const code = typeof payload.code === "string" ? payload.code : null;
+      const reason = typeof payload.reason === "string" ? payload.reason : null;
+      const authInvalidationCodes = new Set(["SESSION_EXPIRED", "SESSION_REVOKED", "SESSION_INVALIDATED", "SESSION_LOGGED_OUT"]);
+      const legacyAuthReasons = new Set(["logout", "session_expired", "session_revoked", "session_invalidated"]);
+
+      if (
+        (!code || !authInvalidationCodes.has(code))
+        && (!reason || !legacyAuthReasons.has(reason))
+      ) {
+        return;
+      }
+
       clearTabVerification();
       setAuth(null);
       setAccessValidation(null);
       setCheckingAccess(false);
       setStatus("Acesso negado.");
-      setError("Sua sessão expirou porque o bot ou suas permissões foram atualizados. Entre novamente pelo Discord.");
+      setError(sessionInvalidationMessage(code));
     };
 
     socket.on("auth:session_invalidated", onSessionInvalidated);
@@ -198,6 +210,18 @@ export function useAuth() {
     verify,
     verifying
   };
+}
+
+function sessionInvalidationMessage(code: string | null) {
+  if (code === "SESSION_LOGGED_OUT") {
+    return "Sessão encerrada. Entre novamente pelo Discord.";
+  }
+
+  if (code === "SESSION_REVOKED") {
+    return "Sua sessão foi revogada. Entre novamente pelo Discord.";
+  }
+
+  return "Sua sessão expirou. Entre novamente pelo Discord.";
 }
 
 function isProtectedPanelPath(path: string) {

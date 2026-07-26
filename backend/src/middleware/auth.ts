@@ -14,6 +14,15 @@ export const NO_BOT_ACCESS_MESSAGE = "Você não possui nenhum bot cadastrado na
 export const SUPPORT_DISCORD_URL = "https://discord.gg/KAGgfuTcDS";
 const AUTH_MIDDLEWARE_TIMEOUT_MS = 12_000;
 const SESSION_TOUCH_INTERVAL_MS = 15_000;
+const AUTH_SESSION_EXPIRED_MESSAGE = "Sessão expirada. Faça login novamente pelo Discord.";
+
+type AuthFailureCode =
+  | "BOT_TOKEN_INVALID"
+  | "DASHBOARD_ACCESS_DENIED"
+  | "INSUFFICIENT_PERMISSION"
+  | "SESSION_EXPIRED"
+  | "SESSION_MISSING"
+  | "VERIFICATION_REQUIRED";
 
 export function isBotRequest(req: Request) {
   const token = req.header("bot-token") ?? req.header("x-bot-token");
@@ -26,13 +35,15 @@ export async function requireAuthenticated(req: Request, res: Response, next: Ne
     const auth = resolveAuthFromRequest(req, res);
 
     if (!auth) {
-      return res.status(401).json({ message: "Sessão não autenticada." });
+      logAuthFailure(req, 401, "SESSION_MISSING");
+      return sendAuthFailure(res, 401, "SESSION_MISSING", "Sessão não autenticada.");
     }
 
     const activeAuth = await validateResolvedDashboardAuth(req, res, auth);
 
     if (!activeAuth) {
-      return res.status(401).json({ message: "Sessão expirada. Faça login novamente pelo Discord." });
+      logAuthFailure(req, 401, "SESSION_EXPIRED", auth.user.discordId);
+      return sendAuthFailure(res, 401, "SESSION_EXPIRED", AUTH_SESSION_EXPIRED_MESSAGE);
     }
 
     req.session.user = activeAuth.user;
@@ -57,7 +68,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         result: "denied",
         reason: "Sessão não autenticada."
       });
-      return res.status(401).json({ message: "Sessão não autenticada." });
+      logAuthFailure(req, 401, "SESSION_MISSING");
+      return sendAuthFailure(res, 401, "SESSION_MISSING", "Sessão não autenticada.");
     }
 
     const activeAuth = await validateResolvedDashboardAuth(req, res, auth, { requireDashboardScope: true });
@@ -69,7 +81,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         result: "denied",
         reason: "Sessão expirada ou invalidada."
       });
-      return res.status(401).json({ message: "Sessão expirada. Faça login novamente pelo Discord." });
+      logAuthFailure(req, 401, "SESSION_EXPIRED", auth.user.discordId);
+      return sendAuthFailure(res, 401, "SESSION_EXPIRED", AUTH_SESSION_EXPIRED_MESSAGE);
     }
 
     const freshAuth = await ensureVerifiedRoleAccess(req, res, activeAuth);
@@ -81,7 +94,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         result: "denied",
         reason: NO_BOT_ACCESS_MESSAGE
       });
-      return res.status(403).json({ message: NO_BOT_ACCESS_MESSAGE, supportUrl: SUPPORT_DISCORD_URL });
+      logAuthFailure(req, 403, "DASHBOARD_ACCESS_DENIED", activeAuth.user.discordId);
+      return sendAuthFailure(res, 403, "DASHBOARD_ACCESS_DENIED", NO_BOT_ACCESS_MESSAGE, {
+        supportUrl: SUPPORT_DISCORD_URL
+      });
     }
 
     if (!freshAuth.verified) {
@@ -91,7 +107,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         result: "denied",
         reason: "Verificação obrigatória para acessar o painel."
       });
-      return res.status(403).json({ message: "Verificação obrigatória para acessar o painel." });
+      logAuthFailure(req, 403, "VERIFICATION_REQUIRED", activeAuth.user.discordId);
+      return sendAuthFailure(res, 403, "VERIFICATION_REQUIRED", "Verificação obrigatória para acessar o painel.");
     }
 
     req.session.user = freshAuth.user;
@@ -109,7 +126,7 @@ export function requireBot(req: Request, res: Response, next: NextFunction) {
     return next();
   }
 
-  return res.status(401).json({ message: "Token do bot inválido." });
+  return sendAuthFailure(res, 401, "BOT_TOKEN_INVALID", "Token do bot inválido.");
 }
 
 export function requireAdminAccess(_req: Request, res: Response, next: NextFunction) {
@@ -119,7 +136,7 @@ export function requireAdminAccess(_req: Request, res: Response, next: NextFunct
     return next();
   }
 
-  return res.status(403).json({ message: "Acesso administrativo necessário para esta ação." });
+  return sendAuthFailure(res, 403, "INSUFFICIENT_PERMISSION", "Acesso administrativo necessário para esta ação.");
 }
 
 export function requireAuthOrBot(req: Request, res: Response, next: NextFunction) {
@@ -128,6 +145,38 @@ export function requireAuthOrBot(req: Request, res: Response, next: NextFunction
   }
 
   return requireAuth(req, res, next);
+}
+
+function sendAuthFailure(res: Response, status: number, code: AuthFailureCode, message: string, extra: Record<string, unknown> = {}) {
+  return res.status(status).json({
+    success: false,
+    code,
+    message,
+    ...extra
+  });
+}
+
+function logAuthFailure(req: Request, status: number, code: AuthFailureCode, discordId?: string | null) {
+  const sessionId = req.sessionID ? maskIdentifier(req.sessionID) : null;
+  console.warn("[AUTH DEBUG]", {
+    code,
+    discordId: discordId ? maskIdentifier(discordId) : null,
+    hasCookie: Boolean(req.headers.cookie),
+    hasDiscordAccessToken: Boolean(req.session.discordAccessToken),
+    hasDiscordRefreshToken: Boolean(req.session.discordRefreshToken),
+    method: req.method,
+    path: req.originalUrl || req.url,
+    sessionId,
+    status
+  });
+}
+
+function maskIdentifier(value: string) {
+  if (value.length <= 8) {
+    return "***";
+  }
+
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 async function ensureBotGuildsLoaded() {
@@ -146,7 +195,7 @@ export async function validateResolvedDashboardAuth(
   const sessionVersion = auth.user.sessionVersion;
 
   if (!sessionId || typeof sessionVersion !== "number") {
-    console.warn(`[auth] sessão rejeitada sem sessionId/version: discordId=${auth.user.discordId}.`);
+    logAuthFailure(req, 401, "SESSION_EXPIRED", auth.user.discordId);
     clearDashboardSession(req, res);
     return null;
   }
@@ -161,7 +210,7 @@ export async function validateResolvedDashboardAuth(
     state.authSessionVersion !== sessionVersion ||
     (options.requireDashboardScope && state.activeSessionScope !== "dashboard")
   ) {
-    console.warn(`[auth] sessão invalidada: discordId=${auth.user.discordId} sessionId=${sessionId}.`);
+    logAuthFailure(req, 401, "SESSION_EXPIRED", auth.user.discordId);
     clearDashboardSession(req, res);
     return null;
   }

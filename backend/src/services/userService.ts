@@ -8,6 +8,19 @@ import { discordAvatarUrl } from "./discordOAuthService";
 
 type DashboardSessionScope = "dashboard" | "customer";
 
+function dashboardSessionInvalidationCode(reason: string) {
+  switch (reason) {
+    case "logout":
+      return "SESSION_LOGGED_OUT";
+    case "session_expired":
+      return "SESSION_EXPIRED";
+    case "session_revoked":
+      return "SESSION_REVOKED";
+    default:
+      return "SESSION_INVALIDATED";
+  }
+}
+
 export type DashboardSessionState = {
   activeSessionExpiresAt: Date | null;
   activeSessionId: string | null;
@@ -222,6 +235,7 @@ export async function invalidateDashboardSession(discordId: string, sessionId: s
   if (result.modifiedCount > 0) {
     emitRealtime("auth:session_invalidated", {
       at: now.toISOString(),
+      code: dashboardSessionInvalidationCode(reason),
       discordIds: [discordId],
       reason
     });
@@ -262,6 +276,7 @@ export async function invalidateDashboardSessionsForDiscordIds(discordIds: Array
   if (result.modifiedCount > 0) {
     emitRealtime("auth:session_invalidated", {
       at: now.toISOString(),
+      code: dashboardSessionInvalidationCode(reason),
       discordIds: ids,
       reason
     });
@@ -299,6 +314,7 @@ export async function invalidateAllActiveDashboardSessions(reason: string) {
     emitRealtime("auth:session_invalidated", {
       all: true,
       at: now.toISOString(),
+      code: dashboardSessionInvalidationCode(reason),
       reason
     });
     console.info(`[auth] todas as sessões de dashboard foram invalidadas: count=${result.modifiedCount} reason=${reason}.`);

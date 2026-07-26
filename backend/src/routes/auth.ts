@@ -744,6 +744,7 @@ authRouter.get("/me", async (req, res, next) => {
     if (!auth) {
       console.info("[auth] /me sem sessão válida.");
       return res.status(401).json({
+        code: "SESSION_MISSING",
         message: "Sessão não autenticada."
       });
     }
@@ -753,6 +754,7 @@ authRouter.get("/me", async (req, res, next) => {
     if (!activeAuth) {
       console.info(`[auth] /me sessão expirada: discordId=${auth.user.discordId}.`);
       return res.status(401).json({
+        code: "SESSION_EXPIRED",
         message: "Sessão expirada. Faça login novamente pelo Discord."
       });
     }
@@ -813,6 +815,7 @@ authRouter.post("/refresh", async (req, res, next) => {
     await saveSession(req);
 
     return res.status(401).json({
+      code: "SESSION_EXPIRED",
       message: "Renovacao automática de sessão desativada. Autentique novamente pelo Discord."
     });
   } catch (error) {
@@ -858,6 +861,7 @@ authRouter.post("/verify", requireAuthenticated, async (req, res, next) => {
       await saveSession(req);
 
       return res.status(403).json({
+        code: "DASHBOARD_ACCESS_DENIED",
         message: ACCESS_DENIED_MESSAGE,
         supportUrl: SUPPORT_DISCORD_URL,
         validation
