@@ -384,6 +384,10 @@ async function submitQruForApproval(interaction: ButtonInteraction<"cached">, co
   await lockTemporaryChannel(interaction, session);
   await context.api.createPoliceQruLog({ action: record.status === "rejected" ? "qru.resubmitted" : "qru.submitted", actorId: interaction.user.id, actorName: interaction.user.username, guildId: session.guildId, metadata: { channelId: session.channelId }, recordId: saved.id }).catch(() => null);
   await interaction.update(submittedPayload(saved) as any);
+  sessions.delete(interaction.channelId);
+  if (interaction.channel && "delete" in interaction.channel) {
+    scheduleChannelDelete(interaction.channel, session.settings.deleteChannelSeconds);
+  }
 }
 
 async function approveQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
@@ -461,9 +465,8 @@ async function handleRejectModal(interaction: ModalSubmitInteraction, context: B
     return;
   }
 
-  await interaction.reply({ content: "QRU recusada e devolvida para correção.", ephemeral: true });
+  await interaction.reply({ content: "QRU recusada. O registro ficará somente com status de recusada.", ephemeral: true });
   if (interaction.message) await interaction.message.edit(approvalPayload(record, settings, "rejected", interaction.guild, context.client) as any).catch(() => null);
-  await reopenTemporaryQruChannel(interaction, record, settings, reason);
 }
 
 async function resubmitQru(interaction: ButtonInteraction<"cached">, context: BotContext) {
@@ -647,8 +650,8 @@ function qruPanelExplanation() {
     "**1. Abra o atendimento:** clique em **Registrar QRU** para criar um canal temporário privado.",
     "**2. Informe os dados:** mencione os oficiais envolvidos, a data, o número do B.O., o tipo da QRU, o veículo, as apreensões e as observações.",
     "**3. Envie os comprovantes:** anexe imagens, PDFs ou informe links HTTP(S).",
-    "**4. Aguarde aprovação:** ao confirmar, o canal fica bloqueado para o registrante e a QRU vai para análise da supervisão.",
-    "**5. Correção:** se for recusada, o acesso ao canal volta para ajustes e reenvio."
+    "**4. Aguarde aprovação:** ao confirmar, a QRU vai para análise da supervisão e o canal temporário é removido.",
+    "**5. Recusa:** se for recusada, o registro permanece com status de recusada."
   ].join("\n");
 }
 
@@ -772,7 +775,7 @@ function submittedPayload(record: PoliceQruRecord): MessageCreateOptions {
     components: [{
       type: 17,
       accent_color: 0xf59e0b,
-      components: [{ type: 10, content: `# QRU enviada para aprovação\nA ocorrência \`${record.id}\` foi bloqueada para edição e encaminhada aos supervisores.` }]
+      components: [{ type: 10, content: `# QRU enviada para aprovação\nA ocorrência \`${record.id}\` foi encaminhada aos supervisores. Este canal será removido automaticamente.` }]
     }],
     flags: MessageFlags.IsComponentsV2
   };
@@ -919,37 +922,6 @@ async function lockTemporaryChannel(interaction: ButtonInteraction<"cached">, se
   }).catch(() => null);
 }
 
-async function reopenTemporaryQruChannel(interaction: ModalSubmitInteraction<"cached">, record: PoliceQruRecord, settings: PoliceQruSettings, reason: string) {
-  if (!record.temporaryChannelId) return;
-  const channel = await interaction.guild.channels.fetch(record.temporaryChannelId).catch(() => null);
-  if (!channel?.isTextBased() || channel.isDMBased() || !("permissionOverwrites" in channel)) return;
-  await channel.permissionOverwrites.edit(record.authorId, {
-    AttachFiles: true,
-    ReadMessageHistory: true,
-    SendMessages: true,
-    ViewChannel: true
-  }).catch(() => null);
-  sessions.set(channel.id, {
-    authorId: record.authorId,
-    authorName: record.authorName,
-    boNumber: record.boNumber,
-    channelId: channel.id,
-    createdAt: Date.now(),
-    evidenceUrl: record.evidenceUrl,
-    guildId: record.guildId,
-    notes: record.notes,
-    occurrenceDate: record.occurrenceDate,
-    officers: record.officers,
-    qruType: record.qruType,
-    recordId: record.id,
-    seizures: record.seizures,
-    settings,
-    step: "confirm",
-    vehicle: record.vehicle
-  });
-  await channel.send(rejectedCorrectionPayload(interaction.user, reason, record.id) as any).catch(() => null);
-}
-
 async function closeTemporaryQruChannel(interaction: ButtonInteraction<"cached">, record: PoliceQruRecord, settings: PoliceQruSettings) {
   if (!record.temporaryChannelId) return;
   const channel = await interaction.guild.channels.fetch(record.temporaryChannelId).catch(() => null);
@@ -959,30 +931,6 @@ async function closeTemporaryQruChannel(interaction: ButtonInteraction<"cached">
   }
   sessions.delete(channel.id);
   if ("delete" in channel) scheduleChannelDelete(channel, settings.deleteChannelSeconds);
-}
-
-function rejectedCorrectionPayload(supervisor: User, reason: string, recordId: string): MessageCreateOptions {
-  return {
-    components: [{
-      type: 17,
-      accent_color: 0xef4444,
-      components: [
-        { type: 10, content: [
-          "# QRU recusada",
-          `**Supervisor:** <@${supervisor.id}>`,
-          "",
-          "**Motivo:**",
-          escapeMarkdown(reason),
-          "",
-          "Corrija as informações solicitadas e clique em **Reenviar QRU**."
-        ].join("\n") },
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:resubmit:${recordId}`).setEmoji("🔄").setLabel("Reenviar QRU").setStyle(ButtonStyle.Primary)
-        )
-      ]
-    }],
-    flags: MessageFlags.IsComponentsV2
-  };
 }
 
 async function getSettings(context: BotContext, guildId: string) {
