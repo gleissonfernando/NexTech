@@ -3,6 +3,8 @@ import {
   ActionRowBuilder,
   CategoryChannel,
   ChannelType,
+  Client,
+  GatewayIntentBits,
   ModalBuilder,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
@@ -35,6 +37,7 @@ type ServerCloneJob = {
   parts: ClonePart[];
   plan?: ServerCloneStoredPlan | null;
   report: string[];
+  runtimeBotToken: string;
   sourceGuildId: string;
   status: "pending" | "running" | "completed" | "cancelled";
   userId: string;
@@ -121,6 +124,12 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
       .setPlaceholder("Servidor que recebera a estrutura")
       .setRequired(true)
       .setStyle(TextInputStyle.Short);
+    const tokenInput = new TextInputBuilder()
+      .setCustomId("botToken")
+      .setLabel("Token do bot de clonagem")
+      .setPlaceholder("Cole somente token de BOT. Token de usuário é recusado.")
+      .setRequired(true)
+      .setStyle(TextInputStyle.Short);
 
     if (storedPlan?.sourceGuildId) {
       sourceInput.setValue(storedPlan.sourceGuildId);
@@ -139,6 +148,9 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
         ),
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           destinationInput
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          tokenInput
         )
       );
 
@@ -149,28 +161,45 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
   if (interaction.isModalSubmit() && customId === "server_clone_modal") {
     const sourceGuildId = interaction.fields.getTextInputValue("sourceGuildId").trim();
     const destinationGuildId = interaction.fields.getTextInputValue("destinationGuildId").trim();
+    const runtimeBotToken = normalizeBotToken(interaction.fields.getTextInputValue("botToken"));
     const parts = sessions.get(sessionKey(interaction.user.id, interaction.guild.id)) ?? ["roles", "categories", "text", "voice"];
-    const sourceGuild = context.client.guilds.cache.get(sourceGuildId);
-    const destinationGuild = context.client.guilds.cache.get(destinationGuildId);
 
     if (!/^\d{5,32}$/.test(sourceGuildId) || !/^\d{5,32}$/.test(destinationGuildId)) {
       await interaction.reply({ content: "Informe IDs validos de servidor.", ephemeral: true });
       return true;
     }
 
+    if (!runtimeBotToken) {
+      await interaction.reply({ content: "Informe um token de bot válido. Tokens de usuário não são aceitos.", ephemeral: true });
+      return true;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const cloneClient = await createTemporaryCloneClient(runtimeBotToken).catch(async (error) => {
+      await interaction.editReply(`Não foi possível validar o token do bot: ${friendlyError(error)}`);
+      return null;
+    });
+    if (!cloneClient) return true;
+
+    const sourceGuild = await cloneClient.guilds.fetch(sourceGuildId).catch(() => null);
+    const destinationGuild = await cloneClient.guilds.fetch(destinationGuildId).catch(() => null);
+
     if (!sourceGuild || !destinationGuild) {
-      await interaction.reply({ content: "O bot precisa estar no servidor de origem e no servidor de destino.", ephemeral: true });
+      cloneClient.destroy();
+      await interaction.editReply("O bot informado precisa estar no servidor de origem e no servidor de destino.");
       return true;
     }
 
     const guard = await validateCloneAccess(sourceGuild, destinationGuild, interaction.user.id, context);
     if (guard) {
-      await interaction.reply({ content: guard, ephemeral: true });
+      cloneClient.destroy();
+      await interaction.editReply(guard);
       return true;
     }
 
     const summary = await summarizeSource(sourceGuild);
     const storedPlan = await getStoredServerClonePlan(context, destinationGuildId);
+    cloneClient.destroy();
     const job: ServerCloneJob = {
       createdAt: Date.now(),
       destinationGuildId,
@@ -178,13 +207,14 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
       parts,
       plan: planMatches(storedPlan, sourceGuildId, destinationGuildId) ? storedPlan : null,
       report: [],
+      runtimeBotToken,
       sourceGuildId,
       status: "pending",
       userId: interaction.user.id
     };
     jobs.set(job.id, job);
 
-    await interaction.reply(serverCloneConfirmation(job, sourceGuild, destinationGuild, summary));
+    await interaction.editReply(serverCloneConfirmation(job, sourceGuild, destinationGuild, summary));
     return true;
   }
 
@@ -196,16 +226,18 @@ export async function handleServerCloneInteraction(interaction: Interaction, con
       return true;
     }
 
-    const sourceGuild = context.client.guilds.cache.get(job.sourceGuildId);
-    const destinationGuild = context.client.guilds.cache.get(job.destinationGuildId);
+    const cloneClient = await createTemporaryCloneClient(job.runtimeBotToken).catch(() => null);
+    const sourceGuild = cloneClient ? await cloneClient.guilds.fetch(job.sourceGuildId).catch(() => null) : null;
+    const destinationGuild = cloneClient ? await cloneClient.guilds.fetch(job.destinationGuildId).catch(() => null) : null;
 
     if (!sourceGuild || !destinationGuild) {
+      cloneClient?.destroy();
       await interaction.reply({ content: "Servidor de origem ou destino não encontrado.", ephemeral: true });
       return true;
     }
 
     await interaction.update(serverCloneProgress(job, "Preparando clonagem..."));
-    void runServerClone(job, sourceGuild, destinationGuild, interaction, context);
+    void runServerClone(job, sourceGuild, destinationGuild, interaction, context).finally(() => cloneClient?.destroy());
     return true;
   }
 
@@ -538,6 +570,22 @@ function mappedOverwrites(channel: GuildBasedChannel, roleMap: Map<string, strin
   }
 
   return overwrites;
+}
+
+function normalizeBotToken(value: string) {
+  const token = value.trim().replace(/^Bot\s+/i, "");
+  if (!token || token.length < 40 || /\s/.test(token)) return "";
+  return token;
+}
+
+async function createTemporaryCloneClient(token: string) {
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  await client.login(token);
+  if (!client.user?.bot) {
+    client.destroy();
+    throw new Error("o token informado não pertence a um bot Discord");
+  }
+  return client;
 }
 
 async function validateCloneAccess(sourceGuild: Guild, destinationGuild: Guild, userId: string, context: BotContext) {
