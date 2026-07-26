@@ -136,14 +136,14 @@ function PaymentMethodDialog({
             {busyMethod === "pix" ? <Loader2 className="h-5 w-5 animate-spin" /> : <QrCode className="h-5 w-5" />}
             <span>
               <span className="block text-sm font-black">Pagar com Pix</span>
-              <span className="block text-xs font-semibold opacity-80">QR Code e copia e cola gerado na NexTech</span>
+              <span className="block text-xs font-semibold opacity-80">Checkout seguro com métodos disponíveis</span>
             </span>
           </button>
           <button className="flex min-h-16 items-center gap-3 rounded-lg border border-zinc-700 bg-black px-4 text-left text-zinc-100 transition hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-70" disabled={disabled} onClick={() => onSelect("card")} type="button">
             {busyMethod === "card" ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <CreditCard className="h-5 w-5 text-primary" />}
             <span>
               <span className="block text-sm font-black">Pagar com cartão</span>
-              <span className="block text-xs font-semibold text-zinc-500">Checkout seguro do Mercado Pago</span>
+              <span className="block text-xs font-semibold text-zinc-500">Checkout seguro do gateway ativo</span>
             </span>
           </button>
         </div>
@@ -218,7 +218,7 @@ function PublicPlanCard({ busy, onBuy, plan }: { busy: boolean; onBuy: () => voi
     ) : null}
     {plan.isPurchasable ? <div className="mt-8">
       <button className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={onBuy} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Comprar</button>
-      <p className="mt-2 text-center text-xs font-medium text-zinc-500">Pix e cartão pelo Mercado Pago</p>
+      <p className="mt-2 text-center text-xs font-medium text-zinc-500">Pix e cartão conforme disponibilidade do checkout</p>
     </div> : <span className="mt-8 flex h-12 items-center justify-center rounded-lg border border-zinc-700 text-sm font-bold text-zinc-500">Indisponível</span>}
   </article>;
 }

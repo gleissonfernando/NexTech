@@ -4082,9 +4082,10 @@ async function resolveActivePaymentManager(options: { allowDisabled?: boolean; p
 
 function resolveStoredPaymentProvider(provider: MongoPaymentProvider): "mercadopago" | "pagbank" | "stripe" | "disabled" {
   if (isPaymentDisabledByEnv()) return "disabled";
-  if (provider === "mercadopago" || provider === "pagbank" || provider === "stripe") return provider;
   const envProvider = resolveEnvPaymentProvider();
-  return envProvider === "mercadopago" || envProvider === "pagbank" || envProvider === "stripe" ? envProvider : "disabled";
+  if (envProvider === "mercadopago" || envProvider === "pagbank" || envProvider === "stripe") return envProvider;
+  if (provider === "mercadopago" || provider === "pagbank" || provider === "stripe") return provider;
+  return "disabled";
 }
 
 function resolveEnvPaymentProvider(): MongoPaymentProvider {
