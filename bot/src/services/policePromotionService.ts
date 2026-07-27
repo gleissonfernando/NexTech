@@ -591,15 +591,16 @@ async function assignEvaluation(interaction: ButtonInteraction<"cached">, contex
 }
 
 async function openEvaluationModal(interaction: ButtonInteraction<"cached">, context: BotContext) {
+  await acknowledgeButtonUpdate(interaction);
   const request = await requestFromInteraction(interaction, context);
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
-    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    await replyButtonError(interaction, "Configuração da promoção não encontrada.");
     return true;
   }
   if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
-    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    await replyButtonError(interaction, "Você não possui permissão para realizar esta promoção.");
     return true;
   }
 
@@ -607,41 +608,42 @@ async function openEvaluationModal(interaction: ButtonInteraction<"cached">, con
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
   evaluationQuestionnaireDrafts.set(key, draft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, null, false, panelImage) as any);
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, null, false, panelImage));
   return true;
 }
 
 async function openEvaluationStepModal(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const [, , requestId, step] = interaction.customId.split(":");
   if (!requestId || !isEvaluationStep(step)) return true;
+  await acknowledgeButtonUpdate(interaction);
   const request = await context.api.getPolicePromotionRequest(requestId);
   if (request.status !== "in_evaluation") {
-    await interaction.reply({ content: "Esta avaliação não está em preenchimento.", ephemeral: true });
+    await replyButtonError(interaction, "Esta avaliação não está em preenchimento.");
     return true;
   }
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
-    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    await replyButtonError(interaction, "Configuração da promoção não encontrada.");
     return true;
   }
   if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
-    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    await replyButtonError(interaction, "Você não possui permissão para realizar esta promoção.");
     return true;
   }
   const key = evaluationDraftKey(requestId, interaction.user.id);
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
   if (draft.pending) {
-    await interaction.reply({ content: "Já existe uma resposta aguardando confirmação. Confirme, refaça ou cancele antes de iniciar outra etapa.", ephemeral: true });
+    await replyButtonError(interaction, "Já existe uma resposta aguardando confirmação. Confirme, refaça ou cancele antes de iniciar outra etapa.");
     return true;
   }
   if (draft.awaitingStep && draft.awaitingStep !== step) {
-    await interaction.reply({ content: "Já existe uma etapa aguardando resposta. Cancele ou conclua a etapa aberta antes de continuar.", ephemeral: true });
+    await replyButtonError(interaction, "Já existe uma etapa aguardando resposta. Cancele ou conclua a etapa aberta antes de continuar.");
     return true;
   }
   const nextStep = nextAvailableEvaluationStep(draft);
   if (step !== nextStep) {
-    await interaction.reply({ content: "Esta etapa ainda não está disponível. Conclua a etapa anterior para continuar.", ephemeral: true });
+    await replyButtonError(interaction, "Esta etapa ainda não está disponível. Conclua a etapa anterior para continuar.");
     return true;
   }
   draft.awaitingStep = step;
@@ -654,7 +656,7 @@ async function openEvaluationStepModal(interaction: ButtonInteraction<"cached">,
     metadata: { channelId: interaction.channelId, step, stepName: evaluationStepTitle(step) }
   }).catch(() => null);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, "Envie sua resposta no canal. A próxima mensagem enviada por você será capturada.", false, panelImage) as any);
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, "Envie sua resposta no canal. A próxima mensagem enviada por você será capturada.", false, panelImage));
   return true;
 }
 
@@ -707,21 +709,22 @@ async function handleEvaluationStepModal(interaction: ModalSubmitInteraction<"ca
 async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
+  await acknowledgeButtonUpdate(interaction);
   const requestedStep = evaluationStepFromCustomId(interaction.customId, 3);
   const request = await context.api.getPolicePromotionRequest(requestId);
   if (request.status !== "in_evaluation") {
-    await interaction.reply({ content: "Esta avaliação não está em preenchimento.", ephemeral: true });
+    await replyButtonError(interaction, "Esta avaliação não está em preenchimento.");
     return true;
   }
 
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
-    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    await replyButtonError(interaction, "Configuração da promoção não encontrada.");
     return true;
   }
   if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
-    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    await replyButtonError(interaction, "Você não possui permissão para realizar esta promoção.");
     return true;
   }
 
@@ -730,7 +733,7 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
   const recoveredPending = recoverPendingEvaluationStepFromInteraction(interaction, requestedStep);
   const pending = draft.pending ?? (recoveredPending?.step === nextAvailableEvaluationStep(draft) ? recoveredPending : undefined);
   if (!pending || pending.step !== nextAvailableEvaluationStep(draft) || (requestedStep && pending.step !== requestedStep)) {
-    await interaction.reply({ content: "Não foi possível confirmar esta etapa. Reabra a etapa disponível e tente novamente.", ephemeral: true });
+    await replyButtonError(interaction, "Não foi possível confirmar esta etapa. Reabra a etapa disponível e tente novamente.");
     return true;
   }
 
@@ -754,7 +757,7 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
     });
   } catch (error) {
     console.error("[police-promotions] failed to persist saved evaluation step", error);
-    await interaction.reply({ content: "Não foi possível salvar esta etapa. Tente confirmar novamente.", ephemeral: true });
+    await replyButtonError(interaction, "Não foi possível salvar esta etapa. Tente confirmar novamente.");
     return true;
   }
   evaluationQuestionnaireDrafts.set(key, savedDraft);
@@ -763,23 +766,24 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
     ? `Etapa concluída. A próxima etapa foi liberada: ${evaluationStepTitle(nextStep)}.`
     : "Etapa concluída. A revisão final foi liberada.";
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, savedDraft, successMessage, false, panelImage) as any);
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, savedDraft, successMessage, false, panelImage));
   return true;
 }
 
 async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
+  await acknowledgeButtonUpdate(interaction);
   const requestedStep = evaluationStepFromCustomId(interaction.customId, 3);
   const request = await context.api.getPolicePromotionRequest(requestId);
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) {
-    await interaction.reply({ content: "Configuração da promoção não encontrada.", ephemeral: true });
+    await replyButtonError(interaction, "Configuração da promoção não encontrada.");
     return true;
   }
   if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
-    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    await replyButtonError(interaction, "Você não possui permissão para realizar esta promoção.");
     return true;
   }
   const key = evaluationDraftKey(requestId, interaction.user.id);
@@ -787,7 +791,7 @@ async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached"
   const recoveredPending = recoverPendingEvaluationStepFromInteraction(interaction, requestedStep);
   if (!draft.pending && recoveredPending?.step === nextAvailableEvaluationStep(draft)) draft.pending = recoveredPending;
   if (!draft.pending || (requestedStep && draft.pending.step !== requestedStep)) {
-    await interaction.reply({ content: "Não existe resposta pendente para editar.", ephemeral: true });
+    await replyButtonError(interaction, "Não existe resposta pendente para editar.");
     return true;
   }
   const step = draft.pending.step;
@@ -806,24 +810,25 @@ async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached"
     });
   } catch (error) {
     console.error("[police-promotions] failed to persist reopened evaluation step", error);
-    await interaction.reply({ content: "Não foi possível reabrir esta etapa. Tente novamente.", ephemeral: true });
+    await replyButtonError(interaction, "Não foi possível reabrir esta etapa. Tente novamente.");
     return true;
   }
   evaluationQuestionnaireDrafts.set(key, editedDraft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, editedDraft, "Resposta descartada. Envie novamente a resposta desta etapa no canal.", false, panelImage) as any);
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, editedDraft, "Resposta descartada. Envie novamente a resposta desta etapa no canal.", false, panelImage));
   return true;
 }
 
 async function showEvaluationPanel(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
+  await acknowledgeButtonUpdate(interaction);
   const request = await context.api.getPolicePromotionRequest(requestId);
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) return true;
   if (!canManageEvaluation(interaction.member as GuildMember, settings, promotion, request, interaction.user.id)) {
-    await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
+    await replyButtonError(interaction, "Você não possui permissão para realizar esta promoção.");
     return true;
   }
   const key = evaluationDraftKey(request.id, interaction.user.id);
@@ -845,13 +850,13 @@ async function showEvaluationPanel(interaction: ButtonInteraction<"cached">, con
       });
     } catch (error) {
       console.error("[police-promotions] failed to persist cancelled evaluation step", error);
-      await interaction.reply({ content: "Não foi possível cancelar a etapa em andamento. Tente novamente.", ephemeral: true });
+      await replyButtonError(interaction, "Não foi possível cancelar a etapa em andamento. Tente novamente.");
       return true;
     }
   }
   evaluationQuestionnaireDrafts.set(key, cancelledDraft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, cancelledDraft, cancelledStep ? "Preenchimento cancelado. Nenhuma informação foi salva." : null, false, panelImage) as any);
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, cancelledDraft, cancelledStep ? "Preenchimento cancelado. Nenhuma informação foi salva." : null, false, panelImage));
   return true;
 }
 
@@ -1811,6 +1816,20 @@ async function updateModalMessageOrReply(interaction: ModalSubmitInteraction<"ca
     return interaction.update(payload as any).catch(() => interaction.reply(payload as any));
   }
   return interaction.reply(payload as any);
+}
+
+async function acknowledgeButtonUpdate(interaction: ButtonInteraction<"cached">) {
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+}
+
+async function updateButtonMessage(interaction: ButtonInteraction<"cached">, payload: MessageCreateOptions) {
+  if (interaction.deferred || interaction.replied) return interaction.editReply(payload as any);
+  return interaction.update(payload as any);
+}
+
+async function replyButtonError(interaction: ButtonInteraction<"cached">, content: string) {
+  if (interaction.deferred || interaction.replied) return interaction.followUp({ content, ephemeral: true });
+  return interaction.reply({ content, ephemeral: true });
 }
 
 function uniqueMentionUsers(...userIds: Array<string | null | undefined>) {
