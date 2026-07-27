@@ -25,7 +25,11 @@ type MessageChannelWithMessages = Message["channel"] & {
   send: (payload: Parameters<Extract<Message["channel"], { send: unknown }>["send"]>[0]) => Promise<Message>;
 };
 
-export const MAINTENANCE_INTERACTION_MESSAGE = "O sistema entrou em manutenção. Entre em contato com o suporte em caso de dúvida.";
+export const MAINTENANCE_INTERACTION_MESSAGE = [
+  "Este bot está em manutenção no momento.",
+  "Os comandos estão temporariamente indisponíveis enquanto a equipe conclui os ajustes.",
+  "Tente novamente quando a manutenção for finalizada."
+].join("\n");
 const MAINTENANCE_SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
 
 const MAINTENANCE_ALERT_MESSAGE = [
@@ -319,7 +323,7 @@ function maintenanceInteractionPayload() {
     allowedMentions: {
       parse: [] as never[]
     },
-    components: [maintenancePanelComponent(MAINTENANCE_INTERACTION_MESSAGE, false)],
+    components: [maintenanceInteractionComponent()],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   };
 }
@@ -355,6 +359,25 @@ function maintenancePanelComponent(message: string, includeMedia = true) {
     new TextDisplayBuilder().setContent(`## ${MAINTENANCE_PANEL_TITLE}`),
     new TextDisplayBuilder().setContent(MAINTENANCE_PANEL_DESCRIPTION),
     new TextDisplayBuilder().setContent(message)
+  );
+
+  return container.addActionRowComponents(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel("Servidor de suporte")
+        .setStyle(ButtonStyle.Link)
+        .setURL(MAINTENANCE_SUPPORT_URL)
+    )
+  );
+}
+
+function maintenanceInteractionComponent() {
+  const container = new ContainerBuilder().setAccentColor(0xf59e0b);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("## Bot em manutenção"),
+    new TextDisplayBuilder().setContent(MAINTENANCE_INTERACTION_MESSAGE),
+    new TextDisplayBuilder().setContent("Essa mensagem é privada e só aparece para você.")
   );
 
   return container.addActionRowComponents(
