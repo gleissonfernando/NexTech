@@ -125,7 +125,6 @@ async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, rea
   }
 
   syncGuildsInFlight.add(guild.id);
-  const startedAt = Date.now();
   const stats = {
     assignedMembers: 0,
     assignedRoles: 0,
@@ -134,7 +133,6 @@ async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, rea
     skippedPending: 0,
     totalMembers: 0
   };
-  const failures: Array<{ error: string; userId: string }> = [];
 
   try {
     if (!(await isRuntimeModuleAuthorized(context, guild.id, MODULE_ID))) {
@@ -157,11 +155,6 @@ async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, rea
       return;
     }
 
-    await writeSyncLog(context, guild, settings.botId, "dashboard.roles.sync_started", "Sincronização pós-redeploy de cargos automáticos iniciada.", {
-      configuredRoleIds,
-      reason
-    });
-
     await guild.roles.fetch().catch(() => null);
     await guild.members.fetchMe().catch(() => null);
 
@@ -171,11 +164,7 @@ async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, rea
       : null;
 
     if (!baseRoles.length && !boosterRole) {
-      await writeSyncLog(context, guild, settings.botId, "dashboard.roles.sync_completed", "Sincronização encerrada: nenhum cargo configurado pode ser atribuído pelo bot.", {
-        configuredRoleIds,
-        durationMs: Date.now() - startedAt,
-        stats
-      });
+      console.warn(`[roles] sincronização pós-redeploy ignorada em ${guild.name}: nenhum cargo configurado pode ser atribuído pelo bot.`);
       return;
     }
 
@@ -209,30 +198,16 @@ async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, rea
         await member.roles.add(missingRoleIds, "Sincronização pós-redeploy: cargos automáticos ausentes");
         stats.assignedMembers += 1;
         stats.assignedRoles += missingRoleIds.length;
-        void writeRoleLog(context, member, settings.botId, "dashboard.roles.sync_assigned", `${missingRoleIds.length} cargo(s) automático(s) sincronizado(s) após retorno do bot.`, {
-          roleIds: missingRoleIds
-        });
         await delay(ROLE_SYNC_ASSIGNMENT_DELAY_MS);
       } catch (error) {
         stats.failedMembers += 1;
-        if (failures.length < 10) {
-          failures.push({ error: errorMessage(error), userId: member.id });
-        }
+        console.warn(`[roles] falha ao sincronizar cargos pós-redeploy para ${member.user.tag} em ${guild.name}:`, errorMessage(error));
       }
     }
 
-    await writeSyncLog(context, guild, settings.botId, "dashboard.roles.sync_completed", "Sincronização pós-redeploy de cargos automáticos concluída.", {
-      durationMs: Date.now() - startedAt,
-      failures,
-      stats
-    });
     console.log(`[roles] sincronização pós-redeploy concluída em ${guild.name}: ${stats.assignedMembers} membro(s), ${stats.assignedRoles} cargo(s).`);
   } catch (error) {
-    await writeSyncLog(context, guild, null, "dashboard.roles.sync_failed", "Falha na sincronização pós-redeploy de cargos automáticos.", {
-      durationMs: Date.now() - startedAt,
-      error: errorMessage(error),
-      stats
-    });
+    console.warn(`[roles] falha na sincronização pós-redeploy em ${guild.name}:`, errorMessage(error));
     throw error;
   } finally {
     syncGuildsInFlight.delete(guild.id);
@@ -307,23 +282,6 @@ async function writeRoleLog(
     botId,
     guildId: member.guild.id,
     userId: member.id,
-    type,
-    message,
-    metadata
-  }).catch(() => null);
-}
-
-async function writeSyncLog(
-  context: BotContext,
-  guild: Guild,
-  botId: string | null,
-  type: string,
-  message: string,
-  metadata: Record<string, unknown>
-) {
-  await context.api.postLog({
-    botId,
-    guildId: guild.id,
     type,
     message,
     metadata
