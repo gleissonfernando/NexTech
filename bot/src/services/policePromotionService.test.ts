@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalPayload, displayableComponentTextSize, isEvaluationStepButtonDisabled } from "./policePromotionService";
+import { approvalPayload, approvalPayloads, displayableComponentTextSize, isEvaluationStepButtonDisabled } from "./policePromotionService";
 
 function completeDraft(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,4 +68,44 @@ test("relatorio de aprovacao respeita limite de texto dos componentes do Discord
   const payload = approvalPayload(request as any, promotion as any, null as any);
 
   assert.ok(displayableComponentTextSize(payload.components) <= 4000);
+});
+
+test("relatorio de aprovacao nao envia painel de historico completo", () => {
+  const request = {
+    answers: [{ label: "Conduta", value: "Resposta completa" }],
+    approvalMessageId: null,
+    approvalReason: null,
+    approvalResult: null,
+    approvedAt: null,
+    approvedById: null,
+    channelId: "channel",
+    currentRank: "Soldado",
+    evaluationEndedAt: "2026-07-26T15:00:00.000Z",
+    evaluationNotes: "Observacao completa",
+    evaluationResult: "approved",
+    evaluatorId: "222222222222222222",
+    history: [{
+      action: "request.evaluation_report_sent",
+      actorId: "222222222222222222",
+      actorName: "Instrutor",
+      at: "2026-07-26T15:00:00.000Z",
+      metadata: {}
+    }],
+    id: "request-id",
+    requesterId: "111111111111111111",
+    requesterName: "Usuario Avaliado",
+    status: "pending_approval",
+    targetRank: "Officer",
+    updatedAt: "2026-07-26T15:00:00.000Z"
+  };
+  const promotion = {
+    color: "#facc15",
+    requestNewEvaluationEnabled: true
+  };
+
+  const payloads = approvalPayloads(request as any, promotion as any, null as any);
+  const serialized = JSON.stringify(payloads.map((payload) => payload.components));
+
+  assert.equal(serialized.includes("Histórico completo"), false);
+  assert.equal(serialized.includes("Historico completo"), false);
 });

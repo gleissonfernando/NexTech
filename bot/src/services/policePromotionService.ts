@@ -1323,15 +1323,14 @@ export function approvalPayloads(request: PolicePromotionRequest, promotion: Pol
   const statusColor = request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : request.status === "quarantined" ? 0xf97316 : parseColor(promotion.color);
   const detailSections = [
     { title: `${icon("folha", guild)} Respostas completas`, content: answersText(request) },
-    { title: `${icon("prancheta_caneta", guild)} Observações completas`, content: escapeMarkdown(request.evaluationNotes ?? "Nenhuma observação registrada.") },
-    { title: `${icon("relogio", guild)} Histórico completo`, content: promotionHistoryText(request) }
+    { title: `${icon("prancheta_caneta", guild)} Observações completas`, content: escapeMarkdown(request.evaluationNotes ?? "Nenhuma observação registrada.") }
   ];
   const detailPayloads = detailSections.flatMap((section) => approvalDetailPayloads(request, promotion, guild, section.title, section.content, statusColor));
   const detailNotice = detailPayloads.length
     ? [
       "",
       `${icon("folha", guild)} Relatório completo`,
-      `As respostas, observações e histórico foram enviados em ${detailPayloads.length} painel(is) abaixo, sem resumo.`
+      `As respostas e observações foram enviadas em ${detailPayloads.length} painel(is) abaixo, sem resumo.`
     ].join("\n")
     : "";
   const mainContent = [
