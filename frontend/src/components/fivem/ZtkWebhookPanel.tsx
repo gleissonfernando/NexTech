@@ -43,6 +43,28 @@ const rankingLabels: Record<ZtkRankingType, string> = {
 const ZTK_RANKING_LIMIT = 10;
 type ZtkRecruiterRankingItem = ZtkWebhookDashboard["recruitmentRankings"]["recruiters"][number];
 
+function ztkSelectedClanStorageKey(botId: string, guildId: string) {
+  return `nextech:ztk:selected-clan:${botId}:${guildId}`;
+}
+
+function readStoredZtkClanId(botId: string, guildId: string) {
+  try {
+    return window.localStorage.getItem(ztkSelectedClanStorageKey(botId, guildId));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredZtkClanId(botId: string, guildId: string, clanId: string | null) {
+  try {
+    const key = ztkSelectedClanStorageKey(botId, guildId);
+    if (clanId) window.localStorage.setItem(key, clanId);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // Storage may be unavailable in private contexts; the dashboard still works without persistence.
+  }
+}
+
 export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("ranking");
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
@@ -72,11 +94,14 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
     let active = true;
     setMessage(null);
     setSavingKey("loading");
-    Promise.all([getZtkWebhookDashboard(botId, guild.id), getGuildLiveOptions(guild.id, botId)])
+    const storedClanId = readStoredZtkClanId(botId, guild.id);
+    Promise.all([getZtkWebhookDashboard(botId, guild.id, storedClanId), getGuildLiveOptions(guild.id, botId)])
       .then(([data, options]) => {
         if (!active) return;
+        const nextSelectedClanId = data.selectedClan?.id ?? data.clans[0]?.id ?? null;
         setDashboard(data);
-        setSelectedClanId(data.selectedClan?.id ?? data.clans[0]?.id ?? null);
+        setSelectedClanId(nextSelectedClanId);
+        writeStoredZtkClanId(botId, guild.id, nextSelectedClanId);
         setChannels(options.channels ?? []);
       })
       .catch((error) => {
@@ -110,7 +135,13 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
     if (!botId || !guild) return;
     const data = await getZtkWebhookDashboard(botId, guild.id, selectedClanId);
     setDashboard(data);
-    setSelectedClanId((current) => current ?? data.selectedClan?.id ?? data.clans[0]?.id ?? null);
+    setSelectedClanId((current) => {
+      const nextSelectedClanId = current && data.clans.some((clan) => clan.id === current)
+        ? current
+        : data.selectedClan?.id ?? data.clans[0]?.id ?? null;
+      writeStoredZtkClanId(botId, guild.id, nextSelectedClanId);
+      return nextSelectedClanId;
+    });
   }
 
   async function selectClan(clanId: string) {
@@ -119,6 +150,7 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
     setSavingKey("loading");
     try {
       setDashboard(await getZtkWebhookDashboard(botId, guild.id, clanId));
+      writeStoredZtkClanId(botId, guild.id, clanId);
     } catch (error) {
       setMessage(errorMessage(error, "Não foi possível carregar o clã selecionado."));
     } finally {

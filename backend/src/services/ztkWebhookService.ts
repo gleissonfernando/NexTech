@@ -182,7 +182,7 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
   const resolvedBotId = requireBotId(botId);
   const { ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats, ztkWebhookRewards } = await getMongoCollections();
   const clanFilter = canManage ? { botId: resolvedBotId, guildId } : { botId: resolvedBotId, guildId, ownerUserId: userId ?? "" };
-  const clans = await ztkWebhookClans.find(clanFilter).sort({ updatedAt: -1 }).limit(canManage ? 100 : 20).toArray();
+  const clans = await ztkWebhookClans.find(clanFilter).sort({ createdAt: 1, clanName: 1, _id: 1 }).limit(canManage ? 100 : 20).toArray();
   const selectedClan = clans.find((clan) => clan._id === requestedClanId) ?? clans[0] ?? null;
   const clanIds = clans.map((clan) => clan._id);
   const selectedClanId = selectedClan?._id ?? clanIds[0] ?? null;
@@ -955,7 +955,7 @@ async function claimZtkWeeklyLogForClan(clan: MongoZtkWebhookClan, kind: ZtkWeek
   const { ztkWebhookClans, ztkWebhookLogs } = await getMongoCollections();
   const claim = await ztkWebhookClans.updateOne(
     { _id: clan._id, botId: clan.botId, guildId: clan.guildId, $or: [{ [field]: { $ne: period.key } }, { [field]: { $exists: false } }] },
-    { $set: { [field]: period.key, updatedAt: new Date() } }
+    { $set: { [field]: period.key } }
   );
   if (!claim.modifiedCount) return null;
 
