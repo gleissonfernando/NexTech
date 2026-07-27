@@ -94,6 +94,7 @@ export const DEV_MODULES = [
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-captcha", label: "FiveM - Sistema CAPTCHA" },
+  { id: "fivem-commands", label: "FiveM - Comandos" },
   { id: "faction-chest", label: "Sistema de Baú" },
   { id: "ztk-webhook", label: "ZTK Webhook 🏆" },
   { id: "fivem-hierarchy", label: "Polícia - Hierarquia" },

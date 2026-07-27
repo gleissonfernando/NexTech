@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import archiver from "archiver";
 import yauzl from "yauzl";
 import { getMongoCollections, type MongoMediaImportJobItem, type MongoMediaLibraryItem, type MongoMediaSettings } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -26,6 +25,15 @@ const BLOCKED_EXTENSIONS = new Set(["bat", "cmd", "exe", "sh", "ps1", "js", "ts"
 const mediaImportQueues = new Map<string, Promise<void>>();
 
 export type DuplicateMode = "ignore" | "rename" | "replace";
+
+type ZipArchiveLike = {
+  append(source: Buffer | string, data: { name: string }): ZipArchiveLike;
+  file(filename: string, data: { name: string }): ZipArchiveLike;
+  finalize(): Promise<void>;
+  pipe(output: NodeJS.WritableStream): NodeJS.WritableStream;
+};
+
+type ZipArchiveConstructor = new (options?: { zlib?: { level?: number } }) => ZipArchiveLike;
 
 export async function getMediaSettings(botId: string, guildId: string) {
   const { mediaSettings } = await getMongoCollections();
@@ -290,7 +298,7 @@ export async function streamMediaExport(input: { botId: string; guildId: string;
   const items = await listMediaLibrary({ botId: input.botId, guildId: input.guildId });
   const { mediaLibrary } = await getMongoCollections();
   const selected = items.filter((item) => input.type === "sounds" ? item.type === "sound" : input.type === "static" ? item.type === "emoji" && !item.animated : input.type === "animated" ? item.type === "emoji" && item.animated : true);
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = await createZipArchive({ zlib: { level: 6 } });
   archive.pipe(output);
   const manifestItems: Array<Record<string, unknown>> = [];
   for (const item of selected) {
@@ -308,6 +316,11 @@ export async function streamMediaExport(input: { botId: string; guildId: string;
   archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), guildId: input.guildId, botId: input.botId, totalEmojis: manifestItems.filter((item) => item.type === "emoji").length, totalAnimated: manifestItems.filter((item) => item.type === "emoji" && item.animated).length, totalStatic: manifestItems.filter((item) => item.type === "emoji" && !item.animated).length, totalSounds: manifestItems.filter((item) => item.type === "sound").length, items: manifestItems }, null, 2), { name: "manifest.json" });
   await archive.finalize();
   await mediaLog(input, "media.export_created", `[MEDIA_EXPORT] ZIP gerado com ${manifestItems.length} item(ns).`);
+}
+
+async function createZipArchive(options: { zlib?: { level?: number } }) {
+  const archiverModule = await import("archiver") as unknown as { ZipArchive: ZipArchiveConstructor };
+  return new archiverModule.ZipArchive(options);
 }
 
 async function extractZip(buffer: Buffer, directory: string, maxFiles: number) {

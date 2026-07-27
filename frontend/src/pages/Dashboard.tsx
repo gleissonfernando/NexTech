@@ -110,6 +110,7 @@ import {
     createFivemGoalConfig,
     createManualRegistrationSubmission,
     createServerBackup,
+    deleteAdvancedModulePanel,
     deleteAutoActivityClockCity,
     deleteFivemGoalConfig,
     deleteFivemHierarchyPanel,
@@ -764,6 +765,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "fivem-captcha"
   },
   {
+    id: "fivem-commands",
+    title: "Comandos FiveM",
+    description: "Painel Components V2 com comandos essenciais, atalhos e links para som e miras.",
+    icon: ScrollText,
+    view: "fivem-commands"
+  },
+  {
     id: "verification",
     title: "Usuários",
     description: "Define quais usuários podem entrar e configurar este painel.",
@@ -861,6 +869,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-finance": "fivem-finance",
   "fivem-goals": "fivem-goals",
   "fivem-captcha": "fivem-captcha",
+  "fivem-commands": "fivem-commands",
   "ztk-webhook": "ztk-webhook",
   "manual-registration": "manual-registration",
   "voice-recorder": "voice-recorder",
@@ -1980,6 +1989,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             moduleId="fivem-captcha"
           />
         ) : null}
+        {activeView === "fivem-commands" ? (
+          <AdvancedSecurityModulePanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "fivem-commands", canManageDashboard)}
+            guild={selectedGuild}
+            moduleId="fivem-commands"
+          />
+        ) : null}
         {activeView === "ztk-webhook" ? (
           <ZtkWebhookPanel
             botId={activeBotId}
@@ -2143,6 +2160,12 @@ const advancedSecurityModuleDetails: Record<string, {
     description: "Verificação por CAPTCHA para entrada FiveM com cargo de liberação, bypass, logs e punição opcional.",
     icon: ShieldCheck,
     items: ["Canal do painel", "Cargo entregue", "Tentativas", "Logs de verificação"]
+  },
+  "fivem-commands": {
+    title: "Comandos FiveM",
+    description: "Painel Components V2 com comandos essenciais do FiveM e botões para canais de som e miras.",
+    icon: ScrollText,
+    items: ["Canal do painel", "Conteúdo editável", "Botões personalizados", "Links de canais"]
   },
   "first-lady": {
     title: "Sistema Primeira Dama",
@@ -2927,10 +2950,11 @@ function AdvancedSecurityModulePanel({
   }
 
   async function publishModulePanel() {
-    if (!botId || !guild || moduleId !== "fivem-captcha") return;
+    if (!botId || !guild || !["fivem-captcha", "fivem-commands"].includes(moduleId)) return;
+    const label = moduleId === "fivem-captcha" ? "CAPTCHA FiveM" : "Comandos FiveM";
 
     if (!enabled) {
-      setMessage("Ative e salve o CAPTCHA FiveM antes de publicar o painel.");
+      setMessage(`Ative e salve o ${label} antes de publicar o painel.`);
       return;
     }
 
@@ -2943,11 +2967,28 @@ function AdvancedSecurityModulePanel({
     setMessage(null);
 
     try {
-      const result = await publishAdvancedModulePanel(botId, guild.id, "fivem-captcha");
+      const result = await publishAdvancedModulePanel(botId, guild.id, moduleId as "fivem-captcha" | "fivem-commands");
       setConfig(defaultAdvancedModuleConfig(moduleId, result.module.config));
-      setMessage(result.messageId ? "Painel do CAPTCHA FiveM publicado." : "Publicação solicitada ao bot.");
+      setMessage(result.messageId ? `Painel do ${label} publicado.` : "Publicação solicitada ao bot.");
     } catch (error) {
-      setMessage(readResponseMessage(error) ?? "Não foi possível publicar o painel do CAPTCHA FiveM.");
+      setMessage(readResponseMessage(error) ?? `Não foi possível publicar o painel do ${label}.`);
+    } finally {
+      setPublishingPanel(false);
+    }
+  }
+
+  async function deleteModulePanel() {
+    if (!botId || !guild || moduleId !== "fivem-commands") return;
+
+    setPublishingPanel(true);
+    setMessage(null);
+
+    try {
+      const result = await deleteAdvancedModulePanel(botId, guild.id, "fivem-commands");
+      setConfig(defaultAdvancedModuleConfig(moduleId, result.module.config));
+      setMessage("Painel de Comandos FiveM excluído.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível excluir o painel de Comandos FiveM.");
     } finally {
       setPublishingPanel(false);
     }
@@ -3045,6 +3086,18 @@ function AdvancedSecurityModulePanel({
                 Postar painel
               </Button>
             ) : null}
+            {moduleId === "fivem-commands" ? (
+              <>
+                <Button disabled={disabled || !enabled || !stringConfig(config.panelChannelId)} onClick={() => void publishModulePanel()} variant="outline">
+                  {publishingPanel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Enviar/Atualizar painel
+                </Button>
+                <Button disabled={disabled || !stringConfig(config.panelMessageId)} onClick={() => void deleteModulePanel()} variant="destructive">
+                  <Trash2 className="h-4 w-4" />
+                  Excluir painel
+                </Button>
+              </>
+            ) : null}
             <Badge variant="muted">Escopo: bot {botId} / {guild.name}</Badge>
           </div>
           {moduleId === "tag-verification" ? <TagVerificationStatus config={config} /> : null}
@@ -3134,6 +3187,28 @@ function AdvancedModuleFields({
     );
   }
 
+  if (moduleId === "fivem-commands") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <AdvancedSelectField disabled={disabled} label="Canal do painel" onChange={(value) => onChange({ panelChannelId: value || null })} options={textChannelOptions} placeholder="Selecione um canal" value={stringConfig(config.panelChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Canal Modo Som" onChange={(value) => onChange({ soundChannelId: value || null })} options={textChannelOptions} placeholder="Sem canal configurado" value={stringConfig(config.soundChannelId)} />
+        <AdvancedSelectField disabled={disabled} label="Canal Miras" onChange={(value) => onChange({ crosshairChannelId: value || null })} options={textChannelOptions} placeholder="Sem canal configurado" value={stringConfig(config.crosshairChannelId)} />
+        <AdvancedTextField disabled={disabled} label="Título do painel" onChange={(value) => onChange({ title: value })} placeholder="COMANDOS PARA FIVEM" value={stringConfig(config.title) || "COMANDOS PARA FIVEM"} />
+        <AdvancedTextField disabled={disabled} label="Descrição" onChange={(value) => onChange({ description: value })} placeholder="Abaixo pode-se encontrar alguns comandos essenciais." value={stringConfig(config.description) || "Abaixo pode-se encontrar alguns comandos essenciais."} />
+        <AdvancedTextField disabled={disabled} label="Emoji botão Modo Som" onChange={(value) => onChange({ soundButtonEmoji: value })} placeholder="📂" value={stringConfig(config.soundButtonEmoji) || "📂"} />
+        <AdvancedTextField disabled={disabled} label="Texto botão Modo Som" onChange={(value) => onChange({ soundButtonLabel: value })} placeholder="Modo Som" value={stringConfig(config.soundButtonLabel) || "Modo Som"} />
+        <AdvancedTextField disabled={disabled} label="Emoji botão Miras" onChange={(value) => onChange({ crosshairButtonEmoji: value })} placeholder="📂" value={stringConfig(config.crosshairButtonEmoji) || "📂"} />
+        <AdvancedTextField disabled={disabled} label="Texto botão Miras" onChange={(value) => onChange({ crosshairButtonLabel: value })} placeholder="Miras" value={stringConfig(config.crosshairButtonLabel) || "Miras"} />
+        <div className="sm:col-span-2 xl:col-span-3">
+          <AdvancedAreaField disabled={disabled} label="Conteúdo e categorias do painel" onChange={(value) => onChange({ contentText: value })} placeholder={defaultFivemCommandsContent()} value={stringConfig(config.contentText) || defaultFivemCommandsContent()} />
+        </div>
+        <div className="sm:col-span-2 xl:col-span-3">
+          <FivemCommandsPreview config={config} />
+        </div>
+      </div>
+    );
+  }
+
   if (moduleId === "auto-unmute") {
     return (
       <div className="grid gap-3 sm:grid-cols-2">
@@ -3219,6 +3294,15 @@ function AdvancedTextField({ disabled, label, onChange, placeholder, value }: { 
     <label className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
       <span className="font-semibold text-white">{label}</span>
       <input className="h-10 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-[#FFD500]/60" disabled={disabled} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
+    </label>
+  );
+}
+
+function AdvancedAreaField({ disabled, label, onChange, placeholder, value }: { disabled: boolean; label: string; onChange: (value: string) => void; placeholder: string; value: string }) {
+  return (
+    <label className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 text-sm">
+      <span className="font-semibold text-white">{label}</span>
+      <textarea className="min-h-72 rounded-lg border border-zinc-800 bg-black px-3 py-3 text-sm leading-6 text-zinc-100 outline-none focus:border-[#FFD500]/60" disabled={disabled} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
     </label>
   );
 }
@@ -3315,6 +3399,68 @@ function TagVerificationStatus({ config }: { config: Record<string, unknown> }) 
   );
 }
 
+function FivemCommandsPreview({ config }: { config: Record<string, unknown> }) {
+  const title = stringConfig(config.title) || "COMANDOS PARA FIVEM";
+  const description = stringConfig(config.description) || "Abaixo pode-se encontrar alguns comandos essenciais.";
+  const content = stringConfig(config.contentText) || defaultFivemCommandsContent();
+  const soundEmoji = stringConfig(config.soundButtonEmoji) || "📂";
+  const soundLabel = stringConfig(config.soundButtonLabel) || "Modo Som";
+  const crosshairEmoji = stringConfig(config.crosshairButtonEmoji) || "📂";
+  const crosshairLabel = stringConfig(config.crosshairButtonLabel) || "Miras";
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-[#303137] p-4 text-sm text-zinc-100">
+      <p className="text-lg font-black tracking-normal text-white">{title}</p>
+      <p className="mt-2 text-xs font-semibold text-zinc-300">{description}</p>
+      <div className="my-4 border-t border-zinc-600/60" />
+      <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-xs font-semibold leading-6 text-zinc-200">
+        {content}
+      </div>
+      <div className="mt-5 border-t border-zinc-600/60 pt-3">
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded bg-zinc-700 px-3 py-2 text-xs font-bold text-white">{soundEmoji} · {soundLabel}</span>
+          <span className="rounded bg-zinc-700 px-3 py-2 text-xs font-bold text-white">{crosshairEmoji} · {crosshairLabel}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function defaultFivemCommandsContent() {
+  return [
+    "## BIND (ATALHOS)",
+    "Criar bind: `bind keyboard \"tecla\" \"comando\"`",
+    "Remover bind: `unbind keyboard \"tecla\"`",
+    "Remover todos: `unbind all`",
+    "",
+    "## MIRA E VISÃO",
+    "Tamanho da mira: `profile_reticulesize`",
+    "Brilho: `profile_gamma`",
+    "FOV: `profile_fpsFieldOfView`",
+    "",
+    "## TROCAR ENTRE MIRA SIMPLES E COMPLEXA",
+    "`bind keyboard \"tecla\" \"toggle_profile_reticule 0 1\"`",
+    "`bind keyboard \"tecla\" \"toggle_profile_reticule 0 -2\"`",
+    "",
+    "## ATIVAR MIRA FIXA",
+    "Ativar → `cl_customCrosshair true`",
+    "Desativar → `cl_customCrosshair false`",
+    "",
+    "## MOUSE",
+    "Sensibilidade: `profile_mouseonfootscale`",
+    "Sem aceleração: `profile_aimAcceleration 0`",
+    "Sem deadzone: `profile_aimDeadzone 0`",
+    "",
+    "## PERFORMANCE & FPS",
+    "Mostrar FPS: `cl_drawfps 1` | desativar: `cl_drawfps 0`",
+    "Mostrar Performance: `cl_drawperf 1` | desativar: `cl_drawperf 0`",
+    "",
+    "## DESTRAVAR FPS (ÁUDIO):",
+    "Ativar → `game_useSynchronousAudio true`",
+    "Desativar → `game_useSynchronousAudio false`"
+  ].join("\n");
+}
+
 function formatTagVerificationDate(value: unknown) {
   if (typeof value !== "string" || !value) return "Ainda não executado";
   const date = new Date(value);
@@ -3366,6 +3512,24 @@ function defaultAdvancedModuleConfig(moduleId: string, config: Record<string, un
       panelMessageId: null,
       requireNickname: true,
       roleId: null,
+      ...config
+    };
+  }
+
+  if (moduleId === "fivem-commands") {
+    return {
+      contentText: defaultFivemCommandsContent(),
+      crosshairButtonEmoji: "📂",
+      crosshairButtonLabel: "Miras",
+      crosshairChannelId: null,
+      description: "Abaixo pode-se encontrar alguns comandos essenciais.",
+      enabled: false,
+      panelChannelId: null,
+      panelMessageId: null,
+      soundButtonEmoji: "📂",
+      soundButtonLabel: "Modo Som",
+      soundChannelId: null,
+      title: "COMANDOS PARA FIVEM",
       ...config
     };
   }
@@ -4515,6 +4679,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Verificação inteligente por CAPTCHA integrada ao fluxo FiveM.", id: "fivem-captcha", permissions: "Admin FiveM", title: "CAPTCHA FiveM" },
+    { builtIn: true, description: "Painel Components V2 com comandos essenciais do FiveM e atalhos para som e miras.", id: "fivem-commands", permissions: "Admin FiveM", title: "Comandos FiveM" },
     { builtIn: true, description: "Paineis oficiais V2 sincronizados por cargos.", id: "fivem-hierarchy", permissions: "Admin FiveM", title: "Paineis de hierarquia" },
     { builtIn: true, description: "Ações profissionais da FAC com painel, participantes e relatórios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Ações FAC" }
   ];
@@ -4551,6 +4716,7 @@ function fivemIconForModule(moduleId: string) {
     "fivem-washing": CircleDollarSign,
     "fivem-goals": ListChecks,
     "fivem-captcha": ShieldCheck,
+    "fivem-commands": ScrollText,
     "fivem-actions": Activity,
     "fivem-drugs": Boxes,
     "fivem-hierarchy": Users,
@@ -4656,6 +4822,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "fivem-finance",
       "fivem-goals",
       "fivem-captcha",
+      "fivem-commands",
       "fivem-hierarchy",
       "fivem-actions",
       "police-absences",
@@ -11138,6 +11305,7 @@ function visualPanelIdForView(view: ViewId) {
     "fivem-absence": "fivem-absence",
     "fivem": "fivem-general",
     "fivem-captcha": "fivem-captcha",
+    "fivem-commands": "fivem-commands",
     "fivem-washing": "fivem-washing",
     "manual-registration": "manual-registration",
     "server-cloner": "server-cloner"
@@ -11181,6 +11349,10 @@ function dashboardViewFromPath(path: string): ViewId {
     return "fivem-captcha";
   }
 
+  if (path === "/dashboard/fivem-commands" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/fivem-commands(?:\/|$)/i.test(path)) {
+    return "fivem-commands";
+  }
+
   if (path === "/dashboard/tickets" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/tickets(?:\/|$)/i.test(path)) {
     return "tickets";
   }
@@ -11195,6 +11367,7 @@ function dashboardPathForView(slug: string, view: ViewId) {
   if (view === "fivem-hierarchy") return `${base}/hierarquia`;
   if (view === "ztk-webhook") return `${base}/ztk-webhook`;
   if (view === "fivem-captcha") return `${base}/fivem-captcha`;
+  if (view === "fivem-commands") return `${base}/fivem-commands`;
   if (view === "tickets") return `${base}/tickets`;
   return base;
 }

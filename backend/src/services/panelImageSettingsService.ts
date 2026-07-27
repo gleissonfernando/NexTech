@@ -132,6 +132,7 @@ const PANEL_VISUAL_REFRESH_EVENTS: Record<string, string[]> = {
   "auto-activity-clock": ["auto-activity-clock:panel_refresh"],
   courses: ["courses:panel_publish"],
   "fivem-captcha": ["fivem-captcha:panel_publish"],
+  "fivem-commands": ["fivem-commands:panel_publish"],
   "fivem-finance": ["fivem:finance:panel_publish"],
   "fivem-general": ["fivem:fac:panel_publish"],
   "fivem-orders": ["fivem:orders:panel_publish"],

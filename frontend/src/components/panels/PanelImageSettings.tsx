@@ -67,6 +67,7 @@ const PANELS: PanelDefinition[] = [
   { id: "fivem-finance", label: "Financeiro FiveM" },
   { id: "fivem-goals", label: "Metas FiveM" },
   { id: "fivem-captcha", label: "Captcha FiveM" },
+  { id: "fivem-commands", label: "Comandos FiveM" },
   { id: "fivem-washing", label: "Lavagem FiveM" },
   { id: "fivem-drugs", label: "Drogas FiveM" },
   { id: "manual-registration", label: "Registro manual" },

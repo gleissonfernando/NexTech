@@ -3135,10 +3135,18 @@ export async function runTagVerificationNow(botId: string, guildId: string) {
   return data.result;
 }
 
-export async function publishAdvancedModulePanel(botId: string, guildId: string, moduleId: "fivem-captcha") {
+export async function publishAdvancedModulePanel(botId: string, guildId: string, moduleId: "fivem-captcha" | "fivem-commands") {
   const { data } = await api.post<{ messageId: string | null; module: AdvancedModuleConfig }>(
     `/advanced-modules/${encodeURIComponent(botId)}/${encodeURIComponent(guildId)}/${encodeURIComponent(moduleId)}/panel`,
     undefined,
+    { timeout: 45_000 }
+  );
+  return data;
+}
+
+export async function deleteAdvancedModulePanel(botId: string, guildId: string, moduleId: "fivem-commands") {
+  const { data } = await api.delete<{ messageId: string | null; module: AdvancedModuleConfig }>(
+    `/advanced-modules/${encodeURIComponent(botId)}/${encodeURIComponent(guildId)}/${encodeURIComponent(moduleId)}/panel`,
     { timeout: 45_000 }
   );
   return data;

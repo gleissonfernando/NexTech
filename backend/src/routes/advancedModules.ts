@@ -32,12 +32,13 @@ const moduleIdSchema = z.enum([
   "tag-verification",
   "bio-url-verification",
   "fivem-captcha",
+  "fivem-commands",
   "first-lady",
   "music"
 ]);
 const primitiveConfigValue = z.union([
   z.boolean(),
-  z.string().max(500),
+  z.string().max(6000),
   z.number().finite().min(0).max(1_000_000),
   z.null()
 ]);
@@ -134,6 +135,20 @@ const fivemCaptchaConfigSchema = z.object({
   requireNickname: z.boolean().default(true),
   deletePromptAfterVerify: z.boolean().default(true)
 });
+const fivemCommandsConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  panelChannelId: snowflakeSchema.nullable().default(null),
+  panelMessageId: snowflakeSchema.nullable().default(null),
+  soundChannelId: snowflakeSchema.nullable().default(null),
+  crosshairChannelId: snowflakeSchema.nullable().default(null),
+  title: z.string().trim().min(1).max(120).default("COMANDOS PARA FIVEM"),
+  description: z.string().trim().min(1).max(500).default("Abaixo pode-se encontrar alguns comandos essenciais."),
+  contentText: z.string().trim().min(1).max(6000).default(defaultFivemCommandsContent()),
+  soundButtonEmoji: z.string().trim().max(32).default("📂"),
+  soundButtonLabel: z.string().trim().min(1).max(80).default("Modo Som"),
+  crosshairButtonEmoji: z.string().trim().max(32).default("📂"),
+  crosshairButtonLabel: z.string().trim().min(1).max(80).default("Miras")
+});
 const tagVerificationConfigSchema = z.object({
   enabled: z.boolean().default(false),
   requiredTag: z.string().trim().max(100).default(""),
@@ -219,9 +234,10 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
     }
 
     const previous = await getBotGuildModuleConfig(botId, guildId, moduleId);
+    const normalizedPreviousConfig = normalizeModuleConfig(moduleId, previous.config) as Record<string, unknown>;
     const normalizedConfig = normalizeModuleConfig(moduleId, input.config);
     if (
-      (moduleId === "temporary-voice" || moduleId === "fivem-captcha")
+      (moduleId === "temporary-voice" || moduleId === "fivem-captcha" || moduleId === "fivem-commands")
       && !Object.prototype.hasOwnProperty.call(input.config, "panelMessageId")
       && previous.config.panelMessageId
     ) {
@@ -262,6 +278,21 @@ advancedModulesRouter.patch("/:botId/:guildId/:moduleId", async (req, res, next)
       emitRealtimeToRoom(devBotRealtimeRoom(botId), "tag-verification:config_updated", {
         botId,
         guildId
+      });
+    }
+
+    if (
+      moduleId === "fivem-commands"
+      && !moduleConfigsEqual(normalizedPreviousConfig, normalizedConfig as Record<string, unknown>)
+      && savedModule.config.enabled === true
+      && typeof savedModule.config.panelMessageId === "string"
+      && savedModule.config.panelMessageId
+      && normalizedPreviousConfig.panelChannelId === savedModule.config.panelChannelId
+    ) {
+      emitRealtimeToRoom(devBotRealtimeRoom(botId), "fivem-commands:panel_update", {
+        botId,
+        guildId,
+        settings: savedModule.config
       });
     }
 
@@ -306,24 +337,26 @@ advancedModulesRouter.post("/:botId/:guildId/tag-verification/run", async (req, 
   }
 });
 
-advancedModulesRouter.post("/:botId/:guildId/fivem-captcha/panel", async (req, res, next) => {
+advancedModulesRouter.post("/:botId/:guildId/:moduleId/panel", async (req, res, next) => {
   try {
     const botId = botIdSchema.parse(req.params.botId);
     const guildId = guildIdSchema.parse(req.params.guildId);
+    const moduleId = z.enum(["fivem-captcha", "fivem-commands"]).parse(req.params.moduleId);
     const user = res.locals.dashboardAuth.user as AuthSessionUser;
 
-    if (!(await canUseDevBotModule(user, botId, guildId, "fivem-captcha"))) {
+    if (!(await canUseDevBotModule(user, botId, guildId, moduleId))) {
       return res.status(403).json({ message: "Este módulo não foi liberado para este bot ou servidor." });
     }
 
     const [guildConfig, module] = await Promise.all([
       getBotGuildConfig(botId, guildId),
-      getBotGuildModuleConfig(botId, guildId, "fivem-captcha")
+      getBotGuildModuleConfig(botId, guildId, moduleId)
     ]);
-    const config = normalizeModuleConfig("fivem-captcha", module.config) as Record<string, unknown>;
+    const config = normalizeModuleConfig(moduleId, module.config) as Record<string, unknown>;
+    const label = moduleId === "fivem-captcha" ? "CAPTCHA FiveM" : "Comandos FiveM";
 
     if (config.enabled !== true) {
-      return res.status(409).json({ message: "Ative e salve o CAPTCHA FiveM antes de publicar o painel." });
+      return res.status(409).json({ message: `Ative e salve o ${label} antes de publicar o painel.` });
     }
 
     if (!config.panelChannelId) {
@@ -333,7 +366,7 @@ advancedModulesRouter.post("/:botId/:guildId/fivem-captcha/panel", async (req, r
     const responses = await emitRealtimeToRoomWithAck<
       { botId: string; guildId: string; settings: Record<string, unknown> },
       PanelPublishAck
-    >(devBotRealtimeRoom(botId), "fivem-captcha:panel_publish", { botId, guildId, settings: config }, 30_000);
+    >(devBotRealtimeRoom(botId), `${moduleId}:panel_publish`, { botId, guildId, settings: config }, 30_000);
     const success = responses.find((item) => item.ok);
 
     if (!success) {
@@ -345,7 +378,7 @@ advancedModulesRouter.post("/:botId/:guildId/fivem-captcha/panel", async (req, r
       botId,
       guildId,
       guildName: guildConfig.guildName,
-      moduleId: "fivem-captcha",
+      moduleId,
       config: {
         ...config,
         panelMessageId: success.messageId ?? null,
@@ -357,17 +390,77 @@ advancedModulesRouter.post("/:botId/:guildId/fivem-captcha/panel", async (req, r
       botId,
       guildId,
       userId: user.discordId ?? user.id,
-      type: "fivem-captcha.panel_published",
-      message: "CAPTCHA FiveM: painel publicado pela dashboard.",
+      type: `${moduleId}.panel_published`,
+      message: `${label}: painel publicado pela dashboard.`,
       metadata: {
         messageId: success.messageId ?? null,
-        moduleId: "fivem-captcha",
+        moduleId,
         panelChannelId: config.panelChannelId
       }
     }).catch(() => undefined);
 
     return res.json({
       messageId: success.messageId ?? null,
+      module: savedModule
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+advancedModulesRouter.delete("/:botId/:guildId/fivem-commands/panel", async (req, res, next) => {
+  try {
+    const botId = botIdSchema.parse(req.params.botId);
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const user = res.locals.dashboardAuth.user as AuthSessionUser;
+
+    if (!(await canUseDevBotModule(user, botId, guildId, "fivem-commands"))) {
+      return res.status(403).json({ message: "Este módulo não foi liberado para este bot ou servidor." });
+    }
+
+    const [guildConfig, module] = await Promise.all([
+      getBotGuildConfig(botId, guildId),
+      getBotGuildModuleConfig(botId, guildId, "fivem-commands")
+    ]);
+    const config = normalizeModuleConfig("fivem-commands", module.config) as Record<string, unknown>;
+
+    const responses = await emitRealtimeToRoomWithAck<
+      { botId: string; guildId: string; settings: Record<string, unknown> },
+      PanelPublishAck
+    >(devBotRealtimeRoom(botId), "fivem-commands:panel_delete", { botId, guildId, settings: config }, 30_000);
+    const success = responses.find((item) => item.ok);
+
+    if (!success) {
+      const error = responses.find((item) => item.error)?.error;
+      return res.status(503).json({ message: error || "O bot não respondeu a exclusão do painel." });
+    }
+
+    const savedModule = await updateBotGuildModuleConfig({
+      botId,
+      guildId,
+      guildName: guildConfig.guildName,
+      moduleId: "fivem-commands",
+      config: {
+        ...config,
+        panelMessageId: null,
+        updatedBy: user.id
+      }
+    });
+
+    await createLog({
+      botId,
+      guildId,
+      userId: user.discordId ?? user.id,
+      type: "fivem-commands.panel_deleted",
+      message: "Comandos FiveM: painel excluído pela dashboard.",
+      metadata: {
+        moduleId: "fivem-commands",
+        panelChannelId: config.panelChannelId
+      }
+    }).catch(() => undefined);
+
+    return res.json({
+      messageId: null,
       module: savedModule
     });
   } catch (error) {
@@ -446,6 +539,23 @@ function normalizeModuleConfig(moduleId: z.infer<typeof moduleIdSchema>, config:
     });
   }
 
+  if (moduleId === "fivem-commands") {
+    return fivemCommandsConfigSchema.parse({
+      contentText: typeof config.contentText === "string" && config.contentText.trim() ? config.contentText : defaultFivemCommandsContent(),
+      crosshairButtonEmoji: config.crosshairButtonEmoji || "📂",
+      crosshairButtonLabel: config.crosshairButtonLabel || "Miras",
+      crosshairChannelId: config.crosshairChannelId || null,
+      description: config.description || "Abaixo pode-se encontrar alguns comandos essenciais.",
+      enabled: config.enabled,
+      panelChannelId: config.panelChannelId || null,
+      panelMessageId: config.panelMessageId || null,
+      soundButtonEmoji: config.soundButtonEmoji || "📂",
+      soundButtonLabel: config.soundButtonLabel || "Modo Som",
+      soundChannelId: config.soundChannelId || null,
+      title: config.title || "COMANDOS PARA FIVEM"
+    });
+  }
+
   if (moduleId === "tag-verification") {
     const result = tagVerificationConfigSchema.safeParse({
       autoRemove: config.autoRemove ?? config.removeOnMismatch,
@@ -502,7 +612,7 @@ async function writeModuleConfigLogs(input: {
   previousConfig: Record<string, unknown>;
   user: AuthSessionUser;
 }) {
-  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId === "anti-abuse" ? "Anti Abuse" : input.moduleId === "tag-verification" ? "Verificação de Tag" : input.moduleId === "fivem-captcha" ? "CAPTCHA FiveM" : input.moduleId;
+  const label = input.moduleId === "auto-unmute" ? "Auto Desmutar" : input.moduleId === "anti-disconnect" ? "Anti Disconnect" : input.moduleId === "anti-abuse" ? "Anti Abuse" : input.moduleId === "tag-verification" ? "Verificação de Tag" : input.moduleId === "fivem-captcha" ? "CAPTCHA FiveM" : input.moduleId === "fivem-commands" ? "Comandos FiveM" : input.moduleId;
   const enabled = input.config.enabled === true;
   const wasEnabled = input.previousConfig.enabled === true;
 
@@ -528,6 +638,11 @@ async function writeModuleConfigLogs(input: {
         maxAttempts: input.config.maxAttempts,
         panelChannelId: input.config.panelChannelId,
         roleId: input.config.roleId
+      } : {}),
+      ...(input.moduleId === "fivem-commands" ? {
+        crosshairChannelId: input.config.crosshairChannelId,
+        panelChannelId: input.config.panelChannelId,
+        soundChannelId: input.config.soundChannelId
       } : {})
     }
   }).catch(() => undefined);
@@ -548,4 +663,49 @@ async function writeModuleConfigLogs(input: {
       moduleId: input.moduleId
     }
   }).catch(() => undefined);
+}
+
+function moduleConfigsEqual(left: Record<string, unknown>, right: Record<string, unknown>) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)].filter((key) => key !== "updatedBy"));
+  for (const key of keys) {
+    if (JSON.stringify(left[key] ?? null) !== JSON.stringify(right[key] ?? null)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function defaultFivemCommandsContent() {
+  return [
+    "## BIND (ATALHOS)",
+    "Criar bind: `bind keyboard \"tecla\" \"comando\"`",
+    "Remover bind: `unbind keyboard \"tecla\"`",
+    "Remover todos: `unbind all`",
+    "",
+    "## MIRA E VISÃO",
+    "Tamanho da mira: `profile_reticulesize`",
+    "Brilho: `profile_gamma`",
+    "FOV: `profile_fpsFieldOfView`",
+    "",
+    "## TROCAR ENTRE MIRA SIMPLES E COMPLEXA",
+    "`bind keyboard \"tecla\" \"toggle_profile_reticule 0 1\"`",
+    "`bind keyboard \"tecla\" \"toggle_profile_reticule 0 -2\"`",
+    "",
+    "## ATIVAR MIRA FIXA",
+    "Ativar → `cl_customCrosshair true`",
+    "Desativar → `cl_customCrosshair false`",
+    "",
+    "## MOUSE",
+    "Sensibilidade: `profile_mouseonfootscale`",
+    "Sem aceleração: `profile_aimAcceleration 0`",
+    "Sem deadzone: `profile_aimDeadzone 0`",
+    "",
+    "## PERFORMANCE & FPS",
+    "Mostrar FPS: `cl_drawfps 1` | desativar: `cl_drawfps 0`",
+    "Mostrar Performance: `cl_drawperf 1` | desativar: `cl_drawperf 0`",
+    "",
+    "## DESTRAVAR FPS (ÁUDIO):",
+    "Ativar → `game_useSynchronousAudio true`",
+    "Desativar → `game_useSynchronousAudio false`"
+  ].join("\n");
 }

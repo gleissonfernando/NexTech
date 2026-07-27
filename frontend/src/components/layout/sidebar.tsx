@@ -118,6 +118,7 @@ export type ViewId =
   | "fivem-finance"
   | "fivem-goals"
   | "fivem-captcha"
+  | "fivem-commands"
   | "ztk-webhook"
   | "manual-registration"
   | "notifications"
@@ -218,6 +219,7 @@ const navItems: NavItem[] = [
   { id: "fivem-finance", label: "Financeiro", icon: CircleDollarSign, moduleId: "fivem-finance" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
   { id: "fivem-captcha", label: "CAPTCHA FiveM", icon: ShieldCheck, moduleId: "fivem-captcha" },
+  { id: "fivem-commands", label: "Comandos FiveM", icon: ScrollText, moduleId: "fivem-commands" },
   { id: "ztk-webhook", label: "ZTK Webhook", icon: Trophy, moduleId: "ztk-webhook" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
   { id: "tickets", label: "Tickets", icon: Archive, moduleId: "tickets" },
@@ -284,6 +286,7 @@ const fivemViewIds = new Set<ViewId>([
   "fivem-finance",
   "fivem-goals",
   "fivem-captcha",
+  "fivem-commands",
   "ztk-webhook",
   "manual-registration"
 ]);

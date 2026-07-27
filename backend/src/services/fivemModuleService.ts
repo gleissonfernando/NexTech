@@ -88,6 +88,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Painel Components V2 com comandos essenciais do FiveM e atalhos para canais de som e miras.",
+    id: "fivem-commands",
+    permissions: "Admin FiveM",
+    title: "Comandos FiveM"
+  },
+  {
+    builtIn: true,
     description: "Painel de hierarquia policial atualizado automaticamente pelos cargos do Discord.",
     id: "fivem-hierarchy",
     permissions: "Admin Polícia, Liderança",

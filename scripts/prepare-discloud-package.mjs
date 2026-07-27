@@ -100,7 +100,7 @@ writeFileSync(path.join(target, "package.json"), `${JSON.stringify({
   },
   dependencies: {
     "@discordjs/voice": "^0.19.2",
-    archiver: "^7.0.1",
+    archiver: "^8.0.0",
     axios: "^1.7.9",
     "cookie-parser": "^1.4.7",
     cors: "^2.8.5",
