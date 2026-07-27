@@ -1,13 +1,13 @@
-import { Award, BarChart3, CalendarClock, Clipboard, Clock3, Crown, Gift, Link2, Loader2, Megaphone, RefreshCw, Save, Search, Settings, Sparkles, Trash2, Trophy, UserPlus, Users, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Award, BarChart3, CalendarClock, Clipboard, Clock3, Crown, Gift, Link2, Loader2, Megaphone, RefreshCw, Save, Search, Settings, Sparkles, Trophy, Trash2, UserPlus, Users, X } from "lucide-react";
 import {
-    createZtkReward,
-    createZtkWebhookClan,
-    getGuildLiveOptions,
-    getZtkWebhookDashboard,
-    resetZtkWeeklyRanking,
-    saveZtkWebhookClan,
-    updateZtkWebhookState
+  createZtkReward,
+  createZtkWebhookClan,
+  getGuildLiveOptions,
+  getZtkWebhookDashboard,
+  resetZtkWeeklyRanking,
+  saveZtkWebhookClan,
+  updateZtkWebhookState
 } from "../../lib/api";
 import { createDashboardSocket } from "../../lib/socket";
 import type { DashboardGuild, GuildChannelOption, SaveZtkRewardPayload, SaveZtkWebhookClanPayload, ZtkRankingType, ZtkWebhookClan, ZtkWebhookDashboard } from "../../types";
@@ -106,7 +106,7 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
       })
       .catch((error) => {
         if (!active) return;
-        setMessage(errorMessage(error, "Não foi possível carregar oNexTech  ZTK."));
+        setMessage(errorMessage(error, "Não foi possível carregar o ZTK Webhook."));
       })
       .finally(() => {
         if (active) setSavingKey(null);
