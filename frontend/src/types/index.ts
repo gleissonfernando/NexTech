@@ -4282,6 +4282,7 @@ export type DashboardBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   maintenance: boolean;
+  maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
@@ -4310,6 +4311,7 @@ export type DevBot = {
   status: DevBotStatus;
   statusMessage: string | null;
   maintenance: boolean;
+  maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
@@ -4490,6 +4492,7 @@ export type MaintenanceBot = {
   avatarUrl: string | null;
   id: string;
   maintenance: boolean;
+  maintenanceBypass: boolean;
   mainGuildName: string | null;
   name: string;
   released: boolean;
@@ -4507,6 +4510,7 @@ export type MaintenanceState = {
   deactivatedAt: string | null;
   globalActive: boolean;
   logs: MaintenanceLog[];
+  maintenanceBypass: boolean;
   releasedBotIds: string[];
   updatedAt: string;
   updatedById: string | null;

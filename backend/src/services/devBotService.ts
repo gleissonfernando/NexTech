@@ -317,6 +317,7 @@ export type DevBotDto = {
   status: MongoDevBotStatus;
   statusMessage: string | null;
   maintenance: boolean;
+  maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
   accessLevel: DashboardAccessLevel;
@@ -2683,6 +2684,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     status: bot.status,
     statusMessage: bot.statusMessage ? maskSensitiveText(bot.statusMessage) : null,
     maintenance: bot.maintenance === true,
+    maintenanceBypass: bot.maintenanceBypass === true,
     enabledModules: sanitizeModules(bot.enabledModules),
     desiredOnline: bot.desiredOnline !== false,
     accessLevel,

@@ -909,6 +909,7 @@ export type MaintenanceState = {
     avatarUrl: string | null;
     id: string;
     maintenance: boolean;
+    maintenanceBypass: boolean;
     mainGuildName: string | null;
     name: string;
     released: boolean;
@@ -917,6 +918,7 @@ export type MaintenanceState = {
   }>;
   deactivatedAt: string | null;
   globalActive?: boolean;
+  maintenanceBypass?: boolean;
   releasedBotIds?: string[];
   updatedAt: string;
   updatedById: string | null;

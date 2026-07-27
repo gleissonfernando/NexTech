@@ -56,6 +56,7 @@ let maintenanceState: MaintenanceState = {
   botId: null,
   botName: null,
   deactivatedAt: null,
+  maintenanceBypass: false,
   updatedAt: new Date(0).toISOString(),
   updatedById: null,
   updatedByName: null
@@ -81,7 +82,7 @@ export async function refreshMaintenanceState(context: BotContext) {
   });
 
   if (state) {
-    maintenanceState = state;
+    maintenanceState = normalizeRuntimeMaintenanceState(state);
     await applyMaintenanceState(context, previousActive, MAINTENANCE_ALERT_MESSAGE);
     notifyMaintenanceStateChanged(previousActive, "maintenance:poll");
   }
@@ -104,7 +105,7 @@ export function startMaintenanceService(context: BotContext, options: { refreshI
       return;
     }
     const previousActive = maintenanceState.active;
-    maintenanceState = payload.state;
+    maintenanceState = normalizeRuntimeMaintenanceState(payload.state);
     void applyMaintenanceState(context, previousActive, payload.alertMessage || MAINTENANCE_ALERT_MESSAGE, payload.action)
       .finally(() => notifyMaintenanceStateChanged(previousActive, payload.action));
   });
@@ -128,6 +129,29 @@ function notifyMaintenanceStateChanged(previousActive: boolean, action: string) 
       console.warn("[maintenance] listener falhou:", error instanceof Error ? error.message : error);
     }
   }
+}
+
+function normalizeRuntimeMaintenanceState(state: MaintenanceState): MaintenanceState {
+  const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID.trim()) || null;
+  const maintenanceBypass = Boolean(
+    state.maintenanceBypass
+    || (runtimeBotId && state.releasedBotIds?.includes(runtimeBotId))
+    || (runtimeBotId && state.bots?.some((bot) => bot.id === runtimeBotId && (bot.released || bot.maintenanceBypass)))
+  );
+
+  if (!maintenanceBypass) {
+    return {
+      ...state,
+      maintenanceBypass: false
+    };
+  }
+
+  return {
+    ...state,
+    active: false,
+    botId: runtimeBotId ?? state.botId,
+    maintenanceBypass: true
+  };
 }
 
 export async function blockInteractionIfMaintenance(interaction: Interaction, context: BotContext) {

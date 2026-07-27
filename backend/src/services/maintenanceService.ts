@@ -15,6 +15,7 @@ export type MaintenanceBotDto = {
   avatarUrl: string | null;
   id: string;
   maintenance: boolean;
+  maintenanceBypass: boolean;
   mainGuildName: string | null;
   name: string;
   released: boolean;
@@ -32,6 +33,7 @@ export type MaintenanceStateDto = {
   deactivatedAt: string | null;
   globalActive: boolean;
   logs: MaintenanceLogDto[];
+  maintenanceBypass: boolean;
   releasedBotIds: string[];
   updatedAt: string;
   updatedById: string | null;
@@ -69,6 +71,7 @@ let memoryGlobalState: MaintenanceCoreState = {
   botName: null,
   deactivatedAt: null,
   globalActive: false,
+  maintenanceBypass: false,
   releasedBotIds: [],
   updatedAt: initialUpdatedAt,
   updatedById: null,
@@ -102,6 +105,7 @@ export async function getMaintenanceState(botId?: string | null): Promise<Mainte
       avatarUrl: null,
       id: bot.botId ?? "",
       maintenance: bot.active,
+      maintenanceBypass: bot.maintenanceBypass,
       mainGuildName: null,
       name: bot.botName ?? bot.botId ?? "Bot",
       released: !bot.active,
@@ -124,10 +128,22 @@ export async function isMaintenanceActive(botId?: string | null) {
       return false;
     }
 
-    return !globalState.releasedBotIds.includes(normalizedBotId);
+    if (globalState.releasedBotIds.includes(normalizedBotId)) {
+      return false;
+    }
+
+    const { devBots } = await getMongoCollections();
+    const bot = await devBots.findOne(
+      { _id: normalizedBotId },
+      { projection: { maintenanceBypass: 1 } }
+    );
+
+    return bot?.maintenanceBypass !== true;
   } catch (error) {
     console.warn("[maintenance] falha ao validar estado:", error instanceof Error ? error.message : error);
-    return memoryGlobalState.active && memoryBotStates.get(normalizedBotId)?.active !== false;
+    return memoryGlobalState.active
+      && memoryBotStates.get(normalizedBotId)?.active !== false
+      && memoryBotStates.get(normalizedBotId)?.maintenanceBypass !== true;
   }
 }
 
@@ -179,6 +195,7 @@ async function setGlobalMaintenanceMode(input: {
   const actorId = input.actorId ?? null;
   const actorName = input.actorName ?? null;
   const current = await getMaintenanceState();
+  const maintenanceBypassBotIds = await listMaintenanceBypassBotIds();
   const next: MaintenanceCoreState = {
     ...current,
     active: input.active,
@@ -187,7 +204,9 @@ async function setGlobalMaintenanceMode(input: {
     botName: null,
     deactivatedAt: input.active ? null : now.toISOString(),
     globalActive: input.active,
-    releasedBotIds: [],
+    releasedBotIds: input.active
+      ? [...new Set([...(current.globalActive ? current.releasedBotIds : []), ...maintenanceBypassBotIds])]
+      : maintenanceBypassBotIds,
     updatedAt: now.toISOString(),
     updatedById: actorId,
     updatedByName: actorName
@@ -234,6 +253,7 @@ async function setBotMaintenanceMode(input: {
     activatedAt: input.active ? current.activatedAt ?? now.toISOString() : current.activatedAt,
     deactivatedAt: input.active ? null : now.toISOString(),
     globalActive: current.globalActive,
+    maintenanceBypass: !input.active,
     updatedAt: now.toISOString(),
     updatedById: actorId,
     updatedByName: actorName
@@ -298,7 +318,7 @@ async function persistGlobalState(
           active: state.active,
           activatedAt: state.activatedAt ? new Date(state.activatedAt) : null,
           deactivatedAt: state.deactivatedAt ? new Date(state.deactivatedAt) : null,
-          releasedBotIds: [],
+          releasedBotIds: state.releasedBotIds,
           updatedAt: now,
           updatedById: state.updatedById,
           updatedByName: state.updatedByName
@@ -312,27 +332,66 @@ async function persistGlobalState(
 }
 
 async function setAllBotsMaintenance(active: boolean, now: Date, actorId: string | null, actorName: string | null) {
-  const patch = active
-    ? {
-      maintenance: true,
-      maintenanceActivatedAt: now,
-      maintenanceDeactivatedAt: null,
-      maintenanceUpdatedAt: now,
-      maintenanceUpdatedById: actorId,
-      maintenanceUpdatedByName: actorName,
-      updatedAt: now
-    }
-    : {
-      maintenance: false,
-      maintenanceDeactivatedAt: now,
-      maintenanceUpdatedAt: now,
-      maintenanceUpdatedById: actorId,
-      maintenanceUpdatedByName: actorName,
-      updatedAt: now
-    };
-
   const { devBots } = await getMongoCollections();
-  await devBots.updateMany({}, { $set: patch });
+
+  if (active) {
+    await Promise.all([
+      devBots.updateMany(
+        { maintenanceBypass: { $ne: true } },
+        {
+          $set: {
+            maintenance: true,
+            maintenanceActivatedAt: now,
+            maintenanceDeactivatedAt: null,
+            maintenanceUpdatedAt: now,
+            maintenanceUpdatedById: actorId,
+            maintenanceUpdatedByName: actorName,
+            updatedAt: now
+          }
+        }
+      ),
+      devBots.updateMany(
+        { maintenanceBypass: true },
+        {
+          $set: {
+            maintenance: false,
+            maintenanceDeactivatedAt: now,
+            maintenanceUpdatedAt: now,
+            maintenanceUpdatedById: actorId,
+            maintenanceUpdatedByName: actorName,
+            updatedAt: now
+          }
+        }
+      )
+    ]);
+    return;
+  }
+
+  await devBots.updateMany(
+    {},
+    {
+      $set: {
+        maintenance: false,
+        maintenanceDeactivatedAt: now,
+        maintenanceUpdatedAt: now,
+        maintenanceUpdatedById: actorId,
+        maintenanceUpdatedByName: actorName,
+        updatedAt: now
+      }
+    }
+  );
+}
+
+async function listMaintenanceBypassBotIds() {
+  const { devBots } = await getMongoCollections();
+  const bots = await devBots
+    .find(
+      { maintenanceBypass: true },
+      { projection: { _id: 1 } }
+    )
+    .toArray();
+
+  return bots.map((bot) => bot._id);
 }
 
 async function persistBotState(
@@ -349,6 +408,7 @@ async function persistBotState(
     {
       $set: {
         maintenance: state.active,
+        maintenanceBypass: !state.active,
         maintenanceActivatedAt: state.activatedAt ? new Date(state.activatedAt) : null,
         maintenanceDeactivatedAt: state.deactivatedAt ? new Date(state.deactivatedAt) : null,
         maintenanceUpdatedAt: now,
@@ -445,6 +505,7 @@ function defaultState(
     botName,
     deactivatedAt: null,
     globalActive,
+    maintenanceBypass: false,
     releasedBotIds: [],
     updatedAt: initialUpdatedAt,
     updatedById: null,
@@ -460,6 +521,7 @@ function toStateDto(doc: MongoMaintenanceState): MaintenanceCoreState {
     botName: null,
     deactivatedAt: doc.deactivatedAt?.toISOString() ?? null,
     globalActive: doc.active,
+    maintenanceBypass: false,
     releasedBotIds: doc.releasedBotIds ?? [],
     updatedAt: doc.updatedAt.toISOString(),
     updatedById: doc.updatedById ?? null,
@@ -476,7 +538,8 @@ function toScopedBotState(
     return defaultState(botId, null, globalState.active);
   }
 
-  const active = globalState.active && !globalState.releasedBotIds.includes(bot._id);
+  const maintenanceBypass = bot.maintenanceBypass === true || globalState.releasedBotIds.includes(bot._id);
+  const active = globalState.active && !maintenanceBypass;
 
   return {
     active,
@@ -485,6 +548,7 @@ function toScopedBotState(
     botName: bot.name,
     deactivatedAt: active ? null : dateToIso(bot.maintenanceDeactivatedAt) ?? globalState.deactivatedAt,
     globalActive: globalState.active,
+    maintenanceBypass,
     releasedBotIds: globalState.releasedBotIds,
     updatedAt: (bot.maintenanceUpdatedAt ?? bot.updatedAt ?? new Date(globalState.updatedAt)).toISOString(),
     updatedById: bot.maintenanceUpdatedById ?? globalState.updatedById,
@@ -493,11 +557,13 @@ function toScopedBotState(
 }
 
 function toMaintenanceBotDto(bot: MongoDevBot, globalState: MaintenanceCoreState): MaintenanceBotDto {
-  const maintenance = globalState.active && !globalState.releasedBotIds.includes(bot._id);
+  const maintenanceBypass = bot.maintenanceBypass === true || globalState.releasedBotIds.includes(bot._id);
+  const maintenance = globalState.active && !maintenanceBypass;
   return {
     avatarUrl: bot.avatarUrl ?? null,
     id: bot._id,
     maintenance,
+    maintenanceBypass,
     mainGuildName: bot.mainGuildName ?? null,
     name: bot.name,
     released: !maintenance,

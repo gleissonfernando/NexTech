@@ -4552,6 +4552,7 @@ export type MongoDevBot = {
   status: MongoDevBotStatus;
   statusMessage?: string | null;
   maintenance?: boolean;
+  maintenanceBypass?: boolean;
   maintenanceActivatedAt?: Date | null;
   maintenanceDeactivatedAt?: Date | null;
   maintenanceUpdatedAt?: Date | null;
