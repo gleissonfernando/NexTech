@@ -200,19 +200,20 @@ dashboardRouter.get("/:slug", async (req, res, next) => {
       });
     }
 
+    const scopedGuilds = scopedBotDashboardGuilds(auth.user, bot);
+    const selectedGuildId = auth.user.selectedGuildId && scopedGuilds.some((guild) => guild.id === auth.user.selectedGuildId)
+      ? auth.user.selectedGuildId
+      : scopedGuilds[0]?.id ?? null;
+
     await recordAccessAttempt(req, {
       userId: auth.user.discordId,
       username: auth.user.username,
       dashboardSlug: input.slug,
       botId: bot.id,
+      guildId: selectedGuildId,
       result: "allowed",
       reason: "Dashboard liberada para o usuário autenticado."
     });
-
-    const scopedGuilds = scopedBotDashboardGuilds(auth.user, bot);
-    const selectedGuildId = auth.user.selectedGuildId && scopedGuilds.some((guild) => guild.id === auth.user.selectedGuildId)
-      ? auth.user.selectedGuildId
-      : scopedGuilds[0]?.id ?? null;
 
     return res.json({
       user: {

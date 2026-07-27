@@ -229,10 +229,15 @@ async function filterSiteLogs(entries: LogEntryDto[], guildId: string, botId: st
     return [];
   }
 
-  const allowedCategories = new Set(settings.siteLogCategories);
   return entries
-    .filter((entry) => allowedCategories.has(logCategoryForType(entry.type)))
+    .filter((entry) => isDashboardAccessLog(entry, guildId, botId))
     .slice(0, 50);
+}
+
+function isDashboardAccessLog(entry: LogEntryDto, guildId: string, botId: string) {
+  return entry.botId === botId
+    && entry.guildId === guildId
+    && entry.type === "dashboard.access.allowed";
 }
 
 function dispatchDiscordLog(log: LogEntryDto) {
