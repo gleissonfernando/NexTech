@@ -642,21 +642,31 @@ async function openEvaluationStepModal(interaction: ButtonInteraction<"cached">,
     return true;
   }
   const nextStep = nextAvailableEvaluationStep(draft);
-  if (step !== nextStep) {
+  const canEditInvalidFinal = step === "final" && isInvalidFinalAnswerEditable(draft) && !draft.awaitingStep;
+  if (step !== nextStep && !canEditInvalidFinal) {
     await replyButtonError(interaction, "Esta etapa ainda não está disponível. Conclua a etapa anterior para continuar.");
     return true;
   }
-  draft.awaitingStep = step;
-  draft.updatedAt = Date.now();
-  evaluationQuestionnaireDrafts.set(key, draft);
-  await context.api.addPolicePromotionHistory(request.id, {
-    action: "request.evaluation_step_started",
-    actorId: interaction.user.id,
-    actorName: displayName(interaction.member as GuildMember, interaction.user.username),
-    metadata: { channelId: interaction.channelId, step, stepName: evaluationStepTitle(step) }
-  }).catch(() => null);
+  const startedDraft = {
+    ...draft,
+    awaitingStep: step,
+    updatedAt: Date.now()
+  };
+  try {
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.evaluation_step_started",
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      metadata: { channelId: interaction.channelId, step, stepName: evaluationStepTitle(step) }
+    });
+  } catch (error) {
+    console.error("[police-promotions] failed to persist started evaluation step", error);
+    await replyButtonError(interaction, "Não foi possível iniciar esta etapa. Tente novamente.");
+    return true;
+  }
+  evaluationQuestionnaireDrafts.set(key, startedDraft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, "Envie sua resposta no canal. A próxima mensagem enviada por você será capturada.", false, panelImage));
+  await updateButtonMessage(interaction, evaluationQuestionnairePayload(request, promotion, interaction.guild, startedDraft, "Envie sua resposta no canal. A próxima mensagem enviada por você será capturada.", false, panelImage));
   return true;
 }
 
@@ -2191,7 +2201,7 @@ function evaluationAlreadySubmittedPayload(request: PolicePromotionRequest, prom
 }
 
 function evaluationStepButton(requestId: string, draft: EvaluationQuestionnaireDraft, step: EvaluationStep, label: string, guild: Guild) {
-  const completed = isEvaluationStepCompleted(draft, step);
+  const completed = isEvaluationStepAnswered(draft, step);
   const active = draft.awaitingStep === step || draft.pending?.step === step;
   const captureOpen = Boolean(draft.awaitingStep || draft.pending);
   const available = !captureOpen && nextAvailableEvaluationStep(draft) === step;
@@ -2204,10 +2214,11 @@ function evaluationStepButton(requestId: string, draft: EvaluationQuestionnaireD
 }
 
 export function isEvaluationStepButtonDisabled(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
-  const completed = isEvaluationStepCompleted(draft, step);
+  const completed = isEvaluationStepAnswered(draft, step);
   const active = draft.awaitingStep === step || draft.pending?.step === step;
   const captureOpen = Boolean(draft.awaitingStep || draft.pending);
   const available = !captureOpen && nextAvailableEvaluationStep(draft) === step;
+  if (step === "final" && isInvalidFinalAnswerEditable(draft) && !captureOpen) return false;
   return completed || active || !available;
 }
 
@@ -2645,26 +2656,30 @@ function setEvaluationStepAnswer(draft: EvaluationQuestionnaireDraft, step: Eval
 }
 
 function completedEvaluationSteps(draft: EvaluationQuestionnaireDraft) {
-  return EVALUATION_STEPS.filter((step) => isEvaluationStepCompleted(draft, step));
+  return EVALUATION_STEPS.filter((step) => isEvaluationStepAnswered(draft, step));
 }
 
-function nextAvailableEvaluationStep(draft: EvaluationQuestionnaireDraft) {
-  return EVALUATION_STEPS.find((step) => !isEvaluationStepCompleted(draft, step)) ?? null;
+export function nextAvailableEvaluationStep(draft: EvaluationQuestionnaireDraft) {
+  return EVALUATION_STEPS.find((step) => !isEvaluationStepAnswered(draft, step)) ?? null;
 }
 
 function evaluationStepStatusIcon(draft: EvaluationQuestionnaireDraft, step: EvaluationStep, guild: Guild) {
-  if (isEvaluationStepCompleted(draft, step)) return icon("visto", guild);
+  if (isEvaluationStepAnswered(draft, step)) return icon(step === "final" && !isEvaluationStepCompleted(draft, step) ? "alerta" : "visto", guild);
   if (draft.pending?.step === step) return icon("alerta", guild);
   if (draft.awaitingStep === step) return icon("relogio", guild);
   if (nextAvailableEvaluationStep(draft) === step) return icon("relogio", guild);
   return icon("porta", guild);
 }
 
-function missingEvaluationQuestionnaireSteps(draft: EvaluationQuestionnaireDraft | null | undefined) {
+export function missingEvaluationQuestionnaireSteps(draft: EvaluationQuestionnaireDraft | null | undefined) {
   if (!draft) return ["Patrulha", "Operacional", "Conduta", "Observações", "Final"];
   return EVALUATION_STEPS
-    .filter((step) => !isEvaluationStepCompleted(draft, step))
+    .filter((step) => !isEvaluationStepAnswered(draft, step))
     .map((step) => evaluationStepTitle(step));
+}
+
+function isEvaluationStepAnswered(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
+  return Boolean(evaluationStepAnswerFor(draft, step).trim());
 }
 
 function isEvaluationStepCompleted(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
@@ -2673,6 +2688,10 @@ function isEvaluationStepCompleted(draft: EvaluationQuestionnaireDraft, step: Ev
   if (step !== "final") return true;
   const finalDecision = parseFinalDecision(answer);
   return Boolean(finalDecision.result && finalDecision.justification);
+}
+
+function isInvalidFinalAnswerEditable(draft: EvaluationQuestionnaireDraft) {
+  return isEvaluationStepAnswered(draft, "final") && !isEvaluationStepCompleted(draft, "final");
 }
 
 function oneLineEvaluationValue(value: string) {

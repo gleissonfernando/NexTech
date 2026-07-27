@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalPayload, approvalPayloads, displayableComponentTextSize, evaluationDraftFromRequest, isEvaluationStepButtonDisabled } from "./policePromotionService";
+import { approvalPayload, approvalPayloads, displayableComponentTextSize, evaluationDraftFromRequest, isEvaluationStepButtonDisabled, missingEvaluationQuestionnaireSteps, nextAvailableEvaluationStep } from "./policePromotionService";
 
 function completeDraft(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,6 +23,15 @@ test("etapa final invalida continua reabrivel para correcao", () => {
   });
 
   assert.equal(isEvaluationStepButtonDisabled(draft, "final"), false);
+});
+
+test("etapa final preenchida nao bloqueia avanco para revisao", () => {
+  const draft = completeDraft({
+    final: "Apto: Sim\nJustificativa: ok"
+  });
+
+  assert.deepEqual(missingEvaluationQuestionnaireSteps(draft), []);
+  assert.equal(nextAvailableEvaluationStep(draft), null);
 });
 
 test("etapa final valida fica bloqueada como concluida", () => {
