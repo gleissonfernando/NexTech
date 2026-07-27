@@ -197,7 +197,7 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
 
   async function resetWeeklyRanking() {
     if (!botId || !guild || !selectedClan) return;
-    await run("weekly-reset", () => resetZtkWeeklyRanking(botId, guild.id, selectedClan.id), "Ranking semanal resetado.");
+    await run("weekly-reset", () => resetZtkWeeklyRanking(botId, guild.id, selectedClan.id), "Ranking semanal resetado manualmente.");
   }
 
   if (!botId || !guild) {
@@ -545,7 +545,7 @@ function RecruitmentView({ dashboard, selectedClan }: { dashboard: ZtkWebhookDas
             <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setPeriodFilter(event.target.value as typeof periodFilter)} value={periodFilter}>
               <option value="total">Todo período</option>
               <option value="today">Hoje</option>
-              <option value="week">7 dias</option>
+              <option value="week">Semana atual</option>
               <option value="month">Mês</option>
             </select>
           </div>
@@ -1008,8 +1008,11 @@ function SettingsView({ canManage, clan, onResetWeekly, onSave, savingKey }: { c
           Módulo ativo para este clã
           <Switch checked={active} disabled={!canManage} onCheckedChange={setActive} />
         </label>
-        <label className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
-          Reset semanal automático
+        <label className="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
+          <span>
+            Reset semanal automático
+            <span className="block text-xs text-zinc-500">Quando ativo, zera toda segunda-feira às 20:00.</span>
+          </span>
           <Switch checked={weeklyAutoResetEnabled} disabled={!canManage} onCheckedChange={setWeeklyAutoResetEnabled} />
         </label>
         <div className="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">

@@ -6,6 +6,8 @@ import type { ZtkWebhookEventReceivedEvent, ZtkWebhookManageEvent, ZtkWebhookPla
 import { renderComponentsV2Panel, renderPanelFromBlocks } from "./panelVisualRenderer";
 
 const ZTK_RANKING_LIMIT = 10;
+const ZTK_WEEKLY_RESET_HOUR_SAO_PAULO = 20;
+const ZTK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let ztkRecruitmentStartupSyncStarted = false;
 let ztkWeeklyMaintenanceStarted = false;
 const ztkWeeklyRankingRefreshKeys = new Set<string>();
@@ -410,7 +412,7 @@ function createRecruitmentRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
   const recruiters = payload.recruitmentRankings?.recruiters ?? [];
   return renderComponentsV2Panel({
     accentColor: 0x3b82f6,
-    description: "Ranking semanal. Reinicia toda segunda-feira.",
+    description: "Ranking semanal. Reinicia toda segunda-feira às 20:00.",
     fields: recruitmentRankingBlocks(recruiters),
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
@@ -669,12 +671,46 @@ function formatDateTime(value: string) {
 }
 
 function currentWeekKey() {
-  const now = new Date();
-  const local = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-  const daysSinceMonday = (local.getDay() + 6) % 7;
-  local.setDate(local.getDate() - daysSinceMonday);
-  local.setHours(0, 0, 0, 0);
-  return local.toISOString().slice(0, 10);
+  const periodStart = currentZtkWeeklyPeriodStartSaoPaulo(new Date());
+  return `${saoPauloDateKey(periodStart)}-20h`;
+}
+
+function saoPauloDateTimeParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric"
+  }).formatToParts(value);
+  const part = (type: string) => Number(parts.find((item) => item.type === type)?.value ?? 0);
+  return {
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+    month: part("month"),
+    second: part("second"),
+    year: part("year")
+  };
+}
+
+function saoPauloDateKey(value: Date) {
+  const parts = saoPauloDateTimeParts(value);
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function currentZtkWeeklyPeriodStartSaoPaulo(value: Date) {
+  const local = saoPauloDateTimeParts(value);
+  const localDate = new Date(Date.UTC(local.year, local.month - 1, local.day));
+  const daysSinceMonday = (localDate.getUTCDay() + 6) % 7;
+  const resetAt = new Date(Date.UTC(local.year, local.month - 1, local.day - daysSinceMonday, ZTK_WEEKLY_RESET_HOUR_SAO_PAULO + 3, 0, 0, 0));
+  if (resetAt.getTime() > value.getTime()) {
+    resetAt.setTime(resetAt.getTime() - ZTK_WEEK_MS);
+  }
+  return resetAt;
 }
 
 function formatDuration(seconds: number) {

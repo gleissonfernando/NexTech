@@ -8,6 +8,8 @@ export const ZTK_WEBHOOK_MODULE_ID = "ztk-webhook";
 const ZTK_RANKING_LIMIT = 10;
 const ZTK_RECRUITMENT_REPAIR_LIMIT = 2000;
 const ZTK_RECRUITMENT_REPAIR_TEXT_PATTERN = /(novo\s+membro|novo\s+integrante|recrutamento|recrutado|convidado\s+por|quem\s+convidou|convidou|promovido)/i;
+const ZTK_WEEKLY_RESET_HOUR_SAO_PAULO = 20;
+const ZTK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ZtkRankingType = "domination" | "recruitment" | "online";
 
@@ -1068,30 +1070,53 @@ function startOfDay(value: Date) {
   return date;
 }
 
-function startOfWeekMondaySaoPaulo(value: Date) {
+function saoPauloDateTimeParts(value: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
     month: "2-digit",
+    second: "2-digit",
     timeZone: "America/Sao_Paulo",
     year: "numeric"
   }).formatToParts(value);
   const part = (type: string) => Number(parts.find((item) => item.type === type)?.value ?? 0);
-  const localDate = new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
+  return {
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+    month: part("month"),
+    second: part("second"),
+    year: part("year")
+  };
+}
+
+function saoPauloDateKey(value: Date) {
+  const parts = saoPauloDateTimeParts(value);
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function currentZtkWeeklyPeriodStartSaoPaulo(value: Date) {
+  const local = saoPauloDateTimeParts(value);
+  const localDate = new Date(Date.UTC(local.year, local.month - 1, local.day));
   const daysSinceMonday = (localDate.getUTCDay() + 6) % 7;
-  localDate.setUTCDate(localDate.getUTCDate() - daysSinceMonday);
-  localDate.setUTCHours(3, 0, 0, 0);
-  return localDate;
+  const resetAt = new Date(Date.UTC(local.year, local.month - 1, local.day - daysSinceMonday, ZTK_WEEKLY_RESET_HOUR_SAO_PAULO + 3, 0, 0, 0));
+  if (resetAt.getTime() > value.getTime()) {
+    resetAt.setTime(resetAt.getTime() - ZTK_WEEK_MS);
+  }
+  return resetAt;
 }
 
 function previousWeekRangeSaoPaulo(value: Date) {
-  const currentWeekStart = startOfWeekMondaySaoPaulo(value);
-  const start = new Date(currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const currentWeekStart = currentZtkWeeklyPeriodStartSaoPaulo(value);
+  const start = new Date(currentWeekStart.getTime() - ZTK_WEEK_MS);
   const end = currentWeekStart;
-  return { end, key: start.toISOString().slice(0, 10), start };
+  return { end, key: `${saoPauloDateKey(start)}-20h`, start };
 }
 
 function rankingPeriodStartForClan(clan: MongoZtkWebhookClan, value: Date) {
-  if (clan.weeklyAutoResetEnabled !== false) return startOfWeekMondaySaoPaulo(value);
+  if (clan.weeklyAutoResetEnabled !== false) return currentZtkWeeklyPeriodStartSaoPaulo(value);
   const manualReset = clan.weeklyRankingResetAt;
   if (manualReset && !Number.isNaN(manualReset.getTime())) return manualReset;
   return clan.createdAt;
