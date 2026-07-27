@@ -109,3 +109,82 @@ test("relatorio de aprovacao nao envia painel de historico completo", () => {
   assert.equal(serialized.includes("Histórico completo"), false);
   assert.equal(serialized.includes("Historico completo"), false);
 });
+
+test("relatorio de aprovacao curto fica em um painel com botoes fora do container", () => {
+  const request = {
+    answers: [
+      { label: "Identificação da Patrulha", value: "Patrulha realizada com presença completa." },
+      { label: "Avaliação Operacional", value: "Atuação consistente e comunicação clara." }
+    ],
+    approvalMessageId: null,
+    approvalReason: null,
+    approvalResult: null,
+    approvedAt: null,
+    approvedById: null,
+    channelId: "channel",
+    currentRank: "Soldado",
+    evaluationEndedAt: "2026-07-26T15:00:00.000Z",
+    evaluationNotes: "Sem observações adicionais.",
+    evaluationResult: "approved",
+    evaluatorId: "222222222222222222",
+    history: [],
+    id: "request-id",
+    requesterId: "111111111111111111",
+    requesterName: "Usuario Avaliado",
+    status: "pending_approval",
+    targetRank: "Officer",
+    updatedAt: "2026-07-26T15:00:00.000Z"
+  };
+  const promotion = {
+    color: "#facc15",
+    requestNewEvaluationEnabled: true
+  };
+
+  const payloads = approvalPayloads(request as any, promotion as any, null as any);
+  const components = payloads[0]!.components as any[];
+  const container = components[0] as any;
+  const containerText = JSON.stringify(container);
+  const buttonRowText = JSON.stringify(components[1]);
+
+  assert.equal(payloads.length, 1);
+  assert.equal(components.length, 2);
+  assert.equal(container.type, 17);
+  assert.equal(containerText.includes("Respostas completas"), true);
+  assert.equal(containerText.includes("Observações completas"), true);
+  assert.equal(containerText.includes("Aprovar Promoção"), false);
+  assert.equal(buttonRowText.includes("Aprovar Promoção"), true);
+});
+
+test("relatorio de aprovacao decidido nao mantem botoes desativados", () => {
+  const request = {
+    answers: [{ label: "Conduta", value: "Resposta completa" }],
+    approvalMessageId: null,
+    approvalReason: "Aprovado pela coordenação.",
+    approvalResult: "approved",
+    approvedAt: "2026-07-26T16:00:00.000Z",
+    approvedById: "333333333333333333",
+    channelId: "channel",
+    currentRank: "Soldado",
+    evaluationEndedAt: "2026-07-26T15:00:00.000Z",
+    evaluationNotes: "Observacao completa",
+    evaluationResult: "approved",
+    evaluatorId: "222222222222222222",
+    history: [],
+    id: "request-id",
+    requesterId: "111111111111111111",
+    requesterName: "Usuario Avaliado",
+    status: "approved",
+    targetRank: "Officer",
+    updatedAt: "2026-07-26T16:00:00.000Z"
+  };
+  const promotion = {
+    color: "#facc15",
+    requestNewEvaluationEnabled: true
+  };
+
+  const payload = approvalPayload(request as any, promotion as any, null as any, true);
+  const serialized = JSON.stringify(payload.components);
+
+  assert.equal(serialized.includes("Aprovar Promoção"), false);
+  assert.equal(serialized.includes("Reprovar Promoção"), false);
+});

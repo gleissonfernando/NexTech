@@ -35,6 +35,7 @@ const SETTINGS_TTL_MS = 30_000;
 const HISTORY_PAGE_SIZE = 3;
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
 const DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT = 4000;
+const APPROVAL_SINGLE_PANEL_DISPLAYABLE_TEXT_TARGET = DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT - 150;
 const APPROVAL_PRIMARY_DISPLAYABLE_TEXT_TARGET = DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT - 700;
 const APPROVAL_DETAIL_DISPLAYABLE_TEXT_TARGET = DISCORD_COMPONENT_DISPLAYABLE_TEXT_LIMIT - 350;
 const MAX_EVALUATION_NOTES_LENGTH = 20_000;
@@ -1321,19 +1322,13 @@ export function approvalPayload(request: PolicePromotionRequest, promotion: Poli
 export function approvalPayloads(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild, disabled = false): MessageCreateOptions[] {
   const submittedAt = request.evaluationEndedAt ?? request.updatedAt;
   const statusColor = request.status === "approved" ? 0x22c55e : request.status === "rejected" ? 0xef4444 : request.status === "quarantined" ? 0xf97316 : parseColor(promotion.color);
+  const answers = answersText(request);
+  const notes = escapeMarkdown(request.evaluationNotes ?? "Nenhuma observação registrada.");
   const detailSections = [
-    { title: `${icon("folha", guild)} Respostas completas`, content: answersText(request) },
-    { title: `${icon("prancheta_caneta", guild)} Observações completas`, content: escapeMarkdown(request.evaluationNotes ?? "Nenhuma observação registrada.") }
+    { title: `${icon("folha", guild)} Respostas completas`, content: answers },
+    { title: `${icon("prancheta_caneta", guild)} Observações completas`, content: notes }
   ];
-  const detailPayloads = detailSections.flatMap((section) => approvalDetailPayloads(request, promotion, guild, section.title, section.content, statusColor));
-  const detailNotice = detailPayloads.length
-    ? [
-      "",
-      `${icon("folha", guild)} Relatório completo`,
-      `As respostas e observações foram enviadas em ${detailPayloads.length} painel(is) abaixo, sem resumo.`
-    ].join("\n")
-    : "";
-  const mainContent = [
+  const mainSummary = [
     `# ${icon("prancheta_acertos", guild)} Relatório de Promoção`,
     `## ${approvalStatusLabel(request.status)}`,
     DIVIDER,
@@ -1358,33 +1353,56 @@ export function approvalPayloads(request: PolicePromotionRequest, promotion: Pol
     request.approvedAt ? `\n${icon("calendario", guild)} Data da decisão\n${formatDate(request.approvedAt)}` : "",
     request.approvalReason ? `\n${icon("folha", guild)} Motivo\n${escapeMarkdown(request.approvalReason)}` : "",
     "",
-    `${icon("prancheta_caneta", guild)} Observações`,
-    `Disponíveis no painel de observações completas abaixo.`,
-    "",
     `${icon("relogio", guild)} Tempo da avaliação\n${evaluationDuration(request)}`,
     "",
     `${icon("discord", guild)} ID da solicitação\n\`${request.id}\``,
-    detailNotice
   ].join("\n");
-  const primaryContent = clipForComponent(mainContent, APPROVAL_PRIMARY_DISPLAYABLE_TEXT_TARGET);
+  const singlePanelContent = [
+    mainSummary,
+    "",
+    DIVIDER,
+    `## ${icon("folha", guild)} Respostas completas`,
+    answers,
+    "",
+    DIVIDER,
+    `## ${icon("prancheta_caneta", guild)} Observações completas`,
+    notes
+  ].join("\n");
+  const fitsSinglePanel = singlePanelContent.length <= APPROVAL_SINGLE_PANEL_DISPLAYABLE_TEXT_TARGET;
+  const detailPayloads = fitsSinglePanel
+    ? []
+    : detailSections.flatMap((section) => approvalDetailPayloads(request, promotion, guild, section.title, section.content, statusColor));
+  const detailNotice = !fitsSinglePanel && detailPayloads.length
+    ? [
+      "",
+      `${icon("folha", guild)} Relatório completo`,
+      `As respostas e observações foram enviadas em ${detailPayloads.length} painel(is) abaixo, sem resumo.`
+    ].join("\n")
+    : "";
+  const primaryContent = fitsSinglePanel
+    ? clipForComponent(singlePanelContent, APPROVAL_SINGLE_PANEL_DISPLAYABLE_TEXT_TARGET)
+    : clipForComponent(`${mainSummary}${detailNotice}`, APPROVAL_PRIMARY_DISPLAYABLE_TEXT_TARGET);
+  const primaryComponents = [{
+    type: 17,
+    accent_color: statusColor,
+    components: [{ type: 10, content: primaryContent }]
+  } as any] as any[];
+  if (!disabled) primaryComponents.push(approvalActionRow(request, promotion, guild));
   const primaryPayload: MessageCreateOptions = {
     allowedMentions: { parse: [] },
-    components: [{
-      type: 17,
-      accent_color: statusColor,
-      components: [
-        { type: 10, content: primaryContent },
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:approve:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar Promoção").setStyle(ButtonStyle.Success).setDisabled(disabled),
-          new ButtonBuilder().setCustomId(`${PREFIX}:reject:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Reprovar Promoção").setStyle(ButtonStyle.Danger).setDisabled(disabled),
-          new ButtonBuilder().setCustomId(`${PREFIX}:quarantine:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Colocar em Quarentena").setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-          new ButtonBuilder().setCustomId(`${PREFIX}:new_eval:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Nova Avaliação").setStyle(ButtonStyle.Secondary).setDisabled(disabled || !promotion.requestNewEvaluationEnabled)
-        )
-      ]
-    }],
+    components: primaryComponents,
     flags: MessageFlags.IsComponentsV2
   };
   return [primaryPayload, ...detailPayloads];
+}
+
+function approvalActionRow(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:approve:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Aprovar Promoção").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:reject:${request.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Reprovar Promoção").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:quarantine:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Colocar em Quarentena").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:new_eval:${request.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Nova Avaliação").setStyle(ButtonStyle.Secondary).setDisabled(!promotion.requestNewEvaluationEnabled)
+  );
 }
 
 function approvalDetailPayloads(
@@ -1822,14 +1840,6 @@ function answersText(request: Pick<PolicePromotionRequest, "answers">) {
     const value = Array.isArray(answer.value) ? answer.value.join(", ") : answer.value;
     return `▸ **${escapeMarkdown(answer.label)}**\n${escapeMarkdown(value || "Não informado")}`;
   }).join("\n\n") || "Nenhuma resposta registrada.";
-}
-
-function promotionHistoryText(request: PolicePromotionRequest) {
-  const rows = request.history.map((entry) => {
-    const actor = entry.actorId ? `<@${entry.actorId}>` : entry.actorName ? escapeMarkdown(entry.actorName) : "Sistema";
-    return `• ${formatDate(entry.at)} - ${escapeMarkdown(historyActionLabel(entry.action))} - ${actor}`;
-  });
-  return rows.join("\n") || "Nenhum histórico registrado.";
 }
 
 export function limitPromotionApprovalDisplayTextSections<T extends string>(
