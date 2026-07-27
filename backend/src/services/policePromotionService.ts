@@ -279,7 +279,7 @@ export async function finishPolicePromotionEvaluation(botId: string, requestId: 
   return updateRequest(botId, requestId, {
     evaluationEndedAt: new Date(),
     evaluationAttemptNumber,
-    evaluationNotes: normalizeText(input.evaluationNotes, 6000),
+    evaluationNotes: normalizeText(input.evaluationNotes, 20000),
     evaluationResult: input.evaluationResult,
     status: "pending_approval"
   }, "request.evaluation_finished", { actorId: input.evaluatorId }, { evaluationResult: input.evaluationResult }, { status: "in_evaluation", evaluatorId: input.evaluatorId, evaluationEndedAt: null });

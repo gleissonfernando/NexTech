@@ -227,7 +227,7 @@ policePromotionsRouter.post("/bot/requests/:requestId/evaluation", requireBot, a
     const botId = await botIdFor(req);
     await licensed(botId);
     const input = z.object({
-      evaluationNotes: z.string().min(1).max(6000),
+      evaluationNotes: z.string().min(1).max(20000),
       evaluationResult: z.enum(["approved", "rejected"]),
       evaluatorId: snowflake,
       evaluatorRoleIds: z.array(snowflake).max(100).optional()
