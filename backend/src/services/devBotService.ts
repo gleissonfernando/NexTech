@@ -28,6 +28,7 @@ import { getImageAntiSpamSettings } from "./imageAntiSpamService";
 import { saveSelfBotProtectionSettings } from "./selfBotProtectionService";
 import { getSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
 import { createLog } from "./logService";
+import { expandModuleAccessKeys } from "./moduleEntitlementService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
 import { canAccessDevDashboard } from "./devPermissionService";
@@ -2552,6 +2553,7 @@ function normalizeRuntimeStatus(value: string | null) {
 function sanitizeModules(modules: string[]) {
   return [...new Set(
     modules
+      .flatMap((module) => expandModuleAccessKeys([LEGACY_MODULE_ALIASES[module] ?? module]))
       .map((module) => LEGACY_MODULE_ALIASES[module] ?? module)
       .filter((module) => DEV_MODULE_IDS.has(module as (typeof DEV_MODULES)[number]["id"]) || isCustomFivemModuleId(module))
   )];

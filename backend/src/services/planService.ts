@@ -48,6 +48,7 @@ import { PaymentService, checkoutMethodToPaymentMethod } from "./payments/paymen
 import { PAYMENT_METHODS } from "./payments/types";
 import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
+import { moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
 
 export type PlanActor = {
   id: string | null;
@@ -1351,9 +1352,11 @@ export async function registerCustomerBot(input: BotRegistrationInput, auth: Das
   const snapshotEntitlements = isRecord(snapshot) && Array.isArray(snapshot.entitlements)
     ? snapshot.entitlements as MongoPlanEntitlement[]
     : [];
-  const enabledModules = (plan?.entitlements ?? snapshotEntitlements)
-    .filter((item) => item.enabled)
-    .map((item) => item.key);
+  const enabledModules = moduleIdsFromPlanEntitlementKeys(
+    (plan?.entitlements ?? snapshotEntitlements)
+      .filter((item) => item.enabled)
+      .map((item) => item.key)
+  );
   const credential: MongoBotCredential = {
     _id: randomUUID(),
     authTag: protectedToken.authTag,
