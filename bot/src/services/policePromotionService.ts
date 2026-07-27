@@ -259,25 +259,34 @@ async function captureEvaluationStepMessage(message: Message, context: BotContex
   const member = await message.guild!.members.fetch(message.author.id).catch(() => null);
   if (!canInstructPromotion(member, settings, promotion)) return false;
 
-  draft.awaitingStep = undefined;
-  draft.pending = { answer, messageId: message.id, step };
-  draft.updatedAt = Date.now();
-  evaluationQuestionnaireDrafts.set(evaluationDraftKey(request.id, request.evaluatorId), draft);
-  await context.api.addPolicePromotionHistory(request.id, {
-    action: "request.evaluation_step_pending",
-    actorId: message.author.id,
-    actorName: message.author.username,
-    metadata: {
-      answer,
-      channelId: message.channelId,
-      messageId: message.id,
-      step,
-      stepName: evaluationStepTitle(step)
-    }
-  }).catch(() => null);
+  const pendingDraft = {
+    ...draft,
+    awaitingStep: undefined,
+    pending: { answer, messageId: message.id, step },
+    updatedAt: Date.now()
+  };
+  try {
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.evaluation_step_pending",
+      actorId: message.author.id,
+      actorName: message.author.username,
+      metadata: {
+        answer,
+        channelId: message.channelId,
+        messageId: message.id,
+        step,
+        stepName: evaluationStepTitle(step)
+      }
+    });
+  } catch (error) {
+    console.error("[police-promotions] failed to persist pending evaluation step", error);
+    await message.reply("Não foi possível salvar sua resposta para confirmação. Tente enviar a resposta novamente.").catch(() => null);
+    return true;
+  }
+  evaluationQuestionnaireDrafts.set(evaluationDraftKey(request.id, request.evaluatorId), pendingDraft);
   await message.delete().catch(() => null);
   const panelImage = await loadPromotionPanelImage(message.guild!.id, context);
-  await updateEvaluationChannelMessage(message, request, evaluationStepConfirmationPayload(request, promotion, message.guild!, draft, step, false, panelImage));
+  await updateEvaluationChannelMessage(message, request, evaluationStepConfirmationPayload(request, promotion, message.guild!, pendingDraft, step, false, panelImage));
   return true;
 }
 
@@ -666,16 +675,39 @@ async function handleEvaluationStepModal(interaction: ModalSubmitInteraction<"ca
 
   const key = evaluationDraftKey(request.id, interaction.user.id);
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
-  draft.pending = { answer: evaluationStepAnswer(step, interaction), step };
-  draft.updatedAt = Date.now();
-  evaluationQuestionnaireDrafts.set(key, draft);
-  await updateModalMessageOrReply(interaction, evaluationStepConfirmationPayload(request, promotion, interaction.guild, draft, step));
+  const answer = evaluationStepAnswer(step, interaction);
+  const pendingDraft = {
+    ...draft,
+    awaitingStep: undefined,
+    pending: { answer, step },
+    updatedAt: Date.now()
+  };
+  try {
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.evaluation_step_pending",
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      metadata: {
+        answer,
+        channelId: interaction.channelId,
+        step,
+        stepName: evaluationStepTitle(step)
+      }
+    });
+  } catch (error) {
+    console.error("[police-promotions] failed to persist pending evaluation modal", error);
+    await interaction.reply({ content: "Não foi possível salvar esta resposta para confirmação. Abra a etapa e tente novamente.", ephemeral: true });
+    return true;
+  }
+  evaluationQuestionnaireDrafts.set(key, pendingDraft);
+  await updateModalMessageOrReply(interaction, evaluationStepConfirmationPayload(request, promotion, interaction.guild, pendingDraft, step));
   return true;
 }
 
 async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
+  const requestedStep = evaluationStepFromCustomId(interaction.customId, 3);
   const request = await context.api.getPolicePromotionRequest(requestId);
   if (request.status !== "in_evaluation") {
     await interaction.reply({ content: "Esta avaliação não está em preenchimento.", ephemeral: true });
@@ -695,41 +727,50 @@ async function confirmEvaluationStep(interaction: ButtonInteraction<"cached">, c
 
   const key = evaluationDraftKey(request.id, interaction.user.id);
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
-  const pending = draft.pending;
-  if (!pending || pending.step !== nextAvailableEvaluationStep(draft)) {
+  const recoveredPending = recoverPendingEvaluationStepFromInteraction(interaction, requestedStep);
+  const pending = draft.pending ?? (recoveredPending?.step === nextAvailableEvaluationStep(draft) ? recoveredPending : undefined);
+  if (!pending || pending.step !== nextAvailableEvaluationStep(draft) || (requestedStep && pending.step !== requestedStep)) {
     await interaction.reply({ content: "Não foi possível confirmar esta etapa. Reabra a etapa disponível e tente novamente.", ephemeral: true });
     return true;
   }
 
-  setEvaluationStepAnswer(draft, pending.step, pending.answer);
-  draft.awaitingStep = undefined;
-  draft.pending = undefined;
-  draft.updatedAt = Date.now();
-  evaluationQuestionnaireDrafts.set(key, draft);
-  await context.api.addPolicePromotionHistory(request.id, {
-    action: "request.evaluation_step_saved",
-    actorId: interaction.user.id,
-    actorName: displayName(interaction.member as GuildMember, interaction.user.username),
-    metadata: {
-      answer: pending.answer,
-      completedSteps: completedEvaluationSteps(draft),
-      messageId: pending.messageId ?? null,
-      step: pending.step,
-      stepName: evaluationStepTitle(pending.step)
-    }
-  }).catch(() => null);
-  const nextStep = nextAvailableEvaluationStep(draft);
+  const savedDraft = { ...draft };
+  setEvaluationStepAnswer(savedDraft, pending.step, pending.answer);
+  savedDraft.awaitingStep = undefined;
+  savedDraft.pending = undefined;
+  savedDraft.updatedAt = Date.now();
+  try {
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.evaluation_step_saved",
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      metadata: {
+        answer: pending.answer,
+        completedSteps: completedEvaluationSteps(savedDraft),
+        messageId: pending.messageId ?? null,
+        step: pending.step,
+        stepName: evaluationStepTitle(pending.step)
+      }
+    });
+  } catch (error) {
+    console.error("[police-promotions] failed to persist saved evaluation step", error);
+    await interaction.reply({ content: "Não foi possível salvar esta etapa. Tente confirmar novamente.", ephemeral: true });
+    return true;
+  }
+  evaluationQuestionnaireDrafts.set(key, savedDraft);
+  const nextStep = nextAvailableEvaluationStep(savedDraft);
   const successMessage = nextStep
     ? `Etapa concluída. A próxima etapa foi liberada: ${evaluationStepTitle(nextStep)}.`
     : "Etapa concluída. A revisão final foi liberada.";
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, successMessage, false, panelImage) as any);
+  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, savedDraft, successMessage, false, panelImage) as any);
   return true;
 }
 
 async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached">, context: BotContext) {
   const requestId = interaction.customId.split(":")[2];
   if (!requestId) return true;
+  const requestedStep = evaluationStepFromCustomId(interaction.customId, 3);
   const request = await context.api.getPolicePromotionRequest(requestId);
   const settings = await getSettings(context, interaction.guild.id);
   const promotion = promotionFor(settings, request);
@@ -741,24 +782,36 @@ async function editPendingEvaluationStep(interaction: ButtonInteraction<"cached"
     await interaction.reply({ content: "Você não possui permissão para realizar esta promoção.", ephemeral: true });
     return true;
   }
-  const draft = evaluationQuestionnaireDrafts.get(evaluationDraftKey(requestId, interaction.user.id));
-  if (!draft?.pending) {
+  const key = evaluationDraftKey(requestId, interaction.user.id);
+  const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
+  const recoveredPending = recoverPendingEvaluationStepFromInteraction(interaction, requestedStep);
+  if (!draft.pending && recoveredPending?.step === nextAvailableEvaluationStep(draft)) draft.pending = recoveredPending;
+  if (!draft.pending || (requestedStep && draft.pending.step !== requestedStep)) {
     await interaction.reply({ content: "Não existe resposta pendente para editar.", ephemeral: true });
     return true;
   }
   const step = draft.pending.step;
-  draft.pending = undefined;
-  draft.awaitingStep = step;
-  draft.updatedAt = Date.now();
-  evaluationQuestionnaireDrafts.set(evaluationDraftKey(requestId, interaction.user.id), draft);
-  await context.api.addPolicePromotionHistory(request.id, {
-    action: "request.evaluation_step_started",
-    actorId: interaction.user.id,
-    actorName: displayName(interaction.member as GuildMember, interaction.user.username),
-    metadata: { channelId: interaction.channelId, refilled: true, step, stepName: evaluationStepTitle(step) }
-  }).catch(() => null);
+  const editedDraft = {
+    ...draft,
+    awaitingStep: step,
+    pending: undefined,
+    updatedAt: Date.now()
+  };
+  try {
+    await context.api.addPolicePromotionHistory(request.id, {
+      action: "request.evaluation_step_started",
+      actorId: interaction.user.id,
+      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+      metadata: { channelId: interaction.channelId, refilled: true, step, stepName: evaluationStepTitle(step) }
+    });
+  } catch (error) {
+    console.error("[police-promotions] failed to persist reopened evaluation step", error);
+    await interaction.reply({ content: "Não foi possível reabrir esta etapa. Tente novamente.", ephemeral: true });
+    return true;
+  }
+  evaluationQuestionnaireDrafts.set(key, editedDraft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, "Resposta descartada. Envie novamente a resposta desta etapa no canal.", false, panelImage) as any);
+  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, editedDraft, "Resposta descartada. Envie novamente a resposta desta etapa no canal.", false, panelImage) as any);
   return true;
 }
 
@@ -776,19 +829,29 @@ async function showEvaluationPanel(interaction: ButtonInteraction<"cached">, con
   const key = evaluationDraftKey(request.id, interaction.user.id);
   const draft = evaluationQuestionnaireDrafts.get(key) ?? evaluationDraftFromRequest(request, interaction.user.id, interaction.guild.id);
   const cancelledStep = draft.pending?.step ?? draft.awaitingStep ?? null;
-  draft.pending = undefined;
-  draft.awaitingStep = undefined;
-  evaluationQuestionnaireDrafts.set(key, draft);
+  const cancelledDraft = {
+    ...draft,
+    awaitingStep: undefined,
+    pending: undefined,
+    updatedAt: Date.now()
+  };
   if (cancelledStep) {
-    await context.api.addPolicePromotionHistory(request.id, {
-      action: "request.evaluation_step_cancelled",
-      actorId: interaction.user.id,
-      actorName: displayName(interaction.member as GuildMember, interaction.user.username),
-      metadata: { channelId: interaction.channelId, step: cancelledStep, stepName: evaluationStepTitle(cancelledStep) }
-    }).catch(() => null);
+    try {
+      await context.api.addPolicePromotionHistory(request.id, {
+        action: "request.evaluation_step_cancelled",
+        actorId: interaction.user.id,
+        actorName: displayName(interaction.member as GuildMember, interaction.user.username),
+        metadata: { channelId: interaction.channelId, step: cancelledStep, stepName: evaluationStepTitle(cancelledStep) }
+      });
+    } catch (error) {
+      console.error("[police-promotions] failed to persist cancelled evaluation step", error);
+      await interaction.reply({ content: "Não foi possível cancelar a etapa em andamento. Tente novamente.", ephemeral: true });
+      return true;
+    }
   }
+  evaluationQuestionnaireDrafts.set(key, cancelledDraft);
   const panelImage = await loadPromotionPanelImage(interaction.guild.id, context);
-  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, draft, cancelledStep ? "Preenchimento cancelado. Nenhuma informação foi salva." : null, false, panelImage) as any);
+  await interaction.update(evaluationQuestionnairePayload(request, promotion, interaction.guild, cancelledDraft, cancelledStep ? "Preenchimento cancelado. Nenhuma informação foi salva." : null, false, panelImage) as any);
   return true;
 }
 
@@ -2005,8 +2068,8 @@ function evaluationStepConfirmationPayload(request: PolicePromotionRequest, prom
         ].join("\n") },
         { type: 14, divider: true, spacing: 1 },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_step_confirm:${request.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar resposta").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`${PREFIX}:eval_step_edit:${request.id}`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Refazer resposta").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_step_confirm:${request.id}:${step}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar resposta").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:eval_step_edit:${request.id}:${step}`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Refazer resposta").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(`${PREFIX}:eval_panel:${request.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Cancelar preenchimento").setStyle(ButtonStyle.Danger)
         )
       ]
@@ -2210,7 +2273,7 @@ function createEvaluationQuestionnaireDraft(request: PolicePromotionRequest, int
   };
 }
 
-function evaluationDraftFromRequest(request: PolicePromotionRequest, userId: string, guildId: string): EvaluationQuestionnaireDraft {
+export function evaluationDraftFromRequest(request: PolicePromotionRequest, userId: string, guildId: string): EvaluationQuestionnaireDraft {
   const draft: EvaluationQuestionnaireDraft = {
     guildId,
     requestId: request.id,
@@ -2508,6 +2571,38 @@ function evaluationStepInstruction(step: EvaluationStep, guild: Guild) {
 
 function isEvaluationStep(value: string | undefined): value is EvaluationStep {
   return value === "patrol" || value === "operational" || value === "conduct" || value === "notes" || value === "final";
+}
+
+function evaluationStepFromCustomId(customId: string, index: number) {
+  const value = customId.split(":")[index];
+  return isEvaluationStep(value) ? value : null;
+}
+
+function recoverPendingEvaluationStepFromInteraction(interaction: ButtonInteraction<"cached">, requestedStep: EvaluationStep | null): EvaluationQuestionnaireDraft["pending"] | null {
+  const content = textDisplayContents(interaction.message.components).find((item) => item.includes("Confirmar informações"));
+  if (!content) return null;
+  const step = requestedStep ?? EVALUATION_STEPS.find((item) => content.includes(`## ${evaluationStepTitle(item)}`)) ?? null;
+  if (!step) return null;
+  const dividerIndex = content.indexOf(DIVIDER);
+  if (dividerIndex < 0) return null;
+  const answer = content.slice(dividerIndex + DIVIDER.length).trim();
+  if (!answer || answer === "Nenhuma informação registrada.") return null;
+  return { answer, step };
+}
+
+function textDisplayContents(components: readonly unknown[]): string[] {
+  const output: string[] = [];
+  for (const component of components) {
+    const raw = typeof (component as { toJSON?: () => unknown }).toJSON === "function"
+      ? (component as { toJSON: () => unknown }).toJSON()
+      : component;
+    if (!raw || typeof raw !== "object") continue;
+    const content = (raw as { content?: unknown }).content;
+    if (typeof content === "string") output.push(content);
+    const children = (raw as { components?: unknown }).components;
+    if (Array.isArray(children)) output.push(...textDisplayContents(children));
+  }
+  return output;
 }
 
 function evaluationStepAnswerFor(draft: EvaluationQuestionnaireDraft, step: EvaluationStep) {
