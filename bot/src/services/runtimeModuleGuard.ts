@@ -10,6 +10,15 @@ type CachedAuthorization = {
 const AUTHORIZATION_CACHE_MS = 15_000;
 const authorizationCache = new Map<string, CachedAuthorization>();
 const authorizationRequests = new Map<string, Promise<BotRuntimeModuleAuthorization>>();
+const MAINTENANCE_NOTICE = [
+  "🚧 Aviso de Manutenção",
+  "",
+  "**A Nextech informa que o sistema entrou em manutenção.**",
+  "",
+  "Nossa equipe já está trabalhando para identificar e corrigir o problema o mais rápido possível.",
+  "",
+  "Pedimos desculpas pelo transtorno e agradecemos a sua compreensão. Em breve o sistema estará disponível novamente."
+].join("\n");
 
 export async function isRuntimeModuleAuthorized(context: BotContext, guildId: string, moduleId: string) {
   return (await getRuntimeModuleAuthorization(context, guildId, moduleId)).allowed;
@@ -22,7 +31,7 @@ export function runtimeModuleDenialMessage(authorization: BotRuntimeModuleAuthor
     case "module_not_released":
       return `${label} não foi liberado para este bot na dashboard DEV.`;
     case "dashboard_unavailable":
-      return `Não foi possível validar ${label.toLowerCase()} na dashboard agora. Tente novamente em instantes.`;
+      return MAINTENANCE_NOTICE;
     case "guild_not_registered":
     case "guild_inactive":
       return `${label} não esta ativo para este servidor: ${authorization.reason}`;
