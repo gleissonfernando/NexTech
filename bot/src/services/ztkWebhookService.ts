@@ -350,7 +350,7 @@ async function deliverZtkReward(guild: Guild, payload: ZtkWebhookRewardUpdatedEv
         ? payload.reward.winners.map((winner) => `${medal(winner.place)} **${winner.place}º Lugar**\n${winner.value}`).join("\n\n")
         : "Nenhum vencedor configurado."
     ],
-    footer: { text: "NexTech • ZTK Webhook" },
+    footer: { text: "NexTech •NexTech  ZTK" },
     moduleId: "ztk-webhook",
     title: "ZTK Webhook • Premiação"
   })).catch((error) => {
@@ -381,7 +381,7 @@ function createEventPanel(payload: ZtkWebhookEventReceivedEvent) {
     accentColor: event.eventType === "domination" ? 0xff6b35 : event.eventType === "recruitment" ? 0x3b82f6 : 0xffd500,
     description: `Log FiveM recebida e registrada com proteção anti duplicação.`,
     fields,
-    footer: { text: "NexTech • ZTK Webhook" },
+    footer: { text: "NexTech •NexTech  ZTK" },
     moduleId: "ztk-webhook",
     title: `ZTK Webhook • ${eventTitle(event.eventType)}`
   });
@@ -402,7 +402,7 @@ function createOnlineRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
     accentColor: 0xffd500,
     description: `Tempo online atualizado automaticamente para o clã **${payload.clan.clanName}**.`,
     fields: rankingBlocks("⏱️ ONLINE — TODOS", payload.rankings.online, "onlineSeconds", "horas"),
-    footer: { text: "NexTech • ZTK Webhook" },
+    footer: { text: "NexTech •NexTech  ZTK" },
     moduleId: "ztk-webhook",
     title: `⏱️ Online ${payload.clan.clanName}`
   });
@@ -414,7 +414,7 @@ function createRecruitmentRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
     accentColor: 0x3b82f6,
     description: "Ranking semanal. Reinicia toda segunda-feira às 20:00.",
     fields: recruitmentRankingBlocks(recruiters),
-    footer: { text: "NexTech • ZTK Webhook" },
+    footer: { text: "NexTech •NexTech  ZTK" },
     moduleId: "ztk-webhook",
     title: "📊 Ranking de Recrutamento in-game"
   });
@@ -438,7 +438,7 @@ function createWeeklyLogPanel(log: ZtkWeeklyLogRuntime) {
       `## ${isDomination ? "Top 10 Dominações" : "Top 10 Recrutamento"}\n${rows}`,
       leader ? `## 🎉 Destaque da semana\nParabéns **${oneLine(leader)}** por ter ficado no topo semanal.` : "Nenhum destaque nesta semana."
     ],
-    footer: { text: "NexTech • ZTK Webhook" },
+    footer: { text: "NexTech •NexTech  ZTK" },
     moduleId: "ztk-webhook",
     title
   });
