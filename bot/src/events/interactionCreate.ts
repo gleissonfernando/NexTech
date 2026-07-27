@@ -42,6 +42,7 @@ import { handleAutoActivityClockInteraction } from "../services/autoActivityCloc
 import { handleVehicleAbandonmentInteraction } from "../services/vehicleAbandonmentService";
 import { handlePoliceQruInteraction } from "../services/policeQruService";
 import { handlePolicePromotionInteraction } from "../services/policePromotionService";
+import { handleBoosterInteraction } from "../services/boosterService";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "../services/runtimeModuleGuard";
 
 export async function handleInteractionCreate(interaction: Interaction, context: BotContext) {
@@ -95,6 +96,9 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
     return;
   }
   if (await handleVisibleMessageInteraction(interaction, context)) {
+    return;
+  }
+  if (interaction.isButton() && await handleBoosterInteraction(interaction, context)) {
     return;
   }
   if (await handleFivemPd7Interaction(interaction, context)) return;

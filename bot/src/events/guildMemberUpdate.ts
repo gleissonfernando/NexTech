@@ -3,6 +3,7 @@ import { isBotModuleEnabled } from "../config/env";
 import { logRoleChange } from "../services/logService";
 import { scheduleHierarchyRefreshForMember } from "../services/fivemHierarchyService";
 import { applyAutomaticRoles } from "../services/roleService";
+import { handleBoosterGuildMemberUpdate } from "../services/boosterService";
 import type { BotContext } from "../types";
 
 export async function handleGuildMemberUpdate(oldMember: GuildMember, newMember: GuildMember, context: BotContext) {
@@ -29,6 +30,10 @@ export async function handleGuildMemberUpdate(oldMember: GuildMember, newMember:
 
   if (isBotModuleEnabled("logs")) {
     tasks.push(logRoleChange(context, newMember, added, removed));
+  }
+
+  if (isBotModuleEnabled("boosters")) {
+    tasks.push(handleBoosterGuildMemberUpdate(oldMember, newMember, context));
   }
 
   await Promise.allSettled(tasks);

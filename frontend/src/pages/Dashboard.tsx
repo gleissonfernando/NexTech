@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
+import { BoosterPanel } from "../components/boosters/BoosterPanel";
 import { CoursesPanel } from "../components/courses/CoursesPanel";
 import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
@@ -357,6 +358,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Cria roleta web para sortear apenas subs da live cadastrada.",
     icon: Gift,
     view: "giveaway"
+  },
+  {
+    id: "boosters",
+    title: "Sistema Booster",
+    description: "Detecta boosts, entrega cargo, publica agradecimento e mantém histórico.",
+    icon: Trophy,
+    view: "boosters"
   },
   {
     id: "x-monitor",
@@ -806,6 +814,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   clips: "clips",
   "kick-clips": "kick-clips",
   giveaway: "giveaway",
+  boosters: "boosters",
   "x-monitor": "x-monitor",
   "mission-tools": "mission-tools",
   logs: "logs",
@@ -1517,6 +1526,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             />
             <GiveawayPanel botId={activeBotId} canManage={canManageModule(selectedBot, "giveaway", canManageDashboard)} guild={selectedGuild} />
           </div>
+        ) : null}
+        {activeView === "boosters" ? (
+          <BoosterPanel botId={activeBotId} canManage={canManageModule(selectedBot, "boosters", canManageDashboard)} guild={selectedGuild} />
         ) : null}
         {activeView === "x-monitor" ? (
           <XMonitorPanel botId={activeBotId} canManage={canManageModule(selectedBot, "x-monitor", canManageDashboard)} guild={selectedGuild} />
@@ -4606,6 +4618,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "kick-integration",
       "clips",
       "giveaway",
+      "boosters",
       "payment-gateway",
       "manual-payments",
       "network",

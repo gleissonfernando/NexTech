@@ -53,6 +53,7 @@ export const DEV_MODULES = [
   { id: "verification", label: "Sistema de Verificação" },
   { id: "welcome", label: "Sistema de Boas-vindas" },
   { id: "leave", label: "Sistema de Saída" },
+  { id: "boosters", label: "Sistema Booster" },
   { id: "logs", label: "Sistema de Logs" },
   { id: "roles", label: "Sistema de Cargos" },
   { id: "tickets", label: "Sistema de Tickets" },

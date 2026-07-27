@@ -19,6 +19,8 @@ import type {
   CreateTwitchNotificationPayload,
   CreateKickNotificationPayload,
   BotGuildConfig,
+  BoosterDashboard,
+  BoosterSettings,
   CreateDevBotPayload,
   Course,
   CourseExamDashboard,
@@ -118,6 +120,7 @@ import type {
   RhAdminDashboard,
   SaveClipsConfigPayload,
   SaveCustomPanelCategoryPayload,
+  SaveBoosterSettingsPayload,
   SaveCustomPanelPayload,
   SaveCoursePayload,
   SaveCourseExamQuestionPayload,
@@ -2455,6 +2458,23 @@ export async function getSubscriptionPresenceDashboard(botId: string, guildId: s
 export async function saveSubscriptionPresenceSettings(botId: string, guildId: string, payload: SaveSubscriptionPresenceSettingsPayload) {
   const { data } = await api.put<{ settings: SubscriptionPresenceSettings }>(
     `/payment-presence/${encodeURIComponent(guildId)}/settings`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function getBoosterDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<BoosterDashboard>(
+    `/boosters/${encodeURIComponent(guildId)}`,
+    { params: botParams(botId) }
+  );
+  return data;
+}
+
+export async function saveBoosterSettings(botId: string, guildId: string, payload: SaveBoosterSettingsPayload) {
+  const { data } = await api.put<{ settings: BoosterSettings }>(
+    `/boosters/${encodeURIComponent(guildId)}/settings`,
     payload,
     { params: botParams(botId) }
   );

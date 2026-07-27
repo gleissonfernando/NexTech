@@ -3991,6 +3991,64 @@ export type MongoSubscriptionPresenceLog = {
   createdAt: Date;
 };
 
+export type MongoBoosterSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  boosterRoleId: string | null;
+  announcementChannelId: string | null;
+  logChannelId: string | null;
+  bannerEnabled: boolean;
+  messageEnabled: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
+  embedColor: string;
+  message: string;
+  bannerUrl: string | null;
+  benefitsMessage: string;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoBoosterHistoryStatus = "processed" | "failed" | "skipped";
+
+export type MongoBoosterHistory = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  username: string;
+  avatarUrl: string | null;
+  boostLevel: number;
+  boostCount: number;
+  roleGiven: boolean;
+  roleId: string | null;
+  messageSent: boolean;
+  messageId: string | null;
+  bannerSent: boolean;
+  announcementChannelId: string | null;
+  logChannelId: string | null;
+  status: MongoBoosterHistoryStatus;
+  error: string | null;
+  dedupeKey: string;
+  createdAt: Date;
+};
+
+export type MongoBoosterLog = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  historyId: string | null;
+  userId: string | null;
+  channelId: string | null;
+  type: string;
+  message: string;
+  metadata?: unknown;
+  createdAt: Date;
+};
+
 export type MongoMissionToolsFeatureId =
   | "mission"
   | "clear"
@@ -5216,6 +5274,9 @@ export async function getMongoCollections() {
     subscriptionPresenceSettings: db.collection<MongoSubscriptionPresenceSettings>("subscription_presence_settings"),
     subscriptionPresenceProducts: db.collection<MongoSubscriptionPresenceProduct>("subscription_presence_products"),
     subscriptionPresenceLogs: db.collection<MongoSubscriptionPresenceLog>("subscription_presence_logs"),
+    boosterSettings: db.collection<MongoBoosterSettings>("booster_config"),
+    boosterHistory: db.collection<MongoBoosterHistory>("booster_history"),
+    boosterLogs: db.collection<MongoBoosterLog>("booster_logs"),
     salesTicketSettings: db.collection<MongoSalesTicketSettings>("salesTicketSettings"),
     salesTicketTypes: db.collection<MongoSalesTicketType>("salesTicketTypes"),
     salesTickets: db.collection<MongoSalesTicket>("salesTickets"),
@@ -5514,6 +5575,7 @@ async function createMongoIndexes(db: Db) {
     ensureNexTechInviteIndexes(db),
     ensureNexTechSalesIndexes(db),
     ensureSubscriptionPresenceIndexes(db),
+    ensureBoosterIndexes(db),
     ensureSalesTicketIndexes(db),
     ensurePriceTableIndexes(db),
     ensureManualPaymentIndexes(db),
@@ -6171,6 +6233,16 @@ async function ensureSubscriptionPresenceIndexes(db: Db) {
     db.collection<MongoSubscriptionPresenceProduct>("subscription_presence_products").createIndex({ botId: 1, guildId: 1, active: 1, category: 1 }),
     db.collection<MongoSubscriptionPresenceLog>("subscription_presence_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoSubscriptionPresenceLog>("subscription_presence_logs").createIndex({ botId: 1, guildId: 1, saleId: 1 }, { unique: true })
+  ]);
+}
+
+async function ensureBoosterIndexes(db: Db) {
+  await Promise.all([
+    db.collection<MongoBoosterSettings>("booster_config").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoBoosterHistory>("booster_history").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoBoosterHistory>("booster_history").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoBoosterHistory>("booster_history").createIndex({ botId: 1, guildId: 1, dedupeKey: 1 }, { unique: true }),
+    db.collection<MongoBoosterLog>("booster_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 })
   ]);
 }
 

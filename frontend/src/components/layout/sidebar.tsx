@@ -56,6 +56,7 @@ export type ViewId =
   | "clips"
   | "kick-clips"
   | "giveaway"
+  | "boosters"
   | "x-monitor"
   | "moderation"
   | "rules"
@@ -137,10 +138,11 @@ export type NavItem = {
   moduleIds?: string[];
 };
 
-type NavSectionId = "user" | "streamer" | "security" | "police" | "fivem" | "server";
+type NavSectionId = "user" | "community" | "streamer" | "security" | "police" | "fivem" | "server";
 
 const navSectionLabels: Record<NavSectionId, string> = {
   user: "Usuário",
+  community: "Comunidade",
   streamer: "Streamer",
   security: "Segurança",
   police: "Polícia",
@@ -154,6 +156,7 @@ const navItems: NavItem[] = [
   { id: "clips", label: "Clips", icon: Film, moduleId: "clips" },
   { id: "kick-clips", label: "Clipes Kick", icon: Film, moduleId: "kick-clips" },
   { id: "giveaway", label: "Sorteio", icon: Gift, moduleId: "giveaway" },
+  { id: "boosters", label: "Sistema Booster", icon: Trophy, moduleId: "boosters" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
   { id: "rules", label: "Regras", icon: ScrollText, moduleId: "rules" },
@@ -303,6 +306,13 @@ const streamerModuleIds = new Set([
   "giveaway"
 ]);
 
+const communityViewIds = new Set<ViewId>([
+  "boosters",
+  "entry-leave",
+  "auto-roles",
+  "tickets"
+]);
+
 function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSectionId {
   const itemModuleIds = item.moduleIds ?? (item.moduleId ? [item.moduleId] : []);
   const releasedItemModuleIds = itemModuleIds.filter((moduleId) => enabledModuleSet.has(moduleId));
@@ -325,6 +335,10 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
 
   if (streamerViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => streamerModuleIds.has(moduleId))) {
     return "streamer";
+  }
+
+  if (communityViewIds.has(item.id) || releasedItemModuleIds.includes("boosters")) {
+    return "community";
   }
 
   if ([
@@ -356,7 +370,7 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
 }
 
 function groupNavItems(items: NavItem[], enabledModuleSet: Set<string>) {
-  const order: NavSectionId[] = ["user", "streamer", "police", "fivem", "security", "server"];
+  const order: NavSectionId[] = ["user", "community", "streamer", "police", "fivem", "security", "server"];
 
   return order
     .map((id) => ({

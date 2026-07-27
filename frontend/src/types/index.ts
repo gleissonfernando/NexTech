@@ -3332,6 +3332,65 @@ export type SubscriptionPresenceDashboard = {
   settings: SubscriptionPresenceSettings;
 };
 
+export type BoosterSettings = {
+  id: string;
+  announcementChannelId: string | null;
+  bannerEnabled: boolean;
+  bannerUrl: string | null;
+  benefitsMessage: string;
+  boosterRoleId: string | null;
+  botId: string;
+  createdAt: string;
+  embedColor: string;
+  enabled: boolean;
+  guildId: string;
+  logChannelId: string | null;
+  message: string;
+  messageEnabled: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type BoosterHistoryStatus = "processed" | "failed" | "skipped";
+
+export type BoosterHistory = {
+  id: string;
+  announcementChannelId: string | null;
+  avatarUrl: string | null;
+  bannerSent: boolean;
+  boostCount: number;
+  boostLevel: number;
+  botId: string;
+  createdAt: string;
+  dedupeKey: string;
+  error: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  messageId: string | null;
+  messageSent: boolean;
+  roleGiven: boolean;
+  roleId: string | null;
+  status: BoosterHistoryStatus;
+  userId: string;
+  username: string;
+};
+
+export type BoosterDashboard = {
+  history: BoosterHistory[];
+  settings: BoosterSettings;
+  stats: {
+    activeBoosters: number;
+    lastBooster: BoosterHistory | null;
+    month: number;
+    today: number;
+    topBooster: BoosterHistory | null;
+    total: number;
+    week: number;
+  };
+};
+
 export type SalesTicketSettings = {
   id: string;
   botId: string;
@@ -3849,6 +3908,22 @@ export type SaveSubscriptionPresenceProductPayload = {
   order?: number;
   plans?: Array<Partial<SubscriptionPresencePlan> & { name: string }>;
 };
+
+export type SaveBoosterSettingsPayload = Partial<Pick<
+  BoosterSettings,
+  | "announcementChannelId"
+  | "bannerEnabled"
+  | "bannerUrl"
+  | "benefitsMessage"
+  | "boosterRoleId"
+  | "embedColor"
+  | "enabled"
+  | "logChannelId"
+  | "message"
+  | "messageEnabled"
+  | "showAvatar"
+  | "showTimestamp"
+>>;
 
 export type SaveNexTechPaymentProviderPayload = {
   clientId?: string | null;

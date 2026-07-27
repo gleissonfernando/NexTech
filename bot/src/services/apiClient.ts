@@ -123,6 +123,49 @@ export type SubscriptionPresencePublication = {
   skipReason: string | null;
 };
 
+export type BoosterSettings = {
+  id: string;
+  announcementChannelId: string | null;
+  bannerEnabled: boolean;
+  bannerUrl: string | null;
+  benefitsMessage: string;
+  boosterRoleId: string | null;
+  botId: string;
+  createdAt: string;
+  embedColor: string;
+  enabled: boolean;
+  guildId: string;
+  logChannelId: string | null;
+  message: string;
+  messageEnabled: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type BoosterHistory = {
+  id: string;
+  announcementChannelId: string | null;
+  avatarUrl: string | null;
+  bannerSent: boolean;
+  boostCount: number;
+  boostLevel: number;
+  botId: string;
+  createdAt: string;
+  dedupeKey: string;
+  error: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  messageId: string | null;
+  messageSent: boolean;
+  roleGiven: boolean;
+  roleId: string | null;
+  status: "processed" | "failed" | "skipped";
+  userId: string;
+  username: string;
+};
+
 export type TicketRecord = {
   id: string;
   botId: string | null;
@@ -3189,6 +3232,38 @@ export class ApiClient {
   }) {
     const { data } = await this.http.patch(`/payment-presence/bot/${encodeURIComponent(guildId)}/publications/${encodeURIComponent(logId)}`, input);
     return data;
+  }
+
+  async getBoosterRuntime(guildId: string) {
+    const { data } = await this.http.get<{ settings: BoosterSettings }>(`/boosters/bot/${encodeURIComponent(guildId)}/runtime`);
+    return data;
+  }
+
+  async claimBoosterEvent(guildId: string, input: {
+    avatarUrl?: string | null;
+    boostCount: number;
+    boostLevel: number;
+    dedupeKey?: string | null;
+    userId: string;
+    username: string;
+  }) {
+    const { data } = await this.http.post<{ claimed: boolean; history: BoosterHistory | null }>(`/boosters/bot/${encodeURIComponent(guildId)}/events/claim`, input);
+    return data;
+  }
+
+  async completeBoosterHistory(guildId: string, historyId: string, input: {
+    announcementChannelId?: string | null;
+    bannerSent?: boolean;
+    error?: string | null;
+    logChannelId?: string | null;
+    messageId?: string | null;
+    messageSent?: boolean;
+    roleGiven?: boolean;
+    roleId?: string | null;
+    status: "processed" | "failed" | "skipped";
+  }) {
+    const { data } = await this.http.patch<{ history: BoosterHistory }>(`/boosters/bot/${encodeURIComponent(guildId)}/history/${encodeURIComponent(historyId)}`, input);
+    return data.history;
   }
 
   async getNexTechInviteRuntime(guildId: string) {
