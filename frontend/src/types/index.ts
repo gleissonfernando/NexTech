@@ -3699,6 +3699,12 @@ export type ZtkWebhookClan = {
   recruitmentRankingMessageId?: string | null;
   rewardChannelId: string | null;
   settingsChannelId: string | null;
+  weeklyAutoResetEnabled?: boolean;
+  weeklyDominationLogChannelId?: string | null;
+  weeklyDominationLogWeekKey?: string | null;
+  weeklyRankingResetAt?: string | null;
+  weeklyRecruitmentLogChannelId?: string | null;
+  weeklyRecruitmentLogWeekKey?: string | null;
   updatedAt: string;
   webhookCreatedAt: string | null;
   webhookEnabled: boolean;
@@ -3853,6 +3859,9 @@ export type SaveZtkWebhookClanPayload = Partial<Pick<
   | "recruitmentChannelId"
   | "rewardChannelId"
   | "settingsChannelId"
+  | "weeklyAutoResetEnabled"
+  | "weeklyDominationLogChannelId"
+  | "weeklyRecruitmentLogChannelId"
 >>;
 
 export type SaveZtkRewardPayload = Partial<Pick<ZtkReward, "active" | "name" | "rankingType" | "rewardDate" | "winners">>;

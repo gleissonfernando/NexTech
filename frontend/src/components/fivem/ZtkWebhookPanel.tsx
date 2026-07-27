@@ -5,6 +5,7 @@ import {
   createZtkWebhookClan,
   getGuildLiveOptions,
   getZtkWebhookDashboard,
+  resetZtkWeeklyRanking,
   saveZtkWebhookClan,
   updateZtkWebhookState
 } from "../../lib/api";
@@ -162,6 +163,11 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
     await run("reward", () => createZtkReward(botId, guild.id, selectedClan.id, rewardDraft), "Premiação criada.");
   }
 
+  async function resetWeeklyRanking() {
+    if (!botId || !guild || !selectedClan) return;
+    await run("weekly-reset", () => resetZtkWeeklyRanking(botId, guild.id, selectedClan.id), "Ranking semanal resetado.");
+  }
+
   if (!botId || !guild) {
     return (
       <Card>
@@ -258,6 +264,7 @@ export function ZtkWebhookPanel({ botId, canManage, guild }: Props) {
         <SettingsView
           canManage={canManage}
           clan={selectedClan}
+          onResetWeekly={resetWeeklyRanking}
           onSave={saveClanPatch}
           savingKey={savingKey}
         />
@@ -818,7 +825,9 @@ function ChannelsView({ canManage, channels, clan, onSave, savingKey }: { canMan
     { key: "onlineChannelId", label: "Canal Online" },
     { key: "dominationChannelId", label: "Canal Dominação" },
     { key: "rewardChannelId", label: "Canal Premiação" },
-    { key: "settingsChannelId", label: "Canal Entrada Webhook FiveM" }
+    { key: "settingsChannelId", label: "Canal Entrada Webhook FiveM" },
+    { key: "weeklyDominationLogChannelId", label: "Log Dominações Semanal" },
+    { key: "weeklyRecruitmentLogChannelId", label: "Log de Recrutamento Semanal" }
   ];
   return (
     <Card>
@@ -943,12 +952,14 @@ function StatsView({ dashboard, stats }: { dashboard: ZtkWebhookDashboard | null
   );
 }
 
-function SettingsView({ canManage, clan, onSave, savingKey }: { canManage: boolean; clan: ZtkWebhookClan; onSave: (patch: SaveZtkWebhookClanPayload, key?: string) => Promise<void>; savingKey: string | null }) {
+function SettingsView({ canManage, clan, onResetWeekly, onSave, savingKey }: { canManage: boolean; clan: ZtkWebhookClan; onResetWeekly: () => Promise<void>; onSave: (patch: SaveZtkWebhookClanPayload, key?: string) => Promise<void>; savingKey: string | null }) {
   const [name, setName] = useState(clan.clanName);
   const [active, setActive] = useState(clan.active);
+  const [weeklyAutoResetEnabled, setWeeklyAutoResetEnabled] = useState(clan.weeklyAutoResetEnabled !== false);
   useEffect(() => {
     setName(clan.clanName);
     setActive(clan.active);
+    setWeeklyAutoResetEnabled(clan.weeklyAutoResetEnabled !== false);
   }, [clan]);
   return (
     <Card>
@@ -965,7 +976,18 @@ function SettingsView({ canManage, clan, onSave, savingKey }: { canManage: boole
           Módulo ativo para este clã
           <Switch checked={active} disabled={!canManage} onCheckedChange={setActive} />
         </label>
-        <Button className="w-fit" disabled={!canManage || savingKey !== null} onClick={() => void onSave({ active, clanName: name }, "settings")}>
+        <label className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
+          Reset semanal automático
+          <Switch checked={weeklyAutoResetEnabled} disabled={!canManage} onCheckedChange={setWeeklyAutoResetEnabled} />
+        </label>
+        <div className="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+          <p>Último reset manual: {clan.weeklyRankingResetAt ? formatDateTime(clan.weeklyRankingResetAt) : "Nunca"}</p>
+          <Button className="w-fit" disabled={!canManage || savingKey !== null} onClick={() => void onResetWeekly()} type="button" variant="outline">
+            {savingKey === "weekly-reset" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Resetar ranking agora
+          </Button>
+        </div>
+        <Button className="w-fit" disabled={!canManage || savingKey !== null} onClick={() => void onSave({ active, clanName: name, weeklyAutoResetEnabled }, "settings")}>
           {savingKey === "settings" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Salvar configurações
         </Button>

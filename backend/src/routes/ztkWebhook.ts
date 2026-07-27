@@ -10,7 +10,9 @@ import {
   getZtkWebhookDashboard,
   ingestZtkWebhookEvent,
   ingestZtkDiscordWebhookMessage,
+  claimZtkWeeklyLogs,
   listZtkWebhookClansForBot,
+  resetZtkWeeklyRanking,
   updateZtkRankingMessageState,
   updateZtkClan,
   updateZtkWebhookState,
@@ -29,7 +31,10 @@ const clanSchema = z.object({
   rankingChannelId: optionalSnowflake,
   recruitmentChannelId: optionalSnowflake,
   rewardChannelId: optionalSnowflake,
-  settingsChannelId: optionalSnowflake
+  settingsChannelId: optionalSnowflake,
+  weeklyAutoResetEnabled: z.boolean().optional(),
+  weeklyDominationLogChannelId: optionalSnowflake,
+  weeklyRecruitmentLogChannelId: optionalSnowflake
 });
 const createClanSchema = z.object({
   clanName: z.string().min(1).max(80),
@@ -113,6 +118,32 @@ ztkWebhookRouter.patch("/bot/:guildId/clans/:clanId/ranking-message", async (req
   }
 });
 
+ztkWebhookRouter.post("/bot/:guildId/weekly-logs/claim", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) return res.status(403).json({ message: "Rota exclusiva do bot." });
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    await assertRuntime(botId, guildId);
+    return res.json({ logs: await claimZtkWeeklyLogs(guildId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ztkWebhookRouter.post("/bot/:guildId/clans/:clanId/reset-weekly", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) return res.status(403).json({ message: "Rota exclusiva do bot." });
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    await assertRuntime(botId, guildId);
+    const clan = await resetZtkWeeklyRanking(guildId, botId, id.parse(req.params.clanId), null);
+    if (!clan) return res.status(404).json({ message: "Clã ZTK não encontrado." });
+    return res.json({ clan });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 ztkWebhookRouter.get("/:guildId", async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
@@ -163,6 +194,19 @@ ztkWebhookRouter.post("/:guildId/clans/:clanId/webhook/:action", requireAuth, as
     const action = z.enum(["create", "regenerate", "disable", "delete"]).parse(req.params.action);
     if (!(await canManageClan(req, guildId, botId, req.params.clanId ?? ""))) return res.status(403).json({ message: "Sem permissão para gerenciar esta webhook." });
     const clan = await updateZtkWebhookState(guildId, botId, id.parse(req.params.clanId), action, res.locals.dashboardAuth.user.discordId);
+    if (!clan) return res.status(404).json({ message: "Clã ZTK não encontrado." });
+    return res.json({ clan });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ztkWebhookRouter.post("/:guildId/clans/:clanId/reset-weekly", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!(await canManageClan(req, guildId, botId, req.params.clanId ?? ""))) return res.status(403).json({ message: "Sem permissão para resetar este ranking." });
+    const clan = await resetZtkWeeklyRanking(guildId, botId, id.parse(req.params.clanId), res.locals.dashboardAuth.user.discordId);
     if (!clan) return res.status(404).json({ message: "Clã ZTK não encontrado." });
     return res.json({ clan });
   } catch (error) {

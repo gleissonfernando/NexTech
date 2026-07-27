@@ -3610,6 +3610,12 @@ export type MongoZtkWebhookClan = {
   dominationChannelId: string | null;
   rewardChannelId: string | null;
   settingsChannelId: string | null;
+  weeklyAutoResetEnabled?: boolean;
+  weeklyDominationLogChannelId?: string | null;
+  weeklyDominationLogWeekKey?: string | null;
+  weeklyRankingResetAt?: Date | null;
+  weeklyRecruitmentLogChannelId?: string | null;
+  weeklyRecruitmentLogWeekKey?: string | null;
   updatedAt: Date;
   webhookCreatedAt: Date | null;
   webhookEnabled: boolean;

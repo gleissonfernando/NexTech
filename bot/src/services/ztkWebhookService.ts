@@ -1,12 +1,14 @@
-import { SlashCommandBuilder, type Client, type Guild, type Message } from "discord.js";
+import { PermissionFlagsBits, SlashCommandBuilder, type Client, type Guild, type Message } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
-import type { ZtkWebhookClanRuntime, ZtkWebhookRecruitmentDashboard } from "./apiClient";
+import type { ZtkWebhookClanRuntime, ZtkWebhookRecruitmentDashboard, ZtkWeeklyLogRuntime } from "./apiClient";
 import type { ZtkWebhookEventReceivedEvent, ZtkWebhookManageEvent, ZtkWebhookPlayerStatEvent, ZtkWebhookRewardUpdatedEvent } from "../websocket/socketClient";
 import { renderComponentsV2Panel, renderPanelFromBlocks } from "./panelVisualRenderer";
 
 const ZTK_RANKING_LIMIT = 10;
 let ztkRecruitmentStartupSyncStarted = false;
+let ztkWeeklyMaintenanceStarted = false;
+const ztkWeeklyRankingRefreshKeys = new Set<string>();
 
 export const recrutamentoCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -15,7 +17,10 @@ export const recrutamentoCommand: BotCommand = {
     .addSubcommand((subcommand) => subcommand
       .setName("painel")
       .setDescription("Mostra o painel de recrutamentos do clã.")
-      .addUserOption((option) => option.setName("usuario").setDescription("Recrutador para consulta individual.").setRequired(false))),
+      .addUserOption((option) => option.setName("usuario").setDescription("Recrutador para consulta individual.").setRequired(false)))
+    .addSubcommand((subcommand) => subcommand
+      .setName("resetar")
+      .setDescription("Reseta manualmente o ranking semanal do clã ZTK.")),
   moduleId: "ztk-webhook",
   async execute(interaction, context) {
     if (!interaction.guildId) {
@@ -27,6 +32,21 @@ export const recrutamentoCommand: BotCommand = {
       return;
     }
     await interaction.deferReply({ ephemeral: true });
+    if (interaction.options.getSubcommand() === "resetar") {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        await interaction.editReply("Você precisa da permissão Gerenciar Servidor para resetar o ranking.");
+        return;
+      }
+      const dashboard = await context.api.getZtkWebhookDashboard(interaction.guildId);
+      const clan = dashboard.selectedClan ?? dashboard.clans[0] ?? null;
+      if (!clan) {
+        await interaction.editReply("Nenhum clã ZTK configurado.");
+        return;
+      }
+      await context.api.resetZtkWeeklyRanking(interaction.guildId, clan.id);
+      await interaction.editReply(`Ranking semanal resetado para o clã ${clan.clanName}.`);
+      return;
+    }
     const target = interaction.options.getUser("usuario");
     const dashboard = await context.api.getZtkWebhookDashboard(interaction.guildId);
     const clan = dashboard.selectedClan ?? dashboard.clans[0] ?? null;
@@ -93,6 +113,38 @@ export function startZtkWebhookService(client: Client<true>, context: BotContext
   });
 
   scheduleZtkRecruitmentPanelStartupSync(client, context);
+  scheduleZtkWeeklyMaintenance(client, context);
+}
+
+function scheduleZtkWeeklyMaintenance(client: Client<true>, context: BotContext) {
+  if (ztkWeeklyMaintenanceStarted || !isBotModuleEnabled("ztk-webhook")) return;
+  ztkWeeklyMaintenanceStarted = true;
+  const run = () => {
+    void processZtkWeeklyMaintenance(client, context).catch((error) => {
+      console.warn("[ztk-webhook] falha na manutenção semanal:", error instanceof Error ? error.message : error);
+    });
+  };
+  setTimeout(run, 10_000).unref();
+  const interval = setInterval(run, 60_000);
+  interval.unref();
+}
+
+async function processZtkWeeklyMaintenance(client: Client<true>, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    const logs = await context.api.claimZtkWeeklyLogs(guild.id).catch((error) => {
+      console.warn("[ztk-webhook] falha ao buscar logs semanais pendentes:", error instanceof Error ? error.message : error);
+      return [] as ZtkWeeklyLogRuntime[];
+    });
+    for (const log of logs) {
+      if (!isCurrentRuntime(log.botId)) continue;
+      await sendToChannel(guild, log.channelId, createWeeklyLogPanel(log)).catch((error) => {
+        console.warn("[ztk-webhook] falha ao publicar log semanal:", error instanceof Error ? error.message : error);
+      });
+    }
+    await refreshWeeklyRankingPanelsIfDue(guild, context).catch((error) => {
+      console.warn("[ztk-webhook] falha ao atualizar painéis semanais:", error instanceof Error ? error.message : error);
+    });
+  }
 }
 
 function scheduleZtkRecruitmentPanelStartupSync(client: Client<true>, context: BotContext) {
@@ -135,6 +187,35 @@ async function syncZtkRecruitmentPanelsOnStartup(client: Client<true>, context: 
         });
       }
     }
+  }
+}
+
+async function refreshWeeklyRankingPanelsIfDue(guild: Guild, context: BotContext) {
+  const currentWeek = currentWeekKey();
+  const clans = await context.api.getZtkWebhookClans(guild.id).catch(() => [] as ZtkWebhookClanRuntime[]);
+  for (const clan of clans) {
+    const refreshKey = clan.weeklyAutoResetEnabled === false
+      ? `${guild.id}:${clan.id}:manual:${clan.weeklyRankingResetAt ?? "initial"}`
+      : `${guild.id}:${clan.id}:auto:${currentWeek}`;
+    if (ztkWeeklyRankingRefreshKeys.has(refreshKey)) continue;
+    const dashboard = await context.api.getZtkWebhookDashboard(guild.id, clan.id).catch(() => null);
+    if (!dashboard) continue;
+    const selectedClan = dashboard.selectedClan ?? dashboard.clans.find((item) => item.id === clan.id) ?? clan;
+    await upsertZtkRankingMessages(guild, {
+      botId: currentRuntimeBotId(),
+      clan: selectedClan,
+      event: {
+        clanName: selectedClan.clanName,
+        eventTimestamp: new Date().toISOString(),
+        eventType: "domination",
+        id: `weekly-refresh-${selectedClan.id}-${currentWeek}`
+      },
+      guildId: guild.id,
+      dominationRankings: dashboard.dominationRankings,
+      recruitmentRankings: dashboard.recruitmentRankings,
+      rankings: { domination: [], online: [], recruitment: [] }
+    }, context);
+    ztkWeeklyRankingRefreshKeys.add(refreshKey);
   }
 }
 
@@ -307,6 +388,30 @@ function createRecruitmentRankingPanel(payload: ZtkWebhookEventReceivedEvent) {
     footer: { text: "NexTech • ZTK Webhook" },
     moduleId: "ztk-webhook",
     title: "📊 Ranking de Recrutamento in-game"
+  });
+}
+
+function createWeeklyLogPanel(log: ZtkWeeklyLogRuntime) {
+  const isDomination = log.kind === "domination";
+  const unit = isDomination ? "dominações" : "recrutamentos";
+  const title = isDomination ? "🏆 Log Dominações Semanal" : "👥 Log de Recrutamento Semanal";
+  const rows = log.items.length
+    ? log.items.map((item) => `${medal(item.position)} **#${item.position} — ${oneLine(item.name)}**\n${item.total} ${unit}${item.id ? ` • ID: ${oneLine(item.id)}` : ""}`).join("\n\n")
+    : "Sem registros no período.";
+  const leader = log.items[0]?.name ?? null;
+  return renderComponentsV2Panel({
+    accentColor: isDomination ? 0xffd500 : 0x3b82f6,
+    description: leader
+      ? `Parabéns aos membros que se mantiveram no top 10 semanal do clã **${log.clan.clanName}**.`
+      : `Resultado semanal do clã **${log.clan.clanName}**.`,
+    fields: [
+      `## 📅 Período\n${formatDate(log.periodStart)} até ${formatDate(new Date(new Date(log.periodEnd).getTime() - 1).toISOString())}\n**Total registrado:** ${log.total} ${unit}`,
+      `## ${isDomination ? "Top 10 Dominações" : "Top 10 Recrutamento"}\n${rows}`,
+      leader ? `## 🎉 Destaque da semana\nParabéns **${oneLine(leader)}** por ter ficado no topo semanal.` : "Nenhum destaque nesta semana."
+    ],
+    footer: { text: "NexTech • ZTK Webhook" },
+    moduleId: "ztk-webhook",
+    title
   });
 }
 
@@ -534,6 +639,15 @@ function formatTime(value: string) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function currentWeekKey() {
+  const now = new Date();
+  const local = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const daysSinceMonday = (local.getDay() + 6) % 7;
+  local.setDate(local.getDate() - daysSinceMonday);
+  local.setHours(0, 0, 0, 0);
+  return local.toISOString().slice(0, 10);
 }
 
 function formatDuration(seconds: number) {

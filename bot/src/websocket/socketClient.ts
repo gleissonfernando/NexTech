@@ -114,6 +114,12 @@ export type ZtkWebhookClanEvent = {
   recruitmentRankingMessageId?: string | null;
   rewardChannelId?: string | null;
   settingsChannelId?: string | null;
+  weeklyAutoResetEnabled?: boolean;
+  weeklyDominationLogChannelId?: string | null;
+  weeklyDominationLogWeekKey?: string | null;
+  weeklyRankingResetAt?: string | null;
+  weeklyRecruitmentLogChannelId?: string | null;
+  weeklyRecruitmentLogWeekKey?: string | null;
   webhookEnabled?: boolean;
 };
 

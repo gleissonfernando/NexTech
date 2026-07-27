@@ -22,8 +22,9 @@ export type CreateLogInput = {
 };
 export type Pd7Config = { _id:string; botId:string; guildId:string; factionId:string; factionName:string; enabled:boolean; categoryPD7:string|null; panelChannelPD7:string|null; logChannelPD7:string|null; allowedRolesPD7:string[]; responsibleUsersPD7:string[]; approvedRolePD7:string|null; rejectedRolePD7:string|null; fields:Array<{id:string;label:string;placeholder:string|null;required:boolean;style:"short"|"paragraph";order:number}>; autoDeleteMinutes:number|null; panelMessageId:string|null; publishRequestedAt:string|null };
 export type Pd7Request = { _id:string; botId:string; guildId:string; factionId:string; userId:string; username:string; fields:Array<{id:string;label:string;value:string}>; status:"pending"|"approved"|"rejected"|"closed"; channelId:string|null; panelMessageId:string|null; handledBy:string|null; rejectionReason:string|null; createdAt:string; resolvedAt:string|null };
-export type ZtkWebhookClanRuntime = { active:boolean; clanName:string; discordWebhookChannelId?:string|null; discordWebhookId?:string|null; dominationChannelId?:string|null; id:string; onlineChannelId?:string|null; onlineRankingMessageId?:string|null; participationRankingMessageId?:string|null; rankingChannelId?:string|null; rankingMessageId?:string|null; recruitmentChannelId?:string|null; recruitmentRankingMessageId?:string|null; rewardChannelId?:string|null; settingsChannelId?:string|null; webhookEnabled:boolean };
-export type ZtkWebhookRecruitmentDashboard = { clans: ZtkWebhookClanRuntime[]; selectedClan: ZtkWebhookClanRuntime | null; recruitmentRankings: { recruiters: Array<{ avatarUrl: string | null; firstRecruitmentAt: string | null; lastRecruitmentAt: string | null; monthlyRecruitments: number; normalizedRecruiterName: string; recentRecruits: Array<{ recruitedName: string; recruitedPlayerId: string | null; recruitedAt: string }>; recruiterId: string | null; recruiterName: string; roleName: string | null; todayRecruitments: number; totalRecruitments: number; weeklyRecruitments: number }>; stats: { dailySeries: Array<{ date: string; total: number }>; lastRecruitmentAt: string | null; lastRecruiterName: string | null; monthTotal: number; todayTotal: number; topRecruiterName: string | null; total: number; weekTotal: number } } };
+export type ZtkWebhookClanRuntime = { active:boolean; clanName:string; discordWebhookChannelId?:string|null; discordWebhookId?:string|null; dominationChannelId?:string|null; id:string; onlineChannelId?:string|null; onlineRankingMessageId?:string|null; participationRankingMessageId?:string|null; rankingChannelId?:string|null; rankingMessageId?:string|null; recruitmentChannelId?:string|null; recruitmentRankingMessageId?:string|null; rewardChannelId?:string|null; settingsChannelId?:string|null; weeklyAutoResetEnabled?:boolean; weeklyDominationLogChannelId?:string|null; weeklyDominationLogWeekKey?:string|null; weeklyRankingResetAt?:string|null; weeklyRecruitmentLogChannelId?:string|null; weeklyRecruitmentLogWeekKey?:string|null; webhookEnabled:boolean };
+export type ZtkWeeklyLogRuntime = { botId: string; channelId: string; clan: ZtkWebhookClanRuntime; guildId: string; items: Array<{ id: string | null; lastAt: string | null; name: string; position: number; total: number }>; kind: "domination" | "recruitment"; periodEnd: string; periodStart: string; total: number; weekKey: string };
+export type ZtkWebhookRecruitmentDashboard = { clans: ZtkWebhookClanRuntime[]; selectedClan: ZtkWebhookClanRuntime | null; dominationRankings: NonNullable<import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["dominationRankings"]>; recruitmentRankings: NonNullable<import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["recruitmentRankings"]>; rankings: import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["rankings"] };
 
 export type NexTechInviteRuntimeInvite = {
   alertChannelId?: string | null;
@@ -4273,6 +4274,16 @@ export class ApiClient {
 
   async updateZtkRankingMessageState(guildId: string, clanId: string, input: { channelId: string | null; kind: "online" | "participation" | "ranking" | "recruitment"; messageId: string | null }) {
     await this.http.patch(`/ztk-webhook/bot/${guildId}/clans/${encodeURIComponent(clanId)}/ranking-message`, input);
+  }
+
+  async claimZtkWeeklyLogs(guildId: string) {
+    const { data } = await this.http.post<{ logs: ZtkWeeklyLogRuntime[] }>(`/ztk-webhook/bot/${guildId}/weekly-logs/claim`);
+    return data.logs;
+  }
+
+  async resetZtkWeeklyRanking(guildId: string, clanId: string) {
+    const { data } = await this.http.post<{ clan: ZtkWebhookClanRuntime }>(`/ztk-webhook/bot/${guildId}/clans/${encodeURIComponent(clanId)}/reset-weekly`);
+    return data.clan;
   }
 
   async getPd7Configs() { const {data}=await this.http.get<{configs:Pd7Config[]}>("/fivem-pd7/bot/configs"); return data.configs; }

@@ -3076,6 +3076,15 @@ export async function updateZtkWebhookState(botId: string, guildId: string, clan
   return data.clan;
 }
 
+export async function resetZtkWeeklyRanking(botId: string, guildId: string, clanId: string) {
+  const { data } = await api.post<{ clan: ZtkWebhookClan }>(
+    `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}/reset-weekly`,
+    undefined,
+    { params: botParams(botId) }
+  );
+  return data.clan;
+}
+
 export async function createZtkReward(botId: string, guildId: string, clanId: string, payload: SaveZtkRewardPayload) {
   const { data } = await api.post<{ reward: ZtkReward }>(
     `/ztk-webhook/${encodeURIComponent(guildId)}/clans/${encodeURIComponent(clanId)}/rewards`,

@@ -21,7 +21,33 @@ export type SaveZtkClanInput = Partial<{
   recruitmentChannelId: string | null;
   rewardChannelId: string | null;
   settingsChannelId: string | null;
+  weeklyAutoResetEnabled: boolean;
+  weeklyDominationLogChannelId: string | null;
+  weeklyRecruitmentLogChannelId: string | null;
 }>;
+
+export type ZtkWeeklyLogKind = "domination" | "recruitment";
+
+export type ZtkWeeklyLogItemDto = {
+  id: string | null;
+  lastAt: string | null;
+  name: string;
+  position: number;
+  total: number;
+};
+
+export type ZtkWeeklyLogDto = {
+  botId: string;
+  channelId: string;
+  clan: ZtkClanDto;
+  guildId: string;
+  items: ZtkWeeklyLogItemDto[];
+  kind: ZtkWeeklyLogKind;
+  periodEnd: string;
+  periodStart: string;
+  total: number;
+  weekKey: string;
+};
 
 export type SaveZtkRewardInput = {
   active?: boolean;
@@ -176,11 +202,11 @@ export async function getZtkWebhookDashboard(guildId: string, botId: string | nu
         recruitment: await topPlayers(ztkWebhookPlayerStats, resolvedBotId, guildId, selectedClanId, "recruitments")
       }
     : { domination: [], online: [], recruitment: [] };
-  const dominationRankings = selectedClanId
-    ? await buildDominationRankings(ztkWebhookLogs, resolvedBotId, guildId, selectedClanId)
+  const dominationRankings = selectedClan
+    ? await buildDominationRankings(ztkWebhookLogs, selectedClan)
     : emptyDominationRankings();
-  const recruitmentRankings = selectedClanId
-    ? await buildRecruitmentRankings(ztkWebhookLogs, resolvedBotId, guildId, selectedClanId)
+  const recruitmentRankings = selectedClan
+    ? await buildRecruitmentRankings(ztkWebhookLogs, selectedClan)
     : emptyRecruitmentRankings();
 
   return {
@@ -219,6 +245,12 @@ export async function createZtkClan(guildId: string, botId: string | null, input
     recruitmentRankingMessageId: null,
     rewardChannelId: null,
     settingsChannelId: null,
+    weeklyAutoResetEnabled: true,
+    weeklyDominationLogChannelId: null,
+    weeklyDominationLogWeekKey: null,
+    weeklyRankingResetAt: null,
+    weeklyRecruitmentLogChannelId: null,
+    weeklyRecruitmentLogWeekKey: null,
     updatedAt: now,
     webhookCreatedAt: null,
     webhookEnabled: false,
@@ -260,6 +292,18 @@ export async function updateZtkClan(guildId: string, botId: string | null, clanI
   }
   if (input.rewardChannelId !== undefined) patch.rewardChannelId = normalizeNullable(input.rewardChannelId);
   if (input.settingsChannelId !== undefined) patch.settingsChannelId = normalizeNullable(input.settingsChannelId);
+  if (input.weeklyAutoResetEnabled !== undefined) {
+    patch.weeklyAutoResetEnabled = input.weeklyAutoResetEnabled;
+    if (!input.weeklyAutoResetEnabled && before.weeklyAutoResetEnabled !== false) patch.weeklyRankingResetAt = new Date();
+  }
+  if (input.weeklyDominationLogChannelId !== undefined) {
+    patch.weeklyDominationLogChannelId = normalizeNullable(input.weeklyDominationLogChannelId);
+    if (patch.weeklyDominationLogChannelId !== before.weeklyDominationLogChannelId) patch.weeklyDominationLogWeekKey = null;
+  }
+  if (input.weeklyRecruitmentLogChannelId !== undefined) {
+    patch.weeklyRecruitmentLogChannelId = normalizeNullable(input.weeklyRecruitmentLogChannelId);
+    if (patch.weeklyRecruitmentLogChannelId !== before.weeklyRecruitmentLogChannelId) patch.weeklyRecruitmentLogWeekKey = null;
+  }
   if (input.discordWebhookUrl !== undefined) {
     const webhookUrl = normalizeNullable(input.discordWebhookUrl);
     if (!webhookUrl) {
@@ -461,8 +505,8 @@ export async function ingestZtkWebhookEvent(clanId: string, token: string, rawPa
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
     recruitment: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "recruitments")
   };
-  const dominationRankings = await buildDominationRankings(ztkWebhookLogs, clan.botId, clan.guildId, clan._id);
-  const recruitmentRankings = await buildRecruitmentRankings(ztkWebhookLogs, clan.botId, clan.guildId, clan._id);
+  const dominationRankings = await buildDominationRankings(ztkWebhookLogs, clan);
+  const recruitmentRankings = await buildRecruitmentRankings(ztkWebhookLogs, clan);
   emitRealtime("ztk-webhook:event_received", {
     botId: clan.botId,
     clan: toClanDto({ ...clan, lastEventAt: now, updatedAt: now }),
@@ -528,6 +572,37 @@ export async function updateZtkRankingMessageState(
   await ztkWebhookClans.updateOne({ _id: clanId, botId: resolvedBotId, guildId }, { $set: patch });
 }
 
+export async function resetZtkWeeklyRanking(guildId: string, botId: string | null, clanId: string, actorId: string | null) {
+  const resolvedBotId = requireBotId(botId);
+  const { ztkWebhookClans } = await getMongoCollections();
+  const now = new Date();
+  const before = await ztkWebhookClans.findOne({ _id: clanId, botId: resolvedBotId, guildId });
+  if (!before) return null;
+  await ztkWebhookClans.updateOne({ _id: clanId, botId: resolvedBotId, guildId }, {
+    $set: {
+      updatedAt: now,
+      weeklyRankingResetAt: now
+    }
+  });
+  const clan = (await ztkWebhookClans.findOne({ _id: clanId, botId: resolvedBotId, guildId })) ?? before;
+  await audit(clan, actorId, "weekly_ranking_reset", `Ranking semanal ZTK resetado manualmente: ${clan.clanName}.`);
+  return toClanDto(clan);
+}
+
+export async function claimZtkWeeklyLogs(guildId: string, botId: string | null): Promise<ZtkWeeklyLogDto[]> {
+  const resolvedBotId = requireBotId(botId);
+  const { ztkWebhookClans } = await getMongoCollections();
+  const clans = await ztkWebhookClans.find({ active: true, botId: resolvedBotId, guildId }).sort({ updatedAt: -1 }).limit(200).toArray();
+  const claimed: ZtkWeeklyLogDto[] = [];
+  for (const clan of clans) {
+    const domination = await claimZtkWeeklyLogForClan(clan, "domination");
+    if (domination) claimed.push(domination);
+    const recruitment = await claimZtkWeeklyLogForClan(clan, "recruitment");
+    if (recruitment) claimed.push(recruitment);
+  }
+  return claimed;
+}
+
 async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unknown, rawBody: string) {
   const { ztkRecruiterRankings, ztkWebhookClans, ztkWebhookLogs, ztkWebhookPlayerStats } = await getMongoCollections();
   const parsed = parseZtkPayload(rawPayload, rawBody, clan.clanName);
@@ -585,8 +660,8 @@ async function ingestParsedZtkEvent(clan: MongoZtkWebhookClan, rawPayload: unkno
     online: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "onlineSeconds"),
     recruitment: await topPlayers(ztkWebhookPlayerStats, clan.botId, clan.guildId, clan._id, "recruitments")
   };
-  const dominationRankings = await buildDominationRankings(ztkWebhookLogs, clan.botId, clan.guildId, clan._id);
-  const recruitmentRankings = await buildRecruitmentRankings(ztkWebhookLogs, clan.botId, clan.guildId, clan._id);
+  const dominationRankings = await buildDominationRankings(ztkWebhookLogs, clan);
+  const recruitmentRankings = await buildRecruitmentRankings(ztkWebhookLogs, clan);
   emitRealtime("ztk-webhook:event_received", {
     botId: clan.botId,
     clan: toClanDto({ ...clan, lastEventAt: now, updatedAt: now }),
@@ -870,6 +945,90 @@ async function topPlayers(
   return (await collection.find({ botId, guildId, clanId }).sort({ [field]: -1, updatedAt: -1 }).limit(ZTK_RANKING_LIMIT).toArray()).map(toPlayerStatDto);
 }
 
+async function claimZtkWeeklyLogForClan(clan: MongoZtkWebhookClan, kind: ZtkWeeklyLogKind): Promise<ZtkWeeklyLogDto | null> {
+  const channelId = kind === "domination" ? clan.weeklyDominationLogChannelId : clan.weeklyRecruitmentLogChannelId;
+  if (!channelId) return null;
+  const period = previousWeekRangeSaoPaulo(new Date());
+  const field = kind === "domination" ? "weeklyDominationLogWeekKey" : "weeklyRecruitmentLogWeekKey";
+  if (clan[field] === period.key) return null;
+
+  const { ztkWebhookClans, ztkWebhookLogs } = await getMongoCollections();
+  const claim = await ztkWebhookClans.updateOne(
+    { _id: clan._id, botId: clan.botId, guildId: clan.guildId, $or: [{ [field]: { $ne: period.key } }, { [field]: { $exists: false } }] },
+    { $set: { [field]: period.key, updatedAt: new Date() } }
+  );
+  if (!claim.modifiedCount) return null;
+
+  const result = kind === "domination"
+    ? await previousWeekDominationTop(ztkWebhookLogs, clan, period.start, period.end)
+    : await previousWeekRecruitmentTop(ztkWebhookLogs, clan, period.start, period.end);
+
+  await audit(clan, null, `${kind}_weekly_log_claimed`, `Log semanal ZTK gerado para ${clan.clanName}: ${kind} ${period.key}.`);
+  return {
+    botId: clan.botId,
+    channelId,
+    clan: toClanDto(clan),
+    guildId: clan.guildId,
+    items: result.items,
+    kind,
+    periodEnd: period.end.toISOString(),
+    periodStart: period.start.toISOString(),
+    total: result.total,
+    weekKey: period.key
+  };
+}
+
+async function previousWeekDominationTop(
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
+  clan: MongoZtkWebhookClan,
+  start: Date,
+  end: Date
+) {
+  const rows = await collection.aggregate<{ id: string | null; lastAt: Date | null; name: string; total: number }>([
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", eventTimestamp: { $gte: start, $lt: end }, guildId: clan.guildId, participants: { $type: "array" } } },
+    { $unwind: "$participants" },
+    { $match: { "participants.name": { $not: ZTK_INVALID_PARTICIPANT_PATTERN, $type: "string" } } },
+    { $group: { _id: { $ifNull: ["$participants.id", "$participants.normalizedName"] }, id: { $first: "$participants.id" }, lastAt: { $max: "$eventTimestamp" }, name: { $last: "$participants.name" }, total: { $sum: 1 } } },
+    { $sort: { total: -1, lastAt: -1, name: 1 } },
+    { $limit: ZTK_RANKING_LIMIT },
+    { $project: { _id: 0, id: 1, lastAt: 1, name: 1, total: 1 } }
+  ]).toArray();
+  const [total] = await collection.aggregate<{ total: number }>([
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", eventTimestamp: { $gte: start, $lt: end }, guildId: clan.guildId, participants: { $type: "array" } } },
+    { $unwind: "$participants" },
+    { $match: { "participants.name": { $not: ZTK_INVALID_PARTICIPANT_PATTERN, $type: "string" } } },
+    { $count: "total" }
+  ]).toArray();
+  return {
+    items: rows.map((row, index) => ({ id: row.id ?? null, lastAt: row.lastAt?.toISOString?.() ?? null, name: sanitizeZtkParticipantName(row.name), position: index + 1, total: row.total })),
+    total: total?.total ?? 0
+  };
+}
+
+async function previousWeekRecruitmentTop(
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
+  clan: MongoZtkWebhookClan,
+  start: Date,
+  end: Date
+) {
+  const match = { botId: clan.botId, clanId: clan._id, eventType: "recruitment" as const, eventTimestamp: { $gte: start, $lt: end }, guildId: clan.guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } };
+  const rows = await collection.aggregate<{ id: string | null; lastAt: Date | null; name: string; total: number }>([
+    { $match: match },
+    { $group: { _id: { $ifNull: ["$recruiterId", { $toLower: "$recruiterName" }] }, id: { $first: "$recruiterId" }, lastAt: { $max: "$eventTimestamp" }, name: { $last: "$recruiterName" }, total: { $sum: 1 } } },
+    { $sort: { total: -1, lastAt: -1, name: 1 } },
+    { $limit: ZTK_RANKING_LIMIT },
+    { $project: { _id: 0, id: 1, lastAt: 1, name: 1, total: 1 } }
+  ]).toArray();
+  const [totalDoc] = await collection.aggregate<{ total: number }>([
+    { $match: match },
+    { $count: "total" }
+  ]).toArray();
+  return {
+    items: rows.map((row, index) => ({ id: row.id ?? null, lastAt: row.lastAt?.toISOString?.() ?? null, name: sanitizeZtkRecruitmentName(row.name) ?? row.name, position: index + 1, total: row.total })),
+    total: totalDoc?.total ?? 0
+  };
+}
+
 function emptyDominationRankings(): ZtkDominationRankingsDto {
   return {
     gangs: [],
@@ -924,15 +1083,27 @@ function startOfWeekMondaySaoPaulo(value: Date) {
   return localDate;
 }
 
+function previousWeekRangeSaoPaulo(value: Date) {
+  const currentWeekStart = startOfWeekMondaySaoPaulo(value);
+  const start = new Date(currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const end = currentWeekStart;
+  return { end, key: start.toISOString().slice(0, 10), start };
+}
+
+function rankingPeriodStartForClan(clan: MongoZtkWebhookClan, value: Date) {
+  if (clan.weeklyAutoResetEnabled !== false) return startOfWeekMondaySaoPaulo(value);
+  const manualReset = clan.weeklyRankingResetAt;
+  if (manualReset && !Number.isNaN(manualReset.getTime())) return manualReset;
+  return clan.createdAt;
+}
+
 async function buildDominationRankings(
   collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
-  botId: string,
-  guildId: string,
-  clanId: string
+  clan: MongoZtkWebhookClan
 ): Promise<ZtkDominationRankingsDto> {
   const now = new Date();
   const todayStart = startOfDay(now);
-  const weekStart = startOfWeekMondaySaoPaulo(now);
+  const weekStart = rankingPeriodStartForClan(clan, now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
   const gangs = await collection.aggregate<{
@@ -944,7 +1115,7 @@ async function buildDominationRankings(
     participantTotal: number;
     zoneCount: number;
   }>([
-    { $match: { botId, clanId, eventType: "domination", guildId } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", guildId: clan.guildId } },
     {
       $set: {
         rankingGangName: { $ifNull: ["$normalizedGangName", "$clanName"] },
@@ -994,7 +1165,7 @@ async function buildDominationRankings(
     todayDominations: number;
     weeklyDominations: number;
   }>([
-    { $match: { botId, clanId, eventType: "domination", guildId, participants: { $type: "array" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", guildId: clan.guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
     {
       $match: {
@@ -1036,7 +1207,7 @@ async function buildDominationRankings(
     updatedAt: Date | null;
     weekTotal: number;
   }>([
-    { $match: { botId, clanId, eventType: "domination", guildId, participants: { $type: "array" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", guildId: clan.guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
     {
       $group: {
@@ -1050,7 +1221,7 @@ async function buildDominationRankings(
     }
   ]).toArray();
   const dailySeries = await collection.aggregate<{ date: string; total: number }>([
-    { $match: { botId, clanId, eventType: "domination", eventTimestamp: { $gte: seriesStart }, guildId, participants: { $type: "array" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", eventTimestamp: { $gte: seriesStart }, guildId: clan.guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
     {
       $group: {
@@ -1091,13 +1262,11 @@ async function buildDominationRankings(
 
 async function buildRecruitmentRankings(
   collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
-  botId: string,
-  guildId: string,
-  clanId: string
+  clan: MongoZtkWebhookClan
 ): Promise<ZtkRecruitmentRankingsDto> {
   const now = new Date();
   const todayStart = startOfDay(now);
-  const weekStart = startOfWeekMondaySaoPaulo(now);
+  const weekStart = rankingPeriodStartForClan(clan, now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
   const recruiters = await collection.aggregate<{
@@ -1118,7 +1287,7 @@ async function buildRecruitmentRankings(
     totalRecruitments: number;
     weeklyRecruitments: number;
   }>([
-    { $match: { botId, clanId, eventType: "recruitment", guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "recruitment", guildId: clan.guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
     { $sort: { eventTimestamp: -1, _id: -1 } },
     {
       $group: {
@@ -1171,7 +1340,7 @@ async function buildRecruitmentRankings(
     total: number;
     weekTotal: number;
   }>([
-    { $match: { botId, clanId, eventType: "recruitment", guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "recruitment", guildId: clan.guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
     { $sort: { eventTimestamp: -1, _id: -1 } },
     {
       $group: {
@@ -1186,7 +1355,7 @@ async function buildRecruitmentRankings(
     }
   ]).toArray();
   const dailySeries = await collection.aggregate<{ date: string; total: number }>([
-    { $match: { botId, clanId, eventType: "recruitment", eventTimestamp: { $gte: seriesStart }, guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
+    { $match: { botId: clan.botId, clanId: clan._id, eventType: "recruitment", eventTimestamp: { $gte: seriesStart }, guildId: clan.guildId, playerName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" }, recruiterName: { $not: ZTK_INVALID_RECRUITMENT_NAME_PATTERN, $type: "string" } } },
     {
       $group: {
         _id: { $dateToString: { date: "$eventTimestamp", format: "%Y-%m-%d", timezone: "America/Sao_Paulo" } },
