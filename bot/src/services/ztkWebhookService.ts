@@ -33,18 +33,7 @@ export const recrutamentoCommand: BotCommand = {
     }
     await interaction.deferReply({ ephemeral: true });
     if (interaction.options.getSubcommand() === "resetar") {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        await interaction.editReply("Você precisa da permissão Gerenciar Servidor para resetar o ranking.");
-        return;
-      }
-      const dashboard = await context.api.getZtkWebhookDashboard(interaction.guildId);
-      const clan = dashboard.selectedClan ?? dashboard.clans[0] ?? null;
-      if (!clan) {
-        await interaction.editReply("Nenhum clã ZTK configurado.");
-        return;
-      }
-      await context.api.resetZtkWeeklyRanking(interaction.guildId, clan.id);
-      await interaction.editReply(`Ranking semanal resetado para o clã ${clan.clanName}.`);
+      await resetZtkWeeklyRankingCommand(interaction, context);
       return;
     }
     const target = interaction.options.getUser("usuario");
@@ -87,6 +76,44 @@ export const recrutamentoCommand: BotCommand = {
     await interaction.editReply(panel as any);
   }
 };
+
+export const ztkResetCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("reset")
+    .setDescription("Reseta os rankings semanais ZTK de dominação e recrutamento."),
+  moduleId: "ztk-webhook",
+  async execute(interaction, context) {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "Comando disponível apenas em servidores.", ephemeral: true });
+      return;
+    }
+    if (!isBotModuleEnabled("ztk-webhook")) {
+      await interaction.reply({ content: "ZTK Webhook não está habilitado neste bot.", ephemeral: true });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    await resetZtkWeeklyRankingCommand(interaction, context);
+  }
+};
+
+async function resetZtkWeeklyRankingCommand(interaction: Parameters<BotCommand["execute"]>[0], context: BotContext) {
+  if (!interaction.guildId) {
+    await interaction.editReply("Comando disponível apenas em servidores.");
+    return;
+  }
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.editReply("Você precisa da permissão Gerenciar Servidor para resetar o ranking.");
+    return;
+  }
+  const dashboard = await context.api.getZtkWebhookDashboard(interaction.guildId);
+  const clan = dashboard.selectedClan ?? dashboard.clans[0] ?? null;
+  if (!clan) {
+    await interaction.editReply("Nenhum clã ZTK configurado.");
+    return;
+  }
+  await context.api.resetZtkWeeklyRanking(interaction.guildId, clan.id);
+  await interaction.editReply(`Rankings semanais de dominação e recrutamento resetados para o clã ${clan.clanName}.`);
+}
 
 export function startZtkWebhookService(client: Client<true>, context: BotContext) {
   context.socket.onZtkWebhookEventReceived((payload) => {
