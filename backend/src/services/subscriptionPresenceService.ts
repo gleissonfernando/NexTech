@@ -45,6 +45,8 @@ export type SaveSubscriptionPresenceSettingsInput = Partial<{
   photoMode: MongoSubscriptionPresencePhotoMode;
   pingBuyer: boolean;
   pingRoles: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
   storeUrl: string | null;
   title: string;
 }>;
@@ -67,7 +69,11 @@ export type SubscriptionPresencePublicationInput = {
   buyerName?: string | null;
   currency: "BRL" | "USD" | "EUR";
   gateway?: string | null;
+  moduleId?: string | null;
+  paymentMethod?: string | null;
+  approvedAt?: string | null;
   planName: string;
+  productId?: string | null;
   productName?: string | null;
   productPlanType?: string | null;
   saleId: string;
@@ -136,7 +142,7 @@ export async function ensureSubscriptionPresenceSettings(botId: string, guildId:
     companyWebsiteUrl: null,
     createdAt: now,
     enabled: false,
-    footerText: "NextTech - Sistema de Presença",
+    footerText: "Obrigado por adquirir nossos produtos.\nEquipe NexTech.",
     guildId,
     messageEnabled: true,
     messageTemplate: DEFAULT_MESSAGE,
@@ -144,8 +150,10 @@ export async function ensureSubscriptionPresenceSettings(botId: string, guildId:
     photoMode: "avatar",
     pingBuyer: false,
     pingRoles: false,
+    showAvatar: true,
+    showTimestamp: true,
     storeUrl: null,
-    title: "Nova Aquisição",
+    title: "Nova Compra Realizada",
     updatedAt: now,
     updatedBy: actorId
   };
@@ -181,6 +189,8 @@ export async function saveSubscriptionPresenceSettings(
     "photoMode",
     "pingBuyer",
     "pingRoles",
+    "showAvatar",
+    "showTimestamp",
     "storeUrl",
     "title"
   ] as const) {
@@ -280,13 +290,14 @@ export async function createSubscriptionPresencePublication(
       selectedPlan: null,
       settings: settingsDto,
       shouldSend: false,
-      skipReason: "Compra já processada pelo Sistema de Presença."
+      skipReason: "Compra já processada pelo Pagamento de Presença."
     };
   }
 
   const product = await matchProduct(botId, guildId, input.productName ?? input.planName);
   const selectedPlan = matchPlan(product, input.planName, input.productPlanType);
   const productName = product?.name ?? input.productName ?? input.planName;
+  const approvedAt = normalizeDate(input.approvedAt) ?? new Date();
   const log: MongoSubscriptionPresenceLog = {
     _id: randomUUID(),
     amountCents: input.amountCents,
@@ -299,25 +310,45 @@ export async function createSubscriptionPresencePublication(
     error: null,
     gateway: input.gateway ?? null,
     guildId,
+    moduleId: input.moduleId ?? null,
     messageId: null,
+    paymentMethod: input.paymentMethod ?? null,
+    approvedAt,
     planName: selectedPlan?.name ?? input.planName,
+    productId: input.productId ?? null,
     productName,
     saleId: input.saleId,
     status: settings.enabled && settings.messageEnabled && settings.channelId ? "pending" : "skipped"
   };
 
+  let inserted = true;
   await subscriptionPresenceLogs.insertOne(log).catch((error: unknown) => {
-    if (isDuplicateKeyError(error)) return;
+    if (isDuplicateKeyError(error)) {
+      inserted = false;
+      return;
+    }
     throw error;
   });
 
+  if (!inserted) {
+    const duplicate = await subscriptionPresenceLogs.findOne({ botId, guildId, saleId: input.saleId });
+    return {
+      logId: duplicate?._id ?? null,
+      product: product ? toProductDto(product) : null,
+      selectedPlan,
+      settings: settingsDto,
+      shouldSend: false,
+      skipReason: "Compra já processada pelo Pagamento de Presença."
+    };
+  }
+
   if (!settings.enabled || !settings.messageEnabled) {
-    await updateLogError(log._id, "Sistema de Presença desativado.");
+    await updateLogError(log._id, "Pagamento de Presença desativado.");
     return { logId: log._id, product: product ? toProductDto(product) : null, selectedPlan, settings: settingsDto, shouldSend: false, skipReason: "Sistema desativado." };
   }
 
   if (!settings.channelId) {
-    await updateLogError(log._id, "Canal do Sistema de Presença não configurado.");
+    await updateLogError(log._id, "Canal do Pagamento de Presença não configurado.");
     return { logId: log._id, product: product ? toProductDto(product) : null, selectedPlan, settings: settingsDto, shouldSend: false, skipReason: "Canal não configurado." };
   }
 
@@ -353,9 +384,9 @@ export async function completeSubscriptionPresencePublication(
   await createLog({
     botId,
     guildId,
-    message: input.status === "sent" ? "Presença de assinatura publicada." : "Presença de assinatura não publicada.",
+    message: input.status === "sent" ? "Pagamento de Presença publicado." : "Pagamento de Presença não publicado.",
     metadata: { logId, saleId: input.saleId, status: input.status, error: input.error ?? null },
-    type: "subscription_presence.publication"
+    type: "payment_presence.publication"
   }).catch(() => null);
 }
 
@@ -391,10 +422,13 @@ function normalizeSettings(settings: MongoSubscriptionPresenceSettings): MongoSu
     ...settings,
     buttons: normalizeButtons(settings.buttons, DEFAULT_BUTTONS),
     companyName: settings.companyName || "NextTech",
+    footerText: settings.footerText ?? "Obrigado por adquirir nossos produtos.\nEquipe NexTech.",
     messageTemplate: settings.messageTemplate || DEFAULT_MESSAGE,
     panelColor: normalizeColor(settings.panelColor, "#FFD500"),
     photoMode: ["avatar", "company", "product"].includes(settings.photoMode) ? settings.photoMode : "avatar",
-    title: settings.title || "Nova Aquisição"
+    showAvatar: settings.showAvatar !== false,
+    showTimestamp: settings.showTimestamp !== false,
+    title: settings.title || "Nova Compra Realizada"
   };
 }
 
@@ -501,6 +535,12 @@ function normalizeNullableText(value: unknown, maxLength: number) {
 function normalizeUrl(value: unknown) {
   const normalized = normalizeNullableText(value, 2048);
   return normalized && /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function normalizeDate(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function normalizeColor(value: unknown, fallback: string) {

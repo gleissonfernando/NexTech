@@ -3280,6 +3280,8 @@ export type SubscriptionPresenceSettings = {
   photoMode: "avatar" | "company" | "product";
   pingBuyer: boolean;
   pingRoles: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
   storeUrl: string | null;
   title: string;
   updatedAt: string;
@@ -3313,8 +3315,12 @@ export type SubscriptionPresenceLog = {
   error: string | null;
   gateway: string | null;
   guildId: string;
+  moduleId: string | null;
   messageId: string | null;
+  paymentMethod: string | null;
+  approvedAt: string | null;
   planName: string | null;
+  productId: string | null;
   productName: string;
   saleId: string;
   status: "pending" | "sent" | "skipped" | "failed";
@@ -3826,6 +3832,8 @@ export type SaveSubscriptionPresenceSettingsPayload = Partial<Pick<
   | "photoMode"
   | "pingBuyer"
   | "pingRoles"
+  | "showAvatar"
+  | "showTimestamp"
   | "storeUrl"
   | "title"
 >>;

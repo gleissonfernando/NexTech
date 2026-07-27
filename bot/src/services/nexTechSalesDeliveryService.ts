@@ -1,15 +1,38 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits, type Client, type Guild, type GuildMember, type GuildTextBasedChannel } from "discord.js";
 import { currentRuntimeBotId, env } from "../config/env";
 import type { BotContext } from "../types";
-import type { NexTechSalePaidEvent } from "../websocket/socketClient";
+import type { NexTechSalePaidEvent, PaymentApprovedEvent } from "../websocket/socketClient";
 import type { SubscriptionPresenceButton, SubscriptionPresenceProduct, SubscriptionPresencePublication, SubscriptionPresenceSettings } from "./apiClient";
 import { systemEmojiText } from "./systemEmojiService";
 
 const deliveryLocks = new Set<string>();
+const presenceQueues = new Map<string, Promise<void>>();
+
+type PresencePaymentPayload = {
+  amountCents: number;
+  approvedAt: string | null;
+  botId?: string | null;
+  buyerId: string;
+  buyerName?: string | null;
+  currency: "BRL" | "USD" | "EUR";
+  gateway?: string | null;
+  guildId: string;
+  moduleId: string;
+  paymentMethod?: string | null;
+  planName: string;
+  productId?: string | null;
+  productName?: string | null;
+  productPlanType?: string | null;
+  purchasedRoleId?: string | null;
+  saleId: string;
+};
 
 export function startNexTechSalesDeliveryService(client: Client<true>, context: BotContext) {
   context.socket.onNexTechSalePaid((payload) => {
     void deliverNexTechSale(client, context, payload);
+  });
+  context.socket.onPaymentApproved((payload) => {
+    void deliverPaymentPresence(client, context, fromPaymentApproved(payload));
   });
 }
 
@@ -42,7 +65,7 @@ async function deliverNexTechSale(client: Client<true>, context: BotContext, pay
     }
 
     if (payload.saleId.startsWith("manual-payment:")) {
-      await publishSubscriptionPresence(guild, member, context, payload, []).catch((error) => {
+      await enqueueSubscriptionPresence(guild, member, context, fromLegacySalePaid(payload), []).catch((error) => {
         console.warn("[subscription-presence] falha ao publicar presença manual:", error instanceof Error ? error.message : error);
       });
       return;
@@ -91,7 +114,7 @@ async function deliverNexTechSale(client: Client<true>, context: BotContext, pay
       status
     });
 
-    await publishSubscriptionPresence(guild, member, context, payload, deliveredRoleIds).catch((error) => {
+    await enqueueSubscriptionPresence(guild, member, context, fromLegacySalePaid(payload), deliveredRoleIds).catch((error) => {
       console.warn("[subscription-presence] falha ao publicar presença:", error instanceof Error ? error.message : error);
     });
   } catch (error) {
@@ -107,20 +130,55 @@ async function deliverNexTechSale(client: Client<true>, context: BotContext, pay
   }
 }
 
+async function deliverPaymentPresence(client: Client<true>, context: BotContext, payload: PresencePaymentPayload) {
+  const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+  if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) return;
+
+  const guild = await client.guilds.fetch(payload.guildId).catch(() => null);
+  if (!guild) return;
+  const member = await guild.members.fetch(payload.buyerId).catch(() => null);
+  if (!member) return;
+  await enqueueSubscriptionPresence(guild, member, context, payload, []).catch((error) => {
+    console.warn("[payment-presence] falha ao publicar presença de pagamento:", error instanceof Error ? error.message : error);
+  });
+}
+
+function enqueueSubscriptionPresence(
+  guild: Guild,
+  member: GuildMember,
+  context: BotContext,
+  payload: PresencePaymentPayload,
+  deliveredRoleIds: string[]
+) {
+  const queueKey = `${guild.id}:${payload.moduleId}`;
+  const previous = presenceQueues.get(queueKey) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => publishSubscriptionPresence(guild, member, context, payload, deliveredRoleIds));
+  presenceQueues.set(queueKey, next.finally(() => {
+    if (presenceQueues.get(queueKey) === next) presenceQueues.delete(queueKey);
+  }));
+  return next;
+}
+
 async function publishSubscriptionPresence(
   guild: Guild,
   member: GuildMember,
   context: BotContext,
-  payload: NexTechSalePaidEvent,
+  payload: PresencePaymentPayload,
   deliveredRoleIds: string[]
 ) {
   const publication = await context.api.createSubscriptionPresencePublication(guild.id, {
+    approvedAt: payload.approvedAt,
     amountCents: payload.amountCents,
     buyerId: payload.buyerId,
     buyerName: payload.buyerName ?? member.displayName,
     currency: payload.currency,
-    gateway: null,
+    gateway: payload.gateway ?? null,
+    moduleId: payload.moduleId,
+    paymentMethod: payload.paymentMethod ?? null,
     planName: payload.planName,
+    productId: payload.productId ?? null,
     productName: payload.productName ?? null,
     productPlanType: payload.productPlanType ?? null,
     saleId: payload.saleId
@@ -148,7 +206,7 @@ async function publishSubscriptionPresence(
   const message = await channel.send(renderSubscriptionPresencePanel(guild, member, payload, publication, roleIds)).catch(async (error: unknown) => {
     await context.api.completeSubscriptionPresencePublication(guild.id, publication.logId!, {
       channelId: channel.id,
-      error: error instanceof Error ? error.message : "Falha ao enviar presença da assinatura.",
+      error: error instanceof Error ? error.message : "Falha ao enviar Pagamento de Presença.",
       saleId: payload.saleId,
       status: "failed"
     });
@@ -210,7 +268,7 @@ function renderSalePaidMessage(guild: Guild, payload: NexTechSalePaidEvent, deli
 function renderSubscriptionPresencePanel(
   guild: Guild,
   member: GuildMember,
-  payload: NexTechSalePaidEvent,
+  payload: PresencePaymentPayload,
   publication: SubscriptionPresencePublication,
   roleIds: string[]
 ) {
@@ -224,7 +282,8 @@ function renderSubscriptionPresencePanel(
   const valueEmoji = systemEmojiText("dinheiro", guild, guild.client);
   const dateEmoji = systemEmojiText("calendario", guild, guild.client);
   const timeEmoji = systemEmojiText("relogio", guild, guild.client);
-  const now = new Date();
+  const paymentDate = payload.approvedAt ? new Date(payload.approvedAt) : new Date();
+  const now = Number.isNaN(paymentDate.getTime()) ? new Date() : paymentDate;
   const content = renderTemplate(settings.messageTemplate, {
     avatar: member.displayAvatarURL({ size: 256 }),
     data: formatDate(now),
@@ -239,7 +298,7 @@ function renderSubscriptionPresencePanel(
   const components: Array<Record<string, unknown> | ActionRowBuilder<ButtonBuilder>> = [];
   const avatarUrl = resolvePresenceImage(member, settings, product);
 
-  if (avatarUrl) {
+  if (settings.showAvatar !== false && avatarUrl) {
     components.push({
       type: 12,
       items: [{ media: { url: avatarUrl }, description: member.displayName }]
@@ -258,9 +317,15 @@ function renderSubscriptionPresencePanel(
   components.push({ type: 10, content: `## ${productEmoji} Produto\n${escapeMarkdown(productName)}` });
   components.push({ type: 10, content: `## ${planEmoji} Plano\n${escapeMarkdown(planName)}` });
   components.push({ type: 10, content: `## ${valueEmoji} Valor\n${formatMoney(payload.amountCents, payload.currency)}` });
-  components.push({ type: 10, content: `## ${dateEmoji} Data\n${formatDate(now)}\n\n## ${timeEmoji} Horário\n${formatTime(now)}` });
+  components.push({ type: 10, content: `## ${systemEmojiText("dinheiro", guild, guild.client)} Pagamento\n${escapeMarkdown(paymentMethodLabel(payload.paymentMethod, payload.gateway))}` });
+  if (settings.showTimestamp !== false) {
+    components.push({ type: 10, content: `## ${dateEmoji} Data\n${formatDate(now)}\n\n## ${timeEmoji} Horário\n${formatTime(now)}` });
+  }
   components.push(separator());
   if (content) components.push({ type: 10, content });
+  if (settings.footerText) {
+    components.push({ type: 10, content: `-# ${escapeMarkdown(settings.footerText)}` });
+  }
 
   const buttons = buildPresenceButtons(guild, settings);
   if (buttons) components.push(buttons);
@@ -283,6 +348,47 @@ function renderSubscriptionPresencePanel(
       components
     }],
     flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function fromPaymentApproved(payload: PaymentApprovedEvent): PresencePaymentPayload {
+  return {
+    amountCents: payload.productPrice,
+    approvedAt: payload.approvedAt,
+    botId: payload.botId ?? null,
+    buyerId: payload.buyerId,
+    buyerName: payload.buyerName ?? null,
+    currency: payload.currency,
+    gateway: payload.gateway ?? null,
+    guildId: payload.guildId,
+    moduleId: payload.moduleId,
+    paymentMethod: payload.paymentMethod ?? null,
+    planName: payload.productPlanType ?? payload.productName,
+    productId: payload.productId ?? null,
+    productName: payload.productName,
+    productPlanType: payload.productPlanType ?? null,
+    saleId: payload.paymentId
+  };
+}
+
+function fromLegacySalePaid(payload: NexTechSalePaidEvent): PresencePaymentPayload {
+  return {
+    amountCents: payload.amountCents,
+    approvedAt: null,
+    botId: payload.botId ?? null,
+    buyerId: payload.buyerId,
+    buyerName: payload.buyerName ?? null,
+    currency: payload.currency,
+    gateway: null,
+    guildId: payload.guildId,
+    moduleId: payload.saleId.startsWith("manual-payment:") ? "manual-payments" : "nex-tech-sales",
+    paymentMethod: payload.saleId.startsWith("manual-payment:") ? "PIX" : null,
+    planName: payload.planName,
+    productId: null,
+    productName: payload.productName ?? null,
+    productPlanType: payload.productPlanType ?? null,
+    purchasedRoleId: payload.purchasedRoleId ?? null,
+    saleId: payload.saleId
   };
 }
 
@@ -360,6 +466,18 @@ function formatDate(date: Date) {
 
 function formatTime(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(date);
+}
+
+function paymentMethodLabel(method: string | null | undefined, gateway: string | null | undefined) {
+  const normalized = String(method ?? "").trim().toLowerCase();
+  const methodLabel = ({
+    pix: "PIX",
+    credit_card: "Cartão de crédito",
+    debit_card: "Cartão de débito",
+    card: "Cartão",
+    manual: "Manual"
+  } as Record<string, string>)[normalized] ?? (method ? method : "Pagamento aprovado");
+  return gateway ? `${methodLabel} • ${gateway}` : methodLabel;
 }
 
 function escapeMarkdown(value: string) {

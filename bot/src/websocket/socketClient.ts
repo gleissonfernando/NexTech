@@ -258,6 +258,23 @@ export type NexTechSalePaidEvent = {
   saleId: string;
 };
 
+export type PaymentApprovedEvent = {
+  approvedAt: string;
+  botId?: string | null;
+  buyerId: string;
+  buyerName?: string | null;
+  currency: "BRL" | "USD" | "EUR";
+  gateway?: string | null;
+  guildId: string;
+  moduleId: string;
+  paymentId: string;
+  paymentMethod?: string | null;
+  productId?: string | null;
+  productName: string;
+  productPlanType?: string | null;
+  productPrice: number;
+};
+
 export type ManualRegistrationPanelPublishEvent = {
   botId?: string | null;
   guildId: string;
@@ -489,6 +506,7 @@ export class BotSocketClient {
   private ztkWebhookRewardUpdatedHandler: ((payload: ZtkWebhookRewardUpdatedEvent) => void) | null = null;
   private ztkWebhookManageHandler: ((payload: ZtkWebhookManageEvent, ack?: ZtkWebhookManageAck) => void) | null = null;
   private nexTechSalePaidHandler: ((payload: NexTechSalePaidEvent) => void) | null = null;
+  private paymentApprovedHandler: ((payload: PaymentApprovedEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
   private manualRegistrationRemoveHandler: ((payload: ManualRegistrationRemoveEvent) => void) | null = null;
@@ -621,6 +639,7 @@ export class BotSocketClient {
     if (this.ztkWebhookRewardUpdatedHandler) this.socket.on("ztk-webhook:reward_updated", this.ztkWebhookRewardUpdatedHandler);
     if (this.ztkWebhookManageHandler) this.socket.on("ztk-webhook:webhook_manage", this.ztkWebhookManageHandler);
     if (this.nexTechSalePaidHandler) this.socket.on("nex-tech-sales:sale_paid", this.nexTechSalePaidHandler);
+    if (this.paymentApprovedHandler) this.socket.on("payment:approved", this.paymentApprovedHandler);
 
     if (this.manualRegistrationPanelPublishHandler) {
       this.socket.on("manual-registration:panel_publish", this.manualRegistrationPanelPublishHandler);
@@ -916,6 +935,12 @@ export class BotSocketClient {
     this.nexTechSalePaidHandler = handler;
     this.socket?.off("nex-tech-sales:sale_paid");
     this.socket?.on("nex-tech-sales:sale_paid", handler);
+  }
+
+  onPaymentApproved(handler: (payload: PaymentApprovedEvent) => void) {
+    this.paymentApprovedHandler = handler;
+    this.socket?.off("payment:approved");
+    this.socket?.on("payment:approved", handler);
   }
 
   onManualRegistrationPanelPublish(handler: (payload: ManualRegistrationPanelPublishEvent) => void) {

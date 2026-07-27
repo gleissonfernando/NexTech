@@ -83,6 +83,8 @@ export type SubscriptionPresenceSettings = {
   photoMode: "avatar" | "company" | "product";
   pingBuyer: boolean;
   pingRoles: boolean;
+  showAvatar: boolean;
+  showTimestamp: boolean;
   storeUrl: string | null;
   title: string;
 };
@@ -3160,17 +3162,21 @@ export class ApiClient {
   }
 
   async createSubscriptionPresencePublication(guildId: string, input: {
+    approvedAt?: string | null;
     amountCents: number;
     buyerId: string;
     buyerName?: string | null;
     currency: "BRL" | "USD" | "EUR";
     gateway?: string | null;
+    moduleId?: string | null;
+    paymentMethod?: string | null;
     planName: string;
+    productId?: string | null;
     productName?: string | null;
     productPlanType?: string | null;
     saleId: string;
   }) {
-    const { data } = await this.http.post<SubscriptionPresencePublication>(`/subscription-presence/bot/${encodeURIComponent(guildId)}/publications`, input);
+    const { data } = await this.http.post<SubscriptionPresencePublication>(`/payment-presence/bot/${encodeURIComponent(guildId)}/publications`, input);
     return data;
   }
 
@@ -3181,7 +3187,7 @@ export class ApiClient {
     saleId: string;
     status: "sent" | "failed" | "skipped";
   }) {
-    const { data } = await this.http.patch(`/subscription-presence/bot/${encodeURIComponent(guildId)}/publications/${encodeURIComponent(logId)}`, input);
+    const { data } = await this.http.patch(`/payment-presence/bot/${encodeURIComponent(guildId)}/publications/${encodeURIComponent(logId)}`, input);
     return data;
   }
 

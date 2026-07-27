@@ -3921,6 +3921,8 @@ export type MongoSubscriptionPresenceSettings = {
   messageEnabled: boolean;
   pingBuyer: boolean;
   pingRoles: boolean;
+  showAvatar?: boolean;
+  showTimestamp?: boolean;
   title: string;
   messageTemplate: string;
   footerText: string | null;
@@ -3977,8 +3979,12 @@ export type MongoSubscriptionPresenceLog = {
   error: string | null;
   gateway: string | null;
   guildId: string;
+  moduleId?: string | null;
   messageId: string | null;
+  paymentMethod?: string | null;
+  approvedAt?: Date | null;
   planName: string;
+  productId?: string | null;
   productName: string;
   saleId: string;
   status: "pending" | "sent" | "skipped" | "failed";

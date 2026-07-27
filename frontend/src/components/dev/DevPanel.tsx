@@ -152,7 +152,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "giveaway", label: "Sistema de Sorteio" },
   { id: "payment-gateway", label: "Pagamento Automático" },
   { id: "nex-tech-sales", label: "Sistema de Vendas" },
-  { id: "subscription-presence", label: "Sistema de Presença" },
+  { id: "subscription-presence", label: "Pagamento de Presença" },
   { id: "nextech-invites", label: "Sistema de Convites NextTech" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "network", label: "Rede Social dos Membros" },
@@ -4243,7 +4243,7 @@ function NexTechSalesWorkspace({
               </Button>
               <Button className="w-full sm:w-auto" onClick={() => onToggleSubscriptionPresence(!subscriptionPresenceEnabled)} variant={subscriptionPresenceEnabled ? "outline" : "default"}>
                 <Sparkles className="h-4 w-4" />
-                {subscriptionPresenceEnabled ? "Desativar presença" : "Liberar presença"}
+                {subscriptionPresenceEnabled ? "Desativar Pagamento de Presença" : "Liberar Pagamento de Presença"}
               </Button>
             </div>
           </div>
@@ -4835,12 +4835,15 @@ function SubscriptionPresencePanel({
     companyName: "NextTech",
     enabled: true,
     messageEnabled: true,
-    messageTemplate: "Obrigado por confiar em {empresa}. Desejamos uma excelente experiencia com {produto}.",
+    footerText: "Obrigado por adquirir nossos produtos.\nEquipe NexTech.",
+    messageTemplate: "Parabéns {usuario}!\nSua compra de {produto} foi aprovada.",
     panelColor: "#FFD500",
     photoMode: "avatar",
     pingBuyer: true,
     pingRoles: false,
-    title: "NOVA AQUISICAO"
+    showAvatar: true,
+    showTimestamp: true,
+    title: "Nova Compra Realizada"
   });
   const [productForm, setProductForm] = useState<SaveSubscriptionPresenceProductPayload>(defaultSubscriptionPresenceProductForm);
   const [matchNamesText, setMatchNamesText] = useState("");
@@ -4874,7 +4877,7 @@ function SubscriptionPresencePanel({
         setSettingsForm(presenceSettingsToForm(data.settings));
       })
       .catch((error) => {
-        if (!cancelled) setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Sistema de Presença.");
+        if (!cancelled) setMessage(readRequestMessage(error) ?? "Não foi possível carregar o Pagamento de Presença.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -4893,9 +4896,9 @@ function SubscriptionPresencePanel({
       const settings = await saveSubscriptionPresenceSettings(bot.id, guildId, sanitizePresenceSettingsForm(settingsForm));
       setDashboard((current) => current ? { ...current, settings } : current);
       setSettingsForm(presenceSettingsToForm(settings));
-      setMessage("Sistema de Presença salvo.");
+      setMessage("Pagamento de Presença salvo.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Sistema de Presença.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o Pagamento de Presença.");
     } finally {
       setSaving(null);
     }
@@ -4918,16 +4921,16 @@ function SubscriptionPresencePanel({
       }
       resetPresenceProductForm();
       await refreshPresence();
-      setMessage("Produto de presença salvo.");
+      setMessage("Produto de Pagamento de Presença salvo.");
     } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o produto de presença.");
+      setMessage(readRequestMessage(error) ?? "Não foi possível salvar o produto de Pagamento de Presença.");
     } finally {
       setSaving(null);
     }
   }
 
   async function handleDeletePresenceProduct(product: SubscriptionPresenceProduct) {
-    if (!guildId || !window.confirm(`Remover ${product.name} do Sistema de Presença?`)) return;
+    if (!guildId || !window.confirm(`Remover ${product.name} do Pagamento de Presença?`)) return;
     setSaving(product.id);
     setMessage(null);
     try {
@@ -4966,10 +4969,10 @@ function SubscriptionPresencePanel({
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-white">
               <Sparkles className="h-5 w-5 text-[#FFEA70]" />
-              Sistema de Presença
+              Pagamento de Presença
             </CardTitle>
             <CardDescription className="mt-2 font-medium text-zinc-300">
-              Publica automaticamente painéis premium em Components V2 quando compras, assinaturas ou pagamentos manuais forem aprovados.
+              Publica automaticamente um Component V2 sempre que um pagamento for aprovado, seja Pix, cartão, gateway automático ou aprovação manual.
             </CardDescription>
           </div>
           <Button onClick={() => onToggle(!enabled)} variant={enabled ? "outline" : "default"}>
@@ -4988,7 +4991,7 @@ function SubscriptionPresencePanel({
         {!enabled ? (
           <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.08] p-4">
             <p className="text-sm font-bold text-white">Módulo bloqueado neste bot</p>
-            <p className="mt-1 text-sm font-medium text-zinc-300">Libere o Sistema de Presença para configurar canal, produtos, planos e mensagens automáticas.</p>
+            <p className="mt-1 text-sm font-medium text-zinc-300">Libere o Pagamento de Presença para configurar canal, produtos, planos e mensagens automáticas.</p>
           </div>
         ) : loading ? (
           <div className="flex min-h-32 items-center justify-center rounded-lg border border-zinc-800 bg-black/30">
@@ -5000,16 +5003,16 @@ function SubscriptionPresencePanel({
               <div className="space-y-3 rounded-lg border border-zinc-800/80 bg-zinc-950/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-white">Configuração do painel</p>
+                    <p className="text-sm font-bold text-white">Configuração de publicação</p>
                     <p className="mt-1 text-xs font-medium text-zinc-500">Variáveis: {"{usuario} {nome} {produto} {plano} {valor} {data} {hora} {empresa} {avatar}"}</p>
                   </div>
                   <label className="flex items-center gap-3 text-sm font-semibold text-white">
                     <Switch checked={Boolean(settingsForm.enabled)} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, enabled: checked }))} />
-                    Sistema ligado
+                    Ativar módulo
                   </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <DevInput inputMode="numeric" label="Canal de presença" onChange={(value) => setSettingsForm((current) => ({ ...current, channelId: value.replace(/\D/g, "") || null }))} value={settingsForm.channelId ?? ""} />
+                  <DevInput inputMode="numeric" label="Canal" onChange={(value) => setSettingsForm((current) => ({ ...current, channelId: value.replace(/\D/g, "") || null }))} value={settingsForm.channelId ?? ""} />
                   <DevInput label="Título" onChange={(value) => setSettingsForm((current) => ({ ...current, title: value }))} value={settingsForm.title ?? ""} />
                   <DevInput label="Empresa" onChange={(value) => setSettingsForm((current) => ({ ...current, companyName: value }))} value={settingsForm.companyName ?? ""} />
                   <DevInput label="Cor" onChange={(value) => setSettingsForm((current) => ({ ...current, panelColor: value }))} value={settingsForm.panelColor ?? "#FFD500"} />
@@ -5053,6 +5056,14 @@ function SubscriptionPresencePanel({
                     <Switch checked={Boolean(settingsForm.pingRoles)} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, pingRoles: checked }))} />
                     Ping cargos
                   </label>
+                  <label className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm font-semibold text-white">
+                    <Switch checked={settingsForm.showAvatar !== false} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, showAvatar: checked }))} />
+                    Mostrar Avatar
+                  </label>
+                  <label className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 text-sm font-semibold text-white">
+                    <Switch checked={settingsForm.showTimestamp !== false} onCheckedChange={(checked) => setSettingsForm((current) => ({ ...current, showTimestamp: checked }))} />
+                    Mostrar Data
+                  </label>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   {(settingsForm.buttons ?? defaultSubscriptionPresenceButtons).slice(0, 4).map((button, index) => (
@@ -5085,7 +5096,7 @@ function SubscriptionPresencePanel({
                 </div>
                 <Button disabled={saving === "presence-settings"} onClick={() => void handleSavePresenceSettings()}>
                   {saving === "presence-settings" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
-                  Salvar presença
+                  Salvar Configuração
                 </Button>
               </div>
 
@@ -5149,7 +5160,7 @@ function SubscriptionPresencePanel({
                   ))}
                   {!products.length ? (
                     <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm font-medium text-zinc-500">
-                      Nenhum produto de presença configurado.
+                      Nenhum produto de Pagamento de Presença configurado.
                     </div>
                   ) : null}
                 </div>
@@ -5159,7 +5170,7 @@ function SubscriptionPresencePanel({
             <div className="rounded-lg border border-zinc-800/80 bg-black/30 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold text-white">Histórico de presença</p>
+                  <p className="text-sm font-bold text-white">Histórico de pagamentos publicados</p>
                   <p className="mt-1 text-xs font-medium text-zinc-500">Deduplicação por venda/pedido, status de envio e erro exato quando houver falha.</p>
                 </div>
                 <Badge variant="muted">{logs.length} registro(s)</Badge>
@@ -5171,7 +5182,7 @@ function SubscriptionPresencePanel({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-white">{log.productName} · {log.planName ?? "Plano não informado"}</p>
                         <p className="mt-1 text-xs font-medium text-zinc-500">
-                          {log.buyerName || log.buyerId} · {formatMoney(log.amountCents, log.currency)} · {formatDate(log.createdAt)}
+                          {log.buyerName || log.buyerId} · {formatMoney(log.amountCents, log.currency)} · {log.paymentMethod || "método não informado"}{log.gateway ? `/${log.gateway}` : ""} · {formatDate(log.createdAt)}
                         </p>
                         {log.error ? <p className="mt-1 text-xs font-semibold text-red-300">{log.error}</p> : null}
                       </div>
@@ -5183,7 +5194,7 @@ function SubscriptionPresencePanel({
                 ))}
                 {!logs.length ? (
                   <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm font-medium text-zinc-500">
-                    Nenhuma presença enviada ainda.
+                    Nenhum pagamento publicado ainda.
                   </div>
                 ) : null}
               </div>
@@ -5212,6 +5223,8 @@ function presenceSettingsToForm(settings: SubscriptionPresenceDashboard["setting
     photoMode: settings.photoMode,
     pingBuyer: settings.pingBuyer,
     pingRoles: settings.pingRoles,
+    showAvatar: settings.showAvatar,
+    showTimestamp: settings.showTimestamp,
     storeUrl: settings.storeUrl ?? "",
     title: settings.title
   };
@@ -5252,11 +5265,13 @@ function sanitizePresenceSettingsForm(input: SaveSubscriptionPresenceSettingsPay
     companySupportUrl: trimNullable(input.companySupportUrl),
     companyWebsiteUrl: trimNullable(input.companyWebsiteUrl),
     footerText: trimNullable(input.footerText),
-    messageTemplate: input.messageTemplate?.trim() || "Obrigado por confiar em {empresa}. Desejamos uma excelente experiencia com {produto}.",
+    messageTemplate: input.messageTemplate?.trim() || "Parabéns {usuario}!\nSua compra de {produto} foi aprovada.",
     panelColor: normalizeHexColor(input.panelColor, "#FFD500"),
     photoMode: input.photoMode ?? "avatar",
+    showAvatar: input.showAvatar !== false,
+    showTimestamp: input.showTimestamp !== false,
     storeUrl: trimNullable(input.storeUrl),
-    title: input.title?.trim() || "NOVA AQUISICAO"
+    title: input.title?.trim() || "Nova Compra Realizada"
   };
 }
 

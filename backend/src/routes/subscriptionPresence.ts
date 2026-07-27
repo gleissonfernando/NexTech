@@ -44,6 +44,8 @@ const settingsSchema = z.object({
   photoMode: z.enum(["avatar", "company", "product"]).optional(),
   pingBuyer: z.boolean().optional(),
   pingRoles: z.boolean().optional(),
+  showAvatar: z.boolean().optional(),
+  showTimestamp: z.boolean().optional(),
   storeUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
   title: z.string().min(1).max(120).optional()
 });
@@ -73,7 +75,11 @@ const publicationSchema = z.object({
   buyerName: z.string().max(100).nullable().optional(),
   currency: z.enum(["BRL", "USD", "EUR"]),
   gateway: z.string().max(120).nullable().optional(),
+  moduleId: z.string().max(120).nullable().optional(),
+  paymentMethod: z.string().max(120).nullable().optional(),
+  approvedAt: z.string().datetime().nullable().optional(),
   planName: z.string().min(1).max(120),
+  productId: z.string().max(160).nullable().optional(),
   productName: z.string().max(120).nullable().optional(),
   productPlanType: z.string().max(80).nullable().optional(),
   saleId: z.string().min(1).max(160)
@@ -91,7 +97,7 @@ subscriptionPresenceRouter.get("/:guildId", async (req, res, next) => {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
     if (isBotRequest(req)) await assertRuntime(botId, guildId);
-    else if (!(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Módulo Sistema de Presença não liberado." });
+    else if (!(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Módulo Pagamento de Presença não liberado." });
     if (!botId) return res.status(400).json({ message: "botId obrigatório." });
     return res.json(await getSubscriptionPresenceDashboard(botId, guildId));
   } catch (error) {
@@ -103,7 +109,7 @@ subscriptionPresenceRouter.put("/:guildId/settings", async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await resolveRequestBotId(req);
-    if (isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para configurar presença." });
+    if (isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para configurar Pagamento de Presença." });
     if (!botId) return res.status(400).json({ message: "botId obrigatório." });
     return res.json({ settings: await saveSubscriptionPresenceSettings(botId, guildId, sanitizeSettings(settingsSchema.parse(req.body ?? {})), res.locals.dashboardAuth.user.discordId) });
   } catch (error) {

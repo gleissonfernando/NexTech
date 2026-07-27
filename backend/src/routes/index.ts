@@ -139,6 +139,7 @@ apiRouter.use("/server-backups", serverBackupsRouter);
 apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/social-notifications", socialNotificationsRouter);
 apiRouter.use("/socials", socialsRouter);
+apiRouter.use("/payment-presence", subscriptionPresenceRouter);
 apiRouter.use("/subscription-presence", subscriptionPresenceRouter);
 apiRouter.use("/x-monitor", xMonitorRouter);
 apiRouter.use("/x-webhook", xWebhookRouter);

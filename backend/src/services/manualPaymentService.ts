@@ -10,6 +10,7 @@ import type {
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
+import { emitPaymentApprovedEvent } from "./paymentApprovedEventService";
 import { savePersistentImage } from "./persistentImageStorageService";
 
 export const MANUAL_PAYMENTS_MODULE_ID = "manual-payments";
@@ -495,6 +496,22 @@ function emitManualPaymentApproved(settings: MongoManualPaymentSettings, order: 
     saleChannelId: null,
     saleId: `manual-payment:${order._id}`
   };
+  emitPaymentApprovedEvent({
+    approvedAt: (order.approvedAt ?? new Date()).toISOString(),
+    botId: settings.botId,
+    buyerId: order.userId,
+    buyerName: order.username,
+    currency: "BRL",
+    gateway: "manual",
+    guildId: settings.guildId,
+    moduleId: MANUAL_PAYMENTS_MODULE_ID,
+    paymentId: `manual-payment:${order._id}`,
+    paymentMethod: order.paymentMethod || "PIX",
+    productId: order.serviceId,
+    productName: order.serviceName,
+    productPlanType: service?.serviceType || "manual",
+    productPrice: Math.round(order.amount * 100)
+  });
 
   emitRealtime("nex-tech-sales:sale_paid", payload);
   if (settings.botId) {

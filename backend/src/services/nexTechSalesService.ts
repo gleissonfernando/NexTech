@@ -21,6 +21,7 @@ import { createPagBankCheckout } from "./pagBankService";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { decryptSecret, encryptSecret } from "./secretCryptoService";
 import { detectSupportedImageMimeType } from "./persistentImageStorageService";
+import { emitPaymentApprovedEvent } from "./paymentApprovedEventService";
 
 export const NEX_TECH_SALES_MODULE_ID = "nex-tech-sales";
 export const NEX_TECH_PRIMARY_CLIENT_ID = "1492325134550302952";
@@ -1960,6 +1961,22 @@ async function queueNexTechSaleDelivery(
     saleChannelId: normalizeSnowflake(settings.saleChannelId) ?? normalizeSnowflake(settings.logChannelId),
     saleId: sale._id
   };
+  emitPaymentApprovedEvent({
+    approvedAt: (sale.paidAt ?? now).toISOString(),
+    botId: settings.botId,
+    buyerId,
+    buyerName: sale.buyerName,
+    currency: sale.currency,
+    gateway: sale.paymentProviderLabel ?? null,
+    guildId: settings.guildId,
+    moduleId: NEX_TECH_SALES_MODULE_ID,
+    paymentId: sale._id,
+    paymentMethod: sale.productPlanType === "manual" ? "manual" : null,
+    productId: sale.productId ?? sale.planId ?? null,
+    productName: sale.productName ?? sale.planName,
+    productPlanType: sale.productPlanType ?? null,
+    productPrice: sale.amountCents
+  });
   emitRealtime("nex-tech-sales:sale_paid", payload);
   emitRealtimeToRoom(devBotRealtimeRoom(settings.botId), "nex-tech-sales:sale_paid", payload);
 }
