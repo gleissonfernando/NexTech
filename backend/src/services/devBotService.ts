@@ -2988,40 +2988,9 @@ async function checkAccessDevBotGuild(
 ): Promise<DevBotAccessDiagnostic> {
   const { botGuildConfigs } = await getMongoCollections();
   const guildName = bot.mainGuildId === guildId ? bot.mainGuildName ?? `Servidor ${guildId}` : `Servidor ${guildId}`;
-  const botUsesGuild = bot.mainGuildId === guildId || Boolean(await botGuildConfigs.findOne(
-    {
-      botId: bot._id,
-      guildId
-    },
-    {
-      projection: {
-        _id: 1
-      }
-    }
-  ));
-
-  if (!botUsesGuild) {
-    return {
-      allowed: false,
-      accessLevel: null,
-      botId: bot._id,
-      botName: bot.name,
-      configuredRoleCount: 0,
-      configuredUserCount: 0,
-      guildId,
-      guildName,
-      matchedRoleIds: [],
-      matchedUserIds: [],
-      matchedRoleCount: 0,
-      memberRoleIds: [],
-      requiredRoleIds: [],
-      requiredUserIds: [],
-      reason: "Este bot não está vinculado ao servidor selecionado."
-    };
-  }
 
   if (await canAccessDevDashboard(user.discordId)) {
-    return {
+    const result: DevBotAccessDiagnostic = {
       allowed: true,
       accessLevel: "admin",
       botId: bot._id,
@@ -3038,10 +3007,12 @@ async function checkAccessDevBotGuild(
       requiredUserIds: [],
       reason: "Usuário Dev liberado."
     };
+    await writeAccessValidationLog(user.discordId, bot, guildId, result);
+    return result;
   }
 
   if (bot.ownerId === user.discordId || bot.createdBy === user.discordId) {
-    return {
+    const result: DevBotAccessDiagnostic = {
       allowed: true,
       accessLevel: "admin",
       botId: bot._id,
@@ -3058,6 +3029,79 @@ async function checkAccessDevBotGuild(
       requiredUserIds: [user.discordId],
       reason: "Dono/criador do bot liberado para acessar esta dashboard."
     };
+    await writeAccessValidationLog(user.discordId, bot, guildId, result);
+    return result;
+  }
+
+  const directUserAccess = await checkDirectDashboardUserAccess(user.discordId, bot, guildId);
+
+  if (directUserAccess) {
+    return {
+      ...directUserAccess,
+      botId: bot._id,
+      botName: bot.name,
+      guildId,
+      guildName
+    };
+  }
+
+  const botUsesGuild = bot.mainGuildId === guildId || Boolean(await botGuildConfigs.findOne(
+    {
+      botId: bot._id,
+      guildId
+    },
+    {
+      projection: {
+        _id: 1
+      }
+    }
+  ));
+
+  if (!botUsesGuild) {
+    const result: DevBotAccessDiagnostic = {
+      allowed: false,
+      accessLevel: null,
+      botId: bot._id,
+      botName: bot.name,
+      configuredRoleCount: 0,
+      configuredUserCount: 0,
+      guildId,
+      guildName,
+      matchedRoleIds: [],
+      matchedUserIds: [],
+      matchedRoleCount: 0,
+      memberRoleIds: [],
+      requiredRoleIds: [],
+      requiredUserIds: [],
+      reason: "Este bot não está vinculado ao servidor selecionado."
+    };
+    await writeAccessValidationLog(user.discordId, bot, guildId, result);
+    return result;
+  }
+
+  const oauthGuild = user.guilds.find((guild) => guild.id === guildId);
+  if (oauthGuild?.owner || oauthGuild?.isAdmin) {
+    const result: DevBotAccessDiagnostic = {
+      allowed: true,
+      accessLevel: "admin",
+      botId: bot._id,
+      botName: bot.name,
+      configuredRoleCount: 0,
+      configuredUserCount: 0,
+      guildId,
+      guildName: oauthGuild.name || guildName,
+      matchedRoleIds: [],
+      matchedUserIds: [user.discordId],
+      matchedRoleCount: 0,
+      memberRoleIds: [],
+      requiredRoleIds: [],
+      requiredUserIds: [user.discordId],
+      reason: oauthGuild.owner
+        ? "Dono do servidor liberado para acessar esta dashboard."
+        : "Administrador do servidor liberado para acessar esta dashboard."
+    };
+    await writeAccessValidationLog(user.discordId, bot, guildId, result);
+    return result;
   }
 
   const panelRoleAccess = await checkConfiguredPanelRole(user.discordId, bot, guildId, options);
@@ -3069,6 +3113,48 @@ async function checkAccessDevBotGuild(
     guildId,
     guildName
   };
+}
+
+async function checkDirectDashboardUserAccess(
+  userId: string,
+  bot: MongoDevBot,
+  guildId: string
+): Promise<PanelRoleAccessResult | null> {
+  const access = await getPersistedDashboardAccess(guildId, bot._id).catch((error) => {
+    console.warn(
+      `[access] não foi possível ler usuarios liberados do bot ${bot._id} no servidor ${guildId}:`,
+      error instanceof Error ? error.message : error
+    );
+    return null;
+  });
+
+  if (!access?.enabled) {
+    return null;
+  }
+
+  const directUserAccessLevel = access.userPermissions[userId] ?? null;
+
+  if (!directUserAccessLevel) {
+    return null;
+  }
+
+  const requiredUserIds = Object.keys(access.userPermissions);
+  const result: PanelRoleAccessResult = {
+    allowed: true,
+    accessLevel: directUserAccessLevel,
+    configuredRoleCount: access.roleIds.length,
+    configuredUserCount: requiredUserIds.length,
+    matchedRoleIds: [],
+    matchedUserIds: [userId],
+    matchedRoleCount: 0,
+    memberRoleIds: [],
+    requiredRoleIds: [],
+    requiredUserIds,
+    reason: "Usuário liberado diretamente encontrado na configuração do painel."
+  };
+
+  await writeAccessValidationLog(userId, bot, guildId, result);
+  return result;
 }
 
 async function checkConfiguredPanelRole(
@@ -3420,6 +3506,7 @@ async function writeAccessValidationLog(
       configuredRoleCount: result.configuredRoleCount,
       configuredUserCount: result.configuredUserCount,
       guildId,
+      reason: result.reason,
       matchedRoleIds: result.matchedRoleIds,
       matchedRoleCount: result.matchedRoleCount,
       matchedUserIds: result.matchedUserIds,
@@ -3428,11 +3515,24 @@ async function writeAccessValidationLog(
       requiredUserIds: result.requiredUserIds,
       result: result.allowed ? "allowed" : "denied",
       roleSource: source,
+      validationChecks: buildAccessValidationChecks(result),
       userId
     }
   }).catch((error) => {
     console.warn("[access] não foi possível registrar auditoria de acesso:", error instanceof Error ? error.message : error);
   });
+}
+
+function buildAccessValidationChecks(result: PanelRoleAccessResult) {
+  const reason = result.reason.toLowerCase();
+
+  return {
+    cadastro: result.configuredUserCount > 0 || result.matchedUserIds.length > 0,
+    servidor: !reason.includes("servidor selecionado"),
+    bot: !reason.includes("bot não está vinculado"),
+    permissoes: result.matchedRoleCount > 0 || reason.includes("dono do servidor") || reason.includes("administrador"),
+    listaAcesso: result.matchedUserIds.length > 0 || result.matchedRoleIds.length > 0
+  };
 }
 
 function groupGuildIdsByBot(configs: MongoBotGuildConfig[]) {

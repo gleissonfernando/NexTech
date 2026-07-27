@@ -9,7 +9,18 @@ import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type Dashbo
 import { getUserDashboardSessionState, touchDashboardSession } from "../services/userService";
 
 const VERIFIED_ACCESS_RECHECK_MS = 3 * 1000;
-export const ACCESS_DENIED_MESSAGE = "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
+export const ACCESS_DENIED_MESSAGE = [
+  "Não foi encontrada nenhuma permissão para esta Dashboard.",
+  "",
+  "Verificações realizadas:",
+  "✔ Cadastro",
+  "✔ Servidor",
+  "✔ Bot",
+  "✔ Permissões",
+  "✔ Lista de acesso",
+  "",
+  "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
+].join("\n");
 export const NO_BOT_ACCESS_MESSAGE = "Você não possui nenhum bot cadastrado na plataforma. Cadastre um bot para utilizar o Dashboard.";
 export const SUPPORT_DISCORD_URL = "https://discord.gg/KAGgfuTcDS";
 const AUTH_MIDDLEWARE_TIMEOUT_MS = 12_000;

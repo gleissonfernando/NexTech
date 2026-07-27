@@ -399,7 +399,7 @@ export function Login({
 
         {error ? (
           <Reveal delay={0.45} className="mt-5 w-full max-w-2xl rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-4 text-sm font-medium text-red-100">
-            <p>{error}</p>
+            <p className="whitespace-pre-line">{error}</p>
             <Button asChild className="mt-3 h-10 w-full sm:w-auto" variant="outline">
               <a href={SUPPORT_URL} rel="noreferrer" target="_blank">
                 <Headphones className="h-4 w-4" />

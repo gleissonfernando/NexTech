@@ -14,6 +14,18 @@ const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((modul
 const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
 const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
 const PublicStatusPage = lazy(() => import("./pages/PublicStatusPage").then((module) => ({ default: module.PublicStatusPage })));
+const ACCESS_DENIED_MESSAGE = [
+  "Não foi encontrada nenhuma permissão para esta Dashboard.",
+  "",
+  "Verificações realizadas:",
+  "✔ Cadastro",
+  "✔ Servidor",
+  "✔ Bot",
+  "✔ Permissões",
+  "✔ Lista de acesso",
+  "",
+  "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
+].join("\n");
 
 export function App() {
   const {
@@ -47,7 +59,7 @@ export function App() {
       setAccessDeniedError(
         typeof detail?.message === "string" && detail.message.trim()
           ? detail.message
-          : "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."
+          : ACCESS_DENIED_MESSAGE
       );
     }
 
@@ -169,11 +181,11 @@ function readAuthError() {
   }
 
   if (authError === "denied") {
-    return "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
+    return ACCESS_DENIED_MESSAGE;
   }
 
   if (reason === "permission") {
-    return "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
+    return ACCESS_DENIED_MESSAGE;
   }
 
   if (reason === "nobot") {
@@ -185,7 +197,7 @@ function readAuthError() {
   }
 
   if (reason === "denied") {
-    return "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
+    return ACCESS_DENIED_MESSAGE;
   }
 
   return "Não foi possível conectar com o Discord. Verifique se o aplicativo está configurado corretamente.";

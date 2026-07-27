@@ -27,6 +27,7 @@ import {
   resolveAuthFromRequest
 } from "../services/tokenService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
+import { recordAccessAttempt } from "../services/accessAuditService";
 import { clearStoredDiscordTokens, invalidateDashboardSession, rotateDashboardSession, saveDiscordUser } from "../services/userService";
 import type { AuthSessionUser } from "../types/session";
 import { getDevBot, getDevBotBySlug, listAccessibleDashboardBots } from "../services/devBotService";
@@ -1052,8 +1053,19 @@ async function resolvePostAuthRedirectTo(
 
 authRouter.post("/logout", async (req, res, next) => {
   try {
-    const discordId = req.session.user?.discordId;
-    const sessionId = req.session.user?.sessionId ?? null;
+    const user = req.session.user;
+    const discordId = user?.discordId;
+    const sessionId = user?.sessionId ?? null;
+    await recordAccessAttempt(req, {
+      action: "access.logout",
+      userId: user?.discordId ?? null,
+      username: user?.username ?? null,
+      dashboardSlug: user?.dashboardBotSlug ?? null,
+      botId: user?.dashboardBotId ?? user?.sessionBotId ?? null,
+      guildId: user?.selectedGuildId ?? user?.guilds[0]?.id ?? null,
+      result: "allowed",
+      reason: "Logout solicitado pelo usuário."
+    });
     clearAuthCookies(res);
     if (discordId) {
       await Promise.all([

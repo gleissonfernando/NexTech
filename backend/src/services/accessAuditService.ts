@@ -35,15 +35,18 @@ export async function recordAccessAttempt(req: Request, input: {
   });
 
   if (input.result === "allowed" && input.botId && input.guildId) {
+    const isLogout = action === "access.logout" || action === "dashboard.logout";
     await createLog({
-      action: "access.allowed",
+      action: isLogout ? "access.logout" : "access.allowed",
       botId: input.botId,
       guildId: input.guildId,
       module: "dashboard",
       status: "success",
-      type: "dashboard.access.allowed",
+      type: isLogout ? "dashboard.access.logout" : "dashboard.access.allowed",
       userId: input.userId ?? null,
-      message: `${input.username ?? "Usuário"} entrou na dashboard deste bot.`,
+      message: isLogout
+        ? `${input.username ?? "Usuário"} saiu da dashboard deste bot.`
+        : `${input.username ?? "Usuário"} entrou na dashboard deste bot.`,
       metadata: {
         action,
         dashboardSlug: input.dashboardSlug ?? null,

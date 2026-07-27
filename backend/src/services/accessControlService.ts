@@ -44,11 +44,19 @@ export type DashboardAccessOptions = {
 };
 
 const BOT_ACCESS_TIMEOUT_MS = 12_000;
+const ACCESS_VALIDATION_CACHE_MS = 30_000;
+const accessValidationCache = new Map<string, { expiresAt: number; validation: AccessValidationResult }>();
 
 export async function evaluateDashboardAccess(
   user: AuthSessionUser,
   options: DashboardAccessOptions = {}
 ): Promise<AccessValidationResult> {
+  const cacheKey = accessValidationCacheKey(user, options);
+  const cached = accessValidationCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.validation;
+  }
+
   const baseChecks: GuildAccessCheck[] = user.guilds.map((guild) => ({
     guildId: guild.id,
     guildName: guild.name,
@@ -98,6 +106,7 @@ export async function evaluateDashboardAccess(
 
     const validation = createValidationResult([...checksByGuildId.values()], true, [], "admin");
     await persistAccessSnapshot(user.discordId, validation, accessScanRoleSnapshot([]));
+    cacheAccessValidation(cacheKey, validation);
     return validation;
   }
 
@@ -184,7 +193,28 @@ export async function evaluateDashboardAccess(
     highestAccessLevel
   );
   await persistAccessSnapshot(user.discordId, validation, roleSnapshot);
+  cacheAccessValidation(cacheKey, validation);
   return validation;
+}
+
+function accessValidationCacheKey(user: AuthSessionUser, options: DashboardAccessOptions) {
+  const guildScope = user.guilds
+    .map((guild) => `${guild.id}:${guild.owner ? "o" : "-"}:${guild.isAdmin ? "a" : "-"}`)
+    .sort()
+    .join(",");
+  return `${user.discordId}|${options.botSlug ?? ""}|${guildScope}`;
+}
+
+function cacheAccessValidation(key: string, validation: AccessValidationResult) {
+  if (!validation.allowed) {
+    accessValidationCache.delete(key);
+    return;
+  }
+
+  accessValidationCache.set(key, {
+    expiresAt: Date.now() + ACCESS_VALIDATION_CACHE_MS,
+    validation
+  });
 }
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {

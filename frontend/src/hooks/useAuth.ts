@@ -4,7 +4,18 @@ import { createDashboardSocket } from "../lib/socket";
 import { appUrl, dashboardSlugFromPath, dashboardUrl, isDashboardRoutePath } from "../lib/urls";
 import type { AccessValidationResult, AuthResponse } from "../types";
 
-const ACCESS_DENIED_MESSAGE = "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.";
+const ACCESS_DENIED_MESSAGE = [
+  "Não foi encontrada nenhuma permissão para esta Dashboard.",
+  "",
+  "Verificações realizadas:",
+  "✔ Cadastro",
+  "✔ Servidor",
+  "✔ Bot",
+  "✔ Permissões",
+  "✔ Lista de acesso",
+  "",
+  "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
+].join("\n");
 const AUTH_TIMEOUT_MS = 18_000;
 const AUTH_TEMP_PARAMS = ["auth", "code", "state", "error", "error_description"];
 export type AuthStatus =

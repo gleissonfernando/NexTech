@@ -263,6 +263,18 @@ const PANEL_EMOJIS = {
   prancheta: "<:prancheta:1525682244893544489>"
 } as const;
 const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
+const ACCESS_DENIED_MESSAGE = [
+  "Não foi encontrada nenhuma permissão para esta Dashboard.",
+  "",
+  "Verificações realizadas:",
+  "✔ Cadastro",
+  "✔ Servidor",
+  "✔ Bot",
+  "✔ Permissões",
+  "✔ Lista de acesso",
+  "",
+  "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
+].join("\n");
 const PANEL_MEDIA_ACCEPT = "image/png,image/apng,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/mp2t,video/x-flv,video/x-ms-wmv,video/ogg,.png,.apng,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.avi,.mkv,.webm,.m4v,.mpeg,.mpg,.flv,.wmv,.ts,.mts,.3gp,.ogv,.asf,.f4v,.vob,.rmvb,.mxf";
 
 type DashboardProps = {
@@ -1018,7 +1030,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ?? null;
 
       if (!targetBot) {
-        setDashboardRouteError("Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte.");
+        setDashboardRouteError(ACCESS_DENIED_MESSAGE);
         return;
       }
 
@@ -1045,7 +1057,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         setDashboardRouteError(readResponseMessage(error) ?? (
           readResponseStatus(error) === 401
             ? "Sua sessão não chegou ao backend. Saia e entre novamente pelo Discord."
-            : "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."
+            : ACCESS_DENIED_MESSAGE
         ));
       })
       .finally(() => {
@@ -4575,8 +4587,8 @@ function DashboardRouteError({ message }: { message: string }) {
             <Bot className="h-5 w-5 text-red-300" />
             Acesso não liberado
           </CardTitle>
-          <CardDescription>
-            {message || "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."}
+          <CardDescription className="whitespace-pre-line">
+            {message || ACCESS_DENIED_MESSAGE}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row">

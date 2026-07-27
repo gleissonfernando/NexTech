@@ -247,6 +247,18 @@ type ApiErrorResponse = {
 
 const AUTH_FAILURE_CODES = new Set(["SESSION_EXPIRED", "SESSION_REVOKED", "SESSION_INVALIDATED", "SESSION_LOGGED_OUT", "SESSION_MISSING"]);
 const DASHBOARD_ACCESS_DENIED_CODES = new Set(["DASHBOARD_ACCESS_DENIED"]);
+const ACCESS_DENIED_MESSAGE = [
+  "Não foi encontrada nenhuma permissão para esta Dashboard.",
+  "",
+  "Verificações realizadas:",
+  "✔ Cadastro",
+  "✔ Servidor",
+  "✔ Bot",
+  "✔ Permissões",
+  "✔ Lista de acesso",
+  "",
+  "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
+].join("\n");
 
 api.interceptors.response.use(
   (response) => response,
@@ -273,13 +285,13 @@ api.interceptors.response.use(
         DASHBOARD_ACCESS_DENIED_CODES.has(responseCode)
         || (
           !responseCode
-          && (typeof responseData?.supportUrl === "string" || responseMessage.includes("Você não possui acesso a esta dashboard"))
+          && (typeof responseData?.supportUrl === "string" || responseMessage.includes("Não foi encontrada nenhuma permissão"))
         )
       )
     ) {
       window.dispatchEvent(new CustomEvent("dashboard:access-denied", {
         detail: {
-          message: responseMessage || "Você não possui acesso a esta dashboard. Verifique se o plano está em dia ou entre em contato com o suporte."
+          message: responseMessage || ACCESS_DENIED_MESSAGE
         }
       }));
     }
