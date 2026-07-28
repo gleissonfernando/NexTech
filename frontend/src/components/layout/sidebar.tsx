@@ -160,7 +160,7 @@ const navItems: NavItem[] = [
   { id: "boosters", label: "Sistema Booster", icon: Trophy, moduleId: "boosters" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
-  { id: "rules", label: "Regras", icon: ScrollText, moduleId: "rules" },
+  { id: "rules", label: "Painel de Regras", icon: ScrollText, moduleId: "rules" },
   { id: "payment-gateway", label: "Pagamento Automático", icon: CreditCard, moduleId: "payment-gateway" },
   { id: "manual-payments", label: "Pagamento Manual", icon: CreditCard, moduleId: "manual-payments" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },

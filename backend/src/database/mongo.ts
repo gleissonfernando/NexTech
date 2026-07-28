@@ -151,9 +151,34 @@ export type MongoGuildSettings = {
   rulesChannelId?: string | null;
   rulesRoleId?: string | null;
   rulesTitle?: string | null;
+  rulesSubtitle?: string | null;
   rulesMessage?: string | null;
   rulesButtonLabel?: string | null;
   rulesColor?: string | null;
+  rulesFooterText?: string | null;
+  rulesImageFormat?: "horizontal" | "square" | "vertical" | "none";
+  rulesImageUrl?: string | null;
+  rulesButtons?: Array<{
+    action: "accept" | "url" | "message" | "ticket" | "command";
+    command?: string | null;
+    emoji?: string | null;
+    enabled?: boolean;
+    id: string;
+    label: string;
+    message?: string | null;
+    order?: number;
+    style?: "primary" | "secondary" | "success" | "danger";
+    url?: string | null;
+  }>;
+  rulesCategories?: Array<{
+    description?: string | null;
+    emoji?: string | null;
+    enabled?: boolean;
+    id: string;
+    name: string;
+    order?: number;
+    rules: string[];
+  }>;
   rulesPanelMessageId?: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;

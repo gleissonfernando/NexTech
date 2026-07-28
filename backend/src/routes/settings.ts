@@ -11,6 +11,7 @@ import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
   clearSafeBotMessageState,
   getGuildSettings,
+  type GuildSettingsDto,
   getSafeBotMessageState,
   LOG_CATEGORIES,
   MAX_AUTOMATIC_ROLES,
@@ -37,6 +38,29 @@ const memberPanelSectionSchema = z.object({
   id: z.string().min(1).max(80),
   order: z.coerce.number().int().min(1).max(1000).optional().default(1),
   title: z.string().min(1).max(120)
+});
+
+const rulesPanelCategorySchema = z.object({
+  description: z.string().max(500).nullable().optional(),
+  emoji: z.string().max(80).nullable().optional(),
+  enabled: z.boolean().optional(),
+  id: z.string().min(1).max(80),
+  name: z.string().min(1).max(100),
+  order: z.coerce.number().int().min(1).max(1000).optional(),
+  rules: z.array(z.string().min(1).max(300)).max(40)
+});
+
+const rulesPanelButtonSchema = z.object({
+  action: z.enum(["accept", "url", "message", "ticket", "command"]),
+  command: z.string().max(120).nullable().optional(),
+  emoji: z.string().max(80).nullable().optional(),
+  enabled: z.boolean().optional(),
+  id: z.string().min(1).max(80),
+  label: z.string().min(1).max(80),
+  message: z.string().max(500).nullable().optional(),
+  order: z.coerce.number().int().min(1).max(1000).optional(),
+  style: z.enum(["primary", "secondary", "success", "danger"]).optional(),
+  url: z.string().max(2048).nullable().optional()
 });
 
 const settingsSchema = z.object({
@@ -204,9 +228,15 @@ const settingsSchema = z.object({
   rulesChannelId: z.string().nullable().optional(),
   rulesRoleId: z.string().nullable().optional(),
   rulesTitle: z.string().max(120).nullable().optional(),
+  rulesSubtitle: z.string().max(160).nullable().optional(),
   rulesMessage: z.string().max(1800).nullable().optional(),
   rulesButtonLabel: z.string().max(80).nullable().optional(),
   rulesColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  rulesFooterText: z.string().max(180).nullable().optional(),
+  rulesImageFormat: z.enum(["horizontal", "square", "vertical", "none"]).optional(),
+  rulesImageUrl: z.string().max(2048).nullable().optional(),
+  rulesButtons: z.array(rulesPanelButtonSchema).max(5).optional(),
+  rulesCategories: z.array(rulesPanelCategorySchema).max(12).optional(),
   rulesPanelMessageId: z.string().nullable().optional(),
   verificationEnabled: z.boolean().optional(),
   verificationRoleId: z.string().nullable().optional(),
@@ -960,6 +990,7 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
     await validateSafeBotActivation(guildId, botId, input);
     await validateGuildResources(guildId, botId, input);
 
+    const previousRulesSettings = touchesRulesSettings(input) ? await getGuildSettings(guildId, botId) : null;
     const settings = await updateGuildSettings(guildId, input, botId);
     emitRealtime("settings:updated", settings);
     if (botId && touchesSafeBotSettings(input)) {
@@ -986,6 +1017,21 @@ settingsRouter.patch("/:guildId", requireAuth, async (req, res, next) => {
 
     if (settingsLog) {
       emitRealtime("logs:new", settingsLog);
+    }
+
+    if (previousRulesSettings) {
+      const rulesLogs = await createRulesPanelChangeLogs({
+        botId,
+        guildId,
+        input,
+        next: settings,
+        previous: previousRulesSettings,
+        userId: res.locals.dashboardAuth.user.discordId
+      });
+
+      for (const log of rulesLogs) {
+        emitRealtime("logs:new", log);
+      }
     }
 
     return res.json({
@@ -1138,9 +1184,15 @@ async function canPatchSettings(
     rulesChannelId: ["rules"],
     rulesRoleId: ["rules"],
     rulesTitle: ["rules"],
+    rulesSubtitle: ["rules"],
     rulesMessage: ["rules"],
     rulesButtonLabel: ["rules"],
     rulesColor: ["rules"],
+    rulesFooterText: ["rules"],
+    rulesImageFormat: ["rules"],
+    rulesImageUrl: ["rules"],
+    rulesButtons: ["rules"],
+    rulesCategories: ["rules"],
     rulesPanelMessageId: ["rules"],
     verificationEnabled: ["verification"],
     verificationRoleId: ["verification"],
@@ -1176,6 +1228,117 @@ function touchesOwnerDevOnlySettings(input: SettingsInput) {
 
 function touchesSafeBotSettings(input: SettingsInput) {
   return Object.keys(input).some((key) => key.startsWith("safeBot"));
+}
+
+function touchesRulesSettings(input: SettingsInput) {
+  return Object.keys(input).some((key) => key.startsWith("rules"));
+}
+
+async function createRulesPanelChangeLogs({
+  botId,
+  guildId,
+  input,
+  next,
+  previous,
+  userId
+}: {
+  botId: string;
+  guildId: string;
+  input: SettingsInput;
+  next: GuildSettingsDto;
+  previous: GuildSettingsDto;
+  userId: string;
+}) {
+  const logs: NonNullable<Awaited<ReturnType<typeof createLog>>>[] = [];
+
+  async function push(type: string, message: string, metadata: Record<string, unknown>) {
+    const log = await createLog({
+      botId,
+      guildId,
+      message,
+      metadata,
+      module: "rules",
+      type,
+      userId
+    }).catch(() => null);
+
+    if (log) {
+      logs.push(log);
+    }
+  }
+
+  if ("rulesEnabled" in input && previous.rulesEnabled !== next.rulesEnabled) {
+    await push(
+      next.rulesEnabled ? "rules.panel_enabled" : "rules.panel_disabled",
+      next.rulesEnabled ? "Painel de regras ativado." : "Painel de regras desativado.",
+      { enabled: next.rulesEnabled }
+    );
+  }
+
+  if (
+    ("rulesImageUrl" in input && previous.rulesImageUrl !== next.rulesImageUrl)
+    || ("rulesImageFormat" in input && previous.rulesImageFormat !== next.rulesImageFormat)
+  ) {
+    await push("rules.image_changed", "Imagem do painel de regras alterada.", {
+      imageFormat: next.rulesImageFormat,
+      imageUrl: next.rulesImageUrl
+    });
+  }
+
+  if ("rulesCategories" in input) {
+    const previousIds = new Set(previous.rulesCategories.map((category) => category.id));
+    const nextIds = new Set(next.rulesCategories.map((category) => category.id));
+    const addedCategories = next.rulesCategories.filter((category) => !previousIds.has(category.id)).map((category) => category.name);
+    const removedCategories = previous.rulesCategories.filter((category) => !nextIds.has(category.id)).map((category) => category.name);
+    const previousRuleCount = previous.rulesCategories.reduce((total, category) => total + category.rules.length, 0);
+    const nextRuleCount = next.rulesCategories.reduce((total, category) => total + category.rules.length, 0);
+
+    if (addedCategories.length) {
+      await push("rules.categories_added", "Categorias adicionadas ao painel de regras.", { categories: addedCategories });
+    }
+
+    if (removedCategories.length) {
+      await push("rules.categories_removed", "Categorias removidas do painel de regras.", { categories: removedCategories });
+    }
+
+    if (nextRuleCount > previousRuleCount) {
+      await push("rules.rules_added", "Regras adicionadas ao painel de regras.", {
+        added: nextRuleCount - previousRuleCount,
+        nextRuleCount,
+        previousRuleCount
+      });
+    }
+
+    if (nextRuleCount < previousRuleCount) {
+      await push("rules.rules_removed", "Regras removidas do painel de regras.", {
+        nextRuleCount,
+        previousRuleCount,
+        removed: previousRuleCount - nextRuleCount
+      });
+    }
+  }
+
+  if ("rulesButtons" in input && JSON.stringify(previous.rulesButtons) !== JSON.stringify(next.rulesButtons)) {
+    await push("rules.buttons_changed", "Botões do painel de regras alterados.", {
+      buttons: next.rulesButtons.map((button) => ({ action: button.action, id: button.id, label: button.label }))
+    });
+  }
+
+  if (
+    ("rulesTitle" in input && previous.rulesTitle !== next.rulesTitle)
+    || ("rulesSubtitle" in input && previous.rulesSubtitle !== next.rulesSubtitle)
+    || ("rulesColor" in input && previous.rulesColor !== next.rulesColor)
+    || ("rulesFooterText" in input && previous.rulesFooterText !== next.rulesFooterText)
+  ) {
+    await push("rules.content_changed", "Conteúdo visual do painel de regras alterado.", {
+      color: next.rulesColor,
+      footerText: next.rulesFooterText,
+      subtitle: next.rulesSubtitle,
+      title: next.rulesTitle
+    });
+  }
+
+  return logs;
 }
 
 async function validateSafeBotActivation(guildId: string, botId: string | null, input: SettingsInput) {

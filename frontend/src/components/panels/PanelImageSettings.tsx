@@ -35,7 +35,7 @@ const PANELS: PanelDefinition[] = [
   { id: "global-footer", label: "Configuração de Rodapé", defaultPosition: "footer" },
   { id: "welcome", label: "Boas-vindas" },
   { id: "leave", label: "Saída" },
-  { id: "rules", label: "Regras" },
+  { id: "rules", label: "Painel de Regras" },
   { id: "ticket", label: "Ticket" },
   { id: "ticket-logo", label: "Ticket - logo superior", defaultPosition: "thumbnail" },
   { id: "ticket-banner", label: "Ticket - banner principal", defaultPosition: "below_title" },

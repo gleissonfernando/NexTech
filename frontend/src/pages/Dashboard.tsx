@@ -53,7 +53,7 @@ import {
     Users,
     XCircle
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { BoosterPanel } from "../components/boosters/BoosterPanel";
 import { CoursesPanel } from "../components/courses/CoursesPanel";
@@ -243,6 +243,11 @@ import type {
     PanelImageSettings as PanelImageSettingsType,
     PoliceTimeClockDashboard,
     ReportSystemCategory,
+    RulesPanelButton,
+    RulesPanelButtonAction,
+    RulesPanelButtonStyle,
+    RulesPanelCategory,
+    RulesPanelImageFormat,
     SelfBotProtectionSettings,
     ServerBackupDashboard,
     ServerBackupRestoreJob,
@@ -395,8 +400,8 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "rules",
-    title: "Regras",
-    description: "Publica um painel de regras com botão para liberar cargo aos membros.",
+    title: "Painel de Regras",
+    description: "Publica um painel moderno de regras com categorias, botões e atualização sem duplicar mensagens.",
     icon: ScrollText,
     view: "rules"
   },
@@ -6393,14 +6398,20 @@ function RulesView({
     channels: [],
     roles: []
   });
-  const [draft, setDraft] = useState({
-    rulesButtonLabel: "",
-    rulesChannelId: "",
-    rulesColor: "#ef4444",
-    rulesMessage: "",
-    rulesRoleId: "",
-    rulesTitle: ""
-  });
+  const [draft, setDraft] = useState<{
+    rulesButtonLabel: string;
+    rulesButtons: RulesPanelButton[];
+    rulesCategories: RulesPanelCategory[];
+    rulesChannelId: string;
+    rulesColor: string;
+    rulesFooterText: string;
+    rulesImageFormat: RulesPanelImageFormat;
+    rulesImageUrl: string;
+    rulesMessage: string;
+    rulesRoleId: string;
+    rulesSubtitle: string;
+    rulesTitle: string;
+  }>(() => defaultRulesDraft());
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -6408,10 +6419,16 @@ function RulesView({
   useEffect(() => {
     setDraft({
       rulesButtonLabel: settings?.rulesButtonLabel || "Li e aceito",
+      rulesButtons: settings?.rulesButtons?.length ? settings.rulesButtons : [createRulesButtonDraft(1)],
+      rulesCategories: settings?.rulesCategories?.length ? settings.rulesCategories : defaultRulesCategories(),
       rulesChannelId: settings?.rulesChannelId || "",
       rulesColor: settings?.rulesColor || "#ef4444",
+      rulesFooterText: settings?.rulesFooterText || "NexTech © Todos os direitos reservados",
+      rulesImageFormat: settings?.rulesImageFormat || "none",
+      rulesImageUrl: settings?.rulesImageUrl || "",
       rulesMessage: settings?.rulesMessage || "",
       rulesRoleId: settings?.rulesRoleId || "",
+      rulesSubtitle: settings?.rulesSubtitle || "Regras Oficiais do Servidor",
       rulesTitle: settings?.rulesTitle || "Regras do servidor"
     });
   }, [settings]);
@@ -6450,11 +6467,17 @@ function RulesView({
     try {
       const nextSettings = await patchGuildSettings(guild.id, {
         rulesButtonLabel: draft.rulesButtonLabel,
+        rulesButtons: draft.rulesButtons,
+        rulesCategories: draft.rulesCategories,
         rulesChannelId: draft.rulesChannelId || null,
         rulesColor: draft.rulesColor,
         rulesEnabled: nextEnabled,
+        rulesFooterText: draft.rulesFooterText,
+        rulesImageFormat: draft.rulesImageFormat,
+        rulesImageUrl: draft.rulesImageUrl || null,
         rulesMessage: draft.rulesMessage,
         rulesRoleId: draft.rulesRoleId || null,
+        rulesSubtitle: draft.rulesSubtitle,
         rulesTitle: draft.rulesTitle
       }, botId);
       onSettingsChange(nextSettings);
@@ -6510,25 +6533,17 @@ function RulesView({
 
       <SimpleToggleCard
         checked={Boolean(settings.rulesEnabled)}
-        description="Ativa o aceite de regras e libera o painel para este servidor."
+        description="Ativa o painel e permite publicar ou atualizar a mensagem existente."
         disabled={!canManage || saving}
         icon={ScrollText}
         onChange={(checked) => void saveRules(checked)}
-        title="Sistema de regras"
-      />
-
-      <PanelImageSettings
-        botId={botId}
-        canManage={canManage}
-        guildId={guild?.id ?? null}
-        panelId="rules"
-        panelLabel="Regras"
+        title="Painel de Regras"
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Painel de regras</CardTitle>
-          <CardDescription>Configure a mensagem, o canal e o cargo entregue ao membro.</CardDescription>
+          <CardTitle>Configurações gerais</CardTitle>
+          <CardDescription>Escolha o canal, o cargo liberado e mantenha a publicação sem duplicar mensagens.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -6562,7 +6577,29 @@ function RulesView({
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_10rem]">
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
+            Atualização automática ativada: ao publicar novamente, o sistema edita a mensagem salva em vez de criar outra.
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={!canManage || saving} onClick={() => void saveRules()} variant="secondary">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar configurações
+            </Button>
+            {settings.rulesPanelMessageId ? (
+              <Badge variant="muted">Mensagem: {settings.rulesPanelMessageId}</Badge>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Personalização</CardTitle>
+          <CardDescription>Título, subtítulo, cor lateral, banner e formato de imagem.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-100">Titulo</span>
               <input
@@ -6574,7 +6611,33 @@ function RulesView({
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-100">Cor</span>
+              <span className="text-sm font-medium text-zinc-100">Subtítulo</span>
+              <input
+                className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
+                disabled={!canManage}
+                maxLength={160}
+                onChange={(event) => setDraft((current) => ({ ...current, rulesSubtitle: event.target.value }))}
+                value={draft.rulesSubtitle}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_10rem]">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Cor lateral</span>
+              <select
+                className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
+                disabled={!canManage}
+                onChange={(event) => setDraft((current) => ({ ...current, rulesColor: event.target.value }))}
+                value={rulesPresetColorValue(draft.rulesColor)}
+              >
+                {RULES_COLOR_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Personalizada</span>
               <input
                 className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
                 disabled={!canManage}
@@ -6585,29 +6648,148 @@ function RulesView({
             </label>
           </div>
 
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-100">Regras</span>
-            <textarea
-              className="min-h-44 w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]"
-              disabled={!canManage}
-              maxLength={1800}
-              onChange={(event) => setDraft((current) => ({ ...current, rulesMessage: event.target.value }))}
-              placeholder="Uma regra por linha"
-              value={draft.rulesMessage}
-            />
-          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Imagem/Banner por URL</span>
+              <input
+                className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
+                disabled={!canManage}
+                maxLength={2048}
+                onChange={(event) => setDraft((current) => ({ ...current, rulesImageUrl: event.target.value }))}
+                placeholder="https://..."
+                value={draft.rulesImageUrl}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Formato da imagem</span>
+              <select
+                className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
+                disabled={!canManage}
+                onChange={(event) => setDraft((current) => ({ ...current, rulesImageFormat: event.target.value as RulesPanelImageFormat }))}
+                value={draft.rulesImageFormat}
+              >
+                <option value="horizontal">Banner Horizontal</option>
+                <option value="square">Imagem Quadrada</option>
+                <option value="vertical">Imagem Vertical</option>
+                <option value="none">Sem imagem</option>
+              </select>
+            </label>
+          </div>
+
+          <PanelImageSettings
+            botId={botId}
+            canManage={canManage}
+            componentsV2Only
+            guildId={guild?.id ?? null}
+            panelId="rules"
+            panelLabel="Painel de Regras"
+          />
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-100">Texto do botão</span>
+            <span className="text-sm font-medium text-zinc-100">Rodapé</span>
             <input
               className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]"
               disabled={!canManage}
-              maxLength={80}
-              onChange={(event) => setDraft((current) => ({ ...current, rulesButtonLabel: event.target.value }))}
-              value={draft.rulesButtonLabel}
+              maxLength={180}
+              onChange={(event) => setDraft((current) => ({ ...current, rulesFooterText: event.target.value }))}
+              value={draft.rulesFooterText}
             />
           </label>
+        </CardContent>
+      </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Organização das regras</CardTitle>
+          <CardDescription>Crie categorias numeradas automaticamente, com emoji e regras ilimitadas no editor.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {draft.rulesCategories.map((category, index) => (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4" key={category.id}>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-white">{index + 1}. {category.name || "Categoria"}</span>
+                <div className="flex items-center gap-2">
+                  <Button disabled={!canManage || index === 0} onClick={() => setDraft((current) => ({ ...current, rulesCategories: moveRulesItem(current.rulesCategories, index, index - 1) }))} size="sm" variant="secondary">Subir</Button>
+                  <Button disabled={!canManage || index === draft.rulesCategories.length - 1} onClick={() => setDraft((current) => ({ ...current, rulesCategories: moveRulesItem(current.rulesCategories, index, index + 1) }))} size="sm" variant="secondary">Descer</Button>
+                  <Button disabled={!canManage || draft.rulesCategories.length <= 1} onClick={() => setDraft((current) => ({ ...current, rulesCategories: current.rulesCategories.filter((item) => item.id !== category.id).map((item, order) => ({ ...item, order: order + 1 })) }))} size="sm" variant="destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[6rem_minmax(0,1fr)]">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-zinc-100">Emoji</span>
+                  <input className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={80} onChange={(event) => updateRulesCategory(setDraft, category.id, { emoji: event.target.value })} value={category.emoji ?? ""} />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-zinc-100">Nome</span>
+                  <input className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={100} onChange={(event) => updateRulesCategory(setDraft, category.id, { name: event.target.value })} value={category.name} />
+                </label>
+              </div>
+              <label className="mt-3 block space-y-2">
+                <span className="text-sm font-medium text-zinc-100">Descrição</span>
+                <input className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={500} onChange={(event) => updateRulesCategory(setDraft, category.id, { description: event.target.value })} value={category.description ?? ""} />
+              </label>
+              <label className="mt-3 block space-y-2">
+                <span className="text-sm font-medium text-zinc-100">Regras</span>
+                <textarea className="min-h-32 w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#FFD500]" disabled={!canManage} onChange={(event) => updateRulesCategory(setDraft, category.id, { rules: rulesTextToLines(event.target.value) })} placeholder="Uma regra por linha" value={category.rules.join("\n")} />
+              </label>
+            </div>
+          ))}
+          <Button disabled={!canManage} onClick={() => setDraft((current) => ({ ...current, rulesCategories: [...current.rulesCategories, createRulesCategoryDraft(current.rulesCategories.length + 1)] }))} variant="secondary">
+            <Plus className="h-4 w-4" />
+            Adicionar categoria
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Botões</CardTitle>
+          <CardDescription>Configure até 5 botões para URL, mensagem, comando, ticket ou aceite das regras.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {draft.rulesButtons.map((button, index) => (
+            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 lg:grid-cols-[5rem_minmax(0,1fr)_10rem_10rem_10rem_auto]" key={button.id}>
+              <input className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={80} onChange={(event) => updateRulesButton(setDraft, button.id, { emoji: event.target.value })} placeholder="Emoji" value={button.emoji ?? ""} />
+              <input className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={80} onChange={(event) => updateRulesButton(setDraft, button.id, { label: event.target.value })} placeholder="Texto" value={button.label} />
+              <select className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} onChange={(event) => updateRulesButton(setDraft, button.id, { action: event.target.value as RulesPanelButtonAction })} value={button.action}>
+                <option value="accept">Ler Regras</option>
+                <option value="url">Abrir URL</option>
+                <option value="message">Enviar mensagem</option>
+                <option value="command">Executar comando</option>
+                <option value="ticket">Abrir Ticket</option>
+              </select>
+              <select className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage || button.action === "url"} onChange={(event) => updateRulesButton(setDraft, button.id, { style: event.target.value as RulesPanelButtonStyle })} value={button.style}>
+                <option value="primary">Azul</option>
+                <option value="secondary">Cinza</option>
+                <option value="success">Verde</option>
+                <option value="danger">Vermelho</option>
+              </select>
+              <input className="h-10 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]" disabled={!canManage} maxLength={2048} onChange={(event) => updateRulesButton(setDraft, button.id, button.action === "url" ? { url: event.target.value } : button.action === "command" ? { command: event.target.value } : { message: event.target.value })} placeholder={button.action === "url" ? "https://..." : button.action === "command" ? "comando" : "Mensagem"} value={button.action === "url" ? button.url ?? "" : button.action === "command" ? button.command ?? "" : button.message ?? ""} />
+              <Button disabled={!canManage || draft.rulesButtons.length <= 1} onClick={() => setDraft((current) => ({ ...current, rulesButtons: current.rulesButtons.filter((item) => item.id !== button.id).map((item, order) => ({ ...item, order: order + 1 })) }))} size="sm" variant="destructive">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="flex gap-2 lg:col-span-6">
+                <Button disabled={!canManage || index === 0} onClick={() => setDraft((current) => ({ ...current, rulesButtons: moveRulesItem(current.rulesButtons, index, index - 1) }))} size="sm" variant="secondary">Subir</Button>
+                <Button disabled={!canManage || index === draft.rulesButtons.length - 1} onClick={() => setDraft((current) => ({ ...current, rulesButtons: moveRulesItem(current.rulesButtons, index, index + 1) }))} size="sm" variant="secondary">Descer</Button>
+              </div>
+            </div>
+          ))}
+          <Button disabled={!canManage || draft.rulesButtons.length >= 5} onClick={() => setDraft((current) => ({ ...current, rulesButtons: [...current.rulesButtons, createRulesButtonDraft(current.rulesButtons.length + 1)] }))} variant="secondary">
+            <Plus className="h-4 w-4" />
+            Adicionar botão
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preview</CardTitle>
+          <CardDescription>Prévia visual do painel antes de publicar no Discord.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RulesPanelPreview draft={draft} settings={settings} />
           <div className="flex flex-wrap items-center gap-3">
             <Button disabled={!canManage || saving || publishing} onClick={() => void saveRules()} variant="secondary">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -6615,14 +6797,160 @@ function RulesView({
             </Button>
             <Button disabled={!canManage || saving || publishing || !draft.rulesChannelId} onClick={() => void publishPanel()}>
               {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Publicar painel
+              Publicar Painel
             </Button>
-            {settings.rulesPanelMessageId ? (
-              <Badge variant="muted">Mensagem: {settings.rulesPanelMessageId}</Badge>
-            ) : null}
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+const RULES_COLOR_OPTIONS = [
+  { label: "Amarelo", value: "#FFD500" },
+  { label: "Roxo", value: "#9333ea" },
+  { label: "Azul", value: "#2563eb" },
+  { label: "Vermelho", value: "#ef4444" },
+  { label: "Verde", value: "#22c55e" },
+  { label: "Personalizada", value: "custom" }
+];
+
+function defaultRulesDraft() {
+  return {
+    rulesButtonLabel: "Li e aceito",
+    rulesButtons: [createRulesButtonDraft(1)],
+    rulesCategories: defaultRulesCategories(),
+    rulesChannelId: "",
+    rulesColor: "#9333ea",
+    rulesFooterText: "NexTech © Todos os direitos reservados",
+    rulesImageFormat: "none" as RulesPanelImageFormat,
+    rulesImageUrl: "",
+    rulesMessage: "",
+    rulesRoleId: "",
+    rulesSubtitle: "Regras Oficiais do Servidor",
+    rulesTitle: "Regras e Diretrizes da Loja"
+  };
+}
+
+function defaultRulesCategories(): RulesPanelCategory[] {
+  return [
+    { description: "Trate todos com cordialidade e respeito.", emoji: "💜", enabled: true, id: "convivencia", name: "Convivência", order: 1, rules: ["Seja respeitoso com todos.", "Não será aceito qualquer tipo de drama, preconceito, assédio ou discurso de ódio."] },
+    { description: "Use os canais de forma clara e adequada.", emoji: "💬", enabled: true, id: "comunicacao", name: "Comunicação", order: 2, rules: ["Utilize uma linguagem adequada.", "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."] },
+    { description: "Conteúdos ofensivos, ilegais ou perigosos são proibidos.", emoji: "🚫", enabled: true, id: "conteudos-proibidos", name: "Conteúdos proibidos", order: 3, rules: ["Não compartilhe materiais que sejam ilegais.", "Pornográficos.", "Violentos ou perturbadores.", "Obscenos ou ofensivos."] }
+  ];
+}
+
+function createRulesCategoryDraft(order: number): RulesPanelCategory {
+  return {
+    description: "",
+    emoji: "💜",
+    enabled: true,
+    id: `categoria-${Date.now()}-${order}`,
+    name: "Nova categoria",
+    order,
+    rules: ["Nova regra"]
+  };
+}
+
+function createRulesButtonDraft(order: number): RulesPanelButton {
+  return {
+    action: order === 1 ? "accept" : "url",
+    command: null,
+    emoji: order === 1 ? "📖" : "🌐",
+    enabled: true,
+    id: `botao-${Date.now()}-${order}`,
+    label: order === 1 ? "Ler Regras" : "Site",
+    message: null,
+    order,
+    style: "primary",
+    url: null
+  };
+}
+
+function rulesPresetColorValue(color: string) {
+  return RULES_COLOR_OPTIONS.some((option) => option.value === color) ? color : "custom";
+}
+
+function rulesTextToLines(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function updateRulesCategory(
+  setDraft: Dispatch<SetStateAction<ReturnType<typeof defaultRulesDraft>>>,
+  id: string,
+  patch: Partial<RulesPanelCategory>
+) {
+  setDraft((current) => ({
+    ...current,
+    rulesCategories: current.rulesCategories.map((category) => category.id === id ? { ...category, ...patch } : category)
+  }));
+}
+
+function updateRulesButton(
+  setDraft: Dispatch<SetStateAction<ReturnType<typeof defaultRulesDraft>>>,
+  id: string,
+  patch: Partial<RulesPanelButton>
+) {
+  setDraft((current) => ({
+    ...current,
+    rulesButtons: current.rulesButtons.map((button) => button.id === id ? { ...button, ...patch } : button)
+  }));
+}
+
+function moveRulesItem<T extends { order: number }>(items: T[], from: number, to: number) {
+  const next = [...items];
+  const [item] = next.splice(from, 1);
+  if (!item) {
+    return next.map((value, index) => ({ ...value, order: index + 1 }));
+  }
+  next.splice(to, 0, item);
+  return next.map((value, index) => ({ ...value, order: index + 1 }));
+}
+
+function RulesPanelPreview({
+  draft,
+  settings
+}: {
+  draft: ReturnType<typeof defaultRulesDraft>;
+  settings: GuildSettings;
+}) {
+  const imageUrl = draft.rulesImageFormat === "none" ? "" : draft.rulesImageUrl || settings.rulesPanelImage?.imageUrl || "";
+
+  return (
+    <div className="max-w-2xl rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white shadow-2xl">
+      {imageUrl && draft.rulesImageFormat === "horizontal" ? (
+        <img alt="" className="mb-3 max-h-44 w-full rounded-md object-cover" src={imageUrl} />
+      ) : null}
+      <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.rulesColor }}>
+        <div className={imageUrl && draft.rulesImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
+          <div>
+            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.rulesTitle}</h3>
+            <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.rulesSubtitle}</p>
+            <div className="mt-3 space-y-4 text-[11px] leading-relaxed text-zinc-100">
+              {draft.rulesCategories.filter((category) => category.enabled !== false).map((category, index) => (
+                <section key={category.id}>
+                  <h4 className="font-extrabold text-white">{category.emoji || "💜"} {index + 1}. {category.name}</h4>
+                  {category.description ? <p className="mt-1 border-l border-zinc-500 pl-2 text-zinc-200">{category.description}</p> : null}
+                  <ul className="mt-2 space-y-1 border-l border-zinc-500 pl-2">
+                    {category.rules.map((rule, ruleIndex) => (
+                      <li key={`${category.id}-${ruleIndex}`}>• {rule}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+            {draft.rulesFooterText ? <p className="mt-4 text-[11px] italic text-zinc-100">{draft.rulesFooterText}</p> : null}
+          </div>
+          {imageUrl && draft.rulesImageFormat !== "horizontal" ? (
+            <img alt="" className={draft.rulesImageFormat === "vertical" ? "h-52 w-full rounded-md object-cover" : "aspect-square w-full rounded-md object-cover"} src={imageUrl} />
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {draft.rulesButtons.filter((button) => button.enabled !== false).map((button) => (
+          <span className="rounded-md bg-[#5865F2] px-3 py-2 text-xs font-bold text-white" key={button.id}>{button.emoji ? `${button.emoji} ` : ""}{button.label}</span>
+        ))}
+      </div>
     </div>
   );
 }

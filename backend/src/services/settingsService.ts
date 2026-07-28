@@ -87,15 +87,49 @@ export type GuildSettingsDto = {
   rulesChannelId: string | null;
   rulesRoleId: string | null;
   rulesTitle: string | null;
+  rulesSubtitle: string | null;
   rulesMessage: string | null;
   rulesButtonLabel: string | null;
   rulesColor: string;
+  rulesFooterText: string | null;
+  rulesImageFormat: RulesPanelImageFormat;
+  rulesImageUrl: string | null;
+  rulesPanelImage: PanelImageSettingsDto | null;
+  rulesButtons: RulesPanelButtonDto[];
+  rulesCategories: RulesPanelCategoryDto[];
   rulesPanelMessageId: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
   dashboardRolePermissions: Record<string, DashboardAccessLevel>;
   dashboardUserPermissions: Record<string, DashboardAccessLevel>;
+};
+
+export type RulesPanelImageFormat = "horizontal" | "square" | "vertical" | "none";
+export type RulesPanelButtonAction = "accept" | "url" | "message" | "ticket" | "command";
+export type RulesPanelButtonStyle = "primary" | "secondary" | "success" | "danger";
+
+export type RulesPanelButtonDto = {
+  action: RulesPanelButtonAction;
+  command: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  label: string;
+  message: string | null;
+  order: number;
+  style: RulesPanelButtonStyle;
+  url: string | null;
+};
+
+export type RulesPanelCategoryDto = {
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+  rules: string[];
 };
 
 export type GlobalLogConfigDto = {
@@ -261,6 +295,19 @@ export type SafeBotMessageStateDto = {
   updatedAt: string;
 };
 
+type GuildSettingsUpdateInput = Partial<
+  Omit<
+    GuildSettingsDto,
+    "globalLogConfig" | "reportSystem" | "rulesButtons" | "rulesCategories" | "rulesImageFormat"
+  > & {
+    globalLogConfig?: unknown;
+    reportSystem?: unknown;
+    rulesButtons?: unknown;
+    rulesCategories?: unknown;
+    rulesImageFormat?: unknown;
+  }
+>;
+
 const memorySettings = new Map<string, GuildSettingsDto>();
 const DEFAULT_PANEL_COLOR = "#ef4444";
 const DEFAULT_MEMBER_PANEL_COLOR = "#f5c542";
@@ -396,6 +443,7 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
 const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 1000;
 const MAX_EMOJI_CLONE_MAX_PER_RUN = 1000;
 const DEFAULT_RULES_TITLE = "Regras da comunidade";
+const DEFAULT_RULES_SUBTITLE = "Regras Oficiais do Servidor";
 const DEFAULT_RULES_MESSAGE = [
   "Respeite todos os membros. Ofensas, preconceito, assedio ou discriminacao não serão tolerados.",
   "Não publique conteúdo adulto, violento, chocante ou ilegal.",
@@ -405,6 +453,64 @@ const DEFAULT_RULES_MESSAGE = [
   "Use os canais corretos e siga as orientacoes da equipe."
 ].join("\n");
 const DEFAULT_RULES_BUTTON_LABEL = "Li e aceito";
+const DEFAULT_RULES_FOOTER_TEXT = "NexTech © Todos os direitos reservados";
+const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
+  {
+    description: "Trate todos com cordialidade e respeito.",
+    emoji: "💜",
+    enabled: true,
+    id: "convivencia",
+    name: "Convivência",
+    order: 1,
+    rules: [
+      "Seja respeitoso com todos.",
+      "Não será aceito qualquer tipo de drama, preconceito, assédio ou discurso de ódio."
+    ]
+  },
+  {
+    description: "Use os canais de forma clara e adequada.",
+    emoji: "💬",
+    enabled: true,
+    id: "comunicacao",
+    name: "Comunicação",
+    order: 2,
+    rules: [
+      "Utilize uma linguagem adequada.",
+      "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."
+    ]
+  },
+  {
+    description: "Conteúdos ofensivos, ilegais ou perigosos são proibidos.",
+    emoji: "🚫",
+    enabled: true,
+    id: "conteudos-proibidos",
+    name: "Conteúdos proibidos",
+    order: 3,
+    rules: [
+      "Não compartilhe materiais que sejam ilegais.",
+      "Pornográficos.",
+      "Violentos ou perturbadores.",
+      "Obscenos ou ofensivos."
+    ]
+  }
+];
+const DEFAULT_RULES_BUTTONS: RulesPanelButtonDto[] = [
+  {
+    action: "accept",
+    command: null,
+    emoji: "📖",
+    enabled: true,
+    id: "read-rules",
+    label: "Ler Regras",
+    message: null,
+    order: 1,
+    style: "primary",
+    url: null
+  }
+];
+const RULES_IMAGE_FORMATS = new Set<RulesPanelImageFormat>(["horizontal", "square", "vertical", "none"]);
+const RULES_BUTTON_ACTIONS = new Set<RulesPanelButtonAction>(["accept", "url", "message", "ticket", "command"]);
+const RULES_BUTTON_STYLES = new Set<RulesPanelButtonStyle>(["primary", "secondary", "success", "danger"]);
 const DEFAULT_TICKET_PANEL_TITLE = "Central de Suporte";
 const DEFAULT_TICKET_PANEL_DESCRIPTION = "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.";
 const DEFAULT_TICKET_PANEL_INFO_TEXT = [
@@ -518,9 +624,16 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     rulesChannelId: null,
     rulesRoleId: null,
     rulesTitle: DEFAULT_RULES_TITLE,
+    rulesSubtitle: DEFAULT_RULES_SUBTITLE,
     rulesMessage: DEFAULT_RULES_MESSAGE,
     rulesButtonLabel: DEFAULT_RULES_BUTTON_LABEL,
     rulesColor: DEFAULT_PANEL_COLOR,
+    rulesFooterText: DEFAULT_RULES_FOOTER_TEXT,
+    rulesImageFormat: "none",
+    rulesImageUrl: null,
+    rulesPanelImage: null,
+    rulesButtons: DEFAULT_RULES_BUTTONS.map((button) => ({ ...button })),
+    rulesCategories: DEFAULT_RULES_CATEGORIES.map((category) => ({ ...category, rules: [...category.rules] })),
     rulesPanelMessageId: null,
     verificationEnabled: false,
     verificationRoleId: null,
@@ -605,7 +718,7 @@ export async function getPersistedDashboardAccess(
 
 export async function updateGuildSettings(
   guildId: string,
-  input: Partial<Omit<GuildSettingsDto, "globalLogConfig" | "reportSystem"> & { globalLogConfig?: unknown; reportSystem?: unknown }>,
+  input: GuildSettingsUpdateInput,
   botId?: string | null
 ) {
   const normalizedBotId = normalizeBotId(botId);
@@ -691,9 +804,16 @@ export async function updateGuildSettings(
       "rulesRoleId" in input ? input.rulesRoleId : current.rulesRoleId
     ),
     rulesTitle: normalizePanelText("rulesTitle" in input ? input.rulesTitle : current.rulesTitle) || DEFAULT_RULES_TITLE,
+    rulesSubtitle: normalizePanelText("rulesSubtitle" in input ? input.rulesSubtitle : current.rulesSubtitle) || DEFAULT_RULES_SUBTITLE,
     rulesMessage: normalizePanelText("rulesMessage" in input ? input.rulesMessage : current.rulesMessage) || DEFAULT_RULES_MESSAGE,
     rulesButtonLabel: normalizePanelText("rulesButtonLabel" in input ? input.rulesButtonLabel : current.rulesButtonLabel) || DEFAULT_RULES_BUTTON_LABEL,
     rulesColor: normalizePanelColor("rulesColor" in input ? input.rulesColor : current.rulesColor),
+    rulesFooterText: normalizePanelText("rulesFooterText" in input ? input.rulesFooterText : current.rulesFooterText) || DEFAULT_RULES_FOOTER_TEXT,
+    rulesImageFormat: normalizeRulesImageFormat("rulesImageFormat" in input ? input.rulesImageFormat : current.rulesImageFormat),
+    rulesImageUrl: normalizeOptionalUrl("rulesImageUrl" in input ? input.rulesImageUrl : current.rulesImageUrl),
+    rulesPanelImage: current.rulesPanelImage,
+    rulesButtons: normalizeRulesButtons("rulesButtons" in input ? input.rulesButtons : current.rulesButtons),
+    rulesCategories: normalizeRulesCategories("rulesCategories" in input ? input.rulesCategories : current.rulesCategories, "rulesMessage" in input ? input.rulesMessage ?? null : current.rulesMessage),
     rulesPanelMessageId: normalizeSnowflake("rulesPanelMessageId" in input ? input.rulesPanelMessageId : current.rulesPanelMessageId),
     ticketPanelChannelId: normalizeSnowflake("ticketPanelChannelId" in input ? input.ticketPanelChannelId : current.ticketPanelChannelId),
     ticketPanelMessageId: normalizeSnowflake("ticketPanelMessageId" in input ? input.ticketPanelMessageId : current.ticketPanelMessageId),
@@ -805,9 +925,15 @@ export async function updateGuildSettings(
           rulesChannelId: next.rulesChannelId,
           rulesRoleId: next.rulesRoleId,
           rulesTitle: next.rulesTitle,
+          rulesSubtitle: next.rulesSubtitle,
           rulesMessage: next.rulesMessage,
           rulesButtonLabel: next.rulesButtonLabel,
           rulesColor: next.rulesColor,
+          rulesFooterText: next.rulesFooterText,
+          rulesImageFormat: next.rulesImageFormat,
+          rulesImageUrl: next.rulesImageUrl,
+          rulesButtons: next.rulesButtons,
+          rulesCategories: next.rulesCategories,
           rulesPanelMessageId: next.rulesPanelMessageId,
           verificationEnabled: next.verificationEnabled,
           verificationRoleId: next.verificationRoleId,
@@ -1001,9 +1127,16 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     rulesChannelId: normalizeSnowflake(settings.rulesChannelId),
     rulesRoleId: normalizeSnowflake(settings.rulesRoleId),
     rulesTitle: normalizePanelText(settings.rulesTitle) || DEFAULT_RULES_TITLE,
+    rulesSubtitle: normalizePanelText(settings.rulesSubtitle) || DEFAULT_RULES_SUBTITLE,
     rulesMessage: normalizePanelText(settings.rulesMessage) || DEFAULT_RULES_MESSAGE,
     rulesButtonLabel: normalizePanelText(settings.rulesButtonLabel) || DEFAULT_RULES_BUTTON_LABEL,
     rulesColor: normalizePanelColor(settings.rulesColor),
+    rulesFooterText: normalizePanelText(settings.rulesFooterText) || DEFAULT_RULES_FOOTER_TEXT,
+    rulesImageFormat: normalizeRulesImageFormat(settings.rulesImageFormat),
+    rulesImageUrl: normalizeOptionalUrl(settings.rulesImageUrl),
+    rulesPanelImage: null,
+    rulesButtons: normalizeRulesButtons(settings.rulesButtons),
+    rulesCategories: normalizeRulesCategories(settings.rulesCategories, settings.rulesMessage),
     rulesPanelMessageId: normalizeSnowflake(settings.rulesPanelMessageId),
     verificationEnabled: settings.verificationEnabled,
     verificationRoleId: verificationRoleIds[0] ?? null,
@@ -1033,6 +1166,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelBannerImage: null,
       ticketPanelSecondaryBannerImage: null,
       ticketPanelFooterImage: null,
+      rulesPanelImage: null,
       welcomePanelImage: null
     };
   }
@@ -1045,7 +1179,8 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelLogoImage,
       ticketPanelBannerImage,
       ticketPanelSecondaryBannerImage,
-      ticketPanelFooterImage
+      ticketPanelFooterImage,
+      rulesPanelImage
     ] = await Promise.all([
       getPanelImageSettings(settings.guildId, settings.botId, "welcome"),
       getPanelImageSettings(settings.guildId, settings.botId, "leave"),
@@ -1053,7 +1188,8 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       getPanelImageSettings(settings.guildId, settings.botId, "ticket-logo"),
       getPanelImageSettings(settings.guildId, settings.botId, "ticket-banner"),
       getPanelImageSettings(settings.guildId, settings.botId, "ticket-banner-secondary"),
-      getPanelImageSettings(settings.guildId, settings.botId, "ticket-footer")
+      getPanelImageSettings(settings.guildId, settings.botId, "ticket-footer"),
+      getPanelImageSettings(settings.guildId, settings.botId, "rules")
     ]);
 
     return {
@@ -1064,6 +1200,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelBannerImage: ticketPanelBannerImage.imageEnabled ? ticketPanelBannerImage : null,
       ticketPanelSecondaryBannerImage: ticketPanelSecondaryBannerImage.imageEnabled ? ticketPanelSecondaryBannerImage : null,
       ticketPanelFooterImage: ticketPanelFooterImage.imageEnabled ? ticketPanelFooterImage : null,
+      rulesPanelImage: rulesPanelImage.imageEnabled ? rulesPanelImage : null,
       welcomePanelImage: welcomePanelImage.imageEnabled ? welcomePanelImage : null
     };
   } catch (error) {
@@ -1076,6 +1213,7 @@ async function withPanelImageSettings(settings: GuildSettingsDto): Promise<Guild
       ticketPanelBannerImage: null,
       ticketPanelSecondaryBannerImage: null,
       ticketPanelFooterImage: null,
+      rulesPanelImage: null,
       welcomePanelImage: null
     };
   }
@@ -1453,6 +1591,140 @@ function normalizeMemberPanelSections(value: unknown, fallback: MemberPanelSecti
     }));
 
   return sections.length ? sections : fallback.map((section) => ({ ...section }));
+}
+
+function normalizeRulesImageFormat(value: unknown): RulesPanelImageFormat {
+  return typeof value === "string" && RULES_IMAGE_FORMATS.has(value as RulesPanelImageFormat)
+    ? value as RulesPanelImageFormat
+    : "none";
+}
+
+function normalizeOptionalUrl(value: unknown) {
+  const normalized = normalizeNullableText(value, 2048);
+  return normalized && /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function normalizeRulesCategories(value: unknown, legacyMessage?: string | null): RulesPanelCategoryDto[] {
+  const source = Array.isArray(value) && value.length ? value : rulesCategoriesFromLegacyMessage(legacyMessage);
+  const seen = new Set<string>();
+  const categories = source
+    .map((item, index): RulesPanelCategoryDto | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const name = normalizeNullableText(record.name, 100);
+      if (!name) return null;
+
+      const fallbackId = slug(name) || `categoria-${index + 1}`;
+      const id = normalizeNullableText(record.id, 80) ?? fallbackId;
+      if (seen.has(id)) return null;
+      seen.add(id);
+
+      const rules = asArray(record.rules)
+        .map((rule) => cleanRuleText(rule).slice(0, 300))
+        .filter(Boolean)
+        .slice(0, 40);
+
+      if (!rules.length) return null;
+
+      return {
+        description: normalizeNullableText(record.description, 500),
+        emoji: normalizeNullableSystemEmojiText(record.emoji),
+        enabled: record.enabled !== false,
+        id,
+        name,
+        order: clampInteger(Number(record.order ?? index + 1), 1, 1000, index + 1),
+        rules
+      };
+    })
+    .filter((item): item is RulesPanelCategoryDto => Boolean(item))
+    .slice(0, 12)
+    .sort((left, right) => left.order - right.order)
+    .map((category, index) => ({
+      ...category,
+      order: index + 1
+    }));
+
+  return categories.length
+    ? categories
+    : DEFAULT_RULES_CATEGORIES.map((category) => ({ ...category, rules: [...category.rules] }));
+}
+
+function rulesCategoriesFromLegacyMessage(message?: string | null): RulesPanelCategoryDto[] {
+  const rules = (message || DEFAULT_RULES_MESSAGE)
+    .split(/\r?\n/)
+    .map(cleanRuleText)
+    .filter(Boolean)
+    .slice(0, 40);
+
+  return [
+    {
+      description: "Leia com atenção antes de participar.",
+      emoji: "📜",
+      enabled: true,
+      id: "regras-gerais",
+      name: "Regras gerais",
+      order: 1,
+      rules: rules.length ? rules : [...(DEFAULT_RULES_CATEGORIES[0]?.rules ?? ["Respeite as regras do servidor."])]
+    }
+  ];
+}
+
+function normalizeRulesButtons(value: unknown): RulesPanelButtonDto[] {
+  const source = Array.isArray(value) && value.length ? value : DEFAULT_RULES_BUTTONS;
+  const seen = new Set<string>();
+  const buttons = source
+    .map((item, index): RulesPanelButtonDto | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const action = normalizeRulesButtonAction(record.action);
+      const label = normalizeNullableText(record.label, 80) ?? (action === "accept" ? DEFAULT_RULES_BUTTON_LABEL : "Abrir");
+      const fallbackId = slug(label) || `botao-${index + 1}`;
+      const id = normalizeNullableText(record.id, 80) ?? fallbackId;
+      if (seen.has(id)) return null;
+      seen.add(id);
+
+      return {
+        action,
+        command: normalizeNullableText(record.command, 120),
+        emoji: normalizeNullableSystemEmojiText(record.emoji),
+        enabled: record.enabled !== false,
+        id,
+        label,
+        message: normalizeNullableText(record.message, 500),
+        order: clampInteger(Number(record.order ?? index + 1), 1, 1000, index + 1),
+        style: normalizeRulesButtonStyle(record.style),
+        url: normalizeOptionalUrl(record.url)
+      };
+    })
+    .filter((item): item is RulesPanelButtonDto => Boolean(item))
+    .filter((button) => button.action !== "url" || Boolean(button.url))
+    .slice(0, 5)
+    .sort((left, right) => left.order - right.order)
+    .map((button, index) => ({
+      ...button,
+      order: index + 1
+    }));
+
+  return buttons.length ? buttons : DEFAULT_RULES_BUTTONS.map((button) => ({ ...button }));
+}
+
+function normalizeRulesButtonAction(value: unknown): RulesPanelButtonAction {
+  return typeof value === "string" && RULES_BUTTON_ACTIONS.has(value as RulesPanelButtonAction)
+    ? value as RulesPanelButtonAction
+    : "accept";
+}
+
+function normalizeRulesButtonStyle(value: unknown): RulesPanelButtonStyle {
+  return typeof value === "string" && RULES_BUTTON_STYLES.has(value as RulesPanelButtonStyle)
+    ? value as RulesPanelButtonStyle
+    : "primary";
+}
+
+function cleanRuleText(value: string) {
+  return value
+    .replace(/^\s*(?:[-•*]|\d+[.)-])\s*/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {

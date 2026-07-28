@@ -115,15 +115,49 @@ export type GuildSettings = {
   rulesChannelId: string | null;
   rulesRoleId: string | null;
   rulesTitle: string | null;
+  rulesSubtitle: string | null;
   rulesMessage: string | null;
   rulesButtonLabel: string | null;
   rulesColor: string;
+  rulesFooterText: string | null;
+  rulesImageFormat: RulesPanelImageFormat;
+  rulesImageUrl: string | null;
+  rulesPanelImage: PanelImageSettings | null;
+  rulesButtons: RulesPanelButton[];
+  rulesCategories: RulesPanelCategory[];
   rulesPanelMessageId: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
   dashboardRolePermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
   dashboardUserPermissions?: Record<string, "admin" | "moderator" | "premium" | "basic">;
+};
+
+export type RulesPanelImageFormat = "horizontal" | "square" | "vertical" | "none";
+export type RulesPanelButtonAction = "accept" | "url" | "message" | "ticket" | "command";
+export type RulesPanelButtonStyle = "primary" | "secondary" | "success" | "danger";
+
+export type RulesPanelButton = {
+  action: RulesPanelButtonAction;
+  command: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  label: string;
+  message: string | null;
+  order: number;
+  style: RulesPanelButtonStyle;
+  url: string | null;
+};
+
+export type RulesPanelCategory = {
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  id: string;
+  name: string;
+  order: number;
+  rules: string[];
 };
 
 export type MemberPanelSection = {

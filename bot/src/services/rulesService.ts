@@ -1,11 +1,12 @@
 import type { ButtonInteraction, GuildMember } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
-import type { BotContext } from "../types";
+import type { BotContext, RulesPanelButton } from "../types";
 
 const RULES_ACCEPT_BUTTON_ID = "rules_accept";
+const RULES_ACTION_BUTTON_PREFIX = "rules_action:";
 
 export async function handleRulesInteraction(interaction: ButtonInteraction, context: BotContext) {
-  if (interaction.customId !== RULES_ACCEPT_BUTTON_ID) {
+  if (interaction.customId !== RULES_ACCEPT_BUTTON_ID && !interaction.customId.startsWith(RULES_ACTION_BUTTON_PREFIX)) {
     return false;
   }
 
@@ -32,6 +33,22 @@ export async function handleRulesInteraction(interaction: ButtonInteraction, con
       content: "O sistema de regras está desativado neste servidor.",
       ephemeral: true
     });
+    return true;
+  }
+
+  if (interaction.customId.startsWith(RULES_ACTION_BUTTON_PREFIX)) {
+    const buttonId = interaction.customId.slice(RULES_ACTION_BUTTON_PREFIX.length);
+    const button = settings.rulesButtons.find((item) => item.id === buttonId && item.enabled !== false);
+
+    if (!button) {
+      await interaction.reply({
+        content: "Esse botão não está mais disponível.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    await handleRulesActionButton(interaction, button, context);
     return true;
   }
 
@@ -83,6 +100,62 @@ export async function handleRulesInteraction(interaction: ButtonInteraction, con
   }
 
   return true;
+}
+
+async function handleRulesActionButton(
+  interaction: ButtonInteraction,
+  button: RulesPanelButton,
+  context: BotContext
+) {
+  if (button.action === "message") {
+    await interaction.reply({
+      content: button.message || "Mensagem configurada no painel de regras.",
+      ephemeral: true
+    });
+    await logRulesButton(interaction, context, button.id, "message");
+    return;
+  }
+
+  if (button.action === "ticket") {
+    const settings = await context.api.getSettings(interaction.guildId!, interaction.client.user?.id);
+    await interaction.reply({
+      content: settings.ticketPanelChannelId
+        ? `Abra um atendimento em <#${settings.ticketPanelChannelId}>.`
+        : "O atendimento por ticket ainda não foi configurado neste servidor.",
+      ephemeral: true
+    });
+    await logRulesButton(interaction, context, button.id, "ticket");
+    return;
+  }
+
+  if (button.action === "command") {
+    await interaction.reply({
+      content: button.command ? `Use o comando \`/${button.command.replace(/^\//, "")}\`.` : "Nenhum comando foi configurado para este botão.",
+      ephemeral: true
+    });
+    await logRulesButton(interaction, context, button.id, "command");
+    return;
+  }
+
+  await interaction.reply({
+    content: "Ação indisponível.",
+    ephemeral: true
+  });
+}
+
+async function logRulesButton(interaction: ButtonInteraction, context: BotContext, buttonId: string, action: string) {
+  if (!interaction.guildId) return;
+
+  await context.api.postLog({
+    guildId: interaction.guildId,
+    userId: interaction.user.id,
+    type: "rules.button_clicked",
+    message: `${interaction.user.tag} acionou um botão do painel de regras.`,
+    metadata: {
+      action,
+      buttonId
+    }
+  }).catch(() => null);
 }
 
 async function resolveGuildMember(interaction: ButtonInteraction) {
