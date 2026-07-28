@@ -84,7 +84,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "nextech-invites" | "sales" | "plans" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -109,7 +109,6 @@ const DEV_NAV_GROUPS: Array<{ items: DevNavItem[]; label: string }> = [
     items: [
       { icon: Sparkles, id: "nextech", label: "Menu NexTech" },
       { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
-      { icon: KeyRound, id: "nextech-invites", label: "Sistema de Convites" },
       { icon: PackagePlus, id: "plans", label: "Planos" }
     ]
   },
@@ -288,18 +287,6 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
           <DevNexTechHub onChangeView={handleChangeView} />
         ) : null}
 
-        {activeView === "nextech-invites" ? (
-          <DevNexTechInvitesPanel
-            bots={profile.bots}
-            guilds={profile.guilds}
-            onBotUpdated={handleBotUpdated}
-            onSelectBot={setSelectedBotId}
-            selectedBotId={selectedBotId}
-            selectedGuildId={selectedGuildId}
-            onSelectGuild={setSelectedGuildId}
-          />
-        ) : null}
-
         {activeView === "sales" ? (
           <DevSalesManager
             bots={profile.bots}
@@ -366,7 +353,6 @@ function devPathForView(view: DevView) {
   if (view === "bot-menu") return "/dev/menu-do-bot";
   if (view === "cloning") return "/dev/clonagem";
   if (view === "nextech") return "/dev/nextech";
-  if (view === "nextech-invites") return "/dev/nextech/convites";
   if (view === "sales") return "/dev/sistema-de-vendas";
   if (view === "plans") return "/dev/planos";
   if (view === "monitoring") return "/dev/monitoramento";
@@ -517,13 +503,6 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
       label: "Sistema de Vendas",
       stats: "Produtos e pagamentos",
       view: "sales" as DevView
-    },
-    {
-      description: "Convites oficiais para controlar quais clientes e servidores podem usar a NexTech.",
-      icon: KeyRound,
-      label: "Sistema de Convites",
-      stats: "Autorização por código",
-      view: "nextech-invites" as DevView
     },
     {
       description: "Criação e liberação dos planos comerciais usados pela plataforma.",
