@@ -154,7 +154,6 @@ const navSectionLabels: Record<NavSectionId, string> = {
 };
 
 const navItems: NavItem[] = [
-  { id: "overview", label: "Visao geral", icon: Activity },
   { id: "lives", label: "Lives", icon: Radio, moduleIds: ["live", "kick-integration"] },
   { id: "clips", label: "Clips", icon: Film, moduleId: "clips" },
   { id: "kick-clips", label: "Clipes Kick", icon: Film, moduleId: "kick-clips" },
@@ -417,7 +416,7 @@ export function Sidebar({
 }: SidebarProps) {
   const enabledModuleSet = new Set(enabledModules);
   const visibleItems = navItems.filter((item) => {
-    if (item.id === "overview" || item.id === "plans" || item.id === "notifications" || item.id === "delete-channels") {
+    if (item.id === "plans" || item.id === "notifications" || item.id === "delete-channels") {
       return true;
     }
 
@@ -556,7 +555,7 @@ function BotManagementSidebar({
   }, [bots, query]);
   const botOnline = Boolean(selectedBot && (selectedBot.status === "online" || status.online));
   const botNavItems = navItems.filter((item) => {
-    if (item.id === "overview" || item.id === "plans" || item.id === "notifications" || item.id === "delete-channels") return true;
+    if (item.id === "plans" || item.id === "notifications" || item.id === "delete-channels") return true;
     if (item.moduleId) return enabledModuleSet.has(item.moduleId);
     return Boolean(item.moduleIds?.some((moduleId) => enabledModuleSet.has(moduleId)));
   });

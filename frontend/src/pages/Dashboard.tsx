@@ -58,7 +58,6 @@ import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { BoosterPanel } from "../components/boosters/BoosterPanel";
 import { CustomBotOrdersPanel } from "../components/custom-bot-orders/CustomBotOrdersPanel";
 import { CoursesPanel } from "../components/courses/CoursesPanel";
-import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
 import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
@@ -125,7 +124,6 @@ import {
     getApplicationEmojiSettings,
     getApplicationEmojis,
     getAutoActivityClockDashboard,
-    getClipsConfig,
     getCustomerPlansDashboard,
     getDashboardBotGuildConfig,
     getDashboardBySlug,
@@ -139,18 +137,14 @@ import {
     getGuildLiveOptions,
     getGuildMemberOptions,
     getGuildSettings,
-    getKickNotifications,
     getLiveDetectionSettings,
     getLives,
     getLogs,
     getManualRegistrationDashboard,
     getMessageControlDashboard,
     getPoliceTimeClockDashboard,
-    getSelfBotProtection,
     getServerBackupDashboard,
-    getSocialNotifications,
     getTickets,
-    getXMonitor,
     listPanelImageSettings,
     patchGuildSettings,
     previewServerBackupRestore,
@@ -201,7 +195,6 @@ import type {
     BotGuildConfig,
     BotStatus,
     ClipSent,
-    ClipsConfig,
     CustomerPlansDashboard,
     DashboardBot,
     DashboardGuild,
@@ -228,7 +221,6 @@ import type {
     GuildRoleOption,
     GuildSettings,
     GuildVoiceChannelOption,
-    KickNotification,
     LiveDetectionSettings,
     LiveEvent,
     LogCategory,
@@ -250,7 +242,6 @@ import type {
     RulesPanelButtonStyle,
     RulesPanelCategory,
     RulesPanelImageFormat,
-    SelfBotProtectionSettings,
     ServerBackupDashboard,
     ServerBackupRestoreJob,
     ServerBackupRestoreMode,
@@ -258,10 +249,8 @@ import type {
     ServerBackupRestorePreview,
     ServerBackupSettings,
     ServerBackupSnapshot,
-    SocialNotification,
     Ticket,
-    TicketPanelOption,
-    XAccount
+    TicketPanelOption
 } from "../types";
 
 const PANEL_EMOJIS = {
@@ -299,15 +288,6 @@ type BooleanSettingKey =
   | "moderationEnabled"
   | "rulesEnabled";
 
-type OverviewDetails = {
-  selfBotProtectionSettings: SelfBotProtectionSettings | null;
-  clipsConfig: ClipsConfig | null;
-  kickClipsConfig: ClipsConfig | null;
-  kickNotifications: KickNotification[];
-  liveNotifications: SocialNotification[];
-  xAccounts: XAccount[];
-};
-
 type ModuleDefinition = {
   id: string;
   title: string;
@@ -332,14 +312,6 @@ const initialBotStatus: BotStatus = {
   updatedAt: new Date().toISOString()
 };
 
-const emptyOverviewDetails: OverviewDetails = {
-  selfBotProtectionSettings: null,
-  clipsConfig: null,
-  kickClipsConfig: null,
-  kickNotifications: [],
-  liveNotifications: [],
-  xAccounts: []
-};
 const emptyPanelBots: DashboardBot[] = [];
 const emptyEnabledModules: string[] = [];
 
@@ -978,7 +950,6 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [customerPlans, setCustomerPlans] = useState<CustomerPlansDashboard | null>(null);
   const [maintenanceState, setMaintenanceState] = useState<MaintenanceState | null>(null);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
-  const [overviewDetails, setOverviewDetails] = useState<OverviewDetails>(emptyOverviewDetails);
   const [fivemModules, setFivemModules] = useState<FivemModuleDefinition[]>([]);
   const [botGuildConfig, setBotGuildConfig] = useState<BotGuildConfig | null>(null);
   const [releasingServerModuleId, setReleasingServerModuleId] = useState<string | null>(null);
@@ -1031,10 +1002,6 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   );
   const canReleaseServerModule = (moduleId: string) => canManageModule(selectedBot, moduleId, canManageDashboard);
   const isServerModuleReleased = (moduleId: string) => botGuildConfig?.modules?.[moduleId]?.enabled !== false;
-  const availableModules = useMemo(
-    () => moduleCatalog.filter((module) => hasReleasedModule(enabledModules, module.id)),
-    [enabledModulesKey]
-  );
   const selectedBotPlanNotice = useMemo(
     () => buildSelectedBotPlanNotice(customerPlans, selectedBot),
     [customerPlans, selectedBot?.id]
@@ -1168,10 +1135,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
 
   useEffect(() => {
     if (dashboardProfileLoading || !selectedBot) return;
-    if (!isViewAllowed(activeView, enabledModules)) {
-      setActiveView("overview");
+    if (activeView === "overview" || !isViewAllowed(activeView, enabledModules)) {
+      const fallbackView = firstAllowedDashboardView(enabledModules);
+
+      setActiveView(fallbackView);
+      window.history.replaceState({}, "", dashboardPathForView(selectedBot.slug, fallbackView));
     }
-  }, [activeView, dashboardProfileLoading, enabledModulesKey, selectedBot?.id]);
+  }, [activeView, dashboardProfileLoading, enabledModulesKey, selectedBot?.id, selectedBot?.slug]);
 
   useEffect(() => {
     if (!enabledModules.some((moduleId) => moduleId === "fivem" || moduleId.startsWith("fivem-"))) {
@@ -1214,13 +1184,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       setLogs([]);
       setLives([]);
       setTickets([]);
-      setOverviewDetails(emptyOverviewDetails);
       return;
     }
 
     if (!selectedGuildId) {
       setSettings(null);
-      setOverviewDetails(emptyOverviewDetails);
       return;
     }
 
@@ -1229,7 +1197,6 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       setLogs([]);
       setLives([]);
       setTickets([]);
-      setOverviewDetails(emptyOverviewDetails);
       setSettingsLoading(false);
       return;
     }
@@ -1243,33 +1210,15 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       getGuildSettings(selectedGuildId, activeBotId),
       activeBotId && logsModuleEnabled ? getLogs(selectedGuildId, activeBotId) : Promise.resolve([]),
       getLives(selectedGuildId, activeBotId),
-      activeBotId && ticketsModuleEnabled ? getTickets(selectedGuildId, activeBotId) : Promise.resolve([]),
-      enabledModules.includes("live") ? getSocialNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
-      liveModulesEnabled(enabledModules) ? getKickNotifications(selectedGuildId, activeBotId) : Promise.resolve(null),
-      enabledModules.includes("clips") ? getClipsConfig(selectedGuildId, activeBotId, "twitch") : Promise.resolve(null),
-      enabledModules.includes("kick-clips") ? getClipsConfig(selectedGuildId, activeBotId, "kick") : Promise.resolve(null),
-      enabledModules.includes("x-monitor") ? getXMonitor(selectedGuildId, activeBotId) : Promise.resolve(null),
-      enabledModules.includes("safe-bot") && activeBotId
-        ? getSelfBotProtection(selectedGuildId, activeBotId)
-        : Promise.resolve(null)
+      activeBotId && ticketsModuleEnabled ? getTickets(selectedGuildId, activeBotId) : Promise.resolve([])
     ])
-      .then(([settingsResult, logsResult, livesResult, ticketsResult, liveResult, kickResult, clipsResult, kickClipsResult, xResult, selfBotResult]) => {
+      .then(([settingsResult, logsResult, livesResult, ticketsResult]) => {
         if (!mounted) return;
 
         setSettings(settingsResult.status === "fulfilled" ? settingsResult.value : null);
         setLogs(logsResult.status === "fulfilled" ? userVisibleLogs(logsResult.value) : []);
         setLives(livesResult.status === "fulfilled" ? livesResult.value : []);
         setTickets(ticketsResult.status === "fulfilled" ? ticketsResult.value : []);
-        setOverviewDetails({
-          selfBotProtectionSettings: selfBotResult.status === "fulfilled" && selfBotResult.value
-            ? selfBotResult.value.settings
-            : null,
-          kickClipsConfig: kickClipsResult.status === "fulfilled" ? kickClipsResult.value : null,
-          liveNotifications: liveResult.status === "fulfilled" && liveResult.value ? liveResult.value.notifications : [],
-          kickNotifications: kickResult.status === "fulfilled" && kickResult.value ? kickResult.value.notifications : [],
-          clipsConfig: clipsResult.status === "fulfilled" ? clipsResult.value : null,
-          xAccounts: xResult.status === "fulfilled" && xResult.value ? xResult.value.accounts : []
-        });
       })
       .finally(() => {
         if (mounted) {
@@ -1497,15 +1446,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : (
           <>
 
-        {activeView !== "overview" ? (
-          <UserDashboardHeader
-            bot={selectedBot}
-            selectedGuild={selectedGuild}
-            status={displayedBotStatus}
-          />
-        ) : null}
+        <UserDashboardHeader
+          bot={selectedBot}
+          selectedGuild={selectedGuild}
+          status={displayedBotStatus}
+        />
 
-        {activeView !== "overview" && activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" && isViewAllowed(activeView, enabledModules) ? (
+        {activeView !== "plans" && activeView !== "tickets" && activeView !== "delete-channels" && activeView !== "fivem-hierarchy" && activeView !== "police-daf-roster" && isViewAllowed(activeView, enabledModules) ? (
           <>
             <PanelImageSettings
               botId={activeBotId}
@@ -1526,18 +1473,6 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
               />
             ) : null}
           </>
-        ) : null}
-
-        {activeView === "overview" ? (
-          <OverviewView
-            availableModules={availableModules}
-            bot={selectedBot}
-            details={overviewDetails}
-            guild={selectedGuild}
-            onConfigure={handleChangeView}
-            settings={settings}
-            status={displayedBotStatus}
-          />
         ) : null}
 
 
@@ -4980,9 +4915,7 @@ function DashboardNoticeCenter({
                 <p className="mt-1 text-sm leading-6 text-zinc-300">
                   Obrigado pela confiança. Sua assinatura {planNotice.planName} está ativa{bot?.name ? ` para ${bot.name}` : ""} e os avisos importantes deste bot aparecem aqui.
                 </p>
-                {activeView !== "overview" ? (
-                  <p className="mt-2 text-xs text-zinc-500">Aba atual: {labelForView(activeView)}.</p>
-                ) : null}
+                <p className="mt-2 text-xs text-zinc-500">Aba atual: {labelForView(activeView)}.</p>
               </div>
             </div>
             <div className="grid gap-2 text-sm">
@@ -5543,173 +5476,6 @@ function ServerModuleReleasePanel({
         <Button disabled={!canRelease || releasing} onClick={onRelease} type="button">
           {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
           Liberar neste servidor
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function OverviewView({
-  availableModules,
-  bot,
-  details,
-  guild,
-  onConfigure,
-  settings,
-  status
-}: {
-  availableModules: ModuleDefinition[];
-  bot: DashboardBot | null;
-  details: OverviewDetails;
-  guild: DashboardGuild | null;
-  onConfigure: (view: ViewId) => void;
-  settings: GuildSettings | null;
-  status: BotStatus;
-}) {
-  const moduleSummaries = availableModules.map((module) => ({
-    ...module,
-    state: moduleState(module.id, settings, details)
-  }));
-  const activeModules = moduleSummaries.filter((module) => module.state.active).length;
-
-  return (
-    <DashboardHome
-      activeModules={activeModules}
-      botOnline={status.online}
-      channelCount={guild?.channelCount ?? bot?.mainGuildChannelCount ?? 0}
-      guildName={guild?.name ?? "Servidor não selecionado"}
-      memberCount={guild?.memberCount ?? bot?.mainGuildMemberCount ?? 0}
-      modules={availableModules.map((module) => ({
-        description: module.description,
-        icon: module.icon,
-        id: module.id,
-        onOpen: () => onConfigure(module.view),
-        title: module.title
-      }))}
-      totalModules={availableModules.length}
-    />
-  );
-}
-
-function IsolationStatusPanel({
-  availableModuleCount,
-  bot,
-  details,
-  status,
-  totalModuleCount
-}: {
-  availableModuleCount: number;
-  bot: DashboardBot | null;
-  details: OverviewDetails;
-  status: BotStatus;
-  totalModuleCount: number;
-}) {
-  const selfBotSettings = details.selfBotProtectionSettings;
-  const selfBotActive = Boolean(selfBotSettings?.enabled && bot?.enabledModules.includes("safe-bot"));
-  const items = [
-    {
-      label: "Bot ID",
-      value: bot?.id ?? "Não selecionado",
-      active: Boolean(bot)
-    },
-    {
-      label: "Bot",
-      value: bot && status.online ? "Liberado" : "Bloqueado",
-      active: Boolean(bot && status.online)
-    },
-    {
-      label: "Módulos liberados",
-      value: String(availableModuleCount),
-      active: availableModuleCount > 0
-    },
-    {
-      label: "Módulos bloqueados",
-      value: String(Math.max(0, totalModuleCount - availableModuleCount)),
-      active: totalModuleCount - availableModuleCount === 0
-    },
-    {
-      label: "Validade da licenca",
-      value: "Sem data cadastrada",
-      active: false
-    },
-    {
-      label: "SelfBot",
-      value: selfBotActive ? "Ativo" : "Bloqueado",
-      active: selfBotActive
-    },
-    {
-      label: "Anti-Link",
-      value: selfBotActive && selfBotSettings?.moduleToggles["anti-links"] ? "Ativo" : "Bloqueado",
-      active: Boolean(selfBotActive && selfBotSettings?.moduleToggles["anti-links"])
-    },
-    {
-      label: "Anti-Spam",
-      value: selfBotActive && selfBotSettings?.moduleToggles["anti-spam"] ? "Ativo" : "Bloqueado",
-      active: Boolean(selfBotActive && selfBotSettings?.moduleToggles["anti-spam"])
-    },
-    {
-      label: "Anti-Flood",
-      value: selfBotActive && selfBotSettings?.moduleToggles["anti-flood"] ? "Ativo" : "Bloqueado",
-      active: Boolean(selfBotActive && selfBotSettings?.moduleToggles["anti-flood"])
-    }
-  ];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Isolamento por Bot ID</CardTitle>
-        <CardDescription>Estado runtime do bot selecionado, sem herdar configuração de outro bot.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <div className="min-w-0 rounded-lg border border-zinc-900 bg-zinc-950/70 p-3" key={item.label}>
-              <p className="text-xs text-zinc-500">{item.label}</p>
-              <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-white" title={item.value}>{item.value}</p>
-                <Badge variant={item.active ? "success" : "muted"}>{item.active ? "OK" : "OFF"}</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ModuleCard({
-  description,
-  icon: Icon,
-  onConfigure,
-  state,
-  title
-}: {
-  description: string;
-  icon: typeof Bot;
-  onConfigure: () => void;
-  state: ReturnType<typeof moduleState>;
-  title: string;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 text-[#FFEA70]">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold text-white">{title}</h3>
-            <p className="mt-1 text-sm leading-5 text-zinc-500">{description}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant={state.active ? "success" : "muted"}>{state.active ? "Ativado" : "Desativado"}</Badge>
-              <Badge variant={state.configured ? "success" : "danger"}>{state.configuredText}</Badge>
-            </div>
-          </div>
-        </div>
-
-        <Button className="h-9 shrink-0 px-3 text-xs" onClick={onConfigure} variant="outline">
-          Configurar
-          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </CardContent>
     </Card>
@@ -11569,162 +11335,6 @@ function EmptyState({ icon: Icon, title }: { icon: typeof Bot; title: string }) 
   );
 }
 
-function moduleState(moduleId: string, settings: GuildSettings | null, details: OverviewDetails) {
-  if (moduleId === "live") {
-    const active = details.liveNotifications.some((notification) => notification.enabled);
-    return {
-      active,
-      configured: details.liveNotifications.length > 0,
-      configuredText: details.liveNotifications.length ? `${details.liveNotifications.length} alerta(s)` : "Falta configurar"
-    };
-  }
-
-  if (moduleId === "kick-integration") {
-    const active = details.kickNotifications.some((notification) => notification.enabled);
-    return {
-      active,
-      configured: details.kickNotifications.length > 0,
-      configuredText: details.kickNotifications.length ? `${details.kickNotifications.length} canal(is)` : "Falta configurar"
-    };
-  }
-
-  if (moduleId === "clips") {
-    return {
-      active: Boolean(details.clipsConfig?.enabled),
-      configured: Boolean(details.clipsConfig?.discordChannelId),
-      configuredText: details.clipsConfig?.discordChannelId ? "Canal configurado" : "Falta canal"
-    };
-  }
-
-  if (moduleId === "kick-clips") {
-    return {
-      active: Boolean(details.kickClipsConfig?.enabled),
-      configured: Boolean(details.kickClipsConfig?.discordChannelId),
-      configuredText: details.kickClipsConfig?.discordChannelId ? "Canal configurado" : "Falta canal"
-    };
-  }
-
-  if (moduleId === "x-monitor") {
-    const activeAccounts = details.xAccounts.filter((account) => account.active).length;
-    return {
-      active: activeAccounts > 0,
-      configured: details.xAccounts.length > 0,
-      configuredText: details.xAccounts.length ? `${details.xAccounts.length} conta(s)` : "Falta conta"
-    };
-  }
-
-  if (moduleId === "moderation") {
-    return {
-      active: Boolean(settings?.moderationEnabled),
-      configured: Boolean(settings?.moderationEnabled),
-      configuredText: settings?.moderationEnabled ? "Configurado" : "Falta ativar"
-    };
-  }
-
-  if (moduleId === "mission-tools") {
-    return {
-      active: true,
-      configured: true,
-      configuredText: "Available"
-    };
-  }
-
-  if (moduleId === "voice-recorder") {
-    return {
-      active: true,
-      configured: true,
-      configuredText: "Disponível"
-    };
-  }
-
-  if (moduleId === "safe-bot") {
-    const activeModules = details.selfBotProtectionSettings
-      ? Object.values(details.selfBotProtectionSettings.moduleToggles).filter(Boolean).length
-      : 0;
-
-    return {
-      active: Boolean(details.selfBotProtectionSettings?.enabled),
-      configured: Boolean(details.selfBotProtectionSettings?.logChannelId),
-      configuredText: activeModules ? `${activeModules} módulo(s)` : "Falta módulo"
-    };
-  }
-
-  if (moduleId === "account-age-security") {
-    return {
-      active: Boolean(settings?.accountAgeSecurityEnabled),
-      configured: Boolean(settings?.accountAgeLogChannelId || settings?.logChannelId),
-      configuredText: settings?.accountAgeSecurityEnabled
-        ? `${settings.accountAgeMinDays} dia(s)`
-        : "Falta ativar"
-    };
-  }
-
-  if (moduleId === "verification") {
-    const userCount = Object.keys(settings?.dashboardUserPermissions ?? {}).length;
-    return {
-      active: Boolean(settings?.verificationEnabled),
-      configured: userCount > 0,
-      configuredText: userCount ? `${userCount} usuário(s)` : "Falta usuário"
-    };
-  }
-
-  if (moduleId === "logs") {
-    const discordActive = Boolean(settings?.discordLogsEnabled && settings.logChannelId);
-    const siteActive = Boolean(settings?.siteLogsEnabled);
-
-    return {
-      active: discordActive || siteActive,
-      configured: discordActive || siteActive,
-      configuredText: discordActive && siteActive
-        ? "Discord e site"
-        : discordActive
-          ? "Discord"
-          : siteActive
-            ? "Site"
-            : "Falta configurar"
-    };
-  }
-
-  if (moduleId === "welcome") {
-    return {
-      active: Boolean(settings?.welcomeEnabled),
-      configured: Boolean(settings?.welcomeChannelId),
-      configuredText: settings?.welcomeChannelId ? "Canal configurado" : "Falta canal"
-    };
-  }
-
-  if (moduleId === "leave") {
-    return {
-      active: Boolean(settings?.leaveEnabled),
-      configured: Boolean(settings?.leaveChannelId),
-      configuredText: settings?.leaveChannelId ? "Canal configurado" : "Falta canal"
-    };
-  }
-
-  if (moduleId === "roles") {
-    const count = settings?.autoRoleIds.length ?? 0;
-    return {
-      active: Boolean(settings?.autoRoleEnabled),
-      configured: count > 0,
-      configuredText: count ? `${count} cargo(s)` : "Falta cargo"
-    };
-  }
-
-  if (moduleId === "tickets") {
-    return {
-      active: Boolean(settings?.ticketEnabled),
-      configured: Boolean(settings?.ticketCategoryId),
-      configuredText: settings?.ticketCategoryId ? "Categoria configurada" : "Falta categoria"
-    };
-  }
-
-  return {
-    active: true,
-    configured: true,
-    configuredText: "Disponível"
-  };
-}
-
 function friendlyLog(log: LogEntry) {
   const lowerMessage = log.message.toLowerCase();
   const message = log.message.replace(/^Usuario\s+/i, "").replace(/\.$/, "");
@@ -11995,8 +11605,93 @@ function dashboardPathForView(slug: string, view: ViewId) {
   return base;
 }
 
+const fallbackDashboardViewOrder: ViewId[] = [
+  "lives",
+  "clips",
+  "kick-clips",
+  "giveaway",
+  "boosters",
+  "x-monitor",
+  "moderation",
+  "rules",
+  "terms-panel",
+  "payment-gateway",
+  "manual-payments",
+  "custom-bot-orders",
+  "price-tables",
+  "panels",
+  "courses",
+  "rh-admin",
+  "mission-tools",
+  "voice-recorder",
+  "music",
+  "self-bot-protection",
+  "security",
+  "anti-abuse",
+  "anti-ban",
+  "suspicious-servers",
+  "global-blacklist",
+  "advanced-permissions",
+  "invite-cleanup",
+  "server-backup",
+  "vanity-url-protection",
+  "hide-empty-voice",
+  "anti-disconnect",
+  "auto-unmute",
+  "temporary-voice",
+  "tag-verification",
+  "bio-url-verification",
+  "first-lady",
+  "permissions",
+  "logs",
+  "fivem",
+  "fivem-absence",
+  "fivem-hierarchy",
+  "fivem-actions",
+  "police-absence",
+  "police-actions",
+  "police-iab",
+  "police-subpoenas",
+  "police-patrol-reports",
+  "police-qru",
+  "police-promotions",
+  "vehicle-abandonment",
+  "police-hidden-channel",
+  "visible-message",
+  "message-control",
+  "police-dm",
+  "police-open-duty",
+  "police-time-clock",
+  "police-daf-roster",
+  "auto-activity-clock",
+  "fivem-orders",
+  "fivem-families",
+  "fivem-washing",
+  "fivem-ammo",
+  "fivem-drug",
+  "fivem-weapon",
+  "fivem-custom",
+  "fivem-finance",
+  "fivem-goals",
+  "fivem-captcha",
+  "fivem-commands",
+  "ztk-webhook",
+  "manual-registration",
+  "tickets",
+  "entry-leave",
+  "auto-roles",
+  "media-library",
+  "server-cloner",
+  "delete-channels",
+  "settings"
+];
+
+function firstAllowedDashboardView(enabledModules: string[]) {
+  return fallbackDashboardViewOrder.find((view) => isViewAllowed(view, enabledModules)) ?? "delete-channels";
+}
+
 function isViewAllowed(view: ViewId, enabledModules: string[]) {
-  if (view === "overview" || view === "plans" || view === "notifications" || view === "delete-channels") {
+  if (view === "plans" || view === "notifications" || view === "delete-channels") {
     return true;
   }
 
