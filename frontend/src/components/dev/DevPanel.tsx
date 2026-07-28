@@ -153,7 +153,6 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "payment-gateway", label: "Pagamento Automático" },
   { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "subscription-presence", label: "Pagamento de Presença" },
-  { id: "nextech-invites", label: "Sistema de Convites NextTech" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
   { id: "network", label: "Rede Social dos Membros" },
@@ -240,7 +239,6 @@ type BotMenuId =
   | "tickets"
   | "sales"
   | "payment-gateway"
-  | "nextech-invites"
   | "manual-payments"
   | "price-tables"
   | "manual-registration"
@@ -401,14 +399,6 @@ const botMenuItems: BotMenuItem[] = [
         description: "Mercado Pago por bot com confirmação automática",
         icon: CreditCard,
         moduleIds: ["payment-gateway"]
-      },
-      {
-        group: "sales",
-        id: "nextech-invites",
-        label: "Convites NextTech",
-        description: "Convite oficial por bot, painel público e bloqueio de convites externos",
-        icon: Link2,
-        moduleIds: ["nextech-invites"]
       },
       {
         group: "sales",
@@ -6773,7 +6763,6 @@ function moduleDescription(moduleId: string) {
     "global-blacklist": "Impede entrada de usuários cadastrados em lista global.",
     "hide-empty-voice": "Oculta chamadas vazias e reexibe quando alguém entra.",
     "invite-cleanup": "Remove convites em intervalos configuráveis com whitelist.",
-    "nextech-invites": "Convite oficial por bot e servidor, painel público e bloqueio automático de convites externos.",
     "safe-bot": "Proteção contra spam, links, raids, bots e abuso automatizado.",
     "server-backup": "Prepara backup, exportação e restauração seletiva do servidor.",
     "server-cloner": "Clona estrutura autorizada de servidores com relatório.",

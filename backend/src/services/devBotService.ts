@@ -45,7 +45,6 @@ export const DEV_MODULES = [
   { id: "payment-gateway", label: "Pagamento Automático" },
   { id: "nex-tech-sales", label: "Sistema de Vendas" },
   { id: "subscription-presence", label: "Pagamento de Presença" },
-  { id: "nextech-invites", label: "Sistema de Convites NextTech" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
   { id: "price-tables", label: "Tabela de Precos" },
