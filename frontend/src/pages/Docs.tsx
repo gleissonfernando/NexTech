@@ -1,6 +1,6 @@
 import {
-  ArrowLeft, Bot, BookOpen, Boxes, ChevronRight, CircleHelp, Code2,
-  KeyRound, Menu, Search, ShieldCheck, Terminal, X
+  ArrowLeft, Banknote, Bot, BookOpen, Boxes, ChevronRight, CircleHelp, Clock3, Code2,
+  FileText, KeyRound, Menu, RefreshCw, Search, ShieldCheck, Terminal, X
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -8,6 +8,7 @@ type NavigationGroup = { group: string; items: readonly (readonly [string, strin
 
 const navigation: readonly NavigationGroup[] = [
   { group: "Introdução", items: [["Visão geral", "visao-geral"], ["Primeiros passos", "primeiros-passos"]] },
+  { group: "Termos", items: [["Termos de serviço", "termos-servico"], ["Pagamento inicial", "pagamento-inicial"], ["Garantia e cancelamento", "garantia-cancelamento"], ["Privacidade", "privacidade-termos"]] },
   { group: "Dashboard", items: [["Acesso com Discord", "acesso"], ["Bots e servidores", "bots-servidores"], ["Módulos", "modulos"], ["Permissões", "permissoes"]] },
   { group: "Desenvolvedores", items: [["Integrações seguras", "integracoes"], ["Tratamento de erros", "erros"]] }
 ];
@@ -77,6 +78,27 @@ export function DocsPage() {
               <Step number="1" title="Entre com Discord">Use o botão Dashboard no site e conclua a autenticação oficial do Discord.</Step>
               <Step number="2" title="Selecione o bot e o servidor">Confira sempre o contexto exibido no topo antes de alterar qualquer módulo.</Step>
               <Step number="3" title="Configure somente o necessário">Ative recursos liberados para sua operação e revise canais e permissões antes de publicar painéis.</Step>
+            </DocsSection>
+
+            <DocsSection icon={FileText} id="termos-servico" title="Termos de serviço">
+              <p>Os termos da Nex Tech são informativos e explicam as condições para contratação de serviços, desenvolvimento de projetos, garantias, responsabilidades, pagamento e políticas internas.</p>
+              <p className="mt-3">A página oficial fica disponível no site e pode ser enviada aos clientes antes da contratação.</p>
+              <a className="mt-5 inline-flex rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-sm font-bold text-[#FFEA70] transition hover:bg-[#FFD500]/15" href="/termos">Abrir página de termos</a>
+            </DocsSection>
+
+            <DocsSection icon={Banknote} id="pagamento-inicial" title="Pagamento inicial">
+              <p>Projetos personalizados exigem pagamento inicial de <strong className="text-white">40% do valor total</strong>. Esse pagamento confirma a contratação, reserva a agenda, inicia o planejamento, permite o levantamento de requisitos e libera o começo do desenvolvimento.</p>
+              <Callout icon={Banknote} title="Desenvolvimento sob encomenda">Sem a confirmação do pagamento inicial, o desenvolvimento do projeto não é iniciado.</Callout>
+            </DocsSection>
+
+            <DocsSection icon={Clock3} id="garantia-cancelamento" title="Garantia e cancelamento">
+              <p>A garantia cobre correções de falhas diretamente relacionadas ao código entregue pela Nex Tech. Não inclui novas funcionalidades, mudanças de escopo, alterações de layout, integrações não contratadas, modificações por terceiros ou problemas de serviços externos.</p>
+              <p className="mt-3">Cancelamentos são analisados individualmente. Se o desenvolvimento já tiver iniciado, o pagamento inicial de 40% corresponde aos custos iniciais do serviço prestado e não é reembolsável.</p>
+            </DocsSection>
+
+            <DocsSection icon={RefreshCw} id="privacidade-termos" title="Privacidade e atualizações dos termos">
+              <p>As informações fornecidas pelos clientes são usadas apenas para a prestação dos serviços contratados. A Nex Tech adota boas práticas de segurança para proteger os dados armazenados.</p>
+              <p className="mt-3">Os termos podem ser atualizados quando necessário para refletir mudanças nos serviços, processos internos ou políticas da empresa. A página é apenas informativa e não possui aceite, checkbox ou assinatura eletrônica.</p>
             </DocsSection>
 
             <DocsSection icon={KeyRound} id="acesso" title="Acesso com Discord">
