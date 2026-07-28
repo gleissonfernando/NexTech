@@ -98,6 +98,18 @@ export type GuildSettingsDto = {
   rulesButtons: RulesPanelButtonDto[];
   rulesCategories: RulesPanelCategoryDto[];
   rulesPanelMessageId: string | null;
+  termsPanelEnabled: boolean;
+  termsPanelChannelId: string | null;
+  termsPanelTitle: string | null;
+  termsPanelSubtitle: string | null;
+  termsPanelDescription: string | null;
+  termsPanelColor: string;
+  termsPanelFooterText: string | null;
+  termsPanelButtonLabel: string | null;
+  termsPanelButtonUrl: string | null;
+  termsPanelImageFormat: RulesPanelImageFormat;
+  termsPanelImageUrl: string | null;
+  termsPanelMessageId: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];
@@ -635,6 +647,18 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     rulesButtons: DEFAULT_RULES_BUTTONS.map((button) => ({ ...button })),
     rulesCategories: DEFAULT_RULES_CATEGORIES.map((category) => ({ ...category, rules: [...category.rules] })),
     rulesPanelMessageId: null,
+    termsPanelEnabled: false,
+    termsPanelChannelId: null,
+    termsPanelTitle: "Termos de Serviço da NexTech",
+    termsPanelSubtitle: "Leia as condições antes de contratar um serviço.",
+    termsPanelDescription: "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
+    termsPanelColor: "#FFD500",
+    termsPanelFooterText: "NexTech © Termos informativos",
+    termsPanelButtonLabel: "Ler termos",
+    termsPanelButtonUrl: null,
+    termsPanelImageFormat: "none",
+    termsPanelImageUrl: null,
+    termsPanelMessageId: null,
     verificationEnabled: false,
     verificationRoleId: null,
     verificationRoleIds: [],
@@ -815,6 +839,18 @@ export async function updateGuildSettings(
     rulesButtons: normalizeRulesButtons("rulesButtons" in input ? input.rulesButtons : current.rulesButtons),
     rulesCategories: normalizeRulesCategories("rulesCategories" in input ? input.rulesCategories : current.rulesCategories, "rulesMessage" in input ? input.rulesMessage ?? null : current.rulesMessage),
     rulesPanelMessageId: normalizeSnowflake("rulesPanelMessageId" in input ? input.rulesPanelMessageId : current.rulesPanelMessageId),
+    termsPanelEnabled: "termsPanelEnabled" in input ? Boolean(input.termsPanelEnabled) : current.termsPanelEnabled,
+    termsPanelChannelId: normalizeSnowflake("termsPanelChannelId" in input ? input.termsPanelChannelId : current.termsPanelChannelId),
+    termsPanelTitle: normalizePanelText("termsPanelTitle" in input ? input.termsPanelTitle : current.termsPanelTitle) || "Termos de Serviço da NexTech",
+    termsPanelSubtitle: normalizePanelText("termsPanelSubtitle" in input ? input.termsPanelSubtitle : current.termsPanelSubtitle) || "Leia as condições antes de contratar um serviço.",
+    termsPanelDescription: normalizePanelMessage("termsPanelDescription" in input ? input.termsPanelDescription : current.termsPanelDescription) || "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
+    termsPanelColor: normalizeTermsPanelColor("termsPanelColor" in input ? input.termsPanelColor : current.termsPanelColor),
+    termsPanelFooterText: normalizePanelText("termsPanelFooterText" in input ? input.termsPanelFooterText : current.termsPanelFooterText) || "NexTech © Termos informativos",
+    termsPanelButtonLabel: normalizePanelText("termsPanelButtonLabel" in input ? input.termsPanelButtonLabel : current.termsPanelButtonLabel) || "Ler termos",
+    termsPanelButtonUrl: normalizeOptionalUrl("termsPanelButtonUrl" in input ? input.termsPanelButtonUrl : current.termsPanelButtonUrl),
+    termsPanelImageFormat: normalizeRulesImageFormat("termsPanelImageFormat" in input ? input.termsPanelImageFormat : current.termsPanelImageFormat),
+    termsPanelImageUrl: normalizeOptionalUrl("termsPanelImageUrl" in input ? input.termsPanelImageUrl : current.termsPanelImageUrl),
+    termsPanelMessageId: normalizeSnowflake("termsPanelMessageId" in input ? input.termsPanelMessageId : current.termsPanelMessageId),
     ticketPanelChannelId: normalizeSnowflake("ticketPanelChannelId" in input ? input.ticketPanelChannelId : current.ticketPanelChannelId),
     ticketPanelMessageId: normalizeSnowflake("ticketPanelMessageId" in input ? input.ticketPanelMessageId : current.ticketPanelMessageId),
     autoRoleIds,
@@ -935,6 +971,18 @@ export async function updateGuildSettings(
           rulesButtons: next.rulesButtons,
           rulesCategories: next.rulesCategories,
           rulesPanelMessageId: next.rulesPanelMessageId,
+          termsPanelEnabled: next.termsPanelEnabled,
+          termsPanelChannelId: next.termsPanelChannelId,
+          termsPanelTitle: next.termsPanelTitle,
+          termsPanelSubtitle: next.termsPanelSubtitle,
+          termsPanelDescription: next.termsPanelDescription,
+          termsPanelColor: next.termsPanelColor,
+          termsPanelFooterText: next.termsPanelFooterText,
+          termsPanelButtonLabel: next.termsPanelButtonLabel,
+          termsPanelButtonUrl: next.termsPanelButtonUrl,
+          termsPanelImageFormat: next.termsPanelImageFormat,
+          termsPanelImageUrl: next.termsPanelImageUrl,
+          termsPanelMessageId: next.termsPanelMessageId,
           verificationEnabled: next.verificationEnabled,
           verificationRoleId: next.verificationRoleId,
           verificationRoleIds: next.verificationRoleIds,
@@ -1138,6 +1186,18 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     rulesButtons: normalizeRulesButtons(settings.rulesButtons),
     rulesCategories: normalizeRulesCategories(settings.rulesCategories, settings.rulesMessage),
     rulesPanelMessageId: normalizeSnowflake(settings.rulesPanelMessageId),
+    termsPanelEnabled: settings.termsPanelEnabled ?? defaults.termsPanelEnabled,
+    termsPanelChannelId: normalizeSnowflake(settings.termsPanelChannelId),
+    termsPanelTitle: normalizePanelText(settings.termsPanelTitle) || "Termos de Serviço da NexTech",
+    termsPanelSubtitle: normalizePanelText(settings.termsPanelSubtitle) || "Leia as condições antes de contratar um serviço.",
+    termsPanelDescription: normalizePanelMessage(settings.termsPanelDescription) || "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
+    termsPanelColor: normalizeTermsPanelColor(settings.termsPanelColor),
+    termsPanelFooterText: normalizePanelText(settings.termsPanelFooterText) || "NexTech © Termos informativos",
+    termsPanelButtonLabel: normalizePanelText(settings.termsPanelButtonLabel) || "Ler termos",
+    termsPanelButtonUrl: normalizeOptionalUrl(settings.termsPanelButtonUrl),
+    termsPanelImageFormat: normalizeRulesImageFormat(settings.termsPanelImageFormat),
+    termsPanelImageUrl: normalizeOptionalUrl(settings.termsPanelImageUrl),
+    termsPanelMessageId: normalizeSnowflake(settings.termsPanelMessageId),
     verificationEnabled: settings.verificationEnabled,
     verificationRoleId: verificationRoleIds[0] ?? null,
     verificationRoleIds,
@@ -1544,6 +1604,11 @@ function normalizeWelcomeFooterText(value: string | null | undefined) {
 function normalizePanelColor(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized && /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : DEFAULT_PANEL_COLOR;
+}
+
+function normalizeTermsPanelColor(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized && /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : "#FFD500";
 }
 
 function normalizeMemberPanelColor(value: string | null | undefined) {

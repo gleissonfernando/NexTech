@@ -358,6 +358,10 @@ export function Login({
       window.location.assign("/status");
       return;
     }
+    if (id === "termos") {
+      window.location.assign("/termos");
+      return;
+    }
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -522,6 +526,7 @@ function Header({ entering, onNavigate, onStart }: { entering: boolean; onNaviga
     ["Soluções", "solucoes"],
     ["Planos", "planos"],
     ["Status", "status"],
+    ["Termos", "termos"],
     ["Docs", "docs"],
     ["Suporte", "suporte"]
   ] as const;
@@ -1062,7 +1067,7 @@ function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: 
           <p className="mt-3 text-sm text-zinc-400">Desde {currentYear}</p>
           <p className="mt-3 text-sm leading-6 text-[#B3B3B3]">Plataforma para criação, controle e gerenciamento de bots conectados ao Discord.</p>
         </div>
-        <FooterColumn title="Navegação" links={[["Início", "inicio"], ["Soluções", "solucoes"], ["Status", "status"], ["Documentação", "docs"], ["Dashboard", "inicio"]]} onNavigate={onNavigate} />
+        <FooterColumn title="Navegação" links={[["Início", "inicio"], ["Soluções", "solucoes"], ["Status", "status"], ["Termos", "termos"], ["Documentação", "docs"], ["Dashboard", "inicio"]]} onNavigate={onNavigate} />
         <FooterColumn title="Soluções" links={[["API de Bots", "solucoes"], ["Bot Pronto", "solucoes"], ["Painel de Controle", "solucoes"]]} onNavigate={onNavigate} />
         <div>
           <h3 className="text-sm font-bold uppercase text-white">Contato</h3>

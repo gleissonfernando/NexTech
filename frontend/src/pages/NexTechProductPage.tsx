@@ -218,6 +218,14 @@ export function NexTechProductPage({ slug, status = null, storeId }: NexTechProd
                 <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "monthly"} onClick={() => void handleCheckout("monthly")} plan={product.plans.monthly} planType="monthly" />
                 <PlanCard accent={accent} currency={page.settings.currency} loading={checkoutPlan === "lifetime"} onClick={() => void handleCheckout("lifetime")} plan={product.plans.lifetime} planType="lifetime" />
               </div>
+              <a
+                className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-bold text-[#FFEA70] transition hover:bg-[#FFD500]/15"
+                href={page.settings.termsUrl || "/termos"}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Ler termos de serviço
+              </a>
               {checkoutMessage ? (
                 <div className="mt-4 space-y-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-100">
                   <p>{checkoutMessage}</p>

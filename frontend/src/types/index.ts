@@ -228,6 +228,18 @@ export type GuildSettings = {
   rulesButtons: RulesPanelButton[];
   rulesCategories: RulesPanelCategory[];
   rulesPanelMessageId: string | null;
+  termsPanelEnabled: boolean;
+  termsPanelChannelId: string | null;
+  termsPanelTitle: string | null;
+  termsPanelSubtitle: string | null;
+  termsPanelDescription: string | null;
+  termsPanelColor: string;
+  termsPanelFooterText: string | null;
+  termsPanelButtonLabel: string | null;
+  termsPanelButtonUrl: string | null;
+  termsPanelImageFormat: RulesPanelImageFormat;
+  termsPanelImageUrl: string | null;
+  termsPanelMessageId: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds: string[];

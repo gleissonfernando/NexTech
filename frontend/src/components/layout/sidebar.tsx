@@ -60,6 +60,7 @@ export type ViewId =
   | "x-monitor"
   | "moderation"
   | "rules"
+  | "terms-panel"
   | "payment-gateway"
   | "manual-payments"
   | "custom-bot-orders"
@@ -162,6 +163,7 @@ const navItems: NavItem[] = [
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
   { id: "rules", label: "Painel de Regras", icon: ScrollText, moduleId: "rules" },
+  { id: "terms-panel", label: "Painel de Termos", icon: BookOpen, moduleId: "terms-panel" },
   { id: "payment-gateway", label: "Pagamento Automático", icon: CreditCard, moduleId: "payment-gateway" },
   { id: "manual-payments", label: "Pagamento Manual", icon: CreditCard, moduleId: "manual-payments" },
   { id: "custom-bot-orders", label: "Pedidos de Bots", icon: Bot, moduleId: "custom-bot-orders" },

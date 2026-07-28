@@ -1086,6 +1086,14 @@ export async function publishRulesPanel(guildId: string, botId?: string | null) 
   return data.settings;
 }
 
+export async function publishTermsPanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ messageId: string; settings: GuildSettings }>(`/settings/${guildId}/terms-panel`, undefined, {
+    params: botParams(botId),
+    timeout: 15000
+  });
+  return data.settings;
+}
+
 export async function publishReportSystemPanel(guildId: string, botId?: string | null) {
   const { data } = await api.post<{ messageId: string; settings: GuildSettings }>(`/settings/${guildId}/report-system-panel`, undefined, {
     params: botParams(botId),

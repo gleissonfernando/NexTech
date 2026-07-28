@@ -14,6 +14,7 @@ const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((modul
 const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
 const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
 const PublicStatusPage = lazy(() => import("./pages/PublicStatusPage").then((module) => ({ default: module.PublicStatusPage })));
+const TermsPage = lazy(() => import("./pages/Terms").then((module) => ({ default: module.TermsPage })));
 const ACCESS_DENIED_MESSAGE = [
   "Não foi encontrada nenhuma permissão para esta Dashboard.",
   "",
@@ -43,6 +44,7 @@ export function App() {
   const docsPath = path === "/docs" || path.startsWith("/docs/");
   const plansPath = path === "/planos" || path.startsWith("/planos/");
   const statusPath = path === "/status";
+  const termsPath = path === "/termos" || path === "/terms";
   const botRegistrationPath = path === "/cadastrar-bot" || path.startsWith("/cadastrar-bot/");
   const paymentReturnStatus = paymentReturnStatusFromPath(path);
   const pixPaymentOrderId = pixPaymentOrderIdFromPath(path);
@@ -68,17 +70,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
 
     if (auth?.access.verified && !protectedPanelPath && !publicLandingPath) {
       window.location.replace(dashboardUrl(auth.user.dashboardBotSlug));
     }
-  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicLandingPath, rouletteToken, statusPath]);
+  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicLandingPath, rouletteToken, statusPath, termsPath]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
 
@@ -87,7 +89,7 @@ export function App() {
     }
 
     loginDiscord();
-  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken, statusPath]);
+  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken, statusPath, termsPath]);
 
   if (docsPath) {
     return <LazyPage><DocsPage /></LazyPage>;
@@ -99,6 +101,10 @@ export function App() {
 
   if (statusPath) {
     return <LazyPage><PublicStatusPage /></LazyPage>;
+  }
+
+  if (termsPath) {
+    return <LazyPage><TermsPage /></LazyPage>;
   }
 
   if (paymentReturnStatus) {

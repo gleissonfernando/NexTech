@@ -159,6 +159,7 @@ import {
     publishManualRegistrationPanel,
     publishReportSystemPanel,
     publishRulesPanel,
+    publishTermsPanel,
     publishTicketPanel,
     refreshApplicationEmojis,
     refreshFivemHierarchyOfficialMessage,
@@ -405,6 +406,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Publica um painel moderno de regras com categorias, botões e atualização sem duplicar mensagens.",
     icon: ScrollText,
     view: "rules"
+  },
+  {
+    id: "terms-panel",
+    title: "Painel de Termos",
+    description: "Publica um painel Components V2 com botão para a página oficial de termos da NexTech.",
+    icon: BookOpen,
+    view: "terms-panel"
   },
   {
     id: "payment-gateway",
@@ -906,6 +914,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "first-lady": "first-lady",
   moderation: "moderation",
   rules: "rules",
+  "terms-panel": "terms-panel",
   "payment-gateway": "payment-gateway",
   "manual-payments": "manual-payments",
   "custom-bot-orders": "custom-bot-orders",
@@ -1580,6 +1589,16 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <RulesView
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "rules", canManageDashboard)}
+            guild={selectedGuild}
+            loading={settingsLoading}
+            onSettingsChange={setSettings}
+            settings={settings}
+          />
+        ) : null}
+        {activeView === "terms-panel" ? (
+          <TermsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "terms-panel", canManageDashboard)}
             guild={selectedGuild}
             loading={settingsLoading}
             onSettingsChange={setSettings}
@@ -4820,6 +4839,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "boosters",
       "payment-gateway",
       "manual-payments",
+      "custom-bot-orders",
       "network",
       "x-monitor",
       "mission-tools",
@@ -4828,6 +4848,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "server-cloner",
       "server-generator",
       "rules",
+      "terms-panel",
       "account-age-security",
       "safe-bot",
       ...Object.keys(advancedSecurityModuleDetails),
@@ -6968,6 +6989,264 @@ function RulesPanelPreview({
         ))}
       </div>
     </div>
+  );
+}
+
+function TermsPanel({
+  botId,
+  canManage,
+  guild,
+  loading,
+  onSettingsChange,
+  settings
+}: {
+  botId?: string | null;
+  canManage: boolean;
+  guild: DashboardGuild | null;
+  loading: boolean;
+  onSettingsChange: (settings: GuildSettings) => void;
+  settings: GuildSettings | null;
+}) {
+  const [options, setOptions] = useState<{ channels: GuildChannelOption[] }>({ channels: [] });
+  const [draft, setDraft] = useState(() => defaultTermsDraft());
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft({
+      termsPanelButtonLabel: settings?.termsPanelButtonLabel || "Ler termos",
+      termsPanelButtonUrl: settings?.termsPanelButtonUrl || `${window.location.origin}/termos`,
+      termsPanelChannelId: settings?.termsPanelChannelId || "",
+      termsPanelColor: settings?.termsPanelColor || "#FFD500",
+      termsPanelDescription: settings?.termsPanelDescription || "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
+      termsPanelFooterText: settings?.termsPanelFooterText || "NexTech © Termos informativos",
+      termsPanelImageFormat: settings?.termsPanelImageFormat || "none",
+      termsPanelImageUrl: settings?.termsPanelImageUrl || "",
+      termsPanelSubtitle: settings?.termsPanelSubtitle || "Leia as condições antes de contratar um serviço.",
+      termsPanelTitle: settings?.termsPanelTitle || "Termos de Serviço da NexTech"
+    });
+  }, [settings]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!guild) return;
+
+    getGuildLiveOptions(guild.id, botId)
+      .then((data) => {
+        if (mounted) setOptions({ channels: data.channels });
+      })
+      .catch(() => {
+        if (mounted) setMessage("Não foi possível carregar canais.");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [botId, guild]);
+
+  async function saveTerms(nextEnabled = settings?.termsPanelEnabled ?? false) {
+    if (!guild) return null;
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const nextSettings = await patchGuildSettings(guild.id, {
+        termsPanelButtonLabel: draft.termsPanelButtonLabel,
+        termsPanelButtonUrl: draft.termsPanelButtonUrl || `${window.location.origin}/termos`,
+        termsPanelChannelId: draft.termsPanelChannelId || null,
+        termsPanelColor: draft.termsPanelColor,
+        termsPanelDescription: draft.termsPanelDescription,
+        termsPanelEnabled: nextEnabled,
+        termsPanelFooterText: draft.termsPanelFooterText,
+        termsPanelImageFormat: draft.termsPanelImageFormat,
+        termsPanelImageUrl: draft.termsPanelImageUrl || null,
+        termsPanelSubtitle: draft.termsPanelSubtitle,
+        termsPanelTitle: draft.termsPanelTitle
+      }, botId);
+      onSettingsChange(nextSettings);
+      setMessage("Painel de termos salvo.");
+      return nextSettings;
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível salvar o painel de termos.");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function publishPanel() {
+    if (!guild) return;
+
+    setPublishing(true);
+    setMessage(null);
+
+    try {
+      const saved = await saveTerms(true);
+      if (!saved) return;
+
+      const nextSettings = await publishTermsPanel(guild.id, botId);
+      onSettingsChange(nextSettings);
+      setMessage("Painel de termos publicado no Discord.");
+    } catch (error) {
+      setMessage(readResponseMessage(error) ?? "Não foi possível publicar o painel de termos.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  if (loading || !settings) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-40 items-center justify-center gap-3 p-6 text-sm font-medium text-zinc-300">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Carregando termos...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {message ? (
+        <div className="rounded-lg border border-[#FFEA70]/25 bg-[#FFD500]/10 px-4 py-3 text-sm font-semibold text-white">
+          {message}
+        </div>
+      ) : null}
+
+      <SimpleToggleCard
+        checked={Boolean(settings.termsPanelEnabled)}
+        description="Libera a publicação do painel informativo com botão para os termos oficiais."
+        disabled={!canManage || saving}
+        icon={BookOpen}
+        onChange={(checked) => void saveTerms(checked)}
+        title="Painel de Termos"
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuração do Discord</CardTitle>
+          <CardDescription>O texto abaixo é editável por servidor; a página do site permanece fixa na NexTech.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Canal</span>
+              <select className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]" disabled={!canManage} onChange={(event) => setDraft((current) => ({ ...current, termsPanelChannelId: event.target.value }))} value={draft.termsPanelChannelId}>
+                <option value="">Selecione um canal</option>
+                {options.channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Cor lateral</span>
+              <input className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]" disabled={!canManage} onChange={(event) => setDraft((current) => ({ ...current, termsPanelColor: event.target.value }))} type="color" value={draft.termsPanelColor} />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <DashboardTextField disabled={!canManage} label="Título" maxLength={120} onChange={(value) => setDraft((current) => ({ ...current, termsPanelTitle: value }))} value={draft.termsPanelTitle} />
+            <DashboardTextField disabled={!canManage} label="Subtítulo" maxLength={160} onChange={(value) => setDraft((current) => ({ ...current, termsPanelSubtitle: value }))} value={draft.termsPanelSubtitle} />
+          </div>
+          <DashboardTextarea disabled={!canManage} label="Texto do painel" maxLength={1800} onChange={(value) => setDraft((current) => ({ ...current, termsPanelDescription: value }))} value={draft.termsPanelDescription} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <DashboardTextField disabled={!canManage} label="Texto do botão" maxLength={80} onChange={(value) => setDraft((current) => ({ ...current, termsPanelButtonLabel: value }))} value={draft.termsPanelButtonLabel} />
+            <DashboardTextField disabled={!canManage} label="URL dos termos" maxLength={2048} onChange={(value) => setDraft((current) => ({ ...current, termsPanelButtonUrl: value }))} value={draft.termsPanelButtonUrl} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <DashboardTextField disabled={!canManage} label="Imagem/Banner por URL" maxLength={2048} onChange={(value) => setDraft((current) => ({ ...current, termsPanelImageUrl: value }))} value={draft.termsPanelImageUrl} />
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-100">Formato da imagem</span>
+              <select className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]" disabled={!canManage} onChange={(event) => setDraft((current) => ({ ...current, termsPanelImageFormat: event.target.value as RulesPanelImageFormat }))} value={draft.termsPanelImageFormat}>
+                <option value="horizontal">Banner Horizontal</option>
+                <option value="square">Imagem Quadrada</option>
+                <option value="vertical">Imagem Vertical</option>
+                <option value="none">Sem imagem</option>
+              </select>
+            </label>
+          </div>
+          <DashboardTextField disabled={!canManage} label="Rodapé" maxLength={180} onChange={(value) => setDraft((current) => ({ ...current, termsPanelFooterText: value }))} value={draft.termsPanelFooterText} />
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
+            Publicar novamente atualiza a mesma mensagem salva, sem duplicar painel.
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preview</CardTitle>
+          <CardDescription>Prévia visual do painel que será enviado ao Discord.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <TermsPanelPreview draft={draft} />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={!canManage || saving || publishing} onClick={() => void saveTerms()} variant="secondary">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar
+            </Button>
+            <Button disabled={!canManage || saving || publishing || !draft.termsPanelChannelId} onClick={() => void publishPanel()}>
+              {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Publicar Painel
+            </Button>
+            {settings.termsPanelMessageId ? <Badge variant="muted">Mensagem: {settings.termsPanelMessageId}</Badge> : null}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function defaultTermsDraft() {
+  return {
+    termsPanelButtonLabel: "Ler termos",
+    termsPanelButtonUrl: typeof window === "undefined" ? "/termos" : `${window.location.origin}/termos`,
+    termsPanelChannelId: "",
+    termsPanelColor: "#FFD500",
+    termsPanelDescription: "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
+    termsPanelFooterText: "NexTech © Termos informativos",
+    termsPanelImageFormat: "none" as RulesPanelImageFormat,
+    termsPanelImageUrl: "",
+    termsPanelSubtitle: "Leia as condições antes de contratar um serviço.",
+    termsPanelTitle: "Termos de Serviço da NexTech"
+  };
+}
+
+function TermsPanelPreview({ draft }: { draft: ReturnType<typeof defaultTermsDraft> }) {
+  const imageUrl = draft.termsPanelImageFormat === "none" ? "" : draft.termsPanelImageUrl;
+  return (
+    <div className="max-w-2xl rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white shadow-2xl">
+      {imageUrl && draft.termsPanelImageFormat === "horizontal" ? <img alt="" className="mb-3 max-h-44 w-full rounded-md object-cover" src={imageUrl} /> : null}
+      <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.termsPanelColor }}>
+        <div className={imageUrl && draft.termsPanelImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
+          <div>
+            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.termsPanelTitle}</h3>
+            <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.termsPanelSubtitle}</p>
+            <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-zinc-100">{draft.termsPanelDescription}</p>
+            <p className="mt-3 border-l border-[#FFD500]/50 pl-2 text-xs font-semibold text-[#FFEA70]">Projetos personalizados exigem pagamento inicial de 40%.</p>
+            {draft.termsPanelFooterText ? <p className="mt-4 text-[11px] italic text-zinc-100">{draft.termsPanelFooterText}</p> : null}
+          </div>
+          {imageUrl && draft.termsPanelImageFormat !== "horizontal" ? <img alt="" className={draft.termsPanelImageFormat === "vertical" ? "h-52 w-full rounded-md object-cover" : "aspect-square w-full rounded-md object-cover"} src={imageUrl} /> : null}
+        </div>
+      </div>
+      <span className="mt-3 inline-flex rounded-md bg-[#5865F2] px-3 py-2 text-xs font-bold text-white">📜 {draft.termsPanelButtonLabel}</span>
+    </div>
+  );
+}
+
+function DashboardTextField({ disabled, label, maxLength, onChange, value }: { disabled: boolean; label: string; maxLength: number; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-sm font-medium text-zinc-100">{label}</span>
+      <input className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-[#FFD500]" disabled={disabled} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} value={value} />
+    </label>
+  );
+}
+
+function DashboardTextarea({ disabled, label, maxLength, onChange, value }: { disabled: boolean; label: string; maxLength: number; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-sm font-medium text-zinc-100">{label}</span>
+      <textarea className="min-h-32 w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#FFD500]" disabled={disabled} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} value={value} />
+    </label>
   );
 }
 

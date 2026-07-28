@@ -19,6 +19,7 @@ import {
   updateGuildSettings
 } from "../services/settingsService";
 import { publishRulesPanelToDiscord } from "../services/rulesPanelService";
+import { publishTermsPanelToDiscord } from "../services/termsPanelService";
 import { publishReportSystemPanelToDiscord } from "../services/reportSystemPanelService";
 import { getSelfBotProtectionSettings, saveSelfBotProtectionSettings } from "../services/selfBotProtectionService";
 import { saveLeaveImage, saveWelcomeImage, sendLeavePanelToDiscord, sendWelcomePanelToDiscord } from "../services/welcomePanelService";
@@ -238,6 +239,18 @@ const settingsSchema = z.object({
   rulesButtons: z.array(rulesPanelButtonSchema).max(5).optional(),
   rulesCategories: z.array(rulesPanelCategorySchema).max(12).optional(),
   rulesPanelMessageId: z.string().nullable().optional(),
+  termsPanelEnabled: z.boolean().optional(),
+  termsPanelChannelId: z.string().nullable().optional(),
+  termsPanelTitle: z.string().max(120).nullable().optional(),
+  termsPanelSubtitle: z.string().max(160).nullable().optional(),
+  termsPanelDescription: z.string().max(1800).nullable().optional(),
+  termsPanelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  termsPanelFooterText: z.string().max(180).nullable().optional(),
+  termsPanelButtonLabel: z.string().max(80).nullable().optional(),
+  termsPanelButtonUrl: z.string().max(2048).nullable().optional(),
+  termsPanelImageFormat: z.enum(["horizontal", "square", "vertical", "none"]).optional(),
+  termsPanelImageUrl: z.string().max(2048).nullable().optional(),
+  termsPanelMessageId: z.string().nullable().optional(),
   verificationEnabled: z.boolean().optional(),
   verificationRoleId: z.string().nullable().optional(),
   verificationRoleIds: z.array(z.string()).optional(),
@@ -814,6 +827,39 @@ settingsRouter.post("/:guildId/rules-panel", requireAuth, async (req, res, next)
   }
 });
 
+settingsRouter.post("/:guildId/terms-panel", requireAuth, async (req, res, next) => {
+  try {
+    const { guildId } = req.params;
+    const botId = await resolveRequestBotId(req);
+
+    if (!guildId) {
+      return res.status(400).json({ message: "guildId obrigatório." });
+    }
+
+    if (!(await canManageSettings(req, res, guildId, botId))) {
+      return res.status(403).json({ message: "Você não tem permissão para configurar este servidor." });
+    }
+
+    if (!(await canManageModule(req, res, guildId, botId, "terms-panel"))) {
+      return res.status(403).json({ message: "O módulo de termos não foi liberado para este bot." });
+    }
+
+    const settings = await getGuildSettings(guildId, botId);
+    const messageId = await publishTermsPanelToDiscord(settings, await getDevBotToken(botId));
+    const updatedSettings = await getGuildSettings(guildId, botId);
+
+    emitRealtime("settings:updated", updatedSettings);
+
+    return res.json({ messageId, settings: updatedSettings });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return next(error);
+  }
+});
+
 settingsRouter.post("/:guildId/report-system-panel", requireAuth, async (req, res, next) => {
   try {
     const { guildId } = req.params;
@@ -1194,6 +1240,18 @@ async function canPatchSettings(
     rulesButtons: ["rules"],
     rulesCategories: ["rules"],
     rulesPanelMessageId: ["rules"],
+    termsPanelEnabled: ["terms-panel"],
+    termsPanelChannelId: ["terms-panel"],
+    termsPanelTitle: ["terms-panel"],
+    termsPanelSubtitle: ["terms-panel"],
+    termsPanelDescription: ["terms-panel"],
+    termsPanelColor: ["terms-panel"],
+    termsPanelFooterText: ["terms-panel"],
+    termsPanelButtonLabel: ["terms-panel"],
+    termsPanelButtonUrl: ["terms-panel"],
+    termsPanelImageFormat: ["terms-panel"],
+    termsPanelImageUrl: ["terms-panel"],
+    termsPanelMessageId: ["terms-panel"],
     verificationEnabled: ["verification"],
     verificationRoleId: ["verification"],
     verificationRoleIds: ["verification"],
@@ -1552,6 +1610,7 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("safeBot"))) return "self_bot";
   if ([...keys].some((key) => key.startsWith("emojiClone"))) return "emoji_cloner";
   if ([...keys].some((key) => key.startsWith("rules"))) return "rules";
+  if ([...keys].some((key) => key.startsWith("termsPanel"))) return "terms-panel";
   if (keys.has("reportSystem")) return "reports";
   if ([...keys].some((key) => key.startsWith("welcome") || key.startsWith("autoRole"))) return "welcome";
   if ([...keys].some((key) => key.startsWith("leave"))) return "leave";
@@ -1601,6 +1660,10 @@ function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {
 
   if (Object.keys(input).some((key) => key.startsWith("rules"))) {
     return "Sistema de regras atualizado.";
+  }
+
+  if (Object.keys(input).some((key) => key.startsWith("termsPanel"))) {
+    return "Painel de termos atualizado.";
   }
 
   if (input.reportSystem !== undefined) {

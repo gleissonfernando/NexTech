@@ -62,6 +62,7 @@ export const DEV_MODULES = [
   { id: "manual-registration", label: "Pedido de Set" },
   { id: "moderation", label: "Sistema de Moderacao" },
   { id: "rules", label: "Sistema de Regras" },
+  { id: "terms-panel", label: "Painel de Termos" },
   { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "music", label: "Sistema de Musica" },

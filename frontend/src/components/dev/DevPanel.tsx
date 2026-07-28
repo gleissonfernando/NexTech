@@ -167,6 +167,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "manual-registration", label: "Pedido de Set" },
   { id: "moderation", label: "Sistema de Moderação" },
   { id: "rules", label: "Sistema de Regras" },
+  { id: "terms-panel", label: "Painel de Termos" },
   { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "music", label: "Sistema de Música" },

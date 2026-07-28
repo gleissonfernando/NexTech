@@ -180,6 +180,18 @@ export type MongoGuildSettings = {
     rules: string[];
   }>;
   rulesPanelMessageId?: string | null;
+  termsPanelEnabled?: boolean;
+  termsPanelChannelId?: string | null;
+  termsPanelTitle?: string | null;
+  termsPanelSubtitle?: string | null;
+  termsPanelDescription?: string | null;
+  termsPanelColor?: string | null;
+  termsPanelFooterText?: string | null;
+  termsPanelButtonLabel?: string | null;
+  termsPanelButtonUrl?: string | null;
+  termsPanelImageFormat?: "horizontal" | "square" | "vertical" | "none";
+  termsPanelImageUrl?: string | null;
+  termsPanelMessageId?: string | null;
   verificationEnabled: boolean;
   verificationRoleId: string | null;
   verificationRoleIds?: string[];
