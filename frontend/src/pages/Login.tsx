@@ -383,14 +383,6 @@ export function Login({
           </h1>
         </Reveal>
 
-        <Reveal delay={0.3} className="w-full max-w-3xl">
-          <p className="mx-auto mt-6 text-base leading-8 text-[#B3B3B3] sm:text-lg">
-            {verificationPending
-              ? "Confirme a segunda etapa de autenticação para liberar a dashboard deste usuário."
-              : "Centralize o gerenciamento dos seus bots, servidores, módulos, permissões e integrações em uma plataforma rápida, segura e totalmente personalizável."}
-          </p>
-        </Reveal>
-
         <Reveal delay={0.4} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Button className="h-12 min-w-44" disabled={verifying} onClick={handleStart}>
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
