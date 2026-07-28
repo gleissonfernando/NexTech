@@ -155,6 +155,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "subscription-presence", label: "Pagamento de Presença" },
   { id: "nextech-invites", label: "Sistema de Convites NextTech" },
   { id: "manual-payments", label: "Pagamento Manual" },
+  { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },

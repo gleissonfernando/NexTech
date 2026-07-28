@@ -92,6 +92,8 @@ import type {
   MaintenanceState,
   BotCredential,
   CustomerPlansDashboard,
+  CustomBotOrdersDashboard,
+  CustomBotOrderSettings,
   CustomPanel,
   CustomPanelCategory,
   CustomPanelsDashboard,
@@ -120,6 +122,7 @@ import type {
   RhAdminDashboard,
   SaveClipsConfigPayload,
   SaveCustomPanelCategoryPayload,
+  SaveCustomBotOrderSettingsPayload,
   SaveBoosterSettingsPayload,
   SaveCustomPanelPayload,
   SaveCoursePayload,
@@ -3050,6 +3053,39 @@ export async function publishManualPaymentPanel(botId: string, guildId: string) 
     `/manual-payments/${encodeURIComponent(guildId)}/panel`,
     undefined,
     { params: botParams(botId), timeout: 15000 }
+  );
+  return data.settings;
+}
+
+export async function getCustomBotOrdersDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<CustomBotOrdersDashboard>(`/custom-bot-orders/${encodeURIComponent(guildId)}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function saveCustomBotOrderSettings(botId: string, guildId: string, payload: SaveCustomBotOrderSettingsPayload) {
+  const { data } = await api.put<{ settings: CustomBotOrderSettings }>(
+    `/custom-bot-orders/${encodeURIComponent(guildId)}/settings`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function publishCustomBotOrderPanel(botId: string, guildId: string) {
+  const { data } = await api.post<{ settings: CustomBotOrderSettings }>(
+    `/custom-bot-orders/${encodeURIComponent(guildId)}/panel`,
+    undefined,
+    { params: botParams(botId), timeout: 15000 }
+  );
+  return data.settings;
+}
+
+export async function deleteCustomBotOrderPanel(botId: string, guildId: string) {
+  const { data } = await api.delete<{ settings: CustomBotOrderSettings }>(
+    `/custom-bot-orders/${encodeURIComponent(guildId)}/panel`,
+    { params: botParams(botId) }
   );
   return data.settings;
 }

@@ -2282,6 +2282,84 @@ export type ManualPaymentSettings = {
   updatedAt: string;
 };
 
+export type CustomBotOrderStatus = "WAITING_STAFF" | "IN_SERVICE" | "ANALYZING" | "WAITING_CUSTOMER" | "WAITING_PAYMENT" | "IN_DEVELOPMENT" | "TESTING" | "FINISHED" | "CANCELLED" | string;
+
+export type CustomBotOrderStatusDefinition = {
+  color: string;
+  dmEnabled: boolean;
+  emoji: string;
+  id: CustomBotOrderStatus;
+  locked?: boolean;
+  name: string;
+  order: number;
+};
+
+export type CustomBotOrderSettings = {
+  id: string;
+  adminRoleIds: string[];
+  allowMultipleActiveOrders: boolean;
+  assignRoleIds: string[];
+  bannerUrl: string | null;
+  botId: string;
+  buttonEmoji: string;
+  buttonLabel: string;
+  categoryId: string | null;
+  closeRoleIds: string[];
+  color: string;
+  description: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string;
+  guildId: string;
+  introText: string;
+  logChannelId: string | null;
+  maxActiveOrdersPerUser: number;
+  mentionRoleId: string | null;
+  noticeCooldownMinutes: number;
+  panelChannelId: string | null;
+  panelEmoji: string;
+  panelMessageId: string | null;
+  responsibleRoleIds: string[];
+  reviewChannelId: string | null;
+  staffRoleIds: string[];
+  statusDefinitions: CustomBotOrderStatusDefinition[];
+  subtitle: string;
+  thumbnailUrl: string | null;
+  title: string;
+  transcriptChannelId: string | null;
+  updatedAt: string;
+};
+
+export type CustomBotOrder = {
+  id: string;
+  assignedAt: string | null;
+  assignedStaffId: string | null;
+  botId: string;
+  budget: string | null;
+  channelId: string | null;
+  closedAt: string | null;
+  closedById: string | null;
+  closeReason: string | null;
+  createdAt: string;
+  customerId: string;
+  customerName: string | null;
+  deadline: string | null;
+  description: string;
+  features: string;
+  guildId: string;
+  lastNoticeAt: string | null;
+  notes: string | null;
+  orderNumber: number;
+  panelMessageId: string | null;
+  projectName: string;
+  references: string | null;
+  result: string | null;
+  status: CustomBotOrderStatus;
+  ticketId: string;
+  type: string;
+  updatedAt: string;
+};
+
 export type SalesTicketSettings = {
   id: string;
   botId: string;
@@ -3484,6 +3562,57 @@ export class ApiClient {
       `/manual-payments/bot/${guildId}/orders/${orderId}/receipt`,
       input
     );
+    return data;
+  }
+
+  async getCustomBotOrderRuntime(guildId: string) {
+    const { data } = await this.http.get<{ orders: CustomBotOrder[]; settings: CustomBotOrderSettings }>(`/custom-bot-orders/bot/${guildId}/runtime`);
+    return data;
+  }
+
+  async updateCustomBotOrderPanelState(guildId: string, messageId: string | null) {
+    const { data } = await this.http.put<{ settings: CustomBotOrderSettings }>(`/custom-bot-orders/bot/${guildId}/panel-state`, { messageId });
+    return data.settings;
+  }
+
+  async createCustomBotOrder(guildId: string, input: {
+    budget?: string | null;
+    customerId: string;
+    customerName?: string | null;
+    deadline?: string | null;
+    description: string;
+    features: string;
+    notes?: string | null;
+    projectName: string;
+    references?: string | null;
+    type: string;
+  }) {
+    const { data } = await this.http.post<{ order: CustomBotOrder }>(`/custom-bot-orders/bot/${guildId}/orders`, input);
+    return data.order;
+  }
+
+  async updateCustomBotOrder(guildId: string, orderId: string, input: Partial<{
+    action: string;
+    actorId: string | null;
+    actorName: string | null;
+    assignedStaffId: string | null;
+    channelId: string | null;
+    closeReason: string | null;
+    closedById: string | null;
+    notice: boolean;
+    panelMessageId: string | null;
+    result: string | null;
+    status: CustomBotOrderStatus;
+    transcriptAdminText: string | null;
+    transcriptChannelMessageId: string | null;
+    transcriptCustomerText: string | null;
+  }>) {
+    const { data } = await this.http.patch<{ order: CustomBotOrder }>(`/custom-bot-orders/bot/${guildId}/orders/${orderId}`, input);
+    return data.order;
+  }
+
+  async addCustomBotOrderNote(guildId: string, orderId: string, input: { authorId: string; authorName?: string | null; content: string }) {
+    const { data } = await this.http.post(`/custom-bot-orders/bot/${guildId}/orders/${orderId}/notes`, input);
     return data;
   }
 

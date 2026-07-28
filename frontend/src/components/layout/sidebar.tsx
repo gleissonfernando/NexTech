@@ -62,6 +62,7 @@ export type ViewId =
   | "rules"
   | "payment-gateway"
   | "manual-payments"
+  | "custom-bot-orders"
   | "price-tables"
   | "panels"
   | "courses"
@@ -163,6 +164,7 @@ const navItems: NavItem[] = [
   { id: "rules", label: "Painel de Regras", icon: ScrollText, moduleId: "rules" },
   { id: "payment-gateway", label: "Pagamento Automático", icon: CreditCard, moduleId: "payment-gateway" },
   { id: "manual-payments", label: "Pagamento Manual", icon: CreditCard, moduleId: "manual-payments" },
+  { id: "custom-bot-orders", label: "Pedidos de Bots", icon: Bot, moduleId: "custom-bot-orders" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },
   { id: "panels", label: "Painéis", icon: ImageIcon, moduleId: "panels" },
   { id: "courses", label: "Cursos", icon: BookOpen, moduleIds: ["courses", "police-courses"] },

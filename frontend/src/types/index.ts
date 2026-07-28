@@ -262,6 +262,116 @@ export type RulesPanelCategory = {
   rules: string[];
 };
 
+export type CustomBotOrderStatus = "WAITING_STAFF" | "IN_SERVICE" | "ANALYZING" | "WAITING_CUSTOMER" | "WAITING_PAYMENT" | "IN_DEVELOPMENT" | "TESTING" | "FINISHED" | "CANCELLED" | string;
+
+export type CustomBotOrderStatusDefinition = {
+  color: string;
+  dmEnabled: boolean;
+  emoji: string;
+  id: CustomBotOrderStatus;
+  locked?: boolean;
+  name: string;
+  order: number;
+};
+
+export type CustomBotOrderSettings = {
+  id: string;
+  adminRoleIds: string[];
+  allowMultipleActiveOrders: boolean;
+  assignRoleIds: string[];
+  bannerUrl: string | null;
+  botId: string;
+  buttonEmoji: string;
+  buttonLabel: string;
+  categoryId: string | null;
+  closeRoleIds: string[];
+  color: string;
+  description: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string;
+  guildId: string;
+  introText: string;
+  logChannelId: string | null;
+  maxActiveOrdersPerUser: number;
+  mentionRoleId: string | null;
+  noticeCooldownMinutes: number;
+  panelChannelId: string | null;
+  panelEmoji: string;
+  panelMessageId: string | null;
+  responsibleRoleIds: string[];
+  reviewChannelId: string | null;
+  staffRoleIds: string[];
+  statusDefinitions: CustomBotOrderStatusDefinition[];
+  subtitle: string;
+  thumbnailUrl: string | null;
+  title: string;
+  transcriptChannelId: string | null;
+  updatedAt: string;
+};
+
+export type CustomBotOrder = {
+  id: string;
+  assignedAt: string | null;
+  assignedStaffId: string | null;
+  botId: string;
+  budget: string | null;
+  channelId: string | null;
+  closedAt: string | null;
+  closedById: string | null;
+  closeReason: string | null;
+  createdAt: string;
+  customerId: string;
+  customerName: string | null;
+  deadline: string | null;
+  description: string;
+  features: string;
+  guildId: string;
+  lastNoticeAt: string | null;
+  notes: string | null;
+  orderNumber: number;
+  panelMessageId: string | null;
+  projectName: string;
+  references: string | null;
+  result: string | null;
+  status: CustomBotOrderStatus;
+  ticketId: string;
+  type: string;
+  updatedAt: string;
+};
+
+export type CustomBotOrderLog = {
+  id: string;
+  actorId: string | null;
+  actorName?: string | null;
+  channelId?: string | null;
+  createdAt: string;
+  customerId?: string | null;
+  event: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+  orderId: string | null;
+  ticketId?: string | null;
+};
+
+export type CustomBotOrdersDashboard = {
+  logs: CustomBotOrderLog[];
+  metrics: {
+    averageServiceMinutes: number;
+    cancelled: number;
+    finished: number;
+    inDevelopment: number;
+    open: number;
+    waitingCustomer: number;
+    waitingStaff: number;
+  };
+  notes: Array<{ authorId: string; authorName: string | null; content: string; createdAt: string; id: string; orderId: string; ticketId: string }>;
+  orders: CustomBotOrder[];
+  settings: CustomBotOrderSettings;
+};
+
+export type SaveCustomBotOrderSettingsPayload = Partial<Omit<CustomBotOrderSettings, "botId" | "guildId" | "id" | "panelMessageId" | "updatedAt">>;
+
 export type MemberPanelSection = {
   description: string;
   emoji: string | null;

@@ -86,6 +86,8 @@ export type FivemOrderPanelPublishEvent = { botId?: string | null; guildId: stri
 export type FivemOrderStatusUpdatedEvent = { actorId?: string | null; botId?: string | null; guildId: string; order: FivemOrder };
 export type PriceTablePanelPublishEvent = { botId?: string | null; guildId: string; tableId: string };
 export type ManualPaymentPanelPublishEvent = { botId?: string | null; guildId: string };
+export type CustomBotOrderPanelPublishEvent = { botId?: string | null; guildId: string };
+export type CustomBotOrderPanelDeleteEvent = { botId?: string | null; guildId: string };
 export type SalesTicketPanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type CoursePanelPublishEvent = { botId?: string | null; guildId: string; settings?: unknown };
 export type CourseExamReviewedEvent = { actorId?: string | null; attemptId: string; botId?: string | null; courseId: string; guildId: string; status: "approved" | "rejected" };
@@ -503,6 +505,8 @@ export class BotSocketClient {
   private fivemOrderStatusUpdatedHandler: ((payload: FivemOrderStatusUpdatedEvent) => void) | null = null;
   private priceTablePanelPublishHandler: ((payload: PriceTablePanelPublishEvent) => void) | null = null;
   private manualPaymentPanelPublishHandler: ((payload: ManualPaymentPanelPublishEvent) => void) | null = null;
+  private customBotOrderPanelPublishHandler: ((payload: CustomBotOrderPanelPublishEvent) => void) | null = null;
+  private customBotOrderPanelDeleteHandler: ((payload: CustomBotOrderPanelDeleteEvent) => void) | null = null;
   private salesTicketPanelPublishHandler: ((payload: SalesTicketPanelPublishEvent) => void) | null = null;
   private coursePanelPublishHandler: ((payload: CoursePanelPublishEvent) => void) | null = null;
   private courseExamReviewedHandler: ((payload: CourseExamReviewedEvent) => void) | null = null;
@@ -639,6 +643,8 @@ export class BotSocketClient {
     if (this.fivemOrderStatusUpdatedHandler) this.socket.on("fivem:orders:status_updated", this.fivemOrderStatusUpdatedHandler);
     if (this.priceTablePanelPublishHandler) this.socket.on("price-tables:panel_publish", this.priceTablePanelPublishHandler);
     if (this.manualPaymentPanelPublishHandler) this.socket.on("manual-payments:panel_publish", this.manualPaymentPanelPublishHandler);
+    if (this.customBotOrderPanelPublishHandler) this.socket.on("custom-bot-orders:panel_publish", this.customBotOrderPanelPublishHandler);
+    if (this.customBotOrderPanelDeleteHandler) this.socket.on("custom-bot-orders:panel_delete", this.customBotOrderPanelDeleteHandler);
     if (this.salesTicketPanelPublishHandler) this.socket.on("sales-tickets:panel_publish", this.salesTicketPanelPublishHandler);
     if (this.coursePanelPublishHandler) this.socket.on("courses:panel_publish", this.coursePanelPublishHandler);
     if (this.courseExamReviewedHandler) this.socket.on("courses:exam_reviewed", this.courseExamReviewedHandler);
@@ -883,6 +889,18 @@ export class BotSocketClient {
     this.manualPaymentPanelPublishHandler = handler;
     this.socket?.off("manual-payments:panel_publish");
     this.socket?.on("manual-payments:panel_publish", handler);
+  }
+
+  onCustomBotOrderPanelPublish(handler: (payload: CustomBotOrderPanelPublishEvent) => void) {
+    this.customBotOrderPanelPublishHandler = handler;
+    this.socket?.off("custom-bot-orders:panel_publish");
+    this.socket?.on("custom-bot-orders:panel_publish", handler);
+  }
+
+  onCustomBotOrderPanelDelete(handler: (payload: CustomBotOrderPanelDeleteEvent) => void) {
+    this.customBotOrderPanelDeleteHandler = handler;
+    this.socket?.off("custom-bot-orders:panel_delete");
+    this.socket?.on("custom-bot-orders:panel_delete", handler);
   }
 
   onSalesTicketPanelPublish(handler: (payload: SalesTicketPanelPublishEvent) => void) {

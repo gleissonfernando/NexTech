@@ -56,6 +56,7 @@ import {
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { BoosterPanel } from "../components/boosters/BoosterPanel";
+import { CustomBotOrdersPanel } from "../components/custom-bot-orders/CustomBotOrdersPanel";
 import { CoursesPanel } from "../components/courses/CoursesPanel";
 import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
@@ -418,6 +419,13 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Gerencia Pix manual, comprovantes, aprovação e atendimento por canais.",
     icon: CreditCard,
     view: "manual-payments"
+  },
+  {
+    id: "custom-bot-orders",
+    title: "Pedidos de Bots Personalizados",
+    description: "Painel Components V2 para clientes solicitarem bots com ticket, equipe, status e transcript.",
+    icon: Bot,
+    view: "custom-bot-orders"
   },
   {
     id: "price-tables",
@@ -900,6 +908,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   rules: "rules",
   "payment-gateway": "payment-gateway",
   "manual-payments": "manual-payments",
+  "custom-bot-orders": "custom-bot-orders",
   "price-tables": "price-tables",
   panels: "panels",
   courses: "courses",
@@ -1588,6 +1597,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <ManualPaymentsPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "manual-payments", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "custom-bot-orders" ? (
+          <CustomBotOrdersPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "custom-bot-orders", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}

@@ -40,6 +40,7 @@ import { startNexTechSalesDeliveryService } from "../services/nexTechSalesDelive
 import { startNexTechInviteService } from "../services/nexTechInviteService";
 import { startSalesTicketService } from "../services/salesTicketService";
 import { startManualPaymentService } from "../services/manualPaymentService";
+import { startCustomBotOrderService } from "../services/customBotOrderService";
 import { startPriceTableService } from "../services/priceTableService";
 import { startManualRegistrationService } from "../services/manualRegistrationService";
 import { startRhAdminService } from "../services/rhAdminService";
@@ -353,6 +354,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("fivem-finance", isBotModuleEnabled("fivem-finance"), () => startFivemFinanceService(client, context));
   startRuntimeService("fivem-orders", isBotModuleEnabled("fivem-orders") || isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing"), () => startFivemOrderService(client, context));
   startRuntimeService("manual-payments", isBotModuleEnabled("manual-payments"), () => startManualPaymentService(client, context));
+  startRuntimeService("custom-bot-orders", isBotModuleEnabled("custom-bot-orders"), () => startCustomBotOrderService(client, context));
   startRuntimeService("price-tables", isBotModuleEnabled("price-tables"), () => startPriceTableService(client, context));
   startRuntimeService("nex-tech-sales", isBotModuleEnabled("nex-tech-sales") || isBotModuleEnabled("subscription-presence"), () => startNexTechSalesDeliveryService(client, context));
   startRuntimeService("nextech-invites", isBotModuleEnabled("nextech-invites"), () => startNexTechInviteService(client, context));

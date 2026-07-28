@@ -3611,6 +3611,125 @@ export type MongoManualPaymentOrderLog = {
   userId: string;
 };
 
+export type MongoCustomBotOrderStatus =
+  | "WAITING_STAFF"
+  | "IN_SERVICE"
+  | "ANALYZING"
+  | "WAITING_CUSTOMER"
+  | "WAITING_PAYMENT"
+  | "IN_DEVELOPMENT"
+  | "TESTING"
+  | "FINISHED"
+  | "CANCELLED";
+
+export type MongoCustomBotOrderStatusDefinition = {
+  color: string;
+  dmEnabled: boolean;
+  emoji: string;
+  id: MongoCustomBotOrderStatus | string;
+  locked?: boolean;
+  name: string;
+  order: number;
+};
+
+export type MongoCustomBotOrderSettings = {
+  _id: string;
+  adminRoleIds: string[];
+  allowMultipleActiveOrders: boolean;
+  assignRoleIds: string[];
+  bannerUrl: string | null;
+  botId: string;
+  buttonEmoji: string;
+  buttonLabel: string;
+  categoryId: string | null;
+  closeRoleIds: string[];
+  color: string;
+  description: string;
+  enabled: boolean;
+  footerImageUrl: string | null;
+  footerText: string;
+  guildId: string;
+  introText: string;
+  logChannelId: string | null;
+  maxActiveOrdersPerUser: number;
+  mentionRoleId: string | null;
+  noticeCooldownMinutes: number;
+  panelChannelId: string | null;
+  panelEmoji: string;
+  panelMessageId: string | null;
+  responsibleRoleIds: string[];
+  reviewChannelId: string | null;
+  staffRoleIds: string[];
+  statusDefinitions: MongoCustomBotOrderStatusDefinition[];
+  subtitle: string;
+  thumbnailUrl: string | null;
+  title: string;
+  transcriptChannelId: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoCustomBotOrder = {
+  _id: string;
+  assignedAt: Date | null;
+  assignedStaffId: string | null;
+  botId: string;
+  budget: string | null;
+  channelId: string | null;
+  closedAt: Date | null;
+  closedById: string | null;
+  closeReason: string | null;
+  createdAt: Date;
+  customerId: string;
+  customerName: string | null;
+  deadline: string | null;
+  description: string;
+  features: string;
+  guildId: string;
+  lastNoticeAt: Date | null;
+  notes: string | null;
+  orderNumber: number;
+  panelMessageId: string | null;
+  projectName: string;
+  references: string | null;
+  result: string | null;
+  status: MongoCustomBotOrderStatus | string;
+  ticketId: string;
+  transcriptAdminText?: string | null;
+  transcriptChannelMessageId?: string | null;
+  transcriptCustomerText?: string | null;
+  type: string;
+  updatedAt: Date;
+};
+
+export type MongoCustomBotOrderLog = {
+  _id: string;
+  actorId: string | null;
+  actorName?: string | null;
+  botId: string;
+  channelId?: string | null;
+  createdAt: Date;
+  customerId?: string | null;
+  event: string;
+  guildId: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+  orderId: string | null;
+  ticketId?: string | null;
+};
+
+export type MongoCustomBotOrderNote = {
+  _id: string;
+  authorId: string;
+  authorName: string | null;
+  botId: string;
+  content: string;
+  createdAt: Date;
+  guildId: string;
+  orderId: string;
+  ticketId: string;
+};
+
 export type MongoZtkWebhookEventType = "recruitment" | "domination" | "player_connected" | "player_disconnected" | "unknown";
 
 export type MongoZtkWebhookClan = {
@@ -5322,6 +5441,10 @@ export async function getMongoCollections() {
     manualPaymentOrders: db.collection<MongoManualPaymentOrder>("manual_payment_orders"),
     manualPaymentReceipts: db.collection<MongoManualPaymentReceipt>("manual_payment_receipts"),
     manualPaymentOrderLogs: db.collection<MongoManualPaymentOrderLog>("manual_payment_order_logs"),
+    customBotOrderSettings: db.collection<MongoCustomBotOrderSettings>("custom_bot_order_settings"),
+    customBotOrders: db.collection<MongoCustomBotOrder>("custom_bot_orders"),
+    customBotOrderLogs: db.collection<MongoCustomBotOrderLog>("custom_bot_order_logs"),
+    customBotOrderNotes: db.collection<MongoCustomBotOrderNote>("custom_bot_order_notes"),
     missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
     missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
     missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
@@ -5611,6 +5734,7 @@ async function createMongoIndexes(db: Db) {
     ensureSalesTicketIndexes(db),
     ensurePriceTableIndexes(db),
     ensureManualPaymentIndexes(db),
+    ensureCustomBotOrderIndexes(db),
     ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
     ensureSafeBotWarningIndexes(db),
@@ -6202,6 +6326,24 @@ async function ensureEmojiCloneIndexes(db: Db) {
       { botId: 1, guildId: 1 },
       { unique: true }
     )
+  ]);
+}
+
+async function ensureCustomBotOrderIndexes(db: Db) {
+  const settings = db.collection<MongoCustomBotOrderSettings>("custom_bot_order_settings");
+  const orders = db.collection<MongoCustomBotOrder>("custom_bot_orders");
+  const logs = db.collection<MongoCustomBotOrderLog>("custom_bot_order_logs");
+  const notes = db.collection<MongoCustomBotOrderNote>("custom_bot_order_notes");
+
+  await Promise.all([
+    settings.createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    orders.createIndex({ botId: 1, guildId: 1, orderNumber: -1 }, { unique: true }),
+    orders.createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    orders.createIndex({ botId: 1, guildId: 1, customerId: 1, status: 1, createdAt: -1 }),
+    orders.createIndex({ botId: 1, guildId: 1, channelId: 1 }),
+    logs.createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    logs.createIndex({ botId: 1, orderId: 1, createdAt: -1 }),
+    notes.createIndex({ botId: 1, orderId: 1, createdAt: -1 })
   ]);
 }
 
