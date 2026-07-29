@@ -58,6 +58,7 @@ export type PlanActor = {
 };
 
 type CheckoutBuyer = {
+  cpfCnpj?: string | null;
   discordId: string;
   email: string | null;
   name: string | null;
@@ -565,9 +566,15 @@ export async function getPublicPlan(slug: string) {
   return plan ? toPlanDto(plan) : null;
 }
 
-export async function createPublicCheckoutInterest(planSlug: string, actor: PlanActor, paymentMethod: CheckoutPaymentMethod = "checkout") {
+export async function createPublicCheckoutInterest(
+  planSlug: string,
+  actor: PlanActor,
+  paymentMethod: CheckoutPaymentMethod = "checkout",
+  buyerInput: { cpfCnpj?: string | null } = {}
+) {
   const anonymousId = `pending:${randomUUID()}`;
   return createCheckoutInterestForBuyer(planSlug, {
+    cpfCnpj: normalizeCpfCnpj(buyerInput.cpfCnpj),
     discordId: anonymousId,
     email: null,
     name: null,
@@ -575,8 +582,15 @@ export async function createPublicCheckoutInterest(planSlug: string, actor: Plan
   }, actor, { checkExistingSubscription: false, paymentMethod, reusePendingOrder: false });
 }
 
-export async function createCheckoutInterest(planSlug: string, auth: DashboardAuth, actor: PlanActor, paymentMethod: CheckoutPaymentMethod = "checkout") {
+export async function createCheckoutInterest(
+  planSlug: string,
+  auth: DashboardAuth,
+  actor: PlanActor,
+  paymentMethod: CheckoutPaymentMethod = "checkout",
+  buyerInput: { cpfCnpj?: string | null } = {}
+) {
   return createCheckoutInterestForBuyer(planSlug, {
+    cpfCnpj: normalizeCpfCnpj(buyerInput.cpfCnpj),
     discordId: auth.user.discordId,
     email: auth.user.email ?? null,
     name: auth.user.globalName || auth.user.username || null,
@@ -3229,6 +3243,11 @@ function readNestedNumber(value: Record<string, unknown>, pathParts: string[]) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function normalizeCpfCnpj(value?: string | null) {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits.length === 11 || digits.length === 14 ? digits : null;
+}
+
 function readSnapshotNumber(snapshot: unknown, key: string) {
   if (!isRecord(snapshot)) return null;
   const value = snapshot[key];
@@ -3429,6 +3448,7 @@ async function createPlanPayment(
     itemTitle: plan.name,
     metadata: {
       business: "nextech",
+      cpf_cnpj_present: Boolean(buyer.cpfCnpj),
       discord_id: buyer.discordId,
       payment_order_id: order._id,
       payment_method: method,

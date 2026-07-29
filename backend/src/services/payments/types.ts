@@ -15,6 +15,7 @@ export type PaymentGateway = typeof PAYMENT_GATEWAYS[keyof typeof PAYMENT_GATEWA
 export type PaymentMethod = typeof PAYMENT_METHODS[keyof typeof PAYMENT_METHODS];
 
 export type PaymentBuyer = {
+  cpfCnpj?: string | null;
   discordId?: string | null;
   email?: string | null;
   name?: string | null;

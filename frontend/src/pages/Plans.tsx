@@ -38,13 +38,13 @@ export function PublicPlansPage() {
     void getPublicPlans().then(setPlans).catch(() => setError("Não foi possível carregar os planos agora.")).finally(() => setLoading(false));
   }, []);
 
-  async function startCheckout(plan: Plan, paymentMethod: "card" | "pix") {
+  async function startCheckout(plan: Plan, paymentMethod: "card" | "pix", cpfCnpj?: string | null) {
     setBusyPlanSlug(plan.slug);
     setBusyPaymentMethod(paymentMethod);
     setError(null);
 
     try {
-      const result = await createPlanCheckoutInterest(plan.id, paymentMethod === "pix" ? "pix" : "checkout");
+      const result = await createPlanCheckoutInterest(plan.id, paymentMethod === "pix" ? "pix" : "checkout", { cpfCnpj });
       if (result.order.pixCode || result.order.qrCode) {
         window.location.assign(`/pagamento/pix/${encodeURIComponent(result.order.id)}`);
         return;
@@ -96,7 +96,7 @@ export function PublicPlansPage() {
         <PaymentMethodDialog
           busyMethod={busyPlanSlug === paymentPlan.slug ? busyPaymentMethod : null}
           onClose={() => busyPlanSlug ? null : setPaymentPlan(null)}
-          onSelect={(method) => void startCheckout(paymentPlan, method)}
+          onSelect={(method, cpfCnpj) => void startCheckout(paymentPlan, method, cpfCnpj)}
           plan={paymentPlan}
         />
       ) : null}
@@ -112,10 +112,13 @@ function PaymentMethodDialog({
 }: {
   busyMethod: "card" | "pix" | null;
   onClose: () => void;
-  onSelect: (method: "card" | "pix") => void;
+  onSelect: (method: "card" | "pix", cpfCnpj?: string | null) => void;
   plan: Plan;
 }) {
+  const [cpfCnpj, setCpfCnpj] = useState("");
   const disabled = Boolean(busyMethod);
+  const cpfCnpjDigits = cpfCnpj.replace(/\D/g, "");
+  const pixDisabled = disabled || ![11, 14].includes(cpfCnpjDigits.length);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 px-4 py-6 sm:items-center" role="dialog" aria-modal="true">
@@ -132,11 +135,23 @@ function PaymentMethodDialog({
         </div>
 
         <div className="mt-5 grid gap-3">
-          <button className="flex min-h-16 items-center gap-3 rounded-lg border border-primary/30 bg-primary px-4 text-left text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={disabled} onClick={() => onSelect("pix")} type="button">
+          <label className="grid gap-2 text-sm font-semibold text-zinc-300">
+            CPF ou CNPJ para Pix
+            <input
+              className="h-11 rounded-lg border border-zinc-800 bg-black px-3 text-sm text-white outline-none transition focus:border-primary disabled:opacity-60"
+              disabled={disabled}
+              inputMode="numeric"
+              maxLength={18}
+              onChange={(event) => setCpfCnpj(event.target.value)}
+              placeholder="Somente números"
+              value={cpfCnpj}
+            />
+          </label>
+          <button className="flex min-h-16 items-center gap-3 rounded-lg border border-primary/30 bg-primary px-4 text-left text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={pixDisabled} onClick={() => onSelect("pix", cpfCnpjDigits)} type="button">
             {busyMethod === "pix" ? <Loader2 className="h-5 w-5 animate-spin" /> : <QrCode className="h-5 w-5" />}
             <span>
               <span className="block text-sm font-black">Pagar com Pix</span>
-              <span className="block text-xs font-semibold opacity-80">Checkout seguro com métodos disponíveis</span>
+              <span className="block text-xs font-semibold opacity-80">Gerar QR Code Asaas</span>
             </span>
           </button>
           <button className="flex min-h-16 items-center gap-3 rounded-lg border border-zinc-700 bg-black px-4 text-left text-zinc-100 transition hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-70" disabled={disabled} onClick={() => onSelect("card")} type="button">

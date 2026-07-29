@@ -192,6 +192,10 @@ export class AsaasPaymentService implements PaymentGatewayService {
 
   private async findOrCreateCustomer(order: PaymentOrderInput) {
     const externalReference = customerExternalReference(order);
+    const cpfCnpj = normalizeCpfCnpj(order.payer.cpfCnpj);
+    if (!cpfCnpj) {
+      throw Object.assign(new Error("CPF ou CNPJ é obrigatório para gerar Pix Asaas."), { statusCode: 400 });
+    }
     const existing = await this.request<AsaasListResponse<AsaasCustomer>>(
       `/customers?externalReference=${encodeURIComponent(externalReference)}`,
       { method: "GET" }
@@ -202,6 +206,7 @@ export class AsaasPaymentService implements PaymentGatewayService {
     const customer = await this.request<AsaasCustomer>("/customers", {
       method: "POST",
       body: {
+        cpfCnpj,
         email: validEmail(order.payer.email) ? order.payer.email : undefined,
         externalReference,
         name: customerName(order)
@@ -395,6 +400,11 @@ function customerName(order: PaymentOrderInput) {
 
 function validEmail(value?: string | null) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function normalizeCpfCnpj(value?: string | null) {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits.length === 11 || digits.length === 14 ? digits : null;
 }
 
 function centsToMoney(cents: number) {

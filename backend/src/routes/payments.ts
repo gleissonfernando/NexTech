@@ -29,6 +29,7 @@ export const paymentAdminRouter = Router();
 export const subscriptionsPaymentsRouter = Router();
 
 const checkoutSchema = z.object({
+  cpfCnpj: z.string().max(32).optional(),
   paymentMethod: z.enum(["checkout", "pix", "card", "credit_card", "debit_card"]).default("checkout")
     .transform((value) => value === "pix" ? "pix" as const : "checkout" as const),
   planId: z.string().min(1).max(120)
@@ -65,7 +66,7 @@ const asaasSubscriptionSchema = z.object({
 paymentsRouter.post("/mercadopago/checkout", checkoutRateLimit, async (req, res, next) => {
   try {
     const input = checkoutSchema.parse(req.body ?? {});
-    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod);
+    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod, { cpfCnpj: input.cpfCnpj });
     return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
@@ -75,7 +76,7 @@ paymentsRouter.post("/mercadopago/checkout", checkoutRateLimit, async (req, res,
 paymentsRouter.post("/stripe/checkout", checkoutRateLimit, async (req, res, next) => {
   try {
     const input = checkoutSchema.parse(req.body ?? {});
-    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod);
+    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod, { cpfCnpj: input.cpfCnpj });
     return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
@@ -85,7 +86,7 @@ paymentsRouter.post("/stripe/checkout", checkoutRateLimit, async (req, res, next
 paymentsRouter.post("/create-checkout", checkoutRateLimit, async (req, res, next) => {
   try {
     const input = checkoutSchema.parse(req.body ?? {});
-    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod);
+    const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), input.paymentMethod, { cpfCnpj: input.cpfCnpj });
     return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
@@ -96,7 +97,7 @@ paymentsRouter.post("/pix", checkoutRateLimit, async (req, res, next) => {
   try {
     if (typeof req.body?.planId === "string") {
       const input = checkoutSchema.parse({ ...req.body, paymentMethod: "pix" });
-      const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), "pix");
+      const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), "pix", { cpfCnpj: input.cpfCnpj });
       return sendCheckoutResult(res, result);
     }
 
@@ -149,7 +150,7 @@ paymentsRouter.post("/mercadopago/checkout/authenticated", requireAuthenticated,
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = checkoutSchema.parse(req.body ?? {});
-    const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth), input.paymentMethod);
+    const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth), input.paymentMethod, { cpfCnpj: input.cpfCnpj });
     return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);
@@ -160,7 +161,7 @@ paymentsRouter.post("/stripe/checkout/authenticated", requireAuthenticated, chec
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = checkoutSchema.parse(req.body ?? {});
-    const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth), input.paymentMethod);
+    const result = await createCheckoutInterest(input.planId, auth, actorFrom(req, auth), input.paymentMethod, { cpfCnpj: input.cpfCnpj });
     return sendCheckoutResult(res, result);
   } catch (error) {
     return next(error);

@@ -442,7 +442,11 @@ export async function getCustomerPaymentOrder(orderId: string) {
   return data;
 }
 
-export async function createPlanCheckoutInterest(planId: string, paymentMethod: "checkout" | "pix" = "checkout") {
+export async function createPlanCheckoutInterest(
+  planId: string,
+  paymentMethod: "checkout" | "pix" = "checkout",
+  input: { cpfCnpj?: string | null } = {}
+) {
   const { data } = await api.post<{
     success?: boolean;
     orderId?: string;
@@ -451,6 +455,7 @@ export async function createPlanCheckoutInterest(planId: string, paymentMethod: 
     payment: { enabled: boolean; message: string | null; provider: import("../types").PaymentProvider };
     plan: Plan;
   }>("/payments/create-checkout", {
+    cpfCnpj: input.cpfCnpj,
     paymentMethod,
     planId
   });
