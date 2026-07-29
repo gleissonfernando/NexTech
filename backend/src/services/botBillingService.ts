@@ -5,6 +5,7 @@ import {
   type MongoBotBillingInvoice,
   type MongoBotBillingInvoiceStatus,
   type MongoBotBillingModel,
+  type MongoBotPlanPeriod,
   type MongoDevBot
 } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -35,11 +36,16 @@ export type BotBillingInvoiceDto = {
   botName: string;
   billingModel: MongoBotBillingModel;
   chargeType: "hosting" | "monthly_plan";
+  contractedAt: string;
   amountInCents: number;
   currency: "BRL";
+  daysOverdue: number;
   dueDate: string;
   dueMonth: string;
+  nextDueDate: string;
+  planPeriod: MongoBotPlanPeriod;
   status: MongoBotBillingInvoiceStatus;
+  statusLabel: string;
   pixCode: string | null;
   pixQrCode: string | null;
   providerPaymentId: string | null;
@@ -141,12 +147,19 @@ export async function generateDueBotInvoices(source = "billing_cycle") {
 
 export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(), source = "ensure") {
   const { botBillingInvoices } = await getMongoCollections();
-  const dueMonth = monthKey(date);
+  const now = new Date();
+  const model = bot.billingModel ?? "monthly";
+  const contractedAt = bot.createdAt instanceof Date ? bot.createdAt : now;
+  const planPeriod = planPeriodForBot(bot);
+  const dueDate = nextDueDateForPeriod(contractedAt, planPeriod, date);
+  const dueStart = new Date(dueDate);
+  dueStart.setHours(0, 0, 0, 0);
+  if (date.getTime() < dueStart.getTime()) return { created: false, invoice: null };
+
+  const dueMonth = monthKey(dueDate);
   const existing = await botBillingInvoices.findOne({ botId: bot._id, dueMonth });
   if (existing) return { created: false, invoice: existing };
 
-  const now = new Date();
-  const model = bot.billingModel ?? "monthly";
   const invoice: MongoBotBillingInvoice = {
     _id: randomUUID(),
     amountInCents: invoiceAmount(bot),
@@ -154,14 +167,16 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
     botId: bot._id,
     botName: bot.name,
     chargeType: model === "lifetime" ? "hosting" : "monthly_plan",
+    contractedAt,
     createdAt: now,
     currency: "BRL",
-    dueDate: dueDateForMonth(date),
+    dueDate,
     dueMonth,
     idempotencyKey: `bot-invoice:${bot._id}:${dueMonth}`,
     notes: null,
     paidAt: null,
     paymentProvider: "asaas",
+    planPeriod,
     pixCode: null,
     pixQrCode: null,
     providerPaymentId: null,
@@ -469,6 +484,32 @@ function dueDateForMonth(date: Date) {
   return due;
 }
 
+function planPeriodForBot(bot: MongoDevBot): MongoBotPlanPeriod {
+  if ((bot.billingModel ?? "monthly") === "lifetime") return "lifetime";
+  if (bot.billingPeriod === "quarterly" || bot.billingPeriod === "annual") return bot.billingPeriod;
+  return "monthly";
+}
+
+function planPeriodMonths(period: MongoBotPlanPeriod) {
+  if (period === "quarterly") return 3;
+  if (period === "annual") return 12;
+  return 1;
+}
+
+function nextDueDateForPeriod(contractedAt: Date, period: MongoBotPlanPeriod, referenceDate = new Date()) {
+  const months = planPeriodMonths(period);
+  const due = new Date(contractedAt);
+  const elapsedMonths = Math.max(
+    0,
+    (referenceDate.getFullYear() - contractedAt.getFullYear()) * 12 + referenceDate.getMonth() - contractedAt.getMonth()
+  );
+  const periodsElapsed = Math.max(1, Math.ceil((elapsedMonths || 1) / months));
+
+  due.setMonth(contractedAt.getMonth() + periodsElapsed * months);
+  due.setHours(23, 59, 59, 999);
+  return due;
+}
+
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -480,6 +521,12 @@ function appendInvoiceHistory(invoice: MongoBotBillingInvoice, status: MongoBotB
 }
 
 function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice): BotBillingInvoiceDto {
+  const contractedAt = invoice.contractedAt ?? invoice.createdAt;
+  const planPeriod = invoice.planPeriod ?? (invoice.billingModel === "lifetime" ? "lifetime" : "monthly");
+  const daysOverdue = invoice.status === "overdue"
+    ? Math.max(1, Math.floor((Date.now() - invoice.dueDate.getTime()) / 86_400_000))
+    : 0;
+
   return {
     id: invoice._id,
     userId: invoice.userId,
@@ -487,11 +534,16 @@ function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice): BotBillingInvo
     botName: invoice.botName,
     billingModel: invoice.billingModel,
     chargeType: invoice.chargeType,
+    contractedAt: contractedAt.toISOString(),
     amountInCents: invoice.amountInCents,
     currency: invoice.currency,
+    daysOverdue,
     dueDate: invoice.dueDate.toISOString(),
     dueMonth: invoice.dueMonth,
+    nextDueDate: invoice.dueDate.toISOString(),
+    planPeriod,
     status: invoice.status,
+    statusLabel: invoiceStatusLabel(invoice.status),
     pixCode: invoice.pixCode,
     pixQrCode: invoice.pixQrCode,
     providerPaymentId: invoice.providerPaymentId,
@@ -499,6 +551,14 @@ function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice): BotBillingInvo
     createdAt: invoice.createdAt.toISOString(),
     updatedAt: invoice.updatedAt.toISOString()
   };
+}
+
+function invoiceStatusLabel(status: MongoBotBillingInvoiceStatus) {
+  if (status === "overdue") return "Fatura vencida";
+  if (status === "pending") return "Pagamento pendente";
+  if (status === "paid") return "Ativo";
+  if (status === "manually_released") return "Liberado manualmente";
+  return "Cancelada";
 }
 
 async function writeBillingAudit(

@@ -4689,6 +4689,7 @@ export type MongoDevBotStatus =
 export type MongoBotBillingModel = "monthly" | "lifetime";
 export type MongoBotBillingChargeType = "hosting" | "monthly_plan";
 export type MongoBotBillingInvoiceStatus = "pending" | "paid" | "overdue" | "cancelled" | "manually_released";
+export type MongoBotPlanPeriod = "monthly" | "quarterly" | "annual" | "lifetime";
 
 export type MongoBotBillingOverride = {
   forceBotActive: boolean;
@@ -4732,6 +4733,7 @@ export type MongoDevBot = {
   enabledModules: string[];
   desiredOnline?: boolean;
   billingModel?: MongoBotBillingModel;
+  billingPeriod?: MongoBotPlanPeriod;
   contractAmountInCents?: number | null;
   billingOverride?: MongoBotBillingOverride | null;
   createdBy: string;
@@ -4746,6 +4748,7 @@ export type MongoBotBillingInvoice = {
   botId: string;
   botName: string;
   chargeType: MongoBotBillingChargeType;
+  contractedAt?: Date | null;
   createdAt: Date;
   currency: "BRL";
   dueDate: Date;
@@ -4754,6 +4757,7 @@ export type MongoBotBillingInvoice = {
   notes: string | null;
   paidAt: Date | null;
   paymentProvider: MongoPaymentProvider;
+  planPeriod?: MongoBotPlanPeriod;
   pixCode: string | null;
   pixQrCode: string | null;
   providerPaymentId: string | null;

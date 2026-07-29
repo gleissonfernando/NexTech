@@ -4496,11 +4496,16 @@ export type BotBillingInvoice = {
   botName: string;
   billingModel: BotBillingModel;
   chargeType: BotBillingChargeType;
+  contractedAt: string;
   amountInCents: number;
   currency: "BRL";
+  daysOverdue: number;
   dueDate: string;
   dueMonth: string;
+  nextDueDate: string;
+  planPeriod: "monthly" | "quarterly" | "annual" | "lifetime";
   status: BotBillingInvoiceStatus;
+  statusLabel: string;
   pixCode: string | null;
   pixQrCode: string | null;
   providerPaymentId: string | null;

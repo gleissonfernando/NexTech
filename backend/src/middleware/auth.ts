@@ -4,6 +4,7 @@ import { isDashboardDevUserId } from "../config/devOwner";
 import { recordAccessAttempt } from "../services/accessAuditService";
 import { applyDashboardAccessValidation, createDeniedAccessUser, evaluateDashboardAccess } from "../services/accessControlService";
 import { dashboardPermissionsForLevel } from "../services/dashboardPermissionService";
+import { getBotBillingAccess } from "../services/botBillingService";
 import { getBotStatus, refreshBotGuildsFromDiscord } from "../services/statsService";
 import { clearAuthCookies, issueAuthCookies, resolveAuthFromRequest, type DashboardAuth } from "../services/tokenService";
 import { getUserDashboardSessionState, touchDashboardSession } from "../services/userService";
@@ -30,6 +31,7 @@ const AUTH_SESSION_EXPIRED_MESSAGE = "Sessão expirada. Faça login novamente pe
 type AuthFailureCode =
   | "BOT_TOKEN_INVALID"
   | "DASHBOARD_ACCESS_DENIED"
+  | "BOT_BILLING_BLOCKED"
   | "INSUFFICIENT_PERMISSION"
   | "SESSION_EXPIRED"
   | "SESSION_MISSING"
@@ -126,6 +128,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.session.verified = freshAuth.verified;
     req.session.oauth2VerifiedAt ??= new Date().toISOString();
     res.locals.dashboardAuth = freshAuth;
+
+    const billingBlock = await resolveBillingBlock(req, freshAuth);
+    if (billingBlock) {
+      logAuthFailure(req, 402, "BOT_BILLING_BLOCKED", freshAuth.user.discordId);
+      return sendAuthFailure(res, 402, "BOT_BILLING_BLOCKED", "Dashboard bloqueada por fatura vencida.", {
+        billing: billingBlock,
+        supportUrl: SUPPORT_DISCORD_URL
+      });
+    }
+
     return next();
   } catch (error) {
     return next(error);
@@ -180,6 +192,51 @@ function logAuthFailure(req: Request, status: number, code: AuthFailureCode, dis
     sessionId,
     status
   });
+}
+
+async function resolveBillingBlock(req: Request, auth: DashboardAuth) {
+  if (isDashboardDevUserId(auth.user.discordId) || isBillingBypassRequest(req)) {
+    return null;
+  }
+
+  const botId = extractRequestBotId(req);
+  if (!botId) {
+    return null;
+  }
+
+  const access = await withAuthMiddlewareTimeout("bot_billing_access", getBotBillingAccess(botId, auth.user));
+  if (!access?.blocked) {
+    return null;
+  }
+
+  return access;
+}
+
+function isBillingBypassRequest(req: Request) {
+  const path = req.originalUrl.split("?")[0] ?? req.path;
+  const method = req.method.toUpperCase();
+
+  if (method === "GET" && /^(?:\/api)?\/dashboard(?:\/me|\/[a-z0-9]+(?:-[a-z0-9]+)*)?$/.test(path)) return true;
+  if (method === "GET" && /^(?:\/api)?\/dev\/bots\/[^/]+\/billing$/.test(path)) return true;
+  if (method === "POST" && /^(?:\/api)?\/dev\/bots\/[^/]+\/billing\/invoices\/[^/]+\/pix$/.test(path)) return true;
+  if (method === "POST" && /^(?:\/api)?\/auth\/logout$/.test(path)) return true;
+
+  return false;
+}
+
+function extractRequestBotId(req: Request) {
+  const path = req.originalUrl.split("?")[0] ?? req.path;
+  const pathMatch = /\/bots\/([^/]+)/.exec(path);
+  if (pathMatch?.[1]) return decodeURIComponent(pathMatch[1]);
+
+  const queryBotId = typeof req.query.botId === "string" ? req.query.botId.trim() : "";
+  if (queryBotId) return queryBotId;
+
+  const body = req.body as Record<string, unknown> | undefined;
+  const bodyBotId = typeof body?.botId === "string" ? body.botId.trim() : "";
+  if (bodyBotId) return bodyBotId;
+
+  return null;
 }
 
 function maskIdentifier(value: string) {

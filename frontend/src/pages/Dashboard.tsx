@@ -1499,12 +1499,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         initial={{ opacity: 0, y: 14 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        <DashboardNoticeCenter
-          activeView={activeView}
-          bot={selectedBot}
-          maintenance={selectedBotInMaintenance ? maintenanceState : null}
-          planNotice={selectedBotPlanNotice}
-        />
+        {!showBillingBlocker ? (
+          <DashboardNoticeCenter
+            activeView={activeView}
+            bot={selectedBot}
+            maintenance={selectedBotInMaintenance ? maintenanceState : null}
+            planNotice={selectedBotPlanNotice}
+          />
+        ) : null}
 
         <BotBillingPixDialog
           busy={botBillingBusy}
@@ -5143,9 +5145,22 @@ function BotBillingOverlay({
 }) {
   const blocked = access?.blocked || invoice.status === "overdue";
   const qrImage = normalizePixQr(invoice.pixQrCode);
+  const [refreshCountdown, setRefreshCountdown] = useState(30);
+  const overdueText = invoice.daysOverdue > 0
+    ? `${invoice.daysOverdue} dia${invoice.daysOverdue === 1 ? "" : "s"} em atraso`
+    : null;
+
+  useEffect(() => {
+    if (!blocked) return;
+    setRefreshCountdown(30);
+    const interval = window.setInterval(() => {
+      setRefreshCountdown((current) => current <= 1 ? 30 : current - 1);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [blocked, invoice.id]);
 
   return (
-    <section className={`relative flex items-center justify-center overflow-hidden px-4 py-10 text-white ${blocked ? "fixed inset-0 z-[100] min-h-screen overflow-y-auto border-0 bg-red-950/95" : "min-h-[420px] rounded-lg border border-[#FFD500]/25 bg-[#050505]"}`}>
+    <section className={`relative flex items-center justify-center overflow-hidden px-4 py-10 text-white ${blocked ? "min-h-[calc(100vh-7rem)] rounded-lg border border-red-500/25 bg-red-950/95" : "min-h-[420px] rounded-lg border border-[#FFD500]/25 bg-[#050505]"}`}>
       <div className={`absolute inset-0 ${blocked ? "bg-[radial-gradient(circle_at_top,rgba(239,68,68,.22),transparent_34%),#140505]" : "bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]"}`} />
       <motion.section
         animate={{ opacity: 1, y: 0 }}
@@ -5171,11 +5186,19 @@ function BotBillingOverlay({
             </p>
             <div className="mt-5 grid gap-2 text-sm">
               <NoticeLine label="Bot" value={invoice.botName} />
-              <NoticeLine label="Cobrança" value={invoice.chargeType === "hosting" ? "Hospedagem" : "Plano mensal"} />
+              <NoticeLine label="Plano" value={planPeriodLabel(invoice.planPeriod, invoice.chargeType)} />
+              <NoticeLine label="Data da contratação" value={formatBillingDate(invoice.contractedAt)} />
+              <NoticeLine label="Próximo vencimento" tone={blocked ? "warning" : "muted"} value={formatBillingDate(invoice.nextDueDate)} />
+              <NoticeLine label="Status" tone={blocked ? "warning" : "muted"} value={invoice.statusLabel} />
               <NoticeLine label="Valor" tone={blocked ? "warning" : "muted"} value={formatMoney(invoice.amountInCents, "BRL")} />
-              <NoticeLine label="Vencimento" tone={blocked ? "warning" : "muted"} value={new Date(invoice.dueDate).toLocaleString("pt-BR")} />
+              {overdueText ? <NoticeLine label="Atraso" tone="warning" value={overdueText} /> : null}
             </div>
             {error ? <p className="mt-3 rounded-lg border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-100">{error}</p> : null}
+            {blocked ? (
+              <p className="mt-3 rounded-lg border border-red-300/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">
+                Verificação automática em {refreshCountdown}s. O acesso será liberado assim que o pagamento for confirmado.
+              </p>
+            ) : null}
             <div className="mt-5 flex flex-wrap gap-2">
               <Button disabled={busy || Boolean(invoice.pixCode)} onClick={onGeneratePix}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
@@ -5220,6 +5243,21 @@ function normalizePixQr(value?: string | null) {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
   return value.startsWith("data:image/") ? value : `data:image/png;base64,${value}`;
+}
+
+function planPeriodLabel(period: BotBillingInvoice["planPeriod"], chargeType: BotBillingInvoice["chargeType"]) {
+  if (period === "quarterly") return "Trimestral";
+  if (period === "annual") return "Anual";
+  if (period === "lifetime") return chargeType === "hosting" ? "Vitalício - hospedagem" : "Vitalício";
+  return "Mensal";
+}
+
+function formatBillingDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(new Date(value));
 }
 
 function formatMoney(cents: number, currency: "BRL" | "USD" | "EUR") {
