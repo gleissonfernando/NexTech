@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { requireAsaasOperational, type AsaasRuntimeConfig } from "../../config/payments";
 import type { ProviderPayment, ProviderPaymentStatus } from "../paymentProviderService";
 import { PAYMENT_GATEWAYS, PAYMENT_METHODS, type GatewayPaymentResult, type PaymentGatewayService, type PaymentOrderInput } from "./types";
@@ -277,6 +277,7 @@ export class AsaasPaymentService implements PaymentGatewayService {
 
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
+    const asaasIdempotencyKey = normalizeAsaasIdempotencyKey(idempotencyKey);
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const controller = new AbortController();
@@ -289,7 +290,7 @@ export class AsaasPaymentService implements PaymentGatewayService {
             "Content-Type": "application/json",
             "User-Agent": "NexTech/1.0",
             "access_token": this.config.apiKey,
-            ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {})
+            ...(asaasIdempotencyKey ? { "Idempotency-Key": asaasIdempotencyKey } : {})
           },
           body: options.body ? JSON.stringify(removeUndefined(options.body)) : undefined,
           signal: controller.signal
@@ -438,6 +439,13 @@ function asaasErrorMessage(data: unknown) {
 
 function cleanLogString(value: string) {
   return value.replace(/\s+/g, " ").slice(0, 500);
+}
+
+function normalizeAsaasIdempotencyKey(value?: string | null) {
+  const cleaned = readString(value)?.replace(/[^a-zA-Z0-9:_-]/g, "-");
+  if (!cleaned) return null;
+  if (cleaned.length <= 48) return cleaned;
+  return `nx_${createHash("sha256").update(cleaned).digest("hex").slice(0, 45)}`;
 }
 
 function sleep(ms: number) {
