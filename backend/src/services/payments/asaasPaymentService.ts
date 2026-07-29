@@ -86,10 +86,6 @@ export class AsaasPaymentService implements PaymentGatewayService {
       method: "POST",
       body: {
         billingType: "PIX",
-        callback: order.successUrl ? {
-          autoRedirect: true,
-          successUrl: order.successUrl
-        } : undefined,
         customer: customerId,
         description: order.description.slice(0, 500),
         dueDate: dateOnly(order.expiresAt ?? new Date()),
