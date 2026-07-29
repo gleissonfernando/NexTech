@@ -57,7 +57,21 @@ writeFileSync(path.join(target, "discloud.config"), [
 ].join("\n"));
 
 const runtimeEnv = {};
-for (const key of ["DISCORD_BOT_TOKEN", "UPDATE_CHANNEL_ID", "AUTO_UPDATE_CHANNEL_ID"]) {
+for (const key of [
+  "DISCORD_BOT_TOKEN",
+  "UPDATE_CHANNEL_ID",
+  "AUTO_UPDATE_CHANNEL_ID",
+  "PAYMENTS_ENABLED",
+  "PAYMENT_PROVIDER",
+  "PAYMENTS_ALLOW_LIVE_CHARGES",
+  "ASAAS_API_URL",
+  "ASAAS_BASE_URL",
+  "ASAAS_API_KEY",
+  "ASAAS_WEBHOOK_TOKEN",
+  "ASAAS_WEBHOOK_URL",
+  "ASAAS_TIMEOUT",
+  "ASAAS_CHECKOUT_EXPIRATION_MINUTES"
+]) {
   const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
     runtimeEnv[key] = value;
