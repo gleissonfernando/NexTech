@@ -1076,7 +1076,7 @@ authRouter.post("/logout", async (req, res, next) => {
     await destroySession(req);
     res.clearCookie("discord_dashboard.sid", {
       httpOnly: true,
-      sameSite: "strict",
+      sameSite: "lax",
       secure: env.NODE_ENV === "production",
       path: "/"
     });

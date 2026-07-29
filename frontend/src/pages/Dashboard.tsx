@@ -958,6 +958,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [botBillingDismissed, setBotBillingDismissed] = useState<string | null>(null);
   const [botBillingBusy, setBotBillingBusy] = useState(false);
   const [botBillingError, setBotBillingError] = useState<string | null>(null);
+  const [botBillingPixDialog, setBotBillingPixDialog] = useState<{ cpfCnpj: string; invoice: BotBillingInvoice } | null>(null);
   const [maintenanceState, setMaintenanceState] = useState<MaintenanceState | null>(null);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const [fivemModules, setFivemModules] = useState<FivemModuleDefinition[]>([]);
@@ -1039,14 +1040,17 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   }
 
   async function generateSelectedBotInvoicePix(invoice: BotBillingInvoice) {
-    if (!activeBotId) return;
-    const cpfCnpj = window.prompt("CPF ou CNPJ do pagador para gerar o Pix:");
-    if (!cpfCnpj?.trim()) return;
+    setBotBillingPixDialog({ cpfCnpj: "", invoice });
+  }
+
+  async function confirmSelectedBotInvoicePix() {
+    if (!activeBotId || !botBillingPixDialog?.cpfCnpj.trim()) return;
     setBotBillingBusy(true);
     setBotBillingError(null);
     try {
-      await generateDevBotInvoicePix(activeBotId, invoice.id, cpfCnpj.replace(/\D/g, ""));
+      await generateDevBotInvoicePix(activeBotId, botBillingPixDialog.invoice.id, botBillingPixDialog.cpfCnpj.replace(/\D/g, ""));
       await refreshSelectedBotBilling(activeBotId);
+      setBotBillingPixDialog(null);
     } catch (error) {
       setBotBillingError(readErrorMessage(error, "Não foi possível gerar o Pix desta fatura."));
     } finally {
@@ -1304,6 +1308,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         bots: current.bots.map((bot) => bot.id === updatedBot.id ? updatedBot : bot)
       } : current);
     });
+    socket.on("bot:billing_updated", (payload: { botId?: string | null }) => {
+      if (!payload.botId || payload.botId === activeBotId) {
+        void refreshSelectedBotBilling(activeBotId);
+      }
+    });
+    const billingInterval = window.setInterval(() => {
+      void refreshSelectedBotBilling(activeBotId);
+    }, 30_000);
     socket.on("maintenance:updated", (payload: { botId?: string | null; state?: MaintenanceState }) => {
       const payloadBotId = payload.botId ?? payload.state?.botId ?? null;
       if (!payloadBotId || payloadBotId === activeBotId) {
@@ -1359,6 +1371,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     });
 
     return () => {
+      window.clearInterval(billingInterval);
       socket.disconnect();
     };
   }, [
@@ -1491,6 +1504,14 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           bot={selectedBot}
           maintenance={selectedBotInMaintenance ? maintenanceState : null}
           planNotice={selectedBotPlanNotice}
+        />
+
+        <BotBillingPixDialog
+          busy={botBillingBusy}
+          dialog={botBillingPixDialog}
+          onCancel={() => setBotBillingPixDialog(null)}
+          onChange={setBotBillingPixDialog}
+          onConfirm={() => void confirmSelectedBotInvoicePix()}
         />
 
         {showBillingNotice && selectedBot && pendingBillingInvoice ? (
@@ -5034,6 +5055,70 @@ function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceS
         </Button>
       </motion.section>
     </section>
+  );
+}
+
+function BotBillingPixDialog({
+  busy,
+  dialog,
+  onCancel,
+  onChange,
+  onConfirm
+}: {
+  busy: boolean;
+  dialog: { cpfCnpj: string; invoice: BotBillingInvoice } | null;
+  onCancel: () => void;
+  onChange: Dispatch<SetStateAction<{ cpfCnpj: string; invoice: BotBillingInvoice } | null>>;
+  onConfirm: () => void;
+}) {
+  if (!dialog) return null;
+
+  const cpfCnpj = dialog.cpfCnpj.replace(/\D/g, "");
+  const canConfirm = cpfCnpj.length >= 11 && !busy;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+      <motion.div
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        className="w-full max-w-md rounded-lg border border-[#FFD500]/25 bg-[#101010] p-5 text-white shadow-glow"
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase text-[#FFEA70]">Pagamento Pix</p>
+            <h2 className="mt-1 text-xl font-black tracking-normal">Dados do pagador</h2>
+          </div>
+          <button className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:border-[#FFD500]/30 hover:text-white" disabled={busy} onClick={onCancel} type="button">
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="mt-3 text-sm font-semibold leading-6 text-zinc-300">
+          Informe o CPF ou CNPJ para gerar o Pix da fatura de {formatMoney(dialog.invoice.amountInCents, "BRL")}.
+        </p>
+
+        <label className="mt-5 block text-xs font-bold uppercase text-zinc-500">CPF ou CNPJ</label>
+        <input
+          autoFocus
+          className="mt-2 h-11 w-full rounded-lg border border-zinc-800 bg-black/70 px-3 text-sm font-semibold text-white outline-none transition focus:border-[#FFD500]/60"
+          inputMode="numeric"
+          onChange={(event) => onChange((current) => current ? { ...current, cpfCnpj: event.target.value } : current)}
+          placeholder="Somente números"
+          value={dialog.cpfCnpj}
+        />
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button disabled={busy} onClick={onCancel} variant="outline">
+            Cancelar
+          </Button>
+          <Button disabled={!canConfirm} onClick={onConfirm}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+            Gerar Pix
+          </Button>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 

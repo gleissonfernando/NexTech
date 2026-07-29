@@ -1732,6 +1732,13 @@ function mergeDevModules(modules: DevModuleDefinition[]) {
   ];
 }
 
+type BotBillingActionDialogState =
+  | { amountReais: string; kind: "model"; nextModel: "monthly" | "lifetime" }
+  | { expiresAt: string; kind: "override"; reason: string }
+  | { kind: "removeOverride" }
+  | { cpfCnpj: string; invoice: BotBillingInvoice; kind: "pix" }
+  | { invoice: BotBillingInvoice; kind: "release"; reason: string };
+
 function ConnectedBotPanel({
   bot,
   deleting,
@@ -1763,6 +1770,7 @@ function ConnectedBotPanel({
   const [newTokenVisible, setNewTokenVisible] = useState(false);
   const [billing, setBilling] = useState<{ access: BotBillingAccess | null; invoices: BotBillingInvoice[] } | null>(null);
   const [billingBusy, setBillingBusy] = useState<string | null>(null);
+  const [billingDialog, setBillingDialog] = useState<BotBillingActionDialogState | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
   const [channels, setChannels] = useState<{
     error: string | null;
@@ -1787,6 +1795,25 @@ function ConnectedBotPanel({
     void refreshBilling();
   }, [bot.id]);
 
+  useEffect(() => {
+    const socket = createDashboardSocket();
+    const refreshBotBilling = (payload: { botId?: string | null; id?: string | null }) => {
+      const payloadBotId = payload.botId ?? payload.id ?? null;
+      if (!payloadBotId || payloadBotId === bot.id) void refreshBilling();
+    };
+
+    socket.on("bot:billing_updated", refreshBotBilling);
+    socket.on("dev:bot_updated", refreshBotBilling);
+    const interval = window.setInterval(() => void refreshBilling(), 30_000);
+
+    return () => {
+      window.clearInterval(interval);
+      socket.off("bot:billing_updated", refreshBotBilling);
+      socket.off("dev:bot_updated", refreshBotBilling);
+      socket.disconnect();
+    };
+  }, [bot.id]);
+
   async function refreshBilling() {
     try {
       setBilling(await getDevBotBilling(bot.id));
@@ -1796,93 +1823,71 @@ function ConnectedBotPanel({
   }
 
   async function changeBillingModel(nextModel: "monthly" | "lifetime") {
-    const confirmed = window.confirm(nextModel === "lifetime"
-      ? "Marcar este bot como vitalício? Ele continuará pagando R$ 12,00 de hospedagem todo dia 8."
-      : "Desmarcar bot vitalício? Ele voltará a pagar o valor mensal contratado todo dia 8.");
-    if (!confirmed) return;
-    const amountText = nextModel === "monthly"
-      ? window.prompt("Valor mensal contratado em reais:", String((bot.contractAmountInCents ?? 1200) / 100))
-      : null;
-    const amountInCents = nextModel === "monthly"
-      ? Math.round(Number(String(amountText ?? "0").replace(",", ".")) * 100)
-      : 1200;
-    setBillingBusy("model");
-    setBillingMessage(null);
-    try {
-      await updateDevBotBillingModel(bot.id, { billingModel: nextModel, contractAmountInCents: amountInCents });
-      await refreshBilling();
-      setBillingMessage("Modelo de cobrança atualizado.");
-    } catch (error) {
-      setBillingMessage(readRequestMessage(error) ?? "Não foi possível atualizar o modelo de cobrança.");
-    } finally {
-      setBillingBusy(null);
-    }
+    setBillingDialog({
+      amountReais: String((bot.contractAmountInCents ?? 1200) / 100).replace(".", ","),
+      kind: "model",
+      nextModel
+    });
   }
 
   async function saveOverride() {
-    const reason = window.prompt("Justificativa obrigatória para a exceção administrativa:");
-    if (!reason?.trim()) return;
-    const expiresAt = window.prompt("Data/hora final da liberação em ISO ou deixe vazio para sem expiração:", "");
-    setBillingBusy("override");
-    setBillingMessage(null);
-    try {
-      await updateDevBotBillingOverride(bot.id, {
-        forceBotActive: true,
-        forceDashboardAccess: true,
-        overrideExpiresAt: expiresAt?.trim() || null,
-        reason
-      });
-      await refreshBilling();
-      setBillingMessage("Exceção administrativa aplicada.");
-    } catch (error) {
-      setBillingMessage(readRequestMessage(error) ?? "Não foi possível aplicar a exceção.");
-    } finally {
-      setBillingBusy(null);
-    }
+    setBillingDialog({ expiresAt: "", kind: "override", reason: "" });
   }
 
   async function removeOverride() {
-    if (!window.confirm("Remover a exceção administrativa deste bot?")) return;
-    setBillingBusy("override");
-    setBillingMessage(null);
-    try {
-      await clearDevBotBillingOverride(bot.id);
-      await refreshBilling();
-      setBillingMessage("Exceção administrativa removida.");
-    } catch (error) {
-      setBillingMessage(readRequestMessage(error) ?? "Não foi possível remover a exceção.");
-    } finally {
-      setBillingBusy(null);
-    }
+    setBillingDialog({ kind: "removeOverride" });
   }
 
   async function createInvoicePix(invoice: BotBillingInvoice) {
-    const cpfCnpj = window.prompt("CPF ou CNPJ do pagador para gerar o Pix:");
-    if (!cpfCnpj?.trim()) return;
-    setBillingBusy(`pix:${invoice.id}`);
-    setBillingMessage(null);
-    try {
-      await generateDevBotInvoicePix(bot.id, invoice.id, cpfCnpj.replace(/\D/g, ""));
-      await refreshBilling();
-      setBillingMessage("Pix da fatura gerado.");
-    } catch (error) {
-      setBillingMessage(readRequestMessage(error) ?? "Não foi possível gerar o Pix da fatura.");
-    } finally {
-      setBillingBusy(null);
-    }
+    setBillingDialog({ cpfCnpj: "", invoice, kind: "pix" });
   }
 
   async function releaseInvoice(invoice: BotBillingInvoice) {
-    const reason = window.prompt("Justificativa obrigatória para marcar esta fatura como paga manualmente:");
-    if (!reason?.trim()) return;
-    setBillingBusy(`release:${invoice.id}`);
+    setBillingDialog({ invoice, kind: "release", reason: "" });
+  }
+
+  async function submitBillingDialog() {
+    if (!billingDialog) return;
     setBillingMessage(null);
+
     try {
-      await markDevBotInvoicePaidManually(bot.id, invoice.id, reason);
+      if (billingDialog.kind === "model") {
+        const amountInCents = billingDialog.nextModel === "monthly"
+          ? Math.round(Number(String(billingDialog.amountReais || "0").replace(",", ".")) * 100)
+          : 1200;
+        setBillingBusy("model");
+        await updateDevBotBillingModel(bot.id, { billingModel: billingDialog.nextModel, contractAmountInCents: amountInCents });
+        setBillingMessage("Modelo de cobranca atualizado.");
+      } else if (billingDialog.kind === "override") {
+        if (!billingDialog.reason.trim()) return;
+        setBillingBusy("override");
+        await updateDevBotBillingOverride(bot.id, {
+          forceBotActive: true,
+          forceDashboardAccess: true,
+          overrideExpiresAt: billingDialog.expiresAt.trim() || null,
+          reason: billingDialog.reason
+        });
+        setBillingMessage("Excecao administrativa aplicada.");
+      } else if (billingDialog.kind === "removeOverride") {
+        setBillingBusy("override");
+        await clearDevBotBillingOverride(bot.id);
+        setBillingMessage("Excecao administrativa removida.");
+      } else if (billingDialog.kind === "pix") {
+        if (!billingDialog.cpfCnpj.trim()) return;
+        setBillingBusy(`pix:${billingDialog.invoice.id}`);
+        await generateDevBotInvoicePix(bot.id, billingDialog.invoice.id, billingDialog.cpfCnpj.replace(/\D/g, ""));
+        setBillingMessage("Pix da fatura gerado.");
+      } else if (billingDialog.kind === "release") {
+        if (!billingDialog.reason.trim()) return;
+        setBillingBusy(`release:${billingDialog.invoice.id}`);
+        await markDevBotInvoicePaidManually(bot.id, billingDialog.invoice.id, billingDialog.reason);
+        setBillingMessage("Fatura liberada manualmente.");
+      }
+
       await refreshBilling();
-      setBillingMessage("Fatura liberada manualmente.");
+      setBillingDialog(null);
     } catch (error) {
-      setBillingMessage(readRequestMessage(error) ?? "Não foi possível liberar a fatura.");
+      setBillingMessage(readRequestMessage(error) ?? "Nao foi possivel atualizar a cobranca.");
     } finally {
       setBillingBusy(null);
     }
@@ -1988,6 +1993,14 @@ function ConnectedBotPanel({
           onSaveOverride={() => void saveOverride()}
         />
 
+        <BotBillingActionDialog
+          busy={Boolean(billingBusy)}
+          dialog={billingDialog}
+          onCancel={() => setBillingDialog(null)}
+          onChange={setBillingDialog}
+          onConfirm={() => void submitBillingDialog()}
+        />
+
         <BotChannelPreview
           error={channels.error}
           loading={channels.loading}
@@ -2088,6 +2101,185 @@ function ConnectedBotPanel({
       </CardContent>
     </Card>
   );
+}
+
+function BotBillingActionDialog({
+  busy,
+  dialog,
+  onCancel,
+  onChange,
+  onConfirm
+}: {
+  busy: boolean;
+  dialog: BotBillingActionDialogState | null;
+  onCancel: () => void;
+  onChange: (dialog: BotBillingActionDialogState) => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onCancel();
+    }
+
+    if (!dialog) return;
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, dialog, onCancel]);
+
+  if (!dialog) return null;
+
+  const title = billingDialogTitle(dialog);
+  const description = billingDialogDescription(dialog);
+  const confirmLabel = billingDialogConfirmLabel(dialog);
+  const canConfirm = billingDialogCanConfirm(dialog);
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="billing-dialog-title">
+      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-[#FFD500]/25 bg-[linear-gradient(135deg,rgba(18,18,18,0.98),rgba(3,3,3,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.75),0_0_42px_rgba(255,213,0,0.16)]">
+        <div className="border-b border-[#FFD500]/15 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 text-[#FFEA70]">
+              {dialog.kind === "release" ? <CheckCircle2 className="h-5 w-5" /> : dialog.kind === "removeOverride" ? <ShieldCheck className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-white" id="billing-dialog-title">{title}</h2>
+              <p className="mt-1 text-sm font-medium leading-6 text-zinc-400">{description}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {dialog.kind === "model" && dialog.nextModel === "monthly" ? (
+            <BillingDialogField
+              inputMode="decimal"
+              label="Valor mensal contratado em reais"
+              onChange={(value) => onChange({ ...dialog, amountReais: value })}
+              value={dialog.amountReais}
+            />
+          ) : null}
+
+          {dialog.kind === "override" ? (
+            <>
+              <BillingDialogTextarea
+                label="Justificativa obrigatoria"
+                onChange={(value) => onChange({ ...dialog, reason: value })}
+                value={dialog.reason}
+              />
+              <BillingDialogField
+                label="Data/hora final da liberacao"
+                onChange={(value) => onChange({ ...dialog, expiresAt: value })}
+                placeholder="Opcional, ex: 2026-08-08T23:59:59"
+                value={dialog.expiresAt}
+              />
+            </>
+          ) : null}
+
+          {dialog.kind === "pix" ? (
+            <BillingDialogField
+              inputMode="numeric"
+              label="CPF ou CNPJ do pagador"
+              onChange={(value) => onChange({ ...dialog, cpfCnpj: value })}
+              value={dialog.cpfCnpj}
+            />
+          ) : null}
+
+          {dialog.kind === "release" ? (
+            <BillingDialogTextarea
+              label="Justificativa obrigatoria"
+              onChange={(value) => onChange({ ...dialog, reason: value })}
+              value={dialog.reason}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-zinc-800/80 p-5 sm:flex-row sm:justify-end">
+          <Button disabled={busy} onClick={onCancel} type="button" variant="outline">
+            Cancelar
+          </Button>
+          <Button disabled={busy || !canConfirm} onClick={onConfirm} type="button">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillingDialogField({
+  inputMode,
+  label,
+  onChange,
+  placeholder,
+  value
+}: {
+  inputMode?: "decimal" | "numeric" | "text";
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</span>
+      <input
+        className="mt-2 h-11 w-full rounded-lg border border-[#FFD500]/20 bg-black/55 px-3 text-sm font-semibold text-white outline-none transition focus:border-[#FFD500]/60 focus:ring-2 focus:ring-[#FFD500]/15"
+        inputMode={inputMode}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function BillingDialogTextarea({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</span>
+      <textarea
+        className="mt-2 min-h-24 w-full resize-none rounded-lg border border-[#FFD500]/20 bg-black/55 p-3 text-sm font-semibold text-white outline-none transition focus:border-[#FFD500]/60 focus:ring-2 focus:ring-[#FFD500]/15"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function billingDialogTitle(dialog: BotBillingActionDialogState) {
+  if (dialog.kind === "model") return dialog.nextModel === "lifetime" ? "Marcar bot como vitalicio" : "Voltar para plano mensal";
+  if (dialog.kind === "override") return "Excecao administrativa";
+  if (dialog.kind === "removeOverride") return "Remover excecao";
+  if (dialog.kind === "pix") return "Gerar Pix da fatura";
+  return "Marcar fatura como paga";
+}
+
+function billingDialogDescription(dialog: BotBillingActionDialogState) {
+  if (dialog.kind === "model") {
+    return dialog.nextModel === "lifetime"
+      ? "O bot continuara pagando somente a hospedagem de R$ 12,00 todo dia 8."
+      : "O bot voltara a pagar o valor mensal contratado todo dia 8.";
+  }
+  if (dialog.kind === "override") return "Libere temporariamente o bot e a dashboard registrando uma justificativa de auditoria.";
+  if (dialog.kind === "removeOverride") return "A excecao ativa sera removida e a regra de cobranca voltara a valer em tempo real.";
+  if (dialog.kind === "pix") return `Informe o documento do pagador para gerar o Pix da fatura ${dialog.invoice.dueMonth}.`;
+  return `Registre a justificativa para liberar manualmente a fatura ${dialog.invoice.dueMonth}.`;
+}
+
+function billingDialogConfirmLabel(dialog: BotBillingActionDialogState) {
+  if (dialog.kind === "model") return "Confirmar modelo";
+  if (dialog.kind === "override") return "Aplicar excecao";
+  if (dialog.kind === "removeOverride") return "Remover excecao";
+  if (dialog.kind === "pix") return "Gerar Pix";
+  return "Marcar pago";
+}
+
+function billingDialogCanConfirm(dialog: BotBillingActionDialogState) {
+  if (dialog.kind === "model") return dialog.nextModel === "lifetime" || Number(String(dialog.amountReais || "0").replace(",", ".")) > 0;
+  if (dialog.kind === "override") return dialog.reason.trim().length >= 3;
+  if (dialog.kind === "pix") return dialog.cpfCnpj.replace(/\D/g, "").length >= 11;
+  if (dialog.kind === "release") return dialog.reason.trim().length >= 3;
+  return true;
 }
 
 function BotBillingPanel({

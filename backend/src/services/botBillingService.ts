@@ -341,7 +341,7 @@ export async function setBotBillingModel(botId: string, model: MongoBotBillingMo
     { returnDocument: "after" }
   );
   await writeBillingAudit(bot, "bot_billing_model_updated", previous, model, "admin", null, actor);
-  emitRealtime("dev:bot_updated", { ...(updated ?? bot), billingModel: model });
+  emitRealtime("bot:billing_updated", { botId });
   return updated;
 }
 
@@ -375,6 +375,7 @@ export async function setBotBillingOverride(botId: string, input: BotBillingOver
     forceDashboardAccess: input.forceDashboardAccess,
     overrideExpiresAt: input.expiresAt?.toISOString() ?? null
   });
+  emitRealtime("bot:billing_updated", { botId });
   return updated;
 }
 
@@ -388,6 +389,7 @@ export async function clearBotBillingOverride(botId: string, actor: AuthSessionU
     { returnDocument: "after" }
   );
   await writeBillingAudit(bot, "bot_billing_override_removed", null, bot.billingModel ?? "monthly", "admin_override", null, actor);
+  emitRealtime("bot:billing_updated", { botId });
   return updated;
 }
 
