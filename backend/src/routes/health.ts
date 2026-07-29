@@ -215,6 +215,8 @@ function paymentsHealth() {
 
   const active = provider === "stripe"
     ? gateway.stripe
+    : provider === "asaas"
+      ? gateway.asaas
     : provider === "pagbank"
       ? gateway.pagBank
       : gateway.mercadoPago;
