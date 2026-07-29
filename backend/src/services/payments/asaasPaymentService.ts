@@ -12,6 +12,7 @@ type AsaasCustomer = {
 };
 
 export type AsaasPayment = {
+  customer?: string;
   id?: string;
   status?: string;
   value?: number;
@@ -28,6 +29,35 @@ export type AsaasPayment = {
   confirmedDate?: string | null;
   description?: string | null;
   deleted?: boolean;
+};
+
+export type AsaasChargeInput = {
+  billingType: "PIX" | "CREDIT_CARD";
+  creditCard?: Record<string, unknown>;
+  creditCardHolderInfo?: Record<string, unknown>;
+  customer?: Record<string, unknown> & { id?: string };
+  description?: string;
+  dueDate?: string;
+  externalReference?: string;
+  installmentCount?: number;
+  installmentValue?: number;
+  postalService?: boolean;
+  remoteIp?: string | null;
+  value: number;
+};
+
+export type AsaasSubscriptionInput = {
+  billingType: "PIX" | "CREDIT_CARD" | "BOLETO" | "UNDEFINED";
+  creditCard?: Record<string, unknown>;
+  creditCardHolderInfo?: Record<string, unknown>;
+  customer?: Record<string, unknown> & { id?: string };
+  cycle: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "BIMONTHLY" | "QUARTERLY" | "SEMIANNUALLY" | "YEARLY";
+  description?: string;
+  endDate?: string;
+  externalReference?: string;
+  nextDueDate: string;
+  remoteIp?: string | null;
+  value: number;
 };
 
 type AsaasPixQrCode = {
@@ -112,6 +142,54 @@ export class AsaasPaymentService implements PaymentGatewayService {
     return asaasPaymentToProviderPayment(payment, paymentId);
   }
 
+  async createCustomer(input: Record<string, unknown>) {
+    return this.request<AsaasCustomer>("/customers", {
+      method: "POST",
+      body: input
+    }, readString(input.externalReference) ? `customer:${readString(input.externalReference)}` : undefined);
+  }
+
+  async createPixCharge(input: AsaasChargeInput) {
+    if (input.billingType !== "PIX") {
+      throw Object.assign(new Error("billingType precisa ser PIX."), { statusCode: 400 });
+    }
+    return this.createCharge(input);
+  }
+
+  async createCardCharge(input: AsaasChargeInput) {
+    if (input.billingType !== "CREDIT_CARD") {
+      throw Object.assign(new Error("billingType precisa ser CREDIT_CARD."), { statusCode: 400 });
+    }
+    if (!input.creditCard || !input.creditCardHolderInfo) {
+      throw Object.assign(new Error("Dados do cartão e do titular são obrigatórios."), { statusCode: 400 });
+    }
+    return this.createCharge(input);
+  }
+
+  async createSubscription(input: AsaasSubscriptionInput) {
+    const customerId = await this.resolveCustomer(input.customer);
+    return this.request<Record<string, unknown>>("/subscriptions", {
+      method: "POST",
+      body: {
+        billingType: input.billingType,
+        creditCard: input.creditCard,
+        creditCardHolderInfo: input.creditCardHolderInfo,
+        customer: customerId,
+        cycle: input.cycle,
+        description: input.description,
+        endDate: input.endDate,
+        externalReference: input.externalReference,
+        nextDueDate: input.nextDueDate,
+        remoteIp: input.remoteIp ?? undefined,
+        value: input.value
+      }
+    }, input.externalReference ? `subscription:${input.externalReference}` : undefined);
+  }
+
+  async cancelSubscription(subscriptionId: string) {
+    return this.request<Record<string, unknown>>(`/subscriptions/${encodeURIComponent(subscriptionId)}`, { method: "DELETE" });
+  }
+
   private async findOrCreateCustomer(order: PaymentOrderInput) {
     const externalReference = customerExternalReference(order);
     const existing = await this.request<AsaasListResponse<AsaasCustomer>>(
@@ -140,49 +218,107 @@ export class AsaasPaymentService implements PaymentGatewayService {
     return this.request<AsaasPixQrCode>(`/payments/${encodeURIComponent(paymentId)}/pixQrCode`, { method: "GET" });
   }
 
+  private async createCharge(input: AsaasChargeInput) {
+    const customerId = await this.resolveCustomer(input.customer);
+    const payment = await this.request<AsaasPayment>("/payments", {
+      method: "POST",
+      body: {
+        billingType: input.billingType,
+        creditCard: input.creditCard,
+        creditCardHolderInfo: input.creditCardHolderInfo,
+        customer: customerId,
+        description: input.description?.slice(0, 500),
+        dueDate: input.dueDate ?? dateOnly(new Date()),
+        externalReference: input.externalReference,
+        installmentCount: input.installmentCount,
+        installmentValue: input.installmentValue,
+        postalService: input.postalService,
+        remoteIp: input.remoteIp ?? undefined,
+        value: input.value
+      }
+    }, input.externalReference ? `payment:${input.externalReference}:${input.billingType}` : undefined);
+
+    const paymentId = readString(payment.id);
+    const pix = input.billingType === "PIX" && paymentId
+      ? await this.getPixQrCode(paymentId).catch(() => null)
+      : null;
+
+    return {
+      payment,
+      pix: pix ? {
+        ...pix,
+        encodedImage: normalizeQrCodeImage(pix.encodedImage)
+      } : null
+    };
+  }
+
+  private async resolveCustomer(customer?: (Record<string, unknown> & { id?: string }) | null) {
+    const providedId = readString(customer?.id);
+    if (providedId) return providedId;
+    if (!customer) {
+      throw Object.assign(new Error("Cliente Asaas obrigatório."), { statusCode: 400 });
+    }
+    const created = await this.createCustomer(customer);
+    const customerId = readString(created.id);
+    if (!customerId) {
+      throw Object.assign(new Error("Asaas não retornou ID do cliente."), { statusCode: 502 });
+    }
+    return customerId;
+  }
+
   private async request<T>(
     path: string,
-    options: { method: "GET" | "POST"; body?: Record<string, unknown> },
+    options: { method: "DELETE" | "GET" | "POST"; body?: Record<string, unknown> },
     idempotencyKey?: string | null
   ): Promise<T> {
     if (!this.config.apiKey) {
       throw Object.assign(new Error("Chave Asaas não configurada."), { statusCode: 503 });
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
-    try {
-      const response = await fetch(url, {
-        method: options.method,
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "NexTech/1.0",
-          "access_token": this.config.apiKey,
-          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {})
-        },
-        body: options.body ? JSON.stringify(removeUndefined(options.body)) : undefined,
-        signal: controller.signal
-      });
-      const text = await response.text();
-      const data = text ? safeJson(text) : {};
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+      try {
+        const response = await fetch(url, {
+          method: options.method,
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "NexTech/1.0",
+            "access_token": this.config.apiKey,
+            ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {})
+          },
+          body: options.body ? JSON.stringify(removeUndefined(options.body)) : undefined,
+          signal: controller.signal
+        });
+        const text = await response.text();
+        const data = text ? safeJson(text) : {};
 
-      if (!response.ok) {
-        const message = asaasErrorMessage(data) ?? `Asaas respondeu HTTP ${response.status}.`;
-        throw Object.assign(new Error(message), { statusCode: response.status >= 500 ? 502 : response.status });
-      }
+        if (!response.ok) {
+          const message = asaasErrorMessage(data) ?? `Asaas respondeu HTTP ${response.status}.`;
+          const error = Object.assign(new Error(message), { retryable: response.status >= 500, statusCode: response.status >= 500 ? 502 : response.status });
+          throw error;
+        }
 
-      return data as T;
-    } catch (error) {
-      if ((error as { name?: string }).name === "AbortError") {
-        throw Object.assign(new Error("Tempo limite ao chamar Asaas."), { statusCode: 504 });
+        return data as T;
+      } catch (error) {
+        lastError = error;
+        if ((error as { name?: string }).name === "AbortError") {
+          lastError = Object.assign(new Error("Tempo limite ao chamar Asaas."), { retryable: true, statusCode: 504 });
+        }
+        const retryable = Boolean((lastError as { retryable?: boolean }).retryable);
+        if (!retryable || attempt === 3) {
+          throw lastError;
+        }
+        await sleep(250 * attempt);
+      } finally {
+        clearTimeout(timeout);
       }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
     }
+    throw lastError;
   }
 }
 
@@ -194,8 +330,8 @@ export function asaasPaymentToProviderPayment(payment: AsaasPayment, fallbackId?
     currency: "BRL",
     externalReference: readString(payment.externalReference),
     id,
-    method: "pix",
-    paymentType: PAYMENT_METHODS.PIX,
+    method: readString(payment.billingType)?.toLowerCase() ?? "pix",
+    paymentType: readString(payment.billingType) ?? PAYMENT_METHODS.PIX,
     raw: payment as unknown as Record<string, unknown>,
     rawStatus: status,
     status: asaasStatusToInternal(status),
@@ -204,7 +340,7 @@ export function asaasPaymentToProviderPayment(payment: AsaasPayment, fallbackId?
 }
 
 export function validateAsaasWebhookToken(config: AsaasRuntimeConfig, token: string | null) {
-  if (!config.webhookToken) return true;
+  if (!config.webhookToken) return false;
   if (!token) return false;
   const expected = Buffer.from(config.webhookToken);
   const actual = Buffer.from(token);
@@ -302,4 +438,8 @@ function asaasErrorMessage(data: unknown) {
 
 function cleanLogString(value: string) {
   return value.replace(/\s+/g, " ").slice(0, 500);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

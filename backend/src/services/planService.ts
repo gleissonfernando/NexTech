@@ -2439,6 +2439,7 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
     lastError: null,
     orderId: null,
     paymentId,
+    payload,
     payloadHash,
     processedAt: null,
     provider: "asaas",
@@ -2448,8 +2449,8 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
     status: "received"
   };
   const existingProcessed = eventId
-    ? await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, eventId, status: "processed" })
-    : await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, payloadHash, status: "processed" });
+    ? await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, eventId, status: { $in: ["received", "processing", "processed"] } })
+    : await paymentEvents.findOne({ provider: "asaas", environment: asaasConfig.environment, payloadHash, status: { $in: ["received", "processing", "processed"] } });
 
   if (existingProcessed) {
     return { duplicate: true, event: mapPaymentEvent(existingProcessed), processed: true };
@@ -2465,6 +2466,8 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
       throw Object.assign(new Error("Token webhook Asaas inválido."), { statusCode: 401 });
     }
 
+    await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { status: "processing" } });
+
     if (!paymentPayload) {
       await markPaymentEvent(insertedEvent._id, "ignored", `Evento Asaas ignorado sem payment: ${eventType}.`);
       return {
@@ -2476,11 +2479,14 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
 
     const payment = asaasPaymentToProviderPayment(paymentPayload, paymentId ?? undefined);
     const externalReference = payment.externalReference;
+    const customerId = readString(paymentPayload.customer);
     const order = externalReference
       ? await paymentOrders.findOne({ _id: externalReference })
       : payment.id
         ? await paymentOrders.findOne({ provider: "asaas", providerOrderId: payment.id })
-        : null;
+        : customerId
+          ? await paymentOrders.findOne({ provider: "asaas", "webhookSafeResponse.customer": customerId })
+          : null;
 
     if (!order) {
       await markPaymentEvent(insertedEvent._id, "ignored", "Pedido Asaas interno não encontrado.", null);
@@ -2507,6 +2513,10 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
         asaasPaymentId: payment.id,
         provider: "asaas"
       });
+    } else if (eventType === "PAYMENT_OVERDUE" || updatedOrder.status === "expired") {
+      subscription = await updateSubscriptionFromAsaasPaymentEvent(updatedOrder, "suspended", "asaas_payment_overdue");
+    } else if (eventType === "PAYMENT_REFUNDED" || updatedOrder.status === "refunded") {
+      subscription = await updateSubscriptionFromAsaasPaymentEvent(updatedOrder, "cancelled", "asaas_payment_refunded");
     }
 
     await markPaymentEvent(insertedEvent._id, "processed", `Asaas processado: ${payment.rawStatus}.`, order._id);
@@ -3049,6 +3059,69 @@ async function activatePaidOrderOnce(order: MongoPaymentOrder, plan: MongoPlan, 
     );
     throw error;
   }
+}
+
+async function updateSubscriptionFromAsaasPaymentEvent(
+  order: MongoPaymentOrder,
+  status: Extract<MongoPlanSubscriptionStatus, "cancelled" | "suspended">,
+  auditAction: string
+) {
+  const { planSubscriptions, planWorkspaces, plans } = await getMongoCollections();
+  const now = new Date();
+  const subscription = await planSubscriptions.findOne({
+    "metadata.paymentOrderId": order._id
+  } as Partial<MongoPlanSubscription>);
+
+  if (!subscription) {
+    await writePlanAudit(systemPaymentActor(), `${auditAction}_subscription_not_found`, "payment", order._id, {
+      provider: "asaas",
+      providerOrderId: order.providerOrderId
+    });
+    return null;
+  }
+
+  const patch: Partial<MongoPlanSubscription> = {
+    metadata: {
+      ...(subscription.metadata ?? {}),
+      lastAsaasPaymentEvent: auditAction,
+      lastAsaasPaymentEventAt: now.toISOString(),
+      paymentOrderId: order._id
+    },
+    status,
+    updatedAt: now
+  };
+  if (status === "suspended") {
+    patch.suspendedAt = subscription.suspendedAt ?? now;
+  }
+  if (status === "cancelled") {
+    patch.cancelledAt = subscription.cancelledAt ?? now;
+    patch.suspendedAt = null;
+  }
+
+  const updated = await planSubscriptions.findOneAndUpdate(
+    { _id: subscription._id },
+    { $set: patch },
+    { returnDocument: "after" }
+  );
+
+  if (subscription.workspaceId) {
+    await planWorkspaces.updateOne(
+      { _id: subscription.workspaceId },
+      { $set: { status: status === "suspended" ? "suspended" : "cancelled", updatedAt: now } }
+    );
+  }
+
+  await writePlanAudit(systemPaymentActor(), auditAction, "subscription", subscription._id, {
+    paymentOrderId: order._id,
+    provider: "asaas",
+    providerOrderId: order.providerOrderId
+  });
+
+  const [plan, workspace] = await Promise.all([
+    plans.findOne({ _id: subscription.planId }),
+    subscription.workspaceId ? planWorkspaces.findOne({ _id: subscription.workspaceId }) : null
+  ]);
+  return updated ? toSubscriptionDto(updated, plan, workspace) : null;
 }
 
 function snapshotPlan(plan: MongoPlan) {
@@ -4112,6 +4185,7 @@ function safeAsaasWebhookResponse(raw: Record<string, unknown>) {
   return {
     billingType: readString(raw.billingType),
     confirmedDate: readString(raw.confirmedDate),
+    customer: readString(raw.customer),
     externalReference: readString(raw.externalReference),
     id: readString(raw.id),
     invoiceUrl: readString(raw.invoiceUrl),

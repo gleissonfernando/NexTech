@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
+import { requireAsaasOperational } from "../config/payments";
 import { requireAdminAccess, requireAuth, requireAuthenticated } from "../middleware/auth";
 import {
   createCheckoutInterest,
@@ -19,11 +20,13 @@ import {
   retryPaymentOrder,
   type PlanActor
 } from "../services/planService";
+import { AsaasPaymentService, validateAsaasWebhookToken } from "../services/payments/asaasPaymentService";
 import type { DashboardAuth } from "../services/tokenService";
 
 export const paymentsRouter = Router();
 export const paymentWebhooksRouter = Router();
 export const paymentAdminRouter = Router();
+export const subscriptionsPaymentsRouter = Router();
 
 const checkoutSchema = z.object({
   paymentMethod: z.enum(["checkout", "pix", "card", "credit_card", "debit_card"]).default("checkout")
@@ -32,6 +35,32 @@ const checkoutSchema = z.object({
 });
 
 const orderIdSchema = z.string().min(8).max(120);
+const asaasCustomerSchema = z.object({
+  id: z.string().min(1).max(120).optional()
+}).passthrough();
+const asaasChargeSchema = z.object({
+  customer: asaasCustomerSchema,
+  description: z.string().max(500).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  externalReference: z.string().min(1).max(120).optional(),
+  value: z.coerce.number().positive()
+}).passthrough();
+const asaasCardSchema = asaasChargeSchema.extend({
+  creditCard: z.record(z.unknown()),
+  creditCardHolderInfo: z.record(z.unknown())
+});
+const asaasSubscriptionSchema = z.object({
+  billingType: z.enum(["PIX", "CREDIT_CARD", "BOLETO", "UNDEFINED"]).default("PIX"),
+  creditCard: z.record(z.unknown()).optional(),
+  creditCardHolderInfo: z.record(z.unknown()).optional(),
+  customer: asaasCustomerSchema,
+  cycle: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "BIMONTHLY", "QUARTERLY", "SEMIANNUALLY", "YEARLY"]).default("MONTHLY"),
+  description: z.string().max(500).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  externalReference: z.string().min(1).max(120).optional(),
+  nextDueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  value: z.coerce.number().positive()
+});
 
 paymentsRouter.post("/mercadopago/checkout", checkoutRateLimit, async (req, res, next) => {
   try {
@@ -62,6 +91,59 @@ paymentsRouter.post("/create-checkout", checkoutRateLimit, async (req, res, next
     return next(error);
   }
 });
+
+paymentsRouter.post("/pix", checkoutRateLimit, async (req, res, next) => {
+  try {
+    if (typeof req.body?.planId === "string") {
+      const input = checkoutSchema.parse({ ...req.body, paymentMethod: "pix" });
+      const result = await createPublicCheckoutInterest(input.planId, actorFrom(req), "pix");
+      return sendCheckoutResult(res, result);
+    }
+
+    const input = asaasChargeSchema.parse(req.body ?? {});
+    const service = new AsaasPaymentService();
+    const result = await service.createPixCharge({
+      ...input,
+      billingType: "PIX",
+      remoteIp: req.ip ?? null
+    });
+    return res.status(201).json({ success: true, provider: "asaas", result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+paymentsRouter.post("/card", checkoutRateLimit, async (req, res, next) => {
+  try {
+    const input = asaasCardSchema.parse(req.body ?? {});
+    const service = new AsaasPaymentService();
+    const result = await service.createCardCharge({
+      ...input,
+      billingType: "CREDIT_CARD",
+      remoteIp: req.ip ?? null
+    });
+    return res.status(201).json({ success: true, provider: "asaas", result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+async function handleCreateAsaasSubscription(req: Request, res: Response, next: NextFunction) {
+  try {
+    const input = asaasSubscriptionSchema.parse(req.body ?? {});
+    const service = new AsaasPaymentService();
+    const result = await service.createSubscription({
+      ...input,
+      remoteIp: req.ip ?? null
+    });
+    return res.status(201).json({ success: true, provider: "asaas", result });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+paymentsRouter.post("/subscriptions/create", checkoutRateLimit, handleCreateAsaasSubscription);
+subscriptionsPaymentsRouter.post("/create", checkoutRateLimit, handleCreateAsaasSubscription);
 
 paymentsRouter.post("/mercadopago/checkout/authenticated", requireAuthenticated, checkoutRateLimit, async (req, res, next) => {
   try {
@@ -234,7 +316,7 @@ async function handleStripeWebhook(req: Request, res: Response, next: NextFuncti
 
 async function handleAsaasWebhook(req: Request, res: Response, next: NextFunction) {
   try {
-    const result = await processAsaasWebhook({
+    const input = {
       body: req.body,
       eventId: readQuery(req.query.event_id) ?? readQuery(req.query.id),
       requestId: req.get("x-request-id") ?? null,
@@ -243,12 +325,22 @@ async function handleAsaasWebhook(req: Request, res: Response, next: NextFunctio
         ?? req.get("asaas-access-token")
         ?? req.get("access_token")
         ?? readQuery(req.query.token)
-    });
+    };
+    const asaasConfig = requireAsaasOperational({ allowDisabled: true, requireWebhook: true });
+    if (!validateAsaasWebhookToken(asaasConfig, input.webhookToken ?? null)) {
+      return res.status(401).json({ message: "Token webhook Asaas inválido." });
+    }
 
-    return res.status(result.processed || result.duplicate ? 200 : 202).json({
-      duplicate: result.duplicate,
-      processed: result.processed
+    res.status(200).json({ accepted: true, provider: "asaas" });
+    setImmediate(() => {
+      processAsaasWebhook(input).catch((error) => {
+        console.error("[payments][asaas] webhook background processing failed", {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: input.requestId
+        });
+      });
     });
+    return undefined;
   } catch (error) {
     return next(error);
   }

@@ -544,7 +544,14 @@ async function persistSnapshots(snapshots: DiscloudBotSnapshot[]) {
       });
     }
 
+    const previousAlerts = Array.isArray(previous?.alerts) ? previous.alerts : [];
+    const shouldRecordAlerts = !previous?.status || previous.status !== snapshot.status;
+
     for (const alert of snapshot.alerts) {
+      if (!shouldRecordAlerts && previousAlerts.includes(alert)) {
+        continue;
+      }
+
       await recordDiscloudEvent({
         appId: snapshot.appId,
         botId: snapshot.botId,

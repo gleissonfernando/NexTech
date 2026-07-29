@@ -5044,6 +5044,7 @@ export type MongoPaymentEvent = {
   eventType: string;
   lastError?: string | null;
   orderId: string | null;
+  payload?: Record<string, unknown>;
   payloadHash: string;
   processedAt: Date | null;
   provider: MongoPaymentProvider;

@@ -107,6 +107,7 @@ function applyStripeEnvAliases() {
 }
 
 function applyAsaasEnvAliases() {
+  applyEnvAlias("ASAAS_BASE_URL", "ASAAS_API_URL");
   applyEnvAlias("ASAAS_API_KEY", "ASAAS_ACCESS_TOKEN", "ASAAS_TOKEN");
   applyEnvAlias("ASAAS_WEBHOOK_TOKEN", "ASAAS_WEBHOOK_SECRET");
   applyEnvAlias("ASAAS_WEBHOOK_URL", "ASAAS_NOTIFICATION_URL");
@@ -321,6 +322,7 @@ const envSchema = z
     STRIPE_TAX_REGISTRATION_ACTIVE: envBoolean(false),
     STRIPE_TAX_ID_COLLECTION_ENABLED: envBoolean(false),
     ASAAS_API_KEY: z.string().optional().default(""),
+    ASAAS_API_URL: envOptionalUrl("ASAAS_API_URL"),
     ASAAS_BASE_URL: envUrl("ASAAS_BASE_URL", "https://api-sandbox.asaas.com/v3"),
     ASAAS_WEBHOOK_TOKEN: z.string().optional().default(""),
     ASAAS_WEBHOOK_URL: envOptionalUrl("ASAAS_WEBHOOK_URL"),
@@ -435,7 +437,7 @@ const envSchema = z
       STRIPE_SUCCESS_URL: value.STRIPE_SUCCESS_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/sucesso?provider=stripe&session_id={CHECKOUT_SESSION_ID}` : ""),
       STRIPE_CANCEL_URL: value.STRIPE_CANCEL_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/pagamento/falha?provider=stripe` : ""),
       STRIPE_WEBHOOK_URL: value.STRIPE_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/stripe/webhook` : ""),
-      ASAAS_WEBHOOK_URL: value.ASAAS_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/payments/asaas/webhook` : ""),
+      ASAAS_WEBHOOK_URL: value.ASAAS_WEBHOOK_URL || (oauthFrontendUrl ? `${oauthFrontendUrl}/api/webhooks/asaas` : ""),
       TRANSCRIPT_BASE_URL: normalizedTranscriptBaseUrl || oauthFrontendUrl,
       TRANSCRIPT_PORT: value.TRANSCRIPT_PORT ?? value.PORT,
       DISCORD_REDIRECT_URI: effectiveDiscordRedirect,
