@@ -343,7 +343,9 @@ export async function setBotBillingModel(botId: string, model: MongoBotBillingMo
   const bot = await devBots.findOne({ _id: botId });
   if (!bot) throw Object.assign(new Error("Bot não encontrado."), { statusCode: 404 });
   const previous = bot.billingModel ?? "monthly";
-  const amount = model === "lifetime" ? BOT_HOSTING_AMOUNT_IN_CENTS : Math.max(0, contractAmountInCents ?? bot.contractAmountInCents ?? DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS);
+  const amount = model === "lifetime"
+    ? BOT_HOSTING_AMOUNT_IN_CENTS
+    : Math.max(BOT_HOSTING_AMOUNT_IN_CENTS, contractAmountInCents ?? bot.contractAmountInCents ?? DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS);
   const updated = await devBots.findOneAndUpdate(
     { _id: botId },
     {
@@ -467,7 +469,7 @@ async function ensureInvoiceWhenDashboardOpens(bot: MongoDevBot) {
 
 function invoiceAmount(bot: MongoDevBot) {
   if ((bot.billingModel ?? "monthly") === "lifetime") return BOT_HOSTING_AMOUNT_IN_CENTS;
-  return Math.max(0, bot.contractAmountInCents ?? DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS);
+  return Math.max(BOT_HOSTING_AMOUNT_IN_CENTS, bot.contractAmountInCents ?? DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS);
 }
 
 function hasValidBotOverride(bot: MongoDevBot, mode: "bot" | "dashboard") {
