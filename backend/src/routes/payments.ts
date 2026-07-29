@@ -324,6 +324,7 @@ async function handleAsaasWebhook(req: Request, res: Response, next: NextFunctio
       webhookToken: req.get("x-webhook-token")
         ?? req.get("x-asaas-webhook-token")
         ?? req.get("asaas-access-token")
+        ?? req.get("asaas_access_token")
         ?? req.get("access_token")
         ?? readQuery(req.query.token)
     };
