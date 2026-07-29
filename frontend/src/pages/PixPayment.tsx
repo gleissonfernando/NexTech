@@ -130,7 +130,7 @@ function StatusNotice({ error, finalStatus, loading, order }: { error: string | 
   if (finalStatus) {
     return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/25 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]"><AlertCircle className="mt-0.5 h-5 w-5" />Este pedido foi finalizado com status {statusLabel(order?.status ?? "error")}.</div>;
   }
-  return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/20 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]">{loading ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <Clock3 className="mt-0.5 h-5 w-5" />}Aguardando confirmação do Mercado Pago.</div>;
+  return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/20 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]">{loading ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <Clock3 className="mt-0.5 h-5 w-5" />}Aguardando confirmação do {providerLabel(order?.provider)}.</div>;
 }
 
 function PaymentLine({ label, value }: { label: string; value: string }) {
@@ -144,6 +144,7 @@ function normalizeQrImage(value?: string | null) {
 }
 
 function providerLabel(provider?: PaymentOrder["provider"] | null) {
+  if (provider === "asaas") return "Asaas";
   if (provider === "pagbank") return "PagBank";
   return "Mercado Pago";
 }
