@@ -597,13 +597,13 @@ const DEFAULT_RULES_BUTTONS: RulesPanelButtonDto[] = [
 const RULES_IMAGE_FORMATS = new Set<RulesPanelImageFormat>(["horizontal", "square", "vertical", "none"]);
 const RULES_BUTTON_ACTIONS = new Set<RulesPanelButtonAction>(["accept", "url", "message", "ticket", "command"]);
 const RULES_BUTTON_STYLES = new Set<RulesPanelButtonStyle>(["primary", "secondary", "success", "danger"]);
-const DEFAULT_TICKET_PANEL_TITLE = "Central de Suporte";
-const DEFAULT_TICKET_PANEL_DESCRIPTION = "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.";
+const DEFAULT_TICKET_PANEL_TITLE = "ATENDIMENTO |&F Studio";
+const DEFAULT_TICKET_PANEL_DESCRIPTION = "Para abrir um ticket selecione uma categoria abaixo";
 const DEFAULT_TICKET_PANEL_INFO_TEXT = [
-  "Horario de atendimento: Seg-Sex, 9h-18h",
-  "Descreva seu problema com detalhes para um atendimento mais rapido."
+  "Não flode menções à equipe",
+  "Em caso de transferência de bot é necessário comprovante"
 ].join("\n");
-const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione o tipo de atendimento";
+const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione uma categoria de atendimento...";
 const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
   {
     categoryId: null,

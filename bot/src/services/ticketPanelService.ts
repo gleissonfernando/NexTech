@@ -27,7 +27,7 @@ import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { TicketPanelPublishAck } from "../websocket/socketClient";
 import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
-import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
@@ -372,49 +372,105 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
   await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}.`);
 }
 
-function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null) {
+function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
   const options = settings.ticketPanelOptions.filter((option) => option.enabled).slice(0, 25);
 
   if (!options.length) {
     return null;
   }
 
-  const contentBlocks = [
-    `## ${settings.ticketPanelTitle || "Central de Suporte"}`,
-    settings.ticketPanelDescription || "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
-    settings.ticketPanelInfoText
-  ].filter((block): block is string => Boolean(block?.trim()));
-  const footerImageUrl = resolveTicketFooterImage(settings.ticketPanelFooterImage);
+  const title = normalizeTicketPanelTitle(settings.ticketPanelTitle, guild);
+  const description = normalizeTicketPanelDescription(settings.ticketPanelDescription);
+  const infoText = normalizeTicketPanelInfo(settings.ticketPanelInfoText);
   const configuredMedia = [
-    resolveTicketPanelMedia(settings.ticketPanelLogoImage, "thumbnail"),
     resolveTicketPanelMedia(settings.ticketPanelBannerImage ?? settings.ticketPanelImage, "below_title"),
-    resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "bottom")
+    resolveTicketPanelMedia(settings.ticketPanelSecondaryBannerImage, "below_title")
   ].filter((item): item is PanelImageSettings & { imageUrl: string } => Boolean(item));
-  const logoImage = configuredMedia.find((item) => ["thumbnail", "side"].includes(item.imagePosition)) ?? null;
-  const banners = configuredMedia.filter((item) => !["footer", "none", "side", "thumbnail"].includes(item.imagePosition));
+  const bannerUrl = configuredMedia
+    .map((item) => resolvePanelImageUrl(item.imageUrl, item))
+    .find((url): url is string => Boolean(url))
+    ?? defaultTicketBannerUrl();
   const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(TICKET_PANEL_CUSTOM_ID)
-          .setPlaceholder(settings.ticketPanelPlaceholder || "Selecione o tipo de atendimento")
+          .setPlaceholder(normalizeTicketPanelPlaceholder(settings.ticketPanelPlaceholder))
           .addOptions(options.map(toSelectOption))
       );
-  return renderComponentsV2Panel({
+
+  const components: unknown[] = [
+    { type: 10, content: `## ${title}\n${description}` }
+  ];
+
+  if (bannerUrl) {
+    components.push({
+      type: 12,
+      items: [{ media: { url: bannerUrl }, description: "Banner do atendimento" }]
+    });
+  }
+
+  components.push(
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `## Regras Importantes\n${formatTicketRules(infoText)}` },
+    { type: 14, divider: true, spacing: 1 },
+    action
+  );
+
+  return componentsV2Payload({
     accentColor: parseColor(settings.ticketPanelColor),
-    actions: [action],
-    description: contentBlocks[1] ?? "",
-    extraImages: banners,
-    fields: contentBlocks.slice(2),
-    footer: {
-      description: "Imagem de rodapé do painel",
-      image: footerImageUrl,
-      text: settings.ticketPanelFooterText?.trim() || "NexTech"
-    },
-    footerContainer: true,
-    guild,
-    image: logoImage,
-    moduleId: "ticket",
-    title: `${systemEmojiText("interrogacao", guild)} ${contentBlocks[0]?.replace(/^##\s*/, "") ?? "Central de Suporte"}`
-  });
+    components,
+    footer: null,
+    guild
+  }) as ReturnType<typeof renderComponentsV2Panel>;
+}
+
+function ticketPanelTitle(guild: Guild | null) {
+  return `ATENDIMENTO |${guild?.name ?? "&F Studio"}`;
+}
+
+function normalizeTicketPanelTitle(value: string | null | undefined, guild: Guild | null) {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "Central de Suporte") return ticketPanelTitle(guild);
+  return normalized;
+}
+
+function normalizeTicketPanelDescription(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.") {
+    return "Para abrir um ticket selecione uma categoria abaixo";
+  }
+  return normalized;
+}
+
+function normalizeTicketPanelInfo(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "Horario de atendimento: Seg-Sex, 9h-18h\nDescreva seu problema com detalhes para um atendimento mais rapido.") {
+    return "Não flode menções à equipe\nEm caso de transferência de bot é necessário comprovante";
+  }
+  return normalized;
+}
+
+function normalizeTicketPanelPlaceholder(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "Selecione o tipo de atendimento") {
+    return "Selecione uma categoria de atendimento...";
+  }
+  return normalized;
+}
+
+function defaultTicketBannerUrl() {
+  return resolvePanelImageUrl("/ticket-atendimento-banner.png");
+}
+
+function formatTicketRules(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const normalized = line.replace(/^[•\-]\s*/, "");
+      return `> - **${normalized}**`;
+    })
+    .join("\n");
 }
 
 async function publishConfiguredTicketPanelUnlocked(client: Client, context: BotContext, guildId: string) {
@@ -689,33 +745,6 @@ function resolveTicketPanelMedia(panelImage: PanelImageSettings | null, fallback
   return panelImage && imageUrl
     ? { ...panelImage, imagePosition: fallbackPosition, imageUrl }
     : null;
-}
-
-function resolveTicketFooterImage(panelImage: PanelImageSettings | null) {
-  const imageUrl = resolveImageUrl(panelImage);
-  if (!panelImage || !imageUrl) return null;
-  if (isVideoPanelImage(panelImage)) {
-    return resolvePanelMediaUrlValue(panelImage.mediaPosterUrl ?? panelImage.mediaThumbnailUrl ?? null);
-  }
-  return imageUrl;
-}
-
-function isVideoPanelImage(panelImage: PanelImageSettings) {
-  if (panelImage.imageMimeType?.startsWith("video/")) return true;
-  const extension = panelImage.imageExtension?.trim().toLowerCase();
-  return Boolean(extension && VIDEO_PANEL_EXTENSIONS.has(extension)) || /\.(3gp|3g2|asf|avi|f4v|flv|m4v|mkv|mov|mp4|mpeg|mpg|mts|mxf|ogv|rmvb|ts|vob|webm|wmv)(?:$|[?#])/i.test(panelImage.imageUrl);
-}
-
-const VIDEO_PANEL_EXTENSIONS = new Set(["3gp", "3g2", "asf", "avi", "f4v", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "mts", "mxf", "ogv", "rmvb", "ts", "vob", "webm", "wmv"]);
-
-function mediaGalleryComponent(imageUrl: string) {
-  return {
-    type: 12,
-    items: [{
-      media: { url: imageUrl },
-      description: "ticket image"
-    }]
-  };
 }
 
 function parseColor(value: string | null | undefined) {

@@ -6,21 +6,23 @@ import { getRedisClient } from "../database/redis";
 import { metricsSnapshot } from "../services/monitoringService";
 import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
-import { listDevBots } from "../services/devBotService";
+import { listDevBots, type DevBotDto } from "../services/devBotService";
 import { getTranscriptHealthStatus } from "../services/transcriptService";
 
 export const healthRouter = Router();
 
 healthRouter.get("/", async (_req, res) => {
-  const [database, redis, jobs] = await Promise.all([
+  const [database, redis, jobs, registeredBots] = await Promise.all([
     databaseHealth(),
     redisHealth(),
-    backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) }))
+    backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) })),
+    listDevBots().catch(() => [] as DevBotDto[])
   ]);
   const bot = getBotStatus();
   const mail = mailHealth();
   const payments = paymentsHealth();
   const healthy = database.ok && (!redis.configured || redis.ok);
+  const serverIssues = buildServerHealth(registeredBots, bot);
 
   return res.json({
     status: healthy ? "ok" : "degraded",
@@ -29,7 +31,10 @@ healthRouter.get("/", async (_req, res) => {
     jobs,
     mail,
     payments,
-    bot,
+    bot: {
+      ...bot,
+      serverIssues: serverIssues.filter((server) => !server.ok)
+    },
     timestamp: new Date().toISOString()
   });
 });
@@ -109,15 +114,7 @@ healthRouter.get("/payments", (_req, res) => {
 healthRouter.get("/servers", async (_req, res, next) => {
   try {
     const bots = await listDevBots();
-    const servers = [...new Map(bots.map((bot) => [bot.id, {
-      botId: bot.id,
-      botName: bot.name,
-      iconUrl: bot.mainGuildIconUrl,
-      id: bot.mainGuildId,
-      memberCount: bot.mainGuildMemberCount,
-      name: bot.mainGuildName,
-      status: bot.status
-    }])).values()];
+    const servers = buildServerHealth(bots, getBotStatus());
     return res.json({ servers });
   } catch (error) {
     return next(error);
@@ -240,4 +237,105 @@ function resolvePaymentHealthProvider() {
   }
 
   return env.MERCADOPAGO_ENABLED ? "mercadopago" : "disabled";
+}
+
+function buildServerHealth(bots: DevBotDto[], runtimeBot: ReturnType<typeof getBotStatus>) {
+  const runtimeGuildIds = new Set(runtimeBot.botGuilds.map((guild) => guild.id));
+  const runtimeGuildsById = new Map(runtimeBot.botGuilds.map((guild) => [guild.id, guild]));
+  const runtimeAgeMs = Date.now() - new Date(runtimeBot.updatedAt).getTime();
+  const runtimeStale = !Number.isFinite(runtimeAgeMs) || runtimeAgeMs > 120_000;
+  const servers = new Map<string, ReturnType<typeof serverHealthRecord>>();
+
+  for (const bot of bots) {
+    const botGuildIds = [...new Set([bot.mainGuildId, ...bot.guildIds].filter(Boolean))];
+
+    for (const guildId of botGuildIds) {
+      const runtimeGuild = runtimeGuildsById.get(guildId);
+      servers.set(`${bot.id}:${guildId}`, serverHealthRecord({
+        bot,
+        guildId,
+        runtimeGuild,
+        runtimeGuildIds,
+        runtimeOnline: runtimeBot.online,
+        runtimeStale
+      }));
+    }
+  }
+
+  return [...servers.values()].sort((left, right) => {
+    if (left.ok !== right.ok) return left.ok ? 1 : -1;
+    return left.name.localeCompare(right.name, "pt-BR");
+  });
+}
+
+function serverHealthRecord(input: {
+  bot: DevBotDto;
+  guildId: string;
+  runtimeGuild: ReturnType<typeof getBotStatus>["botGuilds"][number] | undefined;
+  runtimeGuildIds: Set<string>;
+  runtimeOnline: boolean;
+  runtimeStale: boolean;
+}) {
+  const issues = serverHealthReasons(input);
+  const isMainGuild = input.guildId === input.bot.mainGuildId;
+
+  return {
+    botId: input.bot.id,
+    botName: input.bot.name,
+    botStatus: input.bot.status,
+    botStatusMessage: input.bot.statusMessage,
+    desiredOnline: input.bot.desiredOnline,
+    iconUrl: input.runtimeGuild?.iconUrl ?? (isMainGuild ? input.bot.mainGuildIconUrl : null),
+    id: input.guildId,
+    memberCount: input.runtimeGuild?.memberCount ?? (isMainGuild ? input.bot.mainGuildMemberCount : 0),
+    name: input.runtimeGuild?.name ?? (isMainGuild ? input.bot.mainGuildName : `Servidor ${input.guildId}`),
+    ok: issues.length === 0,
+    reason: issues[0] ?? null,
+    reasons: issues,
+    runtimeOnline: input.runtimeOnline,
+    runtimePresent: input.runtimeGuildIds.has(input.guildId),
+    status: issues.length ? "problem" : "online",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function serverHealthReasons(input: {
+  bot: DevBotDto;
+  guildId: string;
+  runtimeGuildIds: Set<string>;
+  runtimeOnline: boolean;
+  runtimeStale: boolean;
+}) {
+  const reasons: string[] = [];
+  const botStatus = input.bot.status;
+
+  if (!input.bot.desiredOnline) {
+    reasons.push("Bot configurado para ficar desligado.");
+  }
+
+  if (botStatus === "invalid_token") {
+    reasons.push(input.bot.statusMessage || "Token do bot inválido.");
+  } else if (botStatus === "error") {
+    reasons.push(input.bot.statusMessage || "Processo do bot está em erro.");
+  } else if (botStatus === "degraded") {
+    reasons.push(input.bot.statusMessage || "Bot está degradado.");
+  } else if (botStatus === "offline" || botStatus === "stopping") {
+    reasons.push(input.bot.statusMessage || "Bot está offline.");
+  } else if (botStatus === "starting" || botStatus === "authenticating" || botStatus === "syncing_config") {
+    reasons.push(input.bot.statusMessage || "Bot ainda está inicializando.");
+  }
+
+  if (!input.runtimeOnline) {
+    reasons.push("Runtime principal do bot não está online.");
+  }
+
+  if (input.runtimeStale) {
+    reasons.push("Status do bot está sem atualização recente.");
+  }
+
+  if (!input.runtimeGuildIds.has(input.guildId)) {
+    reasons.push("Servidor não aparece no runtime do bot; o bot pode ter sido removido do servidor ou não conseguiu carregar a guild.");
+  }
+
+  return [...new Set(reasons)];
 }

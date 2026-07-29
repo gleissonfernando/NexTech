@@ -4614,6 +4614,25 @@ export type SystemBotGuildHealth = {
   shardId?: number;
 };
 
+export type SystemServerIssue = {
+  botId: string;
+  botName: string;
+  botStatus: DevBotStatus;
+  botStatusMessage: string | null;
+  desiredOnline: boolean;
+  iconUrl: string | null;
+  id: string;
+  memberCount: number;
+  name: string;
+  ok: boolean;
+  reason: string | null;
+  reasons: string[];
+  runtimeOnline: boolean;
+  runtimePresent: boolean;
+  status: "online" | "problem";
+  updatedAt: string;
+};
+
 export type SystemBotHealth = {
   botId?: string | null;
   botProfile?: {
@@ -4634,6 +4653,7 @@ export type SystemBotHealth = {
     rssMb: number;
   };
   responseTime?: BotResponseTimeStats;
+  serverIssues?: SystemServerIssue[];
   updatedAt: string;
 };
 

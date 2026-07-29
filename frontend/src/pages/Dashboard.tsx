@@ -8902,12 +8902,12 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
   return {
     ticketCategoryId: settings?.ticketCategoryId ?? null,
     ticketPanelChannelId: settings?.ticketPanelChannelId ?? null,
-    ticketPanelTitle: settings?.ticketPanelTitle ?? "Central de Suporte",
-    ticketPanelDescription: settings?.ticketPanelDescription ?? "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.",
-    ticketPanelInfoText: settings?.ticketPanelInfoText ?? "Horario de atendimento: Seg-Sex, 9h-18h\nDescreva seu problema com detalhes para um atendimento mais rapido.",
+    ticketPanelTitle: settings?.ticketPanelTitle ?? "ATENDIMENTO |&F Studio",
+    ticketPanelDescription: settings?.ticketPanelDescription ?? "Para abrir um ticket selecione uma categoria abaixo",
+    ticketPanelInfoText: settings?.ticketPanelInfoText ?? "Não flode menções à equipe\nEm caso de transferência de bot é necessário comprovante",
     ticketPanelFooterText: settings?.ticketPanelFooterText ?? "",
     ticketPanelColor: settings?.ticketPanelColor ?? "#FFD500",
-    ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione o tipo de atendimento",
+    ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione uma categoria de atendimento...",
     ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : [{
       categoryId: null,
       description: "Abrir um atendimento com a equipe.",

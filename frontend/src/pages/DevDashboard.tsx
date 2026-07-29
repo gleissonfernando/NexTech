@@ -78,7 +78,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -1351,6 +1351,7 @@ function RealtimeSystemMonitoringPanel() {
   const heapUsed = metrics ? bytesToMb(metrics.metrics.memory.heapUsed) : null;
   const heapTotal = metrics ? bytesToMb(metrics.metrics.memory.heapTotal) : null;
   const rss = metrics ? bytesToMb(metrics.metrics.memory.rss) : null;
+  const serverIssues = bot?.serverIssues ?? [];
   const statusTone = health?.status === "ok" && metrics?.status === "ok" ? "good" : "warn";
   const botResponseTone = responseTimeTone(bot?.responseTime?.status ?? (bot?.online ? "good" : "offline"));
   const botTone = bot?.online ? botResponseTone : "danger";
@@ -1383,13 +1384,16 @@ function RealtimeSystemMonitoringPanel() {
 
       {message ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{message}</div> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <RealtimeStatCard icon={Activity} label="Sistema" tone={statusTone} value={health?.status ?? "-"} detail={metrics ? `Uptime ${formatUptime(metrics.metrics.uptimeSeconds)}` : "Aguardando leitura"} />
         <RealtimeStatCard icon={Wifi} label="Site/API" tone={statusTone} value={health?.status === "ok" ? "Online" : "Degradado"} detail={`${apiRequests} chamadas monitoradas`} />
         <RealtimeStatCard icon={Wifi} label="Bot principal" tone={botTone} value={bot?.online ? responseTimeLabel(bot?.responseTime?.status ?? "good") : "Offline"} detail={`Resposta ${msLabel(bot?.responseTime?.currentMs ?? bot?.latency ?? null)}`} />
+        <RealtimeStatCard icon={ShieldAlert} label="Servidores com falha" tone={serverIssues.length ? "danger" : "good"} value={String(serverIssues.length)} detail={serverIssues[0]?.reason ?? "Nenhuma falha detectada"} />
         <RealtimeStatCard icon={Users} label="Bots cadastrados" tone={errorBots > 0 ? "warn" : "good"} value={`${readyBots}/${bots.length}`} detail={`${errorBots} com erro`} />
         <RealtimeStatCard icon={HardDrive} label="Banco" tone={dbTone} value={health?.database.status ?? "-"} detail={health?.database.latencyMs !== undefined ? `${health.database.latencyMs}ms` : health?.database.message ?? "Sem latência"} />
       </section>
+
+      <ServerIssuesPanel issues={serverIssues} />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <Card className="border-zinc-800/80 bg-zinc-950/80">
@@ -3056,20 +3060,21 @@ function isFiveMManagerModule(moduleId: string) {
 
 function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId: string | null }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [health, setHealth] = useState<SystemHealthResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!guildId || !botId) {
-      setLogs([]);
-      return;
-    }
-
     let mounted = true;
 
     setLoading(true);
-    getLogs(guildId, botId)
-      .then((items) => {
-        if (mounted) setLogs(items);
+    Promise.all([
+      guildId && botId ? getLogs(guildId, botId).catch(() => [] as LogEntry[]) : Promise.resolve([] as LogEntry[]),
+      getSystemHealth().catch(() => null)
+    ])
+      .then(([items, nextHealth]) => {
+        if (!mounted) return;
+        setLogs(items);
+        setHealth(nextHealth);
       })
       .catch(() => {
         if (mounted) setLogs([]);
@@ -3084,39 +3089,88 @@ function TechnicalLogsPanel({ botId, guildId }: { botId: string | null; guildId:
   }, [botId, guildId]);
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75">
-      <CardHeader className="p-5 sm:p-6">
-        <CardTitle className="flex items-center gap-2">
-          <ScrollText className="h-5 w-5" />
-          Logs técnicos
-        </CardTitle>
-        <CardDescription>Eventos brutos por botId e guildId para diagnostico do desenvolvedor.</CardDescription>
-      </CardHeader>
-      <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
-        {loading ? (
-          <div className="flex min-h-28 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
-          </div>
-        ) : logs.length ? (
-          <div className="space-y-3">
-            {logs.map((log) => (
-              <div className="rounded-lg border border-zinc-900 bg-black/35 p-3" key={log.id}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="muted">{log.type}</Badge>
-                  <span className="text-xs text-zinc-500">{formatDate(log.createdAt)}</span>
+    <div className="space-y-4">
+      <ServerIssuesPanel issues={health?.bot.serverIssues ?? []} />
+
+      <Card className="border-zinc-800/80 bg-zinc-950/75">
+        <CardHeader className="p-5 sm:p-6">
+          <CardTitle className="flex items-center gap-2">
+            <ScrollText className="h-5 w-5" />
+            Logs técnicos
+          </CardTitle>
+          <CardDescription>Eventos brutos por botId e guildId para diagnostico do desenvolvedor.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-5 pt-0 sm:p-6 sm:pt-0">
+          {loading ? (
+            <div className="flex min-h-28 items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+            </div>
+          ) : logs.length ? (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div className="rounded-lg border border-zinc-900 bg-black/35 p-3" key={log.id}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="muted">{log.type}</Badge>
+                    <span className="text-xs text-zinc-500">{formatDate(log.createdAt)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-100">{log.message}</p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-zinc-600">
+                    botId={log.botId ?? "default"} guildId={log.guildId}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm text-zinc-100">{log.message}</p>
-                <p className="mt-1 break-all font-mono text-[11px] text-zinc-600">
-                  botId={log.botId ?? "default"} guildId={log.guildId}
-                </p>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
+              Nenhum log técnico encontrado.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ServerIssuesPanel({ issues }: { issues: SystemServerIssue[] }) {
+  if (!issues.length) {
+    return (
+      <Card className="border-emerald-500/15 bg-emerald-500/5">
+        <CardContent className="flex items-center gap-3 p-4 text-sm font-semibold text-emerald-100">
+          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-300" />
+          Nenhum servidor com falha detectado no momento.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-red-500/25 bg-red-500/5">
+      <CardHeader className="p-5 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-red-100">
+          <ShieldAlert className="h-5 w-5" />
+          Servidores com problema
+        </CardTitle>
+        <CardDescription>Mostra qualquer servidor que não está funcionando e o motivo detectado.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 p-5 pt-0 sm:p-6 sm:pt-0">
+        {issues.map((issue) => (
+          <div className="rounded-lg border border-red-500/20 bg-black/35 p-3" key={`${issue.botId}:${issue.id}`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">{issue.name}</p>
+                <p className="truncate text-xs font-semibold text-zinc-400">{issue.botName}</p>
               </div>
-            ))}
+              <Badge variant="danger">{devBotStatusLabel(issue.botStatus)}</Badge>
+            </div>
+            <p className="mt-2 text-sm font-semibold text-red-100">{issue.reason ?? "Falha não identificada."}</p>
+            {issue.reasons.length > 1 ? (
+              <ul className="mt-2 space-y-1 border-l border-red-500/30 pl-3 text-xs text-red-100/80">
+                {issue.reasons.slice(1).map((reason) => <li key={reason}>- {reason}</li>)}
+              </ul>
+            ) : null}
+            <p className="mt-2 break-all font-mono text-[11px] text-zinc-600">botId={issue.botId} guildId={issue.id}</p>
           </div>
-        ) : (
-          <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
-            Nenhum log técnico encontrado.
-          </div>
-        )}
+        ))}
       </CardContent>
     </Card>
   );
