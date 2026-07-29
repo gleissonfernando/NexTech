@@ -1827,7 +1827,7 @@ function newWebhookToken() {
 }
 
 function requireBotId(botId: string | null) {
-  if (!botId) throw Object.assign(new Error("Escopo do bot é obrigatório para ZTK Webhook."), { statusCode: 400 });
+  if (!botId) throw Object.assign(new Error("Escopo do bot é obrigatório paraNexTech  ZTK."), { statusCode: 400 });
   return botId;
 }
 
