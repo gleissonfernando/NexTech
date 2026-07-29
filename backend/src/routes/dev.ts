@@ -65,6 +65,17 @@ import {
   runDiscloudBotAction
 } from "../services/discloudMonitoringService";
 import {
+  clearBotBillingOverride,
+  generateBotInvoicePix,
+  getBotBillingAccess,
+  getBotBillingInvoices,
+  markBotInvoicePaidManually,
+  processBotBillingCycle,
+  setBotBillingModel,
+  setBotBillingOverride,
+  canStartBotByBilling
+} from "../services/botBillingService";
+import {
   deleteNexTechPaymentProvider,
   deleteNexTechProduct,
   deleteScopedNexTechSalesPlan,
@@ -132,6 +143,26 @@ const modulesSchema = z.object({
 
 const securityAccessSchema = z.object({
   enabledByDev: z.boolean()
+});
+
+const botBillingModelSchema = z.object({
+  billingModel: z.enum(["monthly", "lifetime"]),
+  contractAmountInCents: z.number().int().min(0).max(100000000).nullable().optional()
+});
+
+const botBillingOverrideSchema = z.object({
+  forceBotActive: z.boolean().default(false),
+  forceDashboardAccess: z.boolean().default(false),
+  overrideExpiresAt: z.string().datetime().nullable().optional(),
+  reason: z.string().min(3).max(1000)
+});
+
+const botInvoicePixSchema = z.object({
+  cpfCnpj: z.string().min(11).max(32)
+});
+
+const manualInvoiceReleaseSchema = z.object({
+  reason: z.string().min(3).max(1000)
 });
 
 const registerPrimaryBotSchema = z.object({
@@ -938,9 +969,15 @@ devRouter.post("/bots/start-all", async (_req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const bots = await listManageableDevBots(auth);
+    const startable = [];
 
-    await Promise.all(bots.map((bot) => setDevBotDesiredOnline(bot.id, true)));
-    await startAllDevBotProcesses(bots.map((bot) => bot.id));
+    for (const bot of bots) {
+      const billing = await canStartBotByBilling(bot.id);
+      if (billing.allowed) startable.push(bot);
+    }
+
+    await Promise.all(startable.map((bot) => setDevBotDesiredOnline(bot.id, true)));
+    await startAllDevBotProcesses(startable.map((bot) => bot.id));
     const updatedBots = await listAccessibleDevBots(auth.user);
 
     await writeDevBotAudit(
@@ -948,15 +985,16 @@ devRouter.post("/bots/start-all", async (_req, res, next) => {
       auth.user.selectedGuildId ?? "global",
       null,
       "start_all",
-      `${bots.length} bot${bots.length === 1 ? "" : "s"} ligado${bots.length === 1 ? "" : "s"} pelo controle geral DEV.`,
+      `${startable.length} bot${startable.length === 1 ? "" : "s"} ligado${startable.length === 1 ? "" : "s"} pelo controle geral DEV.`,
       {
-        botIds: bots.map((bot) => bot.id)
+        botIds: startable.map((bot) => bot.id),
+        skippedByBilling: bots.length - startable.length
       }
     );
 
     return res.json({
       bots: updatedBots,
-      affected: bots.length
+      affected: startable.length
     });
   } catch (error) {
     return next(error);
@@ -1073,6 +1111,127 @@ devRouter.get("/bots/:botId", async (req, res, next) => {
 
     return res.json({
       bot
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/bots/:botId/billing", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    await processBotBillingCycle("dashboard_billing_fetch");
+    return res.json({
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/model", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = botBillingModelSchema.parse(req.body ?? {});
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    await setBotBillingModel(req.params.botId, input.billingModel, input.contractAmountInCents ?? null, auth.user);
+    const bot = await getDevBot(req.params.botId);
+    return res.json({
+      bot,
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/override", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = botBillingOverrideSchema.parse(req.body ?? {});
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    await setBotBillingOverride(req.params.botId, {
+      forceBotActive: input.forceBotActive,
+      forceDashboardAccess: input.forceDashboardAccess,
+      expiresAt: input.overrideExpiresAt ? new Date(input.overrideExpiresAt) : null,
+      reason: input.reason
+    }, auth.user);
+    const bot = await getDevBot(req.params.botId);
+    return res.json({
+      bot,
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.delete("/bots/:botId/billing/override", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    await clearBotBillingOverride(req.params.botId, auth.user);
+    const bot = await getDevBot(req.params.botId);
+    return res.json({
+      bot,
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/invoices/:invoiceId/pix", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = botInvoicePixSchema.parse(req.body ?? {});
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    const invoice = await generateBotInvoicePix(req.params.invoiceId, input.cpfCnpj, auth.user);
+    return res.json({ invoice });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/invoices/:invoiceId/manual-release", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = manualInvoiceReleaseSchema.parse(req.body ?? {});
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    const invoice = await markBotInvoicePaidManually(req.params.invoiceId, auth.user, input.reason);
+    return res.json({
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoice,
+      invoices: await getBotBillingInvoices(req.params.botId)
     });
   } catch (error) {
     return next(error);
@@ -1211,6 +1370,14 @@ devRouter.post("/bots/:botId/restart", async (req, res, next) => {
     if (validatedBot.status === "invalid_token" || validatedBot.status === "error") {
       return res.status(400).json({
         message: validatedBot.statusMessage ?? "Não foi possível validar o bot."
+      });
+    }
+
+    const billing = await canStartBotByBilling(req.params.botId);
+    if (!billing.allowed) {
+      return res.status(402).json({
+        message: billing.reason ?? "Bot bloqueado por cobrança pendente.",
+        billing: await getBotBillingAccess(req.params.botId, auth.user)
       });
     }
 

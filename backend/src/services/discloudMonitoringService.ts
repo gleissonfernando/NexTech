@@ -796,6 +796,10 @@ function devBotPlaceholder(appId: string, app: unknown): DevBotDto {
     maintenanceBypass: false,
     enabledModules: [],
     desiredOnline: true,
+    billingAccess: null,
+    billingModel: "monthly",
+    contractAmountInCents: null,
+    billingOverride: null,
     accessLevel: "admin",
     permissions: {
       canAccessDashboard: true,

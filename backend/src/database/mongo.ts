@@ -4686,6 +4686,21 @@ export type MongoDevBotStatus =
   | "invalid_token"
   | "error";
 
+export type MongoBotBillingModel = "monthly" | "lifetime";
+export type MongoBotBillingChargeType = "hosting" | "monthly_plan";
+export type MongoBotBillingInvoiceStatus = "pending" | "paid" | "overdue" | "cancelled" | "manually_released";
+
+export type MongoBotBillingOverride = {
+  forceBotActive: boolean;
+  forceDashboardAccess: boolean;
+  expiresAt: Date | null;
+  reason: string | null;
+  createdBy: string | null;
+  createdByName?: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
 export type MongoDevBot = {
   _id: string;
   name: string;
@@ -4716,9 +4731,36 @@ export type MongoDevBot = {
   maintenanceUpdatedByName?: string | null;
   enabledModules: string[];
   desiredOnline?: boolean;
+  billingModel?: MongoBotBillingModel;
+  contractAmountInCents?: number | null;
+  billingOverride?: MongoBotBillingOverride | null;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type MongoBotBillingInvoice = {
+  _id: string;
+  amountInCents: number;
+  billingModel: MongoBotBillingModel;
+  botId: string;
+  botName: string;
+  chargeType: MongoBotBillingChargeType;
+  createdAt: Date;
+  currency: "BRL";
+  dueDate: Date;
+  dueMonth: string;
+  idempotencyKey: string;
+  notes: string | null;
+  paidAt: Date | null;
+  paymentProvider: MongoPaymentProvider;
+  pixCode: string | null;
+  pixQrCode: string | null;
+  providerPaymentId: string | null;
+  status: MongoBotBillingInvoiceStatus;
+  statusHistory?: Array<{ at: Date; from: MongoBotBillingInvoiceStatus | null; source: string; status: MongoBotBillingInvoiceStatus }>;
+  updatedAt: Date;
+  userId: string;
 };
 
 export type MongoBotGuildModuleConfig = {
@@ -5481,6 +5523,7 @@ export async function getMongoCollections() {
     paymentEvents: db.collection<MongoPaymentEvent>("payment_events"),
     paymentSettings: db.collection<MongoPaymentSettings>("payment_settings"),
     planAuditLogs: db.collection<MongoPlanAuditLog>("plan_audit_logs"),
+    botBillingInvoices: db.collection<MongoBotBillingInvoice>("bot_billing_invoices"),
     devBots: db.collection<MongoDevBot>("Bot"),
     botGuildConfigs: db.collection<MongoBotGuildConfig>("BotGuildConfig"),
     antiBanConfigs: db.collection<MongoAntiBanConfig>("anti_ban_configs"),
@@ -5723,7 +5766,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoPersistentImage>("persistent_images").createIndex({ createdAt: -1 }),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex(
       { botId: 1, guildId: 1, slug: 1 },
-      { unique: true, partialFilterExpression: { deletedAt: { $exists: false } } }
+      { unique: true, partialFilterExpression: { deletedAt: null } }
     ),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex({ botId: 1, guildId: 1, order: 1, updatedAt: -1 }),
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, categoryId: 1, updatedAt: -1 }),
@@ -5851,6 +5894,10 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, environment: 1, paymentId: 1, eventType: 1, requestId: 1 }, { sparse: true }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, payloadHash: 1 }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ createdAt: -1 }),
+    db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ botId: 1, dueMonth: 1 }, { unique: true }),
+    db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ userId: 1, status: 1, dueDate: 1 }),
+    db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ paymentProvider: 1, providerPaymentId: 1 }, { sparse: true }),
+    db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ status: 1, dueDate: 1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ actorId: 1, createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ targetType: 1, targetId: 1, createdAt: -1 })

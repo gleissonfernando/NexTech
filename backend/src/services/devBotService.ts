@@ -32,6 +32,7 @@ import { expandModuleAccessKeys } from "./moduleEntitlementService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
 import { canAccessDevDashboard } from "./devPermissionService";
+import { getBotBillingAccess, canStartBotByBilling, type BotBillingAccessDto } from "./botBillingService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
@@ -323,6 +324,19 @@ export type DevBotDto = {
   maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
+  billingAccess: BotBillingAccessDto | null;
+  billingModel: "monthly" | "lifetime";
+  contractAmountInCents: number | null;
+  billingOverride: {
+    forceBotActive: boolean;
+    forceDashboardAccess: boolean;
+    expiresAt: string | null;
+    reason: string | null;
+    createdBy: string | null;
+    createdByName: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  } | null;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;
@@ -351,6 +365,10 @@ export type DashboardBotDto = Pick<
   | "maintenance"
   | "enabledModules"
   | "desiredOnline"
+  | "billingAccess"
+  | "billingModel"
+  | "contractAmountInCents"
+  | "billingOverride"
   | "accessLevel"
   | "permissions"
   | "createdBy"
@@ -735,6 +753,10 @@ export async function canUseDevBotModule(
     return true;
   }
 
+  if (botId && access.allowed && (await getBotBillingAccess(botId, user))?.blocked) {
+    return false;
+  }
+
   if (!botId || !access.allowed || !canManageModuleAtLevel(access.accessLevel, moduleId)) {
     return false;
   }
@@ -774,6 +796,10 @@ export async function canReadDevBotModule(
 
   if (botId && access.allowed && await canAccessDevDashboard(user.discordId)) {
     return true;
+  }
+
+  if (botId && access.allowed && (await getBotBillingAccess(botId, user))?.blocked) {
+    return false;
   }
 
   if (!botId || !access.allowed || !canReadModuleAtLevel(access.accessLevel, moduleId)) {
@@ -1377,7 +1403,14 @@ export async function listDevBotRuntimeConfigs() {
   ]);
   const guildIdsByBot = groupGuildIdsByBot(configs);
 
-  return bots.map((bot) => toDevBotRuntimeConfig(bot, guildIdsByBot.get(bot._id)));
+  const runtimeConfigs = await Promise.all(bots.map(async (bot) => {
+    const access = await canStartBotByBilling(bot._id);
+    if (!access.allowed) {
+      return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIdsByBot.get(bot._id));
+    }
+    return toDevBotRuntimeConfig(bot, guildIdsByBot.get(bot._id));
+  }));
+  return runtimeConfigs;
 }
 
 export async function listGuildBotRuntimeConfigs(guildId: string) {
@@ -1413,7 +1446,12 @@ export async function getDevBotRuntimeConfig(botId: string) {
     botGuildConfigs.find({ botId }).toArray()
   ]);
 
-  return bot ? toDevBotRuntimeConfig(bot, configs.map((config) => config.guildId)) : null;
+  if (!bot) return null;
+  const access = await canStartBotByBilling(bot._id);
+  if (!access.allowed) {
+    return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, configs.map((config) => config.guildId));
+  }
+  return toDevBotRuntimeConfig(bot, configs.map((config) => config.guildId));
 }
 
 export async function setDevBotDesiredOnline(botId: string, desiredOnline: boolean) {
@@ -2691,6 +2729,19 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     maintenanceBypass: bot.maintenanceBypass === true,
     enabledModules: sanitizeModules(bot.enabledModules),
     desiredOnline: bot.desiredOnline !== false,
+    billingAccess: null,
+    billingModel: bot.billingModel ?? "monthly",
+    contractAmountInCents: bot.contractAmountInCents ?? null,
+    billingOverride: bot.billingOverride ? {
+      forceBotActive: bot.billingOverride.forceBotActive === true,
+      forceDashboardAccess: bot.billingOverride.forceDashboardAccess === true,
+      expiresAt: bot.billingOverride.expiresAt?.toISOString?.() ?? null,
+      reason: bot.billingOverride.reason ?? null,
+      createdBy: bot.billingOverride.createdBy ?? null,
+      createdByName: bot.billingOverride.createdByName ?? null,
+      createdAt: bot.billingOverride.createdAt?.toISOString?.() ?? null,
+      updatedAt: bot.billingOverride.updatedAt?.toISOString?.() ?? null
+    } : null,
     accessLevel,
     permissions,
     createdBy: bot.createdBy,
@@ -2821,6 +2872,10 @@ function toDashboardBotDto(bot: DevBotDto): DashboardBotDto {
     maintenance: bot.maintenance,
     enabledModules: bot.enabledModules,
     desiredOnline: bot.desiredOnline,
+    billingAccess: bot.billingAccess,
+    billingModel: bot.billingModel,
+    contractAmountInCents: bot.contractAmountInCents,
+    billingOverride: bot.billingOverride,
     accessLevel: bot.accessLevel,
     permissions: bot.permissions,
     createdBy: bot.createdBy

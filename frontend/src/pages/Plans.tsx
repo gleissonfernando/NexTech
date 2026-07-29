@@ -3,13 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { createPlanCheckoutInterest, getPublicPlans } from "../lib/api";
 import type { Plan } from "../types";
 
-type PlanPeriodicityFilter = "all" | "monthly" | "lifetime";
+type PlanPeriodicityFilter = "all" | "monthly";
 type PlanLevelFilter = "all" | "basic" | "complete";
 
 const PERIODICITY_FILTERS: Array<{ label: string; value: PlanPeriodicityFilter }> = [
   { label: "Todos", value: "all" },
-  { label: "Mensal", value: "monthly" },
-  { label: "Vitalício", value: "lifetime" }
+  { label: "Mensal", value: "monthly" }
 ];
 
 const LEVEL_FILTERS: Array<{ label: string; value: PlanLevelFilter }> = [
@@ -226,11 +225,6 @@ function PublicPlanCard({ busy, onBuy, plan }: { busy: boolean; onBuy: () => voi
     <div className="mt-6"><span className="text-4xl font-black text-primary">{formatPrice(price, plan.currency)}</span><span className="text-sm text-zinc-500"> {price ? cycleSuffix(plan.billingCycle) : ""}</span></div>
     {plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents < plan.priceInCents ? <p className="mt-1 text-sm text-zinc-600 line-through">{formatPrice(plan.priceInCents, plan.currency)}</p> : null}
     <ul className="mt-7 space-y-3">{features.map((feature) => <li className="flex gap-3 text-sm text-zinc-300" key={feature}><Check className="h-4 w-4 shrink-0 text-primary" />{feature}</li>)}</ul>
-    {plan.billingCycle === "lifetime" ? (
-      <p className="mt-5 rounded-lg border border-primary/20 bg-primary/10 p-3 text-sm font-semibold leading-6 text-[var(--nextech-accent-soft)]">
-        Após o período gratuito será cobrada apenas a hospedagem, a partir de R$12,00 por mês. Sua licença continuará sendo vitalícia.
-      </p>
-    ) : null}
     {plan.isPurchasable ? <div className="mt-8">
       <button className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={onBuy} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Comprar</button>
       <p className="mt-2 text-center text-xs font-medium text-zinc-500">Pix e cartão conforme disponibilidade do checkout</p>
@@ -238,13 +232,13 @@ function PublicPlanCard({ busy, onBuy, plan }: { busy: boolean; onBuy: () => voi
   </article>;
 }
 
-function planPeriodicity(plan: Plan): Exclude<PlanPeriodicityFilter, "all"> {
-  return plan.billingCycle === "lifetime" ? "lifetime" : "monthly";
+function planPeriodicity(_plan: Plan): Exclude<PlanPeriodicityFilter, "all"> {
+  return "monthly";
 }
 
 function planLevel(plan: Plan): Exclude<PlanLevelFilter, "all"> {
   const text = normalizePlanText([plan.name, plan.slug, plan.badge, plan.shortDescription, plan.description].filter(Boolean).join(" "));
-  if (/\b(completo|completa|premium|profissional|pro)\b/.test(text) || plan.billingCycle === "lifetime") return "complete";
+  if (/\b(completo|completa|premium|profissional|pro)\b/.test(text)) return "complete";
   return "basic";
 }
 

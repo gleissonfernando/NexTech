@@ -10,6 +10,9 @@ import type {
   ApplicationEmojiSettings,
   ApplicationEmojiSyncResult,
   AuthResponse,
+  BotBillingAccess,
+  BotBillingInvoice,
+  BotBillingModel,
   ClipPlatform,
   ClipsConfigPage,
   ClipRankingEntry,
@@ -3371,4 +3374,50 @@ export async function stopDevBot(botId: string) {
 export async function deleteDevBot(botId: string) {
   const { data } = await api.delete<{ bot: DevBot }>(`/dev/bots/${botId}`);
   return data.bot;
+}
+
+export async function getDevBotBilling(botId: string) {
+  const { data } = await api.get<{ access: BotBillingAccess | null; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing`
+  );
+  return data;
+}
+
+export async function updateDevBotBillingModel(botId: string, payload: { billingModel: BotBillingModel; contractAmountInCents?: number | null }) {
+  const { data } = await api.post<{ access: BotBillingAccess | null; bot: DevBot | null; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/model`,
+    payload
+  );
+  return data;
+}
+
+export async function updateDevBotBillingOverride(botId: string, payload: { forceBotActive: boolean; forceDashboardAccess: boolean; overrideExpiresAt?: string | null; reason: string }) {
+  const { data } = await api.post<{ access: BotBillingAccess | null; bot: DevBot | null; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/override`,
+    payload
+  );
+  return data;
+}
+
+export async function clearDevBotBillingOverride(botId: string) {
+  const { data } = await api.delete<{ access: BotBillingAccess | null; bot: DevBot | null; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/override`
+  );
+  return data;
+}
+
+export async function generateDevBotInvoicePix(botId: string, invoiceId: string, cpfCnpj: string) {
+  const { data } = await api.post<{ invoice: BotBillingInvoice }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/invoices/${encodeURIComponent(invoiceId)}/pix`,
+    { cpfCnpj }
+  );
+  return data.invoice;
+}
+
+export async function markDevBotInvoicePaidManually(botId: string, invoiceId: string, reason: string) {
+  const { data } = await api.post<{ access: BotBillingAccess | null; invoice: BotBillingInvoice; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/invoices/${encodeURIComponent(invoiceId)}/manual-release`,
+    { reason }
+  );
+  return data;
 }

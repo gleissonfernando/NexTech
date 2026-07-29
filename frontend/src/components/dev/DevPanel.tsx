@@ -52,6 +52,7 @@ import {
     createNexTechSalesPlan,
     createSalesTicketType,
     createSubscriptionPresenceProduct,
+    clearDevBotBillingOverride,
     deleteDatabaseMaintenanceUserLinks,
     deleteDevBot,
     deleteNexTechPaymentProvider,
@@ -64,6 +65,7 @@ import {
     getBotGuildConfig,
     getDatabaseMaintenanceModules,
     getDatabaseMaintenanceUserLinks,
+    getDevBotBilling,
     getDevBots,
     getDevModules,
     getGuildLiveOptions,
@@ -75,6 +77,8 @@ import {
     resetDatabaseMaintenanceModule,
     resetDatabaseMaintenanceServer,
     resetSystemEmoji,
+    generateDevBotInvoicePix,
+    markDevBotInvoicePaidManually,
     restartDevBot,
     saveNexTechPaymentProvider,
     saveNexTechSalesSettings,
@@ -88,6 +92,8 @@ import {
     syncSystemEmojis,
     testNexTechPaymentProvider,
     updateBotGuildConfig,
+    updateDevBotBillingModel,
+    updateDevBotBillingOverride,
     updateDevBotModules,
     updateDevBotToken,
     updateNexTechProduct,
@@ -101,6 +107,8 @@ import { createDashboardSocket } from "../../lib/socket";
 import { dashboardUrl } from "../../lib/urls";
 import type {
     AuthUser,
+    BotBillingAccess,
+    BotBillingInvoice,
     BotGuildConfig,
     CreateDevBotPayload,
     DashboardBot,
@@ -1753,6 +1761,9 @@ function ConnectedBotPanel({
   const [editingToken, setEditingToken] = useState(false);
   const [newToken, setNewToken] = useState("");
   const [newTokenVisible, setNewTokenVisible] = useState(false);
+  const [billing, setBilling] = useState<{ access: BotBillingAccess | null; invoices: BotBillingInvoice[] } | null>(null);
+  const [billingBusy, setBillingBusy] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
   const [channels, setChannels] = useState<{
     error: string | null;
     loading: boolean;
@@ -1771,7 +1782,111 @@ function ConnectedBotPanel({
     setEditingToken(false);
     setNewToken("");
     setNewTokenVisible(false);
+    setBilling(null);
+    setBillingMessage(null);
+    void refreshBilling();
   }, [bot.id]);
+
+  async function refreshBilling() {
+    try {
+      setBilling(await getDevBotBilling(bot.id));
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível carregar a cobrança deste bot.");
+    }
+  }
+
+  async function changeBillingModel(nextModel: "monthly" | "lifetime") {
+    const confirmed = window.confirm(nextModel === "lifetime"
+      ? "Marcar este bot como vitalício? Ele continuará pagando R$ 12,00 de hospedagem todo dia 8."
+      : "Desmarcar bot vitalício? Ele voltará a pagar o valor mensal contratado todo dia 8.");
+    if (!confirmed) return;
+    const amountText = nextModel === "monthly"
+      ? window.prompt("Valor mensal contratado em reais:", String((bot.contractAmountInCents ?? 1200) / 100))
+      : null;
+    const amountInCents = nextModel === "monthly"
+      ? Math.round(Number(String(amountText ?? "0").replace(",", ".")) * 100)
+      : 1200;
+    setBillingBusy("model");
+    setBillingMessage(null);
+    try {
+      await updateDevBotBillingModel(bot.id, { billingModel: nextModel, contractAmountInCents: amountInCents });
+      await refreshBilling();
+      setBillingMessage("Modelo de cobrança atualizado.");
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível atualizar o modelo de cobrança.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function saveOverride() {
+    const reason = window.prompt("Justificativa obrigatória para a exceção administrativa:");
+    if (!reason?.trim()) return;
+    const expiresAt = window.prompt("Data/hora final da liberação em ISO ou deixe vazio para sem expiração:", "");
+    setBillingBusy("override");
+    setBillingMessage(null);
+    try {
+      await updateDevBotBillingOverride(bot.id, {
+        forceBotActive: true,
+        forceDashboardAccess: true,
+        overrideExpiresAt: expiresAt?.trim() || null,
+        reason
+      });
+      await refreshBilling();
+      setBillingMessage("Exceção administrativa aplicada.");
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível aplicar a exceção.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function removeOverride() {
+    if (!window.confirm("Remover a exceção administrativa deste bot?")) return;
+    setBillingBusy("override");
+    setBillingMessage(null);
+    try {
+      await clearDevBotBillingOverride(bot.id);
+      await refreshBilling();
+      setBillingMessage("Exceção administrativa removida.");
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível remover a exceção.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function createInvoicePix(invoice: BotBillingInvoice) {
+    const cpfCnpj = window.prompt("CPF ou CNPJ do pagador para gerar o Pix:");
+    if (!cpfCnpj?.trim()) return;
+    setBillingBusy(`pix:${invoice.id}`);
+    setBillingMessage(null);
+    try {
+      await generateDevBotInvoicePix(bot.id, invoice.id, cpfCnpj.replace(/\D/g, ""));
+      await refreshBilling();
+      setBillingMessage("Pix da fatura gerado.");
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível gerar o Pix da fatura.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function releaseInvoice(invoice: BotBillingInvoice) {
+    const reason = window.prompt("Justificativa obrigatória para marcar esta fatura como paga manualmente:");
+    if (!reason?.trim()) return;
+    setBillingBusy(`release:${invoice.id}`);
+    setBillingMessage(null);
+    try {
+      await markDevBotInvoicePaidManually(bot.id, invoice.id, reason);
+      await refreshBilling();
+      setBillingMessage("Fatura liberada manualmente.");
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Não foi possível liberar a fatura.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
 
   async function handleSaveToken() {
     if (newToken.trim().length < 10) return;
@@ -1859,6 +1974,19 @@ function ConnectedBotPanel({
           <BotDetail icon={Users} label="Membros" value={bot.mainGuildMemberCount.toLocaleString("pt-BR")} />
           <BotDetail icon={Hash} label="Canais" value={`${bot.mainGuildChannelCount.toLocaleString("pt-BR")} no Discord`} />
         </div>
+
+        <BotBillingPanel
+          billing={billing}
+          bot={bot}
+          busy={billingBusy}
+          message={billingMessage}
+          onGeneratePix={(invoice) => void createInvoicePix(invoice)}
+          onModelChange={(model) => void changeBillingModel(model)}
+          onRefresh={() => void refreshBilling()}
+          onReleaseInvoice={(invoice) => void releaseInvoice(invoice)}
+          onRemoveOverride={() => void removeOverride()}
+          onSaveOverride={() => void saveOverride()}
+        />
 
         <BotChannelPreview
           error={channels.error}
@@ -1959,6 +2087,99 @@ function ConnectedBotPanel({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function BotBillingPanel({
+  billing,
+  bot,
+  busy,
+  message,
+  onGeneratePix,
+  onModelChange,
+  onRefresh,
+  onReleaseInvoice,
+  onRemoveOverride,
+  onSaveOverride
+}: {
+  billing: { access: BotBillingAccess | null; invoices: BotBillingInvoice[] } | null;
+  bot: DevBot;
+  busy: string | null;
+  message: string | null;
+  onGeneratePix: (invoice: BotBillingInvoice) => void;
+  onModelChange: (model: "monthly" | "lifetime") => void;
+  onRefresh: () => void;
+  onReleaseInvoice: (invoice: BotBillingInvoice) => void;
+  onRemoveOverride: () => void;
+  onSaveOverride: () => void;
+}) {
+  const currentModel = billing?.access?.model ?? bot.billingModel;
+  const latestInvoices = billing?.invoices.slice(0, 3) ?? [];
+
+  return (
+    <div className={`rounded-lg border p-4 ${billing?.access?.blocked ? "border-red-500/35 bg-red-500/[0.08]" : "border-[#FFD500]/20 bg-black/35"}`}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-bold text-white">Cobrança do bot</p>
+          <p className="mt-1 text-xs font-medium text-zinc-300">
+            {currentModel === "lifetime" ? "Bot vitalício: cobra somente hospedagem mensal de R$ 12,00." : `Plano mensal: cobra ${formatMoney(bot.contractAmountInCents ?? 1200, "BRL")} todo dia 8.`}
+          </p>
+          {billing?.access?.blocked ? <p className="mt-2 text-xs font-bold text-red-200">Bloqueado por fatura vencida.</p> : null}
+          {message ? <p className="mt-2 text-xs font-semibold text-[#FFEA70]">{message}</p> : null}
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button disabled={busy === "model"} onClick={() => onModelChange(currentModel === "lifetime" ? "monthly" : "lifetime")} size="sm" variant="outline">
+            {busy === "model" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+            {currentModel === "lifetime" ? "Desmarcar vitalício" : "Bot vitalício"}
+          </Button>
+          <Button disabled={busy === "override"} onClick={onSaveOverride} size="sm" variant="outline">
+            {busy === "override" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            Exceção administrativa
+          </Button>
+          <Button disabled={busy === "override" || !bot.billingOverride} onClick={onRemoveOverride} size="sm" variant="outline">
+            Remover exceção
+          </Button>
+          <Button onClick={onRefresh} size="sm" variant="outline">
+            <RefreshCw className="h-4 w-4" />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
+      {bot.billingOverride ? (
+        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3 text-xs text-emerald-100">
+          Exceção ativa: bot {bot.billingOverride.forceBotActive ? "liberado" : "não liberado"} / dashboard {bot.billingOverride.forceDashboardAccess ? "liberada" : "não liberada"}.
+          {bot.billingOverride.expiresAt ? ` Expira em ${new Date(bot.billingOverride.expiresAt).toLocaleString("pt-BR")}.` : " Sem expiração definida."}
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-2">
+        {!billing ? <p className="text-xs text-zinc-500">Carregando faturas...</p> : null}
+        {billing && !latestInvoices.length ? <p className="text-xs text-zinc-500">Nenhuma fatura gerada para este bot.</p> : null}
+        {latestInvoices.map((invoice) => (
+          <div className="grid gap-3 rounded-lg border border-zinc-800 bg-black/45 p-3 md:grid-cols-[1fr_auto]" key={invoice.id}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={invoice.status === "paid" || invoice.status === "manually_released" ? "success" : invoice.status === "overdue" ? "danger" : "warning"}>{billingInvoiceStatusLabel(invoice.status)}</Badge>
+                <p className="text-sm font-bold text-white">{billingChargeLabel(invoice.chargeType)} - {invoice.dueMonth}</p>
+              </div>
+              <p className="mt-1 text-xs text-zinc-400">Valor {formatMoney(invoice.amountInCents, "BRL")} | vence em {new Date(invoice.dueDate).toLocaleString("pt-BR")}</p>
+              {invoice.pixCode ? <p className="mt-1 truncate font-mono text-[11px] text-zinc-500">Pix: {invoice.pixCode}</p> : <p className="mt-1 text-[11px] text-zinc-500">Pix ainda não gerado.</p>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={Boolean(busy) || Boolean(invoice.pixCode)} onClick={() => onGeneratePix(invoice)} size="sm" variant="outline">
+                {busy === `pix:${invoice.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                Gerar Pix
+              </Button>
+              <Button disabled={Boolean(busy) || invoice.status === "paid" || invoice.status === "manually_released"} onClick={() => onReleaseInvoice(invoice)} size="sm" variant="outline">
+                {busy === `release:${invoice.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Marcar pago
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -7047,6 +7268,21 @@ function statusLabel(status: DevBotStatus) {
   };
 
   return labels[status];
+}
+
+function billingInvoiceStatusLabel(status: BotBillingInvoice["status"]) {
+  const labels: Record<BotBillingInvoice["status"], string> = {
+    cancelled: "Cancelada",
+    manually_released: "Liberada manualmente",
+    overdue: "Vencida",
+    paid: "Paga",
+    pending: "Pendente"
+  };
+  return labels[status];
+}
+
+function billingChargeLabel(type: BotBillingInvoice["chargeType"]) {
+  return type === "hosting" ? "Hospedagem" : "Plano mensal";
 }
 
 function isBotRunningStatus(status: DevBotStatus) {

@@ -13,6 +13,7 @@ import { registerBackgroundJobHandler, startBackgroundJobWorker, stopBackgroundJ
 import { startDiscloudAutoRecoveryService } from "./services/discloudMonitoringService";
 import { getTranscriptStartupStatus } from "./services/transcriptService";
 import { runTranscriptUrlStartupMigration } from "./services/transcriptUrlMigrationService";
+import { processBotBillingCycle, startBotBillingScheduler } from "./services/botBillingService";
 
 const httpServer = createServer(app);
 let shuttingDown = false;
@@ -43,7 +44,15 @@ httpServer.listen(env.PORT, env.HOST, () => {
     startServerBackupScheduler();
     startVoiceRecorderRetentionScheduler();
     startDiscloudAutoRecoveryService();
+    startBotBillingScheduler();
   }
+  void processBotBillingCycle("startup")
+    .then((result) => {
+      console.log(`[bot-billing] rotina inicial concluída: geradas=${result.generated.created} vencidas=${result.overdue.updated} migradas=${result.migration.lifetime + result.migration.monthly}.`);
+    })
+    .catch((error) => {
+      console.warn("[bot-billing] rotina inicial falhou:", error instanceof Error ? error.message : error);
+    });
   void markDevBotsOfflineAfterBackendRestart()
     .then((count) => {
       if (count > 0) {

@@ -4441,6 +4441,10 @@ export type DashboardBot = {
   maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
+  billingAccess: BotBillingAccess | null;
+  billingModel: BotBillingModel;
+  contractAmountInCents: number | null;
+  billingOverride: BotBillingOverride | null;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;
@@ -4470,11 +4474,61 @@ export type DevBot = {
   maintenanceBypass: boolean;
   enabledModules: string[];
   desiredOnline: boolean;
+  billingAccess: BotBillingAccess | null;
+  billingModel: BotBillingModel;
+  contractAmountInCents: number | null;
+  billingOverride: BotBillingOverride | null;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type BotBillingModel = "monthly" | "lifetime";
+export type BotBillingInvoiceStatus = "pending" | "paid" | "overdue" | "cancelled" | "manually_released";
+export type BotBillingChargeType = "hosting" | "monthly_plan";
+
+export type BotBillingInvoice = {
+  id: string;
+  userId: string;
+  botId: string;
+  botName: string;
+  billingModel: BotBillingModel;
+  chargeType: BotBillingChargeType;
+  amountInCents: number;
+  currency: "BRL";
+  dueDate: string;
+  dueMonth: string;
+  status: BotBillingInvoiceStatus;
+  pixCode: string | null;
+  pixQrCode: string | null;
+  providerPaymentId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BotBillingAccess = {
+  blocked: boolean;
+  blockingInvoice: BotBillingInvoice | null;
+  currentInvoice: BotBillingInvoice | null;
+  dashboardOverrideActive: boolean;
+  forceBotActive: boolean;
+  model: BotBillingModel;
+  overdue: boolean;
+  reason: string | null;
+};
+
+export type BotBillingOverride = {
+  forceBotActive: boolean;
+  forceDashboardAccess: boolean;
+  expiresAt: string | null;
+  reason: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 export type DiscloudBotStatus = "online" | "offline" | "restarting" | "deploy" | "suspended" | "maintenance" | "unknown";

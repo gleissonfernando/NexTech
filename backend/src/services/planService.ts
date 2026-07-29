@@ -49,6 +49,7 @@ import { PAYMENT_METHODS } from "./payments/types";
 import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 import { moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
+import { markBotInvoicePaidFromAsaas } from "./botBillingService";
 
 export type PlanActor = {
   id: string | null;
@@ -581,19 +582,23 @@ export async function ensurePlanSeed() {
     { slug: { $in: LEGACY_PUBLIC_PLAN_SLUGS } },
     { $set: { isPublic: false, isPurchasable: false, updatedAt: now } }
   );
+  await plans.updateMany(
+    { billingCycle: "lifetime" },
+    { $set: { isPublic: false, isPurchasable: false, updatedAt: now } }
+  );
 }
 
 export async function listPublicPlans() {
   await ensurePlanSeed();
   const { plans } = await getMongoCollections();
-  const rows = await plans.find({ isActive: true, isPublic: true }).sort({ order: 1, createdAt: 1 }).toArray();
+  const rows = await plans.find({ isActive: true, isPublic: true, billingCycle: { $ne: "lifetime" } }).sort({ order: 1, createdAt: 1 }).toArray();
   return rows.map(toPlanDto);
 }
 
 export async function getPublicPlan(slug: string) {
   await ensurePlanSeed();
   const { plans } = await getMongoCollections();
-  const plan = await plans.findOne({ slug: slugify(slug), isActive: true, isPublic: true });
+  const plan = await plans.findOne({ slug: slugify(slug), isActive: true, isPublic: true, billingCycle: { $ne: "lifetime" } });
   return plan ? toPlanDto(plan) : null;
 }
 
@@ -2534,6 +2539,19 @@ export async function processAsaasWebhook(input: AsaasWebhookInput) {
           : null;
 
     if (!order) {
+      const paidInvoice = (eventType === "PAYMENT_CONFIRMED" || eventType === "PAYMENT_RECEIVED")
+        ? await markBotInvoicePaidFromAsaas(payment.id, externalReference ?? null)
+        : null;
+      if (paidInvoice) {
+        await paymentEvents.updateOne({ _id: insertedEvent._id }, { $set: { orderId: paidInvoice.id, paymentId: payment.id } });
+        await markPaymentEvent(insertedEvent._id, "processed", `Fatura mensal de bot processada: ${payment.rawStatus}.`, paidInvoice.id);
+        return {
+          duplicate: false,
+          event: mapPaymentEvent({ ...insertedEvent, orderId: paidInvoice.id, paymentId: payment.id, processedAt: new Date(), result: `Fatura mensal de bot processada: ${payment.rawStatus}.`, status: "processed" }),
+          invoice: paidInvoice,
+          processed: true
+        };
+      }
       await markPaymentEvent(insertedEvent._id, "ignored", "Pedido Asaas interno não encontrado.", null);
       return {
         duplicate: false,

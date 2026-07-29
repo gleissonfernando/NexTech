@@ -14,6 +14,7 @@ import {
     ChevronRight,
     CircleDollarSign,
     Clock3,
+    Copy,
     CreditCard,
     Edit3,
     EyeOff,
@@ -129,6 +130,8 @@ import {
     getDashboardBySlug,
     getDashboardMaintenanceState,
     getDashboardMe,
+    getDevBotBilling,
+    generateDevBotInvoicePix,
     getEmojiLibrary,
     getFivemGoals,
     getFivemHierarchy,
@@ -192,6 +195,8 @@ import type {
     ApplicationEmojiSettings,
     AuthResponse,
     AutoActivityClockDashboard,
+    BotBillingAccess,
+    BotBillingInvoice,
     BotGuildConfig,
     BotStatus,
     ClipSent,
@@ -948,6 +953,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
   const [clipsRefreshSignal, setClipsRefreshSignal] = useState(0);
   const [botStatus, setBotStatus] = useState<BotStatus>(initialBotStatus);
   const [customerPlans, setCustomerPlans] = useState<CustomerPlansDashboard | null>(null);
+  const [botBillingAccess, setBotBillingAccess] = useState<BotBillingAccess | null>(null);
+  const [botBillingInvoices, setBotBillingInvoices] = useState<BotBillingInvoice[]>([]);
+  const [botBillingDismissed, setBotBillingDismissed] = useState<string | null>(null);
+  const [botBillingBusy, setBotBillingBusy] = useState(false);
+  const [botBillingError, setBotBillingError] = useState<string | null>(null);
   const [maintenanceState, setMaintenanceState] = useState<MaintenanceState | null>(null);
   const [savingKey, setSavingKey] = useState<BooleanSettingKey | null>(null);
   const [fivemModules, setFivemModules] = useState<FivemModuleDefinition[]>([]);
@@ -1006,6 +1016,42 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     () => buildSelectedBotPlanNotice(customerPlans, selectedBot),
     [customerPlans, selectedBot?.id]
   );
+  const pendingBillingInvoice = botBillingAccess?.blockingInvoice ?? botBillingAccess?.currentInvoice ?? null;
+  const showBillingOverlay = Boolean(selectedBot && pendingBillingInvoice && (
+    botBillingAccess?.blocked || (pendingBillingInvoice.status === "pending" && botBillingDismissed !== pendingBillingInvoice.id)
+  ));
+
+  async function refreshSelectedBotBilling(botId = activeBotId) {
+    if (!botId) {
+      setBotBillingAccess(null);
+      setBotBillingInvoices([]);
+      return;
+    }
+    try {
+      const result = await getDevBotBilling(botId);
+      setBotBillingAccess(result.access);
+      setBotBillingInvoices(result.invoices);
+      setBotBillingError(null);
+    } catch (error) {
+      setBotBillingError(readErrorMessage(error, "Não foi possível consultar a cobrança deste bot."));
+    }
+  }
+
+  async function generateSelectedBotInvoicePix(invoice: BotBillingInvoice) {
+    if (!activeBotId) return;
+    const cpfCnpj = window.prompt("CPF ou CNPJ do pagador para gerar o Pix:");
+    if (!cpfCnpj?.trim()) return;
+    setBotBillingBusy(true);
+    setBotBillingError(null);
+    try {
+      await generateDevBotInvoicePix(activeBotId, invoice.id, cpfCnpj.replace(/\D/g, ""));
+      await refreshSelectedBotBilling(activeBotId);
+    } catch (error) {
+      setBotBillingError(readErrorMessage(error, "Não foi possível gerar o Pix desta fatura."));
+    } finally {
+      setBotBillingBusy(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -1069,6 +1115,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
       mounted = false;
     };
   }, [initialBotSlug]);
+
+  useEffect(() => {
+    setBotBillingDismissed(null);
+    void refreshSelectedBotBilling(activeBotId);
+  }, [activeBotId]);
 
   useEffect(() => {
     setMaintenanceState(null);
@@ -1441,8 +1492,34 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           planNotice={selectedBotPlanNotice}
         />
 
+        {showBillingOverlay && selectedBot && pendingBillingInvoice ? (
+          <BotBillingOverlay
+            access={botBillingAccess}
+            busy={botBillingBusy}
+            error={botBillingError}
+            invoice={pendingBillingInvoice}
+            onClose={() => pendingBillingInvoice.status === "pending" ? setBotBillingDismissed(pendingBillingInvoice.id) : undefined}
+            onGeneratePix={() => void generateSelectedBotInvoicePix(pendingBillingInvoice)}
+            onRefresh={() => void refreshSelectedBotBilling(activeBotId)}
+            supportUrl={SUPPORT_URL}
+          />
+        ) : null}
+
         {selectedBotInMaintenance && maintenanceState ? (
           <DashboardMaintenanceScreen maintenance={maintenanceState} />
+        ) : botBillingAccess?.blocked ? (
+          selectedBot && pendingBillingInvoice ? (
+            <BotBillingOverlay
+              access={botBillingAccess}
+              busy={botBillingBusy}
+              error={botBillingError}
+              invoice={pendingBillingInvoice}
+              onClose={() => undefined}
+              onGeneratePix={() => void generateSelectedBotInvoicePix(pendingBillingInvoice)}
+              onRefresh={() => void refreshSelectedBotBilling(activeBotId)}
+              supportUrl={SUPPORT_URL}
+            />
+          ) : null
         ) : (
           <>
 
@@ -4959,6 +5036,91 @@ function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceS
   );
 }
 
+function BotBillingOverlay({
+  access,
+  busy,
+  error,
+  invoice,
+  onClose,
+  onGeneratePix,
+  onRefresh,
+  supportUrl
+}: {
+  access: BotBillingAccess | null;
+  busy: boolean;
+  error: string | null;
+  invoice: BotBillingInvoice;
+  onClose: () => void;
+  onGeneratePix: () => void;
+  onRefresh: () => void;
+  supportUrl: string;
+}) {
+  const blocked = access?.blocked || invoice.status === "overdue";
+  const qrImage = normalizePixQr(invoice.pixQrCode);
+
+  return (
+    <section className={`relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border px-4 py-10 text-white ${blocked ? "border-red-500/35 bg-red-950/35" : "border-[#FFD500]/25 bg-[#050505]"}`}>
+      <div className={`absolute inset-0 ${blocked ? "bg-[radial-gradient(circle_at_top,rgba(239,68,68,.22),transparent_34%),#140505]" : "bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]"}`} />
+      <motion.section
+        animate={{ opacity: 1, y: 0 }}
+        className={`relative w-full max-w-2xl rounded-lg border p-6 shadow-glow backdrop-blur-2xl ${blocked ? "border-red-500/35 bg-red-950/75" : "border-[#FFD500]/25 bg-[#141414]/95"}`}
+        initial={{ opacity: 0, y: 14 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+      >
+        {!blocked ? (
+          <button className="absolute right-4 top-4 rounded-lg border border-zinc-700 p-2 text-zinc-300 hover:text-white" onClick={onClose} type="button">
+            <XCircle className="h-4 w-4" />
+          </button>
+        ) : null}
+        <div className="flex flex-col gap-5 md:flex-row">
+          <div className="flex-1">
+            <div className={`inline-flex h-12 w-12 items-center justify-center rounded-full border ${blocked ? "border-red-300/35 bg-red-500/15 text-red-100" : "border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFD500]"}`}>
+              {blocked ? <ShieldAlert className="h-6 w-6" /> : <CreditCard className="h-6 w-6" />}
+            </div>
+            <h1 className="mt-4 text-2xl font-black tracking-normal text-white">{blocked ? "Fatura vencida" : "Fatura com vencimento"}</h1>
+            <p className="mt-3 text-sm font-semibold leading-6 text-zinc-200">
+              {blocked
+                ? "O bot está inativo por falta de pagamento. Realize o pagamento para reativar o bot e liberar o acesso à dashboard."
+                : "Existe uma fatura pendente para este bot. Hoje você ainda pode fechar este aviso e continuar usando a dashboard."}
+            </p>
+            <div className="mt-5 grid gap-2 text-sm">
+              <NoticeLine label="Bot" value={invoice.botName} />
+              <NoticeLine label="Cobrança" value={invoice.chargeType === "hosting" ? "Hospedagem" : "Plano mensal"} />
+              <NoticeLine label="Valor" tone={blocked ? "warning" : "muted"} value={formatMoney(invoice.amountInCents, "BRL")} />
+              <NoticeLine label="Vencimento" tone={blocked ? "warning" : "muted"} value={new Date(invoice.dueDate).toLocaleString("pt-BR")} />
+            </div>
+            {error ? <p className="mt-3 rounded-lg border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-100">{error}</p> : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button disabled={busy || Boolean(invoice.pixCode)} onClick={onGeneratePix}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                {invoice.pixCode ? "Pix gerado" : "Gerar Pix"}
+              </Button>
+              <Button disabled={busy} onClick={onRefresh} variant="outline">
+                <RefreshCw className="h-4 w-4" />
+                Atualizar pagamento
+              </Button>
+              <a className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-700 px-4 text-sm font-bold text-zinc-100 hover:border-[#FFD500]/40" href={supportUrl} rel="noreferrer" target="_blank">
+                Suporte
+              </a>
+            </div>
+          </div>
+          <div className="w-full md:w-64">
+            <div className="flex aspect-square items-center justify-center rounded-lg border border-zinc-800 bg-white p-3">
+              {qrImage ? <img alt="QR Code Pix" className="max-h-full max-w-full" src={qrImage} /> : <p className="text-center text-sm font-semibold text-zinc-700">Gere o Pix para ver o QR Code.</p>}
+            </div>
+            <label className="mt-3 block text-xs font-bold uppercase text-zinc-400">Pix copia e cola</label>
+            <textarea className="mt-2 h-24 w-full resize-none rounded-lg border border-zinc-800 bg-black/70 p-2 text-xs text-zinc-200 outline-none" readOnly value={invoice.pixCode ?? ""} />
+            <Button className="mt-2 w-full" disabled={!invoice.pixCode} onClick={() => invoice.pixCode ? void navigator.clipboard.writeText(invoice.pixCode) : undefined} variant="outline">
+              <Copy className="h-4 w-4" />
+              Copiar código
+            </Button>
+          </div>
+        </div>
+      </motion.section>
+    </section>
+  );
+}
+
 function NoticeLine({ label, tone = "muted", value }: { label: string; tone?: "muted" | "warning"; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/25 px-3 py-2">
@@ -4966,6 +5128,16 @@ function NoticeLine({ label, tone = "muted", value }: { label: string; tone?: "m
       <span className={tone === "warning" ? "text-right font-semibold text-amber-200" : "text-right font-semibold text-zinc-200"}>{value}</span>
     </div>
   );
+}
+
+function normalizePixQr(value?: string | null) {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return value.startsWith("data:image/") ? value : `data:image/png;base64,${value}`;
+}
+
+function formatMoney(cents: number, currency: "BRL" | "USD" | "EUR") {
+  return new Intl.NumberFormat("pt-BR", { currency, style: "currency" }).format(cents / 100);
 }
 
 function UserDashboardHeader({
