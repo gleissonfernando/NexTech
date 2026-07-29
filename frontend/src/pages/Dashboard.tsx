@@ -5160,7 +5160,7 @@ function BotBillingOverlay({
   }, [blocked, invoice.id]);
 
   return (
-    <section className={`relative flex items-center justify-center overflow-hidden px-4 py-10 text-white ${blocked ? "min-h-[calc(100vh-7rem)] rounded-lg border border-red-500/25 bg-red-950/95" : "min-h-[420px] rounded-lg border border-[#FFD500]/25 bg-[#050505]"}`}>
+    <section className={`flex items-center justify-center overflow-hidden px-4 py-10 text-white ${blocked ? "fixed inset-y-0 left-0 right-0 z-[45] overflow-y-auto border-0 bg-red-950/95 lg:left-[25rem]" : "relative min-h-[420px] rounded-lg border border-[#FFD500]/25 bg-[#050505]"}`}>
       <div className={`absolute inset-0 ${blocked ? "bg-[radial-gradient(circle_at_top,rgba(239,68,68,.22),transparent_34%),#140505]" : "bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]"}`} />
       <motion.section
         animate={{ opacity: 1, y: 0 }}
