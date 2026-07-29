@@ -78,7 +78,7 @@ for (const key of [
   }
 }
 for (const key of ["START_REGISTERED_DEV_BOTS"]) {
-  const value = process.env[key]?.trim();
+  const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
     runtimeEnv[key] = value;
   }
