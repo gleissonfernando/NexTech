@@ -1,6 +1,6 @@
 import { AlertCircle, ArrowLeft, CheckCircle2, Clipboard, Clock3, Loader2, QrCode } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { getPaymentOrderStatus } from "../lib/api";
+import { getPaymentOrderStatus, retryPaymentOrder } from "../lib/api";
 import type { PaymentOrder, Plan } from "../types";
 
 type PixPaymentPageProps = {
@@ -13,7 +13,10 @@ export function PixPaymentPage({ orderId }: PixPaymentPageProps) {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<PaymentOrder | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [pollVersion, setPollVersion] = useState(0);
+  const [retrying, setRetrying] = useState(false);
   const finalStatus = order ? isFinalStatus(order.status) : false;
+  const expired = order?.status === "expired";
   const qrImage = useMemo(() => normalizeQrImage(order?.qrCode), [order?.qrCode]);
 
   useEffect(() => {
@@ -53,13 +56,29 @@ export function PixPaymentPage({ orderId }: PixPaymentPageProps) {
       if (timer) window.clearTimeout(timer);
       if (redirectTimer) window.clearTimeout(redirectTimer);
     };
-  }, [orderId]);
+  }, [orderId, pollVersion]);
 
   async function copyPixCode() {
-    if (!order?.pixCode) return;
+    if (!order?.pixCode || expired) return;
     await navigator.clipboard.writeText(order.pixCode);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function createNewPix() {
+    if (!order || retrying) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const nextOrder = await retryPaymentOrder(order.id);
+      setOrder(nextOrder);
+      setLoading(true);
+      setPollVersion((current) => current + 1);
+    } catch (requestError) {
+      setError(readError(requestError, "Não foi possível gerar um novo QR Code Pix."));
+    } finally {
+      setRetrying(false);
+    }
   }
 
   return (
@@ -87,7 +106,7 @@ export function PixPaymentPage({ orderId }: PixPaymentPageProps) {
               <PaymentLine label="Expira em" value={order?.expiresAt ? new Date(order.expiresAt).toLocaleString("pt-BR") : "Não informado"} />
             </div>
 
-            <StatusNotice error={error} finalStatus={finalStatus} loading={loading} order={order} />
+            <StatusNotice error={error} finalStatus={finalStatus} loading={loading || retrying} onRetry={() => void createNewPix()} order={order} retrying={retrying} />
           </div>
 
           <div className="rounded-xl border border-[#FFD500]/20 bg-[#111]/95 p-5 shadow-[0_0_42px_rgba(255,213,0,.10)]">
@@ -102,13 +121,13 @@ export function PixPaymentPage({ orderId }: PixPaymentPageProps) {
             </div>
 
             <div className="mt-6 flex min-h-72 items-center justify-center rounded-xl border border-zinc-800 bg-white p-4">
-              {loading ? <Loader2 className="h-8 w-8 animate-spin text-zinc-900" /> : qrImage ? <img alt="QR Code Pix" className="max-h-72 max-w-full" src={qrImage} /> : <p className="max-w-xs text-center text-sm text-zinc-800">QR Code ainda não disponível. Use o código Pix abaixo ou aguarde a atualização.</p>}
+              {loading ? <Loader2 className="h-8 w-8 animate-spin text-zinc-900" /> : expired ? <p className="max-w-xs text-center text-sm text-zinc-800">Este QR Code expirou. Gere um novo Pix para continuar.</p> : qrImage ? <img alt="QR Code Pix" className="max-h-72 max-w-full" src={qrImage} /> : <p className="max-w-xs text-center text-sm text-zinc-800">QR Code ainda não disponível. Use o código Pix abaixo ou aguarde a atualização.</p>}
             </div>
 
             <div className="mt-5">
               <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Pix copia e cola</label>
-              <textarea className="mt-2 h-32 w-full resize-none rounded-lg border border-zinc-800 bg-black p-3 text-xs leading-5 text-zinc-200 outline-none" readOnly value={order?.pixCode ?? ""} />
-              <button className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#FFD500] text-sm font-bold text-black transition hover:bg-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-60" disabled={!order?.pixCode} onClick={() => void copyPixCode()} type="button">
+              <textarea className="mt-2 h-32 w-full resize-none rounded-lg border border-zinc-800 bg-black p-3 text-xs leading-5 text-zinc-200 outline-none" readOnly value={expired ? "" : order?.pixCode ?? ""} />
+              <button className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#FFD500] text-sm font-bold text-black transition hover:bg-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-60" disabled={!order?.pixCode || expired} onClick={() => void copyPixCode()} type="button">
                 <Clipboard className="h-4 w-4" />
                 {copied ? "Copiado" : "Copiar código Pix"}
               </button>
@@ -120,7 +139,7 @@ export function PixPaymentPage({ orderId }: PixPaymentPageProps) {
   );
 }
 
-function StatusNotice({ error, finalStatus, loading, order }: { error: string | null; finalStatus: boolean; loading: boolean; order: PaymentOrder | null }) {
+function StatusNotice({ error, finalStatus, loading, onRetry, order, retrying }: { error: string | null; finalStatus: boolean; loading: boolean; onRetry: () => void; order: PaymentOrder | null; retrying: boolean }) {
   if (error) {
     return <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200"><AlertCircle className="mt-0.5 h-5 w-5" />{error}</div>;
   }
@@ -128,6 +147,20 @@ function StatusNotice({ error, finalStatus, loading, order }: { error: string | 
     return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/25 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]"><CheckCircle2 className="mt-0.5 h-5 w-5" />Pagamento aprovado. Redirecionando para conectar o Discord.</div>;
   }
   if (finalStatus) {
+    if (order?.status === "expired") {
+      return (
+        <div className="mt-5 rounded-xl border border-[#FFD500]/25 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <span>Este QR Code expirou. Gere um novo Pix para continuar o pagamento.</span>
+          </div>
+          <button className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#FFD500] text-sm font-bold text-black transition hover:bg-[#FFEA70] disabled:cursor-not-allowed disabled:opacity-60" disabled={retrying} onClick={onRetry} type="button">
+            {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+            Gerar novo QR Code Pix
+          </button>
+        </div>
+      );
+    }
     return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/25 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]"><AlertCircle className="mt-0.5 h-5 w-5" />Este pedido foi finalizado com status {statusLabel(order?.status ?? "error")}.</div>;
   }
   return <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FFD500]/20 bg-[#FFD500]/10 p-4 text-sm text-[#FFEA70]">{loading ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <Clock3 className="mt-0.5 h-5 w-5" />}Aguardando confirmação do {providerLabel(order?.provider)}.</div>;

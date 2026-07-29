@@ -900,8 +900,9 @@ export async function getCustomerPlansDashboard(auth: DashboardAuth) {
 
 export async function getCustomerPaymentOrder(orderId: string, auth: DashboardAuth) {
   const { paymentOrders, plans, planSubscriptions, planWorkspaces } = await getMongoCollections();
-  const order = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
-  if (!order) throw httpError("Pedido não encontrado.", 404);
+  const foundOrder = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
+  if (!foundOrder) throw httpError("Pedido não encontrado.", 404);
+  const order = await expirePaymentOrderIfNeeded(foundOrder, "customer_payment_status_expired");
 
   const [plan, subscription] = await Promise.all([
     plans.findOne({ _id: order.planId }),
@@ -918,8 +919,9 @@ export async function getCustomerPaymentOrder(orderId: string, auth: DashboardAu
 
 export async function getPublicPaymentOrderStatus(orderId: string) {
   const { paymentOrders, planSubscriptions, planWorkspaces, plans } = await getMongoCollections();
-  const order = await paymentOrders.findOne({ _id: orderId });
-  if (!order) throw httpError("Pedido não encontrado.", 404);
+  const foundOrder = await paymentOrders.findOne({ _id: orderId });
+  if (!foundOrder) throw httpError("Pedido não encontrado.", 404);
+  const order = await expirePaymentOrderIfNeeded(foundOrder, "public_payment_status_expired");
   const [plan, subscription] = await Promise.all([
     plans.findOne({ _id: order.planId }),
     planSubscriptions.findOne({ "metadata.paymentOrderId": order._id } as Partial<MongoPlanSubscription>)
@@ -935,8 +937,9 @@ export async function getPublicPaymentOrderStatus(orderId: string) {
 
 export async function getPaymentOrderStatus(orderId: string, auth: DashboardAuth) {
   const { paymentOrders, planSubscriptions, planWorkspaces, plans } = await getMongoCollections();
-  const order = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
-  if (!order) throw httpError("Pedido não encontrado.", 404);
+  const foundOrder = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
+  if (!foundOrder) throw httpError("Pedido não encontrado.", 404);
+  const order = await expirePaymentOrderIfNeeded(foundOrder, "authenticated_payment_status_expired");
   const [plan, subscription] = await Promise.all([
     plans.findOne({ _id: order.planId }),
     planSubscriptions.findOne({ "metadata.paymentOrderId": order._id } as Partial<MongoPlanSubscription>)
@@ -963,7 +966,7 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
   const { paymentOrders, plans } = await getMongoCollections();
   const order = await paymentOrders.findOne({ _id: orderId, discordId: auth.user.discordId });
   if (!order) throw httpError("Pedido não encontrado.", 404);
-  if (isFinalPaymentStatus(order.status)) throw httpError("Pedido finalizado não pode ser reenviado ao checkout.", 409);
+  if (isFinalPaymentStatus(order.status) && order.status !== "expired") throw httpError("Pedido finalizado não pode ser reenviado ao checkout.", 409);
   if ((order.retryAttempts ?? 0) >= 3) throw httpError("Limite de tentativas deste pedido atingido.", 429);
   if (order.expiresAt && order.expiresAt > new Date() && (order.checkoutUrl || order.pixCode || order.providerOrderId)) {
     throw httpError("Checkout atual ainda está válido.", 409);
@@ -1039,7 +1042,7 @@ export async function retryPublicPaymentOrder(orderId: string, actor: PlanActor)
   if (!isPendingPaymentDiscordId(order.discordId)) {
     throw httpError("Este pedido já está vinculado a uma conta Discord.", 409);
   }
-  if (isFinalPaymentStatus(order.status)) throw httpError("Pedido finalizado não pode ser reenviado ao checkout.", 409);
+  if (isFinalPaymentStatus(order.status) && order.status !== "expired") throw httpError("Pedido finalizado não pode ser reenviado ao checkout.", 409);
   if ((order.retryAttempts ?? 0) >= 3) throw httpError("Limite de tentativas deste pedido atingido.", 429);
   if (order.expiresAt && order.expiresAt > new Date() && (order.checkoutUrl || order.pixCode || order.providerOrderId)) {
     throw httpError("Checkout atual ainda está válido.", 409);
@@ -4160,6 +4163,27 @@ function isFinalPaymentStatus(status: MongoPlanPaymentOrderStatus) {
 
 function isPendingPaymentDiscordId(discordId: string) {
   return discordId.startsWith("pending:");
+}
+
+async function expirePaymentOrderIfNeeded(order: MongoPaymentOrder, source: string) {
+  if (!order.expiresAt || order.expiresAt > new Date() || isFinalPaymentStatus(order.status)) {
+    return order;
+  }
+
+  const { paymentOrders } = await getMongoCollections();
+  const updated = await paymentOrders.findOneAndUpdate(
+    { _id: order._id, status: order.status },
+    {
+      $set: {
+        notes: "Checkout expirado sem pagamento confirmado.",
+        status: "expired",
+        statusHistory: appendStatusHistory(order, "expired", source),
+        updatedAt: new Date()
+      }
+    },
+    { returnDocument: "after" }
+  );
+  return updated ?? order;
 }
 
 function sanitizePaymentOrderForUser(order: MongoPaymentOrder): PaymentOrderDto {
