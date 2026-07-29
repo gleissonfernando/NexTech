@@ -1292,10 +1292,7 @@ async function claimApprovedPaymentOrder(orderId: string, auth: DashboardAuth, a
   const order = await paymentOrders.findOne({ _id: orderId });
   if (!order) throw httpError("Pedido aprovado não encontrado.", 404);
   if (order.status !== "approved" && order.status !== "paid") {
-    throw httpError("Este pedido ainda não foi aprovado pelo Mercado Pago.", 409);
-  }
-  if (order.provider !== "mercadopago") {
-    throw httpError("Pedido sem pagamento Mercado Pago aprovado.", 409);
+    throw httpError("Este pedido ainda não foi aprovado pelo gateway de pagamento.", 409);
   }
   if (!isPendingPaymentDiscordId(order.discordId) && order.discordId !== auth.user.discordId) {
     throw httpError("Este pedido já está vinculado a outra conta Discord.", 409);
