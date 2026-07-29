@@ -22,7 +22,7 @@ export const ACCESS_DENIED_MESSAGE = [
   "Caso acredite que isso seja um erro, entre em contato com o proprietário da Dashboard."
 ].join("\n");
 export const NO_BOT_ACCESS_MESSAGE = "Você não possui nenhum bot cadastrado na plataforma. Cadastre um bot para utilizar o Dashboard.";
-export const SUPPORT_DISCORD_URL = "https://discord.gg/KAGgfuTcDS";
+export const SUPPORT_DISCORD_URL = "https://discord.gg/7WYzSwVBPm";
 const AUTH_MIDDLEWARE_TIMEOUT_MS = 12_000;
 const SESSION_TOUCH_INTERVAL_MS = 15_000;
 const AUTH_SESSION_EXPIRED_MESSAGE = "Sessão expirada. Faça login novamente pelo Discord.";

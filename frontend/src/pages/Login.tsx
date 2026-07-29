@@ -28,7 +28,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEve
 import { Button } from "../components/ui/button";
 import type { AuthResponse } from "../types";
 
-const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
+const SUPPORT_URL = "https://discord.gg/7WYzSwVBPm";
 const LANDING_SERVERS_REFRESH_MS = 60_000;
 
 type LoginProps = {

@@ -264,7 +264,7 @@ const PANEL_EMOJIS = {
   homem: "<:homem:1525682211985035416>",
   prancheta: "<:prancheta:1525682244893544489>"
 } as const;
-const SUPPORT_URL = "https://discord.gg/KAGgfuTcDS";
+const SUPPORT_URL = "https://discord.gg/7WYzSwVBPm";
 const ACCESS_DENIED_MESSAGE = [
   "Não foi encontrada nenhuma permissão para esta Dashboard.",
   "",
