@@ -242,8 +242,9 @@ const FEATURE_SEEDS: SavePlanFeatureInput[] = [
   { category: "fivem", key: "fivem.finance", name: "Financeiro FiveM", description: "Controle de transacoes, metas e auditoria financeira.", order: 40 },
   { category: "fivem", key: "fivem.orders", name: "Encomendas RP", description: "Pedidos, famílias, drogas, armas e personalizados.", order: 50 },
   { category: "fivem", key: "fivem.hierarchy", name: "Hierarquia FiveM", description: "Paineis de hierarquia e cargos por facção/corporacao.", order: 60 },
-  { category: "fivem", key: "fivem.police", name: "Polícia RP", description: "Recursos para corporacoes, patentes, metas e plantao.", order: 61 },
-  { category: "fivem", key: "fivem.faction", name: "Facção RP", description: "Recursos para facções, membros, metas e estoque.", order: 62 },
+  { category: "fivem", key: "fivem.police_basic", name: "Polícia RP Básico", description: "Recursos essenciais de corporação, ações, QRU e ponto.", order: 61 },
+  { category: "fivem", key: "fivem.police", name: "Polícia RP Completo", description: "Recursos completos para corporacoes, patentes, metas e plantao.", order: 62 },
+  { category: "fivem", key: "fivem.faction", name: "Facção RP", description: "Recursos para facções, membros, metas e estoque.", order: 63 },
   { category: "discord", key: "discord.logs", name: "Logs Discord", description: "Logs do site e do Discord em tempo real.", order: 70 },
   { category: "discord", key: "discord.tickets", name: "Tickets", description: "Atendimento, transcripts e paineis de suporte.", order: 80 },
   { category: "discord", key: "discord.courses", name: "Cursos", description: "Cursos, provas e publicacoes para equipes.", order: 90 },
@@ -301,7 +302,7 @@ const PLAN_SEEDS: SavePlanInput[] = [
     botLimit: 1,
     color: "#3DDC84",
     description: "Plano básico para sistema de Polícia RP. Hospedagem não inclusa.",
-    entitlements: entitlementsFor(["fivem.police", "fivem.hierarchy", "discord.logs", "discord.dashboard"]),
+    entitlements: entitlementsFor(["fivem.police_basic", "fivem.hierarchy", "discord.logs", "discord.dashboard"]),
     guildLimit: 1,
     icon: "building",
     isActive: true,
@@ -545,6 +546,16 @@ export async function ensurePlanSeed() {
     },
     { upsert: true }
   )));
+
+  await plans.updateOne(
+    { slug: "policia-rp-basico", "entitlements.key": "fivem.police" },
+    {
+      $set: {
+        entitlements: entitlementsFor(["fivem.police_basic", "fivem.hierarchy", "discord.logs", "discord.dashboard"]),
+        updatedAt: now
+      }
+    }
+  );
 
   await plans.updateMany(
     { slug: { $in: LEGACY_PUBLIC_PLAN_SLUGS } },

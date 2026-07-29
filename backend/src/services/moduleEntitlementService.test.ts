@@ -27,6 +27,27 @@ test("ignora entitlements de cobranca e suporte no cadastro de bot", () => {
   );
 });
 
+test("converte plano policia basico em modulos essenciais", () => {
+  assert.deepEqual(
+    moduleIdsFromPlanEntitlementKeys([
+      "fivem.police_basic",
+      "fivem.hierarchy",
+      "discord.logs",
+      "discord.dashboard"
+    ]),
+    [
+      "fivem",
+      "fivem-corporations",
+      "police-absences",
+      "police-actions",
+      "police-qru",
+      "police-time-clock",
+      "fivem-hierarchy",
+      "logs"
+    ]
+  );
+});
+
 test("expande chaves antigas sem remover modulos ja validos", () => {
   assert.deepEqual(
     expandModuleAccessKeys(["fivem.police", "safe-bot"]),

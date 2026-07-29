@@ -6,6 +6,14 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
   "fivem.finance": ["fivem-finance"],
   "fivem.orders": ["fivem-orders", "fivem-washing", "fivem-drugs", "fivem-ammo"],
   "fivem.hierarchy": ["fivem-hierarchy"],
+  "fivem.police_basic": [
+    "fivem",
+    "fivem-corporations",
+    "police-absences",
+    "police-actions",
+    "police-qru",
+    "police-time-clock"
+  ],
   "fivem.police": [
     "fivem",
     "fivem-corporations",
