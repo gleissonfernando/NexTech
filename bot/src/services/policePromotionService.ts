@@ -246,18 +246,22 @@ export async function handlePolicePromotionMessage(message: Message, context: Bo
 }
 
 async function captureEvaluationStepMessage(message: Message, context: BotContext, request: PolicePromotionRequest) {
-  if (request.status !== "in_evaluation" || request.evaluatorId !== message.author.id || !request.evaluatorId) return false;
-  const draft = evaluationQuestionnaireDrafts.get(evaluationDraftKey(request.id, request.evaluatorId)) ?? evaluationDraftFromRequest(request, request.evaluatorId, message.guild!.id);
-  const step = draft.awaitingStep;
-  if (!step || draft.pending || step !== nextAvailableEvaluationStep(draft)) return false;
-  const answer = clip(message.content.trim(), 2000);
-  if (!answer) return false;
-
+  if (request.status !== "in_evaluation" || !request.evaluatorId) return false;
   const settings = await getSettings(context, message.guild!.id);
   const promotion = promotionFor(settings, request);
   if (!promotion) return false;
   const member = await message.guild!.members.fetch(message.author.id).catch(() => null);
   if (!canInstructPromotion(member, settings, promotion)) return false;
+  const evaluatorId = request.evaluatorId;
+  const authorDraftKey = evaluationDraftKey(request.id, message.author.id);
+  const evaluatorDraftKey = evaluationDraftKey(request.id, evaluatorId);
+  const draft = evaluationQuestionnaireDrafts.get(authorDraftKey)
+    ?? evaluationQuestionnaireDrafts.get(evaluatorDraftKey)
+    ?? evaluationDraftFromRequest(request, evaluatorId, message.guild!.id);
+  const step = draft.awaitingStep;
+  if (!step || draft.pending || step !== nextAvailableEvaluationStep(draft)) return false;
+  const answer = clip(message.content.trim(), 2000);
+  if (!answer) return false;
 
   const pendingDraft = {
     ...draft,
@@ -283,7 +287,10 @@ async function captureEvaluationStepMessage(message: Message, context: BotContex
     await message.reply("Não foi possível salvar sua resposta para confirmação. Tente enviar a resposta novamente.").catch(() => null);
     return true;
   }
-  evaluationQuestionnaireDrafts.set(evaluationDraftKey(request.id, request.evaluatorId), pendingDraft);
+  evaluationQuestionnaireDrafts.set(evaluatorDraftKey, pendingDraft);
+  if (message.author.id !== evaluatorId) {
+    evaluationQuestionnaireDrafts.set(authorDraftKey, pendingDraft);
+  }
   await message.delete().catch(() => null);
   const panelImage = await loadPromotionPanelImage(message.guild!.id, context);
   await updateEvaluationChannelMessage(message, request, evaluationStepConfirmationPayload(request, promotion, message.guild!, pendingDraft, step, false, panelImage));
@@ -2891,28 +2898,66 @@ function parseIntervention(text: string) {
   return { description: "", value: null as string | null };
 }
 
-function parseFinalDecision(text: string) {
+export function parseFinalDecision(text: string) {
   const normalized = normalizePlainText(text).replace(/\s+/g, " ");
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const resultAnswer = extractValueAfterAnyLabel(lines, ["resultado final", "resultado", "decisao", "o cadet esta apto para se tornar officer", "apto"]) || extractStandaloneDecision(lines);
   const normalizedResultAnswer = normalizePlainText(resultAnswer).replace(/\s+/g, " ");
-  const decisionSource = normalizedResultAnswer || normalized;
-  const result = /\b(nao|não|nao apto|não apto|reprovado|reprovada|reprovacao|reprovação|inapto|inapta)\b/.test(decisionSource)
+  const decisionSource = normalizedResultAnswer || extractStandaloneDecision([text]) || normalized;
+  const result = isNegativeDecision(decisionSource)
     ? "rejected"
-    : /\b(sim|aprovado|aprovada|aprovacao|aprovação|apto|apta)\b/.test(decisionSource)
+    : isPositiveDecision(decisionSource)
       ? "approved"
       : null;
-  const justification = extractValueAfterLabel(lines, "justificativa") || text.trim();
-  return { justification: justification.length >= 10 ? clip(justification, 800) : "", result };
+  const explicitJustification = extractValueAfterLabel(lines, "justificativa");
+  const justification = explicitJustification || extractNarrativeJustification(lines);
+  const fallbackJustification = result && !explicitJustification && isSimpleDecisionOnly(lines)
+    ? `Resposta final informada pelo avaliador: ${result === "approved" ? "Sim" : "Não"}.`
+    : "";
+  const finalJustification = justification.length >= 10 ? justification : fallbackJustification;
+  return { justification: finalJustification ? clip(finalJustification, 800) : "", result };
 }
 
 function extractStandaloneDecision(lines: string[]) {
   for (const line of lines) {
     const normalized = normalizePlainText(line).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-    if (/^(sim|aprovado|aprovada|apto|apta)$/.test(normalized)) return normalized;
-    if (/^(nao|não|reprovado|reprovada|inapto|inapta|nao apto|não apto)$/.test(normalized)) return normalized;
+    if (isPositiveDecision(normalized) || isNegativeDecision(normalized)) return normalized;
   }
   return "";
+}
+
+function isPositiveDecision(value: string) {
+  const normalized = normalizePlainText(value).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return /^(sim|aprovado|aprovada|aprovacao|apto|apta)$/.test(normalized);
+}
+
+function isNegativeDecision(value: string) {
+  const normalized = normalizePlainText(value).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return /^(nao|reprovado|reprovada|reprovacao|inapto|inapta|nao apto)$/.test(normalized);
+}
+
+function extractNarrativeJustification(lines: string[]) {
+  return lines
+    .filter((line) => {
+      const normalized = normalizePlainText(line).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+      return normalized
+        && !isPositiveDecision(normalized)
+        && !isNegativeDecision(normalized)
+        && normalized !== "justificativa"
+        && normalized !== "resultado"
+        && normalized !== "resultado final"
+        && normalized !== "sim ou nao"
+        && normalized !== "o cadet esta apto para se tornar officer";
+    })
+    .join("\n")
+    .trim();
+}
+
+function isSimpleDecisionOnly(lines: string[]) {
+  const meaningful = lines
+    .map((line) => normalizePlainText(line).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  return meaningful.length > 0 && meaningful.every((line) => isPositiveDecision(line) || isNegativeDecision(line));
 }
 
 function extractValueAfterAnyLabel(lines: string[], labels: string[]) {
@@ -2937,7 +2982,8 @@ function extractValueAfterLabel(lines: string[], label: string) {
 
 function nextMeaningfulLine(lines: string[], startIndex: number) {
   for (const line of lines.slice(startIndex)) {
-    if (!line || isDividerLine(line)) continue;
+    const normalized = normalizePlainText(line).replace(/[:?]+$/g, "").trim();
+    if (!line || isDividerLine(line) || normalized === "justificativa" || normalized === "resultado" || normalized === "resultado final") continue;
     return line;
   }
   return null;

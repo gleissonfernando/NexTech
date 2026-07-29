@@ -43,6 +43,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
     return;
   }
 
+  if (await handlePolicePromotionMessage(message, context)) {
+    return;
+  }
+
   await capturePolicePatrolMessage(message, context).catch((error) => {
     console.error("[police-patrol] falha ao salvar mensagem:", error instanceof Error ? error.message : error);
   });
@@ -64,10 +68,6 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handlePoliceQruMessage(message, context)) {
-    return;
-  }
-
-  if (await handlePolicePromotionMessage(message, context)) {
     return;
   }
 

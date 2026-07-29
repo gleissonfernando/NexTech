@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalPayload, approvalPayloads, displayableComponentTextSize, evaluationDraftFromRequest, isEvaluationStepButtonDisabled, missingEvaluationQuestionnaireSteps, nextAvailableEvaluationStep } from "./policePromotionService";
+import { approvalPayload, approvalPayloads, displayableComponentTextSize, evaluationDraftFromRequest, isEvaluationStepButtonDisabled, missingEvaluationQuestionnaireSteps, nextAvailableEvaluationStep, parseFinalDecision } from "./policePromotionService";
 
 function completeDraft(overrides: Record<string, unknown> = {}) {
   return {
@@ -32,6 +32,34 @@ test("etapa final preenchida nao bloqueia avanco para revisao", () => {
 
   assert.deepEqual(missingEvaluationQuestionnaireSteps(draft), []);
   assert.equal(nextAvailableEvaluationStep(draft), null);
+});
+
+test("etapa final aceita resposta simples sim ou nao enviada no canal", () => {
+  assert.deepEqual(parseFinalDecision("SIM"), {
+    justification: "Resposta final informada pelo avaliador: Sim.",
+    result: "approved"
+  });
+  assert.deepEqual(parseFinalDecision("NÃO"), {
+    justification: "Resposta final informada pelo avaliador: Não.",
+    result: "rejected"
+  });
+});
+
+test("etapa final simples libera revisao apos ser salva", () => {
+  const draft = completeDraft({
+    final: "SIM"
+  });
+
+  assert.deepEqual(missingEvaluationQuestionnaireSteps(draft), []);
+  assert.equal(nextAvailableEvaluationStep(draft), null);
+  assert.equal(isEvaluationStepButtonDisabled(draft, "final"), true);
+});
+
+test("etapa final aceita modelo com resultado e justificativa em linhas separadas", () => {
+  assert.deepEqual(parseFinalDecision("Resultado:\nSim\n\nJustificativa:\nO avaliado demonstrou dominio dos procedimentos operacionais."), {
+    justification: "O avaliado demonstrou dominio dos procedimentos operacionais.",
+    result: "approved"
+  });
 });
 
 test("etapa final valida fica bloqueada como concluida", () => {
