@@ -5152,6 +5152,7 @@ function BotBillingOverlay({
   const displayAmountInCents = invoice.amountInCents > 0
     ? invoice.amountInCents
     : 1200;
+  const nextBillingDate = access?.nextDueDate ?? invoice.nextDueDate;
 
   useEffect(() => {
     if (!blocked) return;
@@ -5191,7 +5192,7 @@ function BotBillingOverlay({
               <NoticeLine label="Bot" value={invoice.botName} />
               <NoticeLine label="Plano" value={planPeriodLabel(invoice.planPeriod, invoice.chargeType)} />
               <NoticeLine label="Data da contratação" value={formatBillingDate(invoice.contractedAt)} />
-              <NoticeLine label="Próximo vencimento" tone={blocked ? "warning" : "muted"} value={formatBillingDate(invoice.nextDueDate)} />
+              <NoticeLine label="Próximo vencimento" tone={blocked ? "warning" : "muted"} value={formatBillingDate(nextBillingDate)} />
               <NoticeLine label="Status" tone={blocked ? "warning" : "muted"} value={invoice.statusLabel} />
               <NoticeLine label="Valor" tone={blocked ? "warning" : "muted"} value={formatMoney(displayAmountInCents, "BRL")} />
               {overdueText ? <NoticeLine label="Atraso" tone="warning" value={overdueText} /> : null}

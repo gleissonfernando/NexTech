@@ -4521,6 +4521,8 @@ export type BotBillingAccess = {
   dashboardOverrideActive: boolean;
   forceBotActive: boolean;
   model: BotBillingModel;
+  nextDueDate: string | null;
+  nextInvoice: BotBillingInvoice | null;
   overdue: boolean;
   reason: string | null;
 };

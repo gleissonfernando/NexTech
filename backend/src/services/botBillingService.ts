@@ -25,6 +25,8 @@ export type BotBillingAccessDto = {
   dashboardOverrideActive: boolean;
   forceBotActive: boolean;
   model: MongoBotBillingModel;
+  nextDueDate: string | null;
+  nextInvoice: BotBillingInvoiceDto | null;
   overdue: boolean;
   reason: string | null;
 };
@@ -249,12 +251,16 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
   await ensureInvoiceWhenDashboardOpens(bot);
   await markOverdueBotInvoices("access_check");
 
-  const [currentInvoice, blockingInvoice] = await Promise.all([
+  const now = new Date();
+  const [currentInvoice, blockingInvoice, nextInvoice, latestInvoice] = await Promise.all([
     botBillingInvoices.findOne({ botId, dueMonth: monthKey(new Date()), status: { $in: ["pending", "overdue"] } }, { sort: { dueDate: -1 } }),
-    botBillingInvoices.findOne({ botId, status: "overdue" }, { sort: { dueDate: 1 } })
+    botBillingInvoices.findOne({ botId, status: "overdue" }, { sort: { dueDate: 1 } }),
+    botBillingInvoices.findOne({ botId, status: "pending", dueDate: { $gte: now } }, { sort: { dueDate: 1 } }),
+    botBillingInvoices.findOne({ botId }, { sort: { dueDate: -1 } })
   ]);
   const dashboardOverrideActive = hasValidBotOverride(bot, "dashboard");
   const blocked = Boolean(blockingInvoice && !dashboardOverrideActive);
+  const nextDueDate = (nextInvoice?.dueDate ?? nextDueDateFromLatestInvoice(bot, latestInvoice))?.toISOString() ?? null;
 
   return {
     blocked,
@@ -263,6 +269,8 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
     dashboardOverrideActive,
     forceBotActive: hasValidBotOverride(bot, "bot"),
     model: bot.billingModel ?? "monthly",
+    nextDueDate,
+    nextInvoice: nextInvoice ? toBotBillingInvoiceDto(nextInvoice, bot) : null,
     overdue: Boolean(blockingInvoice),
     reason: blocked ? "Fatura vencida" : null,
     userIsOwner: user ? bot.ownerId === user.discordId || bot.createdBy === user.discordId : false
@@ -442,7 +450,10 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
   if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { statusCode: 404 });
   if (invoice.status === "paid" || invoice.status === "manually_released") {
     const bot = await devBots.findOne({ _id: invoice.botId });
-    if (bot) await ensurePaidBotOnline(bot);
+    if (bot) {
+      await ensureNextBotInvoiceAfterPayment(bot, invoice, source);
+      await ensurePaidBotOnline(bot);
+    }
     return toBotBillingInvoiceDto(invoice, bot);
   }
   const paidStatus: MongoBotBillingInvoiceStatus = source === "manual_admin" ? "manually_released" : "paid";
@@ -460,11 +471,61 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
     { returnDocument: "after" }
   );
   const bot = await devBots.findOne({ _id: invoice.botId });
-  if (bot) await ensurePaidBotOnline(bot);
-  if (bot) await writeBillingAudit(bot, source === "manual_admin" ? "bot_invoice_manually_released" : "bot_invoice_paid", null, bot.billingModel ?? "monthly", source, invoiceId, actor, { reason });
+  if (bot) {
+    await ensureNextBotInvoiceAfterPayment(bot, updated ?? invoice, source);
+    await ensurePaidBotOnline(bot);
+    await writeBillingAudit(bot, source === "manual_admin" ? "bot_invoice_manually_released" : "bot_invoice_paid", null, bot.billingModel ?? "monthly", source, invoiceId, actor, { reason });
+  }
   const dto = toBotBillingInvoiceDto(updated ?? invoice, bot);
   emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: dto });
   return dto;
+}
+
+async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: MongoBotBillingInvoice, source: string) {
+  const { botBillingInvoices } = await getMongoCollections();
+  const now = new Date();
+  const planPeriod = paidInvoice.planPeriod ?? planPeriodForBot(bot);
+  const nextDueDate = nextDueDateAfterInvoice(paidInvoice, planPeriod, now);
+  const dueMonth = monthKey(nextDueDate);
+  const existing = await botBillingInvoices.findOne({ botId: bot._id, dueMonth });
+  if (existing) return existing;
+
+  const invoice: MongoBotBillingInvoice = {
+    _id: randomUUID(),
+    amountInCents: botBillingAmount(bot),
+    billingModel: bot.billingModel ?? paidInvoice.billingModel,
+    botId: bot._id,
+    botName: bot.name,
+    chargeType: (bot.billingModel ?? paidInvoice.billingModel) === "lifetime" ? "hosting" : "monthly_plan",
+    contractedAt: paidInvoice.contractedAt ?? paidInvoice.createdAt,
+    createdAt: now,
+    currency: "BRL",
+    dueDate: nextDueDate,
+    dueMonth,
+    idempotencyKey: `bot-invoice:${bot._id}:${dueMonth}`,
+    notes: null,
+    paidAt: null,
+    paymentProvider: "asaas",
+    planPeriod,
+    pixCode: null,
+    pixQrCode: null,
+    providerPaymentId: null,
+    status: "pending",
+    statusHistory: [{ at: now, from: null, source: `${source}_next_invoice`, status: "pending" }],
+    updatedAt: now,
+    userId: bot.ownerId
+  };
+
+  try {
+    await botBillingInvoices.insertOne(invoice);
+    emitRealtime("bot:billing_updated", { botId: bot._id, invoice: toBotBillingInvoiceDto(invoice, bot) });
+    return invoice;
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      return await botBillingInvoices.findOne({ botId: bot._id, dueMonth });
+    }
+    throw error;
+  }
 }
 
 async function ensurePaidBotOnline(bot: MongoDevBot) {
@@ -528,6 +589,24 @@ function nextDueDateForPeriod(contractedAt: Date, period: MongoBotPlanPeriod, re
   due.setMonth(contractedAt.getMonth() + periodsElapsed * months);
   due.setHours(23, 59, 59, 999);
   return due;
+}
+
+function nextDueDateAfterInvoice(invoice: MongoBotBillingInvoice, period: MongoBotPlanPeriod, referenceDate = new Date()) {
+  const due = new Date(invoice.dueDate);
+  do {
+    due.setMonth(due.getMonth() + planPeriodMonths(period));
+    due.setHours(23, 59, 59, 999);
+  } while (due.getTime() <= referenceDate.getTime());
+  return due;
+}
+
+function nextDueDateFromLatestInvoice(bot: MongoDevBot, invoice: MongoBotBillingInvoice | null) {
+  if (invoice) {
+    return invoice.status === "pending" || invoice.status === "overdue"
+      ? invoice.dueDate
+      : nextDueDateAfterInvoice(invoice, invoice.planPeriod ?? planPeriodForBot(bot));
+  }
+  return nextDueDateForPeriod(bot.createdAt, planPeriodForBot(bot));
 }
 
 function monthKey(date: Date) {
