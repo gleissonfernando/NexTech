@@ -440,7 +440,11 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
   const { botBillingInvoices, devBots } = await getMongoCollections();
   const invoice = await botBillingInvoices.findOne({ _id: invoiceId });
   if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { statusCode: 404 });
-  if (invoice.status === "paid" || invoice.status === "manually_released") return toBotBillingInvoiceDto(invoice);
+  if (invoice.status === "paid" || invoice.status === "manually_released") {
+    const bot = await devBots.findOne({ _id: invoice.botId });
+    if (bot) await ensurePaidBotOnline(bot);
+    return toBotBillingInvoiceDto(invoice, bot);
+  }
   const paidStatus: MongoBotBillingInvoiceStatus = source === "manual_admin" ? "manually_released" : "paid";
   const updated = await botBillingInvoices.findOneAndUpdate(
     { _id: invoiceId, status: { $in: ["pending", "overdue"] } },
@@ -456,14 +460,18 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
     { returnDocument: "after" }
   );
   const bot = await devBots.findOne({ _id: invoice.botId });
-  if (bot && bot.desiredOnline !== false) {
-    const { startDevBotProcess } = await import("./devBotRuntimeService.js");
-    await startDevBotProcess(bot._id).catch(logBillingError);
-  }
+  if (bot) await ensurePaidBotOnline(bot);
   if (bot) await writeBillingAudit(bot, source === "manual_admin" ? "bot_invoice_manually_released" : "bot_invoice_paid", null, bot.billingModel ?? "monthly", source, invoiceId, actor, { reason });
-  const dto = toBotBillingInvoiceDto(updated ?? invoice);
+  const dto = toBotBillingInvoiceDto(updated ?? invoice, bot);
   emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: dto });
   return dto;
+}
+
+async function ensurePaidBotOnline(bot: MongoDevBot) {
+  const { devBots } = await getMongoCollections();
+  await devBots.updateOne({ _id: bot._id }, { $set: { desiredOnline: true, updatedAt: new Date() } });
+  const { startDevBotProcess } = await import("./devBotRuntimeService.js");
+  await startDevBotProcess(bot._id).catch(logBillingError);
 }
 
 async function ensureInvoiceWhenDashboardOpens(bot: MongoDevBot) {
