@@ -162,7 +162,7 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
 
   const invoice: MongoBotBillingInvoice = {
     _id: randomUUID(),
-    amountInCents: invoiceAmount(bot),
+    amountInCents: botBillingAmount(bot),
     billingModel: model,
     botId: bot._id,
     botName: bot.name,
@@ -258,8 +258,8 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
 
   return {
     blocked,
-    blockingInvoice: blockingInvoice ? toBotBillingInvoiceDto(blockingInvoice) : null,
-    currentInvoice: currentInvoice ? toBotBillingInvoiceDto(currentInvoice) : null,
+    blockingInvoice: blockingInvoice ? toBotBillingInvoiceDto(blockingInvoice, bot) : null,
+    currentInvoice: currentInvoice ? toBotBillingInvoiceDto(currentInvoice, bot) : null,
     dashboardOverrideActive,
     forceBotActive: hasValidBotOverride(bot, "bot"),
     model: bot.billingModel ?? "monthly",
@@ -289,15 +289,15 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
     throw Object.assign(new Error("Você não tem acesso a esta fatura."), { statusCode: 403 });
   }
   if (invoice.status !== "pending" && invoice.status !== "overdue") {
-    return toBotBillingInvoiceDto(invoice);
+    return toBotBillingInvoiceDto(invoice, bot);
   }
-  if (invoice.pixCode && invoice.pixQrCode) return toBotBillingInvoiceDto(invoice);
+  if (invoice.pixCode && invoice.pixQrCode) return toBotBillingInvoiceDto(invoice, bot);
 
   const config = getAsaasRuntimeConfig();
   if (!config.enabled) throw Object.assign(new Error("Pagamento Asaas indisponível."), { statusCode: 503 });
   const service = new AsaasPaymentService(config);
   const checkout = await service.createPayment({
-    amountInCents: invoice.amountInCents,
+    amountInCents: effectiveInvoiceAmount(invoice, bot),
     currency: "BRL",
     description: `${invoice.chargeType === "hosting" ? "Hospedagem" : "Plano mensal"} - ${invoice.botName} - ${invoice.dueMonth}`,
     expiresAt: invoice.dueDate,
@@ -324,6 +324,7 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
     {
       $set: {
         notes: checkout.notes,
+        amountInCents: effectiveInvoiceAmount(invoice, bot),
         paymentProvider: "asaas",
         pixCode: checkout.pixCode,
         pixQrCode: checkout.qrCode,
@@ -334,8 +335,8 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
     { returnDocument: "after" }
   );
   const next = updated ?? invoice;
-  emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: toBotBillingInvoiceDto(next) });
-  return toBotBillingInvoiceDto(next);
+  emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: toBotBillingInvoiceDto(next, bot) });
+  return toBotBillingInvoiceDto(next, bot);
 }
 
 export async function setBotBillingModel(botId: string, model: MongoBotBillingModel, contractAmountInCents: number | null, actor: AuthSessionUser) {
@@ -427,9 +428,12 @@ export async function markBotInvoicePaidFromAsaas(paymentId: string | null, exte
 }
 
 export async function getBotBillingInvoices(botId: string) {
-  const { botBillingInvoices } = await getMongoCollections();
-  const invoices = await botBillingInvoices.find({ botId }).sort({ dueDate: -1 }).limit(24).toArray();
-  return invoices.map(toBotBillingInvoiceDto);
+  const { botBillingInvoices, devBots } = await getMongoCollections();
+  const [bot, invoices] = await Promise.all([
+    devBots.findOne({ _id: botId }),
+    botBillingInvoices.find({ botId }).sort({ dueDate: -1 }).limit(24).toArray()
+  ]);
+  return invoices.map((invoice) => toBotBillingInvoiceDto(invoice, bot));
 }
 
 async function markBotInvoicePaid(invoiceId: string, source: string, actor: AuthSessionUser | null, reason: string | null) {
@@ -467,9 +471,15 @@ async function ensureInvoiceWhenDashboardOpens(bot: MongoDevBot) {
   if (now.getDate() >= DUE_DAY) await ensureMonthlyBotInvoice(bot, now, "dashboard_access");
 }
 
-function invoiceAmount(bot: MongoDevBot) {
+function botBillingAmount(bot: MongoDevBot) {
   if ((bot.billingModel ?? "monthly") === "lifetime") return BOT_HOSTING_AMOUNT_IN_CENTS;
   return Math.max(BOT_HOSTING_AMOUNT_IN_CENTS, bot.contractAmountInCents ?? DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS);
+}
+
+function effectiveInvoiceAmount(invoice: MongoBotBillingInvoice, bot?: MongoDevBot | null) {
+  if (invoice.amountInCents > 0) return invoice.amountInCents;
+  if (bot && invoice.chargeType === "monthly_plan") return botBillingAmount(bot);
+  return BOT_HOSTING_AMOUNT_IN_CENTS;
 }
 
 function hasValidBotOverride(bot: MongoDevBot, mode: "bot" | "dashboard") {
@@ -522,7 +532,7 @@ function appendInvoiceHistory(invoice: MongoBotBillingInvoice, status: MongoBotB
   return history;
 }
 
-function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice): BotBillingInvoiceDto {
+function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice, bot?: MongoDevBot | null): BotBillingInvoiceDto {
   const contractedAt = invoice.contractedAt ?? invoice.createdAt;
   const planPeriod = invoice.planPeriod ?? (invoice.billingModel === "lifetime" ? "lifetime" : "monthly");
   const daysOverdue = invoice.status === "overdue"
@@ -537,7 +547,7 @@ function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice): BotBillingInvo
     billingModel: invoice.billingModel,
     chargeType: invoice.chargeType,
     contractedAt: contractedAt.toISOString(),
-    amountInCents: invoice.amountInCents,
+    amountInCents: effectiveInvoiceAmount(invoice, bot),
     currency: invoice.currency,
     daysOverdue,
     dueDate: invoice.dueDate.toISOString(),
