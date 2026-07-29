@@ -1017,8 +1017,9 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
     [customerPlans, selectedBot?.id]
   );
   const pendingBillingInvoice = botBillingAccess?.blockingInvoice ?? botBillingAccess?.currentInvoice ?? null;
-  const showBillingOverlay = Boolean(selectedBot && pendingBillingInvoice && (
-    botBillingAccess?.blocked || (pendingBillingInvoice.status === "pending" && botBillingDismissed !== pendingBillingInvoice.id)
+  const showBillingBlocker = Boolean(selectedBot && pendingBillingInvoice && botBillingAccess?.blocked);
+  const showBillingNotice = Boolean(selectedBot && pendingBillingInvoice && !showBillingBlocker && (
+    pendingBillingInvoice.status === "pending" && botBillingDismissed !== pendingBillingInvoice.id
   ));
 
   async function refreshSelectedBotBilling(botId = activeBotId) {
@@ -1492,7 +1493,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           planNotice={selectedBotPlanNotice}
         />
 
-        {showBillingOverlay && selectedBot && pendingBillingInvoice ? (
+        {showBillingNotice && selectedBot && pendingBillingInvoice ? (
           <BotBillingOverlay
             access={botBillingAccess}
             busy={botBillingBusy}
@@ -1507,7 +1508,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
 
         {selectedBotInMaintenance && maintenanceState ? (
           <DashboardMaintenanceScreen maintenance={maintenanceState} />
-        ) : botBillingAccess?.blocked ? (
+        ) : showBillingBlocker ? (
           selectedBot && pendingBillingInvoice ? (
             <BotBillingOverlay
               access={botBillingAccess}
@@ -5059,11 +5060,11 @@ function BotBillingOverlay({
   const qrImage = normalizePixQr(invoice.pixQrCode);
 
   return (
-    <section className={`relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border px-4 py-10 text-white ${blocked ? "border-red-500/35 bg-red-950/35" : "border-[#FFD500]/25 bg-[#050505]"}`}>
+    <section className={`relative flex items-center justify-center overflow-hidden px-4 py-10 text-white ${blocked ? "fixed inset-0 z-[100] min-h-screen overflow-y-auto border-0 bg-red-950/95" : "min-h-[420px] rounded-lg border border-[#FFD500]/25 bg-[#050505]"}`}>
       <div className={`absolute inset-0 ${blocked ? "bg-[radial-gradient(circle_at_top,rgba(239,68,68,.22),transparent_34%),#140505]" : "bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]"}`} />
       <motion.section
         animate={{ opacity: 1, y: 0 }}
-        className={`relative w-full max-w-2xl rounded-lg border p-6 shadow-glow backdrop-blur-2xl ${blocked ? "border-red-500/35 bg-red-950/75" : "border-[#FFD500]/25 bg-[#141414]/95"}`}
+        className={`relative w-full rounded-lg border p-6 shadow-glow backdrop-blur-2xl ${blocked ? "max-w-5xl border-red-500/35 bg-red-950/75 md:p-8" : "max-w-2xl border-[#FFD500]/25 bg-[#141414]/95"}`}
         initial={{ opacity: 0, y: 14 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
