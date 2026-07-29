@@ -4747,6 +4747,34 @@ export type DevAccessEntry = {
   createdAt: string;
 };
 
+export type DevMonthlyContract = {
+  id: string;
+  billingContactStatus: "confirmed" | "inferred" | "requires_review";
+  billingContactUserId: string | null;
+  botId: string | null;
+  botName: string | null;
+  contractHolder: {
+    discordAvatar: string | null;
+    discordDisplayName: string | null;
+    discordUserId: string;
+    discordUsername: string | null;
+    email: string | null;
+  };
+  dmStatus: "pending" | "sent" | "failed";
+  hasAdministrativeRelease: boolean;
+  hostingCharged: boolean;
+  invoiceStatus: string | null;
+  isLifetimeBot: boolean;
+  items: Array<{ id: string; billingPeriod: string; itemType: string; name: string; quantity: number; status: string; unitPrice: number }>;
+  lastPaymentAt: string | null;
+  latestInvoiceId: string | null;
+  monthlyAmountInCents: number;
+  nextDueDate: string | null;
+  serverId: string | null;
+  serverName: string | null;
+  status: string;
+};
+
 export type NexTechInviteStatus = "active" | "paused" | "expired" | "cancelled";
 
 export type NexTechInvite = {

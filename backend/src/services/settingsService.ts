@@ -454,8 +454,8 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
 };
 const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 1000;
 const MAX_EMOJI_CLONE_MAX_PER_RUN = 1000;
-const DEFAULT_RULES_TITLE = "Regras da comunidade";
-const DEFAULT_RULES_SUBTITLE = "Regras Oficiais do Servidor";
+const DEFAULT_RULES_TITLE = "Regras e Diretrizes da loja";
+const DEFAULT_RULES_SUBTITLE = "Regras do Servidor";
 const DEFAULT_RULES_MESSAGE = [
   "Respeite todos os membros. Ofensas, preconceito, assedio ou discriminacao não serão tolerados.",
   "Não publique conteúdo adulto, violento, chocante ou ilegal.",
@@ -465,23 +465,23 @@ const DEFAULT_RULES_MESSAGE = [
   "Use os canais corretos e siga as orientacoes da equipe."
 ].join("\n");
 const DEFAULT_RULES_BUTTON_LABEL = "Li e aceito";
-const DEFAULT_RULES_FOOTER_TEXT = "NexTech © Todos os direitos reservados";
+const DEFAULT_RULES_FOOTER_TEXT = "Queremos um espaço seguro e acessível para todas as idades.";
 const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   {
-    description: "Trate todos com cordialidade e respeito.",
-    emoji: "💜",
+    description: "",
+    emoji: "❯",
     enabled: true,
     id: "convivencia",
-    name: "Convivência",
+    name: "Convivência saudável",
     order: 1,
     rules: [
-      "Seja respeitoso com todos.",
-      "Não será aceito qualquer tipo de drama, preconceito, assédio ou discurso de ódio."
+      "Trate todos com cordialidade e respeito.",
+      "Não será aceito qualquer tipo de ofensa, preconceito, assédio ou discurso de ódio."
     ]
   },
   {
-    description: "Use os canais de forma clara e adequada.",
-    emoji: "💬",
+    description: "",
+    emoji: "❯",
     enabled: true,
     id: "comunicacao",
     name: "Comunicação",
@@ -492,17 +492,91 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
     ]
   },
   {
-    description: "Conteúdos ofensivos, ilegais ou perigosos são proibidos.",
-    emoji: "🚫",
+    description: "Não compartilhe materiais que sejam:",
+    emoji: "❯",
     enabled: true,
     id: "conteudos-proibidos",
     name: "Conteúdos proibidos",
     order: 3,
     rules: [
-      "Não compartilhe materiais que sejam ilegais.",
+      "Ilegais",
       "Pornográficos.",
       "Violentos ou perturbadores.",
       "Obscenos ou ofensivos."
+    ]
+  },
+  {
+    description: "Evite:",
+    emoji: "❯",
+    enabled: true,
+    id: "organizacao-chat",
+    name: "Organização do chat",
+    order: 4,
+    rules: [
+      "Mensagens repetitivas",
+      "Links sem relação com o tema",
+      "Imagens em excesso",
+      "Uso exagerado de emojis"
+    ]
+  },
+  {
+    description: "",
+    emoji: "❯",
+    enabled: true,
+    id: "uso-canais",
+    name: "Uso dos canais",
+    order: 5,
+    rules: [
+      "Cada canal tem uma função específica.",
+      "Mantenha as conversas dentro do contexto para facilitar a organização."
+    ]
+  },
+  {
+    description: "",
+    emoji: "❯",
+    enabled: true,
+    id: "seguranca-privacidade",
+    name: "Segurança e privacidade",
+    order: 6,
+    rules: [
+      "Não divulgue informações pessoais de outros membros sem consentimento.",
+      "Evite compartilhar dados sensíveis ou confidenciais."
+    ]
+  },
+  {
+    description: "",
+    emoji: "❯",
+    enabled: true,
+    id: "divulgacao",
+    name: "Divulgação",
+    order: 7,
+    rules: [
+      "Publicidade de produtos, serviços ou outros servidores só é permitida com autorização da administração."
+    ]
+  },
+  {
+    description: "Não poste conteúdos protegidos sem permissão, como:",
+    emoji: "❯",
+    enabled: true,
+    id: "direitos-autorais",
+    name: "Direitos autorais",
+    order: 8,
+    rules: [
+      "Músicas",
+      "Vídeos",
+      "Imagens",
+      "Arquivos diversos"
+    ]
+  },
+  {
+    description: "Siga as orientações da equipe de moderação.",
+    emoji: "❯",
+    enabled: true,
+    id: "moderacao",
+    name: "Moderação",
+    order: 9,
+    rules: [
+      "Em caso de dúvidas ou problemas, procure os canais de suporte ou fale diretamente com um moderador."
     ]
   }
 ];

@@ -36,6 +36,7 @@ import type {
   DevAccessEntry,
   DevAccessRole,
   DevBot,
+  DevMonthlyContract,
   DiscloudLogsResponse,
   DiscloudMonitoringResponse,
   DevModuleDefinition,
@@ -2238,6 +2239,16 @@ export async function runDiscloudBotAction(botId: string, action: "start" | "sto
 
 export async function getDevPlansDashboard() {
   const { data } = await api.get<DevPlansDashboard>("/dev/plans-dashboard");
+  return data;
+}
+
+export async function getDevMonthlyContracts() {
+  const { data } = await api.get<{ contracts: DevMonthlyContract[] }>("/dev/monthly-contracts");
+  return data.contracts;
+}
+
+export async function resendDevInvoiceDm(invoiceId: string, notificationType = "invoice_created") {
+  const { data } = await api.post(`/dev/billing-invoices/${encodeURIComponent(invoiceId)}/resend-dm`, { notificationType });
   return data;
 }
 

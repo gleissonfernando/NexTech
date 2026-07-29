@@ -40,7 +40,10 @@ test("monta painel de regras em Components V2 com categorias e botão", () => {
 
   const payload = buildRulesPanelPayload(settings);
   const container = payload.components[0] as { accent_color: number; components: Array<{ components?: Array<{ custom_id?: string }>; content?: string; type: number }>; type: number };
-  const text = container.components.find((component) => component.type === 10)?.content ?? "";
+  const text = container.components
+    .filter((component) => component.type === 10)
+    .map((component) => component.content ?? "")
+    .join("\n");
   const row = container.components.find((component) => component.type === 1);
 
   assert.equal(payload.flags, 32768);

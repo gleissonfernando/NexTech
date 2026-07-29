@@ -50,6 +50,7 @@ import { encryptSecret } from "./secretCryptoService";
 import type { DashboardAuth } from "./tokenService";
 import { moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
 import { markBotInvoicePaidFromAsaas } from "./botBillingService";
+import { ensureContractForPaymentOrder, syncContractActivatedFromSubscription } from "./contractBillingService";
 
 export type PlanActor = {
   id: string | null;
@@ -725,6 +726,16 @@ async function createCheckoutInterestForBuyer(
     approvedAt: null,
     cancelledAt: null,
     checkoutUrl: null,
+    contractHolderSnapshot: {
+      discordAvatar: null,
+      discordDisplayName: buyer.name,
+      discordUserId: buyer.discordId,
+      discordUsername: buyer.name,
+      email: buyer.email
+    },
+    contractId: null,
+    contractIntent: "new_contract",
+    billingContactUserId: buyer.discordId,
     createdAt: now,
     currency: plan.currency,
     discordId: buyer.discordId,
@@ -741,6 +752,9 @@ async function createCheckoutInterestForBuyer(
     paymentMethod: null,
     paymentType: null,
     pixCode: null,
+    pixCopyPaste: null,
+    pixExpiresAt: checkoutExpiresAt,
+    pixQrCode: null,
     planId: plan._id,
     planSnapshot: snapshotPlan(plan),
     planSlug: plan.slug,
@@ -766,6 +780,7 @@ async function createCheckoutInterestForBuyer(
   order.externalReference = order._id;
 
   await paymentOrders.insertOne(order);
+  await ensureContractForPaymentOrder(order, plan, "checkout_create");
 
   if (paymentsEnabled && shouldCreateCheckout) {
     const checkout = await createPlanPayment(plan, order, buyer, options.paymentMethod).catch(async (error: unknown) => {
@@ -812,6 +827,8 @@ async function createCheckoutInterestForBuyer(
     order.paymentMethod = checkout.paymentMethod;
     order.paymentType = checkout.paymentType;
     order.pixCode = checkout.pixCode;
+    order.pixCopyPaste = checkout.pixCode;
+    order.pixQrCode = checkout.qrCode;
     order.providerOrderId = checkout.providerOrderId;
     order.qrCode = checkout.qrCode;
     order.rawProviderStatus = checkout.rawProviderStatus;
@@ -832,6 +849,9 @@ async function createCheckoutInterestForBuyer(
           paymentType: order.paymentType,
           mercadoPagoPaymentId: order.mercadoPagoPaymentId,
           pixCode: order.pixCode,
+          pixCopyPaste: order.pixCopyPaste,
+          pixExpiresAt: order.pixExpiresAt,
+          pixQrCode: order.pixQrCode,
           providerOrderId: order.providerOrderId,
           qrCode: order.qrCode,
           rawProviderStatus: order.rawProviderStatus,
@@ -1886,6 +1906,7 @@ export async function completeTestPaymentOrder(orderId: string, actor: PlanActor
 
     await planWorkspaces.insertOne(workspace);
     await planSubscriptions.insertOne(subscription);
+    await syncContractActivatedFromSubscription(subscription, order, plan, "payment_test");
     await workspaceMembers.updateOne(
       { workspaceId, discordId: order.discordId },
       {
@@ -1921,6 +1942,7 @@ export async function completeTestPaymentOrder(orderId: string, actor: PlanActor
     if (existingSubscription.workspaceId) {
       await planWorkspaces.updateOne({ _id: existingSubscription.workspaceId }, { $set: { status: "active", updatedAt: now } });
     }
+    await syncContractActivatedFromSubscription({ ...existingSubscription, activatedAt: existingSubscription.activatedAt ?? now, status: "active", updatedAt: now }, order, plan, "payment_test");
   }
 
   await paymentOrders.updateOne(
@@ -3070,6 +3092,10 @@ async function activatePaidOrder(order: MongoPaymentOrder, plan: MongoPlan, acto
     planSubscriptions.findOne({ _id: subscriptionId }),
     planWorkspaces.findOne({ _id: workspaceId })
   ]);
+
+  if (updatedSubscription) {
+    await syncContractActivatedFromSubscription(updatedSubscription, order, plan, activation);
+  }
 
   return updatedSubscription ? toSubscriptionDto(updatedSubscription, plan, workspace) : null;
 }

@@ -57,6 +57,7 @@ import {
   getDashboardMe,
   getDevAccessEntries,
   getDevBots,
+  getDevMonthlyContracts,
   getDiscloudBotLogs,
   getDiscloudMonitoring,
   getDevFivemModules,
@@ -68,6 +69,7 @@ import {
   publishNexTechInvitePanel,
   sendMaintenanceAlert,
   saveDevAccessEntry,
+  resendDevInvoiceDm,
   setMaintenanceMode,
   runDiscloudBotAction,
   updateDevBotModules,
@@ -76,7 +78,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -84,7 +86,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -109,7 +111,8 @@ const DEV_NAV_GROUPS: Array<{ items: DevNavItem[]; label: string }> = [
     items: [
       { icon: Sparkles, id: "nextech", label: "Menu NexTech" },
       { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
-      { icon: PackagePlus, id: "plans", label: "Planos" }
+      { icon: PackagePlus, id: "plans", label: "Planos" },
+      { icon: CalendarClock, id: "monthly", label: "Mensalidades" }
     ]
   },
   {
@@ -317,6 +320,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
         ) : null}
 
         {activeView === "plans" ? <DevPlansPanel /> : null}
+        {activeView === "monthly" ? <DevMonthlyContractsPanel /> : null}
         {activeView === "monitoring" ? <RealtimeSystemMonitoringPanel /> : null}
         {activeView === "discloud" ? <DiscloudMonitoringPanel /> : null}
         {activeView === "logs" ? <TechnicalLogsPanel botId={selectedBotId} guildId={selectedGuildId} /> : null}
@@ -355,6 +359,7 @@ function devPathForView(view: DevView) {
   if (view === "nextech") return "/dev/nextech";
   if (view === "sales") return "/dev/sistema-de-vendas";
   if (view === "plans") return "/dev/planos";
+  if (view === "monthly") return "/dev/mensalidades";
   if (view === "monitoring") return "/dev/monitoramento";
   if (view === "discloud") return "/dev/discloud";
   if (view === "fivem") return "/dev/fivem";
@@ -554,6 +559,98 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
         ))}
       </section>
     </div>
+  );
+}
+
+function DevMonthlyContractsPanel() {
+  const [contracts, setContracts] = useState<DevMonthlyContract[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      setContracts(await getDevMonthlyContracts());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar mensalidades.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleResend(contract: DevMonthlyContract) {
+    if (!contract.latestInvoiceId) return;
+    setSendingId(contract.id);
+    try {
+      await resendDevInvoiceDm(contract.latestInvoiceId, "invoice_created");
+      await load();
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  return (
+    <section className="grid gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Mensalidades</h1>
+          <p className="text-sm text-zinc-400">Contratos, responsáveis financeiros, faturas e status de DM.</p>
+        </div>
+        <Button onClick={() => void load()} variant="outline">
+          <RefreshCw className="h-4 w-4" />
+          Atualizar
+        </Button>
+      </div>
+
+      {error ? <Card><CardContent className="p-4 text-sm text-red-300">{error}</CardContent></Card> : null}
+      {loading ? <Card><CardContent className="flex items-center gap-2 p-4 text-sm text-zinc-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando mensalidades...</CardContent></Card> : null}
+
+      <div className="grid gap-3">
+        {contracts.map((contract) => (
+          <Card key={contract.id}>
+            <CardContent className="grid gap-3 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-lg font-semibold text-white">{contract.botName ?? "Bot sem nome"}</h2>
+                    <Badge variant={contract.status === "active" ? "success" : contract.status === "pending_payment" ? "warning" : "muted"}>{contract.status}</Badge>
+                    <Badge variant={contract.dmStatus === "sent" ? "success" : contract.dmStatus === "failed" ? "danger" : "muted"}>DM {contract.dmStatus}</Badge>
+                  </div>
+                  <p className="text-sm text-zinc-400">
+                    Responsável: {contract.contractHolder.discordDisplayName || contract.contractHolder.discordUsername || "Sem nome"} ({contract.contractHolder.discordUserId || "sem Discord ID"})
+                  </p>
+                  <p className="text-sm text-zinc-500">
+                    Servidor: {contract.serverName ?? contract.serverId ?? "não vinculado"} • Bot {contract.isLifetimeBot ? "vitalício" : "mensal"} • Hospedagem {contract.hostingCharged ? "cobrada" : "não cobrada"}
+                  </p>
+                </div>
+                <Button disabled={!contract.latestInvoiceId || sendingId === contract.id} onClick={() => void handleResend(contract)} variant="outline">
+                  {sendingId === contract.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                  Reenviar cobrança
+                </Button>
+              </div>
+              <div className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
+                <span>Valor mensal: {formatCurrency(contract.monthlyAmountInCents)}</span>
+                <span>Próximo vencimento: {formatDateOrDash(contract.nextDueDate)}</span>
+                <span>Último pagamento: {formatDateOrDash(contract.lastPaymentAt)}</span>
+                <span>Fatura: {contract.invoiceStatus ?? "sem fatura"}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {contract.items.map((item) => (
+                  <Badge key={item.id} variant={item.status === "active" ? "success" : "muted"}>{item.name}</Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {!loading && !contracts.length ? <Card><CardContent className="p-4 text-sm text-zinc-400">Nenhum contrato encontrado.</CardContent></Card> : null}
+      </div>
+    </section>
   );
 }
 
@@ -3030,6 +3127,17 @@ function formatDate(value: string) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatDateOrDash(value: string | null) {
+  return value ? formatDate(value) : "-";
+}
+
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    currency: "BRL",
+    style: "currency"
+  }).format(cents / 100);
 }
 
 function percentLabel(value: number | null) {

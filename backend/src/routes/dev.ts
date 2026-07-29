@@ -76,6 +76,10 @@ import {
   canStartBotByBilling
 } from "../services/botBillingService";
 import {
+  emitContractInvoiceDm,
+  listDeveloperMonthlyContracts
+} from "../services/contractBillingService";
+import {
   deleteNexTechPaymentProvider,
   deleteNexTechProduct,
   deleteScopedNexTechSalesPlan,
@@ -163,6 +167,9 @@ const botInvoicePixSchema = z.object({
 
 const manualInvoiceReleaseSchema = z.object({
   reason: z.string().min(3).max(1000)
+});
+const resendInvoiceDmSchema = z.object({
+  notificationType: z.enum(["invoice_created", "due_reminder", "due_today", "overdue", "payment_confirmed", "contract_activated", "upgrade_confirmed", "qr_expired", "payment_failed"]).default("invoice_created")
 });
 
 const registerPrimaryBotSchema = z.object({
@@ -386,6 +393,26 @@ devRouter.get("/modules", (_req, res) => {
   return res.json({
     modules: DEV_MODULES
   });
+});
+
+devRouter.get("/monthly-contracts", async (_req, res, next) => {
+  try {
+    return res.json(await listDeveloperMonthlyContracts());
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/billing-invoices/:invoiceId/resend-dm", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = resendInvoiceDmSchema.parse(req.body ?? {});
+    return res.json({
+      dm: await emitContractInvoiceDm(req.params.invoiceId, input.notificationType, auth.user)
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 devRouter.get("/nextech/invites", async (req, res, next) => {

@@ -10,6 +10,7 @@ import {
 } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
+import { emitContractInvoiceDm, ensureContractForBotInvoice } from "./contractBillingService";
 import { AsaasPaymentService } from "./payments/asaasPaymentService";
 import { PAYMENT_METHODS } from "./payments/types";
 
@@ -52,6 +53,10 @@ export type BotBillingInvoiceDto = {
   pixCode: string | null;
   pixQrCode: string | null;
   providerPaymentId: string | null;
+  pixExpiresAt: string | null;
+  dmStatus: "pending" | "sent" | "failed";
+  dmSentAt: string | null;
+  dmError: string | null;
   paidAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -181,8 +186,14 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
     paymentProvider: "asaas",
     planPeriod,
     pixCode: null,
+    pixCopyPaste: null,
+    pixExpiresAt: dueDate,
     pixQrCode: null,
     providerPaymentId: null,
+    dmAttempts: 0,
+    dmError: null,
+    dmSentAt: null,
+    dmStatus: "pending",
     status: "pending",
     statusHistory: [{ at: now, from: null, source, status: "pending" }],
     updatedAt: now,
@@ -191,6 +202,7 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
 
   try {
     await botBillingInvoices.insertOne(invoice);
+    await ensureContractForBotInvoice(invoice, source);
     await writeBillingAudit(bot, "bot_invoice_created", null, model, source, invoice._id);
     return { created: true, invoice };
   } catch (error) {
@@ -238,6 +250,8 @@ export async function markOverdueBotInvoices(source = "overdue_job") {
         notifyBot: true
       });
     }
+    await ensureContractForBotInvoice(next, source).catch(logBillingError);
+    await emitContractInvoiceDm(next._id, "overdue", null).catch(logBillingError);
     emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: toBotBillingInvoiceDto(next) });
   }
 
@@ -336,6 +350,8 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
         amountInCents: effectiveInvoiceAmount(invoice, bot),
         paymentProvider: "asaas",
         pixCode: checkout.pixCode,
+        pixCopyPaste: checkout.pixCode,
+        pixExpiresAt: invoice.dueDate,
         pixQrCode: checkout.qrCode,
         providerPaymentId: checkout.providerOrderId,
         updatedAt: new Date()
@@ -344,6 +360,8 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
     { returnDocument: "after" }
   );
   const next = updated ?? invoice;
+  await ensureContractForBotInvoice(next, "pix_generated");
+  await emitContractInvoiceDm(next._id, next.status === "overdue" ? "overdue" : "invoice_created", actor).catch(logBillingError);
   emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: toBotBillingInvoiceDto(next, bot) });
   return toBotBillingInvoiceDto(next, bot);
 }
@@ -480,7 +498,10 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
     await ensurePaidBotOnline(bot);
     await writeBillingAudit(bot, source === "manual_admin" ? "bot_invoice_manually_released" : "bot_invoice_paid", null, bot.billingModel ?? "monthly", source, invoiceId, actor, { reason });
   }
-  const dto = toBotBillingInvoiceDto(updated ?? invoice, bot);
+  const paidInvoice = updated ?? invoice;
+  await ensureContractForBotInvoice(paidInvoice, source).catch(logBillingError);
+  await emitContractInvoiceDm(paidInvoice._id, source === "manual_admin" ? "contract_activated" : "payment_confirmed", actor).catch(logBillingError);
+  const dto = toBotBillingInvoiceDto(paidInvoice, bot);
   emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: dto });
   return dto;
 }
@@ -565,8 +586,14 @@ async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: M
     paymentProvider: "asaas",
     planPeriod,
     pixCode: null,
+    pixCopyPaste: null,
+    pixExpiresAt: nextDueDate,
     pixQrCode: null,
     providerPaymentId: null,
+    dmAttempts: 0,
+    dmError: null,
+    dmSentAt: null,
+    dmStatus: "pending",
     status: "pending",
     statusHistory: [{ at: now, from: null, source: `${source}_next_invoice`, status: "pending" }],
     updatedAt: now,
@@ -575,6 +602,7 @@ async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: M
 
   try {
     await botBillingInvoices.insertOne(invoice);
+    await ensureContractForBotInvoice(invoice, `${source}_next_invoice`);
     emitRealtime("bot:billing_updated", { botId: bot._id, invoice: toBotBillingInvoiceDto(invoice, bot) });
     return invoice;
   } catch (error) {
@@ -700,9 +728,13 @@ function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice, bot?: MongoDevB
     planPeriod,
     status: invoice.status,
     statusLabel: invoiceStatusLabel(invoice.status),
-    pixCode: invoice.pixCode,
+    pixCode: invoice.pixCopyPaste ?? invoice.pixCode,
     pixQrCode: invoice.pixQrCode,
     providerPaymentId: invoice.providerPaymentId,
+    pixExpiresAt: invoice.pixExpiresAt?.toISOString() ?? null,
+    dmStatus: invoice.dmStatus ?? "pending",
+    dmSentAt: invoice.dmSentAt?.toISOString() ?? null,
+    dmError: invoice.dmError ?? null,
     paidAt: invoice.paidAt?.toISOString() ?? null,
     createdAt: invoice.createdAt.toISOString(),
     updatedAt: invoice.updatedAt.toISOString()

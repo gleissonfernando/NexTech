@@ -4745,9 +4745,12 @@ export type MongoBotBillingInvoice = {
   _id: string;
   amountInCents: number;
   billingModel: MongoBotBillingModel;
+  billingContactUserId?: string | null;
   botId: string;
   botName: string;
   chargeType: MongoBotBillingChargeType;
+  contractId?: string | null;
+  contractHolderUserId?: string | null;
   contractedAt?: Date | null;
   createdAt: Date;
   currency: "BRL";
@@ -4759,8 +4762,14 @@ export type MongoBotBillingInvoice = {
   paymentProvider: MongoPaymentProvider;
   planPeriod?: MongoBotPlanPeriod;
   pixCode: string | null;
+  pixCopyPaste?: string | null;
+  pixExpiresAt?: Date | null;
   pixQrCode: string | null;
   providerPaymentId: string | null;
+  dmAttempts?: number;
+  dmError?: string | null;
+  dmSentAt?: Date | null;
+  dmStatus?: MongoInvoiceDmStatus;
   status: MongoBotBillingInvoiceStatus;
   statusHistory?: Array<{ at: Date; from: MongoBotBillingInvoiceStatus | null; source: string; status: MongoBotBillingInvoiceStatus }>;
   updatedAt: Date;
@@ -4896,6 +4905,11 @@ export type MongoPlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "an
 export type MongoPaymentProvider = "disabled" | "mercadopago" | "pagbank" | "stripe" | "asaas" | "efi" | "custom";
 export type MongoPlanSubscriptionStatus = "pending" | "active" | "suspended" | "cancelled" | "expired";
 export type MongoPlanWorkspaceStatus = "active" | "suspended" | "cancelled";
+export type MongoContractStatus = "pending_payment" | "active" | "suspended" | "cancelled" | "expired" | "requires_review";
+export type MongoBillingContactStatus = "confirmed" | "inferred" | "requires_review";
+export type MongoContractItemStatus = "pending_payment" | "active" | "suspended" | "cancelled" | "expired";
+export type MongoInvoiceNotificationStatus = "pending" | "sent" | "failed" | "skipped";
+export type MongoInvoiceDmStatus = "pending" | "sent" | "failed";
 export type MongoPlanPaymentOrderStatus =
   | "interest_registered"
   | "created"
@@ -4990,6 +5004,70 @@ export type MongoPlanSubscription = {
   workspaceId: string | null;
 };
 
+export type MongoContract = {
+  _id: string;
+  billingContactStatus: MongoBillingContactStatus;
+  billingContactUserId: string | null;
+  billingModel: MongoBotBillingModel | "custom";
+  botId: string | null;
+  contractHolderUserId: string | null;
+  createdAt: Date;
+  createdByUserId: string | null;
+  lastPaymentAt: Date | null;
+  metadata?: Record<string, unknown>;
+  nextDueDate: Date | null;
+  paymentOrderId: string | null;
+  planId: string | null;
+  planSlug: string | null;
+  serverId: string | null;
+  serverOwnerUserId: string | null;
+  startDate: Date | null;
+  status: MongoContractStatus;
+  subscriptionId: string | null;
+  updatedAt: Date;
+};
+
+export type MongoContractItem = {
+  _id: string;
+  billingPeriod: MongoBotPlanPeriod | "custom";
+  contractId: string;
+  createdAt: Date;
+  endsAt: Date | null;
+  itemType: "plan" | "hosting" | "module" | "limit" | "premium_feature" | "integration" | "bot" | "service" | "upgrade";
+  name: string;
+  productId: string | null;
+  quantity: number;
+  startsAt: Date | null;
+  status: MongoContractItemStatus;
+  unitPrice: number;
+  updatedAt: Date;
+};
+
+export type MongoInvoiceNotification = {
+  _id: string;
+  channel: "dm" | "dashboard" | "email" | "system";
+  createdAt: Date;
+  error: string | null;
+  invoiceId: string;
+  notificationType: "invoice_created" | "due_reminder" | "due_today" | "overdue" | "payment_confirmed" | "contract_activated" | "upgrade_confirmed" | "qr_expired" | "payment_failed";
+  sentAt: Date | null;
+  status: MongoInvoiceNotificationStatus;
+  userId: string | null;
+};
+
+export type MongoContractAuditLog = {
+  _id: string;
+  action: string;
+  botId: string | null;
+  contractId: string | null;
+  createdAt: Date;
+  newValue?: unknown;
+  performedBy: string | null;
+  previousValue?: unknown;
+  reason: string | null;
+  userId: string | null;
+};
+
 export type MongoPlanWorkspace = {
   _id: string;
   botIds: string[];
@@ -5046,8 +5124,18 @@ export type MongoPaymentOrder = {
   accessActivatedAt?: Date | null;
   amountInCents: number;
   approvedAt?: Date | null;
+  billingContactUserId?: string | null;
   cancelledAt?: Date | null;
   checkoutUrl: string | null;
+  contractHolderSnapshot?: {
+    discordAvatar: string | null;
+    discordDisplayName: string | null;
+    discordUserId: string;
+    discordUsername: string | null;
+    email: string | null;
+  } | null;
+  contractId?: string | null;
+  contractIntent?: "new_contract" | "upgrade" | "additional_item" | "separate_contract";
   createdAt: Date;
   currency: "BRL" | "USD" | "EUR";
   discordId: string;
@@ -5062,6 +5150,9 @@ export type MongoPaymentOrder = {
   paymentMethod?: string | null;
   paymentType?: string | null;
   pixCode: string | null;
+  pixCopyPaste?: string | null;
+  pixExpiresAt?: Date | null;
+  pixQrCode?: string | null;
   planId: string;
   planSnapshot?: Record<string, unknown>;
   planSlug: string;
@@ -5527,6 +5618,10 @@ export async function getMongoCollections() {
     paymentEvents: db.collection<MongoPaymentEvent>("payment_events"),
     paymentSettings: db.collection<MongoPaymentSettings>("payment_settings"),
     planAuditLogs: db.collection<MongoPlanAuditLog>("plan_audit_logs"),
+    contracts: db.collection<MongoContract>("contracts"),
+    contractItems: db.collection<MongoContractItem>("contract_items"),
+    invoiceNotifications: db.collection<MongoInvoiceNotification>("invoice_notifications"),
+    contractAuditLogs: db.collection<MongoContractAuditLog>("contract_audit_logs"),
     botBillingInvoices: db.collection<MongoBotBillingInvoice>("bot_billing_invoices"),
     devBots: db.collection<MongoDevBot>("Bot"),
     botGuildConfigs: db.collection<MongoBotGuildConfig>("BotGuildConfig"),
@@ -5898,6 +5993,16 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, environment: 1, paymentId: 1, eventType: 1, requestId: 1 }, { sparse: true }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, payloadHash: 1 }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ createdAt: -1 }),
+    db.collection<MongoContract>("contracts").createIndex({ contractHolderUserId: 1, status: 1, updatedAt: -1 }),
+    db.collection<MongoContract>("contracts").createIndex({ billingContactUserId: 1, status: 1, nextDueDate: 1 }),
+    db.collection<MongoContract>("contracts").createIndex({ botId: 1, serverId: 1, status: 1 }),
+    db.collection<MongoContract>("contracts").createIndex({ paymentOrderId: 1 }, { sparse: true, unique: true }),
+    db.collection<MongoContract>("contracts").createIndex({ subscriptionId: 1 }, { sparse: true }),
+    db.collection<MongoContractItem>("contract_items").createIndex({ contractId: 1, status: 1, updatedAt: -1 }),
+    db.collection<MongoInvoiceNotification>("invoice_notifications").createIndex({ invoiceId: 1, userId: 1, notificationType: 1, channel: 1 }, { unique: true }),
+    db.collection<MongoInvoiceNotification>("invoice_notifications").createIndex({ status: 1, createdAt: -1 }),
+    db.collection<MongoContractAuditLog>("contract_audit_logs").createIndex({ contractId: 1, createdAt: -1 }),
+    db.collection<MongoContractAuditLog>("contract_audit_logs").createIndex({ userId: 1, createdAt: -1 }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ botId: 1, dueMonth: 1 }, { unique: true }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ userId: 1, status: 1, dueDate: 1 }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ paymentProvider: 1, providerPaymentId: 1 }, { sparse: true }),

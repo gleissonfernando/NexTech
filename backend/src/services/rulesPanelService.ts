@@ -127,27 +127,33 @@ export function buildRulesPanelPayload(settings: GuildSettingsDto) {
 }
 
 function buildRulesTextComponents(settings: GuildSettingsDto): DiscordComponent[] {
-  const title = settings.rulesTitle || "Regras e Diretrizes da Loja";
-  const subtitle = settings.rulesSubtitle || "Regras Oficiais do Servidor";
+  const title = settings.rulesTitle || "Regras e Diretrizes da loja";
+  const subtitle = settings.rulesSubtitle || "Regras do Servidor";
   const categories = activeRulesCategories(settings.rulesCategories);
-  const lines = [
-    `# 📜 ${title}`,
+  const body = [
     subtitle ? `**${subtitle}**` : null,
-    ...categories.flatMap((category, index) => formatCategory(category, index)),
+    "",
+    ...categories.flatMap((category, index) => [...formatCategory(category, index), ""]),
     settings.rulesFooterText ? `*${settings.rulesFooterText}*` : null
-  ].filter((line): line is string => Boolean(line));
+  ].filter((line): line is string => line !== null);
 
-  return chunkText(lines.join("\n\n"), 3900).map((content) => ({
-    type: 10,
-    content
-  }));
+  return [
+    { type: 10, content: `## 📜 ${title} 🛡️` },
+    { type: 14, divider: true, spacing: 1 },
+    ...chunkText(body.join("\n"), 3900).map((content) => ({
+      type: 10,
+      content
+    }))
+  ];
 }
 
 function formatCategory(category: RulesPanelCategoryDto, index: number) {
+  const description = category.description?.trim();
+  const rules = category.rules.map((rule) => `> - ${rule}`);
   const lines = [
-    `## ${category.emoji || "💜"} ${index + 1}. ${category.name}`,
-    category.description ? `> ${category.description}` : null,
-    ...category.rules.map((rule) => `• ${rule}`)
+    `### ${category.emoji || "❯"} ${index + 1}. ${category.name}`,
+    description ? `**${description}**` : null,
+    rules.length ? rules.join("\n") : null
   ];
 
   return lines.filter((line): line is string => Boolean(line));

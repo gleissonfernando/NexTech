@@ -6526,13 +6526,13 @@ function RulesView({
       rulesCategories: settings?.rulesCategories?.length ? settings.rulesCategories : defaultRulesCategories(),
       rulesChannelId: settings?.rulesChannelId || "",
       rulesColor: settings?.rulesColor || "#ef4444",
-      rulesFooterText: settings?.rulesFooterText || "NexTech © Todos os direitos reservados",
+      rulesFooterText: settings?.rulesFooterText || "Queremos um espaço seguro e acessível para todas as idades.",
       rulesImageFormat: settings?.rulesImageFormat || "none",
       rulesImageUrl: settings?.rulesImageUrl || "",
       rulesMessage: settings?.rulesMessage || "",
       rulesRoleId: settings?.rulesRoleId || "",
-      rulesSubtitle: settings?.rulesSubtitle || "Regras Oficiais do Servidor",
-      rulesTitle: settings?.rulesTitle || "Regras do servidor"
+      rulesSubtitle: settings?.rulesSubtitle || "Regras do Servidor",
+      rulesTitle: settings?.rulesTitle || "Regras e Diretrizes da loja"
     });
   }, [settings]);
 
@@ -6925,21 +6925,27 @@ function defaultRulesDraft() {
     rulesCategories: defaultRulesCategories(),
     rulesChannelId: "",
     rulesColor: "#9333ea",
-    rulesFooterText: "NexTech © Todos os direitos reservados",
+    rulesFooterText: "Queremos um espaço seguro e acessível para todas as idades.",
     rulesImageFormat: "none" as RulesPanelImageFormat,
     rulesImageUrl: "",
     rulesMessage: "",
     rulesRoleId: "",
-    rulesSubtitle: "Regras Oficiais do Servidor",
-    rulesTitle: "Regras e Diretrizes da Loja"
+    rulesSubtitle: "Regras do Servidor",
+    rulesTitle: "Regras e Diretrizes da loja"
   };
 }
 
 function defaultRulesCategories(): RulesPanelCategory[] {
   return [
-    { description: "Trate todos com cordialidade e respeito.", emoji: "💜", enabled: true, id: "convivencia", name: "Convivência", order: 1, rules: ["Seja respeitoso com todos.", "Não será aceito qualquer tipo de drama, preconceito, assédio ou discurso de ódio."] },
-    { description: "Use os canais de forma clara e adequada.", emoji: "💬", enabled: true, id: "comunicacao", name: "Comunicação", order: 2, rules: ["Utilize uma linguagem adequada.", "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."] },
-    { description: "Conteúdos ofensivos, ilegais ou perigosos são proibidos.", emoji: "🚫", enabled: true, id: "conteudos-proibidos", name: "Conteúdos proibidos", order: 3, rules: ["Não compartilhe materiais que sejam ilegais.", "Pornográficos.", "Violentos ou perturbadores.", "Obscenos ou ofensivos."] }
+    { description: "", emoji: "❯", enabled: true, id: "convivencia", name: "Convivência saudável", order: 1, rules: ["Trate todos com cordialidade e respeito.", "Não será aceito qualquer tipo de ofensa, preconceito, assédio ou discurso de ódio."] },
+    { description: "", emoji: "❯", enabled: true, id: "comunicacao", name: "Comunicação", order: 2, rules: ["Utilize uma linguagem adequada.", "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."] },
+    { description: "Não compartilhe materiais que sejam:", emoji: "❯", enabled: true, id: "conteudos-proibidos", name: "Conteúdos proibidos", order: 3, rules: ["Ilegais", "Pornográficos.", "Violentos ou perturbadores.", "Obscenos ou ofensivos."] },
+    { description: "Evite:", emoji: "❯", enabled: true, id: "organizacao-chat", name: "Organização do chat", order: 4, rules: ["Mensagens repetitivas", "Links sem relação com o tema", "Imagens em excesso", "Uso exagerado de emojis"] },
+    { description: "", emoji: "❯", enabled: true, id: "uso-canais", name: "Uso dos canais", order: 5, rules: ["Cada canal tem uma função específica.", "Mantenha as conversas dentro do contexto para facilitar a organização."] },
+    { description: "", emoji: "❯", enabled: true, id: "seguranca-privacidade", name: "Segurança e privacidade", order: 6, rules: ["Não divulgue informações pessoais de outros membros sem consentimento.", "Evite compartilhar dados sensíveis ou confidenciais."] },
+    { description: "", emoji: "❯", enabled: true, id: "divulgacao", name: "Divulgação", order: 7, rules: ["Publicidade de produtos, serviços ou outros servidores só é permitida com autorização da administração."] },
+    { description: "Não poste conteúdos protegidos sem permissão, como:", emoji: "❯", enabled: true, id: "direitos-autorais", name: "Direitos autorais", order: 8, rules: ["Músicas", "Vídeos", "Imagens", "Arquivos diversos"] },
+    { description: "Siga as orientações da equipe de moderação.", emoji: "❯", enabled: true, id: "moderacao", name: "Moderação", order: 9, rules: ["Em caso de dúvidas ou problemas, procure os canais de suporte ou fale diretamente com um moderador."] }
   ];
 }
 
@@ -7027,16 +7033,17 @@ function RulesPanelPreview({
       <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.rulesColor }}>
         <div className={imageUrl && draft.rulesImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
           <div>
-            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.rulesTitle}</h3>
-            <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.rulesSubtitle}</p>
+            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.rulesTitle} 🛡️</h3>
+            <div className="mt-2 border-b border-zinc-600" />
+            <p className="mt-3 text-xs font-semibold text-zinc-200">{draft.rulesSubtitle}</p>
             <div className="mt-3 space-y-4 text-[11px] leading-relaxed text-zinc-100">
               {draft.rulesCategories.filter((category) => category.enabled !== false).map((category, index) => (
                 <section key={category.id}>
-                  <h4 className="font-extrabold text-white">{category.emoji || "💜"} {index + 1}. {category.name}</h4>
-                  {category.description ? <p className="mt-1 border-l border-zinc-500 pl-2 text-zinc-200">{category.description}</p> : null}
-                  <ul className="mt-2 space-y-1 border-l border-zinc-500 pl-2">
+                  <h4 className="font-extrabold text-white">{category.emoji || "❯"} {index + 1}. {category.name}</h4>
+                  {category.description ? <p className="mt-1 font-bold text-zinc-100">{category.description}</p> : null}
+                  <ul className="mt-2 space-y-1 border-l-2 border-zinc-500 pl-3 text-zinc-200">
                     {category.rules.map((rule, ruleIndex) => (
-                      <li key={`${category.id}-${ruleIndex}`}>• {rule}</li>
+                      <li key={`${category.id}-${ruleIndex}`}>- {rule}</li>
                     ))}
                   </ul>
                 </section>

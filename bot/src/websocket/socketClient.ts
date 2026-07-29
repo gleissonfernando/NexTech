@@ -285,6 +285,35 @@ export type PaymentApprovedEvent = {
   productPrice: number;
 };
 
+export type ContractBillingDmEvent = {
+  botId?: string | null;
+  contractId: string | null;
+  dashboardUrl: string;
+  event: "invoice_created" | "due_reminder" | "due_today" | "overdue" | "payment_confirmed" | "contract_activated" | "upgrade_confirmed" | "qr_expired" | "payment_failed";
+  invoice: {
+    amountInCents: number;
+    currency: "BRL";
+    dueDate: string | null;
+    id: string;
+    pixCopyPaste: string | null;
+    pixExpiresAt: string | null;
+    pixQrCode: string | null;
+    status: string;
+  } | null;
+  items: Array<{ name: string; quantity: number; status: string }>;
+  planName: string;
+  serverId: string | null;
+  serverName: string | null;
+  serviceName: string;
+  user: {
+    discordAvatar: string | null;
+    discordDisplayName: string | null;
+    discordUserId: string;
+    discordUsername: string | null;
+    email: string | null;
+  };
+};
+
 export type ManualRegistrationPanelPublishEvent = {
   botId?: string | null;
   guildId: string;
@@ -522,6 +551,7 @@ export class BotSocketClient {
   private ztkWebhookManageHandler: ((payload: ZtkWebhookManageEvent, ack?: ZtkWebhookManageAck) => void) | null = null;
   private nexTechSalePaidHandler: ((payload: NexTechSalePaidEvent) => void) | null = null;
   private paymentApprovedHandler: ((payload: PaymentApprovedEvent) => void) | null = null;
+  private contractBillingDmHandler: ((payload: ContractBillingDmEvent) => void) | null = null;
   private manualRegistrationPanelPublishHandler: ((payload: ManualRegistrationPanelPublishEvent) => void) | null = null;
   private manualRegistrationExecuteHandler: ((payload: ManualRegistrationExecuteEvent) => void) | null = null;
   private manualRegistrationRemoveHandler: ((payload: ManualRegistrationRemoveEvent) => void) | null = null;
@@ -660,6 +690,7 @@ export class BotSocketClient {
     if (this.ztkWebhookManageHandler) this.socket.on("ztk-webhook:webhook_manage", this.ztkWebhookManageHandler);
     if (this.nexTechSalePaidHandler) this.socket.on("nex-tech-sales:sale_paid", this.nexTechSalePaidHandler);
     if (this.paymentApprovedHandler) this.socket.on("payment:approved", this.paymentApprovedHandler);
+    if (this.contractBillingDmHandler) this.socket.on("contract-billing:send_dm", this.contractBillingDmHandler);
 
     if (this.manualRegistrationPanelPublishHandler) {
       this.socket.on("manual-registration:panel_publish", this.manualRegistrationPanelPublishHandler);
@@ -991,6 +1022,12 @@ export class BotSocketClient {
     this.paymentApprovedHandler = handler;
     this.socket?.off("payment:approved");
     this.socket?.on("payment:approved", handler);
+  }
+
+  onContractBillingDm(handler: (payload: ContractBillingDmEvent) => void) {
+    this.contractBillingDmHandler = handler;
+    this.socket?.off("contract-billing:send_dm");
+    this.socket?.on("contract-billing:send_dm", handler);
   }
 
   onManualRegistrationPanelPublish(handler: (payload: ManualRegistrationPanelPublishEvent) => void) {

@@ -268,7 +268,7 @@ function pixPaymentOrderIdFromPath(path: string) {
   }
 }
 
-function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance" {
+function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance" {
   if (path.startsWith("/dev/bots-conectados")) {
     return "connected";
   }
@@ -291,6 +291,10 @@ function devViewFromPath(path: string): "bots" | "connected" | "bot-menu" | "clo
 
   if (path.startsWith("/dev/planos")) {
     return "plans";
+  }
+
+  if (path.startsWith("/dev/mensalidades")) {
+    return "monthly";
   }
 
   if (path.startsWith("/dev/monitoramento")) {

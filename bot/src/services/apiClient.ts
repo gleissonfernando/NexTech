@@ -4588,6 +4588,16 @@ export class ApiClient {
     return data;
   }
 
+  async reportContractBillingDmResult(input: {
+    error?: string | null;
+    invoiceId?: string | null;
+    notificationType?: string | null;
+    ok: boolean;
+    userId?: string | null;
+  }) {
+    await this.http.post("/contracts/bot/dm-result", input);
+  }
+
   async recordEmojiCloneJob(input: {
     guildId: string;
     userId: string;
