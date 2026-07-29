@@ -48,6 +48,40 @@ test("converte plano policia basico em modulos essenciais", () => {
   );
 });
 
+test("converte plano faccao basico sem encomendas e financeiro", () => {
+  assert.deepEqual(
+    moduleIdsFromPlanEntitlementKeys([
+      "fivem.faction_basic",
+      "discord.logs",
+      "discord.dashboard"
+    ]),
+    [
+      "fivem",
+      "fivem-factions",
+      "fivem-absences",
+      "fivem-actions",
+      "manual-registration",
+      "logs"
+    ]
+  );
+});
+
+test("converte plano protecao basico sem permissoes avancadas e selfbot", () => {
+  assert.deepEqual(
+    moduleIdsFromPlanEntitlementKeys([
+      "security.role_protection_basic",
+      "security.anti_ban",
+      "discord.logs"
+    ]),
+    [
+      "moderation",
+      "account-age-security",
+      "anti-ban",
+      "logs"
+    ]
+  );
+});
+
 test("expande chaves antigas sem remover modulos ja validos", () => {
   assert.deepEqual(
     expandModuleAccessKeys(["fivem.police", "safe-bot"]),

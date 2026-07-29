@@ -244,14 +244,16 @@ const FEATURE_SEEDS: SavePlanFeatureInput[] = [
   { category: "fivem", key: "fivem.hierarchy", name: "Hierarquia FiveM", description: "Paineis de hierarquia e cargos por facção/corporacao.", order: 60 },
   { category: "fivem", key: "fivem.police_basic", name: "Polícia RP Básico", description: "Recursos essenciais de corporação, ações, QRU e ponto.", order: 61 },
   { category: "fivem", key: "fivem.police", name: "Polícia RP Completo", description: "Recursos completos para corporacoes, patentes, metas e plantao.", order: 62 },
-  { category: "fivem", key: "fivem.faction", name: "Facção RP", description: "Recursos para facções, membros, metas e estoque.", order: 63 },
+  { category: "fivem", key: "fivem.faction_basic", name: "Facção RP Básico", description: "Recursos essenciais para facções, membros e ações.", order: 63 },
+  { category: "fivem", key: "fivem.faction", name: "Facção RP Completo", description: "Recursos completos para facções, membros, metas e estoque.", order: 64 },
   { category: "discord", key: "discord.logs", name: "Logs Discord", description: "Logs do site e do Discord em tempo real.", order: 70 },
   { category: "discord", key: "discord.tickets", name: "Tickets", description: "Atendimento, transcripts e paineis de suporte.", order: 80 },
   { category: "discord", key: "discord.courses", name: "Cursos", description: "Cursos, provas e publicacoes para equipes.", order: 90 },
   { category: "discord", key: "discord.dashboard", name: "Dashboard", description: "Painel web para configuração e acompanhamento.", order: 91 },
   { category: "security", key: "security.anti_ban", name: "Anti Ban", description: "Proteção contra ações administrativas indevidas.", order: 100 },
   { category: "security", key: "security.self_bot", name: "SelfBot Protection", description: "Deteccao e mitigacao de selfbots.", order: 110 },
-  { category: "security", key: "security.role_protection", name: "Proteção de cargos", description: "Proteção contra alterações indevidas de cargos e permissões.", order: 111 },
+  { category: "security", key: "security.role_protection_basic", name: "Proteção de cargos básica", description: "Proteção essencial contra alterações indevidas.", order: 111 },
+  { category: "security", key: "security.role_protection", name: "Proteção de cargos completa", description: "Proteção completa contra alterações indevidas de cargos e permissões.", order: 112 },
   { category: "support", key: "support.priority", name: "Suporte prioritario", description: "Atendimento prioritario para operação critica.", order: 120 },
   { category: "support", key: "support.24h", name: "Atendimento 24 horas", description: "Atendimento prioritario 24 horas para plano vitalicio.", order: 121 },
   { category: "billing", key: "billing.lifetime_license", name: "Licença vitalicia", description: "Licença permanente do módulo adquirido.", order: 130 },
@@ -339,7 +341,7 @@ const PLAN_SEEDS: SavePlanInput[] = [
     botLimit: 1,
     color: "#FFEA70",
     description: "Plano básico para sistema de Facção RP. Hospedagem não inclusa.",
-    entitlements: entitlementsFor(["fivem.faction", "fivem.orders", "discord.logs", "discord.dashboard"]),
+    entitlements: entitlementsFor(["fivem.faction_basic", "discord.logs", "discord.dashboard"]),
     guildLimit: 1,
     icon: "users",
     isActive: true,
@@ -376,7 +378,7 @@ const PLAN_SEEDS: SavePlanInput[] = [
     botLimit: 1,
     color: "#8B5CF6",
     description: "Plano básico para proteção de cargos e ações administrativas. Hospedagem não inclusa.",
-    entitlements: entitlementsFor(["security.role_protection", "security.anti_ban", "discord.logs"]),
+    entitlements: entitlementsFor(["security.role_protection_basic", "security.anti_ban", "discord.logs"]),
     guildLimit: 1,
     icon: "shield",
     isActive: true,
@@ -552,6 +554,24 @@ export async function ensurePlanSeed() {
     {
       $set: {
         entitlements: entitlementsFor(["fivem.police_basic", "fivem.hierarchy", "discord.logs", "discord.dashboard"]),
+        updatedAt: now
+      }
+    }
+  );
+  await plans.updateOne(
+    { slug: "faccao-rp-basico", "entitlements.key": "fivem.faction" },
+    {
+      $set: {
+        entitlements: entitlementsFor(["fivem.faction_basic", "discord.logs", "discord.dashboard"]),
+        updatedAt: now
+      }
+    }
+  );
+  await plans.updateOne(
+    { slug: "protecao-cargos-basico", "entitlements.key": "security.role_protection" },
+    {
+      $set: {
+        entitlements: entitlementsFor(["security.role_protection_basic", "security.anti_ban", "discord.logs"]),
         updatedAt: now
       }
     }

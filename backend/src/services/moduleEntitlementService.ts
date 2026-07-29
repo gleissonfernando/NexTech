@@ -37,6 +37,13 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
     "police-time-clock",
     "auto-activity-clock"
   ],
+  "fivem.faction_basic": [
+    "fivem",
+    "fivem-factions",
+    "fivem-absences",
+    "fivem-actions",
+    "manual-registration"
+  ],
   "fivem.faction": [
     "fivem",
     "fivem-factions",
@@ -53,6 +60,7 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
   "discord.courses": ["courses"],
   "security.anti_ban": ["anti-ban"],
   "security.self_bot": ["safe-bot"],
+  "security.role_protection_basic": ["moderation", "account-age-security"],
   "security.role_protection": ["moderation", "advanced-permissions", "account-age-security"]
 };
 
