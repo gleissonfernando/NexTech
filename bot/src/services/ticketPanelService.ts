@@ -194,7 +194,7 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
   if (channelId) {
     const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
     if (channel?.isTextBased() && "send" in channel) {
-      await (channel as TextChannel).send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id));
+      await (channel as TextChannel).send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null));
     }
     await context.api.recordTicketEvent(ticket.ticket.id, {
       authorId: interaction.user.id,
@@ -523,6 +523,9 @@ async function publishConfiguredTicketPanelUnlocked(client: Client, context: Bot
 
 async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption) {
   const categoryId = option.categoryId ?? settings.ticketCategoryId;
+  const mentionRoleId = option.mentionRoleId && guild.roles.cache.has(option.mentionRoleId) && option.mentionRoleId !== guild.roles.everyone.id
+    ? option.mentionRoleId
+    : null;
 
   if (!categoryId || !guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     return null;
@@ -551,14 +554,18 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
       {
         id: guild.members.me.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory]
-      }
+      },
+      ...(mentionRoleId ? [{
+        id: mentionRoleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+      }] : [])
     ],
     reason: `Ticket aberto por ${openerId}: ${option.label}`,
     type: ChannelType.GuildText
   }).then((channel) => channel as TextChannel);
 }
 
-function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento") {
+function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null) {
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}claim:${ticketId}`).setEmoji(systemComponentEmoji("homem")).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}add:${ticketId}`).setEmoji(systemComponentEmoji("acessar")).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
@@ -571,11 +578,13 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
       .setPlaceholder("Alterar Status")
       .addOptions(STATUS_OPTIONS.map((item) => ({ label: item.label, value: item.value })))
   );
+  const mentionLine = mentionRoleId ? `<@&${mentionRoleId}>` : "";
 
   return {
-    allowedMentions: { users: [openerId, responsibleUserId].filter(Boolean) as string[] },
+    allowedMentions: { roles: mentionRoleId ? [mentionRoleId] : [], users: [openerId, responsibleUserId].filter(Boolean) as string[] },
     components: [actions, statusMenu],
     content: [
+      mentionLine,
       "## Ticket de Denúncia Aberto",
       `Categoria: ${category}`,
       `Autor: <@${openerId}>`,
@@ -584,7 +593,7 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
       `ID do Ticket: #${ticketId}`,
       "",
       "Explique sua denúncia com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
-    ].join("\n")
+    ].filter(Boolean).join("\n")
   };
 }
 

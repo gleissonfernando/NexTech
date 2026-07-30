@@ -415,6 +415,7 @@ export type TicketPanelOption = {
   emoji: string | null;
   enabled: boolean;
   label: string;
+  mentionRoleId: string | null;
   value: string;
 };
 
@@ -3573,6 +3574,7 @@ export type SalesTicketType = {
   emoji: string | null;
   guildId: string;
   initialMessage: string;
+  mentionRoleId: string | null;
   name: string;
   order: number;
   supportRoleIds: string[];
@@ -4178,6 +4180,7 @@ export type SaveSalesTicketTypePayload = {
   description: string;
   emoji?: string | null;
   initialMessage: string;
+  mentionRoleId: string | null;
   name: string;
   order: number;
   supportRoleIds: string[];

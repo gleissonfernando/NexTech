@@ -65,6 +65,7 @@ export type SaveSalesTicketTypeInput = Partial<Pick<
   | "description"
   | "emoji"
   | "initialMessage"
+  | "mentionRoleId"
   | "name"
   | "order"
   | "supportRoleIds"
@@ -176,6 +177,7 @@ export async function saveSalesTicketType(botId: string, guildId: string, typeId
     emoji: input.emoji ?? existing?.emoji ?? null,
     guildId,
     initialMessage: limitText(input.initialMessage ?? existing?.initialMessage ?? DEFAULT_INITIAL_MESSAGE, 1500),
+    mentionRoleId: input.mentionRoleId === undefined ? existing?.mentionRoleId ?? null : input.mentionRoleId,
     name: limitText(input.name ?? existing?.name ?? "Atendimento", 80),
     order: input.order ?? existing?.order ?? 0,
     ownerUserId: existing?.ownerUserId ?? actorId,
@@ -440,6 +442,7 @@ export function toTypeDto(type: MongoSalesTicketType): SalesTicketTypeDto {
   return {
     ...type,
     id: type._id,
+    mentionRoleId: type.mentionRoleId ?? null,
     createdAt: type.createdAt.toISOString(),
     updatedAt: type.updatedAt.toISOString()
   };

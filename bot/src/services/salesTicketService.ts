@@ -147,11 +147,12 @@ async function createTicketChannel(guild: Guild, settings: SalesTicketSettings, 
 
 function buildTicketOverwrites(guild: Guild, type: SalesTicketType, userId: string) {
   const botUserId = guild.members.me?.id ?? guild.client.user.id;
+  const ticketRoleIds = [...new Set([...type.supportRoleIds, type.mentionRoleId].filter((id): id is string => Boolean(id)))];
   return [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] },
     { id: botUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] },
-    ...type.supportRoleIds
+    ...ticketRoleIds
       .filter((id) => guild.roles.cache.has(id) && id !== guild.roles.everyone.id)
       .map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }))
   ];
@@ -165,7 +166,8 @@ function createTicketMessage(settings: SalesTicketSettings, type: SalesTicketTyp
     new ButtonBuilder().setCustomId(`${PREFIX}:remove_member:${ticket.id}`).setEmoji("➖").setLabel("Remover Membro").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${PREFIX}:close:${ticket.id}`).setEmoji("🔒").setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
   );
-  const supportMentions = type.supportRoleIds.map((id) => `<@&${id}>`).join(" ");
+  const mentionRoleId = type.mentionRoleId;
+  const supportMention = mentionRoleId ? `<@&${mentionRoleId}>` : "";
   const payload = renderComponentsV2Panel({
     accentColor: parseColor(settings.panelColor),
     actions: [row],
@@ -182,8 +184,8 @@ function createTicketMessage(settings: SalesTicketSettings, type: SalesTicketTyp
 
   return {
     ...payload,
-    allowedMentions: { parse: [], roles: type.supportRoleIds, users: [userId] },
-    content: [`<@${userId}>`, supportMentions].filter(Boolean).join(" ")
+    allowedMentions: { parse: [], roles: mentionRoleId ? [mentionRoleId] : [], users: [userId] },
+    content: [`<@${userId}>`, supportMention].filter(Boolean).join(" ")
   };
 }
 

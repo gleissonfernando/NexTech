@@ -166,6 +166,7 @@ export type TicketPanelOptionDto = {
   emoji: string | null;
   enabled: boolean;
   label: string;
+  mentionRoleId: string | null;
   value: string;
 };
 
@@ -611,6 +612,7 @@ const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
     emoji: fixedSystemEmojiText("prancheta"),
     enabled: true,
     label: "Suporte",
+    mentionRoleId: null,
     value: "suporte"
   }
 ];
@@ -1890,6 +1892,7 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
         emoji: normalizeNullableSystemEmojiText(record.emoji),
         enabled: record.enabled !== false,
         label,
+        mentionRoleId: normalizeSnowflake(String(record.mentionRoleId ?? "")),
         value
       };
     })

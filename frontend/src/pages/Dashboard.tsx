@@ -8095,6 +8095,7 @@ function TicketPanelConfigurator({
   const [error, setError] = useState<string | null>(null);
   const [channels, setChannels] = useState<GuildLiveOptions["channels"]>([]);
   const [categories, setCategories] = useState<NonNullable<GuildLiveOptions["categories"]>>([]);
+  const [roles, setRoles] = useState<GuildLiveOptions["roles"]>([]);
   const [applicationEmojis, setApplicationEmojis] = useState<ApplicationEmojiItem[]>([]);
   const disabled = !guild || !settings || !canManage || saving || publishing;
 
@@ -8118,6 +8119,7 @@ function TicketPanelConfigurator({
     if (!guild) {
       setChannels([]);
       setCategories([]);
+      setRoles([]);
       return;
     }
 
@@ -8127,12 +8129,14 @@ function TicketPanelConfigurator({
         if (active) {
           setChannels(data.channels ?? []);
           setCategories(data.categories ?? []);
+          setRoles(data.roles ?? []);
         }
       })
       .catch(() => {
         if (active) {
           setChannels([]);
           setCategories([]);
+          setRoles([]);
         }
       });
 
@@ -8181,6 +8185,7 @@ function TicketPanelConfigurator({
           emoji: PANEL_EMOJIS.prancheta,
           enabled: true,
           label: `Atendimento ${current.ticketPanelOptions.length + 1}`,
+          mentionRoleId: null,
           value: `atendimento-${current.ticketPanelOptions.length + 1}`
         }
       ].slice(0, 25)
@@ -8330,7 +8335,7 @@ function TicketPanelConfigurator({
           </div>
 
           {draft.ticketPanelOptions.map((option, index) => (
-            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_180px_120px_160px_auto]" key={`${option.value}-${index}`}>
+            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_180px_180px_120px_160px_auto]" key={`${option.value}-${index}`}>
               <TicketField disabled={disabled} label="Nome" onChange={(value) => updateOption(index, { label: value, value: slugTicketOption(value, index) })} value={option.label} />
               <TicketField disabled={disabled} label="Descrição" onChange={(value) => updateOption(index, { description: value })} value={option.description ?? ""} />
               <label className="block text-xs font-medium text-zinc-400">
@@ -8347,6 +8352,23 @@ function TicketPanelConfigurator({
                   ) : null}
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-zinc-400">
+                Cargo mencionado
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
+                  disabled={disabled}
+                  onChange={(event) => updateOption(index, { mentionRoleId: event.target.value || null })}
+                  value={option.mentionRoleId ?? ""}
+                >
+                  <option value="">Não mencionar</option>
+                  {option.mentionRoleId && !roles.some((role) => role.id === option.mentionRoleId) ? (
+                    <option value={option.mentionRoleId}>Cargo atual ({option.mentionRoleId})</option>
+                  ) : null}
+                  {roles.filter((role) => role.id !== guild?.id).map((role) => (
+                    <option key={role.id} value={role.id}>@{role.name}</option>
                   ))}
                 </select>
               </label>
@@ -8914,6 +8936,7 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
       emoji: PANEL_EMOJIS.prancheta,
       enabled: true,
       label: "Suporte",
+      mentionRoleId: null,
       value: "suporte"
     }]).map(normalizeTicketOptionDraft)
   };
@@ -8931,6 +8954,7 @@ function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): T
     emoji: option.emoji?.trim() || null,
     enabled: option.enabled !== false,
     label,
+    mentionRoleId: option.mentionRoleId?.trim() || null,
     value: option.value?.trim() || slugTicketOption(label, index)
   };
 }

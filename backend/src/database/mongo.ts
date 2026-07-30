@@ -108,6 +108,7 @@ export type MongoGuildSettings = {
     emoji?: string | null;
     enabled?: boolean;
     label: string;
+    mentionRoleId?: string | null;
     value: string;
   }>;
   reportSystem?: Record<string, unknown>;
@@ -3316,6 +3317,7 @@ export type MongoSalesTicketType = {
   emoji: string | null;
   description: string;
   categoryId: string | null;
+  mentionRoleId: string | null;
   supportRoleIds: string[];
   initialMessage: string;
   channelNamePattern: string;

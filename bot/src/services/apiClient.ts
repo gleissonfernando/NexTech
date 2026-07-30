@@ -2386,6 +2386,7 @@ export type SalesTicketType = {
   emoji: string | null;
   guildId: string;
   initialMessage: string;
+  mentionRoleId: string | null;
   name: string;
   order: number;
   supportRoleIds: string[];

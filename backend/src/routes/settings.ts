@@ -111,6 +111,7 @@ const settingsSchema = z.object({
     emoji: z.string().max(80).nullable().optional().default(null),
     enabled: z.boolean().optional().default(true),
     label: z.string().min(1).max(80),
+    mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional().default(null),
     value: z.string().min(1).max(80)
   })).max(25).optional(),
   reportSystem: z.object({
@@ -1495,6 +1496,17 @@ async function validateGuildResources(
     const categoryChecks = await Promise.all([...new Set(ticketPanelCategoryIds)].map((categoryId) => isGuildCategoryChannel(guildId, categoryId, botToken)));
     if (!categoryChecks.every(Boolean)) {
       throw createSettingsError("Uma das categorias temporárias do painel de tickets não pertence a este servidor.");
+    }
+  }
+
+  const ticketPanelMentionRoleIds = (input.ticketPanelOptions ?? [])
+    .map((option) => option.mentionRoleId)
+    .filter((roleId): roleId is string => Boolean(roleId));
+
+  if (ticketPanelMentionRoleIds.length) {
+    const roleChecks = await Promise.all([...new Set(ticketPanelMentionRoleIds)].map((roleId) => areGuildRoles(guildId, [roleId], botToken)));
+    if (!roleChecks.every(Boolean)) {
+      throw createSettingsError("Um dos cargos mencionados no painel de tickets não pertence a este servidor.");
     }
   }
 

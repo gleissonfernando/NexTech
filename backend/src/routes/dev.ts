@@ -254,6 +254,7 @@ const salesTicketTypeSchema = z.object({
   description: z.string().min(1).max(100).default("Abrir atendimento de vendas."),
   emoji: z.string().max(32).nullable().optional().or(z.literal("")),
   initialMessage: z.string().min(1).max(1500).default("Olá {usuario}\n\nSeu atendimento foi iniciado.\nAguarde um membro da equipe."),
+  mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional().or(z.literal("")),
   name: z.string().min(2).max(80),
   order: z.coerce.number().int().min(0).max(500).default(0),
   supportRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(20).default([]),
@@ -1668,7 +1669,8 @@ devRouter.post("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types", asyn
     const type = await saveSalesTicketType(req.params.botId, req.params.guildId, null, {
       ...input,
       categoryId: input.categoryId || null,
-      emoji: input.emoji || null
+      emoji: input.emoji || null,
+      mentionRoleId: input.mentionRoleId || null
     }, auth.user.discordId);
 
     await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_create", `Tipo de ticket de vendas criado: ${type.name}.`);
@@ -1695,7 +1697,8 @@ devRouter.patch("/bots/:botId/guilds/:guildId/nex-tech-sales/tickets/types/:type
     const type = await saveSalesTicketType(req.params.botId, req.params.guildId, req.params.typeId, {
       ...input,
       categoryId: input.categoryId || null,
-      emoji: input.emoji || null
+      emoji: input.emoji || null,
+      mentionRoleId: input.mentionRoleId || null
     }, auth.user.discordId);
 
     await writeDevBotAudit(auth, req.params.guildId, req.params.botId, "sales_ticket_type_update", `Tipo de ticket de vendas atualizado: ${type.name}.`);

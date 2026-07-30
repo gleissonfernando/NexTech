@@ -4142,6 +4142,7 @@ const defaultSalesTicketTypeForm: SaveSalesTicketTypePayload = {
   description: "Abrir atendimento de vendas.",
   emoji: "🎫",
   initialMessage: "Olá {usuario}\n\nSeu atendimento foi iniciado.\nAguarde um membro da equipe.",
+  mentionRoleId: null,
   name: "Suporte",
   order: 0,
   supportRoleIds: [],
@@ -5946,6 +5947,7 @@ function SalesTicketsWorkspace({ bot, enabled, guildId }: { bot: DevBot; enabled
       description: type.description,
       emoji: type.emoji ?? "",
       initialMessage: type.initialMessage,
+      mentionRoleId: type.mentionRoleId,
       name: type.name,
       order: type.order,
       supportRoleIds: type.supportRoleIds,
@@ -5998,6 +6000,7 @@ function SalesTicketsWorkspace({ bot, enabled, guildId }: { bot: DevBot; enabled
                   <DevInput label="Descrição do select" onChange={(value) => setTypeForm((current) => ({ ...current, description: value }))} value={typeForm.description} />
                   <DevInput label="Categoria Discord" onChange={(value) => setTypeForm((current) => ({ ...current, categoryId: value.replace(/\D/g, "") || null }))} value={typeForm.categoryId ?? ""} />
                   <DevInput label="Cargos com acesso (,)" onChange={(value) => setTypeForm((current) => ({ ...current, supportRoleIds: value.split(",").map((item) => item.replace(/\D/g, "")).filter(Boolean) }))} value={typeForm.supportRoleIds.join(",")} />
+                  <DevInput label="Cargo mencionado ao abrir" onChange={(value) => setTypeForm((current) => ({ ...current, mentionRoleId: value.replace(/\D/g, "") || null }))} value={typeForm.mentionRoleId ?? ""} />
                   <DevInput label="Nome do canal" onChange={(value) => setTypeForm((current) => ({ ...current, channelNamePattern: value }))} value={typeForm.channelNamePattern} />
                   <DevInput inputMode="numeric" label="Limite por usuário (0 sem limite)" onChange={(value) => setTypeForm((current) => ({ ...current, ticketLimit: Number(value.replace(/\D/g, "")) || null }))} value={String(typeForm.ticketLimit ?? 0)} />
                   <DevInput inputMode="numeric" label="Ordem" onChange={(value) => setTypeForm((current) => ({ ...current, order: Number(value.replace(/\D/g, "")) || 0 }))} value={String(typeForm.order)} />
@@ -6216,6 +6219,7 @@ function sanitizeSalesTicketType(form: SaveSalesTicketTypePayload): SaveSalesTic
     ...form,
     categoryId: form.categoryId || null,
     emoji: form.emoji || null,
+    mentionRoleId: form.mentionRoleId ? form.mentionRoleId.replace(/\D/g, "") : null,
     supportRoleIds: [...new Set(form.supportRoleIds.map((item) => item.replace(/\D/g, "")).filter(Boolean))],
     ticketLimit: form.ticketLimit && form.ticketLimit > 0 ? form.ticketLimit : null
   };

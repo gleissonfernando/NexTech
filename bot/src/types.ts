@@ -187,6 +187,7 @@ export type TicketPanelOption = {
   emoji: string | null;
   enabled: boolean;
   label: string;
+  mentionRoleId?: string | null;
   value: string;
 };
 
