@@ -17,11 +17,17 @@ export async function resolveRequestBotId(req: Request) {
   }
 
   const headerBotId = req.header("x-dashboard-bot-id")?.trim();
+  const clientId = req.header("x-discord-bot-client-id")?.trim();
+  const hasValidClientId = Boolean(clientId && /^\d{5,32}$/.test(clientId));
 
   if (headerBotId) {
     const bot = await getDevBot(headerBotId).catch(() => null);
 
     if (bot) {
+      if (!isRegisteredBotIdentityMatch(bot.clientId, clientId)) {
+        return null;
+      }
+
       return bot.id;
     }
 
@@ -29,16 +35,25 @@ export async function resolveRequestBotId(req: Request) {
       const botId = await findDevBotIdByClientId(headerBotId).catch(() => null);
 
       if (botId) {
+        if (!isRegisteredBotIdentityMatch(headerBotId, clientId)) {
+          return null;
+        }
+
         return botId;
       }
     }
   }
 
-  const clientId = req.header("x-discord-bot-client-id")?.trim();
-
-  if (!clientId || !/^\d{5,32}$/.test(clientId)) {
+  if (!hasValidClientId || !clientId) {
     return null;
   }
 
   return findDevBotIdByClientId(clientId).catch(() => null);
+}
+
+export function isRegisteredBotIdentityMatch(registeredClientId: string | null | undefined, requestClientId: string | null | undefined) {
+  const normalizedRegisteredClientId = registeredClientId?.trim() ?? "";
+  const normalizedRequestClientId = requestClientId?.trim() ?? "";
+
+  return !normalizedRequestClientId || normalizedRegisteredClientId === normalizedRequestClientId;
 }
