@@ -132,13 +132,12 @@ export async function createMemberPanelPayload(
   const customSections = normalizePanelSections(member, input.sections, variables);
 
   if (title) {
-    contentBlocks.push([
-      `# ${title}`,
-      subtitle ? `**${subtitle}**` : null,
-      description || null
-    ].filter(Boolean).join("\n"));
+    contentBlocks.push(`# ${title}`);
+    if (subtitle || description) {
+      contentBlocks.push([subtitle ? `**${subtitle}**` : null, description || null].filter(Boolean).join("\n\n"));
+    }
   } else if (subtitle || description) {
-    contentBlocks.push([subtitle ? `**${subtitle}**` : null, description || null].filter(Boolean).join("\n"));
+    contentBlocks.push([subtitle ? `**${subtitle}**` : null, description || null].filter(Boolean).join("\n\n"));
   }
 
   if (customSections.length) {

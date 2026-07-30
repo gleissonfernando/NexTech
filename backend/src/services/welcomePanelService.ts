@@ -268,7 +268,8 @@ function createMemberPanelPayload(
   }
 
   const contentBlocks = [
-    title ? [`# ${title}`, subtitle ? `**${subtitle}**` : "", description].filter(Boolean).join("\n") : description,
+    title ? `# ${title}` : "",
+    subtitle || description ? [subtitle ? `**${subtitle}**` : "", description].filter(Boolean).join("\n\n") : "",
     ...customSections.flatMap((section, index) => [
       [`### ${[section.emoji, section.title].filter(Boolean).join(" ")}`, section.description].filter(Boolean).join("\n"),
       index < customSections.length - 1 ? "__separator__" : ""
