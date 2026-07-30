@@ -490,7 +490,7 @@ async function fallbackPublicNexTechInvitePage(rawCode: string): Promise<PublicN
     },
     redirectUrl: FALLBACK_OFFICIAL_INVITE.inviteUrl,
     slug: FALLBACK_OFFICIAL_INVITE.customSlug,
-    valid: Boolean(discord)
+    valid: true
   };
 }
 
