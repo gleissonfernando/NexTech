@@ -288,7 +288,18 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
         ) : null}
 
         {activeView === "nextech" ? (
-          <DevNexTechHub onChangeView={handleChangeView} />
+          <>
+            <DevNexTechHub onChangeView={handleChangeView} />
+            <DevNexTechInvitesPanel
+              bots={profile.bots}
+              guilds={profile.guilds}
+              onBotUpdated={handleBotUpdated}
+              onSelectBot={setSelectedBotId}
+              onSelectGuild={setSelectedGuildId}
+              selectedBotId={selectedBotId}
+              selectedGuildId={selectedGuildId}
+            />
+          </>
         ) : null}
 
         {activeView === "sales" ? (
