@@ -12,6 +12,7 @@ import type { DashboardGuild, GuildCategoryOption, GuildChannelOption, PriceTabl
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
+import { PanelMediaUrlField, dashboardMediaUrl } from "../panels/PanelMediaUrlField";
 
 type Props = {
   botId: string | null;
@@ -77,6 +78,14 @@ const PRICE_TABLE_PRESETS: PriceTablePreset[] = [
     title: "TABELA DE PREÇOS SEGURANÇA - NexTech"
   }
 ];
+
+const PANEL_EMOJIS = {
+  caixa: "<:caixa:1525682180578214021>",
+  engrenagem: "<:engrenagem:1525682204577767555>",
+  interrogacao: "<:interrogacao:1525682223347527682>",
+  prancheta: "<:pranchetaaa:1525682920789114940>",
+  trofeu: "<:trofeu:1525682256910098432>"
+} as const;
 
 export function PriceTablesPanel({ botId, canManage, guild }: Props) {
   const [tables, setTables] = useState<PriceTable[]>([]);
@@ -274,7 +283,7 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
                 <CategorySelect categories={options.categories} disabled={!canManage} label="Categoria de atendimento" onChange={(value) => patch({ supportCategoryId: value })} value={draft.supportCategoryId ?? null} />
                 <Field label="Cargos da equipe (IDs separados por virgula)" value={(draft.supportRoleIds ?? []).join(", ")} onChange={(value) => patch({ supportRoleIds: value.split(",").map((id) => id.trim()).filter(Boolean) })} disabled={!canManage} />
                 <ChannelSelect channels={options.channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} value={draft.logChannelId ?? null} />
-                <Field label="URL do banner" value={draft.imageUrl ?? ""} onChange={(value) => patch({ imageUrl: value || null })} disabled={!canManage} />
+                <PanelMediaUrlField botId={botId} disabled={!canManage || saving} guildId={guild.id} label="URL do banner" onChange={(value) => patch({ imageUrl: value || null })} onMessage={setMessage} panelId={`price-tables-${selectedId ?? "draft"}-banner`} value={draft.imageUrl ?? ""} />
                 <Field label="Cor destaque" value={draft.color ?? "#FFD500"} onChange={(value) => patch({ color: value })} disabled={!canManage} />
               </div>
               <Textarea label="Descrição" value={draft.description ?? ""} onChange={(value) => patch({ description: value })} disabled={!canManage} />
@@ -354,16 +363,16 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
             </CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#31323a]">
-                {preview.imageUrl && preview.imagePosition !== "none" ? <img alt="" className="h-36 w-full object-cover" src={preview.imageUrl} /> : null}
+                {preview.imageUrl && preview.imagePosition !== "none" ? <img alt="" className="h-36 w-full object-cover" src={dashboardMediaUrl(preview.imageUrl)} /> : null}
                 <div className="space-y-4 border-l-4 border-[#9B35FF] p-4">
                   <div className="border-b border-white/10 pb-3">
-                    <h3 className="text-lg font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, "💜")} {preview.title}</h3>
+                    <h3 className="text-lg font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, PANEL_EMOJIS.caixa)} {preview.title}</h3>
                     <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-relaxed text-white">{preview.description}</p>
                   </div>
-                  <PreviewSection icon={displayEmoji(preview.panelEmojis.products, "💜")} title={preview.panelSections.includedTitle} lines={preview.panelSections.includedItems.map((item) => `- ${item}`)} />
-                  <PreviewSection icon={displayEmoji(preview.panelEmojis.systems, "🛡️")} title={preview.panelSections.systemsTitle} lines={preview.panelSections.systemsText.split(/\r?\n/)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.products, PANEL_EMOJIS.caixa)} title={preview.panelSections.includedTitle} lines={preview.panelSections.includedItems.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.systems, PANEL_EMOJIS.engrenagem)} title={preview.panelSections.systemsTitle} lines={preview.panelSections.systemsText.split(/\r?\n/)} />
                   <div className="space-y-2">
-                    <p className="text-sm font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, "💜")} Planos</p>
+                    <p className="text-sm font-extrabold text-white">{displayEmoji(preview.panelEmojis.products, PANEL_EMOJIS.caixa)} Planos</p>
                     {preview.items.filter((item) => item.active).sort((a, b) => a.order - b.order).map((item) => (
                       <div className={`border-l-4 py-1 pl-3 text-sm font-bold ${item.highlight ? "border-[#9B35FF] text-white" : "border-white/20 text-zinc-200"}`} key={item.id}>
                         <div className="flex items-start justify-between gap-3">
@@ -375,9 +384,9 @@ export function PriceTablesPanel({ botId, canManage, guild }: Props) {
                       </div>
                     ))}
                   </div>
-                  <PreviewSection icon={displayEmoji(preview.panelEmojis.advantages, "💎")} title={preview.panelSections.advantagesTitle} lines={preview.panelSections.advantages.map((item) => `- ${item}`)} />
-                  <PreviewSection icon={displayEmoji(preview.panelEmojis.support, "🌀")} title={preview.panelSections.supportTitle} lines={preview.panelSections.supportText.split(/\r?\n/)} />
-                  {preview.footerText ? <p className="border-t border-white/10 pt-3 text-xs font-bold italic text-white">{displayEmoji(preview.panelEmojis.support, "🌀")} {preview.footerText}</p> : null}
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.advantages, PANEL_EMOJIS.trofeu)} title={preview.panelSections.advantagesTitle} lines={preview.panelSections.advantages.map((item) => `- ${item}`)} />
+                  <PreviewSection icon={displayEmoji(preview.panelEmojis.support, PANEL_EMOJIS.interrogacao)} title={preview.panelSections.supportTitle} lines={preview.panelSections.supportText.split(/\r?\n/)} />
+                  {preview.footerText ? <p className="border-t border-white/10 pt-3 text-xs font-bold italic text-white">{displayEmoji(preview.panelEmojis.support, PANEL_EMOJIS.interrogacao)} {preview.footerText}</p> : null}
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -420,7 +429,7 @@ function CategorySelect({ categories, disabled, label, onChange, value }: { cate
       {label}
       <select className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-[#FFD500]/50" disabled={disabled} onChange={(event) => onChange(event.target.value || null)} value={value ?? ""}>
         <option value="">Selecionar categoria</option>
-        {categories.map((category) => <option key={category.id} value={category.id}>📁 {category.name}</option>)}
+        {categories.map((category) => <option key={category.id} value={category.id}>{PANEL_EMOJIS.prancheta} {category.name}</option>)}
       </select>
     </label>
   );
@@ -457,7 +466,6 @@ function lines(value: string) {
 function displayEmoji(value: string | null | undefined, fallback: string) {
   const normalized = value?.trim();
   if (!normalized) return fallback;
-  if (/^<a?:[^:]+:\d+>$/.test(normalized)) return fallback;
   return normalized;
 }
 
@@ -496,10 +504,10 @@ function presetPayload(preset: PriceTablePreset): SavePriceTablePayload {
     ],
     name: preset.name,
     panelEmojis: {
-      advantages: "💎",
-      products: "💜",
-      support: "🌀",
-      systems: "🛡️"
+      advantages: PANEL_EMOJIS.trofeu,
+      products: PANEL_EMOJIS.caixa,
+      support: PANEL_EMOJIS.interrogacao,
+      systems: PANEL_EMOJIS.engrenagem
     },
     panelSections: {
       advantages: [

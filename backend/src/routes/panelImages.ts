@@ -207,6 +207,10 @@ async function assertCanManage(user: AuthSessionUser, guildId: string, botId: st
 
 function moduleIdForPanel(panelId: string) {
   if (panelId === "manual-registration") return "manual-registration";
+  if (panelId === "manual-payments" || panelId.startsWith("manual-payments-")) return "manual-payments";
+  if (panelId === "panels" || panelId.startsWith("custom-panel-")) return "panels";
+  if (panelId === "price-tables" || panelId.startsWith("price-tables-")) return "price-tables";
+  if (panelId === "vehicle-abandonment" || panelId.startsWith("vehicle-abandonment-")) return "vehicle-abandonment";
   if (panelId === "courses") return "courses";
   if (panelId === "auto-activity-clock" || /^auto-activity-clock-banner-\d+$/i.test(panelId)) return "auto-activity-clock";
   if (panelId === "fivem-orders") return "fivem-orders";

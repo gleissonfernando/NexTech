@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Copy, Loader2, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { PanelMediaUrlField, dashboardMediaUrl } from "./PanelMediaUrlField";
 import {
   createCustomPanelApi,
   createCustomPanelCategoryApi,
@@ -36,7 +37,7 @@ const emptyDraft: Draft = {
   color: "#FFD500",
   components: [{ customId: "custom_panel_action", label: "Abrir", style: "secondary", type: "button" }],
   description: "Descrição do painel.",
-  emoji: "",
+  emoji: "<:pranchetaaa:1525682920789114940>",
   footerText: "",
   mentionRoleId: "",
   name: "Novo Painel",
@@ -58,6 +59,7 @@ export function CustomPanelsPanel({ botId, canManage, guild }: { botId: string |
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const uploadBasePanelId = draft.id ? `custom-panel-${draft.id}` : "custom-panel-draft";
 
   const activeCategoryId = selectedCategoryId || categories[0]?.id || "";
   const visiblePanels = useMemo(
@@ -345,8 +347,8 @@ export function CustomPanelsPanel({ botId, canManage, guild }: { botId: string |
               <option value="">Nenhum</option>
               {roles.map((role) => <option key={role.id} value={role.id}>@{role.name}</option>)}
             </SelectField>
-            <Field label="Thumbnail" onChange={(thumbnailUrl) => setDraft((current) => ({ ...current, thumbnailUrl }))} value={draft.thumbnailUrl ?? ""} />
-            <Field label="Banner" onChange={(bannerUrl) => setDraft((current) => ({ ...current, bannerUrl }))} value={draft.bannerUrl ?? ""} />
+            <PanelMediaUrlField accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" botId={activeBotId} disabled={!canManage || saving} guildId={guildId} label="Thumbnail" onChange={(thumbnailUrl) => setDraft((current) => ({ ...current, thumbnailUrl }))} onMessage={setStatus} panelId={`${uploadBasePanelId}-thumbnail`} value={draft.thumbnailUrl ?? ""} />
+            <PanelMediaUrlField botId={activeBotId} disabled={!canManage || saving} guildId={guildId} label="Banner" onChange={(bannerUrl) => setDraft((current) => ({ ...current, bannerUrl }))} onMessage={setStatus} panelId={`${uploadBasePanelId}-banner`} value={draft.bannerUrl ?? ""} />
             <Field label="Autor" onChange={(authorName) => setDraft((current) => ({ ...current, authorName }))} value={draft.authorName ?? ""} />
             <Field label="Rodapé" onChange={(footerText) => setDraft((current) => ({ ...current, footerText }))} value={draft.footerText ?? ""} />
           </div>
@@ -401,7 +403,7 @@ function CustomPanelPreview({ draft }: { draft: Draft }) {
             <p className="text-base font-bold text-white">{draft.emoji ? `${draft.emoji} ` : ""}{draft.name || "Painel"}</p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{draft.description || "Descrição do painel."}</p>
           </div>
-          {draft.thumbnailUrl ? <img alt="Thumbnail" className="h-20 w-20 rounded-md border border-zinc-800 object-cover" src={draft.thumbnailUrl} /> : null}
+          {draft.thumbnailUrl ? <img alt="Thumbnail" className="h-20 w-20 rounded-md border border-zinc-800 object-cover" src={dashboardMediaUrl(draft.thumbnailUrl)} /> : null}
         </div>
         {draft.bannerUrl ? <MediaPreview className="mt-4 block w-full rounded-md border border-zinc-800 object-contain" url={draft.bannerUrl} /> : null}
         {draft.beforeMessage ? <p className="mt-4 whitespace-pre-wrap text-sm text-zinc-300">{draft.beforeMessage}</p> : null}
@@ -416,7 +418,7 @@ function MediaPreview({ className, url }: { className: string; url: string }) {
   if (isVideoUrl(url)) {
     return <video className={className} controls muted playsInline preload="metadata" src={url} />;
   }
-  return <img alt="Banner" className={className} src={url} />;
+  return <img alt="Banner" className={className} src={dashboardMediaUrl(url)} />;
 }
 
 async function validateCustomPanelMedia(payload: SaveCustomPanelPayload) {
@@ -432,6 +434,7 @@ async function validateCustomPanelMedia(payload: SaveCustomPanelPayload) {
 }
 
 function assertHttpMediaUrl(url: string, label: string) {
+  if (url.startsWith("/api/persistent-images/")) return;
   try {
     const parsed = new URL(url);
     if (parsed.protocol === "http:" || parsed.protocol === "https:") return;
@@ -442,6 +445,7 @@ function assertHttpMediaUrl(url: string, label: string) {
 }
 
 function loadMediaUrl(url: string, video: boolean) {
+  const mediaUrl = dashboardMediaUrl(url);
   return new Promise<void>((resolve, reject) => {
     let media: HTMLImageElement | HTMLVideoElement | null = null;
     const timer = window.setTimeout(() => {
@@ -461,14 +465,14 @@ function loadMediaUrl(url: string, video: boolean) {
       element.onloadedmetadata = () => { cleanup(); resolve(); };
       element.onerror = () => { cleanup(); reject(new Error("Não foi possível carregar o vídeo do banner.")); };
       element.preload = "metadata";
-      element.src = url;
+      element.src = mediaUrl;
       return;
     }
     const image = new Image();
     media = image;
     image.onload = () => { cleanup(); resolve(); };
     image.onerror = () => { cleanup(); reject(new Error("Não foi possível carregar a imagem configurada.")); };
-    image.src = url;
+    image.src = mediaUrl;
   });
 }
 

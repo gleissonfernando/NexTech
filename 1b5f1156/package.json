@@ -1,0 +1,50 @@
+{
+  "name": "discord-bot-dashboard-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Arquitetura independente para frontend, backend API e bot Discord.",
+  "main": "index.js",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "bot"
+  ],
+  "scripts": {
+    "start": "node scripts/start-production.mjs",
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
+    "restart": "npm run stop && npm run dev",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:bot": "npm run dev --workspace bot",
+    "start:frontend": "npm run dev:frontend",
+    "start:backend": "npm run dev:backend",
+    "start:api": "npm run start:api --workspace backend",
+    "start:worker": "npm run start:worker --workspace backend",
+    "start:scheduler": "npm run start:scheduler --workspace backend",
+    "start:backfill": "npm run start:backfill --workspace backend",
+    "start:bot": "npm run dev:bot",
+    "build": "npm install --include=dev && npm --prefix frontend run build && npm --prefix backend run build && npm --prefix bot run build",
+    "typecheck": "npm run typecheck --workspaces",
+    "deploy:check": "npm run build && node scripts/deploy-check.mjs",
+    "deploy:check:fast": "node scripts/deploy-check.mjs fast",
+    "deploy:check:env": "npm run build && node scripts/deploy-check.mjs env",
+    "audit:dev-bots": "npm run build --workspace backend && node scripts/audit-dev-bots.mjs",
+    "bots:ensure-databases": "node scripts/ensure-bot-databases.mjs",
+    "db:reset-bot-system": "node scripts/reset-bot-system-database.mjs",
+    "seed:panel-emojis": "npm run build --workspace backend && node scripts/seed-default-panel-emojis.mjs",
+    "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",
+    "migrate:report-system-orgs": "node scripts/migrate-report-system-orgs.mjs",
+    "release:discloud": "node scripts/release-discloud.mjs",
+    "load:test": "node scripts/load-test.mjs",
+    "validate:anti-spam": "node scripts/validate-anti-spam.cjs",
+    "validate:moderation-whitelist": "npm run build && node scripts/validate-moderation-whitelist.cjs"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "mercadopago": "^3.2.0"
+  }
+}

@@ -6,6 +6,7 @@ import { Badge } from "../ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../fivem/FivemResourceSelect";
+import { PanelMediaUrlField } from "../panels/PanelMediaUrlField";
 
 export function VehicleAbandonmentPanel({ botId, canManage, guild }: { botId?: string | null; canManage: boolean; guild: DashboardGuild | null }) {
   const [data, setData] = useState<VehicleAbandonmentDashboard | null>(null);
@@ -141,8 +142,8 @@ export function VehicleAbandonmentPanel({ botId, canManage, guild }: { botId?: s
           <Field disabled={disabled} label="Emoji" value={data.settings.emoji} onChange={(emoji) => patch({ emoji })} />
           <Field disabled={disabled} label="Nome do Sistema" value={data.settings.systemName} onChange={(systemName) => patch({ systemName })} />
           <Field disabled={disabled} label="Título" value={data.settings.embedTitle} onChange={(embedTitle) => patch({ embedTitle })} />
-          <Field disabled={disabled} label="Thumbnail" value={data.settings.thumbnailUrl ?? ""} onChange={(thumbnailUrl) => patch({ thumbnailUrl: thumbnailUrl || null })} />
-          <Field disabled={disabled} label="Imagem padrão" value={data.settings.defaultImageUrl ?? ""} onChange={(defaultImageUrl) => patch({ defaultImageUrl: defaultImageUrl || null })} />
+          <PanelMediaUrlField accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" botId={botId} disabled={disabled} guildId={guild.id} label="Thumbnail" onChange={(thumbnailUrl) => patch({ thumbnailUrl: thumbnailUrl || null })} onMessage={setMessage} panelId="vehicle-abandonment-thumbnail" value={data.settings.thumbnailUrl ?? ""} />
+          <PanelMediaUrlField accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" botId={botId} disabled={disabled} guildId={guild.id} label="Imagem padrão" onChange={(defaultImageUrl) => patch({ defaultImageUrl: defaultImageUrl || null })} onMessage={setMessage} panelId="vehicle-abandonment-default-image" value={data.settings.defaultImageUrl ?? ""} />
           <Field disabled={disabled} label="Mensagem de sucesso" value={data.settings.successMessage} onChange={(successMessage) => patch({ successMessage })} />
           <Field disabled={disabled} label="Mensagem de erro" value={data.settings.errorMessage} onChange={(errorMessage) => patch({ errorMessage })} />
           <div className="lg:col-span-2">
@@ -166,8 +167,8 @@ export function VehicleAbandonmentPanel({ botId, canManage, guild }: { botId?: s
           </div>
           <Field disabled={disabled} label="Emoji principal" value={data.settings.explanatoryPanelEmoji} onChange={(explanatoryPanelEmoji) => patch({ explanatoryPanelEmoji })} />
           <Field disabled={disabled} label="Título do painel" value={data.settings.explanatoryPanelTitle} onChange={(explanatoryPanelTitle) => patch({ explanatoryPanelTitle })} />
-          <Field disabled={disabled} label="Thumbnail" value={data.settings.explanatoryPanelThumbnailUrl ?? ""} onChange={(explanatoryPanelThumbnailUrl) => patch({ explanatoryPanelThumbnailUrl: explanatoryPanelThumbnailUrl || null })} />
-          <Field disabled={disabled} label="Imagem de destaque" value={data.settings.explanatoryPanelImageUrl ?? ""} onChange={(explanatoryPanelImageUrl) => patch({ explanatoryPanelImageUrl: explanatoryPanelImageUrl || null })} />
+          <PanelMediaUrlField accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" botId={botId} disabled={disabled} guildId={guild.id} label="Thumbnail" onChange={(explanatoryPanelThumbnailUrl) => patch({ explanatoryPanelThumbnailUrl: explanatoryPanelThumbnailUrl || null })} onMessage={setMessage} panelId="vehicle-abandonment-explanatory-thumbnail" value={data.settings.explanatoryPanelThumbnailUrl ?? ""} />
+          <PanelMediaUrlField accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" botId={botId} disabled={disabled} guildId={guild.id} label="Imagem de destaque" onChange={(explanatoryPanelImageUrl) => patch({ explanatoryPanelImageUrl: explanatoryPanelImageUrl || null })} onMessage={setMessage} panelId="vehicle-abandonment-explanatory-image" value={data.settings.explanatoryPanelImageUrl ?? ""} />
           <div className="lg:col-span-2">
             <TextArea disabled={disabled} label="Descrição" value={data.settings.explanatoryPanelDescription} onChange={(explanatoryPanelDescription) => patch({ explanatoryPanelDescription })} />
           </div>

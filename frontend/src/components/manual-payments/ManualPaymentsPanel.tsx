@@ -15,6 +15,7 @@ import type {
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Switch } from "../ui/switch";
+import { PanelMediaUrlField } from "../panels/PanelMediaUrlField";
 
 type Props = {
   botId: string | null;
@@ -233,7 +234,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
               <RoleMultiSelect disabled={!canManage} label="Cargo autorizado para recusar pagamentos" onChange={(values) => patch({ rejectRoleIds: values })} roles={roles} values={draft.rejectRoleIds ?? []} />
               <RoleMultiSelect disabled={!canManage} label="Cargos finalizadores" onChange={(values) => patch({ finalizeRoleIds: values })} roles={roles} values={draft.finalizeRoleIds ?? []} />
               <Field disabled={!canManage} label="Tempo máximo para análise" onChange={(value) => patch({ maxPaymentMinutes: Number(value) || 1 })} type="number" value={String(draft.maxPaymentMinutes ?? 60)} />
-              <Field disabled={!canManage} label="Banner do painel" onChange={(value) => patch({ bannerUrl: value || null })} value={draft.bannerUrl ?? ""} />
+              <PanelMediaUrlField botId={botId} disabled={!canManage || saving} guildId={guild.id} label="Banner do painel" onChange={(value) => patch({ bannerUrl: value || null })} onMessage={setMessage} panelId="manual-payments-banner" value={draft.bannerUrl ?? ""} />
               <Field disabled={!canManage} label="Cor dos embeds" onChange={(value) => patch({ color: value })} type="color" value={draft.color ?? "#22c55e"} />
               <Toggle checked={draft.autoReceiptDetectionEnabled !== false} disabled={!canManage} label="Ativar detecção automática de comprovantes" onChange={(checked) => patch({ autoReceiptDetectionEnabled: checked })} />
               <Toggle checked={draft.allowReceiptPdf !== false} disabled={!canManage} label="Permitir PDF como alternativa" onChange={(checked) => patch({ allowReceiptPdf: checked })} />
@@ -320,7 +321,7 @@ export function ManualPaymentsPanel({ botId, canManage, guild }: Props) {
               </div>
               <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_150px_150px_120px]">
                 <Field disabled={!canManage} label="Descrição" onChange={(value) => patchService(service.id, { description: value || null })} value={service.description ?? ""} />
-                <Field disabled={!canManage} label="Banner" onChange={(value) => patchService(service.id, { bannerUrl: value || null })} value={service.bannerUrl ?? ""} />
+                <PanelMediaUrlField botId={botId} disabled={!canManage || saving} guildId={guild.id} label="Banner" onChange={(value) => patchService(service.id, { bannerUrl: value || null })} onMessage={setMessage} panelId={`manual-payments-service-${service.id}-banner`} value={service.bannerUrl ?? ""} />
                 <Toggle checked={service.active} disabled={!canManage} label="Ativo" onChange={(checked) => patchService(service.id, { active: checked })} />
                 <Toggle checked={service.createServiceChannel} disabled={!canManage} label="Criar canal" onChange={(checked) => patchService(service.id, { createServiceChannel: checked })} />
                 <Toggle checked={service.manualApproval} disabled={!canManage} label="Aprovar" onChange={(checked) => patchService(service.id, { manualApproval: checked })} />
