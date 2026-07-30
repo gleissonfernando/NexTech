@@ -8,6 +8,7 @@ type Props = {
 };
 
 const DEFAULT_BACKGROUND = "/invite-nextech-default.png";
+const DEFAULT_LOGO = "/invite-nextech-default.png";
 
 export function PublicInvitePage({ code }: Props) {
   const [page, setPage] = useState<PublicInvite | null>(null);
@@ -41,7 +42,7 @@ export function PublicInvitePage({ code }: Props) {
   const backgroundUrl = page?.config.backgroundImageUrl || DEFAULT_BACKGROUND;
   const serverName = page?.discord?.name || page?.invite.name || "Servidor Discord";
   const description = page?.discord?.description || page?.invite.description || "Entre no servidor oficial usando uma experiência personalizada da NexTech.";
-  const logoUrl = page?.config.logoUrl || page?.discord?.iconUrl || "/favicon.ico";
+  const logoUrl = page?.config.logoUrl || page?.discord?.iconUrl || DEFAULT_LOGO;
   const primaryColor = page?.config.primaryColor || "#FFD500";
   const theme = page?.config.theme ?? "nextech";
 

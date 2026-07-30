@@ -154,6 +154,7 @@ const LANDING_THEMES = ["discord", "nextech", "dark", "neon", "cyber", "gamer", 
 const OVERLAY_STYLES = ["black", "blue", "red", "gradient", "none"] as const;
 const PARTICLE_STYLES = ["none", "dots", "sparks", "neon", "smoke", "lines", "stars", "hex"] as const;
 const FALLBACK_OFFICIAL_INVITE = {
+  assetUrl: "/invite-nextech-default.png",
   code: "HTYE9HX8VY",
   customSlug: "nextech",
   description: "Entre no servidor oficial usando o convite personalizado da NexTech.",
@@ -464,9 +465,9 @@ async function fallbackPublicNexTechInvitePage(rawCode: string): Promise<PublicN
   return {
     config: {
       backgroundEffect: "fixed",
-      backgroundImageUrl: discord?.bannerUrl ?? discord?.splashUrl ?? null,
+      backgroundImageUrl: discord?.bannerUrl ?? discord?.splashUrl ?? FALLBACK_OFFICIAL_INVITE.assetUrl,
       backgroundVideoUrl: null,
-      logoUrl: discord?.iconUrl ?? null,
+      logoUrl: discord?.iconUrl ?? FALLBACK_OFFICIAL_INVITE.assetUrl,
       overlayStyle: "black",
       particleStyle: "hex",
       primaryColor: "#FFD500",
