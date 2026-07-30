@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 const root = process.cwd();
 const historyDir = path.join(root, ".release-history");
 const historyPath = path.join(historyDir, "auto-update-log.json");
+const draftMarkdownPath = path.join(historyDir, "auto-update-draft.md");
+const draftJsonPath = path.join(historyDir, "auto-update-draft.json");
 const releaseMetadataPath = path.join(root, ".nex-tech-release.json");
 const discordApi = "https://discord.com/api/v10";
 const isDryRun = process.argv.includes("--dry-run");
+const isSendRequested = process.argv.includes("--send") || process.env.AUTO_UPDATE_SEND === "true";
 const isForceSend = process.argv.includes("--force") || process.env.AUTO_UPDATE_ALWAYS_SEND === "true";
 
 export function buildCurrentReleaseMetadata() {
@@ -38,6 +41,7 @@ export async function runAutoUpdateLogger(options = {}) {
   const currentCommit = currentReleaseCommit(metadata);
   const history = readHistory();
   const existingRelease = history.releases.find((release) => release.commit === currentCommit);
+  const sendEnabled = options.send === true || isSendRequested;
   const forceSend = options.force === true || isForceSend;
 
   if (!currentCommit) {
@@ -45,7 +49,7 @@ export async function runAutoUpdateLogger(options = {}) {
     return { skipped: true };
   }
 
-  if (!forceSend && (existingRelease?.discordSentAt || existingRelease?.discordMessageId)) {
+  if (sendEnabled && !forceSend && (existingRelease?.discordSentAt || existingRelease?.discordMessageId)) {
     console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já registrada; envio ignorado.`);
     return { skipped: true };
   }
@@ -80,7 +84,22 @@ export async function runAutoUpdateLogger(options = {}) {
     return { release, skipped: true };
   }
 
+  const payload = buildDiscordPayload({ analysis, bot: null, channelId, release });
+
+  if (!sendEnabled) {
+    writeReleaseDraft(release, payload);
+    upsertHistoryRelease(history, {
+      ...release,
+      discordChannelId: channelId || null,
+      discordSkippedReason: "Atualização salva como rascunho; envio automático desativado."
+    });
+    writeHistory(history);
+    console.log(`[auto-update] changelog ${version} salvo como rascunho; envio Discord desativado.`);
+    return { release, skipped: true };
+  }
+
   if (!channelId || !token) {
+    writeReleaseDraft(release, payload);
     upsertHistoryRelease(history, {
       ...release,
       discordChannelId: channelId || null,
@@ -92,9 +111,10 @@ export async function runAutoUpdateLogger(options = {}) {
   }
 
   const bot = await fetchDiscordBot(token).catch(() => null);
-  const payload = buildDiscordPayload({ analysis, bot, channelId, release });
+  const sendPayload = buildDiscordPayload({ analysis, bot, channelId, release });
 
   if (!forceSend && await hasRecentDiscordRelease(token, channelId, currentCommit).catch(() => false)) {
+    writeReleaseDraft(release, sendPayload);
     upsertHistoryRelease(history, {
       ...release,
       discordChannelId: channelId,
@@ -105,7 +125,7 @@ export async function runAutoUpdateLogger(options = {}) {
     return { release, skipped: true };
   }
 
-  const message = await sendDiscordMessage(token, channelId, payload);
+  const message = await sendDiscordMessage(token, channelId, sendPayload);
   upsertHistoryRelease(history, {
     ...release,
     discordChannelId: channelId,
@@ -506,6 +526,26 @@ function readHistory() {
 function writeHistory(history) {
   mkdirSync(historyDir, { recursive: true });
   writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+}
+
+function writeReleaseDraft(release, payload) {
+  mkdirSync(historyDir, { recursive: true });
+  const content = extractPayloadContent(payload);
+  writeFileSync(draftMarkdownPath, `${content}\n`);
+  writeFileSync(draftJsonPath, `${JSON.stringify({ release, payload }, null, 2)}\n`);
+}
+
+function extractPayloadContent(payload) {
+  const components = payload?.components?.[0]?.components;
+  if (!Array.isArray(components)) {
+    return "";
+  }
+
+  return components
+    .filter((component) => component?.type === 10 && typeof component.content === "string")
+    .map((component) => component.content)
+    .join("\n\n")
+    .trim();
 }
 
 function upsertHistoryRelease(history, release) {

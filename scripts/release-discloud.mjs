@@ -102,7 +102,7 @@ if (process.env.AUTO_UPDATE_RELEASE_FALLBACK === "true") {
     console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
   });
 } else {
-  console.log("[release] Auto Update Logger será executado automaticamente no startup de produção.");
+  console.log("[release] Auto Update Logger vai gerar rascunho no startup; envio Discord exige AUTO_UPDATE_SEND=true.");
 }
 
 console.log("[release] Concluido.");
