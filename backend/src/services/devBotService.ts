@@ -1404,11 +1404,13 @@ export async function listDevBotRuntimeConfigs() {
   const guildIdsByBot = groupGuildIdsByBot(configs);
 
   const runtimeConfigs = await Promise.all(bots.map(async (bot) => {
+    const guildIds = guildIdsByBot.get(bot._id);
+    const enabledModules = await runtimeModulesForBot(bot, guildIds);
     const access = await canStartBotByBilling(bot._id);
     if (!access.allowed) {
-      return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIdsByBot.get(bot._id));
+      return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
     }
-    return toDevBotRuntimeConfig(bot, guildIdsByBot.get(bot._id));
+    return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
   }));
   return runtimeConfigs;
 }
@@ -1436,7 +1438,11 @@ export async function listGuildBotRuntimeConfigs(guildId: string) {
   }).toArray();
   const guildIdsByBot = groupGuildIdsByBot(allConfigs);
 
-  return bots.map((bot) => toDevBotRuntimeConfig(bot, guildIdsByBot.get(bot._id)));
+  return Promise.all(bots.map(async (bot) => toDevBotRuntimeConfig(
+    bot,
+    guildIdsByBot.get(bot._id),
+    await runtimeModulesForBot(bot, guildIdsByBot.get(bot._id))
+  )));
 }
 
 export async function getDevBotRuntimeConfig(botId: string) {
@@ -1447,11 +1453,13 @@ export async function getDevBotRuntimeConfig(botId: string) {
   ]);
 
   if (!bot) return null;
+  const guildIds = configs.map((config) => config.guildId);
+  const enabledModules = await runtimeModulesForBot(bot, guildIds);
   const access = await canStartBotByBilling(bot._id);
   if (!access.allowed) {
-    return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, configs.map((config) => config.guildId));
+    return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
   }
-  return toDevBotRuntimeConfig(bot, configs.map((config) => config.guildId));
+  return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
 }
 
 export async function setDevBotDesiredOnline(botId: string, desiredOnline: boolean) {
@@ -2125,6 +2133,10 @@ export async function authorizeBotRuntimeModule(input: {
   if (!moduleReleased && (moduleId === "logs" || releaseModuleId === "logs")) {
     const settings = await getGuildSettings(input.guildId, botId);
     moduleReleased = settings.discordLogsEnabled === true && Boolean(settings.logChannelId);
+  }
+  if (!moduleReleased && (moduleId === "safe-bot" || releaseModuleId === "safe-bot")) {
+    const settings = await getGuildSettings(input.guildId, botId);
+    moduleReleased = settings.safeBotEnabled === true;
   }
   const securityReleased = releaseModuleId === "safe-bot"
     ? await isSecurityProtectionReleasedForBot(botId)
@@ -2841,7 +2853,30 @@ async function fetchDiscordBotGuild(token: string, guildId: string): Promise<Det
   }
 }
 
-function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId]): DevBotRuntimeConfig {
+async function runtimeModulesForBot(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId]) {
+  const modules = new Set(sanitizeModules(bot.enabledModules));
+  const scopedGuildIds = allBotGuildIds(bot, guildIds);
+
+  await Promise.all(scopedGuildIds.map(async (guildId) => {
+    const settings = await getGuildSettings(guildId, bot._id).catch(() => null);
+
+    if (!settings) {
+      return;
+    }
+
+    if (settings.discordLogsEnabled && settings.logChannelId) {
+      modules.add("logs");
+    }
+
+    if (settings.safeBotEnabled) {
+      modules.add("safe-bot");
+    }
+  }));
+
+  return sanitizeModules([...modules]);
+}
+
+function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], enabledModules = sanitizeModules(bot.enabledModules)): DevBotRuntimeConfig {
   return {
     id: bot._id,
     clientId: bot.clientId,
@@ -2850,7 +2885,7 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
     token: decryptSecret(bot.tokenEncrypted),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),
-    enabledModules: sanitizeModules(bot.enabledModules),
+    enabledModules,
     desiredOnline: bot.desiredOnline !== false
   };
 }
