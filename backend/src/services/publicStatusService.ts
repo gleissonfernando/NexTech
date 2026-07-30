@@ -66,6 +66,11 @@ export type PublicStatusSnapshot = {
 
 const HISTORY_BARS = 60;
 const HISTORY_INTERVAL_SECONDS = 60;
+const DATABASE_MAJOR_OUTAGE_FAILURES = 3;
+
+const databaseStatusState = {
+  consecutiveFailures: 0
+};
 
 export async function getPublicStatusSnapshot(): Promise<PublicStatusSnapshot> {
   const generatedAt = new Date();
@@ -152,7 +157,7 @@ export async function getPublicStatusSnapshot(): Promise<PublicStatusSnapshot> {
           id: "data-storage",
           latencyMs: database.latencyMs,
           name: "Armazenamento de Dados",
-          status: database.ok ? (database.latencyMs > 1000 ? "degraded" : "operational") : "major_outage",
+          status: database.ok ? (database.latencyMs > 1000 ? "degraded" : "operational") : (database.majorOutage ? "major_outage" : "degraded"),
           timestamp: generatedAt
         }),
         ...(redis.configured ? [
@@ -203,9 +208,15 @@ async function checkDatabase() {
   try {
     const db = await getMongoDb();
     await db.command({ ping: 1 });
+    databaseStatusState.consecutiveFailures = 0;
     return { ok: true, latencyMs: Date.now() - startedAt };
   } catch {
-    return { ok: false, latencyMs: Date.now() - startedAt };
+    databaseStatusState.consecutiveFailures += 1;
+    return {
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      majorOutage: databaseStatusState.consecutiveFailures >= DATABASE_MAJOR_OUTAGE_FAILURES
+    };
   }
 }
 
@@ -281,9 +292,9 @@ function buildHistory(status: PublicServiceState, latencyMs: number | null, now:
   return Array.from({ length: HISTORY_BARS }, (_, index) => {
     const startedAt = new Date(now.getTime() - (HISTORY_BARS - index - 1) * HISTORY_INTERVAL_SECONDS * 1000);
     return {
-      averageResponseTimeMs: historyStatus === "no_data" ? null : latencyMs,
+      averageResponseTimeMs: index === HISTORY_BARS - 1 && historyStatus !== "no_data" ? latencyMs : null,
       startedAt: startedAt.toISOString(),
-      status: historyStatus
+      status: index === HISTORY_BARS - 1 ? historyStatus : "no_data" as PublicHistoryState
     };
   });
 }
