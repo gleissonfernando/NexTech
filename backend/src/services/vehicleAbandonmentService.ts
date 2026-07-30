@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { ensureGuild, getMongoCollections, type MongoVehicleAbandonmentRecord, type MongoVehicleAbandonmentSettings } from "../database/mongo";
 import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 
@@ -227,27 +228,27 @@ function defaultSettings(botId: string, guildId: string): MongoVehicleAbandonmen
     defaultImageUrl: null,
     deleteOriginalMessage: false,
     embedTitle: "{emoji} Abandono de Veículo — {user}",
-    emoji: "🚗",
+    emoji: fixedSystemEmojiText("prancheta"),
     enabled: false,
-    errorMessage: "❌ Não foi possível registrar. Verifique os campos obrigatórios.",
+    errorMessage: `${fixedSystemEmojiText("exclamacao")} Não foi possível registrar. Verifique os campos obrigatórios.`,
     explanatoryPanelAllowedRoleIds: [],
     explanatoryPanelButtonEnabled: true,
     explanatoryPanelChannelId: null,
     explanatoryPanelColor: "#2563eb",
     explanatoryPanelCommandEnabled: true,
-    explanatoryPanelCommonErrorsText: "❌ Enviar apenas a foto.\n\n❌ Não informar a placa.\n\n❌ Não informar o modelo.\n\n❌ Não informar o relatório.\n\n❌ Enviar em outro canal.",
+    explanatoryPanelCommonErrorsText: `${fixedSystemEmojiText("exclamacao")} Enviar apenas a foto.\n\n${fixedSystemEmojiText("exclamacao")} Não informar a placa.\n\n${fixedSystemEmojiText("exclamacao")} Não informar o modelo.\n\n${fixedSystemEmojiText("exclamacao")} Não informar o relatório.\n\n${fixedSystemEmojiText("exclamacao")} Enviar em outro canal.`,
     explanatoryPanelDescription: "Este sistema é utilizado para registrar veículos abandonados encontrados durante o patrulhamento.\n\nPara que seu registro seja aceito, siga corretamente as instruções abaixo.",
-    explanatoryPanelEmoji: "🚗",
+    explanatoryPanelEmoji: fixedSystemEmojiText("prancheta"),
     explanatoryPanelExampleText: "Modelo:\nLittle Bird\n\nPlaca:\nKQ34354\n\nRelatório:\nVeículo abandonado próximo ao hospital, sem proprietário aparente.\n\n(Foto anexada)",
     explanatoryPanelFinalText: "Após enviar corretamente as informações, o sistema criará automaticamente o registro oficial do veículo abandonado.",
-    explanatoryPanelHowItWorksText: "📸 1. Tire uma foto do veículo.\n\n📝 2. Na mesma mensagem escreva:\n\n• Modelo do veículo\n• Placa\n• Relatório\n\n📤 3. Envie tudo junto no canal configurado.\n\n🤖 O sistema identificará automaticamente as informações e criará o registro.",
+    explanatoryPanelHowItWorksText: `${fixedSystemEmojiText("folha")} 1. Tire uma foto do veículo.\n\n${fixedSystemEmojiText("prancheta_caneta")} 2. Na mesma mensagem escreva:\n\n• Modelo do veículo\n• Placa\n• Relatório\n\n${fixedSystemEmojiText("acessar")} 3. Envie tudo junto no canal configurado.\n\n${fixedSystemEmojiText("robo")} O sistema identificará automaticamente as informações e criará o registro.`,
     explanatoryPanelImageUrl: null,
     explanatoryPanelModalContent: "Modelo:\nLittle Bird\n\nPlaca:\nKQ34354\n\nRelatório:\nVeículo encontrado abandonado próximo à praça central. Sem ocupantes e sem movimentação há várias horas.\n\nFoto:\n(Anexar junto da mensagem enviada no canal.)",
     explanatoryPanelModalTitle: "Exemplo Completo",
     explanatoryPanelNotesText: "• A ordem dos campos não importa.\n\n• Você pode escrever \"Modelo\", \"Placa\" e \"Relatório\" em qualquer ordem.\n\n• O sistema identifica automaticamente os campos.\n\n• É obrigatório anexar uma foto.\n\n• O registro só funciona no canal configurado pelo servidor.",
-    explanatoryPanelRequiredFieldsText: "✅ Modelo do veículo\n\n✅ Placa\n\n✅ Relatório\n\n✅ Foto do veículo",
+    explanatoryPanelRequiredFieldsText: `${fixedSystemEmojiText("visto")} Modelo do veículo\n\n${fixedSystemEmojiText("visto")} Placa\n\n${fixedSystemEmojiText("visto")} Relatório\n\n${fixedSystemEmojiText("visto")} Foto do veículo`,
     explanatoryPanelThumbnailUrl: null,
-    explanatoryPanelTitle: "🚗 Sistema de Abandono de Veículo",
+    explanatoryPanelTitle: `${fixedSystemEmojiText("prancheta")} Sistema de Abandono de Veículo`,
     footerText: "Registrado por {user} | {userId} • {date} • {time}",
     guildId,
     logChannelId: null,
@@ -255,9 +256,9 @@ function defaultSettings(botId: string, guildId: string): MongoVehicleAbandonmen
     maxImages: 1,
     mentionRoleId: null,
     recordChannelId: null,
-    successMessage: "✅ Registro de abandono de veículo enviado.",
+    successMessage: `${fixedSystemEmojiText("visto")} Registro de abandono de veículo enviado.`,
     systemChannelId: null,
-    systemName: "🚗 Abandono de Veículo",
+    systemName: `${fixedSystemEmojiText("prancheta")} Abandono de Veículo`,
     thumbnailUrl: null,
     updatedAt: now,
     updatedBy: null
@@ -276,20 +277,20 @@ function sanitizeSettingsInput(input: SaveVehicleAbandonmentSettingsInput) {
   if (next.maxImages !== undefined) next.maxImages = Math.min(10, Math.max(1, Math.trunc(Number(next.maxImages) || 1)));
   if (next.color !== undefined) next.color = normalizeColor(next.color);
   if (next.explanatoryPanelColor !== undefined) next.explanatoryPanelColor = normalizeColor(next.explanatoryPanelColor);
-  if (next.emoji !== undefined) next.emoji = next.emoji.trim().slice(0, 80) || "🚗";
-  if (next.explanatoryPanelEmoji !== undefined) next.explanatoryPanelEmoji = next.explanatoryPanelEmoji.trim().slice(0, 80) || "🚗";
-  if (next.systemName !== undefined) next.systemName = next.systemName.trim().slice(0, 120) || "🚗 Abandono de Veículo";
+  if (next.emoji !== undefined) next.emoji = normalizeSystemEmoji(next.emoji) || fixedSystemEmojiText("prancheta");
+  if (next.explanatoryPanelEmoji !== undefined) next.explanatoryPanelEmoji = normalizeSystemEmoji(next.explanatoryPanelEmoji) || fixedSystemEmojiText("prancheta");
+  if (next.systemName !== undefined) next.systemName = normalizeTextWithSystemEmojis(next.systemName, 120) || `${fixedSystemEmojiText("prancheta")} Abandono de Veículo`;
   if (next.embedTitle !== undefined) next.embedTitle = next.embedTitle.trim().slice(0, 200) || "{emoji} Abandono de Veículo — {user}";
   if (next.footerText !== undefined) next.footerText = next.footerText.trim().slice(0, 200) || "Registrado por {user} | {userId} • {date} • {time}";
-  if (next.successMessage !== undefined) next.successMessage = next.successMessage.trim().slice(0, 500) || "✅ Registro de abandono de veículo enviado.";
-  if (next.errorMessage !== undefined) next.errorMessage = next.errorMessage.trim().slice(0, 500) || "❌ Não foi possível registrar. Verifique os campos obrigatórios.";
-  if (next.explanatoryPanelTitle !== undefined) next.explanatoryPanelTitle = sanitizeText(next.explanatoryPanelTitle, 200, "🚗 Sistema de Abandono de Veículo");
+  if (next.successMessage !== undefined) next.successMessage = normalizeTextWithSystemEmojis(next.successMessage, 500) || `${fixedSystemEmojiText("visto")} Registro de abandono de veículo enviado.`;
+  if (next.errorMessage !== undefined) next.errorMessage = normalizeTextWithSystemEmojis(next.errorMessage, 500) || `${fixedSystemEmojiText("exclamacao")} Não foi possível registrar. Verifique os campos obrigatórios.`;
+  if (next.explanatoryPanelTitle !== undefined) next.explanatoryPanelTitle = sanitizeText(next.explanatoryPanelTitle, 200, `${fixedSystemEmojiText("prancheta")} Sistema de Abandono de Veículo`);
   if (next.explanatoryPanelDescription !== undefined) next.explanatoryPanelDescription = sanitizeText(next.explanatoryPanelDescription, 1200, "Este sistema é utilizado para registrar veículos abandonados encontrados durante o patrulhamento.");
-  if (next.explanatoryPanelHowItWorksText !== undefined) next.explanatoryPanelHowItWorksText = sanitizeText(next.explanatoryPanelHowItWorksText, 1800, "📸 1. Tire uma foto do veículo.");
-  if (next.explanatoryPanelRequiredFieldsText !== undefined) next.explanatoryPanelRequiredFieldsText = sanitizeText(next.explanatoryPanelRequiredFieldsText, 1000, "✅ Modelo do veículo\n\n✅ Placa\n\n✅ Relatório\n\n✅ Foto do veículo");
+  if (next.explanatoryPanelHowItWorksText !== undefined) next.explanatoryPanelHowItWorksText = sanitizeText(next.explanatoryPanelHowItWorksText, 1800, `${fixedSystemEmojiText("folha")} 1. Tire uma foto do veículo.`);
+  if (next.explanatoryPanelRequiredFieldsText !== undefined) next.explanatoryPanelRequiredFieldsText = sanitizeText(next.explanatoryPanelRequiredFieldsText, 1000, `${fixedSystemEmojiText("visto")} Modelo do veículo\n\n${fixedSystemEmojiText("visto")} Placa\n\n${fixedSystemEmojiText("visto")} Relatório\n\n${fixedSystemEmojiText("visto")} Foto do veículo`);
   if (next.explanatoryPanelExampleText !== undefined) next.explanatoryPanelExampleText = sanitizeText(next.explanatoryPanelExampleText, 1800, "Modelo:\nLittle Bird\n\nPlaca:\nKQ34354\n\nRelatório:\nVeículo abandonado próximo ao hospital, sem proprietário aparente.\n\n(Foto anexada)");
   if (next.explanatoryPanelNotesText !== undefined) next.explanatoryPanelNotesText = sanitizeText(next.explanatoryPanelNotesText, 1800, "• É obrigatório anexar uma foto.");
-  if (next.explanatoryPanelCommonErrorsText !== undefined) next.explanatoryPanelCommonErrorsText = sanitizeText(next.explanatoryPanelCommonErrorsText, 1600, "❌ Enviar apenas a foto.");
+  if (next.explanatoryPanelCommonErrorsText !== undefined) next.explanatoryPanelCommonErrorsText = sanitizeText(next.explanatoryPanelCommonErrorsText, 1600, `${fixedSystemEmojiText("exclamacao")} Enviar apenas a foto.`);
   if (next.explanatoryPanelFinalText !== undefined) next.explanatoryPanelFinalText = sanitizeText(next.explanatoryPanelFinalText, 1000, "Após enviar corretamente as informações, o sistema criará automaticamente o registro oficial do veículo abandonado.");
   if (next.explanatoryPanelModalTitle !== undefined) next.explanatoryPanelModalTitle = sanitizeText(next.explanatoryPanelModalTitle, 45, "Exemplo Completo");
   if (next.explanatoryPanelModalContent !== undefined) next.explanatoryPanelModalContent = sanitizeText(next.explanatoryPanelModalContent, 3800, "Modelo:\nLittle Bird\n\nPlaca:\nKQ34354\n\nRelatório:\nVeículo encontrado abandonado próximo à praça central.\n\nFoto:\n(Anexar junto da mensagem enviada no canal.)");
@@ -345,7 +346,17 @@ function normalizeUrl(value: string | null | undefined) {
 
 function sanitizeText(value: string | null | undefined, maxLength: number, fallback: string) {
   const trimmed = value?.replace(/\r\n/g, "\n").replace(/\n{4,}/g, "\n\n\n").trim();
-  return trimmed ? trimmed.slice(0, maxLength) : fallback;
+  return trimmed ? normalizeFixedSystemEmojiText(trimmed).slice(0, maxLength) : fallback;
+}
+
+function normalizeSystemEmoji(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalizeFixedSystemEmojiText(normalized).slice(0, 80) : null;
+}
+
+function normalizeTextWithSystemEmojis(value: string | null | undefined, maxLength: number) {
+  const normalized = value?.trim();
+  return normalized ? normalizeFixedSystemEmojiText(normalized).slice(0, maxLength) : "";
 }
 
 function emitSettingsUpdated(botId: string, guildId: string) {

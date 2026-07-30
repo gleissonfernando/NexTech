@@ -470,7 +470,7 @@ const DEFAULT_RULES_FOOTER_TEXT = "Queremos um espaço seguro e acessível para 
 const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   {
     description: "",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("visto"),
     enabled: true,
     id: "convivencia",
     name: "Convivência saudável",
@@ -482,7 +482,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("discord"),
     enabled: true,
     id: "comunicacao",
     name: "Comunicação",
@@ -494,7 +494,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "Não compartilhe materiais que sejam:",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("perigo"),
     enabled: true,
     id: "conteudos-proibidos",
     name: "Conteúdos proibidos",
@@ -508,7 +508,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "Evite:",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("exclamacao"),
     enabled: true,
     id: "organizacao-chat",
     name: "Organização do chat",
@@ -522,7 +522,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("engrenagem"),
     enabled: true,
     id: "uso-canais",
     name: "Uso dos canais",
@@ -534,7 +534,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("folha"),
     enabled: true,
     id: "seguranca-privacidade",
     name: "Segurança e privacidade",
@@ -546,7 +546,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("link"),
     enabled: true,
     id: "divulgacao",
     name: "Divulgação",
@@ -557,7 +557,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "Não poste conteúdos protegidos sem permissão, como:",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("prancheta"),
     enabled: true,
     id: "direitos-autorais",
     name: "Direitos autorais",
@@ -571,7 +571,7 @@ const DEFAULT_RULES_CATEGORIES: RulesPanelCategoryDto[] = [
   },
   {
     description: "Siga as orientações da equipe de moderação.",
-    emoji: "❯",
+    emoji: fixedSystemEmojiText("alerta"),
     enabled: true,
     id: "moderacao",
     name: "Moderação",
@@ -585,7 +585,7 @@ const DEFAULT_RULES_BUTTONS: RulesPanelButtonDto[] = [
   {
     action: "accept",
     command: null,
-    emoji: "📖",
+    emoji: fixedSystemEmojiText("folha"),
     enabled: true,
     id: "read-rules",
     label: "Ler Regras",
@@ -1597,7 +1597,7 @@ function normalizeGlobalLogConfig(value: unknown, fallback: GlobalLogConfigDto =
     panelBannerUrl: normalizeUrl(record.panelBannerUrl) ?? fallback.panelBannerUrl,
     panelFooterText: normalizeNullableText(record.panelFooterText, 180) ?? fallback.panelFooterText,
     panelColor: normalizePanelColor(String(record.panelColor ?? fallback.panelColor)),
-    moduleEmoji: normalizeNullableText(record.moduleEmoji, 80) ?? fallback.moduleEmoji,
+    moduleEmoji: normalizeNullableSystemEmojiText(record.moduleEmoji) ?? fallback.moduleEmoji,
     moduleName: normalizeNullableText(record.moduleName, 80),
     showAnonymousAuthorToRoleIds: normalizeSnowflakes(asArray(record.showAnonymousAuthorToRoleIds))
   };
@@ -1800,7 +1800,7 @@ function rulesCategoriesFromLegacyMessage(message?: string | null): RulesPanelCa
   return [
     {
       description: "Leia com atenção antes de participar.",
-      emoji: "📜",
+      emoji: fixedSystemEmojiText("folha"),
       enabled: true,
       id: "regras-gerais",
       name: "Regras gerais",

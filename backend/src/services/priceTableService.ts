@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { fixedSystemEmojiText } from "../config/systemEmojis";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import type { MongoPriceTable, MongoPriceTableItem, MongoPriceTableRequest } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
@@ -265,7 +265,7 @@ function normalizePriceTableInput(input: SavePriceTableInput) {
       ...defaultPriceTable().modalText,
       ...input.modalText
     },
-    panelEmojis: { ...defaultPriceTable().panelEmojis, ...input.panelEmojis },
+    panelEmojis: normalizePanelEmojis(input.panelEmojis),
     panelSections: { ...defaultPriceTable().panelSections, ...input.panelSections },
     supportRoleIds: Array.isArray(input.supportRoleIds) ? [...new Set(input.supportRoleIds)] : defaultPriceTable().supportRoleIds,
     ticketInitialMessage: input.ticketInitialMessage?.trim() || defaultPriceTable().ticketInitialMessage,
@@ -292,6 +292,21 @@ function normalizeItem(item: MongoPriceTableItem, index: number): MongoPriceTabl
 function normalizeNullable(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized || null;
+}
+
+function normalizePanelEmojis(value: SavePriceTableInput["panelEmojis"]) {
+  const defaults = defaultPriceTable().panelEmojis;
+  return {
+    products: normalizeEmoji(value?.products) ?? defaults.products,
+    systems: normalizeEmoji(value?.systems) ?? defaults.systems,
+    advantages: normalizeEmoji(value?.advantages) ?? defaults.advantages,
+    support: normalizeEmoji(value?.support) ?? defaults.support
+  };
+}
+
+function normalizeEmoji(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalizeFixedSystemEmojiText(normalized) : null;
 }
 
 function currencySymbol(currency: MongoPriceTable["currency"]) {

@@ -78,7 +78,7 @@ export function FivemOrdersManager({ botId, canManage, familyOnly = false, guild
     const type = fixedProductTypeForMode(mode) ?? requestedType ?? "custom";
     const names = { ammo: "Nova munição", custom: "Novo item", drug: "Nova droga", standard: "Novo item", washing: "Lavagem", weapon: "Nova arma" } as const;
     const categories = { ammo: "Munição", custom: "Personalizados", drug: "Drogas", standard: "Personalizados", washing: "Lavagem", weapon: "Armas" } as const;
-    setDraft({ active: true, allowCustomQuantity: true, allowNotes: type !== "washing", botId: botId ?? null, category: categories[type], config: {}, cost: 0, createdAt: now, defaultQuantity: 1, description: "", emoji: "", factionPercentage: type === "washing" ? 20 : 0, washingPercentages: type === "washing" ? [10, 20, 30] : [], featured: false, guildId, id: "new", maximumQuantity: 1000000, minimumQuantity: 1, name: names[type], order: productCount + 1, price: 0, sellerPercentage: 0, type, updatedAt: now });
+    setDraft({ active: true, allowCustomQuantity: true, allowNotes: type !== "washing", botId: botId ?? null, category: categories[type], config: {}, cost: 0, createdAt: now, defaultQuantity: 1, description: "", emoji: type === "washing" ? "<:dinheiro:1525682192640905216>" : type === "weapon" || type === "ammo" ? "<a:CHATarma:1519956887301390456>" : "<:caixa:1525682180578214021>", factionPercentage: type === "washing" ? 20 : 0, washingPercentages: type === "washing" ? [10, 20, 30] : [], featured: false, guildId, id: "new", maximumQuantity: 1000000, minimumQuantity: 1, name: names[type], order: productCount + 1, price: 0, sellerPercentage: 0, type, updatedAt: now });
     setTab("products");
   }
   async function saveProduct() {

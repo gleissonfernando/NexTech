@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "../config/env";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { createLog } from "./logService";
 import type { GuildSettingsDto, RulesPanelButtonDto, RulesPanelCategoryDto } from "./settingsService";
 import { updateGuildSettings } from "./settingsService";
@@ -138,7 +139,7 @@ function buildRulesTextComponents(settings: GuildSettingsDto): DiscordComponent[
   ].filter((line): line is string => line !== null);
 
   return [
-    { type: 10, content: `## 📜 ${title} 🛡️` },
+    { type: 10, content: `## ${fixedSystemEmojiText("folha")} ${title} ${fixedSystemEmojiText("alerta")}` },
     { type: 14, divider: true, spacing: 1 },
     ...chunkText(body.join("\n"), 3900).map((content) => ({
       type: 10,
@@ -151,7 +152,7 @@ function formatCategory(category: RulesPanelCategoryDto, index: number) {
   const description = category.description?.trim();
   const rules = category.rules.map((rule) => `> - ${rule}`);
   const lines = [
-    `### ${category.emoji || "❯"} ${index + 1}. ${category.name}`,
+    `### ${normalizePanelEmoji(category.emoji) || fixedSystemEmojiText("folha")} ${index + 1}. ${category.name}`,
     description ? `**${description}**` : null,
     rules.length ? rules.join("\n") : null
   ];
@@ -169,7 +170,7 @@ function activeRulesCategories(categories: RulesPanelCategoryDto[]) {
     : [
       {
         description: "Leia com atenção antes de participar.",
-        emoji: "📜",
+        emoji: fixedSystemEmojiText("folha"),
         enabled: true,
         id: "regras-gerais",
         name: "Regras gerais",
@@ -220,8 +221,9 @@ function buildRulesButton(button: RulesPanelButtonDto): DiscordComponent | null 
 }
 
 function parseEmoji(value: string | null) {
-  if (!value) return null;
-  const custom = value.match(/^<(a?):([a-zA-Z0-9_]{2,32}):(\d{5,32})>$/);
+  const normalized = normalizePanelEmoji(value);
+  if (!normalized) return null;
+  const custom = normalized.match(/^<(a?):([a-zA-Z0-9_]{2,32}):(\d{5,32})>$/);
   if (custom) {
     return {
       animated: custom[1] === "a",
@@ -231,8 +233,13 @@ function parseEmoji(value: string | null) {
   }
 
   return {
-    name: value
+    name: normalized
   };
+}
+
+function normalizePanelEmoji(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalizeFixedSystemEmojiText(normalized) : null;
 }
 
 function buttonStyleToDiscord(style: RulesPanelButtonDto["style"]) {

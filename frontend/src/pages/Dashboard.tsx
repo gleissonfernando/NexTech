@@ -261,8 +261,13 @@ import type {
 const PANEL_EMOJIS = {
   alerta: "<:alerta:1525682173246574692>",
   caixa: "<:caixa:1525682180578214021>",
+  discord: "<:discord:1525682196277493861>",
+  exclamacao: "<:exclamacao:1525682200698163322>",
+  folha: "<:folha:1525682208122212553>",
   homem: "<:homem:1525682211985035416>",
-  prancheta: "<:prancheta:1525682244893544489>"
+  link: "<:link:1525682228170981478>",
+  prancheta: "<:pranchetaaa:1525682920789114940>",
+  visto: "<:visto:1525682264300716082>"
 } as const;
 const SUPPORT_URL = "https://discord.gg/7WYzSwVBPm";
 const ACCESS_DENIED_MESSAGE = [
@@ -6937,22 +6942,22 @@ function defaultRulesDraft() {
 
 function defaultRulesCategories(): RulesPanelCategory[] {
   return [
-    { description: "", emoji: "❯", enabled: true, id: "convivencia", name: "Convivência saudável", order: 1, rules: ["Trate todos com cordialidade e respeito.", "Não será aceito qualquer tipo de ofensa, preconceito, assédio ou discurso de ódio."] },
-    { description: "", emoji: "❯", enabled: true, id: "comunicacao", name: "Comunicação", order: 2, rules: ["Utilize uma linguagem adequada.", "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."] },
-    { description: "Não compartilhe materiais que sejam:", emoji: "❯", enabled: true, id: "conteudos-proibidos", name: "Conteúdos proibidos", order: 3, rules: ["Ilegais", "Pornográficos.", "Violentos ou perturbadores.", "Obscenos ou ofensivos."] },
-    { description: "Evite:", emoji: "❯", enabled: true, id: "organizacao-chat", name: "Organização do chat", order: 4, rules: ["Mensagens repetitivas", "Links sem relação com o tema", "Imagens em excesso", "Uso exagerado de emojis"] },
-    { description: "", emoji: "❯", enabled: true, id: "uso-canais", name: "Uso dos canais", order: 5, rules: ["Cada canal tem uma função específica.", "Mantenha as conversas dentro do contexto para facilitar a organização."] },
-    { description: "", emoji: "❯", enabled: true, id: "seguranca-privacidade", name: "Segurança e privacidade", order: 6, rules: ["Não divulgue informações pessoais de outros membros sem consentimento.", "Evite compartilhar dados sensíveis ou confidenciais."] },
-    { description: "", emoji: "❯", enabled: true, id: "divulgacao", name: "Divulgação", order: 7, rules: ["Publicidade de produtos, serviços ou outros servidores só é permitida com autorização da administração."] },
-    { description: "Não poste conteúdos protegidos sem permissão, como:", emoji: "❯", enabled: true, id: "direitos-autorais", name: "Direitos autorais", order: 8, rules: ["Músicas", "Vídeos", "Imagens", "Arquivos diversos"] },
-    { description: "Siga as orientações da equipe de moderação.", emoji: "❯", enabled: true, id: "moderacao", name: "Moderação", order: 9, rules: ["Em caso de dúvidas ou problemas, procure os canais de suporte ou fale diretamente com um moderador."] }
+    { description: "", emoji: PANEL_EMOJIS.visto, enabled: true, id: "convivencia", name: "Convivência saudável", order: 1, rules: ["Trate todos com cordialidade e respeito.", "Não será aceito qualquer tipo de ofensa, preconceito, assédio ou discurso de ódio."] },
+    { description: "", emoji: PANEL_EMOJIS.discord, enabled: true, id: "comunicacao", name: "Comunicação", order: 2, rules: ["Utilize uma linguagem adequada.", "Evite excesso de palavrões ou termos agressivos para manter um ambiente agradável."] },
+    { description: "Não compartilhe materiais que sejam:", emoji: PANEL_EMOJIS.alerta, enabled: true, id: "conteudos-proibidos", name: "Conteúdos proibidos", order: 3, rules: ["Ilegais", "Pornográficos.", "Violentos ou perturbadores.", "Obscenos ou ofensivos."] },
+    { description: "Evite:", emoji: PANEL_EMOJIS.exclamacao, enabled: true, id: "organizacao-chat", name: "Organização do chat", order: 4, rules: ["Mensagens repetitivas", "Links sem relação com o tema", "Imagens em excesso", "Uso exagerado de emojis"] },
+    { description: "", emoji: PANEL_EMOJIS.prancheta, enabled: true, id: "uso-canais", name: "Uso dos canais", order: 5, rules: ["Cada canal tem uma função específica.", "Mantenha as conversas dentro do contexto para facilitar a organização."] },
+    { description: "", emoji: PANEL_EMOJIS.folha, enabled: true, id: "seguranca-privacidade", name: "Segurança e privacidade", order: 6, rules: ["Não divulgue informações pessoais de outros membros sem consentimento.", "Evite compartilhar dados sensíveis ou confidenciais."] },
+    { description: "", emoji: PANEL_EMOJIS.link, enabled: true, id: "divulgacao", name: "Divulgação", order: 7, rules: ["Publicidade de produtos, serviços ou outros servidores só é permitida com autorização da administração."] },
+    { description: "Não poste conteúdos protegidos sem permissão, como:", emoji: PANEL_EMOJIS.caixa, enabled: true, id: "direitos-autorais", name: "Direitos autorais", order: 8, rules: ["Músicas", "Vídeos", "Imagens", "Arquivos diversos"] },
+    { description: "Siga as orientações da equipe de moderação.", emoji: PANEL_EMOJIS.alerta, enabled: true, id: "moderacao", name: "Moderação", order: 9, rules: ["Em caso de dúvidas ou problemas, procure os canais de suporte ou fale diretamente com um moderador."] }
   ];
 }
 
 function createRulesCategoryDraft(order: number): RulesPanelCategory {
   return {
     description: "",
-    emoji: "💜",
+    emoji: PANEL_EMOJIS.prancheta,
     enabled: true,
     id: `categoria-${Date.now()}-${order}`,
     name: "Nova categoria",
@@ -6965,7 +6970,7 @@ function createRulesButtonDraft(order: number): RulesPanelButton {
   return {
     action: order === 1 ? "accept" : "url",
     command: null,
-    emoji: order === 1 ? "📖" : "🌐",
+    emoji: order === 1 ? PANEL_EMOJIS.folha : PANEL_EMOJIS.link,
     enabled: true,
     id: `botao-${Date.now()}-${order}`,
     label: order === 1 ? "Ler Regras" : "Site",
@@ -7033,13 +7038,13 @@ function RulesPanelPreview({
       <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.rulesColor }}>
         <div className={imageUrl && draft.rulesImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
           <div>
-            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.rulesTitle} 🛡️</h3>
+            <h3 className="text-base font-extrabold leading-tight text-white">{PANEL_EMOJIS.folha} {draft.rulesTitle} {PANEL_EMOJIS.alerta}</h3>
             <div className="mt-2 border-b border-zinc-600" />
             <p className="mt-3 text-xs font-semibold text-zinc-200">{draft.rulesSubtitle}</p>
             <div className="mt-3 space-y-4 text-[11px] leading-relaxed text-zinc-100">
               {draft.rulesCategories.filter((category) => category.enabled !== false).map((category, index) => (
                 <section key={category.id}>
-                  <h4 className="font-extrabold text-white">{category.emoji || "❯"} {index + 1}. {category.name}</h4>
+                  <h4 className="font-extrabold text-white">{category.emoji || PANEL_EMOJIS.folha} {index + 1}. {category.name}</h4>
                   {category.description ? <p className="mt-1 font-bold text-zinc-100">{category.description}</p> : null}
                   <ul className="mt-2 space-y-1 border-l-2 border-zinc-500 pl-3 text-zinc-200">
                     {category.rules.map((rule, ruleIndex) => (
@@ -7780,7 +7785,7 @@ function ManualRegistrationPanel({
   }
 
   function addSetRole() {
-    setSettings((current) => current ? { ...current, setRoles: [...current.setRoles, { description: "", emoji: "", enabled: true, id: `set-${current.setRoles.length + 1}`, name: `Set ${current.setRoles.length + 1}`, order: current.setRoles.length + 1, requestable: true, roleId: "" }] } : current);
+    setSettings((current) => current ? { ...current, setRoles: [...current.setRoles, { description: "", emoji: PANEL_EMOJIS.prancheta, enabled: true, id: `set-${current.setRoles.length + 1}`, name: `Set ${current.setRoles.length + 1}`, order: current.setRoles.length + 1, requestable: true, roleId: "" }] } : current);
   }
 
   function removeSetRole(index: number) {

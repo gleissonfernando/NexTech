@@ -140,11 +140,11 @@ function actionConfigPanel(dashboard: Awaited<ReturnType<BotContext["api"]["getF
     new ButtonBuilder().setCustomId(`${PREFIX}:config:police`).setLabel("Polícia").setStyle(architecture === "police" ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(!isFivemActionRuntimeEnabled("police"))
   );
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_channels:${architecture}`).setLabel("Configurar painel").setEmoji("📺").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_actions:${architecture}`).setLabel("Cadastrar ações").setEmoji("➕").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_sheet:${architecture}`).setLabel("Cadastro da planilha").setEmoji("📄").setStyle(ButtonStyle.Secondary).setDisabled(architecture !== "police"),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_publish:${architecture}`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji("📌").setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId || !settings.actionChannelId || !enabledActions),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config_refresh:${architecture}`).setLabel("Atualizar visão").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_channels:${architecture}`).setLabel("Configurar painel").setEmoji(systemComponentEmoji("acessar")).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_actions:${architecture}`).setLabel("Cadastrar ações").setEmoji(systemComponentEmoji("mais")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_sheet:${architecture}`).setLabel("Cadastro da planilha").setEmoji(systemComponentEmoji("folha")).setStyle(ButtonStyle.Secondary).setDisabled(architecture !== "police"),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_publish:${architecture}`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji(systemComponentEmoji("prancheta")).setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId || !settings.actionChannelId || !enabledActions),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config_refresh:${architecture}`).setLabel("Atualizar visão").setEmoji(systemComponentEmoji("relogio")).setStyle(ButtonStyle.Secondary)
   );
 
   return {
@@ -182,7 +182,7 @@ async function showActionChannelConfig(interaction: any, context: BotContext, ar
         new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_panel:${architecture}`).setPlaceholder("Canal do painel inicial").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
         new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_action:${architecture}`).setPlaceholder("Canal de participação").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
         new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_report:${architecture}`).setPlaceholder("Canal de resultados e relatórios").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
-        new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:${architecture}`).setLabel("Voltar").setEmoji("↩️").setStyle(ButtonStyle.Secondary))
+        new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:${architecture}`).setLabel("Voltar").setEmoji(systemComponentEmoji("porta", interaction.guild)).setStyle(ButtonStyle.Secondary))
       ]
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
@@ -328,8 +328,8 @@ async function openAction(interaction: StringSelectMenuInteraction, context: Bot
   const action = dashboard.actions.find((item) => item.id === actionId);
   if (!action) return void await interaction.editReply("Ação não encontrada.");
   const modeButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|shootout`).setEmoji("🔫").setLabel("No tiro").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|escape`).setEmoji("🚗").setLabel("Na fuga").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|shootout`).setEmoji(systemComponentEmoji("arma", interaction.guild)).setLabel("No tiro").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:mode:${architecture}|${actionId}|escape`).setEmoji(systemComponentEmoji("acessar", interaction.guild)).setLabel("Na fuga").setStyle(ButtonStyle.Primary)
   );
   await interaction.editReply({
     components: [{
@@ -415,8 +415,8 @@ async function cancelAction(interaction: any, context: BotContext, sessionId: st
 
 async function chooseResult(interaction: any, _context: BotContext, sessionId: string) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|victory`).setLabel("Vitória").setEmoji("🏆").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|defeat`).setLabel("Derrota").setEmoji("❌").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|victory`).setLabel("Vitória").setEmoji(systemComponentEmoji("trofeu", interaction.guild)).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:finish_result:${sessionId}|defeat`).setLabel("Derrota").setEmoji(systemComponentEmoji("exclamacao", interaction.guild)).setStyle(ButtonStyle.Danger)
   );
   const content = [
     `## ${systemEmojiText("trofeu", interaction.guild)} Resultado da ação`,
@@ -594,7 +594,7 @@ function sessionPayload(session: FivemActionSession, guild: Parameters<typeof sy
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`${PREFIX}:join:${session.id}`).setLabel("Entrar").setEmoji(systemComponentEmoji("visto", guild)).setStyle(ButtonStyle.Success).setDisabled(session.status !== "forming"),
       new ButtonBuilder().setCustomId(`${PREFIX}:leave:${session.id}`).setLabel("Sair").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Secondary).setDisabled(session.status !== "forming"),
-      new ButtonBuilder().setCustomId(`${PREFIX}:start:${session.id}`).setLabel("Iniciar ação").setEmoji("🚔").setStyle(ButtonStyle.Primary).setDisabled(session.status !== "forming")
+      new ButtonBuilder().setCustomId(`${PREFIX}:start:${session.id}`).setLabel("Iniciar ação").setEmoji(systemComponentEmoji("bandeira", guild)).setStyle(ButtonStyle.Primary).setDisabled(session.status !== "forming")
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${session.id}`).setLabel("Cancelar ação").setEmoji(systemComponentEmoji("exclamacao", guild)).setStyle(ButtonStyle.Danger).setDisabled(terminal),

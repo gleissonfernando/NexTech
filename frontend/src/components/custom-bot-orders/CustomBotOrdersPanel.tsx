@@ -30,6 +30,8 @@ const DEFAULT_BENEFITS = [
   "Painéis em Componentes V2"
 ];
 
+const PREVIEW_BULLET_EMOJI = "<:visto:1525682264300716082>";
+
 export function CustomBotOrdersPanel({ botId, canManage, guild }: Props) {
   const [dashboard, setDashboard] = useState<CustomBotOrdersDashboard | null>(null);
   const [draft, setDraft] = useState<CustomBotOrderSettings | null>(null);
@@ -155,7 +157,7 @@ export function CustomBotOrdersPanel({ botId, canManage, guild }: Props) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">Status do fluxo</p>
-                <Button disabled={!canManage} size="sm" variant="secondary" onClick={() => setDraft({ ...draft, statusDefinitions: [...draft.statusDefinitions, { color: "#8b5cf6", dmEnabled: false, emoji: "🔹", id: `custom-${Date.now()}`, name: "Novo status", order: draft.statusDefinitions.length + 1 }] })}><Plus className="h-4 w-4" />Status</Button>
+                <Button disabled={!canManage} size="sm" variant="secondary" onClick={() => setDraft({ ...draft, statusDefinitions: [...draft.statusDefinitions, { color: "#8b5cf6", dmEnabled: false, emoji: "<:pranchetaaa:1525682920789114940>", id: `custom-${Date.now()}`, name: "Novo status", order: draft.statusDefinitions.length + 1 }] })}><Plus className="h-4 w-4" />Status</Button>
               </div>
               {activeStatuses.map((status, index) => (
                 <div className="grid gap-2 rounded-lg border border-zinc-800 p-3 md:grid-cols-[4rem_minmax(0,1fr)_8rem_auto]" key={status.id}>
@@ -235,7 +237,7 @@ function RoleMulti({ disabled, label, onChange, roles, values }: { disabled: boo
 }
 
 function Preview({ settings }: { settings: CustomBotOrderSettings }) {
-  return <div className="rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white"><div className="border-l-4 pl-3" style={{ borderColor: settings.color }}><h3 className="font-extrabold">{settings.panelEmoji} {settings.title}</h3><p className="mt-1 text-xs font-bold">{settings.subtitle}</p><p className="mt-3 text-xs leading-relaxed">{settings.description}</p><div className="mt-3 border-l border-zinc-500 pl-2 text-xs">{DEFAULT_BENEFITS.slice(0, 5).map((item) => <p key={item}>💜 {item}</p>)}</div><p className="mt-3 text-xs italic">{settings.introText}</p>{settings.bannerUrl ? <img alt="" className="mt-3 max-h-32 w-full rounded-md object-cover" src={settings.bannerUrl} /> : null}<p className="mt-2 text-[11px] text-zinc-300">{settings.footerText}</p></div><button className="mt-3 rounded-md bg-[#5865F2] px-3 py-2 text-xs font-bold">{settings.buttonEmoji} {settings.buttonLabel}</button></div>;
+  return <div className="rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white"><div className="border-l-4 pl-3" style={{ borderColor: settings.color }}><h3 className="font-extrabold">{settings.panelEmoji} {settings.title}</h3><p className="mt-1 text-xs font-bold">{settings.subtitle}</p><p className="mt-3 text-xs leading-relaxed">{settings.description}</p><div className="mt-3 border-l border-zinc-500 pl-2 text-xs">{DEFAULT_BENEFITS.slice(0, 5).map((item) => <p key={item}>{PREVIEW_BULLET_EMOJI} {item}</p>)}</div><p className="mt-3 text-xs italic">{settings.introText}</p>{settings.bannerUrl ? <img alt="" className="mt-3 max-h-32 w-full rounded-md object-cover" src={settings.bannerUrl} /> : null}<p className="mt-2 text-[11px] text-zinc-300">{settings.footerText}</p></div><button className="mt-3 rounded-md bg-[#5865F2] px-3 py-2 text-xs font-bold">{settings.buttonEmoji} {settings.buttonLabel}</button></div>;
 }
 
 function readMessage(error: unknown) {

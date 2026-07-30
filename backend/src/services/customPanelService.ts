@@ -5,6 +5,7 @@ import {
   type MongoCustomPanelCategory,
   type MongoCustomPanelComponent
 } from "../database/mongo";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
 
@@ -33,46 +34,46 @@ const DEFAULT_PANEL_TEMPLATES: Record<string, Array<{
   panelType: string;
 }>> = {
   administracao: [
-    defaultPanelTemplate("Painel Staff", "📋", "Central administrativa para ações de equipe, avisos internos e solicitações operacionais.", "staff"),
-    defaultPanelTemplate("Painel Moderador", "🛡️", "Área de suporte para moderação, análise de denúncias e acompanhamento de ocorrências.", "moderation"),
-    defaultPanelTemplate("Painel Verificação", "✅", "Painel para iniciar processos de verificação e liberação de acesso.", "verification"),
-    defaultPanelTemplate("Painel Boas-vindas", "👋", "Mensagem inicial para orientar novos membros e apresentar os canais principais.", "welcome")
+    defaultPanelTemplate("Painel Staff", fixedSystemEmojiText("prancheta"), "Central administrativa para ações de equipe, avisos internos e solicitações operacionais.", "staff"),
+    defaultPanelTemplate("Painel Moderador", fixedSystemEmojiText("alerta"), "Área de suporte para moderação, análise de denúncias e acompanhamento de ocorrências.", "moderation"),
+    defaultPanelTemplate("Painel Verificação", fixedSystemEmojiText("visto"), "Painel para iniciar processos de verificação e liberação de acesso.", "verification"),
+    defaultPanelTemplate("Painel Boas-vindas", fixedSystemEmojiText("homem"), "Mensagem inicial para orientar novos membros e apresentar os canais principais.", "welcome")
   ],
   policia: [
-    defaultPanelTemplate("Painel Polícia", "🚓", "Central de acesso para serviços, solicitações e processos internos da corporação.", "police"),
-    defaultPanelTemplate("Painel Promoções", "📈", "Solicitação e acompanhamento de avaliações de promoção da corporação.", "police-promotions"),
-    defaultPanelTemplate("Painel Ausências", "📅", "Registro de ausências, afastamentos e justificativas operacionais.", "police-absences")
+    defaultPanelTemplate("Painel Polícia", fixedSystemEmojiText("bandeira"), "Central de acesso para serviços, solicitações e processos internos da corporação.", "police"),
+    defaultPanelTemplate("Painel Promoções", fixedSystemEmojiText("trofeu"), "Solicitação e acompanhamento de avaliações de promoção da corporação.", "police-promotions"),
+    defaultPanelTemplate("Painel Ausências", fixedSystemEmojiText("calendario"), "Registro de ausências, afastamentos e justificativas operacionais.", "police-absences")
   ],
   fivem: [
-    defaultPanelTemplate("Painel FiveM", "🎮", "Acesso rápido aos sistemas operacionais do servidor FiveM.", "fivem"),
-    defaultPanelTemplate("Painel Facção", "🏷️", "Solicitações e ações voltadas para organizações e facções.", "faction")
+    defaultPanelTemplate("Painel FiveM", fixedSystemEmojiText("engrenagem"), "Acesso rápido aos sistemas operacionais do servidor FiveM.", "fivem"),
+    defaultPanelTemplate("Painel Facção", fixedSystemEmojiText("prancheta"), "Solicitações e ações voltadas para organizações e facções.", "faction")
   ],
   tickets: [
-    defaultPanelTemplate("Painel Tickets", "🎫", "Abra um atendimento com a equipe responsável pelo assunto selecionado.", "tickets"),
-    defaultPanelTemplate("Painel Suporte", "🧰", "Canal central para dúvidas, problemas técnicos e solicitações gerais.", "support")
+    defaultPanelTemplate("Painel Tickets", fixedSystemEmojiText("interrogacao"), "Abra um atendimento com a equipe responsável pelo assunto selecionado.", "tickets"),
+    defaultPanelTemplate("Painel Suporte", fixedSystemEmojiText("discord"), "Canal central para dúvidas, problemas técnicos e solicitações gerais.", "support")
   ],
   vendas: [
-    defaultPanelTemplate("Painel Vendas", "💳", "Consulte planos, benefícios e abra uma solicitação de compra.", "sales"),
-    defaultPanelTemplate("Painel Planos", "📦", "Veja os planos disponíveis e escolha a melhor opção para o seu servidor.", "plans")
+    defaultPanelTemplate("Painel Vendas", fixedSystemEmojiText("dinheiro"), "Consulte planos, benefícios e abra uma solicitação de compra.", "sales"),
+    defaultPanelTemplate("Painel Planos", fixedSystemEmojiText("caixa"), "Veja os planos disponíveis e escolha a melhor opção para o seu servidor.", "plans")
   ],
   seguranca: [
-    defaultPanelTemplate("Painel Segurança", "🔒", "Ações de proteção, denúncias e validações de segurança do servidor.", "security"),
-    defaultPanelTemplate("Painel Denúncias", "🚨", "Envie uma denúncia para análise da equipe responsável.", "reports")
+    defaultPanelTemplate("Painel Segurança", fixedSystemEmojiText("perigo"), "Ações de proteção, denúncias e validações de segurança do servidor.", "security"),
+    defaultPanelTemplate("Painel Denúncias", fixedSystemEmojiText("exclamacao"), "Envie uma denúncia para análise da equipe responsável.", "reports")
   ],
   rh: [
-    defaultPanelTemplate("Painel RH", "📁", "Solicitações de recursos humanos, registros internos e acompanhamento de equipe.", "rh"),
-    defaultPanelTemplate("Painel Recrutamento", "📝", "Inicie processos de inscrição, recrutamento ou registro manual.", "recruitment")
+    defaultPanelTemplate("Painel RH", fixedSystemEmojiText("prancheta"), "Solicitações de recursos humanos, registros internos e acompanhamento de equipe.", "rh"),
+    defaultPanelTemplate("Painel Recrutamento", fixedSystemEmojiText("prancheta_caneta"), "Inicie processos de inscrição, recrutamento ou registro manual.", "recruitment")
   ],
   streamer: [
-    defaultPanelTemplate("Painel Streamer", "📺", "Divulgação, notificações e ferramentas para criadores de conteúdo.", "streamer"),
-    defaultPanelTemplate("Painel Lives", "🔴", "Acompanhe lives, avisos e integrações de transmissão.", "live")
+    defaultPanelTemplate("Painel Streamer", fixedSystemEmojiText("acessar"), "Divulgação, notificações e ferramentas para criadores de conteúdo.", "streamer"),
+    defaultPanelTemplate("Painel Lives", fixedSystemEmojiText("liga"), "Acompanhe lives, avisos e integrações de transmissão.", "live")
   ],
   comunidade: [
-    defaultPanelTemplate("Painel Comunidade", "🌐", "Informações, links úteis e ações públicas para a comunidade.", "community"),
-    defaultPanelTemplate("Painel Eventos", "🎉", "Divulgue eventos, inscrições e ações especiais do servidor.", "events")
+    defaultPanelTemplate("Painel Comunidade", fixedSystemEmojiText("link"), "Informações, links úteis e ações públicas para a comunidade.", "community"),
+    defaultPanelTemplate("Painel Eventos", fixedSystemEmojiText("calendario"), "Divulgue eventos, inscrições e ações especiais do servidor.", "events")
   ],
   personalizados: [
-    defaultPanelTemplate("Painel Personalizado", "✨", "Modelo livre para criar um painel sob medida para o seu servidor.", "custom")
+    defaultPanelTemplate("Painel Personalizado", fixedSystemEmojiText("prancheta_acertos"), "Modelo livre para criar um painel sob medida para o seu servidor.", "custom")
   ]
 };
 
@@ -404,7 +405,7 @@ function normalizePanelInput(guildId: string, botId: string | null, input: SaveC
     bannerUrl: normalizeUrl(input.bannerUrl),
     footerText: normalizeNullableText(input.footerText, 300),
     authorName: normalizeNullableText(input.authorName, 120),
-    emoji: normalizeNullableText(input.emoji, 80),
+    emoji: normalizeNullableSystemEmoji(input.emoji),
     panelType: normalizeNullableText(input.panelType, 80) ?? "custom",
     channelId: normalizeSnowflake(input.channelId),
     mentionRoleId: normalizeSnowflake(input.mentionRoleId),
@@ -424,7 +425,7 @@ function normalizePanelPatch(input: Partial<SaveCustomPanelInput>): Partial<Mong
   if (input.bannerUrl !== undefined) patch.bannerUrl = normalizeUrl(input.bannerUrl);
   if (input.footerText !== undefined) patch.footerText = normalizeNullableText(input.footerText, 300);
   if (input.authorName !== undefined) patch.authorName = normalizeNullableText(input.authorName, 120);
-  if (input.emoji !== undefined) patch.emoji = normalizeNullableText(input.emoji, 80);
+  if (input.emoji !== undefined) patch.emoji = normalizeNullableSystemEmoji(input.emoji);
   if (input.panelType !== undefined) patch.panelType = normalizeNullableText(input.panelType, 80) ?? "custom";
   if (input.channelId !== undefined) patch.channelId = normalizeSnowflake(input.channelId);
   if (input.mentionRoleId !== undefined) patch.mentionRoleId = normalizeSnowflake(input.mentionRoleId);
@@ -609,7 +610,7 @@ function normalizeComponents(value: unknown): MongoCustomPanelComponent[] {
     return [{
       customId: normalizeNullableText(raw.customId, 100),
       disabled: Boolean(raw.disabled),
-      emoji: normalizeNullableText(raw.emoji, 80),
+      emoji: normalizeNullableSystemEmoji(raw.emoji),
       label: normalizeNullableText(raw.label, 80),
       maxValues: normalizeInteger(raw.maxValues, 25),
       minValues: normalizeInteger(raw.minValues, 25),
@@ -632,7 +633,7 @@ function normalizeOptions(value: unknown) {
     if (!label || !optionValue) return [];
     return [{
       description: normalizeNullableText(raw.description, 100),
-      emoji: normalizeNullableText(raw.emoji, 80),
+      emoji: normalizeNullableSystemEmoji(raw.emoji),
       label,
       value: optionValue
     }];
@@ -687,6 +688,11 @@ function normalizeNullableText(value: unknown, max: number) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim().slice(0, max);
   return text || null;
+}
+
+function normalizeNullableSystemEmoji(value: unknown) {
+  const text = normalizeNullableText(value, 80);
+  return text ? normalizeFixedSystemEmojiText(text) : null;
 }
 
 function slugify(value: string) {

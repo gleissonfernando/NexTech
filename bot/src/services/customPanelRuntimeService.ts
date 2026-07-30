@@ -12,6 +12,7 @@ import { currentRuntimeBotId, env } from "../config/env";
 import type { CustomPanel, CustomPanelComponent, ApiClient } from "./apiClient";
 import { assertPanelChannelPermissions, pinPanelMessage } from "./panelDeliveryService";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { replaceSystemEmojis } from "./systemEmojiService";
 import type { BotSocketClient, CustomPanelUpdateEvent } from "../websocket/socketClient";
 
 type WritableGuildTextChannel = GuildTextBasedChannel;
@@ -76,7 +77,7 @@ async function syncCustomPanel(client: Client, api: ApiClient, panel: CustomPane
   }
 
   assertPanelChannelPermissions(channel, client, panel.name);
-  const payload = buildPanelMessage(panel);
+  const payload = buildPanelMessage(panel, channel.guild);
   const existing = panel.messageId ? await fetchMessage(channel, panel.messageId) : null;
 
   if (existing) {
@@ -91,8 +92,8 @@ async function syncCustomPanel(client: Client, api: ApiClient, panel: CustomPane
   await api.updateCustomPanelState(panel.id, { messageId: message.id, published: true });
 }
 
-function buildPanelMessage(panel: CustomPanel): MessageCreateOptions {
-  const actions = buildComponents(panel);
+function buildPanelMessage(panel: CustomPanel, guild: WritableGuildTextChannel["guild"]): MessageCreateOptions {
+  const actions = buildComponents(panel, guild);
   const fields = [
     panel.mentionRoleId ? `<@&${panel.mentionRoleId}>` : null,
     panel.beforeMessage,
@@ -107,7 +108,7 @@ function buildPanelMessage(panel: CustomPanel): MessageCreateOptions {
     footer: panel.footerText ? { text: panel.footerText.slice(0, 2048) } : null,
     image: panel.thumbnailUrl ? { imageEnabled: true, imagePosition: "thumbnail", imageUrl: panel.thumbnailUrl } : null,
     moduleId: "panels",
-    title: `${panel.emoji ? `${panel.emoji} ` : ""}${panel.name}`.slice(0, 256)
+    title: `${panel.emoji ? `${replaceSystemEmojis(panel.emoji, guild)} ` : ""}${panel.name}`.slice(0, 256)
   });
   return {
     ...payload,
@@ -118,13 +119,13 @@ function buildPanelMessage(panel: CustomPanel): MessageCreateOptions {
   };
 }
 
-function buildComponents(panel: CustomPanel) {
+function buildComponents(panel: CustomPanel, guild: WritableGuildTextChannel["guild"]) {
   const rows: Array<ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>> = [];
   const buttons: ButtonBuilder[] = [];
 
   panel.components.slice(0, 25).forEach((component, index) => {
     if (isButton(component)) {
-      buttons.push(buildButton(component, panel.id, index));
+      buttons.push(buildButton(component, panel.id, index, guild));
       return;
     }
 
@@ -141,7 +142,7 @@ function buildComponents(panel: CustomPanel) {
           .setPlaceholder(component.placeholder || component.label || "Selecione uma opção")
           .addOptions(options.map((option) => ({
             description: option.description ?? undefined,
-            emoji: option.emoji ?? undefined,
+            emoji: option.emoji ? replaceSystemEmojis(option.emoji, guild) : undefined,
             label: option.label,
             value: option.value
           })))
@@ -153,13 +154,13 @@ function buildComponents(panel: CustomPanel) {
   return rows.slice(0, 5);
 }
 
-function buildButton(component: CustomPanelComponent, panelId: string, index: number) {
+function buildButton(component: CustomPanelComponent, panelId: string, index: number, guild: WritableGuildTextChannel["guild"]) {
   const button = new ButtonBuilder()
     .setDisabled(Boolean(component.disabled))
     .setLabel((component.label || "Abrir").slice(0, 80))
     .setStyle(buttonStyle(component));
 
-  if (component.emoji) button.setEmoji(component.emoji);
+  if (component.emoji) button.setEmoji(replaceSystemEmojis(component.emoji, guild));
 
   if (buttonStyle(component) === ButtonStyle.Link) {
     button.setURL(isHttpUrl(component.url) ? component.url! : "https://discord.com");

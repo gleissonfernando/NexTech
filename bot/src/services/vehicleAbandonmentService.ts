@@ -1,7 +1,9 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, TextInputBuilder, TextInputStyle, type ChatInputCommandInteraction, type GuildMember, type Interaction, type Message, type MessageCreateOptions } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import type { BotCommand, BotContext } from "../types";
 import type { VehicleAbandonmentRecord, VehicleAbandonmentSettings } from "./apiClient";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const MODULE_ID = "vehicle-abandonment";
 const PREFIX = "vehicle_abandonment";
@@ -124,7 +126,7 @@ export async function handleVehicleAbandonmentMessage(message: Message, context:
         type: 17,
         accent_color: parseColor(settings.color),
         components: [
-          { type: 10, content: `# ${settings.emoji} Confirmar registro\n**Veículo:** ${escapeMarkdown(ready.model)}\n**Placa:** ${escapeMarkdown(ready.plate)}\n\n${clip(ready.report, 900)}` },
+          { type: 10, content: `# ${panelEmoji(settings.emoji, message.guild)} Confirmar registro\n**Veículo:** ${escapeMarkdown(ready.model)}\n**Placa:** ${escapeMarkdown(ready.plate)}\n\n${clip(ready.report, 900)}` },
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${message.id}`).setLabel("Enviar").setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${message.id}`).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
@@ -359,13 +361,13 @@ function recordPayload(settings: VehicleAbandonmentSettings, author: RenderAutho
       type: 10,
       content: [
         "## Dados do veículo",
-        `### 🚗 Modelo`,
+        `### ${fixedSystemEmojiText("prancheta")} Modelo`,
         `**${escapeMarkdown(clip(parsed.model, 300))}**`,
         "",
         "### 🪪 Placa",
         `\`${escapeInlineCode(clip(parsed.plate.toUpperCase(), 80))}\``,
         "",
-        "### 📝 Relatório",
+        `### ${fixedSystemEmojiText("prancheta_caneta")} Relatório`,
         quoteBlock(clip(parsed.report, 1600))
       ].join("\n")
     }
@@ -392,7 +394,7 @@ function recordPayload(settings: VehicleAbandonmentSettings, author: RenderAutho
 
   if (settings.allowRecordEditing && recordId) {
     components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:edit:${recordId}`).setEmoji("✏️").setLabel("Editar registro").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`${PREFIX}:edit:${recordId}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Editar registro").setStyle(ButtonStyle.Secondary)
     ));
   }
 
@@ -420,15 +422,15 @@ function explanatoryPanelPayload(settings: VehicleAbandonmentSettings): MessageC
   components.push(
     { type: 10, content: clip(settings.explanatoryPanelDescription, 1200) },
     { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: `## ${settings.explanatoryPanelEmoji} Como funciona\n${clip(settings.explanatoryPanelHowItWorksText, 1800)}` },
+    { type: 10, content: `## ${panelEmoji(settings.explanatoryPanelEmoji)} Como funciona\n${clip(replaceSystemEmojis(settings.explanatoryPanelHowItWorksText), 1800)}` },
     { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: `## Campos Obrigatórios\n${clip(settings.explanatoryPanelRequiredFieldsText, 1000)}` },
+    { type: 10, content: `## Campos Obrigatórios\n${clip(replaceSystemEmojis(settings.explanatoryPanelRequiredFieldsText), 1000)}` },
     { type: 14, divider: true, spacing: 1 },
     { type: 10, content: `## Exemplo Correto\n\`\`\`\n${clip(settings.explanatoryPanelExampleText, 1700)}\n\`\`\`` },
     { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: `## Observações\n${clip(settings.explanatoryPanelNotesText, 1800)}` },
+    { type: 10, content: `## Observações\n${clip(replaceSystemEmojis(settings.explanatoryPanelNotesText), 1800)}` },
     { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: `## Erros Comuns\n${clip(settings.explanatoryPanelCommonErrorsText, 1600)}` }
+    { type: 10, content: `## Erros Comuns\n${clip(replaceSystemEmojis(settings.explanatoryPanelCommonErrorsText), 1600)}` }
   );
 
   if (settings.explanatoryPanelImageUrl) {
@@ -461,7 +463,7 @@ async function sendInternalLog(message: Message, settings: VehicleAbandonmentSet
     components: [{
       type: 17,
       accent_color: parseColor(settings.color),
-      components: [{ type: 10, content: `# ${settings.emoji} Registro enviado\n**Autor:** <@${message.author.id}>\n**Veículo:** ${escapeMarkdown(parsed.model)}\n**Placa:** ${escapeMarkdown(parsed.plate)}\n**Mensagem:** https://discord.com/channels/${message.guild.id}/${settings.recordChannelId}/${recordMessageId}` }]
+      components: [{ type: 10, content: `# ${panelEmoji(settings.emoji, message.guild)} Registro enviado\n**Autor:** <@${message.author.id}>\n**Veículo:** ${escapeMarkdown(parsed.model)}\n**Placa:** ${escapeMarkdown(parsed.plate)}\n**Mensagem:** https://discord.com/channels/${message.guild.id}/${settings.recordChannelId}/${recordMessageId}` }]
     }],
     flags: MessageFlags.IsComponentsV2
   }).catch(() => null);
@@ -536,7 +538,7 @@ function renderTemplate(template: string, author: RenderAuthor, settings: Vehicl
   const date = now.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
   return template
-    .replace(/\{emoji\}/g, settings.emoji)
+    .replace(/\{emoji\}/g, panelEmoji(settings.emoji))
     .replace(/\{systemName\}/g, settings.systemName)
     .replace(/\{user\}/g, author.name)
     .replace(/\{userId\}/g, author.id)
@@ -640,4 +642,18 @@ function escapeInlineCode(value: string) {
 
 function escapeMarkdown(value: string) {
   return value.replace(/([\\*_`~|])/g, "\\$1");
+}
+
+function panelEmoji(value: string | null | undefined, guild?: Message["guild"] | null) {
+  const normalized = value?.trim();
+  if (!normalized) return guild ? systemEmojiText("prancheta", guild) : fixedSystemEmojiText("prancheta");
+  return guild ? replaceSystemEmojis(normalized, guild) : normalizeStaticSystemEmojis(normalized);
+}
+
+function normalizeStaticSystemEmojis(value: string) {
+  return normalizeFixedSystemEmojiText(value)
+    .replace(/🚗/g, fixedSystemEmojiText("prancheta"))
+    .replace(/✅|✔️|✔/g, fixedSystemEmojiText("visto"))
+    .replace(/❌|❗|❕/g, fixedSystemEmojiText("exclamacao"))
+    .replace(/📝|✏️|✏/g, fixedSystemEmojiText("prancheta_caneta"));
 }

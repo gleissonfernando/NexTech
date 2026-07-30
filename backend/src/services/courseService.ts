@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { fixedSystemEmojiText } from "../config/systemEmojis";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { getMongoCollections, type MongoCourse, type MongoCourseDepartment, type MongoCourseEnrollment, type MongoCourseExamQuestion, type MongoCourseImage, type MongoCoursePublication, type MongoCourseReport, type MongoCourseScheduleRequest, type MongoCourseSettings } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 
@@ -100,7 +100,7 @@ async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: str
       name: "CURSO DE TABLET E PRISIONAL - NPD",
       code: "npd-tablet-prisional",
       description,
-      emoji: null,
+      emoji: fixedSystemEmojiText("folha"),
       color: "#FFD500",
       bannerUrl: null,
       proofBannerUrl: null,
@@ -145,6 +145,7 @@ async function ensureNpdTabletPrisionalCourse(botId: string | null, guildId: str
           ...(seedOwned ? {
             color: "#FFD500",
             description,
+            emoji: existing.emoji ?? fixedSystemEmojiText("folha"),
             name: "CURSO DE TABLET E PRISIONAL - NPD",
             updatedBy: "system:seed"
           } : {
@@ -319,7 +320,7 @@ async function ensureNpdModulationCourse(botId: string | null, guildId: string) 
       name: "Curso de Modulação",
       code: "npd_modulacao",
       description,
-      emoji: null,
+      emoji: fixedSystemEmojiText("discord"),
       color: "#FFD500",
       bannerUrl: null,
       proofBannerUrl: null,
@@ -364,6 +365,7 @@ async function ensureNpdModulationCourse(botId: string | null, guildId: string) 
           ...(seedOwned ? {
             color: "#FFD500",
             description,
+            emoji: existing.emoji ?? fixedSystemEmojiText("discord"),
             name: "Curso de Modulação",
             updatedBy: "system:seed"
           } : {
@@ -540,7 +542,7 @@ async function ensureNpdTrackingCourse(botId: string | null, guildId: string) {
       name: "CURSO DE ACOMPANHAMENTO - NPD",
       code: "npd_acompanhamento",
       description,
-      emoji: null,
+      emoji: fixedSystemEmojiText("prancheta_acertos"),
       color: "#b91c1c",
       bannerUrl: null,
       proofBannerUrl: null,
@@ -585,6 +587,7 @@ async function ensureNpdTrackingCourse(botId: string | null, guildId: string) {
           ...(seedOwned ? {
             color: "#FFD500",
             description,
+            emoji: existing.emoji ?? fixedSystemEmojiText("prancheta_acertos"),
             name: "CURSO DE ACOMPANHAMENTO - NPD",
             updatedBy: "system:seed"
           } : {
@@ -759,7 +762,7 @@ async function ensureNpdApproachCourse(botId: string | null, guildId: string) {
       name: "CURSO DE ABORDAGEM - NPD",
       code: "npd_abordagem",
       description,
-      emoji: null,
+      emoji: fixedSystemEmojiText("alerta"),
       color: "#7c3aed",
       bannerUrl: null,
       proofBannerUrl: null,
@@ -804,6 +807,7 @@ async function ensureNpdApproachCourse(botId: string | null, guildId: string) {
           ...(seedOwned ? {
             color: "#FFD500",
             description,
+            emoji: existing.emoji ?? fixedSystemEmojiText("alerta"),
             name: "CURSO DE ABORDAGEM - NPD",
             updatedBy: "system:seed"
           } : {
@@ -2060,7 +2064,15 @@ function cleanCourse(input: Partial<CourseDto>) {
   ] as const) {
     if (input[key] !== undefined) (allowed as Record<string, unknown>)[key] = input[key];
   }
+  if (input.emoji !== undefined) {
+    allowed.emoji = normalizeCourseEmoji(input.emoji);
+  }
   return allowed;
+}
+
+function normalizeCourseEmoji(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalizeFixedSystemEmojiText(normalized).slice(0, 120) : null;
 }
 
 function sanitizeCourseDepartmentName(input: string) {

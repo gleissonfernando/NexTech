@@ -78,7 +78,7 @@ const DEFAULT_DRAFT: Draft = {
     panelBannerUrl: null,
     panelFooterText: "Logs do sistema - acesso restrito",
     panelColor: "#2563eb",
-    moduleEmoji: "📁",
+    moduleEmoji: "<:pranchetaaa:1525682920789114940>",
     moduleName: null,
     showAnonymousAuthorToRoleIds: []
   }

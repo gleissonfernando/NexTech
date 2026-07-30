@@ -20,6 +20,7 @@ import {
 import type { BotContext } from "../types";
 import type { CustomBotOrder, CustomBotOrderSettings, CustomBotOrderStatus } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "custom_bot_order";
 const FINAL_STATUSES = new Set(["FINISHED", "CANCELLED"]);
@@ -57,7 +58,7 @@ async function publishCustomBotOrderPanel(guild: Guild, context: BotContext) {
   const channel = await guild.channels.fetch(settings.panelChannelId).catch(() => null);
   if (!channel?.isSendable()) return null;
 
-  const payload = createPublicPanel(settings);
+  const payload = createPublicPanel(settings, guild);
   if (settings.panelMessageId && "messages" in channel) {
     const current = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
     if (current) {
@@ -83,7 +84,9 @@ async function deleteCustomBotOrderPanel(guild: Guild, context: BotContext) {
   await context.api.updateCustomBotOrderPanelState(guild.id, null);
 }
 
-function createPublicPanel(settings: CustomBotOrderSettings) {
+function createPublicPanel(settings: CustomBotOrderSettings, guild?: Guild | null) {
+  const panelEmoji = displayEmoji(settings.panelEmoji, "robo", guild);
+  const buttonEmoji = displayEmoji(settings.buttonEmoji, "caixa", guild);
   const benefits = [
     "Bots personalizados para Discord",
     "Sistemas administrativos",
@@ -98,18 +101,18 @@ function createPublicPanel(settings: CustomBotOrderSettings) {
     accentColor: parseColor(settings.color),
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:open`).setEmoji(settings.buttonEmoji || "🛒").setLabel(settings.buttonLabel || "Faça o seu pedido!").setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId(`${PREFIX}:open`).setEmoji(buttonEmoji).setLabel(settings.buttonLabel || "Faça o seu pedido!").setStyle(ButtonStyle.Primary)
       )
     ],
     description: `**${settings.subtitle}**\n\n${settings.description}`,
     fields: [
-      `## ${settings.panelEmoji || "🤖"} O que podemos desenvolver:\n${benefits.map((item) => `- ${item}`).join("\n")}`,
+      `## ${panelEmoji} O que podemos desenvolver:\n${benefits.map((item) => `- ${item}`).join("\n")}`,
       `## Interessado?\n${settings.introText}`
     ],
     footer: { image: settings.footerImageUrl, text: settings.footerText },
     image: settings.bannerUrl ? { imageEnabled: true, imagePosition: "bottom", imageUrl: settings.bannerUrl } : settings.thumbnailUrl ? { imageEnabled: true, imagePosition: "thumbnail", imageUrl: settings.thumbnailUrl } : null,
     moduleId: "custom-bot-orders",
-    title: `${settings.panelEmoji || "🤖"} ${settings.title}`
+    title: `${panelEmoji} ${settings.title}`
   });
 }
 
@@ -147,11 +150,11 @@ async function submitOrderModal(interaction: ModalSubmitInteraction, context: Bo
       type: field(interaction, "type")
     });
     const channel = await createOrderChannel(interaction.guild, settings, order);
-    const panel = await channel.send(createInternalPanel(settings, { ...order, channelId: channel.id }));
+    const panel = await channel.send(createInternalPanel(settings, { ...order, channelId: channel.id }, interaction.guild));
     const updated = await context.api.updateCustomBotOrder(interaction.guild.id, order.id, { action: "ticket_channel_created", channelId: channel.id, panelMessageId: panel.id });
     const mention = [interaction.user.toString(), settings.mentionRoleId ? `<@&${settings.mentionRoleId}>` : null].filter(Boolean).join(" ");
     await channel.send({ allowedMentions: { roles: settings.mentionRoleId ? [settings.mentionRoleId] : [], users: [interaction.user.id] }, content: `${mention}\nPedido ${order.ticketId} aberto.` }).catch(() => null);
-    await panel.edit(createInternalPanel(settings, updated)).catch(() => null);
+    await panel.edit(createInternalPanel(settings, updated, interaction.guild)).catch(() => null);
     await interaction.editReply(`Pedido criado: <#${channel.id}>.`);
   } catch (error) {
     const active = (error as { response?: { data?: { activeOrder?: CustomBotOrder | null; message?: string } } }).response?.data?.activeOrder ?? null;
@@ -182,20 +185,20 @@ async function createOrderChannel(guild: Guild, settings: CustomBotOrderSettings
   }) as Promise<TextChannel>;
 }
 
-function createInternalPanel(settings: CustomBotOrderSettings, order: CustomBotOrder) {
+function createInternalPanel(settings: CustomBotOrderSettings, order: CustomBotOrder, guild?: Guild | null) {
   const status = statusDefinition(settings, order.status);
   return renderComponentsV2Panel({
     accentColor: parseColor(status.color || settings.color),
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:claim:${order.id}`).setEmoji("🙋").setLabel(order.assignedStaffId ? "Transferir atendimento" : "Assumir ticket").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:notice:${order.id}`).setEmoji("🔔").setLabel("Enviar aviso").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status:${order.id}`).setEmoji("🔄").setLabel("Alterar status").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:note:${order.id}`).setEmoji("📝").setLabel("Adicionar observação").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:close:${order.id}`).setEmoji("🔒").setLabel("Fechar ticket").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`${PREFIX}:claim:${order.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel(order.assignedStaffId ? "Transferir atendimento" : "Assumir ticket").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:notice:${order.id}`).setEmoji(systemComponentEmoji("alerta", guild)).setLabel("Enviar aviso").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Alterar status").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:note:${order.id}`).setEmoji(systemComponentEmoji("prancheta_caneta", guild)).setLabel("Adicionar observação").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:close:${order.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Fechar ticket").setStyle(ButtonStyle.Danger)
       )
     ],
-    description: `${status.emoji} **${status.name}**\nPedido **${order.ticketId}**`,
+    description: `${replaceSystemEmojis(status.emoji, guild)} **${status.name}**\nPedido **${order.ticketId}**`,
     fields: [
       [
         `## Dados do pedido`,
@@ -243,11 +246,11 @@ async function sendNotice(interaction: ButtonInteraction, context: BotContext) {
   const url = order.channelId ? `https://discord.com/channels/${interaction.guild.id}/${order.channelId}` : `https://discord.com/channels/${interaction.guild.id}`;
   await user.send(renderComponentsV2Panel({
     accentColor: 0x8b5cf6,
-    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setEmoji("📩").setLabel("Abrir meu ticket").setStyle(ButtonStyle.Link).setURL(url))],
+    actions: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setEmoji(systemComponentEmoji("link", interaction.guild)).setLabel("Abrir meu ticket").setStyle(ButtonStyle.Link).setURL(url))],
     description: "A equipe responsável pelo seu pedido enviou um aviso e está aguardando sua resposta no ticket.",
     fields: [`Pedido: **${order.ticketId}**\nProjeto: **${order.projectName}**\nResponsável: <@${interaction.user.id}>\nServidor: **${interaction.guild.name}**\nData: ${formatDateTime(new Date().toISOString())}`],
     moduleId: "custom-bot-orders",
-    title: "🔔 Sua equipe chamou você"
+    title: `${systemEmojiText("alerta", interaction.guild)} Sua equipe chamou você`
   })).catch(async () => {
     await context.api.updateCustomBotOrder(interaction.guild!.id, order.id, { action: "dm_failed", actorId: interaction.user.id, actorName: interaction.user.username });
     throw new Error("Não consegui enviar DM para o cliente.");
@@ -267,7 +270,7 @@ async function showStatusSelect(interaction: ButtonInteraction, context: BotCont
       new StringSelectMenuBuilder()
         .setCustomId(`${PREFIX}:status_select:${orderId}`)
         .setPlaceholder("Selecione o novo status")
-        .addOptions(runtime.settings.statusDefinitions.slice(0, 25).map((status) => ({ emoji: status.emoji, label: status.name, value: status.id })))
+        .addOptions(runtime.settings.statusDefinitions.slice(0, 25).map((status) => ({ emoji: replaceSystemEmojis(status.emoji, interaction.guild), label: status.name, value: status.id })))
     )],
     content: "Escolha o novo status do pedido.",
     ephemeral: true
@@ -342,7 +345,7 @@ async function refreshOrderPanel(guild: Guild, settings: CustomBotOrderSettings,
   const channel = await guild.channels.fetch(order.channelId).catch(() => null);
   if (!channel || !("messages" in channel)) return;
   const message = await channel.messages.fetch(order.panelMessageId).catch(() => null);
-  await message?.edit(createInternalPanel(settings, order)).catch(() => null);
+  await message?.edit(createInternalPanel(settings, order, guild)).catch(() => null);
 }
 
 async function sendTranscriptDm(guild: Guild, settings: CustomBotOrderSettings, order: CustomBotOrder, transcript: string) {
@@ -353,7 +356,7 @@ async function sendTranscriptDm(guild: Guild, settings: CustomBotOrderSettings, 
     description: "Seu pedido de bot personalizado foi encerrado pela nossa equipe.",
     fields: [`Pedido: **${order.ticketId}**\nProjeto: **${order.projectName}**\nAberto em: ${formatDateTime(order.createdAt)}\nEncerrado em: ${formatDateTime(new Date().toISOString())}\nStatus final: **${statusDefinition(settings, order.status).name}**\nMotivo: ${order.closeReason || "Não informado"}`],
     moduleId: "custom-bot-orders",
-    title: "📁 Pedido finalizado"
+    title: `${systemEmojiText("caixa", guild)} Pedido finalizado`
   });
   await user?.send({ ...payload, files: [file] });
 }
@@ -423,7 +426,12 @@ function idPart(customId: string) {
 }
 
 function statusDefinition(settings: CustomBotOrderSettings, id: string) {
-  return settings.statusDefinitions.find((status) => status.id === id) ?? settings.statusDefinitions[0] ?? { color: settings.color, emoji: "🔹", id, name: id, order: 0, dmEnabled: false };
+  return settings.statusDefinitions.find((status) => status.id === id) ?? settings.statusDefinitions[0] ?? { color: settings.color, emoji: systemEmojiText("prancheta"), id, name: id, order: 0, dmEnabled: false };
+}
+
+function displayEmoji(value: string | null | undefined, fallback: Parameters<typeof systemEmojiText>[0], guild?: Guild | null) {
+  const normalized = value?.trim();
+  return normalized ? replaceSystemEmojis(normalized, guild) : systemEmojiText(fallback, guild);
 }
 
 function parseColor(value: string) {

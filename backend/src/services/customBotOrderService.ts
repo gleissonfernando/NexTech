@@ -7,6 +7,7 @@ import type {
   MongoCustomBotOrderStatus,
   MongoCustomBotOrderStatusDefinition
 } from "../database/mongo";
+import { fixedSystemEmojiText, normalizeFixedSystemEmojiText } from "../config/systemEmojis";
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import { createLog } from "./logService";
@@ -71,15 +72,15 @@ export type UpdateCustomBotOrderInput = Partial<{
 }>;
 
 const DEFAULT_STATUSES: MongoCustomBotOrderStatusDefinition[] = [
-  { color: "#facc15", dmEnabled: false, emoji: "🟡", id: "WAITING_STAFF", locked: true, name: "Aguardando atendimento", order: 1 },
-  { color: "#3b82f6", dmEnabled: false, emoji: "🔵", id: "IN_SERVICE", locked: true, name: "Em atendimento", order: 2 },
-  { color: "#a855f7", dmEnabled: false, emoji: "🟣", id: "ANALYZING", locked: true, name: "Analisando projeto", order: 3 },
-  { color: "#f97316", dmEnabled: true, emoji: "🟠", id: "WAITING_CUSTOMER", locked: true, name: "Aguardando cliente", order: 4 },
-  { color: "#22c55e", dmEnabled: true, emoji: "💰", id: "WAITING_PAYMENT", locked: true, name: "Aguardando pagamento", order: 5 },
-  { color: "#6366f1", dmEnabled: false, emoji: "🛠️", id: "IN_DEVELOPMENT", locked: true, name: "Em desenvolvimento", order: 6 },
-  { color: "#06b6d4", dmEnabled: false, emoji: "🧪", id: "TESTING", locked: true, name: "Em testes", order: 7 },
-  { color: "#22c55e", dmEnabled: true, emoji: "✅", id: "FINISHED", locked: true, name: "Finalizado", order: 8 },
-  { color: "#ef4444", dmEnabled: true, emoji: "❌", id: "CANCELLED", locked: true, name: "Cancelado", order: 9 }
+  { color: "#facc15", dmEnabled: false, emoji: fixedSystemEmojiText("relogio"), id: "WAITING_STAFF", locked: true, name: "Aguardando atendimento", order: 1 },
+  { color: "#3b82f6", dmEnabled: false, emoji: fixedSystemEmojiText("homem"), id: "IN_SERVICE", locked: true, name: "Em atendimento", order: 2 },
+  { color: "#a855f7", dmEnabled: false, emoji: fixedSystemEmojiText("prancheta"), id: "ANALYZING", locked: true, name: "Analisando projeto", order: 3 },
+  { color: "#f97316", dmEnabled: true, emoji: fixedSystemEmojiText("interrogacao"), id: "WAITING_CUSTOMER", locked: true, name: "Aguardando cliente", order: 4 },
+  { color: "#22c55e", dmEnabled: true, emoji: fixedSystemEmojiText("dinheiro"), id: "WAITING_PAYMENT", locked: true, name: "Aguardando pagamento", order: 5 },
+  { color: "#6366f1", dmEnabled: false, emoji: fixedSystemEmojiText("engrenagem"), id: "IN_DEVELOPMENT", locked: true, name: "Em desenvolvimento", order: 6 },
+  { color: "#06b6d4", dmEnabled: false, emoji: fixedSystemEmojiText("visto"), id: "TESTING", locked: true, name: "Em testes", order: 7 },
+  { color: "#22c55e", dmEnabled: true, emoji: fixedSystemEmojiText("visto"), id: "FINISHED", locked: true, name: "Finalizado", order: 8 },
+  { color: "#ef4444", dmEnabled: true, emoji: fixedSystemEmojiText("exclamacao"), id: "CANCELLED", locked: true, name: "Cancelado", order: 9 }
 ];
 
 export async function getCustomBotOrdersDashboard(guildId: string, botId: string | null) {
@@ -127,7 +128,7 @@ export async function ensureCustomBotOrderSettings(guildId: string, botId: strin
     assignRoleIds: [],
     bannerUrl: null,
     botId: resolvedBotId,
-    buttonEmoji: "🛒",
+    buttonEmoji: fixedSystemEmojiText("caixa"),
     buttonLabel: "Faça o seu pedido!",
     categoryId: null,
     closeRoleIds: [],
@@ -143,7 +144,7 @@ export async function ensureCustomBotOrderSettings(guildId: string, botId: strin
     mentionRoleId: null,
     noticeCooldownMinutes: 5,
     panelChannelId: null,
-    panelEmoji: "🤖",
+    panelEmoji: fixedSystemEmojiText("robo"),
     panelMessageId: null,
     responsibleRoleIds: [],
     reviewChannelId: null,
@@ -402,7 +403,7 @@ function normalizeSettingsInput(input: SaveCustomBotOrderSettingsInput): SaveCus
     adminRoleIds: normalizeSnowflakes(input.adminRoleIds),
     assignRoleIds: normalizeSnowflakes(input.assignRoleIds),
     bannerUrl: normalizeNullable(input.bannerUrl, 2048),
-    buttonEmoji: normalizeNullable(input.buttonEmoji, 80) ?? undefined,
+    buttonEmoji: normalizeSystemEmoji(input.buttonEmoji) ?? undefined,
     buttonLabel: normalizeNullable(input.buttonLabel, 80) ?? undefined,
     categoryId: normalizeSnowflake(input.categoryId),
     closeRoleIds: normalizeSnowflakes(input.closeRoleIds),
@@ -416,7 +417,7 @@ function normalizeSettingsInput(input: SaveCustomBotOrderSettingsInput): SaveCus
     mentionRoleId: normalizeSnowflake(input.mentionRoleId),
     noticeCooldownMinutes: clamp(input.noticeCooldownMinutes, 1, 1440, 5),
     panelChannelId: normalizeSnowflake(input.panelChannelId),
-    panelEmoji: normalizeNullable(input.panelEmoji, 80) ?? undefined,
+    panelEmoji: normalizeSystemEmoji(input.panelEmoji) ?? undefined,
     responsibleRoleIds: normalizeSnowflakes(input.responsibleRoleIds),
     reviewChannelId: normalizeSnowflake(input.reviewChannelId),
     staffRoleIds: normalizeSnowflakes(input.staffRoleIds),
@@ -442,7 +443,7 @@ function normalizeStatuses(statuses: unknown): MongoCustomBotOrderStatusDefiniti
       return {
         color: normalizeColor(String(record.color ?? "#8b5cf6")) ?? "#8b5cf6",
         dmEnabled: record.dmEnabled === true,
-        emoji: normalizeNullable(record.emoji, 80) ?? "🔹",
+        emoji: normalizeSystemEmoji(record.emoji) ?? fixedSystemEmojiText("prancheta"),
         id,
         locked: record.locked === true,
         name,
@@ -505,6 +506,11 @@ function normalizeSnowflakes(values: unknown) {
 function normalizeNullable(value: unknown, maxLength: number) {
   const text = typeof value === "string" ? value.trim().slice(0, maxLength) : "";
   return text || null;
+}
+
+function normalizeSystemEmoji(value: unknown) {
+  const text = normalizeNullable(value, 80);
+  return text ? normalizeFixedSystemEmojiText(text) : null;
 }
 
 function normalizeText(value: unknown, maxLength: number) {

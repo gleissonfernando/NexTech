@@ -112,7 +112,7 @@ export function FivemActionsPanel({ botId, canManage, fixedArchitecture, guild }
       setBusy(null);
     }
   }
-  function openActionDraft() { setMessage(null); setDraftAction({ color: "#FFD500", description: "", emoji: "", imageUrl: "", maxParticipants: 6, name: "" }); }
+  function openActionDraft() { setMessage(null); setDraftAction({ color: "#FFD500", description: "", emoji: "<a:CHATarma:1519956887301390456>", imageUrl: "", maxParticipants: 6, name: "" }); }
   async function addAction() {
     if (!draftAction) return;
     const name = draftAction.name.trim();
