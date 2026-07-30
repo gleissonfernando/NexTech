@@ -334,37 +334,73 @@ function configPayload(state: DafScaleState, guild: Guild) {
 
 function scalePanelPayload(state: DafScaleState, guild: Guild) {
   const s = state.settings;
+  const icons = {
+    active: systemStatusEmoji("success", guild),
+    refresh: systemComponentEmoji("relogio", guild),
+    enter: systemComponentEmoji("visto", guild),
+    leave: systemComponentEmoji("porta", guild),
+    pilot: systemEmojiText("acessar", guild),
+    shooter: systemEmojiText("interrogacao", guild),
+    status: systemEmojiText("prancheta_acertos", guild),
+    warning: systemStatusEmoji("danger", guild)
+  };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:join`).setLabel("Entrar na Escala").setEmoji("➕").setStyle(ButtonStyle.Success).setDisabled(!s.enabled),
-    new ButtonBuilder().setCustomId(`${PREFIX}:leave`).setLabel("Sair da Escala").setEmoji("➖").setStyle(ButtonStyle.Secondary).setDisabled(!s.enabled),
-    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar Painel").setEmoji("🔄").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:join`).setLabel("Entrar na Escala").setEmoji(icons.enter).setStyle(ButtonStyle.Success).setDisabled(!s.enabled),
+    new ButtonBuilder().setCustomId(`${PREFIX}:leave`).setLabel("Sair da Escala").setEmoji(icons.leave).setStyle(ButtonStyle.Secondary).setDisabled(!s.enabled),
+    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar Painel").setEmoji(icons.refresh).setStyle(ButtonStyle.Primary)
   );
+  const pilotList = state.pilots.length ? numberedEntries(state.pilots, icons.pilot) : `${icons.active} Nenhum piloto na escala.`;
+  const shooterList = state.shooters.length ? numberedEntries(state.shooters, icons.shooter) : `${icons.warning} Nenhum atirador na escala.`;
   return {
     components: [{
       type: 17,
       accent_color: s.enabled ? 0x0ea5e9 : 0x71717a,
       components: [
         { type: 10, content: [
-          "# 🚁 ESCALA DAF",
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-          "## Pilotos",
-          state.pilots.length ? numberedEntries(state.pilots, "🚁") : "🟢 Nenhum piloto na escala.",
+          `# ${icons.pilot} ESCALA DAF`,
+          `${icons.status} **Status:** ${s.enabled ? `${icons.active} Ativa` : `${icons.warning} Desativada`}  •  **Atualizada:** <t:${Math.floor(Date.now() / 1000)}:R>`,
           "",
-          "## Atiradores",
-          state.shooters.length ? numberedEntries(state.shooters, "🎯") : "🔴 Nenhum atirador na escala.",
-          "",
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-          `👥 Pilotos: ${state.pilots.length}/${s.maxPilots}`,
-          `🎯 Atiradores: ${state.shooters.length}/${s.maxShooters}`,
-          `Última atualização: <t:${Math.floor(Date.now() / 1000)}:R>`,
-          `Estado: ${s.enabled ? `${systemStatusEmoji("success", guild)} Ativa` : `${systemStatusEmoji("danger", guild)} Desativada`}`,
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          "**Operação ativa para composição da equipe aérea.**"
         ].join("\n") },
+        separator(),
+        { type: 10, content: [
+          `## ${icons.pilot} Pilotos`,
+          dafOccupancyLine(state.pilots.length, s.maxPilots),
+          "",
+          pilotList
+        ].join("\n") },
+        separator(),
+        { type: 10, content: [
+          `## ${icons.shooter} Atiradores`,
+          dafOccupancyLine(state.shooters.length, s.maxShooters),
+          "",
+          shooterList
+        ].join("\n") },
+        separator(),
+        { type: 10, content: [
+          "### Resumo",
+          `${icons.pilot} **Pilotos:** ${state.pilots.length}/${s.maxPilots}`,
+          `${icons.shooter} **Atiradores:** ${state.shooters.length}/${s.maxShooters}`,
+          `${icons.status} **Vagas disponíveis:** ${Math.max(0, s.maxPilots - state.pilots.length) + Math.max(0, s.maxShooters - state.shooters.length)}`
+        ].join("\n") },
+        separator(),
         row
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function separator() {
+  return { type: 14, divider: true, spacing: 1 };
+}
+
+function dafOccupancyLine(current: number, max: number) {
+  const capacity = Math.max(1, max);
+  const totalBlocks = 12;
+  const filled = Math.max(0, Math.min(totalBlocks, Math.round((current / capacity) * totalBlocks)));
+  const empty = totalBlocks - filled;
+  return `\`${"█".repeat(filled)}${"░".repeat(empty)}\` **${current}/${max}**`;
 }
 
 async function canConfigure(interaction: ChatInputCommandInteraction | ButtonInteraction | ChannelSelectMenuInteraction | RoleSelectMenuInteraction | ModalSubmitInteraction, context: BotContext) {
