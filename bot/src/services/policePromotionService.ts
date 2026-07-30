@@ -1143,8 +1143,12 @@ async function sendApprovalPanel(guild: Guild, context: BotContext, settings: Po
   const payloads = approvalPayloads(request, promotion, guild);
   const [primaryPayload, ...detailPayloads] = payloads;
   const sent = await channel.send(primaryPayload as any);
-  for (const payload of detailPayloads) await channel.send(payload as any);
-  return context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: sent.id });
+  let actionMessageId = sent.id;
+  for (const payload of detailPayloads) {
+    const detailSent = await channel.send(payload as any);
+    actionMessageId = detailSent.id;
+  }
+  return context.api.updatePolicePromotionApprovalMessage(request.id, { approvalChannelId: channel.id, approvalMessageId: actionMessageId });
 }
 
 async function openDecisionModal(interaction: ButtonInteraction<"cached">, result: PromotionDecisionResult, context: BotContext) {
@@ -1472,13 +1476,20 @@ export function approvalPayloads(request: PolicePromotionRequest, promotion: Pol
     accent_color: statusColor,
     components: [{ type: 10, content: primaryContent }]
   } as any] as any[];
-  if (!disabled) primaryComponents.push(approvalActionRow(request, promotion, guild));
   const primaryPayload: MessageCreateOptions = {
     allowedMentions: { parse: [] },
     components: primaryComponents,
     flags: MessageFlags.IsComponentsV2
   };
-  return [primaryPayload, ...detailPayloads];
+  const payloads = [primaryPayload, ...detailPayloads];
+  if (!disabled) appendApprovalActionsToLastPayload(payloads, request, promotion, guild);
+  return payloads;
+}
+
+function appendApprovalActionsToLastPayload(payloads: MessageCreateOptions[], request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild) {
+  const target = payloads[payloads.length - 1];
+  if (!target) return;
+  target.components = [...((target.components ?? []) as any[]), approvalActionRow(request, promotion, guild)] as any;
 }
 
 function approvalActionRow(request: PolicePromotionRequest, promotion: PolicePromotionDefinition, guild: Guild) {

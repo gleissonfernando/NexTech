@@ -295,6 +295,49 @@ test("relatorio de aprovacao curto fica em um painel com botoes fora do containe
   assert.equal(buttonRowText.includes("Aprovar Promoção"), true);
 });
 
+test("relatorio de aprovacao longo coloca botoes somente no ultimo painel", () => {
+  const longText = "Detalhe operacional com registro completo da avaliacao. ".repeat(220);
+  const request = {
+    answers: [
+      { label: "Identificação da Patrulha", value: longText },
+      { label: "Avaliação Operacional", value: longText },
+      { label: "Comportamento e Conduta", value: longText }
+    ],
+    approvalMessageId: null,
+    approvalReason: null,
+    approvalResult: null,
+    approvedAt: null,
+    approvedById: null,
+    channelId: "channel",
+    currentRank: "Soldado",
+    evaluationEndedAt: "2026-07-26T15:00:00.000Z",
+    evaluationNotes: longText,
+    evaluationResult: "approved",
+    evaluatorId: "222222222222222222",
+    history: [],
+    id: "request-id",
+    requesterId: "111111111111111111",
+    requesterName: "Usuario Avaliado",
+    status: "pending_approval",
+    targetRank: "Officer",
+    updatedAt: "2026-07-26T15:00:00.000Z"
+  };
+  const promotion = {
+    color: "#facc15",
+    requestNewEvaluationEnabled: true
+  };
+
+  const payloads = approvalPayloads(request as any, promotion as any, null as any);
+  const firstPayloadText = JSON.stringify(payloads[0]!.components);
+  const middlePayloadText = JSON.stringify(payloads.slice(1, -1).map((payload) => payload.components));
+  const lastPayloadText = JSON.stringify(payloads[payloads.length - 1]!.components);
+
+  assert.ok(payloads.length > 1);
+  assert.equal(firstPayloadText.includes("Aprovar Promoção"), false);
+  assert.equal(middlePayloadText.includes("Aprovar Promoção"), false);
+  assert.equal(lastPayloadText.includes("Aprovar Promoção"), true);
+});
+
 test("relatorio de aprovacao decidido nao mantem botoes desativados", () => {
   const request = {
     answers: [{ label: "Conduta", value: "Resposta completa" }],
