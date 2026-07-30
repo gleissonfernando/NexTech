@@ -86,7 +86,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   if (safeBotBlocked) return;
 
   const moderation = await canModerateMessage(message, context, "message-create");
-  if (!moderation.ignored) {
+  const selfBotModeration = moderation.reason === "immune"
+    ? await canModerateMessage(message, context, "message-create:self-bot-protection", { respectPrivilegedImmunity: false })
+    : moderation;
+  if (!selfBotModeration.ignored) {
     const selfBotBlocked = await handleSelfBotProtectionMessage(message, context);
     if (selfBotBlocked) return;
   }

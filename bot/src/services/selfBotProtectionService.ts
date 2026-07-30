@@ -90,7 +90,7 @@ export async function handleSelfBotProtectionMessage(message: Message, context: 
   if (!shouldCheckSelfBotRuntime() || !message.guild || message.author.id === message.client.user?.id) {
     return false;
   }
-  if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
+  if ((await canModerateMessage(message, context, MODULE_ID, { respectPrivilegedImmunity: false })).ignored) return false;
 
   if (!(await isRuntimeModuleAuthorized(context, message.guild.id, MODULE_ID))) {
     return false;
@@ -1056,7 +1056,6 @@ function isChannelProtected(message: Message, settings: SelfBotProtectionSetting
 }
 
 function isMemberExempt(member: GuildMember, settings: SelfBotProtectionSettings) {
-  if (member.id === member.guild.ownerId || member.permissions.has("Administrator")) return true;
   if (settings.ignoredUserIds.includes(member.id)) return true;
   if (member.user.bot && settings.ignoredBotIds.includes(member.id)) return true;
   return member.roles.cache.some((role) => settings.ignoredRoleIds.includes(role.id));

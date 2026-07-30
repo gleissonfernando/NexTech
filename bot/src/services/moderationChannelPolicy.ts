@@ -13,10 +13,20 @@ export type ModerationChannelDecision = {
   settings: SelfBotProtectionSettings | null;
 };
 
-export async function canModerateMessage(message: Message, context: BotContext, moduleId: string): Promise<ModerationChannelDecision> {
+type ModerationChannelPolicyOptions = {
+  respectPrivilegedImmunity?: boolean;
+};
+
+export async function canModerateMessage(
+  message: Message,
+  context: BotContext,
+  moduleId: string,
+  options: ModerationChannelPolicyOptions = {}
+): Promise<ModerationChannelDecision> {
   if (!message.guild || message.author.bot) return decision(true, "bot", null, message, moduleId);
   const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
-  if (member && (member.id === message.guild.ownerId || member.permissions.has(PermissionFlagsBits.Administrator))) {
+  const respectPrivilegedImmunity = options.respectPrivilegedImmunity ?? true;
+  if (respectPrivilegedImmunity && member && (member.id === message.guild.ownerId || member.permissions.has(PermissionFlagsBits.Administrator))) {
     return decision(true, "immune", null, message, moduleId);
   }
   const settings = await getModerationSettings(message.guild.id, context).catch((error) => {

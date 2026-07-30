@@ -316,7 +316,7 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
 
   const isFilterChannelMessage = message.channelId === runtime.filterChannelId;
 
-  if ((await canModerateMessage(message, context, MODULE_ID)).ignored && !isFilterChannelMessage) {
+  if ((await canModerateMessage(message, context, MODULE_ID, { respectPrivilegedImmunity: false })).ignored && !isFilterChannelMessage) {
     return false;
   }
 
