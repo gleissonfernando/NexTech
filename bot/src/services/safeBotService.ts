@@ -1236,15 +1236,25 @@ async function findOrCreateSelfBotRole(guild: Guild) {
     console.warn(`[safe-bot] não foi possível buscar cargos em ${guild.name}:`, errorMessage(error));
     return null;
   });
-  const existing = roles?.find((role) => role.name.toLowerCase() === SELF_BOT_ROLE_NAME.toLowerCase()) ?? null;
+  const matchingRoles = [...(roles?.values() ?? [])]
+    .filter((role) => role.name.toLowerCase() === SELF_BOT_ROLE_NAME.toLowerCase())
+    .sort((left, right) => right.position - left.position);
+  const assignable = matchingRoles.find((role) => role.editable) ?? null;
 
-  if (existing) {
-    return normalizeSelfBotRole(existing);
+  if (assignable) {
+    return normalizeSelfBotRole(assignable);
   }
 
   const me = await guild.members.fetchMe().catch(() => null);
 
   if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    const existing = matchingRoles[0] ?? null;
+
+    if (existing) {
+      console.warn(`[safe-bot] usando cargo Self Bot existente sem permissão para criar outro em ${guild.name}.`);
+      return existing;
+    }
+
     console.warn(`[safe-bot] sem permissão Gerenciar Cargos em ${guild.name}.`);
     return null;
   }

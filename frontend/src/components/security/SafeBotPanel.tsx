@@ -99,12 +99,6 @@ export function SafeBotPanel({
       return;
     }
 
-    if (draft.safeBotEnabled && !settings.safeBotRoleId) {
-      setStatus(null);
-      setError("O cargo Self Bot ainda não foi criado automaticamente pelo bot.");
-      return;
-    }
-
     if (draft.safeBotEnabled && !draft.safeBotLogChannelId && !settings.logChannelId) {
       setStatus(null);
       setError("Selecione um canal de logs antes de ativar o Self Bot.");
@@ -154,7 +148,7 @@ export function SafeBotPanel({
             </div>
             <div>
               <CardTitle>Self Bot</CardTitle>
-              <CardDescription>Aplica um cargo quando a primeira mensagem for enviada no canal configurado.</CardDescription>
+              <CardDescription>Protege o canal configurado e sincroniza o cargo automaticamente quando necessário.</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -224,7 +218,7 @@ export function SafeBotPanel({
             <Hash className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
             <p className="text-sm leading-6 text-zinc-500">
               O log salva o usuário, ID, canal, cargo, link da mensagem e o conteúdo enviado.
-              O cargo só é aplicado se a pessoa ainda não tiver o cargo Self Bot.
+              O bot cria e sincroniza o cargo Self Bot automaticamente.
             </p>
           </div>
         </div>

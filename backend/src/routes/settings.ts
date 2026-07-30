@@ -388,9 +388,9 @@ settingsRouter.post("/bot/:guildId/self-bot-role", requireBot, async (req, res, 
 
     const botToken = await getDevBotToken(botId);
 
-    if (!(await areGuildAssignableRoles(guildId, [input.roleId], botToken))) {
+    if (!(await areGuildRoles(guildId, [input.roleId], botToken))) {
       return res.status(400).json({
-        message: "O cargo Self Bot precisa ficar abaixo do cargo do bot e o bot precisa da permissão Gerenciar Cargos."
+        message: "O cargo Self Bot precisa pertencer a este servidor."
       });
     }
 
@@ -450,14 +450,14 @@ settingsRouter.post("/bot/:guildId/safe-bot-setup", requireBot, async (req, res,
 
     const botToken = await getDevBotToken(botId);
     const [roleOk, filterOk, logOk] = await Promise.all([
-      areGuildAssignableRoles(guildId, [input.roleId], botToken),
+      areGuildRoles(guildId, [input.roleId], botToken),
       isGuildTextChannel(guildId, input.filterChannelId, botToken),
       isGuildTextChannel(guildId, input.logChannelId, botToken)
     ]);
 
     if (!roleOk) {
       return res.status(400).json({
-        message: "O cargo Self Bot precisa ficar abaixo do cargo do bot e o bot precisa da permissão Gerenciar Cargos."
+        message: "O cargo Self Bot precisa pertencer a este servidor."
       });
     }
 
@@ -1589,13 +1589,6 @@ async function validateGuildResources(
     && !(await areGuildAssignableRoles(guildId, [...new Set(input.autoRoleIds)], botToken))
   ) {
     throw createSettingsError("O cargo automático precisa ficar abaixo do cargo do bot e o bot precisa da permissão Gerenciar Cargos.");
-  }
-
-  if (
-    input.safeBotRoleId
-    && !(await areGuildAssignableRoles(guildId, [input.safeBotRoleId], botToken))
-  ) {
-    throw createSettingsError("O cargo Self Bot precisa ficar abaixo do cargo do bot e o bot precisa da permissão Gerenciar Cargos.");
   }
 
   const dashboardUserIds = Object.keys(input.dashboardUserPermissions ?? {});
