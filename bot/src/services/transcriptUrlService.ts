@@ -14,18 +14,10 @@ export function buildTranscriptUrl(transcriptId: string) {
   return buildAppUrl(`/transcripts/${encodeURIComponent(transcriptId)}`);
 }
 
-export function buildTranscriptDownloadUrl(transcriptId: string) {
-  return buildAppUrl(`/transcripts/${encodeURIComponent(transcriptId)}/download?token=session`);
-}
-
 export function resolveTranscriptUrl(transcript: TranscriptCreateResult) {
   return transcript.publicUrl
     || transcript.transcript.publicUrl
     || buildTranscriptUrl(transcript.transcript.id);
-}
-
-export function resolveTranscriptDownloadUrl(transcript: TranscriptCreateResult) {
-  return buildTranscriptDownloadUrl(transcript.transcript.id);
 }
 
 export function resolveTranscriptTemporaryPassword(transcript: TranscriptCreateResult) {

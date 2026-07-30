@@ -11,7 +11,6 @@ import {
   getTranscriptForExport,
   getTranscriptPublicMeta,
   renderTranscriptHtml,
-  renderTranscriptText,
   revokeTranscriptTemporaryPasswords,
   softDeleteTranscript,
   validateTranscriptPassword
@@ -36,7 +35,7 @@ const createTranscriptSchema = z.object({
   internalNotes: z.string().optional().nullable(),
   rolesInvolved: z.array(z.string()).optional(),
   metadata: z.record(z.unknown()).optional(),
-  status: z.enum(["Finalizado", "Incompleto"]).optional(),
+  status: z.enum(["Finalizado", "Incompleto", "Expirado", "Excluído"]).optional(),
   isPartial: z.boolean().optional(),
   partialReason: z.string().optional().nullable(),
   createdAt: z.string().optional().nullable(),
@@ -132,15 +131,8 @@ publicTranscriptsRouter.post("/:id", async (req, res, next) => {
 
 publicTranscriptsRouter.get("/:id/download", async (req, res, next) => {
   try {
-    const transcriptId = transcriptIdSchema.parse(req.params.id);
-    if (req.query.token !== "session") {
-      return res.status(401).send("Senha obrigatória.");
-    }
-    const transcript = await getTranscriptForExport(transcriptId);
-    if (!transcript) return res.status(404).send("Transcript não encontrado.");
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="transcript-${transcript._id}.html"`);
-    return res.send(transcript.htmlContent || renderTranscriptHtml(transcript, "Protegido"));
+    transcriptIdSchema.parse(req.params.id);
+    return res.status(403).send("Exportação direta desativada. Acesse o transcript pela página protegida por senha.");
   } catch (error) {
     return next(error);
   }
@@ -148,32 +140,8 @@ publicTranscriptsRouter.get("/:id/download", async (req, res, next) => {
 
 publicTranscriptsRouter.get("/:id/export.:format", async (req, res, next) => {
   try {
-    const transcriptId = transcriptIdSchema.parse(req.params.id);
-    if (req.query.token !== "session") {
-      return res.status(401).send("Senha obrigatória.");
-    }
-
-    const transcript = await getTranscriptForExport(transcriptId);
-    if (!transcript) return res.status(404).send("Transcript não encontrado.");
-
-    const format = req.params.format;
-    const fileBase = `transcript-${transcript._id}`;
-
-    if (format === "txt") {
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.txt"`);
-      return res.send(transcript.textContent || renderTranscriptText(transcript));
-    }
-
-    if (format === "pdf") {
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.html"`);
-      return res.send(renderTranscriptHtml(transcript, "Protegido"));
-    }
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileBase}.html"`);
-    return res.send(renderTranscriptHtml(transcript, "Protegido"));
+    transcriptIdSchema.parse(req.params.id);
+    return res.status(403).send("Exportação direta desativada. Acesse o transcript pela página protegida por senha.");
   } catch (error) {
     return next(error);
   }
@@ -294,6 +262,14 @@ async function canManageTranscript(req: Request) {
 
 function renderLoginPage(meta: Awaited<ReturnType<typeof getTranscriptPublicMeta>>, message?: string) {
   const statusMessage = message ? `<p class="error">${escapeHtml(message)}</p>` : "";
+  const blocked = meta?.status === "Expirado" || meta?.status === "Excluído";
+  const form = blocked
+    ? `<p class="error">Este transcript está ${escapeHtml(meta.status.toLowerCase())} e não pode mais ser acessado.</p>`
+    : `<form method="post">
+      <label for="password">Senha</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Entrar no Transcript</button>
+    </form>`;
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -318,15 +294,12 @@ function renderLoginPage(meta: Awaited<ReturnType<typeof getTranscriptPublicMeta
     <p>Este registro e protegido por senha. Todas as tentativas de acesso são registradas para auditoria.</p>
     <p>Digite a senha autorizada para visualizar o histórico completo deste atendimento.</p>
     ${statusMessage}
-    <form method="post">
-      <label for="password">Senha</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required />
-      <button type="submit">Entrar no Transcript</button>
-    </form>
+    ${form}
     <div class="meta">
       <p>ID do transcript: ${escapeHtml(meta?.id ?? "-")}</p>
-      <p>Status: Protegido</p>
+      <p>Status: ${escapeHtml(meta?.status ?? "Protegido")}</p>
       <p>Data de geração: ${escapeHtml(meta?.generatedAt ?? "-")}</p>
+      <p>Expira em: ${escapeHtml(meta?.expiresAt ?? "-")}</p>
       <p>Tipo: ${escapeHtml(meta?.type ?? "-")}</p>
     </div>
   </main>

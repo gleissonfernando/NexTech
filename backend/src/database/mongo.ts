@@ -281,7 +281,7 @@ export type MongoTranscript = {
   htmlContent: string;
   textContent?: string;
   websiteUrl?: string | null;
-  status: "Finalizado" | "Incompleto";
+  status: "Finalizado" | "Incompleto" | "Expirado" | "Excluído";
   createdAt: Date;
   closedAt: Date | null;
   expiresAt: Date | null;
@@ -307,6 +307,7 @@ export type MongoTranscript = {
 export type MongoTranscriptPassword = {
   _id: string;
   transcriptId: string;
+  passwordFingerprint?: string | null;
   passwordHash: string;
   type: "temporary" | "master";
   expiresAt: Date | null;
@@ -5729,6 +5730,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTranscript>("transcripts").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoTranscript>("transcripts").createIndex({ ticketId: 1 }),
     db.collection<MongoTranscriptPassword>("transcript_passwords").createIndex({ transcriptId: 1, type: 1, createdAt: -1 }),
+    db.collection<MongoTranscriptPassword>("transcript_passwords").createIndex(
+      { passwordFingerprint: 1 },
+      { unique: true, partialFilterExpression: { passwordFingerprint: { $type: "string" } } }
+    ),
     db.collection<MongoTranscriptAccessLog>("transcript_access_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoTranscriptAccessLog>("transcript_access_logs").createIndex({ transcriptId: 1, createdAt: -1 }),
     db.collection<MongoTicketEvent>("ticket_events").createIndex({ ticketId: 1, createdAt: 1 }),

@@ -31,7 +31,7 @@ import type { TicketRecord } from "./apiClient";
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
-import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
+import { buildTranscriptLuaCommand, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
@@ -55,6 +55,7 @@ const STATUS_OPTIONS = [
   { label: "Negado", value: "DENIED" },
   { label: "Encerrado", value: "CLOSED" }
 ];
+type TranscriptCreateResult = Awaited<ReturnType<BotContext["api"]["createTranscript"]>>;
 
 export async function publishTicketPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) {
@@ -441,8 +442,7 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
         .addComponents(
           new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("reason").setLabel("Motivo do fechamento").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
           new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("result").setLabel("Resultado da análise").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("notes").setLabel("Observações internas").setRequired(false).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("generatePassword").setLabel("Gerar senha temporária por 3 dias? Sim/Não").setRequired(true).setStyle(TextInputStyle.Short).setValue("Sim").setMaxLength(3))
+          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("notes").setLabel("Observações internas").setRequired(false).setStyle(TextInputStyle.Paragraph).setMaxLength(900))
         )
     );
     return;
@@ -522,7 +522,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     closedAt: new Date().toISOString(),
     closedById: interaction.user.id,
     finalResult: ticket.finalResult,
-    generateTemporaryPassword: /^s/i.test(interaction.fields.getTextInputValue("generatePassword")),
+    generateTemporaryPassword: true,
     guildId: interaction.guildId!,
     guildName: interaction.guild?.name ?? null,
     internalNotes: interaction.fields.getTextInputValue("notes") || null,
@@ -536,15 +536,26 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     type: ticket.categoryName?.toLowerCase().includes("den") ? "Denúncia" : "Ticket"
   });
 
+  const dmSent = await sendTranscriptDm(interaction.guild!, transcript, ticket).catch((error) => {
+    console.warn("[ticket-panel] falha ao enviar DM do transcript:", error instanceof Error ? error.message : error);
+    return false;
+  });
+
   await context.api.recordTicketEvent(ticketId, {
     authorId: interaction.user.id,
-    content: `Transcript ${transcript.transcript.id} gerado.`,
+    content: `Transcript ${transcript.transcript.id} gerado. DM ao autor: ${dmSent ? "enviada" : "falhou"}.`,
     eventType: "transcript.generated",
-    guildId: interaction.guildId!
+    guildId: interaction.guildId!,
+    metadata: {
+      dmSent,
+      expiresAt: transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt ?? null,
+      transcriptId: transcript.transcript.id,
+      url: resolveTranscriptUrl(transcript)
+    }
   }).catch(() => null);
 
   await sendTranscriptLog(interaction.guild!, context, transcript, ticket, interaction.user.id);
-  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}.`);
+  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}.`);
 }
 
 function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
@@ -1007,14 +1018,40 @@ async function lockTicketChannel(channel: TextChannel, openerId: string) {
   await channel.permissionOverwrites.edit(openerId, { SendMessages: false }).catch(() => null);
 }
 
-async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: Awaited<ReturnType<BotContext["api"]["createTranscript"]>>, ticket: { categoryName?: string | null; subject: string; openerId: string; responsibleUserId?: string | null; createdAt: string; finalResult?: string | null }, closedById: string) {
+async function sendTranscriptDm(guild: Guild, transcript: TranscriptCreateResult, ticket: { categoryName?: string | null; subject: string; openerId: string; createdAt: string }) {
+  const password = resolveTranscriptTemporaryPassword(transcript);
+  if (!password) return false;
+
+  const user = await guild.client.users.fetch(ticket.openerId).catch(() => null);
+  if (!user) return false;
+
+  const url = resolveTranscriptUrl(transcript);
+  const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt ?? null;
+  const expiresLine = expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "1 ano após a criação";
+  await user.send({
+    allowedMentions: { parse: [] },
+    content: [
+      "Seu atendimento foi finalizado com sucesso.",
+      "",
+      "Você pode acessar o histórico completo da conversa utilizando o link abaixo.",
+      "",
+      `Transcript: ${url}`,
+      `Senha: ||${password}||`,
+      `Validade: ${expiresLine}`,
+      "",
+      "Por motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
+    ].join("\n")
+  });
+  return true;
+}
+
+async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: TranscriptCreateResult, ticket: { categoryName?: string | null; subject: string; openerId: string; responsibleUserId?: string | null; createdAt: string; finalResult?: string | null }, closedById: string) {
   const settings = await getFreshGuildSettings(context, guild.id, guild.client.user?.id).catch(() => null);
   const logChannelId = settings?.reportSystem?.transcriptChannelId || settings?.logChannelId;
   const logChannel = logChannelId ? await guild.channels.fetch(logChannelId).catch(() => null) : null;
   if (!logChannel?.isTextBased() || !("send" in logChannel)) return;
 
   const url = resolveTranscriptUrl(transcript);
-  const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const createdAt = new Date(ticket.createdAt);
   const closedAt = transcript.transcript.closedAt ? new Date(transcript.transcript.closedAt) : new Date();
   const temporaryPassword = resolveTranscriptTemporaryPassword(transcript);
@@ -1024,7 +1061,6 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
-        new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)

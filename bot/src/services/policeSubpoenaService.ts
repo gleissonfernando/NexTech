@@ -31,7 +31,7 @@ import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./delet
 import { getFreshGuildSettings } from "./guildSettingsCache";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
-import { buildTranscriptLuaCommand, resolveTranscriptDownloadUrl, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
+import { buildTranscriptLuaCommand, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
 type Competence = "iab" | "conselho" | "hcmd" | "comissario";
 type Draft = {
@@ -565,15 +565,13 @@ async function sendSubpoenaTranscriptPanel(guild: Guild, settings: GuildSettings
   const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
   if (!channel?.isTextBased() || !("send" in channel)) return;
   const url = resolveTranscriptUrl(transcript);
-  const downloadUrl = resolveTranscriptDownloadUrl(transcript);
   const attachmentCount = messages.reduce((total, message) => total + message.attachments.length, 0);
   const participants = new Set(messages.map((message) => message.authorId).filter(Boolean));
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt;
   const temporaryPassword = resolveTranscriptTemporaryPassword(transcript);
   const luaCommand = buildTranscriptLuaCommand(transcript);
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
-    new ButtonBuilder().setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Baixar Transcript").setStyle(ButtonStyle.Link).setURL(downloadUrl)
+    new ButtonBuilder().setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url)
   );
   await (channel as TextChannel).send(withTopLevelActions(renderComponentsV2Panel({
     accentColor: color(settings.reportSystem.panelColor),

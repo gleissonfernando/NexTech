@@ -1,4 +1,4 @@
-import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { APP_BASE_URL, TRANSCRIPT_BASE_URL, buildTranscriptUrl } from "../config/appUrl";
 import { env } from "../config/env";
 import { getMongoCollections, type MongoTicket, type MongoTranscript, type MongoTranscriptAccessLog, type MongoTranscriptMessage } from "../database/mongo";
@@ -7,8 +7,8 @@ import { emitRealtime } from "../realtime/events";
 const HASH_ITERATIONS = 120_000;
 const HASH_KEY_LENGTH = 32;
 const HASH_DIGEST = "sha256";
-const DEFAULT_TEMP_PASSWORD_TTL_HOURS = 72;
 const TRANSCRIPT_TTL_DAYS = 365;
+const DEFAULT_TEMP_PASSWORD_TTL_HOURS = TRANSCRIPT_TTL_DAYS * 24;
 const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
 
@@ -58,11 +58,9 @@ export async function createTranscript(input: TranscriptInput) {
     ticketId: input.ticketId,
     transcriptId
   });
-  const temporaryPassword = input.generateTemporaryPassword === false ? null : generateTemporaryPassword();
+  const temporaryPassword = input.generateTemporaryPassword === false ? null : await generateUniqueTemporaryPassword(collections.transcriptPasswords);
   const transcriptExpiresAt = new Date(now.getTime() + TRANSCRIPT_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const temporaryPasswordExpiresAt = temporaryPassword
-    ? new Date(now.getTime() + DEFAULT_TEMP_PASSWORD_TTL_HOURS * 60 * 60 * 1000)
-    : null;
+  const temporaryPasswordExpiresAt = temporaryPassword ? transcriptExpiresAt : null;
   const normalizedMessages = (input.messages ?? []).map((message) => ({
     ...message,
     authorAvatarUrl: message.authorAvatarUrl ?? null,
@@ -142,6 +140,7 @@ export async function createTranscript(input: TranscriptInput) {
     await collections.transcriptPasswords.insertOne({
       _id: randomUUID(),
       transcriptId,
+      passwordFingerprint: passwordFingerprint(temporaryPassword),
       passwordHash: hashSecret(temporaryPassword),
       type: "temporary",
       expiresAt: temporaryPasswordExpiresAt,
@@ -261,7 +260,13 @@ export async function getTranscriptHealthStatus() {
 
 export async function getTranscriptForExport(transcriptId: string) {
   const { transcripts } = await getMongoCollections();
-  return transcripts.findOne({ _id: transcriptId, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+  return transcripts.findOne({
+    _id: transcriptId,
+    $and: [
+      { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] },
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }
+    ]
+  });
 }
 
 export async function softDeleteTranscript(transcriptId: string) {
@@ -269,7 +274,7 @@ export async function softDeleteTranscript(transcriptId: string) {
   await transcriptPasswords.updateMany({ transcriptId, revokedAt: null }, { $set: { revokedAt: new Date() } });
   const result = await transcripts.findOneAndUpdate(
     { _id: transcriptId },
-    { $set: { deletedAt: new Date(), status: "Incompleto" } },
+    { $set: { deletedAt: new Date(), status: "Excluído" } },
     { returnDocument: "after" }
   );
   return result;
@@ -279,11 +284,15 @@ export async function getTranscriptPublicMeta(transcriptId: string) {
   const { transcripts } = await getMongoCollections();
   const transcript = await transcripts.findOne({ _id: transcriptId });
   if (!transcript) return null;
+  const status = transcript.deletedAt ? "Excluído"
+    : transcript.expiresAt && transcript.expiresAt <= new Date() ? "Expirado"
+      : "Protegido";
 
   return {
     id: transcript._id,
-    status: "Protegido",
+    status,
     generatedAt: transcript.createdAt.toISOString(),
+    expiresAt: transcript.expiresAt?.toISOString() ?? null,
     type: transcript.type,
     isPartial: transcript.isPartial
   };
@@ -298,6 +307,16 @@ export async function validateTranscriptPassword(transcriptId: string, password:
   }
 
   const now = new Date();
+  if (transcript.deletedAt) {
+    await registerAccess(transcript, "unknown", false, "deleted_transcript", request);
+    return { ok: false, status: 410, message: "Este transcript foi excluído e não está mais disponível.", reason: "deleted" };
+  }
+  if (transcript.expiresAt && transcript.expiresAt <= now) {
+    await collections.transcripts.updateOne({ _id: transcriptId }, { $set: { status: "Expirado" } });
+    await registerAccess(transcript, "unknown", false, "expired_transcript", request);
+    return { ok: false, status: 410, message: "Este transcript expirou e não está mais disponível.", reason: "transcript_expired" };
+  }
+
   const masterValid = isMasterPasswordValid(password);
   if (masterValid) {
     await registerAccess(transcript, "master", true, "master_valid", request);
@@ -342,14 +361,17 @@ export async function revokeTranscriptTemporaryPasswords(transcriptId: string) {
 export async function createNewTemporaryPassword(transcriptId: string, ttlHours = DEFAULT_TEMP_PASSWORD_TTL_HOURS) {
   const collections = await getMongoCollections();
   const transcript = await collections.transcripts.findOne({ _id: transcriptId });
-  if (!transcript) return null;
+  if (!transcript || transcript.deletedAt) return null;
 
-  const password = generateTemporaryPassword();
-  void ttlHours;
-  const expiresAt = new Date(Date.now() + DEFAULT_TEMP_PASSWORD_TTL_HOURS * 60 * 60 * 1000);
+  const password = await generateUniqueTemporaryPassword(collections.transcriptPasswords);
+  const requestedExpiresAt = new Date(Date.now() + normalizePasswordTtlHours(ttlHours) * 60 * 60 * 1000);
+  const expiresAt = transcript.expiresAt && transcript.expiresAt < requestedExpiresAt
+    ? transcript.expiresAt
+    : requestedExpiresAt;
   await collections.transcriptPasswords.insertOne({
     _id: randomUUID(),
     transcriptId,
+    passwordFingerprint: passwordFingerprint(password),
     passwordHash: hashSecret(password),
     type: "temporary",
     expiresAt,
@@ -458,9 +480,6 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
   <section class="actions">
     <button onclick="navigator.clipboard.writeText('${escapeAttribute(transcript._id)}')">Copiar ID</button>
     <button onclick="navigator.clipboard.writeText(location.href)">Copiar link</button>
-    <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.html?token=session" download>Exportar HTML</a>
-    <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.txt?token=session" download>Exportar TXT</a>
-    <a href="/transcripts/${encodeURIComponent(transcript._id)}/export.pdf?token=session" download>Exportar PDF</a>
     <a href="/dashboard">Voltar para painel de logs</a>
   </section>
 </main>
@@ -594,6 +613,25 @@ function generateTemporaryPassword(length = 19) {
     return TEMP_PASSWORD_CHARS[byte % TEMP_PASSWORD_CHARS.length] ?? "x";
   }).join("");
   return `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7, 11)}-${raw.slice(11, 15)}-${raw.slice(15)}`;
+}
+
+async function generateUniqueTemporaryPassword(collection: { findOne(query: Record<string, unknown>): Promise<unknown> }) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const password = generateTemporaryPassword();
+    const fingerprint = passwordFingerprint(password);
+    const existing = await collection.findOne({ passwordFingerprint });
+    if (!existing) return password;
+  }
+  return generateTemporaryPassword(24);
+}
+
+function passwordFingerprint(password: string) {
+  return createHash("sha256").update(`transcript-password:${password}`).digest("hex");
+}
+
+function normalizePasswordTtlHours(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TEMP_PASSWORD_TTL_HOURS;
+  return Math.max(1, Math.min(Math.floor(value), DEFAULT_TEMP_PASSWORD_TTL_HOURS));
 }
 
 function hashSecret(secret: string) {
