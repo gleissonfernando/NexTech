@@ -828,7 +828,7 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     return;
   }
   const previousOpen = (await context.api.listCoursePublications(interaction.guildId!, "open").catch(() => []))
-    .find((item) => item.courseId === courseId) ?? null;
+    .find((item) => item.courseId === courseId && isSameCoursePublicationDay(item, scheduleWindow.startAt)) ?? null;
   const publication = await context.api.createCoursePublication(interaction.guildId!, {
     capacity,
     channelId: targetChannelId,
@@ -843,7 +843,11 @@ async function publishCourse(interaction: ModalSubmitInteraction, context: BotCo
     scheduledEndAt: scheduleWindow.endAt.toISOString(),
     scheduledFor: `${scheduleWindow.displayDate} ${time}`.trim(),
     scheduledStartAt: scheduleWindow.startAt.toISOString()
+  }).catch(async (error) => {
+    await interaction.editReply(courseApiErrorMessage(error) || "Não foi possível criar o agendamento do curso.");
+    return null;
   });
+  if (!publication) return;
   let publicationWithEvent = publication;
   let eventStarted = false;
   try {
@@ -936,9 +940,11 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
     await interaction.editReply("Somente o instrutor que abriu este curso pode iniciar, finalizar ou cancelar.");
     return;
   }
-  const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id).catch(() => null);
+  const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id).catch(async (error) => {
+    await interaction.editReply(courseApiErrorMessage(error) || "Esta ação já foi executada ou o curso mudou de estado.");
+    return null;
+  });
   if (!updated) {
-    await interaction.editReply("Esta ação já foi executada ou o curso mudou de estado.");
     return;
   }
   const course = await context.api.getCourse(interaction.guildId!, updated.courseId).catch(() => null);
@@ -2714,7 +2720,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const statusText = coursePublicationPlainStatusLabel(publication, full);
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
-  const canStartClass = publication.status === "open";
+  const canStartClass = publication.status === "open" && isCoursePublicationStartDateReached(publication);
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
@@ -2943,7 +2949,7 @@ function coursePublicationFallbackPanel(course: Course, publication: CoursePubli
   const full = publication.students.length >= publication.capacity;
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
-  const canStartClass = publication.status === "open";
+  const canStartClass = publication.status === "open" && isCoursePublicationStartDateReached(publication);
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
@@ -2997,6 +3003,44 @@ function coursePublicationDateLabel(publication: CoursePublication) {
     }).format(new Date(publication.scheduledStartAt));
   }
   return publication.scheduledFor.trim().split(/\s+/)[0] || publication.scheduledFor || "-";
+}
+
+function isCoursePublicationStartDateReached(publication: CoursePublication) {
+  const scheduledDay = coursePublicationDayKey(publication);
+  if (!scheduledDay) return true;
+
+  return scheduledDay <= saoPauloDayKey(new Date());
+}
+
+function isSameCoursePublicationDay(publication: CoursePublication, targetDate: Date) {
+  const scheduledDay = coursePublicationDayKey(publication);
+  return Boolean(scheduledDay && scheduledDay === saoPauloDayKey(targetDate));
+}
+
+function coursePublicationDayKey(publication: CoursePublication) {
+  if (publication.scheduledStartAt) {
+    return saoPauloDayKey(new Date(publication.scheduledStartAt));
+  }
+
+  const dateLabel = publication.scheduledFor.trim().split(/\s+/)[0] ?? "";
+  const match = /^(\d{2})\/(\d{2})(?:\/(\d{4}))?$/.exec(dateLabel);
+  if (!match) return null;
+
+  const year = match[3] ?? String(new Date().getFullYear());
+  return `${year}-${match[2]}-${match[1]}`;
+}
+
+function saoPauloDayKey(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric"
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
 }
 
 function coursePublicationTimeLabel(publication: CoursePublication) {
@@ -3740,6 +3784,17 @@ function logCourseFlowError(stage: string, error: unknown, data: Record<string, 
 function errorDetails(error: unknown) {
   if (error instanceof Error) return `${error.message}${error.stack ? `\n${error.stack}` : ""}`;
   return String(error);
+}
+
+function courseApiErrorMessage(error: unknown) {
+  if (typeof error === "object" && error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === "string" && response.data.message.trim()) {
+      return response.data.message.trim();
+    }
+  }
+
+  return error instanceof Error ? error.message : String(error);
 }
 
 function scheduledEventErrorMessage(error: unknown) {

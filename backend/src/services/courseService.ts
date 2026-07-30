@@ -8,6 +8,7 @@ const DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS = 24;
 const DEFAULT_COURSE_DEPARTMENTS = ["DP Fronteira", "DP Pier", "DP Juniper"];
 const COURSE_DEPARTMENT_NAME_MIN = 2;
 const COURSE_DEPARTMENT_NAME_MAX = 80;
+const COURSE_DUPLICATE_DAY_MESSAGE = "Já existe um curso em andamento nesta data. Aguarde a finalização do curso atual para agendar um novo curso.";
 
 export type CourseDashboard = {
   courses: CourseDto[];
@@ -38,6 +39,15 @@ type CourseSettingsUpdate = Partial<Omit<CourseSettingsDto, "id" | "botId" | "gu
 export class CourseDepartmentError extends Error {
   constructor(public readonly code: "duplicate" | "invalid_name" | "not_found" | "inactive", message: string) {
     super(message);
+  }
+}
+
+export class CoursePublicationConflictError extends Error {
+  public readonly statusCode = 409;
+
+  constructor(message = COURSE_DUPLICATE_DAY_MESSAGE) {
+    super(message);
+    this.name = "CoursePublicationConflictError";
   }
 }
 
@@ -1343,31 +1353,9 @@ export async function createCoursePublication(botId: string | null, guildId: str
 }) {
   const { coursePublications } = await getMongoCollections();
   const now = new Date();
-  const existingOpen = await coursePublications.findOne({ ...scope(botId, guildId), courseId: input.courseId, status: "open" });
-  if (existingOpen) {
-    await coursePublications.updateOne({ _id: existingOpen._id, ...scope(botId, guildId) }, {
-      $set: {
-        capacity: Math.max(1, input.capacity),
-        channelId: input.channelId,
-        discordEventType: input.discordEventType ?? existingOpen.discordEventType ?? "EXTERNAL",
-        instructorId: input.instructorId,
-        location: input.location,
-        legacyLocation: input.legacyLocation ?? existingOpen.legacyLocation ?? null,
-        dpId: input.dpId ?? existingOpen.dpId ?? null,
-        dpNameSnapshot: input.dpNameSnapshot ?? existingOpen.dpNameSnapshot ?? null,
-        notes: input.notes || null,
-        scheduledFor: input.scheduledFor,
-        scheduledStartAt: parseOptionalDate(input.scheduledStartAt) ?? existingOpen.scheduledStartAt ?? null,
-        scheduledEndAt: parseOptionalDate(input.scheduledEndAt) ?? existingOpen.scheduledEndAt ?? null,
-        voiceChannelId: input.voiceChannelId || null,
-        updatedAt: now
-      }
-    });
-    const updated = await coursePublications.findOne({ _id: existingOpen._id, ...scope(botId, guildId) });
-    await logCourseAction(botId, guildId, "course.publication_updated", input.instructorId, input.courseId, existingOpen._id, input);
-    emitRealtime("courses:publication", { botId, guildId, publicationId: existingOpen._id });
-    return mapPublication(updated ?? existingOpen);
-  }
+  const scheduledStartAt = parseOptionalDate(input.scheduledStartAt);
+  const scheduledEndAt = parseOptionalDate(input.scheduledEndAt);
+  await assertNoCoursePublicationConflictForDay(botId, guildId, input.courseId, scheduledStartAt, input.scheduledFor);
   const doc: MongoCoursePublication = {
     _id: randomUUID(),
     botId,
@@ -1379,8 +1367,8 @@ export async function createCoursePublication(botId: string | null, guildId: str
     discordEventUrl: null,
     discordEventType: input.discordEventType ?? "EXTERNAL",
     voiceChannelId: input.voiceChannelId || null,
-    scheduledStartAt: parseOptionalDate(input.scheduledStartAt),
-    scheduledEndAt: parseOptionalDate(input.scheduledEndAt),
+    scheduledStartAt,
+    scheduledEndAt,
     lastSyncAt: null,
     syncError: null,
     instructorId: input.instructorId,
@@ -1608,6 +1596,12 @@ export async function setCoursePublicationStatus(botId: string | null, guildId: 
   const publication = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
   if (!publication) return null;
   const now = new Date();
+  if (status === "started") {
+    if (!isCoursePublicationStartAllowed(publication, now)) {
+      throw Object.assign(new Error("Este curso está agendado para uma data futura. Aguarde o dia programado para iniciar."), { statusCode: 409 });
+    }
+    await assertNoCoursePublicationConflictForDay(botId, guildId, publication.courseId, publication.scheduledStartAt ?? null, publication.scheduledFor, publicationId);
+  }
   const allowedStatuses = publicationStatusTransitionSources(status);
   const transition = await coursePublications.updateOne({ _id: publicationId, ...scope(botId, guildId), ...(allowedStatuses ? { status: { $in: allowedStatuses } } : {}) }, {
     $set: {
@@ -1647,6 +1641,118 @@ function publicationStatusTransitionSources(status: MongoCoursePublication["stat
   if (status === "closed") return ["open", "started", "proof"];
   if (status === "cancelled") return ["open", "started"];
   return null;
+}
+
+async function assertNoCoursePublicationConflictForDay(
+  botId: string | null,
+  guildId: string,
+  courseId: string,
+  scheduledStartAt: Date | null,
+  scheduledFor: string,
+  ignorePublicationId?: string
+) {
+  const { coursePublications } = await getMongoCollections();
+  const dayRange = coursePublicationDayRange(scheduledStartAt, scheduledFor);
+  const query: Record<string, unknown> = {
+    ...scope(botId, guildId),
+    courseId,
+    status: {
+      $in: ["open", "started", "proof"]
+    },
+    ...(ignorePublicationId ? { _id: { $ne: ignorePublicationId } } : {})
+  };
+
+  const sameDateQuery = dayRange
+    ? {
+      $or: [
+        {
+          scheduledStartAt: {
+            $gte: dayRange.start,
+            $lt: dayRange.end
+          }
+        },
+        {
+          scheduledStartAt: {
+            $in: [null]
+          },
+          scheduledFor: {
+            $regex: `^${escapeRegExp(dayRange.label)}(?:\\s|$)`
+          }
+        }
+      ]
+    }
+    : {
+      scheduledStartAt: {
+        $in: [null]
+      },
+      scheduledFor
+    };
+
+  const conflict = await coursePublications.findOne({ ...query, ...sameDateQuery });
+  if (conflict) {
+    throw new CoursePublicationConflictError();
+  }
+}
+
+export function isCoursePublicationStartAllowedForDate(publication: Pick<MongoCoursePublication, "scheduledFor" | "scheduledStartAt">, now: Date) {
+  const startOfToday = saoPauloDayRange(now).start;
+  const scheduledDay = coursePublicationDayRange(publication.scheduledStartAt ?? null, publication.scheduledFor);
+  return !scheduledDay || scheduledDay.start.getTime() <= startOfToday.getTime();
+}
+
+function isCoursePublicationStartAllowed(publication: MongoCoursePublication, now: Date) {
+  return isCoursePublicationStartAllowedForDate(publication, now);
+}
+
+export function coursePublicationCalendarDayKey(scheduledStartAt: Date | null, scheduledFor: string) {
+  return coursePublicationDayRange(scheduledStartAt, scheduledFor)?.key ?? null;
+}
+
+function coursePublicationDayRange(scheduledStartAt: Date | null, scheduledFor: string) {
+  if (scheduledStartAt) return saoPauloDayRange(scheduledStartAt);
+
+  const label = scheduledFor.trim().split(/\s+/)[0] ?? "";
+  const match = /^(\d{2})\/(\d{2})(?:\/(\d{4}))?$/.exec(label);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = match[3] ? Number(match[3]) : new Date().getFullYear();
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
+
+  const start = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00-03:00`);
+  if (Number.isNaN(start.getTime())) return null;
+
+  return {
+    start,
+    end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+    key: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    label: `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}`
+  };
+}
+
+function saoPauloDayRange(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric"
+  }).formatToParts(value);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  const start = new Date(`${year}-${month}-${day}T00:00:00-03:00`);
+
+  return {
+    start,
+    end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+    key: `${year}-${month}-${day}`,
+    label: `${day}/${month}`
+  };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function createScheduleRequest(botId: string | null, guildId: string, input: {
