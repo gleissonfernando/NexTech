@@ -7,7 +7,7 @@ import { isDashboardDevUserId } from "../config/devOwner";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
 import { authorizeBotRuntimeModule, canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
 import { createLog } from "../services/logService";
-import { resolveRequestBotId } from "../services/requestBotScopeService";
+import { hasBotIdentityConflict, resolveRequestBotId } from "../services/requestBotScopeService";
 import {
   clearSafeBotMessageState,
   getGuildSettings,
@@ -307,6 +307,18 @@ settingsRouter.get("/:guildId", requireAuthOrBot, async (req, res) => {
   if (!guildId) {
     return res.status(400).json({
       message: "guildId obrigatório."
+    });
+  }
+
+  if (isBotRequest(req) && hasBotIdentityConflict(req)) {
+    return res.status(403).json({
+      message: "Identidade do bot não confere com o cadastro."
+    });
+  }
+
+  if (isBotRequest(req) && !botId) {
+    return res.status(400).json({
+      message: "Bot não identificado."
     });
   }
 
