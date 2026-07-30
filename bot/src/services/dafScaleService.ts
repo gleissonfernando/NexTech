@@ -336,7 +336,6 @@ function scalePanelPayload(state: DafScaleState, guild: Guild) {
   const s = state.settings;
   const icons = {
     active: systemStatusEmoji("success", guild),
-    refresh: systemComponentEmoji("relogio", guild),
     enter: systemComponentEmoji("visto", guild),
     leave: systemComponentEmoji("porta", guild),
     pilot: systemEmojiText("acessar", guild),
@@ -346,8 +345,7 @@ function scalePanelPayload(state: DafScaleState, guild: Guild) {
   };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${PREFIX}:join`).setLabel("Entrar na Escala").setEmoji(icons.enter).setStyle(ButtonStyle.Success).setDisabled(!s.enabled),
-    new ButtonBuilder().setCustomId(`${PREFIX}:leave`).setLabel("Sair da Escala").setEmoji(icons.leave).setStyle(ButtonStyle.Secondary).setDisabled(!s.enabled),
-    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar Painel").setEmoji(icons.refresh).setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:leave`).setLabel("Sair da Escala").setEmoji(icons.leave).setStyle(ButtonStyle.Secondary).setDisabled(!s.enabled)
   );
   const pilotList = state.pilots.length ? numberedEntries(state.pilots, icons.pilot) : `${icons.active} Nenhum piloto na escala.`;
   const shooterList = state.shooters.length ? numberedEntries(state.shooters, icons.shooter) : `${icons.warning} Nenhum atirador na escala.`;
