@@ -1,7 +1,7 @@
 import type { Message, PartialMessage } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import { handleImageAntiSpamMessage } from "../services/imageAntiSpamService";
-import { logMessageUpdate } from "../services/logService";
+import { isLogsRuntimeAuthorized, logMessageUpdate } from "../services/logService";
 import { rememberDeletedMessageSnapshot } from "../services/deletedMessageLogService";
 import { isSelfBotModuleEnabled } from "../services/safeBotService";
 import type { BotContext } from "../types";
@@ -14,7 +14,7 @@ export async function handleMessageUpdate(oldMessage: Message | PartialMessage, 
     });
   }
 
-  if (isBotModuleEnabled("logs")) {
+  if (newMessage.guild && await isLogsRuntimeAuthorized(context, newMessage.guild.id)) {
     await logMessageUpdate(context, oldMessage, newMessage);
   }
 

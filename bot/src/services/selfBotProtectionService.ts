@@ -65,7 +65,7 @@ const COMMAND_PATTERN = /^\s*(?:\/|!|\.|\?|;|\$|>|-)[\w-]{2,}/;
 let serviceStarted = false;
 
 export function startSelfBotProtectionService(context: BotContext) {
-  if (serviceStarted || !isSelfBotModuleEnabled()) {
+  if (serviceStarted || !shouldCheckSelfBotRuntime()) {
     return;
   }
 
@@ -87,7 +87,7 @@ export function startSelfBotProtectionService(context: BotContext) {
 }
 
 export async function handleSelfBotProtectionMessage(message: Message, context: BotContext) {
-  if (!isSelfBotModuleEnabled() || !message.guild || message.author.id === message.client.user?.id) {
+  if (!shouldCheckSelfBotRuntime() || !message.guild || message.author.id === message.client.user?.id) {
     return false;
   }
   if ((await canModerateMessage(message, context, MODULE_ID)).ignored) return false;
@@ -116,7 +116,7 @@ export async function handleSelfBotProtectionMessage(message: Message, context: 
 }
 
 export async function handleSelfBotProtectionMemberAdd(member: GuildMember, context: BotContext) {
-  if (!isSelfBotModuleEnabled()) {
+  if (!shouldCheckSelfBotRuntime()) {
     return false;
   }
 
@@ -217,7 +217,7 @@ export async function handleSelfBotProtectionGuildMutation(
   channelId: string | null = null,
   rollback?: () => Promise<unknown>
 ) {
-  if (!isSelfBotModuleEnabled()) {
+  if (!shouldCheckSelfBotRuntime()) {
     return false;
   }
 
@@ -300,7 +300,7 @@ export async function handleSelfBotProtectionGuildMutation(
 }
 
 export async function handleSelfBotProtectionMemberUpdate(oldMember: GuildMember, newMember: GuildMember, context: BotContext) {
-  if (oldMember.nickname === newMember.nickname || !isSelfBotModuleEnabled()) return false;
+  if (oldMember.nickname === newMember.nickname || !shouldCheckSelfBotRuntime()) return false;
   const settings = await getCachedSettings(newMember.guild.id, context).catch(() => null);
   if (!settings?.enabled || !isModuleEnabled(settings, "anti-nome") || isMemberExempt(newMember, settings)) return false;
   const changes = pushWindow(nicknameHistory, runtimeScopeKey(newMember.guild.id, newMember.id), Date.now(), settings.nicknameWindowSeconds);
@@ -1331,4 +1331,8 @@ function truncate(value: string, maxLength: number) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function shouldCheckSelfBotRuntime() {
+  return isSelfBotModuleEnabled() || Boolean(env.DASHBOARD_BOT_ID.trim());
 }

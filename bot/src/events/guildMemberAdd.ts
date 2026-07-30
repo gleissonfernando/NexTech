@@ -1,7 +1,7 @@
 import type { GuildMember } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import { enforceAccountAgeSecurity } from "../services/accountAgeSecurityService";
-import { logMemberJoin } from "../services/logService";
+import { isLogsRuntimeAuthorized, logMemberJoin } from "../services/logService";
 import { isMaintenanceModeActive } from "../services/maintenanceService";
 import { applyAutomaticRoles } from "../services/roleService";
 import { handleSelfBotProtectionMemberAdd } from "../services/selfBotProtectionService";
@@ -38,7 +38,7 @@ export async function handleGuildMemberAdd(member: GuildMember, context: BotCont
 
   const tasks: Promise<unknown>[] = [];
 
-  if (isBotModuleEnabled("logs")) tasks.push(logMemberJoin(context, member));
+  if (await isLogsRuntimeAuthorized(context, member.guild.id)) tasks.push(logMemberJoin(context, member));
   if (automaticRolesTask) tasks.push(automaticRolesTask);
   if (welcomeEnabled) tasks.push(sendWelcomeMessage(context, member));
   if (isBotModuleEnabled("fivem-fac")) tasks.push(handleFivemFacMemberAdd(member, context));

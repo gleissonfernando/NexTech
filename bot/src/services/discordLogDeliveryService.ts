@@ -1,9 +1,10 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, EmbedBuilder, MessageFlags, TextDisplayBuilder, type Guild } from "discord.js";
-import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
+import { currentRuntimeBotId, env } from "../config/env";
 import type { BotContext, LogCategory } from "../types";
 import type { DiscordLogDispatchEvent } from "../websocket/socketClient";
 import { getCachedGuildSettings } from "./guildSettingsCache";
 import { automatedLogChannelForType } from "./automatedLogService";
+import { isLogsRuntimeAuthorized } from "./logService";
 
 const CATEGORY_LABELS: Record<LogCategory, string> = {
   members: "Membros",
@@ -37,13 +38,17 @@ export function startDiscordLogDelivery(context: BotContext) {
 }
 
 async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEvent) {
-  if (!isBotModuleEnabled("logs") || log.type === "audit.dev_bot" || !belongsToRuntime(log.botId)) {
+  if (log.type === "audit.dev_bot" || !belongsToRuntime(log.botId)) {
     return;
   }
 
   const guild = context.client.guilds.cache.get(log.guildId);
 
   if (!guild) {
+    return;
+  }
+
+  if (!(await isLogsRuntimeAuthorized(context, guild.id))) {
     return;
   }
 

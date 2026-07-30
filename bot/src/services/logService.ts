@@ -1,7 +1,8 @@
 import type { GuildMember, Message, PartialGuildMember, PartialMessage, ReadonlyCollection, Snowflake, User } from "discord.js";
-import { currentRuntimeBotId } from "../config/env";
+import { currentRuntimeBotId, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import { registerBulkDeletedMessageLogs, registerDeletedMessageLog } from "./deletedMessageLogService";
+import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
 
 export type CreateSystemLogInput = {
   guildId: string;
@@ -112,6 +113,14 @@ export async function logModeration(context: BotContext, guildId: string, user: 
       reason
     }
   });
+}
+
+export async function isLogsRuntimeAuthorized(context: BotContext, guildId: string) {
+  if (currentRuntimeBotId()) {
+    return isRuntimeModuleAuthorized(context, guildId, "logs");
+  }
+
+  return isBotModuleEnabled("logs");
 }
 
 export async function createSystemLog(context: BotContext, input: CreateSystemLogInput) {

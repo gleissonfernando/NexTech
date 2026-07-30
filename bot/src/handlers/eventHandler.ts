@@ -5,7 +5,7 @@ import { handleGuildMemberUpdate } from "../events/guildMemberUpdate";
 import { handleInteractionCreate } from "../events/interactionCreate";
 import { handleMessageCreate } from "../events/messageCreate";
 import { handleMessageDelete } from "../events/messageDelete";
-import { logMessageBulkDelete } from "../services/logService";
+import { isLogsRuntimeAuthorized, logMessageBulkDelete } from "../services/logService";
 import { handleMessageUpdate } from "../events/messageUpdate";
 import { handlePresenceEvent } from "../events/presenceUpdate";
 import { handleReady } from "../events/ready";
@@ -204,8 +204,13 @@ export function registerEvents(client: Client, context: BotContext) {
       runEvent("messageDelete", () => handleMessageDelete(message, context));
     });
     client.on(Events.MessageBulkDelete, (messages) => {
-      if (isMaintenanceModeActive() || !isBotModuleEnabled("logs")) return;
-      runEvent("messageBulkDelete.logs", () => logMessageBulkDelete(context, messages));
+      if (isMaintenanceModeActive()) return;
+      runEvent("messageBulkDelete.logs", async () => {
+        const first = messages.first();
+        if (first?.guild && await isLogsRuntimeAuthorized(context, first.guild.id)) {
+          await logMessageBulkDelete(context, messages);
+        }
+      });
     });
   }
 
@@ -319,9 +324,12 @@ export function registerEvents(client: Client, context: BotContext) {
       if (isBotModuleEnabled("temporary-voice")) {
         runEvent("voiceStateUpdate.temporaryVoice", () => handleTemporaryVoiceStateUpdate(oldState, newState, context));
       }
-      if (isBotModuleEnabled("logs")) {
-        runEvent("voiceStateUpdate.logs", () => handleVoiceLogStateUpdate(oldState, newState, context));
-      }
+      runEvent("voiceStateUpdate.logs", async () => {
+        const guildId = newState.guild.id;
+        if (await isLogsRuntimeAuthorized(context, guildId)) {
+          await handleVoiceLogStateUpdate(oldState, newState, context);
+        }
+      });
     });
   }
 
