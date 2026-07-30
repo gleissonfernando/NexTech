@@ -4,6 +4,7 @@ import {
   EmbedBuilder,
   type Guild,
   type GuildMember,
+  type GuildTextBasedChannel,
   type Message
 } from "discord.js";
 import { env } from "../config/env";
@@ -31,6 +32,17 @@ type AttachmentHistoryEntry = {
   mediaTotal: number;
 };
 
+type DailyTrackedMessage = {
+  at: number;
+  channelId: string;
+  message: Message;
+};
+
+type ProhibitedChannelDayState = {
+  channelIds: Set<string>;
+  day: string;
+};
+
 type Violation = {
   moduleId: SelfBotProtectionModuleId;
   infractionType: string;
@@ -47,6 +59,9 @@ type PunishmentResult = {
 
 const MODULE_ID = "safe-bot";
 const messageHistory = new Map<string, MessageHistoryEntry[]>();
+const dailyMessageHistory = new Map<string, DailyTrackedMessage[]>();
+const prohibitedChannelDayStates = new Map<string, ProhibitedChannelDayState>();
+const temporaryRoleRemovalTimers = new Map<string, NodeJS.Timeout>();
 const attachmentHistory = new Map<string, AttachmentHistoryEntry[]>();
 const guildJoinWindows = new Map<string, number[]>();
 const guildMutationWindows = new Map<string, number[]>();
@@ -335,6 +350,7 @@ async function processMessage(message: Message, context: BotContext) {
   }
 
   if (isMemberExempt(member, settings)) return false;
+  rememberDailyMessage(message);
 
   let violation = detectMessageViolation(message, settings);
   if (violation?.moduleId === "anti-convites" && settings.allowedInviteGuildIds.length > 0) {
@@ -398,6 +414,18 @@ async function handleViolation(input: {
   }
 
   const punishment = await applyPunishment(input);
+  const prohibitedChannelPunishment = input.message
+    ? await applyProhibitedChannelDailyRule(input)
+    : null;
+  const punishmentActions = prohibitedChannelPunishment
+    ? [...new Set([...punishment.actions, ...prohibitedChannelPunishment.actions])]
+    : punishment.actions;
+  const punishmentErrors = [
+    punishment.error,
+    prohibitedChannelPunishment?.error ?? null
+  ].filter((error): error is string => Boolean(error));
+  const punishmentSucceeded = punishment.succeeded && (prohibitedChannelPunishment?.succeeded ?? true);
+  const addedRoleId = prohibitedChannelPunishment?.addedRoleId ?? punishment.addedRoleId;
 
   await input.context.api.recordSelfBotProtectionIncident({
     guildId: input.guild.id,
@@ -408,13 +436,14 @@ async function handleViolation(input: {
     messageContent: input.message?.content ?? null,
     moduleId: input.violation.moduleId,
     infractionType: input.violation.infractionType,
-    punishmentActions: punishment.actions,
-    punishmentSucceeded: punishment.succeeded,
-    punishmentError: punishment.error,
+    punishmentActions,
+    punishmentSucceeded,
+    punishmentError: punishmentErrors.length ? punishmentErrors.join(" | ") : null,
     metadata: {
       ...input.violation.metadata,
       details: input.violation.details,
-      punishmentRoleId: punishment.addedRoleId
+      prohibitedChannelDailyRule: prohibitedChannelPunishment?.metadata ?? null,
+      punishmentRoleId: addedRoleId
     }
   }).catch((error) => {
     console.warn("[self-bot-protection] não foi possível registrar incidente:", errorMessage(error));
@@ -425,6 +454,99 @@ async function handleViolation(input: {
 
 async function getCachedSettings(guildId: string, context: BotContext) {
   return getModerationSettings(guildId, context);
+}
+
+async function applyProhibitedChannelDailyRule(input: {
+  context: BotContext;
+  guild: Guild;
+  member: GuildMember;
+  message?: Message;
+  settings: SelfBotProtectionSettings;
+  violation: Violation;
+}): Promise<(PunishmentResult & { metadata: Record<string, unknown> }) | null> {
+  const message = input.message;
+
+  if (!message || !isProhibitedChannelViolation(message, input.settings, input.violation)) {
+    return null;
+  }
+
+  const actions: SelfBotPunishmentAction[] = [];
+  const errors: string[] = [];
+  let addedRoleId: string | null = null;
+  const day = dayStamp();
+  const stateKey = dailyUserKey(input.guild.id, input.member.id);
+  const current = prohibitedChannelDayStates.get(stateKey);
+  const state = current?.day === day ? current : { channelIds: new Set<string>(), day };
+  state.channelIds.add(message.channelId);
+  prohibitedChannelDayStates.set(stateKey, state);
+  const prohibitedChannelCount = state.channelIds.size;
+
+  try {
+    const deletedCount = await deleteUserMessagesFromToday(input.context, input.guild, input.member.id, input.violation);
+    if (deletedCount > 0) {
+      actions.push("delete_message");
+    }
+  } catch (error) {
+    errors.push(`delete_message: ${errorMessage(error)}`);
+    rememberSecurityActionError(input.guild.id, input.violation.moduleId);
+  }
+
+  if (prohibitedChannelCount === 1) {
+    try {
+      const role = await ensureSelfBotRole(input.guild, input.context).catch(() => null);
+      const roleId = input.settings.addRoleId ?? role?.id ?? null;
+
+      if (!roleId) {
+        throw new Error("Nenhum cargo configurado para aplicar na regra diaria.");
+      }
+
+      await input.member.roles.add(roleId, "SafeBot: mensagem em canal proibido");
+      scheduleTemporaryRoleRemoval(input.member, roleId, 3 * 60 * 60 * 1_000);
+      addedRoleId = roleId;
+      actions.push("add_role");
+    } catch (error) {
+      errors.push(`add_role: ${errorMessage(error)}`);
+      rememberSecurityActionError(input.guild.id, input.violation.moduleId);
+    }
+  } else if (prohibitedChannelCount === 2) {
+    try {
+      if (!input.member.moderatable) {
+        throw new Error("O Discord negou timeout neste membro por causa da hierarquia ou permissões.");
+      }
+
+      await input.member.timeout(15 * 60 * 1_000, "SafeBot: segundo canal proibido no dia");
+      actions.push("timeout");
+    } catch (error) {
+      errors.push(`timeout: ${errorMessage(error)}`);
+      rememberSecurityActionError(input.guild.id, input.violation.moduleId);
+    }
+  } else if (prohibitedChannelCount >= 3) {
+    try {
+      if (!input.member.kickable) {
+        throw new Error("O Discord negou expulsar este membro por causa da hierarquia ou permissões.");
+      }
+
+      await input.member.kick("SafeBot: terceiro canal proibido no dia");
+      actions.push("kick");
+    } catch (error) {
+      errors.push(`kick: ${errorMessage(error)}`);
+      rememberSecurityActionError(input.guild.id, input.violation.moduleId);
+    }
+  }
+
+  return {
+    actions,
+    addedRoleId,
+    error: errors.length ? errors.join(" | ") : null,
+    metadata: {
+      day,
+      prohibitedChannelCount,
+      prohibitedChannelIds: [...state.channelIds],
+      temporaryRoleHours: prohibitedChannelCount === 1 && addedRoleId ? 3 : null,
+      timeoutMinutes: prohibitedChannelCount === 2 ? 15 : null
+    },
+    succeeded: errors.length === 0
+  };
 }
 
 async function ensureRoleForEnabledGuild(guild: Guild, context: BotContext) {
@@ -987,6 +1109,123 @@ function rememberMessageState(message: Message, settings: SelfBotProtectionSetti
   rememberAttachments(message, settings);
 }
 
+function rememberDailyMessage(message: Message) {
+  if (!message.guild) {
+    return;
+  }
+
+  const key = dailyUserKey(message.guild.id, message.author.id);
+  const dayStart = startOfCurrentDayMs();
+  const entries = (dailyMessageHistory.get(key) ?? []).filter((entry) => entry.at >= dayStart);
+
+  entries.push({
+    at: Date.now(),
+    channelId: message.channelId,
+    message
+  });
+  dailyMessageHistory.set(key, entries.slice(-500));
+}
+
+async function deleteUserMessagesFromToday(context: BotContext, guild: Guild, userId: string, violation: Violation) {
+  const key = dailyUserKey(guild.id, userId);
+  const dayStart = startOfCurrentDayMs();
+  const trackedMessages = (dailyMessageHistory.get(key) ?? [])
+    .filter((entry) => entry.at >= dayStart)
+    .map((entry) => entry.message);
+  const messagesById = new Map<string, Message>();
+
+  for (const message of trackedMessages) {
+    messagesById.set(message.id, message);
+  }
+
+  const fetchedMessages = await fetchUserMessagesFromToday(guild, userId, dayStart);
+
+  for (const message of fetchedMessages) {
+    messagesById.set(message.id, message);
+  }
+
+  let deletedCount = 0;
+
+  for (const message of messagesById.values()) {
+    if (message.author.id !== userId || !message.guild || message.createdTimestamp < dayStart) {
+      continue;
+    }
+
+    try {
+      await deleteMessageWithAudit(context, message, {
+        action: "AUTO_DELETE",
+        deletionType: "AUTOMATIC",
+        module: "SelfBot Protection",
+        reason: `Limpeza diaria: ${violation.details}`,
+        ruleId: violation.moduleId
+      });
+      deletedCount += 1;
+    } catch (error) {
+      console.warn(`[self-bot-protection] não foi possível apagar mensagem diaria ${message.id}:`, errorMessage(error));
+    }
+  }
+
+  dailyMessageHistory.set(key, (dailyMessageHistory.get(key) ?? []).filter((entry) => !messagesById.has(entry.message.id)));
+  return deletedCount;
+}
+
+async function fetchUserMessagesFromToday(guild: Guild, userId: string, dayStart: number) {
+  const found: Message[] = [];
+  const channels = guild.channels.cache
+    .filter((channel): channel is GuildTextBasedChannel => channel.isTextBased() && !channel.isDMBased() && "messages" in channel)
+    .first(80);
+
+  for (const channel of channels) {
+    let before: string | undefined;
+
+    for (let page = 0; page < 5; page += 1) {
+      const batch = await channel.messages.fetch({ before, limit: 100 }).catch(() => null);
+
+      if (!batch?.size) {
+        break;
+      }
+
+      for (const message of batch.values()) {
+        if (message.createdTimestamp < dayStart) {
+          continue;
+        }
+
+        if (message.author.id === userId) {
+          found.push(message);
+        }
+      }
+
+      const oldest = batch.last();
+      before = oldest?.id;
+
+      if (!oldest || oldest.createdTimestamp < dayStart) {
+        break;
+      }
+    }
+  }
+
+  return found;
+}
+
+function scheduleTemporaryRoleRemoval(member: GuildMember, roleId: string, delayMs: number) {
+  const key = `${member.guild.id}:${member.id}:${roleId}`;
+  const current = temporaryRoleRemovalTimers.get(key);
+
+  if (current) {
+    clearTimeout(current);
+  }
+
+  const timer = setTimeout(() => {
+    temporaryRoleRemovalTimers.delete(key);
+    void member.roles.remove(roleId, "SafeBot: cargo temporario expirado apos 3 horas").catch((error) => {
+      console.warn("[self-bot-protection] não foi possível remover cargo temporário:", errorMessage(error));
+    });
+  }, delayMs);
+
+  timer.unref();
+  temporaryRoleRemovalTimers.set(key, timer);
+}
+
 function rememberMessage(message: Message, settings: SelfBotProtectionSettings) {
   const key = keyForMessage(message);
   const normalized = COMMAND_PATTERN.test(message.content)
@@ -1053,6 +1292,61 @@ function isChannelProtected(message: Message, settings: SelfBotProtectionSetting
 
   if (isAllowedChannel(message, settings.ignoredCategoryIds)) return false;
   return settings.protectedChannelIds.length === 0 || isAllowedChannel(message, settings.protectedChannelIds);
+}
+
+function isProhibitedChannelViolation(message: Message, settings: SelfBotProtectionSettings, violation: Violation) {
+  if (isAllowedChannel(message, settings.ignoredChannelIds) || isAllowedChannel(message, settings.ignoredCategoryIds)) {
+    return false;
+  }
+
+  if (settings.protectedChannelIds.length > 0 && isAllowedChannel(message, settings.protectedChannelIds)) {
+    return true;
+  }
+
+  if (["anti-links", "anti-convites", "anti-divulgacao", "anti-scam", "anti-phishing", "anti-token-grabber", "anti-nitro-scam"].includes(violation.moduleId)) {
+    return !isAllowedChannel(message, settings.linkChannelIds);
+  }
+
+  if (["anti-imagens", "anti-gif", "anti-anexos"].includes(violation.moduleId)) {
+    return !isAllowedChannel(message, settings.mediaChannelIds);
+  }
+
+  return false;
+}
+
+function dailyUserKey(guildId: string, userId: string) {
+  return runtimeScopeKey(guildId, userId);
+}
+
+function dayStamp() {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric"
+  }).format(new Date());
+}
+
+function startOfCurrentDayMs() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric"
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const elapsedMs =
+    Number(values.hour ?? 0) * 3_600_000
+    + Number(values.minute ?? 0) * 60_000
+    + Number(values.second ?? 0) * 1_000
+    + now.getMilliseconds();
+
+  return now.getTime() - elapsedMs;
 }
 
 function isMemberExempt(member: GuildMember, settings: SelfBotProtectionSettings) {
@@ -1263,6 +1557,25 @@ function clearGuildWindows(guildId: string) {
   for (const key of messageHistory.keys()) {
     if (key.startsWith(`${prefix}:`)) {
       messageHistory.delete(key);
+    }
+  }
+
+  for (const key of dailyMessageHistory.keys()) {
+    if (key.startsWith(`${prefix}:`)) {
+      dailyMessageHistory.delete(key);
+    }
+  }
+
+  for (const key of prohibitedChannelDayStates.keys()) {
+    if (key.startsWith(`${prefix}:`)) {
+      prohibitedChannelDayStates.delete(key);
+    }
+  }
+
+  for (const [key, timer] of temporaryRoleRemovalTimers) {
+    if (key.startsWith(`${prefix}:`)) {
+      clearTimeout(timer);
+      temporaryRoleRemovalTimers.delete(key);
     }
   }
 
