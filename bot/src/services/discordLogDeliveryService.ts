@@ -192,19 +192,13 @@ async function deliverDeletedMessageLog(
   log: DiscordLogDispatchEvent
 ) {
   const metadata = deletedMessageMetadata(log.metadata);
-  const guildName = metadata.guildName || fallbackGuildName;
   const channelName = metadata.channelName ? `#${metadata.channelName}` : metadata.channelId ? `<#${metadata.channelId}>` : "canal desconhecido";
   const authorName = metadata.authorDisplayName || metadata.authorTag || metadata.authorUsername || "Autor desconhecido";
   const content = metadata.content?.trim() || metadata.unavailableReason || "Conteúdo não disponível no cache do bot.";
-  const sentAt = metadata.createdAt ? formatDate(metadata.createdAt) : "Não informado";
   const deletedAt = metadata.deletedAt ? formatDate(metadata.deletedAt) : formatDate(log.createdAt);
-  const executor = metadata.executorId
-    ? `<@${metadata.executorId}>${metadata.executorTag ? ` (${metadata.executorTag})` : ""}`
-    : "Não identificado";
-  const moduleName = metadata.module || "Logs de mensagens apagadas";
-  const reason = metadata.reason || "Não informado";
   const maxContentInPanel = 2_800;
-  const files = [buildDeletedMessagePreview(metadata, guildName)];
+  const previewFileName = `mensagem-apagada-${metadata.messageId || log.id}.svg`;
+  const files = [buildDeletedMessagePreview(metadata, fallbackGuildName, previewFileName)];
   const textOverflow = content.length > maxContentInPanel;
 
   if (textOverflow) {
@@ -213,47 +207,41 @@ async function deliverDeletedMessageLog(
     }));
   }
 
-  const mediaLines = [
-    metadata.attachments.length ? `**Anexos:** ${metadata.attachments.length}\n${metadata.attachments.slice(0, 5).map((item, index) => `${index + 1}. ${item.name} (${formatBytes(item.size)}${item.contentType ? `, ${item.contentType}` : ""})\n${item.url}`).join("\n")}` : null,
-    metadata.stickers.length ? `**Figurinhas:** ${metadata.stickers.map((item) => `${item.name} (${item.id})`).join(", ")}` : null,
-    metadata.embeds.length ? `**Embeds:** ${metadata.embeds.length}${metadata.embeds[0]?.title ? ` - ${metadata.embeds[0].title}` : ""}` : null,
-    metadata.links.length ? `**Links:** ${metadata.links.slice(0, 5).join("\n")}` : null
-  ].filter(Boolean).join("\n\n") || "Sem anexos, figurinhas, embeds ou links registrados.";
-
   const container = new ContainerBuilder()
-    .setAccentColor(0xf0b232)
+    .setAccentColor(0xef4444)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# Mensagem apagada\nMensagem apagada no servidor **${limitInline(guildName, 120)}** no canal ${channelName}.`),
+      new TextDisplayBuilder().setContent(`## ${authorNameForPanel(authorName)}\n${metadata.authorId ? `<@${metadata.authorId}>` : ""}`.trim()),
       new TextDisplayBuilder().setContent([
-        "## Autor",
-        `**Nome:** ${limitInline(authorName, 120)}`,
-        metadata.authorUsername ? `**Usuário:** ${limitInline(metadata.authorUsername, 120)}` : null,
-        metadata.authorId ? `**ID:** \`${metadata.authorId}\`` : "**ID:** não informado",
-        `**Mensagem enviada em:** ${sentAt}`
-      ].filter(Boolean).join("\n")),
-      new TextDisplayBuilder().setContent([
-        "## Mensagem apagada",
+        "📝 **Mensagem de texto deletada**",
+        "",
+        `**Canal de texto:** ${channelName}`,
+        "",
+        "**Mensagem:**",
         limitCodeBlock(content, maxContentInPanel),
-        textOverflow ? "\nConteudo completo anexado em `.txt`." : ""
-      ].join("\n")),
-      new TextDisplayBuilder().setContent([
-        "## Midias e links",
-        limitText(mediaLines, 1_500)
-      ].join("\n")),
-      new TextDisplayBuilder().setContent([
-        "## Detalhes da exclusão",
-        metadata.channelId ? `**Canal:** ${channelName}\n**ID do canal:** \`${metadata.channelId}\`` : null,
-        metadata.authorId ? `**Autor:** ${metadata.authorUsername ? `@${metadata.authorUsername}` : authorName}\n**ID do autor:** \`${metadata.authorId}\`` : null,
-        metadata.messageId ? `**ID da mensagem:** \`${metadata.messageId}\`` : null,
-        `**Módulo responsável:** ${limitInline(moduleName, 120)}`,
-        metadata.ruleId ? `**Regra acionada:** \`${metadata.ruleId}\`` : null,
-        `**Ação:** ${metadata.action || "DELETE"}`,
-        `**Tipo:** ${metadata.deletionType || "UNKNOWN"}`,
-        `**Executor:** ${executor}`,
-        `**Motivo:** ${limitInline(reason, 240)}`,
-        `**Excluida em:** ${deletedAt}`
+        textOverflow ? "\nConteudo completo anexado em `.txt`." : "",
+        "",
+        metadata.attachments.length ? `**Anexos:** ${metadata.attachments.length}` : null,
+        metadata.stickers.length ? `**Figurinhas:** ${metadata.stickers.map((item) => item.name).join(", ")}` : null,
+        metadata.embeds.length ? `**Embeds:** ${metadata.embeds.length}` : null
       ].filter(Boolean).join("\n"))
     );
+
+  container.addMediaGalleryComponents({
+    items: [
+      {
+        description: "Print da mensagem apagada",
+        media: { url: `attachment://${previewFileName}` }
+      }
+    ],
+    type: 12
+  });
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent([
+      metadata.authorId ? `**ID do usuário:** \`${metadata.authorId}\`` : null,
+      `**Apagada em:** ${deletedAt}`
+    ].filter(Boolean).join(" • "))
+  );
 
   if (metadata.guildId && metadata.channelId) {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -278,6 +266,7 @@ async function deliverDeletedMessageLog(
 type DeletedMessageLogMetadata = {
   action: string | null;
   attachments: Array<{ contentType: string | null; name: string; size: number; url: string }>;
+  authorAvatarUrl: string | null;
   authorDisplayName: string | null;
   authorId: string | null;
   authorTag: string | null;
@@ -315,6 +304,7 @@ function deletedMessageMetadata(metadata: unknown): DeletedMessageLogMetadata {
       size: typeof item.size === "number" ? item.size : 0,
       url: optionalString(item.url) ?? ""
     })),
+    authorAvatarUrl: optionalString(record.authorAvatarUrl),
     authorDisplayName: optionalString(record.authorDisplayName),
     authorId: optionalString(record.authorId),
     authorTag: optionalString(record.authorTag),
@@ -417,34 +407,42 @@ function formatDuration(totalSeconds: number) {
   return `${remainingSeconds}s`;
 }
 
-function buildDeletedMessagePreview(metadata: DeletedMessageLogMetadata, guildName: string) {
+function buildDeletedMessagePreview(metadata: DeletedMessageLogMetadata, guildName: string, fileName: string) {
   const authorName = metadata.authorDisplayName || metadata.authorTag || metadata.authorUsername || "Autor desconhecido";
   const channelName = metadata.channelName ? `#${metadata.channelName}` : metadata.channelId ? `#${metadata.channelId}` : "canal desconhecido";
   const content = metadata.content?.trim() || metadata.unavailableReason || "Conteúdo não disponível.";
-  const contentLines = wrapText(content, 78).slice(0, 18);
-  const height = Math.min(920, 250 + contentLines.length * 24);
+  const contentLines = wrapText(content, 88).slice(0, 22);
+  const contentHeight = Math.max(210, contentLines.length * 27 + 52);
+  const metaLines = [
+    metadata.authorId ? `ID do usuario: ${metadata.authorId}` : null,
+    metadata.messageId ? `ID da mensagem: ${metadata.messageId}` : null,
+    metadata.channelId ? `ID do canal: ${metadata.channelId}` : null
+  ].filter((item): item is string => Boolean(item));
+  const height = Math.min(980, 190 + contentHeight + metaLines.length * 22 + 80);
+  const messageY = 136;
+  const contentY = messageY + 84;
+  const footerY = contentY + contentHeight + 34;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="${height}" viewBox="0 0 1120 ${height}">`,
-    "<rect width=\"1120\" height=\"100%\" fill=\"#0b0b0d\"/>",
-    "<rect x=\"0\" y=\"0\" width=\"1120\" height=\"8\" fill=\"#f0b232\"/>",
-    `<text x="48" y="58" fill="#f8fafc" font-family="Arial, sans-serif" font-size="28" font-weight="700">Mensagem apagada</text>`,
-    `<text x="48" y="95" fill="#d4d4d8" font-family="Arial, sans-serif" font-size="18">Servidor: ${escapeXml(limitInline(guildName, 90))}</text>`,
-    `<text x="48" y="123" fill="#d4d4d8" font-family="Arial, sans-serif" font-size="18">Canal: ${escapeXml(limitInline(channelName, 90))}</text>`,
-    "<rect x=\"48\" y=\"154\" width=\"1024\" height=\"120\" rx=\"8\" fill=\"#1f2027\" stroke=\"#383a45\"/>",
-    "<circle cx=\"94\" cy=\"211\" r=\"28\" fill=\"#f0b232\"/>",
-    `<text x="84" y="222" fill="#0b0b0d" font-family="Arial, sans-serif" font-size="26" font-weight="700">${escapeXml(authorName.slice(0, 1).toUpperCase() || "?")}</text>`,
-    `<text x="138" y="198" fill="#ffffff" font-family="Arial, sans-serif" font-size="21" font-weight="700">${escapeXml(limitInline(authorName, 70))}</text>`,
-    `<text x="138" y="229" fill="#a1a1aa" font-family="Arial, sans-serif" font-size="16">Enviada em ${escapeXml(metadata.createdAt ? formatDate(metadata.createdAt) : "horario desconhecido")}</text>`,
-    "<rect x=\"48\" y=\"306\" width=\"1024\" height=\"" + Math.max(130, contentLines.length * 28 + 40) + "\" rx=\"8\" fill=\"#15161b\" stroke=\"#383a45\"/>",
-    `<text x="76" y="344" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20" font-weight="700">Conteúdo removido</text>`,
-    ...contentLines.map((line, index) => `<text x="76" y="${384 + index * 24}" fill="#e4e4e7" font-family="Consolas, monospace" font-size="17">${escapeXml(line)}</text>`),
-    `<text x="48" y="${height - 80}" fill="#a1a1aa" font-family="Arial, sans-serif" font-size="16">ID usuário: ${escapeXml(metadata.authorId ?? "não informado")} | ID mensagem: ${escapeXml(metadata.messageId ?? "não informado")}</text>`,
-    `<text x="48" y="${height - 50}" fill="#a1a1aa" font-family="Arial, sans-serif" font-size="16">ID servidor: ${escapeXml(metadata.guildId ?? "não informado")} | ID canal: ${escapeXml(metadata.channelId ?? "não informado")}</text>`,
+    "<rect width=\"1120\" height=\"100%\" rx=\"12\" fill=\"#2b2d31\"/>",
+    "<rect x=\"0\" y=\"0\" width=\"8\" height=\"100%\" fill=\"#ef4444\"/>",
+    "<rect x=\"28\" y=\"26\" width=\"1064\" height=\"72\" rx=\"8\" fill=\"#31343b\"/>",
+    `<text x="54" y="58" fill="#f2f3f5" font-family="Arial, sans-serif" font-size="18" font-weight="700">Mensagem removida no servidor ${escapeXml(limitInline(guildName, 90))}</text>`,
+    `<text x="54" y="82" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">Canal: ${escapeXml(limitInline(channelName, 80))} • ${escapeXml(metadata.deletedAt ? formatDate(metadata.deletedAt) : "apagada agora")}</text>`,
+    `<circle cx="70" cy="${messageY + 28}" r="24" fill="#5865f2"/>`,
+    `<text x="60" y="${messageY + 38}" fill="#ffffff" font-family="Arial, sans-serif" font-size="24" font-weight="700">${escapeXml(authorName.slice(0, 1).toUpperCase() || "?")}</text>`,
+    `<text x="108" y="${messageY + 22}" fill="#f2f3f5" font-family="Arial, sans-serif" font-size="21" font-weight="700">${escapeXml(limitInline(authorName, 72))}</text>`,
+    `<text x="108" y="${messageY + 48}" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">${escapeXml(metadata.createdAt ? formatDate(metadata.createdAt) : "horario original desconhecido")}</text>`,
+    `<rect x="54" y="${contentY}" width="1012" height="${contentHeight}" rx="6" fill="#383b4d" stroke="#4e5268"/>`,
+    `<text x="82" y="${contentY + 34}" fill="#f2f3f5" font-family="Consolas, monospace" font-size="18" font-weight="700">Mensagem:</text>`,
+    ...contentLines.map((line, index) => `<text x="82" y="${contentY + 72 + index * 27}" fill="#ffffff" font-family="Consolas, monospace" font-size="18" font-weight="700">${escapeXml(line)}</text>`),
+    ...metaLines.map((line, index) => `<text x="54" y="${footerY + index * 22}" fill="#dbdee1" font-family="Arial, sans-serif" font-size="15" font-weight="700">${escapeXml(line)}</text>`),
+    `<text x="54" y="${height - 34}" fill="#949ba4" font-family="Arial, sans-serif" font-size="14">Feito com a NexTech • Snapshot automatico da mensagem apagada</text>`,
     "</svg>"
   ].join("");
 
   return new AttachmentBuilder(Buffer.from(svg, "utf8"), {
-    name: `mensagem-apagada-${metadata.messageId ?? "preview"}.svg`
+    name: fileName
   });
 }
 
@@ -456,6 +454,10 @@ function limitCodeBlock(value: string, maxLength: number) {
 function limitInline(value: string, maxLength: number) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+}
+
+function authorNameForPanel(value: string) {
+  return limitInline(value.startsWith("@") ? value : `@${value}`, 90);
 }
 
 function formatDate(value: string) {
