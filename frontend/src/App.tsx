@@ -13,8 +13,8 @@ const NexTechProductPage = lazy(() => import("./pages/NexTechProductPage").then(
 const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((module) => ({ default: module.PaymentReturnPage })));
 const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
 const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
-const PublicStatusPage = lazy(() => import("./pages/PublicStatusPage").then((module) => ({ default: module.PublicStatusPage })));
 const TermsPage = lazy(() => import("./pages/Terms").then((module) => ({ default: module.TermsPage })));
+const MONITORING_STATUS_URL = "https://nextech-status.discloud.app";
 const ACCESS_DENIED_MESSAGE = [
   "Não foi encontrada nenhuma permissão para esta Dashboard.",
   "",
@@ -70,6 +70,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (statusPath) {
+      window.location.replace(MONITORING_STATUS_URL);
+    }
+  }, [statusPath]);
+
+  useEffect(() => {
     if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
       return;
     }
@@ -100,7 +106,7 @@ export function App() {
   }
 
   if (statusPath) {
-    return <LazyPage><PublicStatusPage /></LazyPage>;
+    return <LoadingScreen />;
   }
 
   if (termsPath) {

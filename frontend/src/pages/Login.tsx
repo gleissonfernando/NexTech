@@ -29,6 +29,7 @@ import { Button } from "../components/ui/button";
 import type { AuthResponse } from "../types";
 
 const SUPPORT_URL = "https://discord.gg/7WYzSwVBPm";
+const MONITORING_STATUS_URL = "https://nextech-status.discloud.app";
 const LANDING_SERVERS_REFRESH_MS = 60_000;
 
 type LoginProps = {
@@ -355,7 +356,7 @@ export function Login({
       return;
     }
     if (id === "status") {
-      window.location.assign("/status");
+      window.location.assign(MONITORING_STATUS_URL);
       return;
     }
     if (id === "termos") {
