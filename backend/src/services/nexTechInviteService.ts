@@ -155,7 +155,7 @@ const OVERLAY_STYLES = ["black", "blue", "red", "gradient", "none"] as const;
 const PARTICLE_STYLES = ["none", "dots", "sparks", "neon", "smoke", "lines", "stars", "hex"] as const;
 const FALLBACK_OFFICIAL_INVITE = {
   assetUrl: "/invite-nextech-default.png",
-  code: "HTYE9HX8VY",
+  code: "hTyE9hX8VY",
   customSlug: "nextech",
   description: "Entre no servidor oficial usando o convite personalizado da NexTech.",
   id: "fallback-nextech-official-invite",
@@ -454,7 +454,7 @@ export async function getPublicNexTechInvitePage(rawCode: string): Promise<Publi
 async function fallbackPublicNexTechInvitePage(rawCode: string): Promise<PublicNexTechInvitePageDto | null> {
   const code = normalizeInviteCode(rawCode);
   const slug = normalizeSlug(rawCode);
-  const matchesFallback = code === FALLBACK_OFFICIAL_INVITE.code || slug === FALLBACK_OFFICIAL_INVITE.customSlug;
+  const matchesFallback = code === normalizeInviteCode(FALLBACK_OFFICIAL_INVITE.code) || slug === FALLBACK_OFFICIAL_INVITE.customSlug;
 
   if (!matchesFallback) {
     return null;
@@ -770,7 +770,7 @@ function normalizeEnum<const T extends readonly string[]>(value: T[number] | str
 }
 
 async function fetchDiscordInvite(code: string) {
-  const safeCode = normalizeInviteCode(code);
+  const safeCode = normalizeDiscordInviteCodeForLookup(code);
   if (!safeCode) return null;
   try {
     const response = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(safeCode)}?with_counts=true&with_expiration=true`, {
@@ -799,6 +799,10 @@ async function fetchDiscordInvite(code: string) {
   } catch {
     return null;
   }
+}
+
+function normalizeDiscordInviteCodeForLookup(value: string | null | undefined) {
+  return normalizeText(value ?? "", 120).replace(/[^a-z0-9_-]/gi, "");
 }
 
 function discordAssetUrl(guildId: string | undefined, type: "icons" | "banners" | "splashes", hash: string | null | undefined) {
