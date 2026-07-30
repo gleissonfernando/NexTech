@@ -13,7 +13,7 @@ export function PublicInvitePage({ code }: Props) {
   const [page, setPage] = useState<PublicInvite | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [redirecting, setRedirecting] = useState<"app" | "browser" | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -45,19 +45,11 @@ export function PublicInvitePage({ code }: Props) {
   const primaryColor = page?.config.primaryColor || "#FFD500";
   const theme = page?.config.theme ?? "nextech";
 
-  async function openInvite(target: "app" | "browser") {
+  async function openInvite() {
     if (!page) return;
-    setRedirecting(target);
-    await recordPublicNexTechInviteClick(code, target).catch(() => null);
-    if (target === "app") {
-      const inviteCode = page.discord?.code || page.invite.code;
-      window.location.href = `discord://-/invite/${encodeURIComponent(inviteCode)}`;
-      window.setTimeout(() => {
-        window.location.href = page.redirectUrl;
-      }, 900);
-      return;
-    }
-    window.location.href = page.redirectUrl;
+    setRedirecting(true);
+    await recordPublicNexTechInviteClick(code, "official").catch(() => null);
+    window.location.assign(page.redirectUrl);
   }
 
   if (loading) {
@@ -111,14 +103,11 @@ export function PublicInvitePage({ code }: Props) {
               </div>
             ) : null}
             <div className="mt-6 grid gap-3">
-              <button className="inline-flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-black shadow-[0_0_34px_rgba(255,213,0,0.28)] transition hover:translate-y-[-1px]" disabled={redirecting !== null} onClick={() => void openInvite("app")} style={{ backgroundColor: primaryColor }} type="button">
-                <ExternalLink className="h-4 w-4" /> {redirecting === "app" ? "Abrindo..." : "Abrir aplicativo Discord"}
-              </button>
-              <button className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/8 px-4 text-sm font-black text-white transition hover:translate-y-[-1px] hover:bg-white/12" disabled={redirecting !== null} onClick={() => void openInvite("browser")} type="button">
-                <Globe2 className="h-4 w-4" /> {redirecting === "browser" ? "Redirecionando..." : "Continuar no navegador"}
+              <button className="inline-flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-black shadow-[0_0_34px_rgba(255,213,0,0.28)] transition hover:translate-y-[-1px]" disabled={redirecting} onClick={() => void openInvite()} style={{ backgroundColor: primaryColor }} type="button">
+                <ExternalLink className="h-4 w-4" /> {redirecting ? "Entrando..." : "Entrar no servidor"}
               </button>
             </div>
-            <p className="mt-4 text-xs font-semibold text-zinc-500">Você será redirecionado para o convite oficial do Discord.</p>
+            <p className="mt-4 text-xs font-semibold text-zinc-500">O Discord pode solicitar confirmação antes de concluir a entrada.</p>
           </aside>
         </div>
       </div>
