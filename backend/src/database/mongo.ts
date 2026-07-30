@@ -5872,7 +5872,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoPersistentImage>("persistent_images").createIndex({ createdAt: -1 }),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex(
       { botId: 1, guildId: 1, slug: 1 },
-      { unique: true, partialFilterExpression: { deletedAt: { $type: "null" } } }
+      { unique: true, partialFilterExpression: { deletedAt: null } }
     ),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex({ botId: 1, guildId: 1, order: 1, updatedAt: -1 }),
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, categoryId: 1, updatedAt: -1 }),
