@@ -15,6 +15,7 @@ export type SystemEmojiKey =
   | "homem"
   | "folha"
   | "exclamacao"
+  | "mapa"
   | "discord"
   | "dinheiro"
   | "prancheta_acertos"
@@ -110,6 +111,7 @@ export const FIXED_SYSTEM_EMOJI_BY_KEY: Readonly<Record<SystemEmojiKey, FixedSys
   homem: { name: "homem", emojiId: "1525682211985035416", animated: false },
   folha: { name: "folha", emojiId: "1525682208122212553", animated: false },
   exclamacao: { name: "exclamacao", emojiId: "1525682200698163322", animated: false },
+  mapa: { name: "mapa", emojiId: "1530672355347660861", animated: false },
   discord: { name: "discord", emojiId: "1525682196277493861", animated: false },
   dinheiro: { name: "dinheiro", emojiId: "1525682192640905216", animated: false },
   prancheta_acertos: { name: "prancheta_acertos", emojiId: "1525682863058587900", animated: false },
@@ -191,6 +193,7 @@ export const SYSTEM_EMOJIS: readonly SystemEmojiDefinition[] = [
   { key: "homem", name: "homem", fallback: "👤", label: "Homem", description: "Usuário, membro e permissões." },
   { key: "folha", name: "folha", fallback: "📄", label: "Folha", description: "Documentos, regras e relatórios." },
   { key: "exclamacao", name: "exclamacao", fallback: "❗", label: "Exclamação", description: "Avisos, erros e atenção." },
+  { key: "mapa", name: "mapa", aliases: ["local", "localizacao", "localização"], fallback: "📍", label: "Mapa", description: "Local, localização, rotas e pontos no mapa." },
   { key: "discord", name: "discord", fallback: "💬", label: "Discord", description: "Canais, servidor e comunidade." },
   { key: "dinheiro", name: "dinheiro", fallback: "💰", label: "Dinheiro", description: "Pagamentos, vendas e caixa." },
   { key: "prancheta_acertos", name: "prancheta_acertos", fallback: "☑️", label: "Prancheta de acertos", description: "Checklist, histórico e acertos." },

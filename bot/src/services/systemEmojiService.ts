@@ -53,6 +53,7 @@ const unicodeReplacementPairs: Array<[RegExp, SystemEmojiKey]> = [
   [/❓/g, "interrogacao"],
   [/❗|❕|🔴|❌/g, "exclamacao"],
   [/📅/g, "calendario"],
+  [/📍|🗺️|🗺/g, "mapa"],
   [/🏆|⭐|📚|🎓/g, "trofeu"],
   [/🏅|🎖️|🎖/g, "trofeu_alt"],
   [/💰|💵|💸/g, "dinheiro"],

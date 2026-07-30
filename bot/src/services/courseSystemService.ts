@@ -2491,7 +2491,7 @@ function courseConfigPanel(settings: CourseSettings, panelVisual: PanelVisualCon
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(IDS.sync).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Provas").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(IDS.departments).setEmoji(systemComponentEmoji("discord")).setLabel("DPs").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(IDS.departments).setEmoji(systemComponentEmoji("mapa")).setLabel("DPs").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(IDS.managers).setEmoji(systemComponentEmoji("homem")).setLabel("Administradores").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(IDS.close).setEmoji(systemComponentEmoji("porta")).setLabel("Fechar").setStyle(ButtonStyle.Danger)
       )
@@ -2815,7 +2815,7 @@ function coursePanelIcons(guild: Guild) {
     finished: systemStatusEmoji("success", guild, guild.client),
     instructor: systemEmojiText("homem", guild, guild.client),
     leaveButton: systemComponentEmoji("porta", guild, guild.client),
-    location: systemEmojiText("discord", guild, guild.client),
+    location: systemEmojiText("mapa", guild, guild.client),
     startButton: systemComponentEmoji("acessar", guild, guild.client),
     started: systemStatusEmoji("active", guild, guild.client),
     status: systemEmojiText("prancheta_acertos", guild, guild.client),
