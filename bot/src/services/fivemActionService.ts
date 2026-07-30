@@ -529,6 +529,7 @@ async function sendReport(interaction: { guild: any }, context: BotContext, sess
   const reportBanners = (dashboard.settings.reportBannerUrls ?? [])
     .map((url) => resolvePanelImageUrl(url))
     .filter((url): url is string => Boolean(url))
+    .filter((url, index, urls) => urls.indexOf(url) === index)
     .slice(0, 2);
   const active = session.participants.filter((item) => !item.leftAt);
   const duration = Math.max(0, Math.round(((session.finishedAt ? Date.parse(session.finishedAt) : Date.now()) - Date.parse(session.startedAt ?? session.createdAt)) / 60000));
