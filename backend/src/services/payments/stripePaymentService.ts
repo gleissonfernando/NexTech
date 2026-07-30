@@ -41,6 +41,7 @@ export class StripePaymentService implements PaymentGatewayService {
       paymentMethod: order.method === PAYMENT_METHODS.DEBIT_CARD ? "debit_card" : "credit_card",
       paymentType: order.method,
       pixCode: null,
+      pixExpiresAt: null,
       provider: "stripe",
       providerOrderId: checkout.preferenceId,
       qrCode: null,

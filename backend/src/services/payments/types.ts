@@ -47,6 +47,7 @@ export type GatewayPaymentResult = {
   paymentMethod: string | null;
   paymentType: string | null;
   pixCode: string | null;
+  pixExpiresAt: string | null;
   provider: "asaas" | "stripe";
   providerOrderId: string | null;
   qrCode: string | null;

@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { requireAsaasOperational, type AsaasRuntimeConfig } from "../../config/payments";
+import { notifyPaymentIncident } from "../paymentIncidentLogService";
 import type { ProviderPayment, ProviderPaymentStatus } from "../paymentProviderService";
 import { PAYMENT_GATEWAYS, PAYMENT_METHODS, type GatewayPaymentResult, type PaymentGatewayService, type PaymentOrderInput } from "./types";
 
@@ -81,6 +82,25 @@ export class AsaasPaymentService implements PaymentGatewayService {
     }
     validatePixOrder(order);
 
+    try {
+      return await this.createPixPayment(order);
+    } catch (error) {
+      await notifyPaymentIncident({
+        amountInCents: order.amountInCents,
+        currency: order.currency,
+        environment: this.config.environment,
+        error,
+        itemId: order.itemId,
+        itemTitle: order.itemTitle,
+        orderId: order.orderId,
+        paymentMethod: "pix",
+        provider: "asaas"
+      });
+      throw error;
+    }
+  }
+
+  private async createPixPayment(order: PaymentOrderInput): Promise<GatewayPaymentResult> {
     const customerId = await this.findOrCreateCustomer(order);
     const payment = await this.request<AsaasPayment>("/payments", {
       method: "POST",
@@ -107,20 +127,27 @@ export class AsaasPaymentService implements PaymentGatewayService {
       });
       return null;
     });
+    const pixCode = readString(pix?.payload);
+    const qrCode = normalizeQrCodeImage(pix?.encodedImage);
+    if (!pixCode && !qrCode) {
+      throw Object.assign(
+        new Error("Asaas criou a cobrança, mas não retornou QR Code Pix. Verifique se a conta Asaas possui chave Pix ativa e tente novamente."),
+        { statusCode: 502 }
+      );
+    }
 
     return {
       checkoutUrl: readString(payment.invoiceUrl) ?? readString(payment.bankSlipUrl),
       environment: this.config.environment,
       gateway: this.gateway,
-      notes: pix?.payload
-        ? "Pagamento Pix criado no Asaas. Exiba QR Code ou código copia e cola."
-        : "Pagamento Pix criado no Asaas. Redirecione o comprador para a fatura Pix.",
+      notes: "Pagamento Pix criado no Asaas. Exiba QR Code ou código copia e cola.",
       paymentMethod: "pix",
       paymentType: PAYMENT_METHODS.PIX,
-      pixCode: readString(pix?.payload),
+      pixCode,
+      pixExpiresAt: readString(pix?.expirationDate),
       provider: "asaas",
       providerOrderId: paymentId,
-      qrCode: normalizeQrCodeImage(pix?.encodedImage),
+      qrCode,
       raw: {
         payment,
         pix

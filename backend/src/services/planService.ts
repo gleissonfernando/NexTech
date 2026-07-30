@@ -828,6 +828,7 @@ async function createCheckoutInterestForBuyer(
     order.paymentType = checkout.paymentType;
     order.pixCode = checkout.pixCode;
     order.pixCopyPaste = checkout.pixCode;
+    order.pixExpiresAt = parseProviderPixExpiresAt(checkout.pixExpiresAt, order.pixExpiresAt);
     order.pixQrCode = checkout.qrCode;
     order.providerOrderId = checkout.providerOrderId;
     order.qrCode = checkout.qrCode;
@@ -1037,6 +1038,7 @@ export async function retryPaymentOrder(orderId: string, auth: DashboardAuth, ac
         paymentMethod: checkout.paymentMethod,
         paymentType: checkout.paymentType,
         pixCode: checkout.pixCode,
+        pixExpiresAt: parseProviderPixExpiresAt(checkout.pixExpiresAt, retryOrder.expiresAt),
         provider: retryOrder.provider,
         providerOrderId: checkout.providerOrderId,
         qrCode: checkout.qrCode,
@@ -1113,6 +1115,7 @@ export async function retryPublicPaymentOrder(orderId: string, actor: PlanActor)
         paymentMethod: checkout.paymentMethod,
         paymentType: checkout.paymentType,
         pixCode: checkout.pixCode,
+        pixExpiresAt: parseProviderPixExpiresAt(checkout.pixExpiresAt, retryOrder.expiresAt),
         provider: retryOrder.provider,
         providerOrderId: checkout.providerOrderId,
         qrCode: checkout.qrCode,
@@ -3548,6 +3551,7 @@ async function createPlanPayment(
     paymentMethod: payment.paymentMethod,
     paymentType: payment.paymentType,
     pixCode: payment.pixCode,
+    pixExpiresAt: payment.pixExpiresAt,
     providerOrderId: payment.providerOrderId,
     qrCode: payment.qrCode,
     rawProviderStatus: payment.rawProviderStatus,
@@ -3611,6 +3615,7 @@ type PlanPaymentCreationResult = {
   paymentMethod: string | null;
   paymentType: string | null;
   pixCode: string | null;
+  pixExpiresAt: string | null;
   providerOrderId: string | null;
   qrCode: string | null;
   rawProviderStatus: string | null;
@@ -3655,6 +3660,7 @@ async function createPagBankPlanPayment(
       paymentMethod: pix.paymentMethod ?? "pix",
       paymentType: pix.paymentType ?? "pix",
       pixCode: pix.pixCode,
+      pixExpiresAt: order.expiresAt?.toISOString() ?? null,
       providerOrderId: pix.orderId,
       qrCode: pix.qrCode,
       rawProviderStatus: pix.rawStatus,
@@ -3686,6 +3692,7 @@ async function createPagBankPlanPayment(
     paymentMethod: null,
     paymentType: null,
     pixCode: null,
+    pixExpiresAt: null,
     providerOrderId: checkout.preferenceId,
     qrCode: null,
     rawProviderStatus: "checkout_created",
@@ -3739,6 +3746,7 @@ async function createStripePlanPayment(
     paymentMethod: paymentMethod === "pix" ? "pix" : "card",
     paymentType: paymentMethod === "pix" ? "pix" : "card",
     pixCode: null,
+    pixExpiresAt: null,
     providerOrderId: checkout.preferenceId,
     qrCode: null,
     rawProviderStatus: checkout.rawStatus,
@@ -3764,6 +3772,7 @@ async function createMercadoPagoPlanPayment(
         paymentMethod: pix.paymentMethod ?? "pix",
         paymentType: pix.paymentType ?? "bank_transfer",
         pixCode: pix.pixCode,
+        pixExpiresAt: order.expiresAt?.toISOString() ?? null,
         providerOrderId: null,
         qrCode: pix.qrCode,
         rawProviderStatus: pix.rawStatus,
@@ -3787,6 +3796,7 @@ async function createMercadoPagoPlanPayment(
         paymentMethod: "pix",
         paymentType: "bank_transfer",
         pixCode: null,
+        pixExpiresAt: null,
         providerOrderId: preference.preferenceId,
         qrCode: null,
         rawProviderStatus: "preference_created",
@@ -3805,6 +3815,7 @@ async function createMercadoPagoPlanPayment(
     paymentMethod: null,
     paymentType: null,
     pixCode: null,
+    pixExpiresAt: null,
     providerOrderId: preference.preferenceId,
     qrCode: null,
     rawProviderStatus: "preference_created",
@@ -4644,4 +4655,10 @@ function toAuditLogDto(log: MongoPlanAuditLog) {
 
 function httpError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode });
+}
+
+function parseProviderPixExpiresAt(value: string | null | undefined, fallback: Date | null | undefined) {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
