@@ -2120,8 +2120,12 @@ export async function authorizeBotRuntimeModule(input: {
   }
 
   const enabledModules = sanitizeModules(bot.enabledModules);
-  const moduleReleased = devBotModuleReleaseIds(moduleId).some((candidate) => enabledModules.includes(candidate as (typeof DEV_MODULES)[number]["id"]))
+  let moduleReleased = devBotModuleReleaseIds(moduleId).some((candidate) => enabledModules.includes(candidate as (typeof DEV_MODULES)[number]["id"]))
     || enabledModules.includes(releaseModuleId as (typeof DEV_MODULES)[number]["id"]);
+  if (!moduleReleased && (moduleId === "logs" || releaseModuleId === "logs")) {
+    const settings = await getGuildSettings(input.guildId, botId);
+    moduleReleased = settings.discordLogsEnabled === true && Boolean(settings.logChannelId);
+  }
   const securityReleased = releaseModuleId === "safe-bot"
     ? await isSecurityProtectionReleasedForBot(botId)
     : true;

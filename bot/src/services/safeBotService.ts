@@ -236,18 +236,15 @@ export async function disableUnreleasedSafeBotChannels(client: Client<true>, con
       });
 
       if (!settings?.safeBotChannelId) {
-        const channelByName = await findTextChannel(guild, FILTER_CHANNEL_NAME);
+        return;
+      }
 
-        if (!channelByName) {
-          return;
-        }
-
-        await disableFilterChannel(channelByName, guild.id);
+      if (settings.safeBotEnabled) {
         return;
       }
 
       const channel = await guild.channels.fetch(settings.safeBotChannelId).catch(() => null)
-        ?? await findTextChannel(guild, FILTER_CHANNEL_NAME);
+        ?? null;
 
       if (channel?.type !== ChannelType.GuildText) {
         return;
