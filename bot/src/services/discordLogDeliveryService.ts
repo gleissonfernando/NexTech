@@ -353,16 +353,19 @@ type VoiceLogMetadata = {
   toChannelId: string | null;
 };
 
-function voiceLogMetadata(metadata: unknown): VoiceLogMetadata {
+export function voiceLogMetadata(metadata: unknown): VoiceLogMetadata {
   const record = metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? metadata as Record<string, unknown>
     : {};
+  const details = record.details && typeof record.details === "object" && !Array.isArray(record.details)
+    ? record.details as Record<string, unknown>
+    : {};
 
   return {
-    channelId: optionalString(record.channelId),
-    durationSeconds: typeof record.durationSeconds === "number" ? record.durationSeconds : null,
-    fromChannelId: optionalString(record.fromChannelId),
-    toChannelId: optionalString(record.toChannelId)
+    channelId: optionalString(record.channelId) ?? optionalString(details.channelId),
+    durationSeconds: numberValue(record.durationSeconds) ?? numberValue(details.durationSeconds),
+    fromChannelId: optionalString(record.fromChannelId) ?? optionalString(details.fromChannelId),
+    toChannelId: optionalString(record.toChannelId) ?? optionalString(details.toChannelId)
   };
 }
 
@@ -500,6 +503,10 @@ function escapeXml(value: string) {
 
 function optionalString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function arrayOfStrings(value: unknown) {
