@@ -153,6 +153,14 @@ const BACKGROUND_EFFECTS = ["fixed", "parallax", "zoom", "blur"] as const;
 const LANDING_THEMES = ["discord", "nextech", "dark", "neon", "cyber", "gamer", "premium", "minimal", "modern"] as const;
 const OVERLAY_STYLES = ["black", "blue", "red", "gradient", "none"] as const;
 const PARTICLE_STYLES = ["none", "dots", "sparks", "neon", "smoke", "lines", "stars", "hex"] as const;
+const FALLBACK_OFFICIAL_INVITE = {
+  code: "HTYE9HX8VY",
+  customSlug: "nextech",
+  description: "Entre no servidor oficial usando o convite personalizado da NexTech.",
+  id: "fallback-nextech-official-invite",
+  inviteUrl: "https://discord.gg/hTyE9hX8VY",
+  name: "Convite Oficial NexTech"
+} as const;
 
 type Actor = {
   id: string | null;
@@ -402,7 +410,7 @@ export async function getPublicNexTechInvitePage(rawCode: string): Promise<Publi
       ...(code ? [{ code }] : [])
     ]
   }, { sort: { updatedAt: -1 } });
-  if (!invite) return null;
+  if (!invite) return fallbackPublicNexTechInvitePage(rawCode);
 
   const discordCode = inviteCodeFromUrl(invite.inviteUrl) || invite.code;
   const discord = await fetchDiscordInvite(discordCode);
@@ -438,6 +446,50 @@ export async function getPublicNexTechInvitePage(rawCode: string): Promise<Publi
     },
     redirectUrl,
     slug: invite.customSlug || invite.code,
+    valid: Boolean(discord)
+  };
+}
+
+async function fallbackPublicNexTechInvitePage(rawCode: string): Promise<PublicNexTechInvitePageDto | null> {
+  const code = normalizeInviteCode(rawCode);
+  const slug = normalizeSlug(rawCode);
+  const matchesFallback = code === FALLBACK_OFFICIAL_INVITE.code || slug === FALLBACK_OFFICIAL_INVITE.customSlug;
+
+  if (!matchesFallback) {
+    return null;
+  }
+
+  const discord = await fetchDiscordInvite(FALLBACK_OFFICIAL_INVITE.code);
+
+  return {
+    config: {
+      backgroundEffect: "fixed",
+      backgroundImageUrl: discord?.bannerUrl ?? discord?.splashUrl ?? null,
+      backgroundVideoUrl: null,
+      logoUrl: discord?.iconUrl ?? null,
+      overlayStyle: "black",
+      particleStyle: "hex",
+      primaryColor: "#FFD500",
+      showInviteCode: true,
+      showMemberCount: true,
+      showOnlineCount: true,
+      showServerDescription: true,
+      showServerName: true,
+      showVerificationBadges: true,
+      theme: "nextech"
+    },
+    discord,
+    invite: {
+      clientName: "NexTech",
+      code: FALLBACK_OFFICIAL_INVITE.code,
+      customSlug: FALLBACK_OFFICIAL_INVITE.customSlug,
+      description: FALLBACK_OFFICIAL_INVITE.description,
+      id: FALLBACK_OFFICIAL_INVITE.id,
+      name: FALLBACK_OFFICIAL_INVITE.name,
+      panelColor: "#FFD500"
+    },
+    redirectUrl: FALLBACK_OFFICIAL_INVITE.inviteUrl,
+    slug: FALLBACK_OFFICIAL_INVITE.customSlug,
     valid: Boolean(discord)
   };
 }
