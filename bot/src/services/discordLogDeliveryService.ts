@@ -54,16 +54,17 @@ async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEve
 
   const settings = await getCachedGuildSettings(context, log.guildId, context.client.user?.id).catch(() => null);
   const category = logCategoryForType(log.type);
+  const automated = await context.api.getAutomatedLogSettings(guild.id).catch(() => null);
+  const automatedChannelId = automated?.enabled ? automatedLogChannelForType(automated, log.type) : null;
 
   if (!settings) {
     return;
   }
 
-  if (!settings.discordLogsEnabled || !settings.discordLogCategories.includes(category)) {
+  if (!automatedChannelId && (!settings.discordLogsEnabled || !settings.discordLogCategories.includes(category))) {
     return;
   }
-  const automated = await context.api.getAutomatedLogSettings(guild.id).catch(() => null);
-  const targetChannelId = log.logChannelId ?? (automated?.enabled ? automatedLogChannelForType(automated, log.type) : settings.logChannelId);
+  const targetChannelId = log.logChannelId ?? automatedChannelId ?? settings.logChannelId;
   if (!targetChannelId) return;
   const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
 
