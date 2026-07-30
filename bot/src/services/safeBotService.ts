@@ -834,6 +834,10 @@ function isIgnoredChannel(message: Message, runtime: SafeBotRuntime) {
 }
 
 function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
+  if (runtime.protectionSettings?.enabled) {
+    return true;
+  }
+
   const protectedChannelIds = runtime.protectionSettings?.protectedChannelIds ?? [];
 
   if (!protectedChannelIds.length) {
