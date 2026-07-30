@@ -16,6 +16,8 @@ import {
   type ChatInputCommandInteraction,
   type Guild,
   type Interaction,
+  type InteractionReplyOptions,
+  type InteractionUpdateOptions,
   type Message,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
@@ -36,9 +38,13 @@ const TICKET_ACTION_PREFIX = "ticket_action:";
 const TICKET_STATUS_PREFIX = "ticket_status:";
 const CLOSE_MODAL_PREFIX = "ticket_close:";
 const OPEN_MODAL_PREFIX = "ticket_open:";
+const OPEN_BUTTON_ID = "ticket_open_button";
+const OPEN_CATEGORY_PREFIX = "ticket_open_category:";
+const OPEN_CLIENT_PREFIX = "ticket_open_client:";
+const OPEN_CONTINUE_PREFIX = "ticket_open_continue:";
 let ticketPanelServiceStarted = false;
 const panelPublicationLocks = new Map<string, Promise<string | null>>();
-const openTicketSessions = new Map<string, { createdAt: number; optionValue: string; userId: string }>();
+const openTicketSessions = new Map<string, { clientStatus: "yes" | "no" | null; createdAt: number; optionValue: string | null; userId: string }>();
 const OPEN_TICKET_SESSION_TTL_MS = 10 * 60 * 1000;
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
@@ -146,8 +152,23 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return false;
   }
 
+  if (interaction.isButton() && interaction.customId === OPEN_BUTTON_ID) {
+    await handleTicketOpenButton(interaction, context);
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(OPEN_CONTINUE_PREFIX)) {
+    await handleTicketOpenContinue(interaction, context);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(TICKET_ACTION_PREFIX)) {
     await handleTicketAction(interaction, context);
+    return true;
+  }
+
+  if (interaction.isStringSelectMenu() && (interaction.customId.startsWith(OPEN_CATEGORY_PREFIX) || interaction.customId.startsWith(OPEN_CLIENT_PREFIX))) {
+    await handleTicketPreOpenSelect(interaction, context);
     return true;
   }
 
@@ -182,34 +203,81 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
   void resetSelectMenuMessage(interaction);
 
   const token = createOpenTicketSession(interaction.user.id, option.value);
-  await interaction.showModal(
-    new ModalBuilder()
-      .setCustomId(`${OPEN_MODAL_PREFIX}${token}`)
-      .setTitle("Abrir Novo Ticket")
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("subject")
-            .setLabel("Assunto do Ticket")
-            .setPlaceholder("Descreva brevemente o motivo do seu ticket")
-            .setRequired(true)
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(10)
-            .setMaxLength(100)
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("details")
-            .setLabel("Detalhes")
-            .setPlaceholder("Explique o problema sem enviar senhas ou tokens")
-            .setRequired(false)
-            .setStyle(TextInputStyle.Paragraph)
-            .setMaxLength(900)
-        )
-      )
-  );
+  await interaction.reply(renderTicketPreOpenPayload(settings, token, interaction.guild, getOpenTicketSession(token), "Categoria selecionada. Informe se você é cliente para continuar."));
 
   return true;
+}
+
+async function handleTicketOpenButton(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const options = activeTicketOptions(settings);
+  if (!settings?.ticketEnabled || !options.length) {
+    await interaction.reply({ content: "Nenhuma categoria de ticket ativa foi configurada na Dashboard.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const token = createOpenTicketSession(interaction.user.id);
+  await interaction.reply(renderTicketPreOpenPayload(settings, token, interaction.guild, getOpenTicketSession(token)));
+}
+
+async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+
+  const isCategory = interaction.customId.startsWith(OPEN_CATEGORY_PREFIX);
+  const token = interaction.customId.slice((isCategory ? OPEN_CATEGORY_PREFIX : OPEN_CLIENT_PREFIX).length);
+  const session = getOpenTicketSession(token);
+  if (!session || session.userId !== interaction.user.id || isExpiredOpenTicketSession(session)) {
+    openTicketSessions.delete(token);
+    await interaction.reply({ content: "Esta abertura expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const selectedValue = interaction.values[0] ?? null;
+  if (isCategory) {
+    const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === selectedValue);
+    if (!settings?.ticketEnabled || !option) {
+      await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    session.optionValue = option.value;
+  } else if (selectedValue === "yes" || selectedValue === "no") {
+    session.clientStatus = selectedValue;
+  }
+
+  await interaction.update(ticketPreOpenUpdatePayload(settings, token, interaction.guild, session));
+}
+
+async function handleTicketOpenContinue(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+
+  const token = interaction.customId.slice(OPEN_CONTINUE_PREFIX.length);
+  const session = getOpenTicketSession(token);
+  if (!session || session.userId !== interaction.user.id || isExpiredOpenTicketSession(session)) {
+    openTicketSessions.delete(token);
+    await interaction.reply({ content: "Esta abertura expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!session.optionValue || !session.clientStatus) {
+    const missing = [
+      !session.optionValue ? "categoria" : null,
+      !session.clientStatus ? "se você é cliente" : null
+    ].filter(Boolean).join(" e ");
+    await interaction.reply({ content: `Antes de continuar, selecione ${missing}.`, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
+  if (!settings?.ticketEnabled || !option) {
+    await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.showModal(createOpenTicketModal(token));
 }
 
 async function handleTicketOpenModal(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -225,13 +293,14 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
 
-  if (!settings?.ticketEnabled || !option) {
+  if (!settings?.ticketEnabled || !option || !session.clientStatus) {
     await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const subject = normalizeTicketSubject(interaction.fields.getTextInputValue("subject"));
   const details = interaction.fields.getTextInputValue("details")?.trim() || null;
+  const clientLabel = session.clientStatus === "yes" ? "Sim" : "Não";
   if (!subject) {
     await interaction.reply({ content: "Informe um assunto com pelo menos 10 caracteres.", flags: MessageFlags.Ephemeral });
     return;
@@ -251,6 +320,7 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
       metadata: {
         categoryId: option.value,
         categoryName: option.label,
+        client: clientLabel,
         openerId: interaction.user.id,
         subject
       },
@@ -272,16 +342,17 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   if (channelId) {
     const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
     if (channel?.isTextBased() && "send" in channel) {
-      await (channel as TextChannel).send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, interaction.guild));
+      await (channel as TextChannel).send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, interaction.guild, clientLabel));
     }
     await context.api.recordTicketEvent(ticket.ticket.id, {
       authorId: interaction.user.id,
-      content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}.`,
+      content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}. Cliente: ${clientLabel}.`,
       eventType: "ticket.created",
       guildId: interaction.guild.id,
       metadata: {
         categoryId: option.value,
         categoryName: option.label,
+        client: clientLabel,
         details,
         subject
       }
@@ -477,7 +548,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
 }
 
 function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
-  const options = settings.ticketPanelOptions.filter((option) => option.enabled).slice(0, 25);
+  const options = activeTicketOptions(settings);
 
   if (!options.length) {
     return null;
@@ -494,12 +565,13 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     .map((item) => resolvePanelImageUrl(item.imageUrl, item))
     .find((url): url is string => Boolean(url))
     ?? defaultTicketBannerUrl();
-  const action = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(TICKET_PANEL_CUSTOM_ID)
-          .setPlaceholder(normalizeTicketPanelPlaceholder(settings.ticketPanelPlaceholder))
-          .addOptions(options.map(toSelectOption))
-      );
+  const action = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(OPEN_BUTTON_ID)
+      .setEmoji(systemComponentEmoji("prancheta", guild))
+      .setLabel("Abrir Ticket")
+      .setStyle(ButtonStyle.Primary)
+  );
 
   const components: unknown[] = [
     { type: 10, content: `## ${title}\n${description}` }
@@ -577,21 +649,30 @@ function formatTicketRules(value: string) {
     .join("\n");
 }
 
-function createOpenTicketSession(userId: string, optionValue: string) {
+function createOpenTicketSession(userId: string, optionValue: string | null = null) {
   cleanupOpenTicketSessions();
   const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 24);
-  openTicketSessions.set(token, { createdAt: Date.now(), optionValue, userId });
+  openTicketSessions.set(token, { clientStatus: null, createdAt: Date.now(), optionValue, userId });
   return token;
+}
+
+function getOpenTicketSession(token: string) {
+  cleanupOpenTicketSessions();
+  return openTicketSessions.get(token) ?? null;
 }
 
 function consumeOpenTicketSession(token: string) {
   cleanupOpenTicketSessions();
   const session = openTicketSessions.get(token);
   openTicketSessions.delete(token);
-  if (!session || Date.now() - session.createdAt > OPEN_TICKET_SESSION_TTL_MS) {
+  if (!session || isExpiredOpenTicketSession(session)) {
     return null;
   }
   return session;
+}
+
+function isExpiredOpenTicketSession(session: { createdAt: number }) {
+  return Date.now() - session.createdAt > OPEN_TICKET_SESSION_TTL_MS;
 }
 
 function cleanupOpenTicketSessions() {
@@ -606,6 +687,144 @@ function cleanupOpenTicketSessions() {
 function normalizeTicketSubject(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim().slice(0, 100);
   return normalized.length >= 10 ? normalized : null;
+}
+
+function activeTicketOptions(settings: GuildSettings | null | undefined) {
+  return (settings?.ticketPanelOptions ?? [])
+    .filter((option) => option.enabled)
+    .slice(0, 25);
+}
+
+function createOpenTicketModal(token: string) {
+  return new ModalBuilder()
+    .setCustomId(`${OPEN_MODAL_PREFIX}${token}`)
+    .setTitle("Abrir Novo Ticket")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("subject")
+          .setLabel("Assunto do Ticket")
+          .setPlaceholder("Descreva resumidamente o motivo do seu ticket.")
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(10)
+          .setMaxLength(100)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("details")
+          .setLabel("Detalhes")
+          .setPlaceholder("Não compartilhe senhas, tokens ou dados confidenciais.")
+          .setRequired(false)
+          .setStyle(TextInputStyle.Paragraph)
+          .setMaxLength(900)
+      )
+    );
+}
+
+function renderTicketPreOpenPayload(
+  settings: GuildSettings,
+  token: string,
+  guild: Guild,
+  session: { clientStatus: "yes" | "no" | null; optionValue: string | null } | null,
+  notice: string | null = null
+) : InteractionReplyOptions {
+  return componentsV2Payload({
+    accentColor: parseColor(settings.ticketPanelColor),
+    components: ticketPreOpenComponents(settings, token, guild, session, notice),
+    ephemeral: true,
+    footer: null,
+    guild
+  }) as InteractionReplyOptions;
+}
+
+function ticketPreOpenUpdatePayload(
+  settings: GuildSettings | null,
+  token: string,
+  guild: Guild,
+  session: { clientStatus: "yes" | "no" | null; optionValue: string | null } | null,
+  notice: string | null = null
+) : InteractionUpdateOptions {
+  const payload = componentsV2Payload({
+    accentColor: parseColor(settings?.ticketPanelColor ?? null),
+    components: ticketPreOpenComponents(settings, token, guild, session, notice),
+    footer: null,
+    guild
+  });
+
+  return {
+    allowedMentions: payload.allowedMentions,
+    components: payload.components
+  } as InteractionUpdateOptions;
+}
+
+function ticketPreOpenComponents(
+  settings: GuildSettings | null,
+  token: string,
+  guild: Guild,
+  session: { clientStatus: "yes" | "no" | null; optionValue: string | null } | null,
+  notice: string | null
+) {
+  const options = activeTicketOptions(settings);
+  const selectedOption = options.find((option) => option.value === session?.optionValue) ?? null;
+  const selectedClient = session?.clientStatus === "yes" ? "Sim, sou cliente" : session?.clientStatus === "no" ? "Não sou cliente" : null;
+  const canContinue = Boolean(selectedOption && selectedClient);
+  const categorySelect = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`${OPEN_CATEGORY_PREFIX}${token}`)
+      .setPlaceholder("Selecione a categoria do ticket")
+      .addOptions(options.map((option) => toSelectOption(option).setDefault(option.value === session?.optionValue)))
+  );
+  const clientSelect = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`${OPEN_CLIENT_PREFIX}${token}`)
+      .setPlaceholder("Você é cliente?")
+      .addOptions(
+        new StringSelectMenuOptionBuilder()
+          .setEmoji(systemStatusEmoji("success", guild))
+          .setLabel("Sim, sou cliente")
+          .setValue("yes")
+          .setDescription("Já sou cliente e preciso de atendimento.")
+          .setDefault(session?.clientStatus === "yes"),
+        new StringSelectMenuOptionBuilder()
+          .setEmoji(systemStatusEmoji("danger", guild))
+          .setLabel("Não sou cliente")
+          .setValue("no")
+          .setDescription("Ainda não sou cliente ou quero conhecer os serviços.")
+          .setDefault(session?.clientStatus === "no")
+      )
+  );
+  const continueButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${OPEN_CONTINUE_PREFIX}${token}`)
+      .setEmoji(systemActionEmojiCompat("open", guild))
+      .setLabel("Continuar")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canContinue)
+  );
+
+  return [
+    {
+      type: 10,
+      content: [
+        `## ${systemEmojiText("prancheta", guild)} Abrir Novo Ticket`,
+        `${systemStatusEmoji("warning", guild)} Este formulário será enviado para a equipe de suporte. Não compartilhe senhas ou informações confidenciais.`,
+        "",
+        `**Categoria:** ${selectedOption ? `${selectedOption.emoji ? `${selectedOption.emoji} ` : ""}${selectedOption.label}` : "Não selecionada"}`,
+        `**Cliente:** ${selectedClient ?? "Não informado"}`,
+        notice ? `\n${notice}` : ""
+      ].filter(Boolean).join("\n")
+    },
+    { type: 14, divider: true, spacing: 1 },
+    categorySelect,
+    clientSelect,
+    continueButton
+  ];
+}
+
+function systemActionEmojiCompat(action: "open", guild: Guild) {
+  void action;
+  return systemComponentEmoji("acessar", guild);
 }
 
 async function publishConfiguredTicketPanelUnlocked(client: Client, context: BotContext, guildId: string) {
@@ -700,7 +919,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
   }).then((channel) => channel as TextChannel);
 }
 
-function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null) {
+function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null, clientLabel: string | null = null) {
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}claim:${ticketId}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
     new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}add:${ticketId}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
@@ -714,6 +933,7 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
       .addOptions(STATUS_OPTIONS.map((item) => ({ label: item.label, value: item.value })))
   );
   const mentionLine = mentionRoleId ? `<@&${mentionRoleId}>` : "";
+  const createdAt = new Date();
 
   return {
     allowedMentions: { roles: mentionRoleId ? [mentionRoleId] : [], users: [openerId, responsibleUserId].filter(Boolean) as string[] },
@@ -723,7 +943,12 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
       "## Ticket Aberto",
       `Categoria: ${category}`,
       `Assunto: ${subject}`,
+      `Cliente: ${clientLabel ?? "Não informado"}`,
       `Autor: <@${openerId}>`,
+      `ID do usuário: ${openerId}`,
+      `Servidor: ${guild?.name ?? "Não informado"}`,
+      `Data: ${formatTicketDate(createdAt)}`,
+      `Hora: ${formatTicketTime(createdAt)}`,
       `Responsável atual: ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum"}`,
       `Status: ${status}`,
       `ID do Ticket: #${ticketId}`,
@@ -838,6 +1063,14 @@ function formatElapsed(start: Date, end: Date) {
     hours ? `${hours}h` : null,
     minutes ? `${minutes}min` : null
   ].filter(Boolean).join(" ") || "menos de 1min";
+}
+
+function formatTicketDate(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(date);
+}
+
+function formatTicketTime(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(date);
 }
 
 function toSelectOption(option: TicketPanelOption) {
