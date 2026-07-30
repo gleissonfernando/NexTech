@@ -806,8 +806,7 @@ function isContentAllowedChannel(
     return true;
   }
 
-  const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  return Boolean(parentId && allowedChannelIds.includes(parentId));
+  return messageMatchesChannelIds(message, allowedChannelIds);
 }
 
 function contentAllowedChannelIds(runtime: SafeBotRuntime, moduleId: SelfBotProtectionModuleId) {
@@ -825,12 +824,10 @@ function contentAllowedChannelIds(runtime: SafeBotRuntime, moduleId: SelfBotProt
 function isIgnoredChannel(message: Message, runtime: SafeBotRuntime) {
   const ignoredChannelIds = runtime.protectionSettings?.ignoredChannelIds ?? [];
 
-  if (ignoredChannelIds.includes(message.channelId)) {
-    return true;
-  }
-
-  const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  return Boolean(parentId && ignoredChannelIds.includes(parentId));
+  return messageMatchesChannelIds(message, [
+    ...ignoredChannelIds,
+    ...(runtime.protectionSettings?.ignoredCategoryIds ?? [])
+  ]);
 }
 
 function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
@@ -844,12 +841,18 @@ function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
     return true;
   }
 
-  if (protectedChannelIds.includes(message.channelId)) {
-    return true;
-  }
+  return messageMatchesChannelIds(message, protectedChannelIds);
+}
 
+function messageMatchesChannelIds(message: Message, ids: string[]) {
+  if (!ids.length) return false;
+  if (ids.includes(message.channelId)) return true;
   const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  return Boolean(parentId && protectedChannelIds.includes(parentId));
+  const categoryId = message.channel.isThread()
+    ? message.channel.parent?.parentId ?? null
+    : "parentId" in message.channel ? message.channel.parentId : null;
+  return Boolean(parentId && ids.includes(parentId))
+    || Boolean(categoryId && ids.includes(categoryId));
 }
 
 async function punishMarkedUser(

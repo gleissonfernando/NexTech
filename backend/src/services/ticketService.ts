@@ -33,6 +33,11 @@ type CreateTicketInput = Pick<TicketDto, "guildId" | "channelId" | "openerId" | 
 };
 
 export async function createTicket(input: CreateTicketInput) {
+  const existing = await findOpenTicket(input.guildId, normalizeBotId(input.botId), input.openerId, input.categoryId ?? null);
+  if (existing) {
+    return { created: false, ticket: existing };
+  }
+
   const ticket: TicketDto = {
     id: randomUUID(),
     botId: normalizeBotId(input.botId),
@@ -86,16 +91,44 @@ export async function createTicket(input: CreateTicketInput) {
     await tickets.insertOne(doc);
 
     return {
+      created: true,
+      ticket: {
       ...ticket,
       id: doc._id,
       botId: normalizeBotId(doc.botId),
       channelId: doc.channelId,
       status: doc.status,
       createdAt: doc.createdAt.toISOString()
+      }
     };
   } catch (error) {
     console.warn("[mongo] ticket mantido em memória:", error instanceof Error ? error.message : error);
-    return ticket;
+    return { created: true, ticket };
+  }
+}
+
+export async function findOpenTicket(guildId: string, botId: string | null | undefined, openerId: string, categoryId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const activeStatuses: MongoTicket["status"][] = ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"];
+  const categoryQuery = categoryId ? { categoryId } : {};
+
+  try {
+    const { tickets } = await getMongoCollections();
+    const ticket = await tickets.findOne({
+      ...scopedQuery(guildId, normalizedBotId),
+      ...categoryQuery,
+      openerId,
+      status: { $in: activeStatuses }
+    }, { sort: { createdAt: -1 } });
+    return ticket ? toDto(ticket) : null;
+  } catch {
+    return memoryTickets.find((ticket) =>
+      ticket.guildId === guildId
+      && ticket.botId === normalizedBotId
+      && ticket.openerId === openerId
+      && (!categoryId || ticket.categoryId === categoryId)
+      && activeStatuses.includes(ticket.status)
+    ) ?? null;
   }
 }
 
@@ -169,6 +202,13 @@ export async function updateTicketStatus(ticketId: string, input: Partial<Pick<M
     }
   }
   await tickets.updateOne({ _id: ticketId }, { $set });
+  const ticket = await tickets.findOne({ _id: ticketId });
+  return ticket ? toDto(ticket) : null;
+}
+
+export async function updateTicketChannel(ticketId: string, channelId: string | null) {
+  const { tickets } = await getMongoCollections();
+  await tickets.updateOne({ _id: ticketId }, { $set: { channelId } });
   const ticket = await tickets.findOne({ _id: ticketId });
   return ticket ? toDto(ticket) : null;
 }

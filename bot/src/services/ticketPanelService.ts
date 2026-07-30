@@ -45,6 +45,7 @@ const OPEN_CONTINUE_PREFIX = "ticket_open_continue:";
 let ticketPanelServiceStarted = false;
 const panelPublicationLocks = new Map<string, Promise<string | null>>();
 const openTicketSessions = new Map<string, { clientStatus: "yes" | "no" | null; createdAt: number; optionValue: string | null; userId: string }>();
+const ticketCreationLocks = new Map<string, Promise<void>>();
 const OPEN_TICKET_SESSION_TTL_MS = 10 * 60 * 1000;
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
@@ -309,14 +310,99 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  let channelId: string | null = null;
+  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.user.id, option.value);
+  if (ticketCreationLocks.has(lockKey)) {
+    await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
+    return;
+  }
+
+  const creation = createTicketFromModal(interaction, context, settings, option, subject, details, clientLabel)
+    .finally(() => {
+      if (ticketCreationLocks.get(lockKey) === creation) {
+        ticketCreationLocks.delete(lockKey);
+      }
+    });
+  ticketCreationLocks.set(lockKey, creation);
+  await creation;
+
+  return true;
+}
+
+async function createTicketFromModal(
+  interaction: ModalSubmitInteraction,
+  context: BotContext,
+  settings: GuildSettings,
+  option: TicketPanelOption,
+  subject: string,
+  details: string | null,
+  clientLabel: string
+) {
+  const guild = interaction.guild;
+  if (!guild) return;
+
+  const existing = await context.api.getOpenTicket({
+    categoryId: option.value,
+    guildId: guild.id,
+    openerId: interaction.user.id
+  }).catch((error) => {
+    console.warn("[ticket-panel] falha ao validar ticket aberto:", error instanceof Error ? error.message : error);
+    return null;
+  });
+
+  if (existing) {
+    const existingChannel = existing.channelId
+      ? await guild.channels.fetch(existing.channelId).catch(() => null)
+      : null;
+
+    if (existingChannel) {
+      await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${existing.channelId}>`);
+      return;
+    }
+
+    await context.api.updateTicketStatus(existing.id, {
+      isIncomplete: true,
+      status: "INCOMPLETE"
+    }).catch((error) => {
+      console.warn("[ticket-panel] falha ao invalidar ticket sem canal:", error instanceof Error ? error.message : error);
+    });
+  }
+
+  const ticket = await context.api.createTicket({
+    channelId: null,
+    categoryId: option.value,
+    categoryName: option.label,
+    guildId: guild.id,
+    openerId: interaction.user.id,
+    responsibleRoleId: option.mentionRoleId ?? null,
+    status: "PENDING",
+    subject
+  });
+
+  if (ticket.created === false) {
+    if (ticket.ticket.channelId) {
+      const existingChannel = await guild.channels.fetch(ticket.ticket.channelId).catch(() => null);
+      if (existingChannel) {
+        await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${ticket.ticket.channelId}>`);
+        return;
+      }
+    }
+
+    await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
+    return;
+  }
+
+  let channel: TextChannel | null = null;
   try {
-    const channel = await createTicketChannel(interaction.guild, settings, interaction.user.id, option, subject);
-    channelId = channel?.id ?? null;
+    channel = await createTicketChannel(guild, settings, interaction.user.id, option, subject);
+    await context.api.updateTicketChannel(ticket.ticket.id, channel.id);
   } catch (error) {
-    console.warn("[ticket-panel] não foi possível criar canal de ticket:", error instanceof Error ? error.message : error);
+    console.warn("[ticket-panel] não foi possível criar/vincular canal de ticket:", error instanceof Error ? error.stack ?? error.message : error);
+    await context.api.updateTicketStatus(ticket.ticket.id, {
+      isIncomplete: true,
+      status: "INCOMPLETE"
+    }).catch(() => null);
     await context.api.postLog({
-      guildId: interaction.guild.id,
+      guildId: guild.id,
       message: `Falha ao criar canal de ticket para ${interaction.user.tag}: ${error instanceof Error ? error.message : String(error)}`,
       metadata: {
         categoryId: option.value,
@@ -328,45 +414,28 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
       type: "ticket.channel_create_failed",
       userId: interaction.user.id
     }).catch(() => null);
+    await interaction.editReply("Não consegui criar o canal do ticket. Verifique a categoria e as permissões do bot.");
+    return;
   }
 
-  const ticket = await context.api.createTicket({
-    channelId,
-    categoryId: option.value,
-    categoryName: option.label,
-    guildId: interaction.guild.id,
-    openerId: interaction.user.id,
-    responsibleRoleId: option.mentionRoleId ?? null,
-    subject
-  });
-
-  if (channelId) {
-    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-    if (channel?.isTextBased() && "send" in channel) {
-      await (channel as TextChannel).send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, interaction.guild, clientLabel));
+  await context.api.updateTicketStatus(ticket.ticket.id, { status: "OPEN" }).catch(() => null);
+  await channel.send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, guild, clientLabel));
+  await context.api.recordTicketEvent(ticket.ticket.id, {
+    authorId: interaction.user.id,
+    content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}. Cliente: ${clientLabel}.`,
+    eventType: "ticket.created",
+    guildId: guild.id,
+    metadata: {
+      categoryId: option.value,
+      categoryName: option.label,
+      channelId: channel.id,
+      client: clientLabel,
+      details,
+      subject
     }
-    await context.api.recordTicketEvent(ticket.ticket.id, {
-      authorId: interaction.user.id,
-      content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}. Cliente: ${clientLabel}.`,
-      eventType: "ticket.created",
-      guildId: interaction.guild.id,
-      metadata: {
-        categoryId: option.value,
-        categoryName: option.label,
-        client: clientLabel,
-        details,
-        subject
-      }
-    }).catch(() => null);
-  }
+  }).catch(() => null);
 
-  await interaction.editReply(
-    channelId
-      ? `Ticket criado: <#${channelId}>`
-      : `Ticket registrado: ${ticket.ticket.id}. A equipe foi notificada pelo painel.`
-  );
-
-  return true;
+  await interaction.editReply(`Ticket criado: <#${channel.id}>`);
 }
 
 async function handleTicketAction(interaction: ButtonInteraction, context: BotContext) {
@@ -892,8 +961,18 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
     ? option.mentionRoleId
     : null;
 
-  if (!categoryId || !guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
-    return null;
+  if (!categoryId) {
+    throw new Error("Categoria de tickets não configurada.");
+  }
+
+  const category = await guild.channels.fetch(categoryId).catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) {
+    throw new Error("Categoria de tickets não encontrada ou inválida.");
+  }
+
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+    throw new Error("O bot precisa da permissão Gerenciar Canais para criar tickets.");
   }
 
   const safeName = subject
@@ -917,7 +996,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
       },
       {
-        id: guild.members.me.id,
+        id: me.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory]
       },
       ...(mentionRoleId ? [{
@@ -928,6 +1007,10 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
     reason: `Ticket aberto por ${openerId}: ${option.label} - ${subject}`,
     type: ChannelType.GuildText
   }).then((channel) => channel as TextChannel);
+}
+
+function ticketCreationLockKey(guildId: string, userId: string, categoryId: string) {
+  return `${guildId}:${userId}:${categoryId}`;
 }
 
 function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null, clientLabel: string | null = null) {

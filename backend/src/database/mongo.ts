@@ -5722,6 +5722,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTicket>("Ticket").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, openerId: 1, categoryId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoHierarchyForwardingRule>("hierarchy_forwarding").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoHierarchyForwardingRule>("hierarchy_forwarding").createIndex(
       { botId: 1, guildId: 1, denouncedRoleId: 1 },

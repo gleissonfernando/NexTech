@@ -34,7 +34,7 @@ export async function canModerateMessage(
     return null;
   });
   if (!settings) return decision(false, null, null, message, moduleId);
-  if (containsChannel(message, effectiveWhitelist(settings))) return decision(true, "whitelisted", settings, message, moduleId);
+  if (containsChannel(message, effectiveWhitelist(settings, moduleId))) return decision(true, "whitelisted", settings, message, moduleId);
   return decision(false, null, settings, message, moduleId);
 }
 
@@ -58,11 +58,21 @@ export function isChannelIdWhitelisted(channelId: string, parentId: string | nul
 
 function containsChannel(message: Message, ids: string[]) {
   const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  return isChannelIdWhitelisted(message.channelId, parentId, ids);
+  const categoryId = message.channel.isThread() ? message.channel.parent?.parentId ?? null : "parentId" in message.channel ? message.channel.parentId : null;
+  return ids.includes(message.channelId)
+    || Boolean(parentId && ids.includes(parentId))
+    || Boolean(categoryId && ids.includes(categoryId));
 }
 
-function effectiveWhitelist(settings: SelfBotProtectionSettings) {
-  return [...new Set([...settings.ignoredChannelIds, ...settings.mediaChannelIds, ...settings.linkChannelIds])];
+function effectiveWhitelist(settings: SelfBotProtectionSettings, moduleId: string) {
+  const ids = [...settings.ignoredChannelIds, ...settings.ignoredCategoryIds];
+  if (moduleId === "link-anti-spam" || moduleId === "anti-links" || moduleId === "anti-convites") {
+    ids.push(...settings.linkChannelIds);
+  }
+  if (moduleId === "image-anti-spam" || moduleId === "anti-imagens" || moduleId === "anti-gif" || moduleId === "anti-anexos") {
+    ids.push(...settings.mediaChannelIds);
+  }
+  return [...new Set(ids)];
 }
 
 function startInvalidationListener(context: BotContext) {

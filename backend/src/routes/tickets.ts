@@ -6,7 +6,7 @@ import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
 import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import { createLog } from "../services/logService";
-import { claimTicket, createTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketStatus } from "../services/ticketService";
+import { claimTicket, createTicket, findOpenTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketChannel, updateTicketStatus } from "../services/ticketService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const ticketSchema = z.object({
@@ -91,24 +91,27 @@ ticketsRouter.post("/", async (req, res, next) => {
       });
     }
 
-    const ticket = await createTicket({
+    const result = await createTicket({
       ...input,
       botId
     });
-    const log = await createLog({
-      botId,
-      guildId: input.guildId,
-      userId: input.openerId,
-      type: "ticket.created",
-      message: `Ticket criado: ${input.subject}`,
-      metadata: ticket
-    });
+    if (result.created) {
+      const log = await createLog({
+        botId,
+        guildId: input.guildId,
+        userId: input.openerId,
+        type: "ticket.created",
+        message: `Ticket criado: ${input.subject}`,
+        metadata: result.ticket
+      });
 
-    emitRealtime("tickets:new", ticket);
-    emitRealtime("logs:new", log);
+      emitRealtime("tickets:new", result.ticket);
+      emitRealtime("logs:new", log);
+    }
 
     return res.status(201).json({
-      ticket
+      created: result.created,
+      ticket: result.ticket
     });
   } catch (error) {
     return next(error);
@@ -122,6 +125,25 @@ ticketsRouter.get("/bot/channel/:channelId", async (req, res, next) => {
     }
     const botId = await resolveRequestBotId(req);
     const ticket = await getTicketByChannel(req.params.channelId, botId);
+    return res.json({ ticket });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ticketsRouter.get("/bot/open", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) {
+      return res.status(403).json({ message: "Rota disponível apenas para o bot." });
+    }
+    const botId = await resolveRequestBotId(req);
+    const guildId = typeof req.query.guildId === "string" ? req.query.guildId : "";
+    const openerId = typeof req.query.openerId === "string" ? req.query.openerId : "";
+    const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : null;
+    if (!guildId || !openerId) {
+      return res.status(400).json({ message: "guildId e openerId são obrigatórios." });
+    }
+    const ticket = await findOpenTicket(guildId, botId, openerId, categoryId);
     return res.json({ ticket });
   } catch (error) {
     return next(error);
@@ -151,6 +173,19 @@ ticketsRouter.patch("/bot/:ticketId/status", async (req, res, next) => {
       ...input,
       closedAt: input.closedAt ? new Date(input.closedAt) : undefined
     });
+    return res.json({ ticket });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ticketsRouter.patch("/bot/:ticketId/channel", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) {
+      return res.status(403).json({ message: "Rota disponível apenas para o bot." });
+    }
+    const input = z.object({ channelId: z.string().nullable() }).parse(req.body);
+    const ticket = await updateTicketChannel(req.params.ticketId, input.channelId);
     return res.json({ ticket });
   } catch (error) {
     return next(error);

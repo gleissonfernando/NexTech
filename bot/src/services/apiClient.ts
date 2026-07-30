@@ -2769,7 +2769,18 @@ export class ApiClient {
     subject: string;
   }) {
     const { data } = await this.http.post("/tickets", input);
-    return data as { ticket: TicketRecord };
+    return data as { created?: boolean; ticket: TicketRecord };
+  }
+
+  async getOpenTicket(input: { categoryId?: string | null; guildId: string; openerId: string }) {
+    const { data } = await this.http.get<{ ticket: TicketRecord | null }>("/tickets/bot/open", {
+      params: {
+        categoryId: input.categoryId ?? undefined,
+        guildId: input.guildId,
+        openerId: input.openerId
+      }
+    });
+    return data.ticket;
   }
 
   async resolveHierarchyForwarding(guildId: string, denouncedRoleIds: string[]) {
@@ -2791,6 +2802,11 @@ export class ApiClient {
 
   async updateTicketStatus(ticketId: string, input: Record<string, unknown>) {
     const { data } = await this.http.patch<{ ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/status`, input);
+    return data.ticket;
+  }
+
+  async updateTicketChannel(ticketId: string, channelId: string | null) {
+    const { data } = await this.http.patch<{ ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/channel`, { channelId });
     return data.ticket;
   }
 

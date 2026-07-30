@@ -270,7 +270,7 @@ export async function handleSelfBotProtectionGuildMutation(
     return false;
   }
 
-  const executor = await findAuditExecutor(guild, mutation);
+  const executor = await findAuditExecutor(guild, mutation, channelId);
 
   if (!executor || executor.id === context.client.user?.id) {
     return false;
@@ -606,7 +606,7 @@ function detectMessageViolation(message: Message, settings: SelfBotProtectionSet
     return buildViolation(activeModule(settings, ["anti-links", "anti-divulgacao"]), "Link bloqueado", "Domínio não permitido fora dos canais liberados.", { links: disallowedLinks });
   }
 
-  if (links.length && hasAnyModule(settings, ["anti-scam", "anti-phishing", "anti-nitro-scam"]) && isSuspiciousLinkOrText(content, links, settings)) {
+  if (links.length && linkNotAllowed && hasAnyModule(settings, ["anti-scam", "anti-phishing", "anti-nitro-scam"]) && isSuspiciousLinkOrText(content, links, settings)) {
     return buildViolation(activeModule(settings, ["anti-scam", "anti-phishing", "anti-nitro-scam"]), "Scam ou phishing", "URL ou termo suspeito detectado.", { links });
   }
 
@@ -1286,16 +1286,15 @@ function keyForMessage(message: Message) {
 }
 
 function isChannelProtected(message: Message, settings: SelfBotProtectionSettings) {
-  if (isAllowedChannel(message, settings.ignoredChannelIds)) {
+  if (isAllowedChannel(message, [...settings.ignoredChannelIds, ...settings.ignoredCategoryIds])) {
     return false;
   }
 
-  if (isAllowedChannel(message, settings.ignoredCategoryIds)) return false;
   return settings.protectedChannelIds.length === 0 || isAllowedChannel(message, settings.protectedChannelIds);
 }
 
 function isProhibitedChannelViolation(message: Message, settings: SelfBotProtectionSettings, violation: Violation) {
-  if (isAllowedChannel(message, settings.ignoredChannelIds) || isAllowedChannel(message, settings.ignoredCategoryIds)) {
+  if (isAllowedChannel(message, [...settings.ignoredChannelIds, ...settings.ignoredCategoryIds])) {
     return false;
   }
 
@@ -1365,7 +1364,11 @@ function isAllowedChannel(message: Message, channelIds: string[]) {
   }
 
   const parentId = "parentId" in message.channel ? message.channel.parentId : null;
-  return Boolean(parentId && channelIds.includes(parentId));
+  const categoryId = message.channel.isThread()
+    ? message.channel.parent?.parentId ?? null
+    : parentId;
+  return Boolean(parentId && channelIds.includes(parentId))
+    || Boolean(categoryId && channelIds.includes(categoryId));
 }
 
 function hasAnyModuleEnabled(settings: SelfBotProtectionSettings) {
@@ -1602,7 +1605,7 @@ function clearGuildWindows(guildId: string) {
 
 type GuildMutation = Parameters<typeof handleSelfBotProtectionGuildMutation>[2];
 
-async function findAuditExecutor(guild: Guild, mutation: GuildMutation) {
+async function findAuditExecutor(guild: Guild, mutation: GuildMutation, targetId: string | null = null) {
   const type = mutation === "channel_create" ? AuditLogEvent.ChannelCreate
     : mutation === "channel_update" ? AuditLogEvent.ChannelUpdate
       : mutation === "channel_delete" ? AuditLogEvent.ChannelDelete
@@ -1617,10 +1620,12 @@ async function findAuditExecutor(guild: Guild, mutation: GuildMutation) {
                         : mutation === "sticker_delete" ? AuditLogEvent.StickerDelete
                           : AuditLogEvent.WebhookCreate;
   const logs = await guild.fetchAuditLogs({
-    limit: 1,
+    limit: targetId ? 6 : 1,
     type
   }).catch(() => null);
-  const entry = logs?.entries.first();
+  const entry = targetId
+    ? logs?.entries.find((item) => item.targetId === targetId)
+    : logs?.entries.first();
 
   if (!entry || Date.now() - entry.createdTimestamp > 10_000) {
     return null;
