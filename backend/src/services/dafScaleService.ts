@@ -12,6 +12,8 @@ export type DafScaleSettingsPatch = Partial<Pick<MongoDafScaleSettings,
 >>;
 
 export type DafScaleMemberInput = {
+  actorId?: string | null;
+  actorName?: string | null;
   roleIds: string[];
   userId: string;
   username: string;
@@ -121,6 +123,7 @@ export async function joinDafScale(botId: string, guildId: string, role: MongoDa
   const action = existing ? "switch" : "join";
   await recordDafScaleAudit(botId, guildId, {
     action,
+    metadata: member.actorId ? { actorId: member.actorId, actorName: member.actorName ?? null } : null,
     previousRole: existing?.role ?? null,
     role,
     userId: member.userId,

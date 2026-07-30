@@ -12,6 +12,7 @@ import {
   StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
+  UserSelectMenuBuilder,
   type ButtonInteraction,
   type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
@@ -21,7 +22,8 @@ import {
   type ModalSubmitInteraction,
   type RoleSelectMenuInteraction,
   type StringSelectMenuInteraction,
-  type TextChannel
+  type TextChannel,
+  type UserSelectMenuInteraction
 } from "discord.js";
 import type { BotCommand, BotContext } from "../types";
 import type { DafScaleActionResult, DafScaleRole, DafScaleSettings, DafScaleState } from "./apiClient";
@@ -64,6 +66,14 @@ export async function handleDafScaleInteraction(interaction: Interaction, contex
       await joinScale(interaction, context, readSelectedDafRole(interaction));
       return true;
     }
+    if (interaction.isUserSelectMenu() && action === "assign_user") {
+      await showManualScaleRoleMenu(interaction, context);
+      return true;
+    }
+    if (interaction.isStringSelectMenu() && action === "assign_role") {
+      await assignScale(interaction, context, readSelectedDafRole(interaction), String(interaction.customId).split(":")[2] ?? "");
+      return true;
+    }
     if (interaction.isModalSubmit() && action === "limits") {
       await saveLimits(interaction, context);
       return true;
@@ -82,7 +92,8 @@ function createDafCommand(name: "daf" | "escala-daf"): BotCommand {
       .setName(name)
       .setDescription("Sistema de Escala DAF.")
       .addSubcommand((subcommand) => subcommand.setName("config").setDescription("Configura a Escala DAF."))
-      .addSubcommand((subcommand) => subcommand.setName("painel").setDescription("Publica ou atualiza o painel da Escala DAF.")),
+      .addSubcommand((subcommand) => subcommand.setName("painel").setDescription("Publica ou atualiza o painel da Escala DAF."))
+      .addSubcommand((subcommand) => subcommand.setName("escalar").setDescription("Escala um policial manualmente.")),
     moduleId: MODULE_ID,
     async execute(interaction, context) {
       await executeDafCommand(interaction, context);
@@ -99,6 +110,11 @@ async function executeDafCommand(interaction: ChatInputCommandInteraction, conte
   if (subcommand === "config") {
     if (!await canConfigure(interaction, context)) return;
     await showConfig(interaction, context);
+    return;
+  }
+  if (subcommand === "escalar") {
+    if (!await canConfigure(interaction, context)) return;
+    await showManualScaleUserMenu(interaction);
     return;
   }
   if (!await canConfigure(interaction, context)) return;
@@ -202,16 +218,68 @@ async function showJoinMenu(interaction: ButtonInteraction, context: BotContext)
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${PREFIX}:role`)
     .setPlaceholder("Escolha sua função")
-    .addOptions(
-      { label: "Piloto", value: "pilot", emoji: "🚁", description: `${state.pilots.length}/${state.settings.maxPilots}` },
-      { label: "Atirador", value: "shooter", emoji: "🎯", description: `${state.shooters.length}/${state.settings.maxShooters}` }
-    );
+    .addOptions(dafRoleOptions(state, interaction.guild!));
   await interaction.reply({
     components: [{
       type: 17,
       accent_color: 0x0ea5e9,
       components: [
-        { type: 10, content: `## ${systemEmojiText("acessar", interaction.guild)} Entrar na Escala DAF\nEscolha uma função para entrar ou trocar sua posição atual.` },
+        { type: 10, content: `## ${dafRoleEmoji("pilot", interaction.guild!)} Entrar na Escala DAF\nEscolha uma função para entrar ou trocar sua posição atual.` },
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  });
+}
+
+async function showManualScaleUserMenu(interaction: ChatInputCommandInteraction) {
+  const select = new UserSelectMenuBuilder()
+    .setCustomId(`${PREFIX}:assign_user`)
+    .setPlaceholder("Selecione o policial")
+    .setMinValues(1)
+    .setMaxValues(1);
+  await interaction.reply({
+    components: [{
+      type: 17,
+      accent_color: 0x0ea5e9,
+      components: [
+        { type: 10, content: `## ${systemEmojiText("homem", interaction.guild)} Escalar policial\nSelecione o policial que será adicionado na Escala DAF.` },
+        new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(select)
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  });
+}
+
+async function showManualScaleRoleMenu(interaction: UserSelectMenuInteraction, context: BotContext) {
+  if (!await canConfigure(interaction, context)) return;
+  const targetId = interaction.values[0];
+  const target = targetId ? await interaction.guild!.members.fetch(targetId).catch(() => null) : null;
+  if (!target) {
+    await interaction.update({
+      components: [{
+        type: 17,
+        accent_color: 0xef4444,
+        components: [{ type: 10, content: `${systemStatusEmoji("danger", interaction.guild)} Não consegui encontrar esse policial no servidor.` }]
+      }],
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+    });
+    return;
+  }
+  const state = await context.api.getDafScaleState(interaction.guildId!);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${PREFIX}:assign_role:${target.id}`)
+    .setPlaceholder("Escolha a escala")
+    .addOptions(dafRoleOptions(state, interaction.guild!));
+  await interaction.update({
+    components: [{
+      type: 17,
+      accent_color: 0x0ea5e9,
+      components: [
+        { type: 10, content: [
+          `## ${systemEmojiText("prancheta_acertos", interaction.guild)} Escolha a escala`,
+          `**Policial:** <@${target.id}> (${displayName(target)})`
+        ].join("\n") },
         new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)
       ]
     }],
@@ -237,6 +305,39 @@ async function joinScale(interaction: StringSelectMenuInteraction, context: BotC
       ? `Função alterada para ${roleLabel(role)}.`
       : `Você entrou como ${roleLabel(role)}.`;
   await interaction.editReply(text);
+}
+
+async function assignScale(interaction: StringSelectMenuInteraction, context: BotContext, role: DafScaleRole, targetId: string) {
+  if (!await canConfigure(interaction, context)) return;
+  if (!targetId) {
+    await interaction.reply({ content: "Policial inválido para escala.", ephemeral: true });
+    return;
+  }
+  await interaction.deferUpdate();
+  const target = await interaction.guild!.members.fetch(targetId).catch(() => null);
+  if (!target) {
+    await interaction.editReply(manualScaleResultPayload(interaction.guild!, `${systemStatusEmoji("danger", interaction.guild)} Não consegui encontrar esse policial no servidor.`, 0xef4444));
+    return;
+  }
+  const actor = await interaction.guild!.members.fetch(interaction.user.id).catch(() => null);
+  const result = await context.api.joinDafScale(interaction.guildId!, {
+    actorId: interaction.user.id,
+    actorName: actor ? displayName(actor) : interaction.user.username,
+    role,
+    roleIds: target.roles.cache.map((item) => item.id),
+    userId: target.id,
+    username: displayName(target)
+  });
+  await updatePanelFromState(interaction.guild!, context, result.state);
+  await sendLog(interaction.guild!, context, result, target.id, displayName(target), {
+    actorId: interaction.user.id,
+    actorName: actor ? displayName(actor) : interaction.user.username,
+    manual: true
+  });
+  const content = result.action === "none"
+    ? `${systemStatusEmoji("warning", interaction.guild)} <@${target.id}> já está como ${roleLabel(role)}.`
+    : `${systemStatusEmoji("success", interaction.guild)} <@${target.id}> foi escalado como ${roleLabel(role)}.`;
+  await interaction.editReply(manualScaleResultPayload(interaction.guild!, content, result.action === "none" ? 0xf59e0b : 0x22c55e));
 }
 
 async function leaveScale(interaction: ButtonInteraction, context: BotContext) {
@@ -265,33 +366,34 @@ async function updatePanelFromState(guild: Guild, _context: BotContext, state: D
   if (message) await message.edit(scalePanelPayload(state, guild));
 }
 
-async function sendLog(guild: Guild, _context: BotContext, result: DafScaleActionResult, userId: string, username: string) {
+async function sendLog(guild: Guild, _context: BotContext, result: DafScaleActionResult, userId: string, username: string, options?: { actorId?: string; actorName?: string; manual?: boolean }) {
   if (result.action === "none" || !result.state.settings.logChannelId) return;
   const channel = await guild.channels.fetch(result.state.settings.logChannelId).catch(() => null);
   if (!channel?.isTextBased() || channel.isDMBased()) return;
   const role = result.entry?.role ?? result.previousRole;
   const changeText = result.action === "switch"
     ? `**Alteração:**\n${roleLabel(result.previousRole)}\n➡\n${roleLabel(result.entry?.role ?? null)}`
-    : `**Ação:**\n${result.action === "join" ? "Entrou na escala" : "Saiu da escala"}\n\n**Função:**\n${roleLabel(role)}`;
+    : `**Ação:**\n${options?.manual && result.action === "join" ? "Escalado manualmente" : result.action === "join" ? "Entrou na escala" : "Saiu da escala"}\n\n**Função:**\n${roleLabel(role)}`;
   await channel.send({
     components: [{
       type: 17,
       accent_color: 0x0ea5e9,
       components: [{ type: 10, content: [
-        `# 🚁 Escala DAF`,
+        `# ${dafRoleEmoji("pilot", guild)} Escala DAF`,
         `**Usuário:**\n<@${userId}> (${username})`,
+        options?.actorId ? `**Responsável:**\n<@${options.actorId}> (${options.actorName ?? options.actorId})` : null,
         changeText,
         `**Horário:**\n${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`,
         "",
         "━━━━━━━━━━━━━━━━━━━━━━",
         "## ESCALA ATUAL",
-        `**Pilotos (${result.state.pilots.length}/${result.state.settings.maxPilots})**`,
-        listEntries(result.state.pilots, "🚁"),
+        `**${dafRoleEmoji("pilot", guild)} Pilotos (${result.state.pilots.length}/${result.state.settings.maxPilots})**`,
+        listEntries(result.state.pilots, dafRoleEmoji("pilot", guild)),
         "",
-        `**Atiradores (${result.state.shooters.length}/${result.state.settings.maxShooters})**`,
-        listEntries(result.state.shooters, "🎯"),
+        `**${dafRoleEmoji("shooter", guild)} Atiradores (${result.state.shooters.length}/${result.state.settings.maxShooters})**`,
+        listEntries(result.state.shooters, dafRoleEmoji("shooter", guild)),
         "━━━━━━━━━━━━━━━━━━━━━━"
-      ].join("\n") }]
+      ].filter(Boolean).join("\n") }]
     }],
     flags: MessageFlags.IsComponentsV2
   });
@@ -338,8 +440,8 @@ function scalePanelPayload(state: DafScaleState, guild: Guild) {
     active: systemStatusEmoji("success", guild),
     enter: systemComponentEmoji("visto", guild),
     leave: systemComponentEmoji("porta", guild),
-    pilot: systemEmojiText("acessar", guild),
-    shooter: systemEmojiText("interrogacao", guild),
+    pilot: dafRoleEmoji("pilot", guild),
+    shooter: dafRoleEmoji("shooter", guild),
     status: systemEmojiText("prancheta_acertos", guild),
     warning: systemStatusEmoji("danger", guild)
   };
@@ -401,7 +503,7 @@ function dafOccupancyLine(current: number, max: number) {
   return `\`${"█".repeat(filled)}${"░".repeat(empty)}\` **${current}/${max}**`;
 }
 
-async function canConfigure(interaction: ChatInputCommandInteraction | ButtonInteraction | ChannelSelectMenuInteraction | RoleSelectMenuInteraction | ModalSubmitInteraction, context: BotContext) {
+async function canConfigure(interaction: ChatInputCommandInteraction | ButtonInteraction | ChannelSelectMenuInteraction | RoleSelectMenuInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction | ModalSubmitInteraction, context: BotContext) {
   if (!interaction.guild) return false;
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return false;
@@ -470,6 +572,39 @@ function numberedEntries(entries: Array<{ username: string; userId: string }>, e
 
 function listEntries(entries: Array<{ username: string; userId: string }>, emoji: string) {
   return entries.length ? entries.map((entry) => `${emoji} ${entry.username} (<@${entry.userId}>)`).join("\n") : "Nenhum.";
+}
+
+function dafRoleOptions(state: DafScaleState, guild: Guild) {
+  return [
+    { label: "Piloto", value: "pilot", emoji: dafRoleEmoji("pilot", guild), description: `${state.pilots.length}/${state.settings.maxPilots}` },
+    { label: "Atirador", value: "shooter", emoji: dafRoleEmoji("shooter", guild), description: `${state.shooters.length}/${state.settings.maxShooters}` }
+  ];
+}
+
+function manualScaleResultPayload(_guild: Guild, content: string, accentColor: number) {
+  return {
+    components: [{
+      type: 17,
+      accent_color: accentColor,
+      components: [{ type: 10, content }]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  } as const;
+}
+
+function dafRoleEmoji(role: DafScaleRole, guild: Guild) {
+  if (role === "shooter") return systemEmojiText("arma", guild);
+  return findGuildEmojiText(guild, ["helicoptero", "helicóptero", "helicopter", "heli", "daf_helicoptero"], "🚁");
+}
+
+function findGuildEmojiText(guild: Guild, names: string[], fallback: string) {
+  const expected = new Set(names.map(normalizeEmojiName));
+  const emoji = guild.emojis.cache.find((item) => item.name ? expected.has(normalizeEmojiName(item.name)) : false);
+  return emoji ? `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>` : fallback;
+}
+
+function normalizeEmojiName(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function roleLabel(role: DafScaleRole | null | undefined) {

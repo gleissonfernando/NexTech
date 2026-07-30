@@ -4331,7 +4331,7 @@ export class ApiClient {
     return data.settings;
   }
 
-  async joinDafScale(guildId: string, input: { role: DafScaleRole; roleIds: string[]; userId: string; username: string }) {
+  async joinDafScale(guildId: string, input: { actorId?: string | null; actorName?: string | null; role: DafScaleRole; roleIds: string[]; userId: string; username: string }) {
     const { data } = await this.http.post<DafScaleActionResult>(`/daf-scale/bot/${guildId}/join`, input);
     return data;
   }

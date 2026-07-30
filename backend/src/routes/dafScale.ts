@@ -27,6 +27,8 @@ const settingsSchema = z.object({
   shooterRoleId: snowflake.nullable().optional()
 });
 const memberSchema = z.object({
+  actorId: snowflake.nullable().optional(),
+  actorName: z.string().min(1).max(100).nullable().optional(),
   roleIds: z.array(snowflake).max(100).default([]),
   userId: snowflake,
   username: z.string().min(1).max(100)
