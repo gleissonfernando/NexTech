@@ -160,8 +160,8 @@ export async function getCustomPanelsDashboard(guildId: string, botId?: string |
   const { customPanelCategories, customPanels } = await getMongoCollections();
   const scope = scopeQuery(guildId, normalizedBotId);
   const [categories, panels] = await Promise.all([
-    customPanelCategories.find({ ...scope, deletedAt: { $exists: false } }).sort({ order: 1, name: 1 }).toArray(),
-    customPanels.find({ ...scope, deletedAt: { $exists: false } }).sort({ updatedAt: -1 }).toArray()
+    customPanelCategories.find({ ...scope, deletedAt: null }).sort({ order: 1, name: 1 }).toArray(),
+    customPanels.find({ ...scope, deletedAt: null }).sort({ updatedAt: -1 }).toArray()
   ]);
 
   return {
@@ -176,7 +176,7 @@ export async function listBotCustomPanels(botId?: string | null) {
   const panels = await customPanels
     .find({
       botId: normalizedBotId,
-      deletedAt: { $exists: false },
+      deletedAt: null,
       $or: [{ published: true, channelId: { $type: "string" } }, { messageId: { $type: "string" } }]
     })
     .sort({ updatedAt: 1 })
@@ -205,6 +205,7 @@ export async function createCustomPanelCategory(guildId: string, botId: string |
     name,
     slug: slugify(name),
     description: normalizeNullableText(input.description, 240),
+    deletedAt: null,
     order: normalizeOrder(input.order),
     createdBy: input.userId ?? null,
     updatedBy: input.userId ?? null,
@@ -234,7 +235,7 @@ export async function updateCustomPanelCategory(guildId: string, botId: string |
 
   const { customPanelCategories } = await getMongoCollections();
   const category = await customPanelCategories.findOneAndUpdate(
-    { _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } },
+    { _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: null },
     { $set: patch },
     { returnDocument: "after" }
   );
@@ -247,13 +248,13 @@ export async function updateCustomPanelCategory(guildId: string, botId: string |
 
 export async function deleteCustomPanelCategory(guildId: string, botId: string | null, categoryId: string, userId?: string | null) {
   const { customPanelCategories, customPanels } = await getMongoCollections();
-  const panels = await customPanels.countDocuments({ ...scopeQuery(guildId, botId), categoryId, deletedAt: { $exists: false } });
+  const panels = await customPanels.countDocuments({ ...scopeQuery(guildId, botId), categoryId, deletedAt: null });
   if (panels > 0) {
     throw createServiceError("Exclua ou mova os painéis desta categoria antes de removê-la.", 400);
   }
 
   const category = await customPanelCategories.findOneAndUpdate(
-    { _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } },
+    { _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: null },
     { $set: { deletedAt: new Date(), updatedAt: new Date(), updatedBy: userId ?? null } },
     { returnDocument: "after" }
   );
@@ -274,6 +275,7 @@ export async function createCustomPanel(guildId: string, botId: string | null, i
     published: false,
     publishRequestedAt: null,
     lastPublishedAt: null,
+    deletedAt: null,
     createdBy: input.userId ?? null,
     updatedBy: input.userId ?? null,
     createdAt: now,
@@ -298,7 +300,7 @@ export async function updateCustomPanel(guildId: string, botId: string | null, p
 
   const { customPanels } = await getMongoCollections();
   const panel = await customPanels.findOneAndUpdate(
-    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } },
+    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: null },
     { $set: patch },
     { returnDocument: "after" }
   );
@@ -312,7 +314,7 @@ export async function updateCustomPanel(guildId: string, botId: string | null, p
 
 export async function duplicateCustomPanel(guildId: string, botId: string | null, panelId: string, userId?: string | null) {
   const { customPanels } = await getMongoCollections();
-  const current = await customPanels.findOne({ _id: panelId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } });
+  const current = await customPanels.findOne({ _id: panelId, ...scopeQuery(guildId, botId), deletedAt: null });
   if (!current) throw createServiceError("Painel não encontrado.", 404);
 
   const now = new Date();
@@ -324,6 +326,7 @@ export async function duplicateCustomPanel(guildId: string, botId: string | null
     published: false,
     publishRequestedAt: null,
     lastPublishedAt: null,
+    deletedAt: null,
     createdBy: userId ?? null,
     updatedBy: userId ?? null,
     createdAt: now,
@@ -339,7 +342,7 @@ export async function duplicateCustomPanel(guildId: string, botId: string | null
 export async function deleteCustomPanel(guildId: string, botId: string | null, panelId: string, userId?: string | null) {
   const { customPanels } = await getMongoCollections();
   const panel = await customPanels.findOneAndUpdate(
-    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } },
+    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: null },
     { $set: { deletedAt: new Date(), published: false, updatedAt: new Date(), updatedBy: userId ?? null } },
     { returnDocument: "after" }
   );
@@ -354,7 +357,7 @@ export async function deleteCustomPanel(guildId: string, botId: string | null, p
 export async function publishCustomPanel(guildId: string, botId: string | null, panelId: string, userId?: string | null) {
   const { customPanels } = await getMongoCollections();
   const panel = await customPanels.findOneAndUpdate(
-    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } },
+    { _id: panelId, ...scopeQuery(guildId, botId), deletedAt: null },
     { $set: { published: true, publishRequestedAt: new Date(), updatedAt: new Date(), updatedBy: userId ?? null } },
     { returnDocument: "after" }
   );
@@ -434,7 +437,7 @@ function normalizePanelPatch(input: Partial<SaveCustomPanelInput>): Partial<Mong
 async function ensureDefaultCategories(guildId: string, botId: string | null) {
   const { customPanelCategories, customPanels } = await getMongoCollections();
   const scope = scopeQuery(guildId, botId);
-  const existingCategories = await customPanelCategories.find({ ...scope, deletedAt: { $exists: false } }).toArray();
+  const existingCategories = await customPanelCategories.find({ ...scope, deletedAt: null }).toArray();
   const existingSlugs = new Set(existingCategories.map((category) => category.slug));
 
   const now = new Date();
@@ -442,26 +445,27 @@ async function ensureDefaultCategories(guildId: string, botId: string | null) {
     .map((name, index) => ({ name, order: index + 1, slug: slugify(name) }))
     .filter((category) => !existingSlugs.has(category.slug))
     .map(({ name, order, slug }) => ({
-    _id: randomUUID(),
-    botId,
-    guildId,
-    name,
-    slug,
-    description: null,
-    order,
-    createdBy: null,
-    updatedBy: null,
-    createdAt: now,
-    updatedAt: now
-  }));
+      _id: randomUUID(),
+      botId,
+      guildId,
+      name,
+      slug,
+      description: null,
+      deletedAt: null,
+      order,
+      createdBy: null,
+      updatedBy: null,
+      createdAt: now,
+      updatedAt: now
+    }));
 
   if (missingCategories.length) await customPanelCategories.insertMany(missingCategories);
 
-  const panelCount = await customPanels.countDocuments({ ...scope, deletedAt: { $exists: false } });
+  const panelCount = await customPanels.countDocuments({ ...scope, deletedAt: null });
   if (panelCount > 0) return;
 
   const categories = missingCategories.length
-    ? await customPanelCategories.find({ ...scope, deletedAt: { $exists: false } }).toArray()
+    ? await customPanelCategories.find({ ...scope, deletedAt: null }).toArray()
     : existingCategories;
   const categoriesBySlug = new Map(categories.map((category) => [category.slug, category]));
   const defaultPanels = Object.entries(DEFAULT_PANEL_TEMPLATES).flatMap(([categorySlug, templates]) => {
@@ -485,6 +489,7 @@ async function ensureDefaultCategories(guildId: string, botId: string | null) {
       footerText: template.footerText,
       guildId,
       lastPublishedAt: null,
+      deletedAt: null,
       mentionRoleId: null,
       messageId: null,
       name: template.name,
@@ -521,7 +526,7 @@ function defaultPanelTemplate(name: string, emoji: string, description: string, 
 
 async function assertCategoryExists(guildId: string, botId: string | null, categoryId: string) {
   const { customPanelCategories } = await getMongoCollections();
-  const exists = await customPanelCategories.findOne({ _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: { $exists: false } });
+  const exists = await customPanelCategories.findOne({ _id: categoryId, ...scopeQuery(guildId, botId), deletedAt: null });
   if (!exists) throw createServiceError("Categoria não encontrada.", 404);
 }
 

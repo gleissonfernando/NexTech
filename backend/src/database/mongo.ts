@@ -5677,6 +5677,11 @@ async function ensureMongoIndexes(db: Db) {
 }
 
 async function createMongoIndexes(db: Db) {
+  await db.collection<MongoCustomPanelCategory>("custom_panel_categories").updateMany(
+    { deletedAt: { $exists: false } },
+    { $set: { deletedAt: null } }
+  );
+
   await Promise.all([
     db.collection<MongoUser>("User").createIndex(
       { discordId: 1 },
@@ -5867,7 +5872,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoPersistentImage>("persistent_images").createIndex({ createdAt: -1 }),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex(
       { botId: 1, guildId: 1, slug: 1 },
-      { unique: true, partialFilterExpression: { deletedAt: null } }
+      { unique: true, partialFilterExpression: { deletedAt: { $type: "null" } } }
     ),
     db.collection<MongoCustomPanelCategory>("custom_panel_categories").createIndex({ botId: 1, guildId: 1, order: 1, updatedAt: -1 }),
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, categoryId: 1, updatedAt: -1 }),
