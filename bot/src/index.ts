@@ -14,7 +14,7 @@ import type { BotContext } from "./types";
 import { BotSocketClient } from "./websocket/socketClient";
 
 const intents = [GatewayIntentBits.Guilds];
-const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
+const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim() || (env.BOT_API_TOKEN.trim() && env.BACKEND_API_URL.trim()));
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
 const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
 const needsTagVerification = isBotModuleEnabled("tag-verification") || managedRuntimeBot;

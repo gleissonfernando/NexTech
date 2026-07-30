@@ -119,7 +119,7 @@ export async function syncAutomaticRolesAfterReady(client: Client, context: BotC
   }
 }
 
-async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, reason: string) {
+export async function syncAutomaticRolesForGuild(context: BotContext, guild: Guild, reason: string) {
   if (syncGuildsInFlight.has(guild.id)) {
     return;
   }

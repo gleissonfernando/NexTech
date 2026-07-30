@@ -48,7 +48,7 @@ import { startRhAdminService } from "../services/rhAdminService";
 import { startCourseSystemService } from "../services/courseSystemService";
 import { startTicketPanelService } from "../services/ticketPanelService";
 import { startReportSystemService } from "../services/reportSystemService";
-import { syncAutomaticRolesAfterReady } from "../services/roleService";
+import { syncAutomaticRolesAfterReady, syncAutomaticRolesForGuild } from "../services/roleService";
 import {
   disableUnreleasedSafeBotChannels,
   ensureSafeBotSetup,
@@ -101,6 +101,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     }
 
     const wasSelfBotEnabled = isSelfBotModuleEnabled();
+    const wasRolesEnabled = isBotModuleEnabled("roles");
     const wasTagVerificationEnabled = isBotModuleEnabled("tag-verification");
     setRuntimeEnabledModules(payload.enabledModules);
     lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
@@ -118,6 +119,11 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     }
 
     void startRuntimeModuleServices(client, context);
+    if (!wasRolesEnabled && isBotModuleEnabled("roles")) {
+      void syncAutomaticRolesAfterReady(client, context, "roles_module_update").catch((error) => {
+        console.warn("[roles] falha ao sincronizar cargos após liberar módulo:", error instanceof Error ? error.message : error);
+      });
+    }
     if (wasTagVerificationEnabled && !isBotModuleEnabled("tag-verification")) stopTagVerificationService();
   });
   context.socket.onSelfBotEnsureSetup(async (payload, acknowledge) => {
@@ -155,6 +161,14 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   startFooterRuntimeService(client, context);
   context.socket.onSettingsUpdated((settings) => {
     void handleSafeBotSettingsUpdated(settings, client, context);
+    if ((!runtimeBotId || settings.botId === runtimeBotId) && settings.autoRoleEnabled) {
+      const guild = client.guilds.cache.get(settings.guildId);
+      if (guild) {
+        void syncAutomaticRolesForGuild(context, guild, "settings_update").catch((error) => {
+          console.warn("[roles] falha ao sincronizar cargos após atualização de configuração:", error instanceof Error ? error.message : error);
+        });
+      }
+    }
   });
   context.socket.onPoliceHiddenChannelSettingsUpdated((payload) => {
     if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
