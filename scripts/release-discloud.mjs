@@ -96,14 +96,10 @@ console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
-if (process.env.AUTO_UPDATE_RELEASE_FALLBACK === "true") {
-  console.log("[release] Auto Update Logger fallback...");
-  await runAutoUpdateLogger().catch((error) => {
-    console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
-  });
-} else {
-  console.log("[release] Auto Update Logger vai gerar rascunho no startup; envio Discord exige AUTO_UPDATE_SEND=true.");
-}
+console.log("[release] Publicando painel de atualizações no Discord...");
+await runAutoUpdateLogger({ send: true }).catch((error) => {
+  console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
+});
 
 console.log("[release] Concluido.");
 
