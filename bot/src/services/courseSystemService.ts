@@ -2711,7 +2711,7 @@ function selectCoursePanel(description: string, customId: string, courses: Cours
   });
 }
 
-function coursePublicationPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }, enrollments: CourseEnrollment[] = [], allowPublicationMention = false) {
+function coursePublicationPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: Guild, enrollments: CourseEnrollment[] = [], allowPublicationMention = false) {
   const publicationMentionRoleId = settings.publicationMentionRoleId;
   const publicationMention = publicationMentionRoleId ? `<@&${publicationMentionRoleId}>` : null;
   const students = coursePublicationStudents(publication, guild);
@@ -2724,17 +2724,18 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
+  const icons = coursePanelIcons(guild);
   const studentActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji("🟢").setLabel("Entrar Curso").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
-    new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji("⚫").setLabel("Sair Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
+    new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji(icons.enterButton).setLabel("Entrar Curso").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
+    new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji(icons.leaveButton).setLabel("Sair Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
   ).toJSON();
   const adminPrimaryActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji("🔵").setLabel("Iniciar Curso").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
-    new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji("🟢").setLabel("Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam)
+    new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji(icons.startButton).setLabel("Iniciar Curso").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+    new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji(icons.examButton).setLabel("Iniciar Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam)
   ).toJSON();
   const adminClosingActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji("🔴").setLabel("Cancelar Curso").setStyle(ButtonStyle.Danger).setDisabled(!canCancel),
-    new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji("⚪").setLabel("Finalizar Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass)
+    new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji(icons.cancelButton).setLabel("Cancelar Curso").setStyle(ButtonStyle.Danger).setDisabled(!canCancel),
+    new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji(icons.finishButton).setLabel("Finalizar Curso").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass)
   ).toJSON();
   const examProgress = enrollments
     .filter((enrollment) => ["STARTING", "IN_PROGRESS", "COMPLETED", "APPROVED", "FAILED"].includes(enrollment.examStatus))
@@ -2749,38 +2750,38 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const components: unknown[] = [
     textBlock([
       publicationMention,
-      "## 🛡️ NORTH POLICE DEPARTMENT",
+      `## ${icons.department} NORTH POLICE DEPARTMENT`,
       "Equipe Oficial de Instrutores"
     ].filter(Boolean).join("\n")),
     separator(),
-    textBlock(`## 📡 ${course.name.toUpperCase()}`),
+    textBlock(`## ${coursePanelCourseEmoji(course, guild)} ${course.name.toUpperCase()}`),
     separator(),
     textBlock([
-      `👨‍🏫 **Instrutor:** <@${publication.instructorId}>`,
-      `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
-      `🕒 **Horário:** ${coursePublicationTimeLabel(publication)}`,
-      `📍 **Local:** ${coursePublicationDepartmentLabel(publication)}`,
-      `📘 **Código:** ${course.code || "-"}`
+      `${icons.instructor} **Instrutor:** <@${publication.instructorId}>`,
+      `${icons.calendar} **Data:** ${coursePublicationDateLabel(publication)}`,
+      `${icons.clock} **Horário:** ${coursePublicationTimeLabel(publication)}`,
+      `${icons.location} **Local:** ${coursePublicationDepartmentLabel(publication)}`,
+      `${icons.code} **Código:** ${course.code || "-"}`
     ].join("\n")),
     separator(),
-    textBlock(["**STATUS**", `${coursePublicationStatusDot(publication, full)} ${statusText}`].join("\n")),
+    textBlock([`${icons.status} **STATUS**`, `${coursePublicationStatusDot(publication, full, guild)} ${statusText}`].join("\n")),
     separator(),
-    textBlock(["**VAGAS**", coursePublicationCapacityBar(publication)].join("\n")),
+    textBlock([`${icons.capacity} **VAGAS**`, coursePublicationCapacityBar(publication)].join("\n")),
     separator(),
-    textBlock(`**ALUNOS**\n${students}`),
+    textBlock(`${icons.students} **ALUNOS**\n${students}`),
     separator(),
     ...(bannerUrl ? [{ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner do Curso" }] }] : []),
     ...(bannerUrl ? [separator()] : []),
     ...(examProgress.length ? [
-      textBlock(`## 🧾 Situação das Provas\n\n${examProgress.join("\n")}\n\n**Em andamento:** ${enrollments.filter((item) => item.examStatus === "STARTING" || item.examStatus === "IN_PROGRESS").length} | **Concluídas:** ${enrollments.filter((item) => ["COMPLETED", "APPROVED", "FAILED"].includes(item.examStatus)).length}`)
+      textBlock(`## ${icons.exam} Situação das Provas\n\n${examProgress.join("\n")}\n\n**Em andamento:** ${enrollments.filter((item) => item.examStatus === "STARTING" || item.examStatus === "IN_PROGRESS").length} | **Concluídas:** ${enrollments.filter((item) => ["COMPLETED", "APPROVED", "FAILED"].includes(item.examStatus)).length}`)
     ] : []),
     ...(publication.startedAt || publication.proofStartedAt || publication.finishedAt || publication.status === "cancelled" ? [
       separator(),
       textBlock([
-        publication.startedAt ? `🟢 **Início:** ${new Date(publication.startedAt).toLocaleString("pt-BR")} por ${publication.startedBy ? `<@${publication.startedBy}>` : `<@${publication.instructorId}>`}` : null,
-        publication.proofStartedAt ? `📝 **Prova liberada:** ${new Date(publication.proofStartedAt).toLocaleString("pt-BR")} por ${publication.proofStartedBy ? `<@${publication.proofStartedBy}>` : `<@${publication.instructorId}>`}` : null,
-        publication.finishedAt ? `✅ **Finalização:** ${new Date(publication.finishedAt).toLocaleString("pt-BR")} por ${publication.finishedBy ? `<@${publication.finishedBy}>` : "-"}\n**Duração total:** ${formatCourseDuration(publication.startedAt, publication.finishedAt)}` : null,
-        publication.status === "cancelled" ? `🚫 **Cancelamento:** ${publication.cancelledBy ? `<@${publication.cancelledBy}>` : "-"}${publication.cancelledAt ? ` em ${new Date(publication.cancelledAt).toLocaleString("pt-BR")}` : ""}` : null
+        publication.startedAt ? `${icons.started} **Início:** ${new Date(publication.startedAt).toLocaleString("pt-BR")} por ${publication.startedBy ? `<@${publication.startedBy}>` : `<@${publication.instructorId}>`}` : null,
+        publication.proofStartedAt ? `${icons.exam} **Prova liberada:** ${new Date(publication.proofStartedAt).toLocaleString("pt-BR")} por ${publication.proofStartedBy ? `<@${publication.proofStartedBy}>` : `<@${publication.instructorId}>`}` : null,
+        publication.finishedAt ? `${icons.finished} **Finalização:** ${new Date(publication.finishedAt).toLocaleString("pt-BR")} por ${publication.finishedBy ? `<@${publication.finishedBy}>` : "-"}\n**Duração total:** ${formatCourseDuration(publication.startedAt, publication.finishedAt)}` : null,
+        publication.status === "cancelled" ? `${icons.cancelled} **Cancelamento:** ${publication.cancelledBy ? `<@${publication.cancelledBy}>` : "-"}${publication.cancelledAt ? ` em ${new Date(publication.cancelledAt).toLocaleString("pt-BR")}` : ""}` : null
       ].filter(Boolean).join("\n"))
     ] : []),
     studentActions,
@@ -2795,6 +2796,35 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
     components,
     footer: "© NexTech Systems"
   }) as ReturnType<typeof renderComponentsV2Panel>;
+}
+
+function coursePanelIcons(guild: Guild) {
+  return {
+    calendar: systemEmojiText("calendario", guild, guild.client),
+    cancelButton: systemComponentEmoji("exclamacao", guild, guild.client),
+    cancelled: systemStatusEmoji("danger", guild, guild.client),
+    capacity: systemEmojiText("prancheta", guild, guild.client),
+    clock: systemEmojiText("relogio", guild, guild.client),
+    code: systemEmojiText("folha", guild, guild.client),
+    course: systemEmojiText("trofeu", guild, guild.client),
+    department: systemEmojiText("alerta", guild, guild.client),
+    enterButton: systemComponentEmoji("visto", guild, guild.client),
+    exam: systemEmojiText("prancheta_caneta", guild, guild.client),
+    examButton: systemComponentEmoji("prancheta_caneta", guild, guild.client),
+    finishButton: systemComponentEmoji("visto", guild, guild.client),
+    finished: systemStatusEmoji("success", guild, guild.client),
+    instructor: systemEmojiText("homem", guild, guild.client),
+    leaveButton: systemComponentEmoji("porta", guild, guild.client),
+    location: systemEmojiText("discord", guild, guild.client),
+    startButton: systemComponentEmoji("acessar", guild, guild.client),
+    started: systemStatusEmoji("active", guild, guild.client),
+    status: systemEmojiText("prancheta_acertos", guild, guild.client),
+    students: systemEmojiText("homem", guild, guild.client)
+  };
+}
+
+function coursePanelCourseEmoji(course: Course, guild: Guild) {
+  return replaceSystemEmojis(course.emoji || systemEmojiText("trofeu", guild, guild.client), guild, guild.client).trim() || systemEmojiText("trofeu", guild, guild.client);
 }
 
 function textBlock(content: string) {
@@ -2836,7 +2866,7 @@ function coursePublicationAllowedMentions(roleId: string | null | undefined, all
   };
 }
 
-function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: { members: { cache: Map<string, GuildMember> } }, allowPublicationMention = false) {
+function coursePublicationInitialPost(course: Course, publication: CoursePublication, settings: CourseSettings, guild: Guild, allowPublicationMention = false) {
   return coursePublicationPanel(course, publication, settings, guild, [], allowPublicationMention);
 }
 
@@ -2930,14 +2960,14 @@ async function sendOrEditCoursePublicationPanel(
   course: Course,
   publication: CoursePublication,
   settings: CourseSettings,
-  guild: { members: { cache: Map<string, GuildMember> } }
+  guild: Guild
 ) {
   const payload = coursePublicationInitialPost(course, publication, settings, guild, !existingMessage);
   try {
     return existingMessage ? await existingMessage.edit(payload) : await channel.send(payload);
   } catch (error) {
     console.error(`[courses] failed to ${existingMessage ? "edit" : "send"} course panel publication=${publication.id} channel=${channel.id}; falling back to legacy panel:`, error instanceof Error ? error.stack ?? error.message : error);
-    const fallback = coursePublicationFallbackPanel(course, publication, settings, !existingMessage);
+    const fallback = coursePublicationFallbackPanel(course, publication, settings, guild, !existingMessage);
     if (existingMessage) {
       return existingMessage.edit(fallback).catch(() => channel.send(fallback));
     }
@@ -2945,7 +2975,7 @@ async function sendOrEditCoursePublicationPanel(
   }
 }
 
-function coursePublicationFallbackPanel(course: Course, publication: CoursePublication, settings: CourseSettings, allowPublicationMention = false) {
+function coursePublicationFallbackPanel(course: Course, publication: CoursePublication, settings: CourseSettings, guild: Guild, allowPublicationMention = false) {
   const full = publication.students.length >= publication.capacity;
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
@@ -2955,39 +2985,40 @@ function coursePublicationFallbackPanel(course: Course, publication: CoursePubli
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
   const students = publication.students.map((id, index) => `${index + 1}. <@${id}>`).join("\n") || "Nenhum aluno confirmado.";
   const publicationMentionRoleId = settings.publicationMentionRoleId;
+  const icons = coursePanelIcons(guild);
   return {
     allowedMentions: allowPublicationMention && publicationMentionRoleId ? { roles: [publicationMentionRoleId] } : { parse: [] as never[] },
     content: [
       publicationMentionRoleId ? `<@&${publicationMentionRoleId}>` : null,
-      `🛡 **North Police Department • Instructor Team**`,
+      `${icons.department} **North Police Department • Instructor Team**`,
       ``,
-      `📢 **${course.name}**`,
+      `${coursePanelCourseEmoji(course, guild)} **${course.name}**`,
       ``,
-      `📚 **Curso:** ${course.name}`,
-      `👨‍🏫 **Instrutor:** <@${publication.instructorId}>`,
-      `📅 **Data:** ${coursePublicationDateLabel(publication)}`,
-      `🕘 **Horário:** ${coursePublicationTimeLabel(publication)}`,
-      `📍 **Local:** ${coursePublicationDepartmentLabel(publication)}`,
-      `📌 **Status:** ${coursePublicationStatusDot(publication, full)} ${coursePublicationPlainStatusLabel(publication, full)}`,
-      `🎟 **Vagas:** ${publication.students.length}/${publication.capacity}`,
+      `${icons.course} **Curso:** ${course.name}`,
+      `${icons.instructor} **Instrutor:** <@${publication.instructorId}>`,
+      `${icons.calendar} **Data:** ${coursePublicationDateLabel(publication)}`,
+      `${icons.clock} **Horário:** ${coursePublicationTimeLabel(publication)}`,
+      `${icons.location} **Local:** ${coursePublicationDepartmentLabel(publication)}`,
+      `${icons.status} **Status:** ${coursePublicationStatusDot(publication, full, guild)} ${coursePublicationPlainStatusLabel(publication, full)}`,
+      `${icons.capacity} **Vagas:** ${publication.students.length}/${publication.capacity}`,
       ``,
-      `✅ **Confirmados (${publication.students.length}/${publication.capacity})**`,
+      `${icons.students} **Confirmados (${publication.students.length}/${publication.capacity})**`,
       students,
       ``,
-      `📌 Clique em Entrar para participar.`
+      `${icons.enterButton} Clique em Entrar para participar.`
     ].filter((line): line is string => line !== null).join("\n"),
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji("🟢").setLabel("Entrar").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
-        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji("⚫").setLabel("Sair").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
+        new ButtonBuilder().setCustomId(`course_join:${publication.id}`).setEmoji(icons.enterButton).setLabel("Entrar").setStyle(ButtonStyle.Success).setDisabled(!canJoin),
+        new ButtonBuilder().setCustomId(`course_leave:${publication.id}`).setEmoji(icons.leaveButton).setLabel("Sair").setStyle(ButtonStyle.Secondary).setDisabled(!canLeave)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji("🟦").setLabel("Iniciar").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
-        new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji("🟢").setLabel("Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam)
+        new ButtonBuilder().setCustomId(`course_start:${publication.id}`).setEmoji(icons.startButton).setLabel("Iniciar").setStyle(ButtonStyle.Primary).setDisabled(!canStartClass),
+        new ButtonBuilder().setCustomId(`course_exam_realize:${publication.id}`).setEmoji(icons.examButton).setLabel("Prova").setStyle(ButtonStyle.Success).setDisabled(!canStartExam)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji("🟠").setLabel("Finalizar").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
-        new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji("🔴").setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
+        new ButtonBuilder().setCustomId(`course_finish:${publication.id}`).setEmoji(icons.finishButton).setLabel("Finalizar").setStyle(ButtonStyle.Secondary).setDisabled(!canFinishClass),
+        new ButtonBuilder().setCustomId(`course_cancel:${publication.id}`).setEmoji(icons.cancelButton).setLabel("Cancelar").setStyle(ButtonStyle.Danger).setDisabled(!canCancel)
       )
     ]
   };
@@ -3191,7 +3222,20 @@ function coursePublicationPlainStatusLabel(publication: CoursePublication, full:
   return labels[publication.status];
 }
 
-function coursePublicationStatusDot(publication: CoursePublication, full: boolean) {
+function coursePublicationStatusDot(publication: CoursePublication, full: boolean, guild?: Guild | null) {
+  if (guild) {
+    if (publication.status === "open" && full) return systemStatusEmoji("warning", guild, guild.client);
+    const emojis: Record<CoursePublication["status"], string> = {
+      cancelled: systemStatusEmoji("danger", guild, guild.client),
+      closed: systemStatusEmoji("success", guild, guild.client),
+      finished: systemStatusEmoji("success", guild, guild.client),
+      open: systemStatusEmoji("pending", guild, guild.client),
+      proof: systemEmojiText("prancheta_caneta", guild, guild.client),
+      started: systemStatusEmoji("active", guild, guild.client)
+    };
+    return emojis[publication.status];
+  }
+
   if (publication.status === "open" && full) return "🟠";
   const dots: Record<CoursePublication["status"], string> = {
     cancelled: "🔴",
