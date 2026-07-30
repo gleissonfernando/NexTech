@@ -26,6 +26,13 @@ type DiscordMessagePayload = {
   components: Array<Record<string, unknown>>;
   flags: number;
 };
+type DiscordGuildEmoji = {
+  animated?: boolean | null;
+  available?: boolean | null;
+  id: string;
+  name?: string | null;
+};
+type PanelEmojiResolver = (value: string | null | undefined) => string;
 
 export function welcomePanelDescription(settings: GuildSettingsDto, userMention: string, channelId: string | null) {
   return memberPanelDescription({
@@ -93,7 +100,7 @@ function memberPanelDescription({
   ].join("\n");
 }
 
-export function createWelcomePanelEmbeds(settings: GuildSettingsDto, userMention: string) {
+export function createWelcomePanelEmbeds(settings: GuildSettingsDto, userMention: string, emojiResolver?: PanelEmojiResolver) {
   const displayChannelId = settings.welcomeDisplayChannelId ?? settings.welcomeChannelId;
   return createMemberPanelPayload(settings, userMention, {
     channelId: displayChannelId,
@@ -109,10 +116,10 @@ export function createWelcomePanelEmbeds(settings: GuildSettingsDto, userMention
     sections: settings.welcomeSections,
     subtitle: settings.welcomeSubtitle,
     title: settings.welcomeTitle
-  });
+  }, emojiResolver);
 }
 
-export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: string) {
+export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: string, emojiResolver?: PanelEmojiResolver) {
   const displayChannelId = settings.leaveDisplayChannelId ?? settings.leaveChannelId;
   return createMemberPanelPayload(settings, userMention, {
     channelId: displayChannelId,
@@ -128,7 +135,7 @@ export function createLeavePanelEmbed(settings: GuildSettingsDto, userMention: s
     sections: settings.leaveSections,
     subtitle: settings.leaveSubtitle,
     title: settings.leaveTitle
-  });
+  }, emojiResolver);
 }
 
 export async function saveWelcomeImage(guildId: string, buffer: Buffer, mimeType: string, options: { actorId?: string | null; botId?: string | null; guildName?: string | null; previousUrl?: string | null } = {}) {
@@ -140,20 +147,22 @@ export async function saveLeaveImage(guildId: string, buffer: Buffer, mimeType: 
 }
 
 export async function sendWelcomePanelToDiscord(settings: GuildSettingsDto, userMention: string, botToken?: string | null) {
+  const emojiResolver = await createPanelEmojiResolver(settings.guildId, botToken);
   await sendMemberPanelToDiscord({
     botToken,
     channelId: settings.welcomeChannelId,
-    payload: createWelcomePanelEmbeds(settings, userMention),
+    payload: createWelcomePanelEmbeds(settings, userMention, emojiResolver),
     missingChannelMessage: "Selecione o canal onde o painel será enviado.",
     testErrorLabel: "boas-vindas"
   });
 }
 
 export async function sendLeavePanelToDiscord(settings: GuildSettingsDto, userMention: string, botToken?: string | null) {
+  const emojiResolver = await createPanelEmojiResolver(settings.guildId, botToken);
   await sendMemberPanelToDiscord({
     botToken,
     channelId: settings.leaveChannelId,
-    payload: createLeavePanelEmbed(settings, userMention),
+    payload: createLeavePanelEmbed(settings, userMention, emojiResolver),
     missingChannelMessage: "Selecione o canal onde o painel de saída será enviado.",
     testErrorLabel: "saida"
   });
@@ -230,7 +239,8 @@ function createMemberPanelPayload(
     sections: GuildSettingsDto["welcomeSections"];
     subtitle: string | null;
     title: string | null;
-  }
+  },
+  emojiResolver: PanelEmojiResolver = normalizePanelEmoji
 ): DiscordMessagePayload | null {
   const variables: Record<"botName" | "channel" | "memberCount" | "server" | "user" | "username", string> = {
     botName: "Bot",
@@ -250,7 +260,7 @@ function createMemberPanelPayload(
   const rules = formatRuleLines(renderTemplate(input.rules, variables));
   const channelLabel = renderTemplate(input.channelLabel, variables);
   const footerText = renderTemplate(input.footerText, variables);
-  const customSections = normalizePanelSections(input.sections, variables);
+  const customSections = normalizePanelSections(input.sections, variables, emojiResolver);
   const components: Array<Record<string, unknown>> = [];
 
   if (imageUrl && ["top", "banner"].includes(imagePosition)) {
@@ -354,14 +364,18 @@ function renderTemplate(value: string | null | undefined, variables: Record<"bot
     .replace(/\{channel\}/gi, variables.channel);
 }
 
-function normalizePanelSections(sections: GuildSettingsDto["welcomeSections"], variables: Record<"botName" | "channel" | "memberCount" | "server" | "user" | "username", string>) {
+function normalizePanelSections(
+  sections: GuildSettingsDto["welcomeSections"],
+  variables: Record<"botName" | "channel" | "memberCount" | "server" | "user" | "username", string>,
+  emojiResolver: PanelEmojiResolver
+) {
   return (sections ?? [])
     .filter((section) => section.enabled !== false && section.title?.trim() && section.description?.trim())
     .sort((left, right) => left.order - right.order)
     .slice(0, 6)
     .map((section) => ({
       description: renderTemplate(section.description, variables),
-      emoji: normalizePanelEmoji(section.emoji),
+      emoji: emojiResolver(section.emoji),
       title: renderTemplate(section.title, variables)
     }))
     .filter((section) => section.title || section.description);
@@ -371,6 +385,64 @@ function normalizePanelEmoji(value: string | null | undefined) {
   const normalized = value?.trim() ?? "";
   if (!normalized) return "";
   return normalizeFixedSystemEmojiText(/^:/.test(normalized) || /^<a?:/i.test(normalized) ? normalized : `:${normalized}:`);
+}
+
+async function createPanelEmojiResolver(guildId: string, botToken?: string | null): Promise<PanelEmojiResolver> {
+  const token = botToken || env.DISCORD_BOT_TOKEN;
+  if (!token) return normalizePanelEmoji;
+
+  const emojis = await fetchGuildEmojis(guildId, token).catch(() => []);
+  if (!emojis.length) return normalizePanelEmoji;
+
+  const byId = new Map(emojis.filter((emoji) => emoji.available !== false).map((emoji) => [emoji.id, emoji]));
+  const byName = new Map<string, DiscordGuildEmoji>();
+  for (const emoji of emojis) {
+    if (emoji.available === false || !emoji.name) continue;
+    byName.set(emoji.name.toLowerCase(), emoji);
+  }
+
+  return (value) => {
+    const normalized = value?.trim() ?? "";
+    if (!normalized) return "";
+
+    const fixed = normalizePanelEmoji(normalized);
+    const explicit = fixed.match(/^<(a?):([a-zA-Z0-9_]{2,32}):(\d{5,32})>$/);
+    if (explicit) {
+      const byExactId = byId.get(explicit[3] ?? "");
+      if (byExactId) return emojiMarkdown(byExactId);
+
+      const byFixedName = byName.get((explicit[2] ?? "").toLowerCase());
+      if (byFixedName) return emojiMarkdown(byFixedName);
+    }
+
+    const candidateName = normalized.match(/^:([a-zA-Z0-9_]{2,64}):$/)?.[1] ?? normalized;
+    if (/^[a-zA-Z0-9_]{2,64}$/.test(candidateName)) {
+      const emoji = byName.get(candidateName.toLowerCase());
+      if (emoji) return emojiMarkdown(emoji);
+    }
+
+    return fixed;
+  };
+}
+
+async function fetchGuildEmojis(guildId: string, botToken: string) {
+  const response = await fetch(`${DISCORD_API_URL}/guilds/${guildId}/emojis`, {
+    headers: {
+      Authorization: `Bot ${botToken}`
+    }
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data as DiscordGuildEmoji[] : [];
+}
+
+function emojiMarkdown(emoji: DiscordGuildEmoji) {
+  const name = (emoji.name ?? "emoji").replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 32) || "emoji";
+  return `<${emoji.animated ? "a" : ""}:${name}:${emoji.id}>`;
 }
 
 function parseColor(value: string) {
