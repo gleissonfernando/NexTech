@@ -180,6 +180,23 @@ priceTablesRouter.put("/bot/:guildId/:tableId/panel-state", requireBot, async (r
   }
 });
 
+priceTablesRouter.post("/bot/:guildId/publish-active", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    const runtimeBotId = await assertRuntime(botId, guildId);
+    const dashboard = await listPriceTables(runtimeBotId, guildId);
+    const published: string[] = [];
+    for (const table of dashboard.tables.filter((item) => item.isActive && item.discordChannelId)) {
+      const requested = await requestPriceTablePublish(runtimeBotId, guildId, table.id, "bot-runtime");
+      if (requested) published.push(requested.id);
+    }
+    return res.json({ published });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 priceTablesRouter.post("/bot/:guildId/requests", requireBot, async (req, res, next) => {
   try {
     const guildId = snowflake.parse(req.params.guildId);

@@ -18,7 +18,7 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { PriceTable, PriceTableItem } from "./apiClient";
-import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { replaceSystemEmojis, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "price_table";
 
@@ -44,7 +44,7 @@ async function publishPriceTablePanel(guild: Guild, context: BotContext, tableId
   if (!channelId) return null;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isSendable()) return null;
-  const payload = createPanelPayload(table);
+  const payload = createPanelPayload(table, guild);
   if (table.messageId && "messages" in channel) {
     const message = await channel.messages.fetch(table.messageId).catch(() => null);
     if (message) {
@@ -57,34 +57,34 @@ async function publishPriceTablePanel(guild: Guild, context: BotContext, tableId
   return channel.id;
 }
 
-function createPanelPayload(table: PriceTable) {
+function createPanelPayload(table: PriceTable, guild: Guild) {
   const activeItems = table.items.filter((item) => item.active).sort((a, b) => a.order - b.order);
   const sections = table.panelSections;
   const emoji = {
-    advantages: systemEmojiText("trofeu_alt"),
-    products: systemEmojiText("dinheiro"),
-    support: systemEmojiText("interrogacao"),
-    systems: systemEmojiText("caixa")
+    advantages: systemEmojiText("trofeu_alt", guild, guild.client),
+    products: systemEmojiText("dinheiro", guild, guild.client),
+    support: systemEmojiText("interrogacao", guild, guild.client),
+    systems: systemEmojiText("caixa", guild, guild.client)
   };
-  const products = quoteLines(activeItems.slice(0, 20).map((item) => `- **${item.name}** — ${formatPrice(table, item)}${billingSuffix(item)}${item.description ? `\n${item.description}` : ""}`)) || "> - Consulte nossa equipe";
-  const list = (items: string[]) => quoteLines(items.filter(Boolean).map((item) => `- ${item}`)) || "> - Consulte nossa equipe";
-  const systemsText = quoteLines(sections.systemsText.split(/\r?\n/).filter(Boolean)) || "> - Consulte nossa equipe";
-  const supportText = quoteLines(sections.supportText.split(/\r?\n/).filter(Boolean)) || "> Abra um ticket para falar com nossa equipe.";
+  const products = quoteLines(activeItems.slice(0, 20).map((item) => `- **${replaceSystemEmojis(item.name, guild, guild.client)}** — ${formatPrice(table, item)}${billingSuffix(item)}${item.description ? `\n${replaceSystemEmojis(item.description, guild, guild.client)}` : ""}`)) || "> - Consulte nossa equipe";
+  const list = (items: string[]) => quoteLines(items.filter(Boolean).map((item) => `- ${replaceSystemEmojis(item, guild, guild.client)}`)) || "> - Consulte nossa equipe";
+  const systemsText = quoteLines(sections.systemsText.split(/\r?\n/).filter(Boolean).map((line) => replaceSystemEmojis(line, guild, guild.client))) || "> - Consulte nossa equipe";
+  const supportText = quoteLines(sections.supportText.split(/\r?\n/).filter(Boolean).map((line) => replaceSystemEmojis(line, guild, guild.client))) || "> Abra um ticket para falar com nossa equipe.";
   const separator = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large);
   const container = new ContainerBuilder().setAccentColor(parseColor(table.color)).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${emoji.products} ${table.title}\n${table.description ?? ""}`)
+    new TextDisplayBuilder().setContent(`# ${emoji.products} ${replaceSystemEmojis(table.title, guild, guild.client)}\n${replaceSystemEmojis(table.description ?? "", guild, guild.client)}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${emoji.products} **${sections.includedTitle}**\n${list(sections.includedItems)}`)
+    new TextDisplayBuilder().setContent(`${emoji.products} **${replaceSystemEmojis(sections.includedTitle, guild, guild.client)}**\n${list(sections.includedItems)}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${emoji.systems} **${sections.systemsTitle}**\n${systemsText}`)
+    new TextDisplayBuilder().setContent(`${emoji.systems} **${replaceSystemEmojis(sections.systemsTitle, guild, guild.client)}**\n${systemsText}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${emoji.products} **Planos**\n${products}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${emoji.advantages} **${sections.advantagesTitle}**\n${list(sections.advantages)}`)
+    new TextDisplayBuilder().setContent(`${emoji.advantages} **${replaceSystemEmojis(sections.advantagesTitle, guild, guild.client)}**\n${list(sections.advantages)}`)
   ).addSeparatorComponents(separator()).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${emoji.support} **${sections.supportTitle}**\n${supportText}`)
+    new TextDisplayBuilder().setContent(`${emoji.support} **${replaceSystemEmojis(sections.supportTitle, guild, guild.client)}**\n${supportText}`)
   );
-  if (table.footerText) container.addSeparatorComponents(separator()).addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${table.footerText}`));
+  if (table.footerText) container.addSeparatorComponents(separator()).addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${replaceSystemEmojis(table.footerText, guild, guild.client)}`));
   return { components: [container], flags: MessageFlags.IsComponentsV2 as const };
 }
 
