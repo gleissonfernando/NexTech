@@ -837,7 +837,7 @@ function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
   const protectedChannelIds = runtime.protectionSettings?.protectedChannelIds ?? [];
 
   if (!protectedChannelIds.length) {
-    return false;
+    return true;
   }
 
   if (protectedChannelIds.includes(message.channelId)) {
