@@ -63,10 +63,6 @@ export async function prepareSafeBotWarning(interaction: ChatInputCommandInterac
     await interaction.reply({ content: "Não foi possível carregar o membro selecionado.", ephemeral: true });
     return;
   }
-  if (target.id === interaction.guild.ownerId || target.permissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({ content: "Donos do servidor e administradores não podem receber advertências do Safe Bot.", ephemeral: true });
-    return;
-  }
   const settings = await context.api.getSafeBotWarningSettings(interaction.guild.id);
   if (!settings.enabled || !settings.levels.length) {
     await interaction.reply({ content: "O sistema de advertências está desativado ou não possui níveis configurados.", ephemeral: true });
@@ -193,47 +189,50 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
   const level = warning.level;
   const configuredActions = level.actions?.length ? level.actions : [warning.configuredAction];
   const executed: string[] = [];
-  try {
-    for (const action of configuredActions) {
-    if (["timeout", "kick", "ban", "add_role", "remove_role"].includes(action)) assertTargetHierarchy(target);
-    if (action === "dm") await target.send(render(level.userMessage, warning, target, staff));
-    if (action === "channel_message" || action === "notify_staff") await sendConfiguredChannel(level, render(action === "notify_staff" ? level.staffMessage : level.userMessage, warning, target, staff), target);
-    if (action === "add_role") await target.roles.add(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
-    if (action === "remove_role") await target.roles.remove(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
-    if (action === "timeout") {
-      if (!target.moderatable) throw new Error("O bot não pode aplicar timeout neste membro por causa da hierarquia ou permissões do Discord.");
-      await target.timeout(level.durationSeconds! * 1000, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
-    }
-    if (action === "kick") {
-      if (!target.kickable) throw new Error("O bot não pode expulsar este membro por causa da hierarquia ou permissões do Discord.");
-      await target.kick(`Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
-    }
-    if (action === "ban") {
-      if (!target.bannable) throw new Error("O bot não pode banir este membro por causa da hierarquia ou permissões do Discord.");
-      await target.ban({ reason: `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}` });
-    }
-    if (action === "open_ticket") await openWarningTicket(level, warning, target, staff);
-    if (action === "block_channels") {
-      for (const channelId of level.targetChannelIds) {
-        const channel = await target.guild.channels.fetch(channelId).catch(() => null);
-        if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) throw new Error(`O canal configurado ${channelId} está indisponível.`);
-        await channel.permissionOverwrites.edit(target.id, { SendMessages: false, ViewChannel: false }, { reason: `Advertência Safe Bot #${warning.warningNumber}` });
-      }
-    }
-    if (action === "custom") await sendConfiguredChannel(level, render(level.customAction, warning, target, staff), target);
-    executed.push(actionLabel(action));
-    }
-    if (level.userMessage && !configuredActions.includes("dm") && !configuredActions.some((action) => ["kick", "ban"].includes(action))) await target.send(render(level.userMessage, warning, target, staff)).catch(() => null);
-    return { success: true, executedAction: executed.join(", "), error: null };
-  } catch (error) {
-    return { success: false, executedAction: executed.join(", ") || "Nenhuma", error: error instanceof Error ? error.message : String(error) };
-  }
-}
+  const errors: string[] = [];
 
-function assertTargetHierarchy(target: GuildMember) {
-  if (target.id === target.guild.ownerId || target.permissions.has(PermissionFlagsBits.Administrator)) throw new Error("Donos do servidor e administradores não podem receber esta ação.");
-  const me = target.guild.members.me;
-  if (!me || target.roles.highest.position >= me.roles.highest.position) throw new Error("O membro alvo está acima ou no mesmo nível do bot na hierarquia de cargos.");
+  for (const action of configuredActions) {
+    try {
+      if (action === "dm") await target.send(render(level.userMessage, warning, target, staff));
+      if (action === "channel_message" || action === "notify_staff") await sendConfiguredChannel(level, render(action === "notify_staff" ? level.staffMessage : level.userMessage, warning, target, staff), target);
+      if (action === "add_role") await target.roles.add(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
+      if (action === "remove_role") await target.roles.remove(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
+      if (action === "timeout") {
+        if (!target.moderatable) throw new Error("O Discord negou timeout neste membro por causa da hierarquia ou permissões.");
+        await target.timeout(level.durationSeconds! * 1000, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
+      }
+      if (action === "kick") {
+        if (!target.kickable) throw new Error("O Discord negou expulsar este membro por causa da hierarquia ou permissões.");
+        await target.kick(`Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
+      }
+      if (action === "ban") {
+        if (!target.bannable) throw new Error("O Discord negou banir este membro por causa da hierarquia ou permissões.");
+        await target.ban({ reason: `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}` });
+      }
+      if (action === "open_ticket") await openWarningTicket(level, warning, target, staff);
+      if (action === "block_channels") {
+        for (const channelId of level.targetChannelIds) {
+          const channel = await target.guild.channels.fetch(channelId).catch(() => null);
+          if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) throw new Error(`O canal configurado ${channelId} está indisponível.`);
+          await channel.permissionOverwrites.edit(target.id, { SendMessages: false, ViewChannel: false }, { reason: `Advertência Safe Bot #${warning.warningNumber}` });
+        }
+      }
+      if (action === "custom") await sendConfiguredChannel(level, render(level.customAction, warning, target, staff), target);
+      executed.push(actionLabel(action));
+    } catch (error) {
+      errors.push(`${actionLabel(action)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (level.userMessage && !configuredActions.includes("dm") && !configuredActions.some((action) => ["kick", "ban"].includes(action))) {
+    await target.send(render(level.userMessage, warning, target, staff)).catch(() => null);
+  }
+
+  return {
+    success: errors.length === 0,
+    executedAction: executed.join(", ") || "Nenhuma",
+    error: errors.length ? errors.join(" | ") : null
+  };
 }
 
 async function sendConfiguredChannel(level: SafeBotWarningLevel, content: string, target: GuildMember) {
