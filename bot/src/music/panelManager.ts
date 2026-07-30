@@ -10,6 +10,7 @@ import {
   type InteractionReplyOptions,
   type MessageCreateOptions
 } from "discord.js";
+import { fixedSystemEmojiText, type SystemEmojiKey } from "../config/systemEmojis";
 import type { MusicSession } from "./types";
 
 export function musicPanelPayload(session: MusicSession | null): MessageCreateOptions {
@@ -23,16 +24,16 @@ export function musicPanelPayload(session: MusicSession | null): MessageCreateOp
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
-          "# 🎵 Central de Música",
+          `# ${icon("trofeu")} Central de Música`,
           "Gerencie músicas, artistas, fila e reprodução diretamente pelo Discord.",
           "",
-          "🟢 **Online**",
-          `🎶 **Tocando agora:** ${status}`,
-          `📜 **Fila:** ${queueSize} música(s)`,
-          `🔊 **Volume:** ${volume}%`,
-          `🔁 **Loop:** ${loop}`,
-          `🔀 **Aleatório:** ${session?.shuffled ? "Ativado" : "Desativado"}`,
-          current ? `\n🎤 **Artista/Canal:** ${escapeMarkdown(current.author)}\n⏱️ **Duração:** ${formatDuration(current.durationMs)}\n👤 **Pedido por:** <@${current.requestedById}>` : ""
+          `${icon("liga")} **Online**`,
+          `${icon("trofeu")} **Tocando agora:** ${status}`,
+          `${icon("prancheta")} **Fila:** ${queueSize} música(s)`,
+          `${icon("engrenagem")} **Volume:** ${volume}%`,
+          `${icon("relogio")} **Loop:** ${loop}`,
+          `${icon("acessar")} **Aleatório:** ${session?.shuffled ? "Ativado" : "Desativado"}`,
+          current ? `\n${icon("homem")} **Artista/Canal:** ${escapeMarkdown(current.author)}\n${icon("relogio")} **Duração:** ${formatDuration(current.durationMs)}\n${icon("homem")} **Pedido por:** <@${current.requestedById}>` : ""
         ].filter(Boolean).join("\n")
       )
     );
@@ -47,21 +48,21 @@ export function musicPanelPayload(session: MusicSession | null): MessageCreateOp
 
   container.addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        button("music_play", "🎶 Tocar", ButtonStyle.Primary),
-        button("music_artist", "🎤 Cantor", ButtonStyle.Primary),
-        button("music_queue:0", "📜 Fila", ButtonStyle.Secondary),
-        button("music_pause", "⏸️ Pausar", ButtonStyle.Secondary),
-        button("music_resume", "▶️ Continuar", ButtonStyle.Success)
+        button("music_play", "Tocar", ButtonStyle.Primary, false, "trofeu"),
+        button("music_artist", "Cantor", ButtonStyle.Primary, false, "homem"),
+        button("music_queue:0", "Fila", ButtonStyle.Secondary, false, "prancheta"),
+        button("music_pause", "Pausar", ButtonStyle.Secondary, false, "relogio"),
+        button("music_resume", "Continuar", ButtonStyle.Success, false, "liga")
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        button("music_skip", "⏭️ Pular", ButtonStyle.Secondary),
-        button("music_loop", "🔁 Loop", ButtonStyle.Secondary),
-        button("music_shuffle", "🔀 Aleatório", ButtonStyle.Secondary),
-        button("music_stop", "⏹️ Parar", ButtonStyle.Danger)
+        button("music_skip", "Pular", ButtonStyle.Secondary, false, "acessar"),
+        button("music_loop", "Loop", ButtonStyle.Secondary, false, "relogio"),
+        button("music_shuffle", "Aleatório", ButtonStyle.Secondary, false, "acessar"),
+        button("music_stop", "Parar", ButtonStyle.Danger, false, "porta")
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        button("music_volume_down", "🔉 Volume -", ButtonStyle.Secondary),
-        button("music_volume_up", "🔊 Volume +", ButtonStyle.Secondary)
+        button("music_volume_down", "Volume -", ButtonStyle.Secondary, false, "porta"),
+        button("music_volume_up", "Volume +", ButtonStyle.Secondary, false, "mais")
       )
     );
 
@@ -73,7 +74,7 @@ export function musicPanelPayload(session: MusicSession | null): MessageCreateOp
 
 export function queueReplyPayload(session: MusicSession | null, requestedPage: number): InteractionReplyOptions {
   const tracks = [...(session?.current ? [session.current] : []), ...(session?.queue ?? [])];
-  if (!tracks.length) return { content: "📭 A fila está vazia.", ephemeral: true };
+  if (!tracks.length) return { content: `${icon("caixa")} A fila está vazia.`, ephemeral: true };
 
   const pageCount = Math.max(1, Math.ceil(tracks.length / 10));
   const page = Math.max(0, Math.min(pageCount - 1, requestedPage));
@@ -81,12 +82,12 @@ export function queueReplyPayload(session: MusicSession | null, requestedPage: n
   const container = new ContainerBuilder()
     .setAccentColor(0x2563eb)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent([
-      `# 📜 Fila de músicas — ${page + 1}/${pageCount}`,
-      ...pageTracks.map((track, index) => `${page * 10 + index + 1}. 🎵 **${escapeMarkdown(track.title)}** — <@${track.requestedById}>`)
+      `# ${icon("prancheta")} Fila de músicas — ${page + 1}/${pageCount}`,
+      ...pageTracks.map((track, index) => `${page * 10 + index + 1}. ${icon("trofeu")} **${escapeMarkdown(track.title)}** — <@${track.requestedById}>`)
     ].join("\n")))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      button(`music_queue:${page - 1}`, "⬅️ Voltar", ButtonStyle.Secondary, page === 0),
-      button(`music_queue:${page + 1}`, "➡️ Próxima", ButtonStyle.Secondary, page >= pageCount - 1)
+      button(`music_queue:${page - 1}`, "Voltar", ButtonStyle.Secondary, page === 0, "voltar"),
+      button(`music_queue:${page + 1}`, "Próxima", ButtonStyle.Secondary, page >= pageCount - 1, "acessar")
     ));
 
   return {
@@ -111,8 +112,14 @@ export function formatDuration(durationMs: number) {
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function button(customId: string, label: string, style: ButtonStyle, disabled = false) {
-  return new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style).setDisabled(disabled);
+function button(customId: string, label: string, style: ButtonStyle, disabled = false, emoji?: SystemEmojiKey) {
+  const builder = new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style).setDisabled(disabled);
+  if (emoji) builder.setEmoji(icon(emoji));
+  return builder;
+}
+
+function icon(key: SystemEmojiKey) {
+  return fixedSystemEmojiText(key);
 }
 
 function loopLabel(mode: MusicSession["loopMode"]) {

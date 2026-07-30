@@ -22,6 +22,7 @@ import {
 import type { BotContext } from "../types";
 import type { SalesTicket, SalesTicketSettings, SalesTicketType } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "sales_ticket";
 
@@ -76,7 +77,7 @@ async function publishSalesTicketPanel(guild: Guild, context: BotContext) {
   if (!channelId) return null;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isSendable() || !("messages" in channel)) return null;
-  const payload = createPublicPanel(runtime.settings, runtime.types);
+  const payload = createPublicPanel(runtime.settings, runtime.types, guild);
   if (runtime.settings.panelMessageId) {
     const previous = await channel.messages.fetch(runtime.settings.panelMessageId).catch(() => null);
     if (previous) {
@@ -89,7 +90,7 @@ async function publishSalesTicketPanel(guild: Guild, context: BotContext) {
   return message.id;
 }
 
-function createPublicPanel(settings: SalesTicketSettings, types: SalesTicketType[]) {
+function createPublicPanel(settings: SalesTicketSettings, types: SalesTicketType[], guild: Guild) {
   const activeTypes = types.filter((type) => type.active).sort((a, b) => a.order - b.order).slice(0, 25);
   const select = new StringSelectMenuBuilder()
     .setCustomId(`${PREFIX}:open`)
@@ -109,9 +110,10 @@ function createPublicPanel(settings: SalesTicketSettings, types: SalesTicketType
     actions: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
     description: settings.panelDescription || "Selecione abaixo o tipo de atendimento de vendas que deseja abrir.",
     footer: "NexTech • Sistema de Vendas • Tickets exclusivos",
+    guild,
     image: settings.panelImageUrl ? { imageEnabled: true, imagePosition: "banner", imageUrl: settings.panelImageUrl } : null,
     moduleId: "sales-tickets",
-    title: settings.panelTitle || "Sistema de Tickets de Vendas"
+    title: settings.panelTitle || `${systemEmojiText("prancheta", guild)} Sistema de Tickets de Vendas`
   });
 }
 
@@ -127,7 +129,7 @@ async function openSalesTicket(interaction: StringSelectMenuInteraction, context
   });
   const channel = await createTicketChannel(interaction.guild, runtime.settings, runtime.type, runtime.ticket, interaction.user.id);
   await context.api.updateSalesTicketChannel(interaction.guild.id, runtime.ticket.id, channel.id);
-  await channel.send(createTicketMessage(runtime.settings, runtime.type, { ...runtime.ticket, channelId: channel.id }, interaction.user.id));
+  await channel.send(createTicketMessage(runtime.settings, runtime.type, { ...runtime.ticket, channelId: channel.id }, interaction.user.id, interaction.guild));
   await interaction.editReply(`Ticket de vendas aberto: <#${channel.id}>.`);
 }
 
@@ -158,13 +160,13 @@ function buildTicketOverwrites(guild: Guild, type: SalesTicketType, userId: stri
   ];
 }
 
-function createTicketMessage(settings: SalesTicketSettings, type: SalesTicketType, ticket: SalesTicket, userId: string) {
+function createTicketMessage(settings: SalesTicketSettings, type: SalesTicketType, ticket: SalesTicket, userId: string, guild: Guild) {
   const content = renderTemplate(type.initialMessage, userId, ticket.userName ?? userId, type.name);
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:claim:${ticket.id}`).setEmoji("🙋").setLabel("Assumir Atendimento").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:add_member:${ticket.id}`).setEmoji("➕").setLabel("Adicionar Membro").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:remove_member:${ticket.id}`).setEmoji("➖").setLabel("Remover Membro").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:close:${ticket.id}`).setEmoji("🔒").setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`${PREFIX}:claim:${ticket.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Assumir Atendimento").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:add_member:${ticket.id}`).setEmoji(systemComponentEmoji("mais", guild)).setLabel("Adicionar Membro").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove_member:${ticket.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Remover Membro").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:close:${ticket.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
   );
   const mentionRoleId = type.mentionRoleId;
   const supportMention = mentionRoleId ? `<@&${mentionRoleId}>` : "";
@@ -178,8 +180,9 @@ function createTicketMessage(settings: SalesTicketSettings, type: SalesTicketTyp
       `**ID:** \`${ticket.id}\``
     ],
     footer: "NexTech • Ticket exclusivo de vendas",
+    guild,
     moduleId: "sales-tickets",
-    title: `${type.emoji ?? "🎫"} ${type.name}`
+    title: `${type.emoji ?? systemEmojiText("prancheta", guild)} ${type.name}`
   });
 
   return {

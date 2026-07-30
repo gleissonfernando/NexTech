@@ -1,6 +1,7 @@
-import { MessageFlags } from "discord.js";
+import { MessageFlags, type Guild } from "discord.js";
 import { env } from "../config/env";
 import { getRuntimeFooter } from "./footerRuntimeService";
+import { replaceSystemEmojis } from "./systemEmojiService";
 
 export type PanelVisualPosition = "banner" | "thumbnail" | "top" | "below_title" | "middle" | "bottom" | "side" | "footer" | "before_buttons" | "below_text" | "above_buttons" | "none";
 const MAX_V2_COMPONENTS = 40;
@@ -56,6 +57,7 @@ export function renderComponentsV2Panel(input: {
   moduleId?: string;
   title: string;
 }) {
+  const guild = isGuild(input.guild) ? input.guild : null;
   const requestedMediaUrl = input.image?.imageEnabled ? resolvePanelImageUrl(input.image.imageUrl ?? null, input.image) : null;
   const requestedPosition = requestedMediaUrl ? normalizePosition(input.image?.imagePosition) : "none";
   const isVideo = Boolean(requestedMediaUrl && isVideoMedia(input.image, requestedMediaUrl));
@@ -79,14 +81,14 @@ export function renderComponentsV2Panel(input: {
     .map((url) => mediaBlock(url, input.title));
   const position = imageUrl ? requestedPosition : extraMedia.length ? "banner" : "none";
   const actions = input.actions ?? [];
-  const fields = input.fields ?? [];
+  const fields = (input.fields ?? []).map((field) => normalizePanelText(field, guild));
   const components: unknown[] = [];
   const mediaUrl = imageUrl && isVideo && posterUrl ? posterUrl : imageUrl;
   const media = mediaUrl ? mediaBlock(mediaUrl, input.title) : null;
   const thumbnailUrl = isVideo ? posterUrl : imageUrl;
   const useThumbnailLayout = Boolean(media && thumbnailUrl && ["thumbnail", "side"].includes(position));
   const effectivePosition = videoFooterPosition ? "bottom" : position;
-  const titleText = `# ${input.title}\n${input.description}`;
+  const titleText = `# ${normalizePanelText(input.title, guild)}\n${normalizePanelText(input.description, guild)}`;
   const pushMedia = () => {
     if (media) components.push(media);
     components.push(...extraMedia);
@@ -209,6 +211,8 @@ export function resolvePanelImageUrl(value: string | null, media?: Pick<PanelVis
 function mediaBlock(url: string, description: string) { return { type: 12, items: [{ media: { url }, description }] }; }
 function separatorComponent() { return { type: 14, divider: true, spacing: 1 }; }
 function normalizePosition(position: PanelVisualPosition | undefined): PanelVisualPosition { return position && position !== "none" ? position : "none"; }
+function normalizePanelText(value: string, guild: Guild | null) { return guild ? replaceSystemEmojis(value, guild, guild.client) : value; }
+function isGuild(value: unknown): value is Guild { return Boolean(value && typeof value === "object" && "emojis" in value && "client" in value); }
 
 function hasPanelBody(input: { actions: unknown[]; blockComponents: unknown[]; extraMedia: unknown[]; fields: string[]; media: unknown | null }) {
   return Boolean(input.media || input.extraMedia.length || input.blockComponents.length || input.fields.some((field) => field.trim()) || input.actions.length);

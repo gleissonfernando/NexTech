@@ -24,6 +24,7 @@ import {
 import { isBotModuleEnabled, setRuntimeEnabledModules } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
 import type { FactionChestLog, FactionChestSettings } from "./apiClient";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const MODULE_ID = "faction-chest";
 const PREFIX = "faction_chest";
@@ -251,8 +252,8 @@ async function submitMovement(interaction: ModalSubmitInteraction, context: BotC
 function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
   const embed = new EmbedBuilder()
     .setColor(parseColor(settings.color))
-    .setTitle(`📦 ${settings.systemName}`)
-    .setDescription([
+    .setTitle(`${systemEmojiText("caixa", guild)} ${settings.systemName}`)
+    .setDescription(replaceSystemEmojis([
       "🧾 **Sistema de registro manual do baú**",
       "",
       "• Informe exatamente o item e a quantidade Adicionada/Retirada do baú",
@@ -264,7 +265,7 @@ function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
       "",
       "➖ **Remover**",
       "Para remover um item no baú, clique em **Remover**."
-    ].join("\n"))
+    ].join("\n"), guild))
     .setFooter({ text: "BalaCloud — Todos os direitos reservados" });
 
   const thumbnail = settings.panelImageUrl || guild.iconURL({ size: 128 });
@@ -272,8 +273,8 @@ function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
 
   const rows = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar").setEmoji("➕").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover").setEmoji("➖").setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar").setEmoji(systemComponentEmoji("mais", guild)).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Danger)
     )
   ];
 
@@ -284,14 +285,14 @@ function movementLogPayload(settings: FactionChestSettings, log: FactionChestLog
   const adding = log.action === "add";
   const embed = new EmbedBuilder()
     .setColor(adding ? 0x22c55e : 0xef4444)
-    .setTitle(`📦 ${settings.systemName} — ${adding ? "ADIÇÃO" : "REMOÇÃO"}`)
-    .setDescription([
+    .setTitle(`${systemEmojiText("caixa", guild)} ${settings.systemName} — ${adding ? "ADIÇÃO" : "REMOÇÃO"}`)
+    .setDescription(replaceSystemEmojis([
       `${adding ? "➕" : "➖"} **Ação:** ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
       `📝 **Item:** ${log.itemName}`,
       `🧾 **Quantidade:** ${log.quantity}`,
       `📋 **Motivo:** ${log.reason || "-"}`,
       `👤 **Registrado por:** ${log.actorName} | ${log.actorId}`
-    ].join("\n"))
+    ].join("\n"), guild))
     .setFooter({ text: "BalaCloud — Todos os direitos reservados" })
     .setTimestamp(new Date(log.createdAt));
 
@@ -303,7 +304,7 @@ function movementLogPayload(settings: FactionChestSettings, log: FactionChestLog
 function chestConfigPanel(settings: FactionChestSettings, ephemeral: boolean): any {
   const embed = new EmbedBuilder()
     .setColor(parseColor(settings.color))
-    .setTitle("📦 Sistema de Baú")
+    .setTitle(`${systemEmojiText("caixa")} Sistema de Baú`)
     .setDescription([
       `**Status:** ${settings.enabled ? "Ativo" : "Inativo"}`,
       `**Painel:** ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "não configurado"}`,
@@ -316,7 +317,7 @@ function chestConfigPanel(settings: FactionChestSettings, ephemeral: boolean): a
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_panel`).setPlaceholder("Canal onde será criado o painel").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_log`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:channel_audit`).setPlaceholder("Canal de auditoria").setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji("📌").setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId))
+    new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji(systemComponentEmoji("prancheta")).setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId))
   ];
 
   return { components: rows, embeds: [embed], flags: ephemeral ? MessageFlags.Ephemeral : undefined };

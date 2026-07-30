@@ -11,6 +11,7 @@ import {
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
 import type { BoosterSettings } from "./apiClient";
 import type { BotContext } from "../types";
+import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "booster";
 const ACCENT_FALLBACK = 0xffd500;
@@ -190,8 +191,8 @@ function buildBoostPayload(member: GuildMember, settings: BoosterSettings, boost
   const avatarBlock = settings.showAvatar ? [`**Booster**\n${member.user.globalName ?? member.user.username}`] : [];
   const actions = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:thanks`).setLabel("Agradecer").setEmoji("❤️").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${PREFIX}:benefits:${member.id}`).setLabel("Ver Benefícios").setEmoji("🚀").setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId(`${PREFIX}:thanks`).setLabel("Agradecer").setEmoji(systemComponentEmoji("CHATamor", member.guild)).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PREFIX}:benefits:${member.id}`).setLabel("Ver Benefícios").setEmoji(systemComponentEmoji("acessar", member.guild)).setStyle(ButtonStyle.Primary)
     )
   ];
 
@@ -206,7 +207,7 @@ function buildBoostPayload(member: GuildMember, settings: BoosterSettings, boost
       imagePosition: "banner",
       imageUrl: settings.bannerUrl
     } : null,
-    title: "Nova melhoria no servidor"
+    title: `${systemEmojiText("trofeu_alt", member.guild)} Nova melhoria no servidor`
   });
 }
 

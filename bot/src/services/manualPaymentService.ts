@@ -21,6 +21,7 @@ import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualPaymentOrder, ManualPaymentOrderStatus, ManualPaymentReceiptAttachment, ManualPaymentService, ManualPaymentSettings } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "manual_pay";
 const MAX_RECEIPT_SIZE = env.MANUAL_PAYMENT_MAX_RECEIPT_MB * 1024 * 1024;
@@ -345,7 +346,7 @@ async function publishManualPaymentPanel(guild: Guild, context: BotContext, fall
   if (!channelId) return null;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isSendable()) return null;
-  const payload = createSalesPanel(settings);
+  const payload = createSalesPanel(settings, guild);
   if (settings.salePanelMessageId && "messages" in channel) {
     const message = await channel.messages.fetch(settings.salePanelMessageId).catch(() => null);
     if (!message) return null;
@@ -357,14 +358,14 @@ async function publishManualPaymentPanel(guild: Guild, context: BotContext, fall
   return channel.id;
 }
 
-function createSalesPanel(settings: ManualPaymentSettings) {
+function createSalesPanel(settings: ManualPaymentSettings, guild: Guild) {
   const services = settings.services.filter((item) => item.active).sort((a, b) => a.order - b.order).slice(0, 10);
   const actions: ActionRowBuilder<ButtonBuilder>[] = [];
   for (let index = 0; index < services.length; index += 5) {
     actions.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       services.slice(index, index + 5).map((service) => new ButtonBuilder()
         .setCustomId(`${PREFIX}:buy:${service.id}`)
-        .setEmoji(serviceEmoji(service))
+        .setEmoji(serviceEmoji(service, guild))
         .setLabel(`Comprar ${limitButtonLabel(service.name)}`)
         .setStyle(ButtonStyle.Success))
     ));
@@ -377,12 +378,13 @@ function createSalesPanel(settings: ManualPaymentSettings) {
     fields: [
       "## 🛍️ Como comprar\n1️⃣ Escolha um serviço no catálogo.\n\n2️⃣ Clique no botão de compra.\n\n3️⃣ Um ticket privado será aberto automaticamente.\n\n4️⃣ Finalize o pagamento e envie o comprovante.",
       "## 🔒 Compra protegida\n• Atendimento feito em canal privado.\n\n• Pagamento manual via Pix.\n\n• Conferência realizada pela equipe.\n\n• Status atualizado dentro do ticket.",
-      ...(services.length ? services.map(createSalesServiceCard) : ["## 📦 Catálogo\nNenhum serviço ativo foi configurado para este painel."])
+      ...(services.length ? services.map((service) => createSalesServiceCard(service, guild)) : ["## 📦 Catálogo\nNenhum serviço ativo foi configurado para este painel."])
     ],
     footer: { text: "NexTech • Loja de Serviços\nCompra protegida • Atendimento Manual" },
+    guild,
     image: settings.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.bannerUrl } : null,
     moduleId: "manual-payments",
-    title: salePanelTitle(settings.salePanelTitle)
+    title: salePanelTitle(settings.salePanelTitle, guild)
   });
 }
 
@@ -405,7 +407,7 @@ async function startPurchase(interaction: ButtonInteraction, context: BotContext
   }
   const channel = await createPaymentChannel(interaction.guild, runtime.settings, order, interaction.user.id);
   const updated = await context.api.updateManualPaymentOrder(interaction.guild.id, order.id, { action: "payment_channel_created", paymentChannelId: channel.id });
-  const message = await channel.send(createPaymentPanel(runtime.settings, updated, service));
+  const message = await channel.send(createPaymentPanel(runtime.settings, updated, service, interaction.guild));
   await context.api.updateManualPaymentOrder(interaction.guild.id, order.id, { action: "payment_panel_sent", paymentMessageId: message.id });
   setTimeout(() => void expirePaymentChannel(interaction.guild!, context, updated.id), Math.max(5, runtime.settings.maxPaymentMinutes) * 60_000).unref();
   await interaction.editReply(`Pedido criado: <#${channel.id}>.`);
@@ -474,8 +476,8 @@ async function reconcileOpenPaymentChannelPrivacy(client: Client<true>, context:
   }
 }
 
-function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymentOrder, service?: ManualPaymentService | null) {
-  const visual = paymentStatusVisual(order);
+function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymentOrder, service?: ManualPaymentService | null, guild?: Guild | null) {
+  const visual = paymentStatusVisual(order, guild);
   const isFinal = FINAL_PAYMENT_STATUSES.has(order.status);
   const hasProof = Boolean(order.proofUrl || order.proofMessageId);
   const canAct = !isFinal && (["PENDING_PAYMENT", "REJECTED"].includes(order.status) || (order.status === "WAITING_STAFF_APPROVAL" && !order.proofMessageId));
@@ -490,54 +492,54 @@ function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymen
   const actions: ActionRowBuilder<ButtonBuilder>[] = [];
   if (shouldShowPaymentStep) {
     const paymentActionButtons = [
-      new ButtonBuilder().setCustomId(`${PREFIX}:copy_key:${order.id}`).setEmoji("🔵").setLabel("Copiar Chave Pix").setStyle(ButtonStyle.Primary).setDisabled(!pixKey),
+      new ButtonBuilder().setCustomId(`${PREFIX}:copy_key:${order.id}`).setEmoji(systemComponentEmoji("dinheiro", guild)).setLabel("Copiar Chave Pix").setStyle(ButtonStyle.Primary).setDisabled(!pixKey),
       ...(shouldShowPixCopyCode
-        ? [new ButtonBuilder().setCustomId(`${PREFIX}:copy_code:${order.id}`).setEmoji("🟣").setLabel("Copiar Código Pix").setStyle(ButtonStyle.Secondary)]
+        ? [new ButtonBuilder().setCustomId(`${PREFIX}:copy_code:${order.id}`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Copiar Código Pix").setStyle(ButtonStyle.Secondary)]
         : []),
-      new ButtonBuilder().setCustomId(`${PREFIX}:paid:${order.id}`).setEmoji("🟢").setLabel("Já fiz o pagamento").setStyle(ButtonStyle.Success).setDisabled(!canAct)
+      new ButtonBuilder().setCustomId(`${PREFIX}:paid:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Já fiz o pagamento").setStyle(ButtonStyle.Success).setDisabled(!canAct)
     ];
     actions.push(
       new ActionRowBuilder<ButtonBuilder>().addComponents(paymentActionButtons),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:refresh_payment:${order.id}`).setEmoji("🟠").setLabel("Atualizar Status").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_customer:${order.id}`).setEmoji("🔴").setLabel("Cancelar Pedido").setStyle(ButtonStyle.Danger).setDisabled(!canAct)
+        new ButtonBuilder().setCustomId(`${PREFIX}:refresh_payment:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Atualizar Status").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_customer:${order.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Cancelar Pedido").setStyle(ButtonStyle.Danger).setDisabled(!canAct)
       )
     );
   }
   if (canReviewProof) {
     actions.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:approve:${order.id}`).setEmoji("✅").setLabel("Confirmar Pagamento").setStyle(ButtonStyle.Success).setDisabled(!canReviewProof),
-      new ButtonBuilder().setCustomId(`${PREFIX}:reject:${order.id}`).setEmoji("❌").setLabel("Recusar Pagamento").setStyle(ButtonStyle.Danger).setDisabled(!canReviewProof),
-      new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji("🔄").setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary).setDisabled(!canRequestNewProof)
+      new ButtonBuilder().setCustomId(`${PREFIX}:approve:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar Pagamento").setStyle(ButtonStyle.Success).setDisabled(!canReviewProof),
+      new ButtonBuilder().setCustomId(`${PREFIX}:reject:${order.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Recusar Pagamento").setStyle(ButtonStyle.Danger).setDisabled(!canReviewProof),
+      new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary).setDisabled(!canRequestNewProof)
     ));
   } else if (canRequestNewProof) {
     actions.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji("🔄").setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary)
     ));
   }
   if (!isFinal && (hasProof || canFinish)) {
     actions.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:cancel_staff:${order.id}`).setEmoji("🚫").setLabel("Cancelar Compra").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setEmoji("✅").setLabel("Finalizar Atendimento").setStyle(ButtonStyle.Success).setDisabled(!canFinish)
+      new ButtonBuilder().setCustomId(`${PREFIX}:cancel_staff:${order.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Cancelar Compra").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Atendimento").setStyle(ButtonStyle.Success).setDisabled(!canFinish)
     ));
   }
   const paymentInstructions = service?.customText?.trim() || settings.paymentInstructions?.trim() || "Envie uma foto ou imagem do comprovante de pagamento.\n\nFormatos aceitos: PNG, JPG, JPEG ou WEBP.";
   const qrSection = settings.pixQrCodeUrl
-    ? "## 📱 QR Code\nEscaneie pelo app do banco ou use os botões abaixo."
+    ? `## ${systemEmojiText("discord", guild)} QR Code\nEscaneie pelo app do banco ou use os botões abaixo.`
     : null;
   const proofSection = [
     order.proofUrl ? `Comprovante: [abrir arquivo](${order.proofUrl})` : "Comprovante: aguardando envio.",
-    order.approvedAt ? `✅ Aprovado em: ${formatDateTime(order.approvedAt)}` : null,
-    order.approvedBy ? `👤 Responsável: <@${order.approvedBy}>` : null,
-    order.rejectionReason ? `📝 Motivo: ${limitText(order.rejectionReason, 500)}` : null
+    order.approvedAt ? `${systemEmojiText("visto", guild)} Aprovado em: ${formatDateTime(order.approvedAt)}` : null,
+    order.approvedBy ? `${systemEmojiText("homem", guild)} Responsável: <@${order.approvedBy}>` : null,
+    order.rejectionReason ? `${systemEmojiText("prancheta_caneta", guild)} Motivo: ${limitText(order.rejectionReason, 500)}` : null
   ].filter(Boolean).join("\n");
   const fields = [
-    `## 📦 Pedido\n**${formatOrderNumber(order)}** • <@${order.userId}>\n**${limitText(order.serviceName, 120)}**\n${category} • **${money(order.amount)}**\nStatus: **${visual.label}**`,
+    `## ${systemEmojiText("caixa", guild)} Pedido\n**${formatOrderNumber(order)}** • <@${order.userId}>\n**${limitText(order.serviceName, 120)}**\n${category} • **${money(order.amount)}**\nStatus: **${visual.label}**`,
     ...(shouldShowPaymentStep ? [createPaymentDataSection(settings, order, pixKey, shouldShowPixCopyCode ? explicitPixCopyCode : null)] : []),
     ...(shouldShowPaymentStep && qrSection ? [qrSection] : []),
-    ...(shouldShowPaymentStep ? [`## 📋 Próximo passo\n1. Faça o Pix.\n2. Clique em **Já fiz o pagamento**.\n3. Envie a imagem do comprovante neste canal.\n\nFormatos: **PNG, JPG, JPEG ou WEBP**.\n\n${limitText(paymentInstructions, 350)}`] : []),
-    `## 🧾 Comprovante\n${proofSection}`,
-    ...(canReviewProof || canFinish || canRequestNewProof ? ["## 🛠️ Equipe\nAções disponíveis nos botões abaixo conforme o status do pedido."] : [])
+    ...(shouldShowPaymentStep ? [`## ${systemEmojiText("prancheta", guild)} Próximo passo\n1. Faça o Pix.\n2. Clique em **Já fiz o pagamento**.\n3. Envie a imagem do comprovante neste canal.\n\nFormatos: **PNG, JPG, JPEG ou WEBP**.\n\n${limitText(paymentInstructions, 350)}`] : []),
+    `## ${systemEmojiText("folha", guild)} Comprovante\n${proofSection}`,
+    ...(canReviewProof || canFinish || canRequestNewProof ? [`## ${systemEmojiText("engrenagem", guild)} Equipe\nAções disponíveis nos botões abaixo conforme o status do pedido.`] : [])
   ];
   return renderComponentsV2Panel({
     accentColor: visual.color,
@@ -547,7 +549,8 @@ function createPaymentPanel(settings: ManualPaymentSettings, order: ManualPaymen
     footer: { text: `NexTech • ${formatDateTime(order.updatedAt)}` },
     image: shouldShowPaymentStep && settings.pixQrCodeUrl ? { imageEnabled: true, imagePosition: "bottom", imageUrl: settings.pixQrCodeUrl } : null,
     moduleId: "manual-payments",
-    title: "💳 Pagamento Manual"
+    guild,
+    title: `${systemEmojiText("dinheiro", guild)} Pagamento Manual`
   });
 }
 
@@ -583,8 +586,8 @@ async function refreshPaymentStatus(interaction: ButtonInteraction, context: Bot
   const runtime = await context.api.getManualPaymentRuntime(interaction.guild.id);
   const order = runtime.orders.find((item) => item.id === orderId);
   if (!order) return interaction.editReply("Pedido não encontrado.");
-  await interaction.message.edit(createPaymentPanel(runtime.settings, order, runtime.settings.services.find((item) => item.id === order.serviceId))).catch(() => null);
-  await interaction.editReply(`Status atualizado: ${paymentStatusVisual(order).label}.`);
+  await interaction.message.edit(createPaymentPanel(runtime.settings, order, runtime.settings.services.find((item) => item.id === order.serviceId), interaction.guild)).catch(() => null);
+  await interaction.editReply(`Status atualizado: ${paymentStatusVisual(order, interaction.guild).label}.`);
 }
 
 async function confirmPaymentMade(interaction: ButtonInteraction, context: BotContext) {
@@ -609,7 +612,7 @@ async function showCustomerCancelConfirm(interaction: ButtonInteraction) {
   await interaction.reply({
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_confirm:${orderId}`).setEmoji("🔴").setLabel("Confirmar cancelamento").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_confirm:${orderId}`).setEmoji(systemComponentEmoji("porta", interaction.guild)).setLabel("Confirmar cancelamento").setStyle(ButtonStyle.Danger)
       )
     ],
     content: "Tem certeza que deseja cancelar este pedido? Esta ação fechará o canal de pagamento.",
@@ -633,7 +636,7 @@ function createReceiptReceivedPanel(settings: ManualPaymentSettings, order: Manu
     accentColor: 0x22c55e,
     description: settings.customerReceiptMessage?.trim() || "Recebemos o seu comprovante de pagamento com sucesso.\n\nSeu pagamento foi encaminhado para análise da nossa equipe. Aguarde a conferência antes de realizar um novo envio.",
     fields: [
-      `## ✅ Comprovante recebido\nStatus: **Em análise**\nPedido: **${formatOrderNumber(order)}**\nEnviado em: ${formatDateTime(submittedAt.toISOString())}`
+      replaceSystemEmojis(`## ✅ Comprovante recebido\nStatus: **Em análise**\nPedido: **${formatOrderNumber(order)}**\nEnviado em: ${formatDateTime(submittedAt.toISOString())}`)
     ],
     footer: { text: "NexTech • Conferência manual de pagamento" },
     moduleId: "manual-payments",
@@ -659,14 +662,14 @@ async function sendStaffApprovalLog(guild: Guild, context: BotContext, settings:
     accentColor: 0xf59e0b,
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${order.id}`).setEmoji("✅").setLabel("Confirmar Pagamento").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${order.id}`).setEmoji("❌").setLabel("Recusar Pagamento").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setEmoji("🔍").setLabel("Abrir Pedido").setStyle(ButtonStyle.Link).setURL(order.paymentChannelId ? `https://discord.com/channels/${guild.id}/${order.paymentChannelId}` : `https://discord.com/channels/${guild.id}`)
+        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar Pagamento").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${order.id}`).setEmoji(systemComponentEmoji("exclamacao", guild)).setLabel("Recusar Pagamento").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setEmoji(systemComponentEmoji("interrogacao", guild)).setLabel("Abrir Pedido").setStyle(ButtonStyle.Link).setURL(order.paymentChannelId ? `https://discord.com/channels/${guild.id}/${order.paymentChannelId}` : `https://discord.com/channels/${guild.id}`)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji("🔄").setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_staff:${order.id}`).setEmoji("🚫").setLabel("Cancelar Compra").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setEmoji("✅").setLabel("Finalizar Atendimento").setStyle(ButtonStyle.Success).setDisabled(true)
+        new ButtonBuilder().setCustomId(`${PREFIX}:new_proof:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Solicitar Novo Comprovante").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel_staff:${order.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Cancelar Compra").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Atendimento").setStyle(ButtonStyle.Success).setDisabled(true)
       ),
       ...(pdfAttachments.length
         ? [new ActionRowBuilder<ButtonBuilder>().addComponents(pdfAttachments.slice(0, 5).map((attachment, index) => new ButtonBuilder().setLabel(`Abrir PDF ${index + 1}`).setStyle(ButtonStyle.Link).setURL(attachment.url)))]
@@ -737,28 +740,29 @@ async function createServiceChannel(guild: Guild, settings: ManualPaymentSetting
   }) as Promise<TextChannel>;
 }
 
-function createServicePanel(settings: ManualPaymentSettings, order: ManualPaymentOrder) {
+function createServicePanel(settings: ManualPaymentSettings, order: ManualPaymentOrder, guild?: Guild | null) {
   return renderComponentsV2Panel({
     accentColor: parseColor(settings.color),
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:send_data:${order.id}`).setLabel("Enviar dados").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status:IN_PROGRESS:${order.id}`).setLabel("Em produção").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status:WAITING_CUSTOMER:${order.id}`).setLabel("Aguardando cliente").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:status:DELIVERED:${order.id}`).setLabel("Marcar entregue").setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId(`${PREFIX}:send_data:${order.id}`).setEmoji(systemComponentEmoji("prancheta_caneta", guild)).setLabel("Enviar dados").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status:IN_PROGRESS:${order.id}`).setEmoji(systemComponentEmoji("engrenagem", guild)).setLabel("Em produção").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status:WAITING_CUSTOMER:${order.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Aguardando cliente").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:status:DELIVERED:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Marcar entregue").setStyle(ButtonStyle.Success)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setLabel("Acabou / Finalizar pedido").setStyle(ButtonStyle.Danger).setDisabled(order.status !== "DELIVERED"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:support:${order.id}`).setLabel("Abrir suporte").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:add_staff:${order.id}`).setLabel("Adicionar staff").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:remove_staff:${order.id}`).setLabel("Remover staff").setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`${PREFIX}:finish:${order.id}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Acabou / Finalizar pedido").setStyle(ButtonStyle.Danger).setDisabled(order.status !== "DELIVERED"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:support:${order.id}`).setEmoji(systemComponentEmoji("interrogacao", guild)).setLabel("Abrir suporte").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:add_staff:${order.id}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Adicionar staff").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:remove_staff:${order.id}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Remover staff").setStyle(ButtonStyle.Secondary)
       )
     ],
     description: `Pedido #${String(order.orderNumber).padStart(3, "0")} - ${statusLabel(order.status)}`,
     fields: [`Cliente: <@${order.userId}>\nServico: **${order.serviceName}**\nValor pago: **${money(order.amount)}**\nAprovado por: ${order.approvedBy ? `<@${order.approvedBy}>` : "staff"}`, "Cliente e equipe podem conversar neste canal até a entrega. Depois de finalizado, use apenas o sistema de ticket/suporte."],
     image: settings.bannerUrl ? { imageEnabled: true, imagePosition: "top", imageUrl: settings.bannerUrl } : null,
+    guild,
     moduleId: "manual-payments",
-    title: "Atendimento / Produção"
+    title: `${systemEmojiText("engrenagem", guild)} Atendimento / Produção`
   });
 }
 
@@ -769,7 +773,7 @@ async function setServiceStatus(interaction: ButtonInteraction, context: BotCont
   const runtime = await context.api.getManualPaymentRuntime(interaction.guild.id);
   if (!(await hasAnyRole(interaction.guild, interaction.user.id, runtime.settings.finalizeRoleIds))) return interaction.editReply("Você não pode atualizar este atendimento.");
   const order = await context.api.updateManualPaymentOrder(interaction.guild.id, orderId ?? "", { action: `status_${status}`, channelId: interaction.channelId, staffId: interaction.user.id, status: status as ManualPaymentOrderStatus });
-  await interaction.message.edit(createServicePanel(runtime.settings, order)).catch(() => null);
+  await interaction.message.edit(createServicePanel(runtime.settings, order, interaction.guild)).catch(() => null);
   await interaction.editReply(`Status atualizado para ${statusLabel(order.status)}.`);
 }
 
@@ -875,7 +879,7 @@ async function refreshPaymentPanel(guild: Guild, context: BotContext, settings: 
   const channel = await guild.channels.fetch(order.paymentChannelId).catch(() => null);
   if (!channel || !("messages" in channel)) return;
   const message = await channel.messages.fetch(order.paymentMessageId).catch(() => null);
-  if (message) await message.edit(createPaymentPanel(settings, order, settings.services.find((item) => item.id === order.serviceId))).catch(() => null);
+  if (message) await message.edit(createPaymentPanel(settings, order, settings.services.find((item) => item.id === order.serviceId), guild)).catch(() => null);
 }
 
 async function expirePaymentChannel(guild: Guild, context: BotContext, orderId: string) {
@@ -900,41 +904,41 @@ async function hasAnyRole(guild: Guild, userId: string, roleIds: string[]) {
   return member.permissions.has(PermissionFlagsBits.Administrator) || member.roles.cache.some((role) => roleIds.includes(role.id));
 }
 
-function createSalesServiceCard(service: ManualPaymentService) {
+function createSalesServiceCard(service: ManualPaymentService, guild?: Guild | null) {
   const description = service.description?.trim() || "Serviço disponível para compra.";
-  return `## ${serviceEmoji(service)} ${limitText(service.name, 100)}\n💰 Valor: **${money(service.amount)}**\n🏷️ Categoria: **${serviceCategoryLabel(service)}**\n📌 ${limitText(description, 450)}`;
+  return `## ${serviceEmoji(service, guild)} ${limitText(service.name, 100)}\n${systemEmojiText("dinheiro", guild)} Valor: **${money(service.amount)}**\n${systemEmojiText("prancheta", guild)} Categoria: **${serviceCategoryLabel(service)}**\n${systemEmojiText("mapa", guild)} ${limitText(description, 450)}`;
 }
 
-function salePanelTitle(value: string | null | undefined) {
+function salePanelTitle(value: string | null | undefined, guild?: Guild | null) {
   const title = value?.trim() || "Serviços disponíveis";
-  return /^[^\p{L}\p{N}]/u.test(title) ? title : `🛒 ${title}`;
+  return /^[^\p{L}\p{N}]/u.test(title) ? title : `${systemEmojiText("dinheiro", guild)} ${title}`;
 }
 
-function serviceEmoji(service: ManualPaymentService) {
+function serviceEmoji(service: ManualPaymentService, guild?: Guild | null) {
   const category = service.serviceType?.trim().toLowerCase();
-  if (category === "product") return "📦";
-  if (category === "subscription") return "🔁";
-  if (category === "custom") return "✨";
-  return "🛒";
+  if (category === "product") return systemComponentEmoji("caixa", guild);
+  if (category === "subscription") return systemComponentEmoji("relogio", guild);
+  if (category === "custom") return systemComponentEmoji("prancheta_acertos", guild);
+  return systemComponentEmoji("dinheiro", guild);
 }
 
 function limitButtonLabel(value: string) {
   return limitText(value, 58);
 }
 
-function paymentStatusVisual(order: ManualPaymentOrder) {
+function paymentStatusVisual(order: ManualPaymentOrder, guild?: Guild | null) {
   if (order.status === "FINISHED") {
     return {
       color: 0x22c55e,
       description: "O atendimento foi finalizado pela equipe.",
-      label: "✅ Atendimento Finalizado"
+      label: `${systemEmojiText("visto", guild)} Atendimento Finalizado`
     };
   }
   if (APPROVED_PAYMENT_STATUSES.has(order.status)) {
     return {
       color: 0x22c55e,
       description: "Pagamento confirmado!\n\nO ticket continuará aberto para atendimento, ativação ou entrega do serviço.",
-      label: "🟢 Pagamento Confirmado"
+      label: `${systemEmojiText("liga", guild)} Pagamento Confirmado`
     };
   }
   if (order.status === "WAITING_STAFF_APPROVAL") {
@@ -943,7 +947,7 @@ function paymentStatusVisual(order: ManualPaymentOrder) {
       description: order.proofUrl
         ? "Seu comprovante foi enviado.\n\nNossa equipe irá analisar em breve."
         : "Recebemos sua confirmação.\n\nEnvie o comprovante neste canal para nossa equipe analisar.",
-      label: order.proofUrl ? "🟡 Comprovante Enviado" : "🟡 Aguardando comprovante"
+      label: order.proofUrl ? `${systemEmojiText("relogio", guild)} Comprovante Enviado` : `${systemEmojiText("relogio", guild)} Aguardando comprovante`
     };
   }
   if (order.status === "REJECTED") {
@@ -951,26 +955,26 @@ function paymentStatusVisual(order: ManualPaymentOrder) {
       return {
         color: 0xf97316,
         description: "A equipe solicitou um novo comprovante.\n\nEnvie uma nova foto ou imagem neste canal.",
-        label: "🟠 Aguardando Novo Comprovante"
+        label: `${systemEmojiText("relogio", guild)} Aguardando Novo Comprovante`
       };
     }
     return {
       color: 0xef4444,
       description: "Não foi possível validar o pagamento.\n\nEnvie outro comprovante ou converse com a equipe neste ticket.",
-      label: "🔴 Pagamento Recusado"
+      label: `${systemEmojiText("exclamacao", guild)} Pagamento Recusado`
     };
   }
   if (["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_STAFF"].includes(order.status)) {
     return {
       color: 0xef4444,
       description: "Este pedido foi cancelado.",
-      label: "❌ Compra Cancelada"
+      label: `${systemEmojiText("exclamacao", guild)} Compra Cancelada`
     };
   }
   return {
     color: 0xf59e0b,
     description: "Estamos aguardando seu pagamento.",
-    label: "🟡 Aguardando pagamento"
+    label: `${systemEmojiText("relogio", guild)} Aguardando pagamento`
   };
 }
 

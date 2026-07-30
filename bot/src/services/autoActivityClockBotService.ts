@@ -25,6 +25,7 @@ import {
 } from "discord.js";
 import type { AutoActivityClockCity, AutoActivityClockDashboard, AutoActivityClockPanelState, AutoActivityClockRuntime, AutoActivityClockSettings } from "./apiClient";
 import type { BotCommand, BotContext } from "../types";
+import { replaceSystemEmojis, systemComponentEmoji } from "./systemEmojiService";
 
 const MODULE_ID = "auto-activity-clock";
 const PREFIX = "auto_activity_clock";
@@ -563,7 +564,7 @@ async function showLegacyReport(interaction: ChatInputCommandInteraction, contex
   const history = user ? dashboard.history.filter((item) => item.userId === user.id) : dashboard.history;
   const totalMs = history.reduce((total, item) => total + (item.durationMs ?? 0), 0);
   await interaction.reply({
-    ...autoPanelPayload(dashboard, user ? `Usuário: ${user}\nRegistros: **${history.length}**\nTotal: **${formatDuration(totalMs)}**` : null),
+    ...autoPanelPayload(dashboard, user ? `Usuário: ${user}\nRegistros: **${history.length}**\nTotal: **${formatDuration(totalMs)}**` : null, interaction.guild, context),
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   });
 }
@@ -583,7 +584,7 @@ async function panelPayload(guild: Guild, context: BotContext, dashboard: AutoAc
   const active = dashboard.active.find((item) => item.userId === context.client.user?.id);
   void active;
   const images = await loadPanelImages(guild.id, context);
-  const content = renderOperationalPanel(dashboard);
+  const content = replaceSystemEmojis(renderOperationalPanel(dashboard), guild, context.client);
   const payload = {
     components: [{
       type: 17,
@@ -592,10 +593,10 @@ async function panelPayload(guild: Guild, context: BotContext, dashboard: AutoAc
         ...images.map((url, index) => ({ type: 12, items: [{ media: { url }, description: `Imagem ${index + 1} do painel de ponto` }] })),
         { type: 10, content },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:enter`).setLabel("Entrar em Serviço").setEmoji("🟢").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`${PREFIX}:exit`).setLabel("Encerrar Serviço").setEmoji("🔴").setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(`${PREFIX}:mine`).setLabel("Consultar Pontos").setEmoji("📊").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar").setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId(`${PREFIX}:enter`).setLabel("Entrar em Serviço").setEmoji(systemComponentEmoji("liga", guild, context.client)).setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:exit`).setLabel("Encerrar Serviço").setEmoji(systemComponentEmoji("exclamacao", guild, context.client)).setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`${PREFIX}:mine`).setLabel("Consultar Pontos").setEmoji(systemComponentEmoji("prancheta_acertos", guild, context.client)).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar").setEmoji(systemComponentEmoji("relogio", guild, context.client)).setStyle(ButtonStyle.Primary)
         )
       ]
     }]
@@ -629,10 +630,8 @@ function renderOperationalPanel(dashboard: AutoActivityClockPanelState) {
   const activeContent = activeRows.length ? activeRows.join("\n") : "\nNenhum policial em serviço no momento.\n";
 
   return [
-    "```",
-    "╔════════════════════════════════════════════════════╗",
-    "                 🚔 POLICIAIS EM SERVIÇO",
-    "            Central Operacional • Tempo Real",
+    "## 🚔 POLICIAIS EM SERVIÇO",
+    "Central Operacional • Tempo Real",
     divider,
     "",
     `🟢 Em Serviço Agora: ${dashboard.active.length} ${dashboard.active.length === 1 ? "Policial" : "Policiais"}`,
@@ -644,9 +643,7 @@ function renderOperationalPanel(dashboard: AutoActivityClockPanelState) {
     "",
     "🟢 Entrar em Serviço",
     "🔴 Encerrar Serviço",
-    "",
-    "╚════════════════════════════════════════════════════╝",
-    "```"
+    ""
   ].join("\n");
 }
 
@@ -667,14 +664,14 @@ function configPayload(dashboard: AutoActivityClockDashboard) {
   };
 }
 
-function autoPanelPayload(dashboard: AutoActivityClockDashboard, extra: string | null) {
+function autoPanelPayload(dashboard: AutoActivityClockDashboard, extra: string | null, guild: Guild, context: BotContext) {
   return {
     components: [{
       type: 17,
       accent_color: ACCENT,
       components: [{
         type: 10,
-        content: `${renderOperationalPanel(dashboard)}${extra ? `\n\n${extra}` : ""}`
+        content: `${replaceSystemEmojis(renderOperationalPanel(dashboard), guild, context.client)}${extra ? `\n\n${extra}` : ""}`
       }]
     }]
   };

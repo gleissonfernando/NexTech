@@ -18,6 +18,7 @@ import type { BotCommand, BotContext } from "../types";
 import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./deletedMessageLogService";
 import type { VisibleMessageUser } from "./apiClient";
 import { getActiveTicketForMessageChannel } from "./ticketChannelGuard";
+import { systemComponentEmoji } from "./systemEmojiService";
 
 const MODULE_ID = "visible-message";
 const WEBHOOK_NAME = "NexTech Mensagem Visível";
@@ -249,10 +250,10 @@ function panelText(users: VisibleMessageUser[]) {
 
 function actionRow() {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Cadastrar Pessoa").setEmoji("➕").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover Pessoa").setEmoji("➖").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar").setEmoji("🔄").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:clear`).setLabel("Limpar Todos").setEmoji("🗑️").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Cadastrar Pessoa").setEmoji(systemComponentEmoji("mais")).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover Pessoa").setEmoji(systemComponentEmoji("porta")).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar").setEmoji(systemComponentEmoji("relogio")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:clear`).setLabel("Limpar Todos").setEmoji(systemComponentEmoji("perigo")).setStyle(ButtonStyle.Secondary)
   );
 }
 

@@ -19,6 +19,7 @@ import type { BotCommand, BotContext } from "../types";
 import type { MessageControlStatus, MessageControlUser } from "./apiClient";
 import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./deletedMessageLogService";
 import { getActiveTicketForMessageChannel } from "./ticketChannelGuard";
+import { systemComponentEmoji } from "./systemEmojiService";
 
 const MODULE_ID = "message-control";
 const PREFIX = "message_control";
@@ -373,18 +374,18 @@ function panelText(users: MessageControlUser[]) {
 
 function actionRow() {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar usuário").setEmoji("➕").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover usuário").setEmoji("➖").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`${PREFIX}:personal`).setLabel("Ativar pessoal").setEmoji("👤").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:team`).setLabel("Ativar oculto").setEmoji("🛡️").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Visualizar usuários").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar usuário").setEmoji(systemComponentEmoji("mais")).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover usuário").setEmoji(systemComponentEmoji("porta")).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`${PREFIX}:personal`).setLabel("Ativar pessoal").setEmoji(systemComponentEmoji("homem")).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:team`).setLabel("Ativar oculto").setEmoji(systemComponentEmoji("alerta")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Visualizar usuários").setEmoji(systemComponentEmoji("relogio")).setStyle(ButtonStyle.Secondary)
   );
 }
 
 function clearRow() {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:permissions`).setLabel("Permissões").setEmoji("⚙️").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:clear`).setLabel("Limpar Todos").setEmoji("🗑️").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:permissions`).setLabel("Permissões").setEmoji(systemComponentEmoji("engrenagem")).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:clear`).setLabel("Limpar Todos").setEmoji(systemComponentEmoji("perigo")).setStyle(ButtonStyle.Secondary)
   );
 }
 

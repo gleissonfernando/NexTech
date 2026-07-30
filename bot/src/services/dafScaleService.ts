@@ -405,7 +405,7 @@ function configPayload(state: DafScaleState, guild: Guild) {
     new ButtonBuilder().setCustomId(`${PREFIX}:toggle`).setLabel(s.enabled ? "Desativar" : "Ativar").setEmoji(s.enabled ? systemComponentEmoji("perigo", guild) : systemComponentEmoji("visto", guild)).setStyle(s.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`${PREFIX}:limits`).setLabel("Limites").setEmoji(systemComponentEmoji("engrenagem", guild)).setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel("Publicar painel").setEmoji(systemComponentEmoji("acessar", guild)).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:config`).setLabel("Atualizar").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:config`).setLabel("Atualizar").setEmoji(systemComponentEmoji("relogio", guild)).setStyle(ButtonStyle.Secondary)
   );
   return {
     components: [{
@@ -413,7 +413,7 @@ function configPayload(state: DafScaleState, guild: Guild) {
       accent_color: s.enabled ? 0x22c55e : 0xf59e0b,
       components: [
         { type: 10, content: [
-          `# 🚁 Configuração da Escala DAF`,
+          `# ${dafRoleEmoji("pilot", guild)} Configuração da Escala DAF`,
           `Status: ${s.enabled ? `${systemStatusEmoji("success", guild)} Ativa` : `${systemStatusEmoji("warning", guild)} Desativada`}`,
           `Painel: ${s.panelChannelId ? `<#${s.panelChannelId}>` : "não configurado"}`,
           `Logs: ${s.logChannelId ? `<#${s.logChannelId}>` : "não configurado"}`,
