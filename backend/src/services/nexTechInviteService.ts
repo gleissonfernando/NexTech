@@ -9,10 +9,11 @@ import {
 } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 
-export type NexTechInviteDto = Omit<MongoNexTechInvite, "_id" | "createdAt" | "expiresAt" | "updatedAt" | "usages"> & {
+export type NexTechInviteDto = Omit<MongoNexTechInvite, "_id" | "createdAt" | "expiresAt" | "lastAccessAt" | "updatedAt" | "usages"> & {
   createdAt: string;
   expiresAt: string | null;
   id: string;
+  lastAccessAt?: string | null;
   remainingUses: number | null;
   usages: Array<Omit<MongoNexTechInvite["usages"][number], "usedAt"> & { usedAt: string }>;
   updatedAt: string;
@@ -41,17 +42,57 @@ export type NexTechInviteDashboardDto = {
   };
 };
 
+export type PublicNexTechInvitePageDto = {
+  config: {
+    backgroundEffect: NonNullable<MongoNexTechInvite["backgroundEffect"]>;
+    backgroundImageUrl: string | null;
+    backgroundVideoUrl: string | null;
+    logoUrl: string | null;
+    overlayStyle: NonNullable<MongoNexTechInvite["overlayStyle"]>;
+    particleStyle: NonNullable<MongoNexTechInvite["particleStyle"]>;
+    primaryColor: string;
+    showInviteCode: boolean;
+    showMemberCount: boolean;
+    showOnlineCount: boolean;
+    showServerDescription: boolean;
+    showServerName: boolean;
+    showVerificationBadges: boolean;
+    theme: NonNullable<MongoNexTechInvite["landingPageTheme"]>;
+  };
+  discord: {
+    approximateMemberCount: number | null;
+    approximatePresenceCount: number | null;
+    bannerUrl: string | null;
+    code: string;
+    description: string | null;
+    features: string[];
+    guildId: string | null;
+    iconUrl: string | null;
+    name: string;
+    splashUrl: string | null;
+    vanityUrlCode: string | null;
+    verified: boolean;
+    partnered: boolean;
+  } | null;
+  invite: Pick<NexTechInviteDto, "clientName" | "code" | "customSlug" | "description" | "id" | "name" | "panelColor">;
+  redirectUrl: string;
+  slug: string;
+  valid: boolean;
+};
+
 export type SaveNexTechInviteInput = {
   adminChannelId?: string | null;
   alertChannelId?: string | null;
   bannerUrl?: string | null;
   blockUnknownInvites?: boolean;
   botId?: string | null;
+  backgroundEffect?: MongoNexTechInvite["backgroundEffect"] | null;
   buttonEmoji?: string | null;
   buttonLabel?: string | null;
   channelId?: string | null;
   clientName: string;
   code?: string | null;
+  customSlug?: string | null;
   description?: string | null;
   discordInviteId?: string | null;
   expiresAt?: string | null;
@@ -60,18 +101,58 @@ export type SaveNexTechInviteInput = {
   guildName?: string | null;
   imageUrl?: string | null;
   inviteUrl?: string | null;
+  landingPageEnabled?: boolean;
+  landingPageTheme?: MongoNexTechInvite["landingPageTheme"] | null;
   logChannelId?: string | null;
+  logoUrl?: string | null;
   maxUses?: number | null;
   name: string;
   notes?: string | null;
+  overlayStyle?: MongoNexTechInvite["overlayStyle"] | null;
+  particleStyle?: MongoNexTechInvite["particleStyle"] | null;
   panelChannelId?: string | null;
   panelColor?: string | null;
   panelTitle?: string | null;
   permissions?: Partial<Record<MongoNexTechInvitePermissionRole, string[]>>;
+  showInviteCode?: boolean;
+  showMemberCount?: boolean;
+  showOnlineCount?: boolean;
+  showServerDescription?: boolean;
+  showServerName?: boolean;
+  showVerificationBadges?: boolean;
   statsChannelId?: string | null;
   status?: MongoNexTechInviteStatus;
   videoUrl?: string | null;
 };
+
+type PublicViewInput = {
+  ip: string | null;
+  referrer: string | null;
+  source: string | null;
+  userAgent: string | null;
+};
+
+type DiscordInviteResponse = {
+  approximate_member_count?: number;
+  approximate_presence_count?: number;
+  code?: string;
+  expires_at?: string | null;
+  guild?: {
+    banner?: string | null;
+    description?: string | null;
+    features?: string[];
+    icon?: string | null;
+    id?: string;
+    name?: string;
+    splash?: string | null;
+    vanity_url_code?: string | null;
+  };
+};
+
+const BACKGROUND_EFFECTS = ["fixed", "parallax", "zoom", "blur"] as const;
+const LANDING_THEMES = ["discord", "nextech", "dark", "neon", "cyber", "gamer", "premium", "minimal", "modern"] as const;
+const OVERLAY_STYLES = ["black", "blue", "red", "gradient", "none"] as const;
+const PARTICLE_STYLES = ["none", "dots", "sparks", "neon", "smoke", "lines", "stars", "hex"] as const;
 
 type Actor = {
   id: string | null;
@@ -135,6 +216,7 @@ export async function createNexTechInvite(input: SaveNexTechInviteInput, actor: 
     bannerUrl: normalizeNullableUrl(input.bannerUrl),
     blockUnknownInvites: input.blockUnknownInvites ?? true,
     botId,
+    backgroundEffect: normalizeEnum(input.backgroundEffect, BACKGROUND_EFFECTS, "fixed"),
     buttonEmoji: normalizeNullableText(input.buttonEmoji, 32),
     buttonLabel: normalizeNullableText(input.buttonLabel, 40) ?? "Entrar",
     channelId: normalizeSnowflake(input.channelId),
@@ -144,6 +226,7 @@ export async function createNexTechInvite(input: SaveNexTechInviteInput, actor: 
     conversionCount: 0,
     createdAt: now,
     createdBy: actor.id,
+    customSlug: normalizeSlug(input.customSlug),
     description: normalizeNullableText(input.description, 1200),
     discordInviteId: normalizeNullableText(input.discordInviteId, 120),
     expiresAt: normalizeOptionalDate(input.expiresAt),
@@ -152,14 +235,30 @@ export async function createNexTechInvite(input: SaveNexTechInviteInput, actor: 
     guildName: normalizeNullableText(input.guildName, 120),
     imageUrl: normalizeNullableUrl(input.imageUrl),
     inviteUrl: normalizeInviteUrl(input.inviteUrl, code),
+    landingPageEnabled: input.landingPageEnabled ?? true,
+    landingPageTheme: normalizeEnum(input.landingPageTheme, LANDING_THEMES, "nextech"),
+    lastAccessAt: null,
+    lastAccess: null,
     logChannelId: normalizeSnowflake(input.logChannelId),
+    logoUrl: normalizeNullableUrl(input.logoUrl),
     maxUses: normalizeMaxUses(input.maxUses),
     name: normalizeText(input.name, 120),
     notes: normalizeNullableText(input.notes, 800),
+    overlayStyle: normalizeEnum(input.overlayStyle, OVERLAY_STYLES, "black"),
+    pageViews: 0,
+    appOpenClicks: 0,
+    browserOpenClicks: 0,
+    particleStyle: normalizeEnum(input.particleStyle, PARTICLE_STYLES, "hex"),
     panelChannelId: normalizeSnowflake(input.panelChannelId),
     panelColor: normalizeColor(input.panelColor),
     panelTitle: normalizeNullableText(input.panelTitle, 120) ?? "NEXTTECH",
     permissions: normalizePermissions(input.permissions),
+    showInviteCode: input.showInviteCode ?? true,
+    showMemberCount: input.showMemberCount ?? true,
+    showOnlineCount: input.showOnlineCount ?? true,
+    showServerDescription: input.showServerDescription ?? true,
+    showServerName: input.showServerName ?? true,
+    showVerificationBadges: input.showVerificationBadges ?? true,
     status: input.status ?? "active",
     statsChannelId: normalizeSnowflake(input.statsChannelId),
     updatedAt: now,
@@ -201,11 +300,13 @@ export async function updateNexTechInvite(inviteId: string, input: Partial<SaveN
   if (input.bannerUrl !== undefined) patch.bannerUrl = normalizeNullableUrl(input.bannerUrl);
   if (input.blockUnknownInvites !== undefined) patch.blockUnknownInvites = input.blockUnknownInvites;
   if (input.botId !== undefined) patch.botId = normalizeBotId(input.botId);
+  if (input.backgroundEffect !== undefined) patch.backgroundEffect = normalizeEnum(input.backgroundEffect, BACKGROUND_EFFECTS, "fixed");
   if (input.buttonEmoji !== undefined) patch.buttonEmoji = normalizeNullableText(input.buttonEmoji, 32);
   if (input.buttonLabel !== undefined) patch.buttonLabel = normalizeNullableText(input.buttonLabel, 40) ?? "Entrar";
   if (input.channelId !== undefined) patch.channelId = normalizeSnowflake(input.channelId);
   if (input.clientName !== undefined) patch.clientName = normalizeText(input.clientName, 120);
   if (input.code !== undefined) patch.code = normalizeInviteCode(input.code);
+  if (input.customSlug !== undefined) patch.customSlug = normalizeSlug(input.customSlug);
   if (input.description !== undefined) patch.description = normalizeNullableText(input.description, 1200);
   if (input.discordInviteId !== undefined) patch.discordInviteId = normalizeNullableText(input.discordInviteId, 120);
   if (input.expiresAt !== undefined) patch.expiresAt = normalizeOptionalDate(input.expiresAt);
@@ -217,14 +318,25 @@ export async function updateNexTechInvite(inviteId: string, input: Partial<SaveN
     patch.inviteUrl = normalizeInviteUrl(input.inviteUrl, patch.code ?? current.code);
     if (input.code === undefined) patch.code = normalizeInviteCode(inviteCodeFromUrl(input.inviteUrl)) || current.code;
   }
+  if (input.landingPageEnabled !== undefined) patch.landingPageEnabled = input.landingPageEnabled;
+  if (input.landingPageTheme !== undefined) patch.landingPageTheme = normalizeEnum(input.landingPageTheme, LANDING_THEMES, "nextech");
   if (input.logChannelId !== undefined) patch.logChannelId = normalizeSnowflake(input.logChannelId);
+  if (input.logoUrl !== undefined) patch.logoUrl = normalizeNullableUrl(input.logoUrl);
   if (input.maxUses !== undefined) patch.maxUses = normalizeMaxUses(input.maxUses);
   if (input.name !== undefined) patch.name = normalizeText(input.name, 120);
   if (input.notes !== undefined) patch.notes = normalizeNullableText(input.notes, 800);
+  if (input.overlayStyle !== undefined) patch.overlayStyle = normalizeEnum(input.overlayStyle, OVERLAY_STYLES, "black");
+  if (input.particleStyle !== undefined) patch.particleStyle = normalizeEnum(input.particleStyle, PARTICLE_STYLES, "hex");
   if (input.panelChannelId !== undefined) patch.panelChannelId = normalizeSnowflake(input.panelChannelId);
   if (input.panelColor !== undefined) patch.panelColor = normalizeColor(input.panelColor);
   if (input.panelTitle !== undefined) patch.panelTitle = normalizeNullableText(input.panelTitle, 120);
   if (input.permissions !== undefined) patch.permissions = normalizePermissions(input.permissions);
+  if (input.showInviteCode !== undefined) patch.showInviteCode = input.showInviteCode;
+  if (input.showMemberCount !== undefined) patch.showMemberCount = input.showMemberCount;
+  if (input.showOnlineCount !== undefined) patch.showOnlineCount = input.showOnlineCount;
+  if (input.showServerDescription !== undefined) patch.showServerDescription = input.showServerDescription;
+  if (input.showServerName !== undefined) patch.showServerName = input.showServerName;
+  if (input.showVerificationBadges !== undefined) patch.showVerificationBadges = input.showVerificationBadges;
   if (input.statsChannelId !== undefined) patch.statsChannelId = normalizeSnowflake(input.statsChannelId);
   if (input.status !== undefined) patch.status = input.status;
   if (input.videoUrl !== undefined) patch.videoUrl = normalizeNullableUrl(input.videoUrl);
@@ -273,6 +385,95 @@ export async function getNexTechInviteRuntime(botId: string | null, guildId: str
   return {
     invite: invite ? inviteDto(invite) : null
   };
+}
+
+export async function getPublicNexTechInvitePage(rawCode: string): Promise<PublicNexTechInvitePageDto | null> {
+  await expireDueInvites();
+  const code = normalizeInviteCode(rawCode);
+  const slug = normalizeSlug(rawCode);
+  if (!code && !slug) return null;
+
+  const collections = await getMongoCollections();
+  const invite = await collections.nexTechInvites.findOne({
+    status: "active",
+    landingPageEnabled: { $ne: false },
+    $or: [
+      ...(slug ? [{ customSlug: slug }] : []),
+      ...(code ? [{ code }] : [])
+    ]
+  }, { sort: { updatedAt: -1 } });
+  if (!invite) return null;
+
+  const discordCode = inviteCodeFromUrl(invite.inviteUrl) || invite.code;
+  const discord = await fetchDiscordInvite(discordCode);
+  const redirectUrl = normalizeInviteUrl(invite.inviteUrl, discordCode) ?? `https://discord.gg/${discordCode}`;
+  const dto = inviteDto(invite);
+
+  return {
+    config: {
+      backgroundEffect: invite.backgroundEffect ?? "fixed",
+      backgroundImageUrl: invite.imageUrl ?? invite.bannerUrl ?? discord?.bannerUrl ?? discord?.splashUrl ?? null,
+      backgroundVideoUrl: invite.videoUrl ?? null,
+      logoUrl: invite.logoUrl ?? discord?.iconUrl ?? null,
+      overlayStyle: invite.overlayStyle ?? "black",
+      particleStyle: invite.particleStyle ?? "hex",
+      primaryColor: invite.panelColor ?? "#FFD500",
+      showInviteCode: invite.showInviteCode !== false,
+      showMemberCount: invite.showMemberCount !== false,
+      showOnlineCount: invite.showOnlineCount !== false,
+      showServerDescription: invite.showServerDescription !== false,
+      showServerName: invite.showServerName !== false,
+      showVerificationBadges: invite.showVerificationBadges !== false,
+      theme: invite.landingPageTheme ?? "nextech"
+    },
+    discord,
+    invite: {
+      clientName: dto.clientName,
+      code: dto.code,
+      customSlug: dto.customSlug,
+      description: dto.description,
+      id: dto.id,
+      name: dto.name,
+      panelColor: dto.panelColor
+    },
+    redirectUrl,
+    slug: invite.customSlug || invite.code,
+    valid: Boolean(discord)
+  };
+}
+
+export async function recordPublicNexTechInviteView(inviteId: string, input: PublicViewInput) {
+  const collections = await getMongoCollections();
+  const userAgent = parseUserAgent(input.userAgent);
+  await collections.nexTechInvites.updateOne(
+    { _id: inviteId },
+    {
+      $inc: { pageViews: 1, clicks: 1 },
+      $set: {
+        lastAccessAt: new Date(),
+        lastAccess: {
+          browser: userAgent.browser,
+          city: null,
+          country: null,
+          device: userAgent.device,
+          ipMasked: maskIp(input.ip),
+          os: userAgent.os,
+          referrer: normalizeNullableText(input.referrer, 300),
+          source: normalizeNullableText(input.source, 120)
+        }
+      }
+    }
+  );
+}
+
+export async function recordPublicNexTechInviteClick(inviteId: string, target: "app" | "browser" | "official") {
+  const increments = target === "app"
+    ? { appOpenClicks: 1, conversionCount: 1 }
+    : target === "browser"
+      ? { browserOpenClicks: 1, conversionCount: 1 }
+      : { conversionCount: 1 };
+  const collections = await getMongoCollections();
+  await collections.nexTechInvites.updateOne({ _id: inviteId }, { $inc: increments });
 }
 
 export async function recordNexTechInviteBlocked(botId: string | null, guildId: string, input: {
@@ -369,6 +570,7 @@ function inviteDto(invite: MongoNexTechInvite): NexTechInviteDto {
     bannerUrl: invite.bannerUrl ?? null,
     blockUnknownInvites: invite.blockUnknownInvites ?? true,
     botId: invite.botId ?? null,
+    backgroundEffect: invite.backgroundEffect ?? "fixed",
     buttonEmoji: invite.buttonEmoji ?? null,
     buttonLabel: invite.buttonLabel ?? "Entrar",
     channelId: invite.channelId ?? null,
@@ -378,6 +580,7 @@ function inviteDto(invite: MongoNexTechInvite): NexTechInviteDto {
     conversionCount: invite.conversionCount ?? 0,
     createdAt: invite.createdAt.toISOString(),
     createdBy: invite.createdBy,
+    customSlug: invite.customSlug ?? null,
     description: invite.description ?? invite.notes ?? null,
     discordInviteId: invite.discordInviteId ?? null,
     expiresAt: invite.expiresAt?.toISOString() ?? null,
@@ -387,16 +590,32 @@ function inviteDto(invite: MongoNexTechInvite): NexTechInviteDto {
     id: invite._id,
     imageUrl: invite.imageUrl ?? null,
     inviteUrl: invite.inviteUrl ?? normalizeInviteUrl(null, invite.code),
+    landingPageEnabled: invite.landingPageEnabled ?? true,
+    landingPageTheme: invite.landingPageTheme ?? "nextech",
+    lastAccessAt: invite.lastAccessAt?.toISOString() ?? null,
+    lastAccess: invite.lastAccess ?? null,
     logChannelId: invite.logChannelId ?? null,
+    logoUrl: invite.logoUrl ?? null,
     maxUses: invite.maxUses,
     name: invite.name,
     notes: invite.notes,
+    overlayStyle: invite.overlayStyle ?? "black",
+    pageViews: invite.pageViews ?? 0,
+    appOpenClicks: invite.appOpenClicks ?? 0,
+    browserOpenClicks: invite.browserOpenClicks ?? 0,
+    particleStyle: invite.particleStyle ?? "hex",
     panelChannelId: invite.panelChannelId ?? null,
     panelColor: invite.panelColor ?? "#FFD500",
     panelMessageId: invite.panelMessageId ?? null,
     panelTitle: invite.panelTitle ?? "NEXTTECH",
     permissions: invite.permissions ?? {},
     remainingUses: invite.maxUses === null ? null : Math.max(invite.maxUses - invite.usedCount, 0),
+    showInviteCode: invite.showInviteCode !== false,
+    showMemberCount: invite.showMemberCount !== false,
+    showOnlineCount: invite.showOnlineCount !== false,
+    showServerDescription: invite.showServerDescription !== false,
+    showServerName: invite.showServerName !== false,
+    showVerificationBadges: invite.showVerificationBadges !== false,
     status: invite.status,
     statsChannelId: invite.statsChannelId ?? null,
     updatedAt: invite.updatedAt.toISOString(),
@@ -424,6 +643,14 @@ function logDto(log: MongoNexTechInviteLog): NexTechInviteLogDto {
 
 function normalizeInviteCode(value: string | null | undefined) {
   return normalizeText(value ?? "", 80).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+}
+
+function normalizeSlug(value: string | null | undefined) {
+  const normalized = normalizeText(value ?? "", 80)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || null;
 }
 
 function inviteCodeFromUrl(value: string | null | undefined) {
@@ -483,6 +710,63 @@ function normalizeInviteUrl(value: string | null | undefined, fallbackCode: stri
 function normalizeColor(value: string | null | undefined) {
   const normalized = normalizeText(value ?? "", 24);
   return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : "#FFD500";
+}
+
+function normalizeEnum<const T extends readonly string[]>(value: T[number] | string | null | undefined, allowed: T, fallback: T[number]): T[number] {
+  return allowed.includes(value as T[number]) ? value as T[number] : fallback;
+}
+
+async function fetchDiscordInvite(code: string) {
+  const safeCode = normalizeInviteCode(code);
+  if (!safeCode) return null;
+  try {
+    const response = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(safeCode)}?with_counts=true&with_expiration=true`, {
+      headers: { accept: "application/json" }
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as DiscordInviteResponse;
+    const guild = payload.guild;
+    if (!guild) return null;
+    const features = Array.isArray(guild.features) ? guild.features : [];
+    return {
+      approximateMemberCount: Number.isFinite(payload.approximate_member_count) ? payload.approximate_member_count ?? null : null,
+      approximatePresenceCount: Number.isFinite(payload.approximate_presence_count) ? payload.approximate_presence_count ?? null : null,
+      bannerUrl: discordAssetUrl(guild.id, "banners", guild.banner),
+      code: payload.code ?? safeCode,
+      description: guild.description ?? null,
+      features,
+      guildId: guild.id ?? null,
+      iconUrl: discordAssetUrl(guild.id, "icons", guild.icon),
+      name: guild.name ?? "Servidor Discord",
+      partnered: features.includes("PARTNERED"),
+      splashUrl: discordAssetUrl(guild.id, "splashes", guild.splash),
+      vanityUrlCode: guild.vanity_url_code ?? null,
+      verified: features.includes("VERIFIED")
+    };
+  } catch {
+    return null;
+  }
+}
+
+function discordAssetUrl(guildId: string | undefined, type: "icons" | "banners" | "splashes", hash: string | null | undefined) {
+  if (!guildId || !hash) return null;
+  const extension = hash.startsWith("a_") ? "gif" : "webp";
+  return `https://cdn.discordapp.com/${type}/${guildId}/${hash}.${extension}?size=512`;
+}
+
+function maskIp(value: string | null) {
+  if (!value) return null;
+  if (value.includes(":")) return value.split(":").slice(0, 3).join(":") + "::";
+  const parts = value.split(".");
+  return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}.0` : null;
+}
+
+function parseUserAgent(value: string | null) {
+  const ua = value ?? "";
+  const browser = /edg\//i.test(ua) ? "Edge" : /chrome\//i.test(ua) ? "Chrome" : /firefox\//i.test(ua) ? "Firefox" : /safari\//i.test(ua) ? "Safari" : null;
+  const os = /windows/i.test(ua) ? "Windows" : /android/i.test(ua) ? "Android" : /iphone|ipad|ios/i.test(ua) ? "iOS" : /mac os/i.test(ua) ? "macOS" : /linux/i.test(ua) ? "Linux" : null;
+  const device = /mobile|android|iphone/i.test(ua) ? "mobile" : /ipad|tablet/i.test(ua) ? "tablet" : "desktop";
+  return { browser, device, os };
 }
 
 function normalizePermissions(value: SaveNexTechInviteInput["permissions"]) {

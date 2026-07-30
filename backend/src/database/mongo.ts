@@ -3185,9 +3185,12 @@ export type MongoNexTechInvite = {
   _id: string;
   adminChannelId?: string | null;
   alertChannelId?: string | null;
+  appOpenClicks?: number;
   bannerUrl?: string | null;
   blockUnknownInvites?: boolean;
+  browserOpenClicks?: number;
   botId?: string | null;
+  backgroundEffect?: "fixed" | "parallax" | "zoom" | "blur";
   buttonEmoji?: string | null;
   buttonLabel?: string | null;
   channelId?: string | null;
@@ -3197,6 +3200,7 @@ export type MongoNexTechInvite = {
   conversionCount?: number;
   createdAt: Date;
   createdBy: string | null;
+  customSlug?: string | null;
   description?: string | null;
   discordInviteId?: string | null;
   expiresAt: Date | null;
@@ -3205,15 +3209,38 @@ export type MongoNexTechInvite = {
   guildName?: string | null;
   imageUrl?: string | null;
   inviteUrl?: string | null;
+  landingPageEnabled?: boolean;
+  landingPageTheme?: "discord" | "nextech" | "dark" | "neon" | "cyber" | "gamer" | "premium" | "minimal" | "modern";
+  lastAccessAt?: Date | null;
+  lastAccess?: {
+    browser: string | null;
+    city: string | null;
+    country: string | null;
+    device: string | null;
+    ipMasked: string | null;
+    os: string | null;
+    referrer: string | null;
+    source: string | null;
+  } | null;
   logChannelId?: string | null;
+  logoUrl?: string | null;
   maxUses: number | null;
   name: string;
   notes: string | null;
+  overlayStyle?: "black" | "blue" | "red" | "gradient" | "none";
+  pageViews?: number;
+  particleStyle?: "none" | "dots" | "sparks" | "neon" | "smoke" | "lines" | "stars" | "hex";
   panelChannelId?: string | null;
   panelColor?: string | null;
   panelMessageId?: string | null;
   panelTitle?: string | null;
   permissions?: Partial<Record<MongoNexTechInvitePermissionRole, string[]>>;
+  showInviteCode?: boolean;
+  showMemberCount?: boolean;
+  showOnlineCount?: boolean;
+  showServerDescription?: boolean;
+  showServerName?: boolean;
+  showVerificationBadges?: boolean;
   status: MongoNexTechInviteStatus;
   statsChannelId?: string | null;
   updatedAt: Date;
@@ -6542,6 +6569,7 @@ async function ensureNexTechInviteIndexes(db: Db) {
   await db.collection<MongoNexTechInvite>("nextech_invites").dropIndex("code_1").catch(() => undefined);
   await Promise.all([
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ botId: 1, guildId: 1, code: 1 }, { unique: true }),
+    db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ customSlug: 1 }, { partialFilterExpression: { customSlug: { $type: "string" } }, unique: true }),
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ botId: 1, guildId: 1, status: 1, updatedAt: -1 }),
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ status: 1, updatedAt: -1 }),
     db.collection<MongoNexTechInvite>("nextech_invites").createIndex({ clientName: 1, createdAt: -1 }),

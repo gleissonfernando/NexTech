@@ -654,9 +654,52 @@ function DevMonthlyContractsPanel() {
   );
 }
 
-const emptyInviteForm = {
+type NexTechInviteForm = {
+  adminChannelId: string;
+  alertChannelId: string;
+  backgroundEffect: NonNullable<NexTechInvite["backgroundEffect"]>;
+  bannerUrl: string;
+  blockUnknownInvites: boolean;
+  buttonEmoji: string;
+  buttonLabel: string;
+  channelId: string;
+  clientName: string;
+  code: string;
+  customSlug: string;
+  description: string;
+  discordInviteId: string;
+  expiresAt: string;
+  footerText: string;
+  guildName: string;
+  imageUrl: string;
+  inviteUrl: string;
+  landingPageEnabled: boolean;
+  landingPageTheme: NonNullable<NexTechInvite["landingPageTheme"]>;
+  logChannelId: string;
+  logoUrl: string;
+  maxUses: string;
+  name: string;
+  notes: string;
+  overlayStyle: NonNullable<NexTechInvite["overlayStyle"]>;
+  panelChannelId: string;
+  panelColor: string;
+  panelTitle: string;
+  particleStyle: NonNullable<NexTechInvite["particleStyle"]>;
+  showInviteCode: boolean;
+  showMemberCount: boolean;
+  showOnlineCount: boolean;
+  showServerDescription: boolean;
+  showServerName: boolean;
+  showVerificationBadges: boolean;
+  statsChannelId: string;
+  status: NexTechInviteStatus;
+  videoUrl: string;
+};
+
+const emptyInviteForm: NexTechInviteForm = {
   adminChannelId: "",
   alertChannelId: "",
+  backgroundEffect: "fixed",
   bannerUrl: "",
   blockUnknownInvites: true,
   buttonEmoji: "<:link:1525682228170981478>",
@@ -664,6 +707,7 @@ const emptyInviteForm = {
   channelId: "",
   clientName: "",
   code: "",
+  customSlug: "",
   description: "Entre utilizando nosso convite oficial.",
   discordInviteId: "",
   expiresAt: "",
@@ -671,13 +715,24 @@ const emptyInviteForm = {
   guildName: "",
   imageUrl: "",
   inviteUrl: "",
+  landingPageEnabled: true,
+  landingPageTheme: "nextech",
   logChannelId: "",
+  logoUrl: "",
   maxUses: "",
   name: "",
   notes: "",
+  overlayStyle: "black",
+  particleStyle: "hex",
   panelChannelId: "",
   panelColor: "#FFD500",
   panelTitle: "NEXTTECH",
+  showInviteCode: true,
+  showMemberCount: true,
+  showOnlineCount: true,
+  showServerDescription: true,
+  showServerName: true,
+  showVerificationBadges: true,
   statsChannelId: "",
   status: "active" as NexTechInviteStatus,
   videoUrl: ""
@@ -803,12 +858,14 @@ function DevNexTechInvitesPanel({
       adminChannelId: invite.adminChannelId ?? "",
       alertChannelId: invite.alertChannelId ?? "",
       bannerUrl: invite.bannerUrl ?? "",
+      backgroundEffect: invite.backgroundEffect ?? "fixed",
       blockUnknownInvites: invite.blockUnknownInvites ?? true,
       buttonEmoji: invite.buttonEmoji ?? "<:link:1525682228170981478>",
       buttonLabel: invite.buttonLabel ?? "Entrar no Servidor",
       channelId: invite.channelId ?? "",
       clientName: invite.clientName,
       code: invite.code,
+      customSlug: invite.customSlug ?? "",
       description: invite.description ?? "",
       discordInviteId: invite.discordInviteId ?? "",
       expiresAt: toDatetimeLocal(invite.expiresAt),
@@ -816,13 +873,24 @@ function DevNexTechInvitesPanel({
       guildName: invite.guildName ?? "",
       imageUrl: invite.imageUrl ?? "",
       inviteUrl: invite.inviteUrl ?? "",
+      landingPageEnabled: invite.landingPageEnabled ?? true,
+      landingPageTheme: invite.landingPageTheme ?? "nextech",
       logChannelId: invite.logChannelId ?? "",
+      logoUrl: invite.logoUrl ?? "",
       maxUses: invite.maxUses === null ? "" : String(invite.maxUses),
       name: invite.name,
       notes: invite.notes ?? "",
+      overlayStyle: invite.overlayStyle ?? "black",
+      particleStyle: invite.particleStyle ?? "hex",
       panelChannelId: invite.panelChannelId ?? "",
       panelColor: invite.panelColor ?? "#FFD500",
       panelTitle: invite.panelTitle ?? "NEXTTECH",
+      showInviteCode: invite.showInviteCode ?? true,
+      showMemberCount: invite.showMemberCount ?? true,
+      showOnlineCount: invite.showOnlineCount ?? true,
+      showServerDescription: invite.showServerDescription ?? true,
+      showServerName: invite.showServerName ?? true,
+      showVerificationBadges: invite.showVerificationBadges ?? true,
       statsChannelId: invite.statsChannelId ?? "",
       status: invite.status,
       videoUrl: invite.videoUrl ?? ""
@@ -848,11 +916,13 @@ function DevNexTechInvitesPanel({
       bannerUrl: form.bannerUrl || null,
       blockUnknownInvites: form.blockUnknownInvites,
       botId: selectedBot.id,
+      backgroundEffect: form.backgroundEffect,
       buttonEmoji: form.buttonEmoji || null,
       buttonLabel: form.buttonLabel || null,
       channelId: form.channelId || null,
       clientName: form.clientName,
       code: form.code || null,
+      customSlug: form.customSlug || null,
       description: form.description || null,
       discordInviteId: form.discordInviteId || null,
       expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
@@ -861,13 +931,24 @@ function DevNexTechInvitesPanel({
       guildName: guildOptions.find((guild) => guild.id === selectedScopeGuildId)?.name ?? (form.guildName || null),
       imageUrl: form.imageUrl || null,
       inviteUrl: form.inviteUrl || null,
+      landingPageEnabled: form.landingPageEnabled,
+      landingPageTheme: form.landingPageTheme,
       logChannelId: form.logChannelId || null,
+      logoUrl: form.logoUrl || null,
       maxUses: form.maxUses ? Number(form.maxUses) : null,
       name: form.name,
       notes: form.notes || null,
+      overlayStyle: form.overlayStyle,
+      particleStyle: form.particleStyle,
       panelChannelId: form.panelChannelId || null,
       panelColor: form.panelColor || null,
       panelTitle: form.panelTitle || null,
+      showInviteCode: form.showInviteCode,
+      showMemberCount: form.showMemberCount,
+      showOnlineCount: form.showOnlineCount,
+      showServerDescription: form.showServerDescription,
+      showServerName: form.showServerName,
+      showVerificationBadges: form.showVerificationBadges,
       statsChannelId: form.statsChannelId || null,
       status: form.status,
       videoUrl: form.videoUrl || null
@@ -1029,10 +1110,11 @@ function DevNexTechInvitesPanel({
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <NexTechInviteStat label="Ativos" value={stats.active} tone="good" />
+        <NexTechInviteStat label="Acessos" value={invites.reduce((total, invite) => total + (invite.pageViews ?? 0), 0)} tone="good" />
         <NexTechInviteStat label="Cliques" value={stats.clicks} tone="good" />
         <NexTechInviteStat label="Entradas" value={stats.memberCount || stats.totalUses} tone="good" />
         <NexTechInviteStat label="Bloqueados" value={stats.blockedInvites} tone="danger" />
-        <NexTechInviteStat label="Utilizações" value={stats.totalUses} tone="good" />
+        <NexTechInviteStat label="App/Navegador" value={invites.reduce((total, invite) => total + (invite.appOpenClicks ?? 0) + (invite.browserOpenClicks ?? 0), 0)} tone="good" />
         <NexTechInviteStat label="Restantes" value={stats.remainingUses} tone="warn" />
       </section>
 
@@ -1045,6 +1127,7 @@ function DevNexTechInvitesPanel({
           <NexTechInviteDetail label="Status" value={officialInvite ? officialInvite.status : "Não cadastrado"} />
           <NexTechInviteDetail label="Código" value={officialInvite?.code ?? "Nenhum"} />
           <NexTechInviteDetail label="URL" value={officialInvite?.inviteUrl ?? "Configure abaixo"} />
+          <NexTechInviteDetail label="Página" value={officialInvite ? `${window.location.origin}/invite/${officialInvite.customSlug || officialInvite.code}` : "Configure abaixo"} />
           <NexTechInviteDetail label="Bloqueio" value={officialInvite?.blockUnknownInvites ? "Ativo" : "Inativo"} />
         </CardContent>
       </Card>
@@ -1066,6 +1149,7 @@ function DevNexTechInvitesPanel({
               </div>
             </div>
             <DevTextInput label="Link completo" type="url" value={form.inviteUrl} onChange={(inviteUrl) => setForm((current) => ({ ...current, inviteUrl }))} />
+            <DevTextInput label="URL personalizada da página" value={form.customSlug} onChange={(customSlug) => setForm((current) => ({ ...current, customSlug }))} placeholder="capitalcity" />
             <DevTextInput label="Limite de usos" min={1} type="number" value={form.maxUses} onChange={(maxUses) => setForm((current) => ({ ...current, maxUses }))} />
             <DevTextInput label="Expiração" type="datetime-local" value={form.expiresAt} onChange={(expiresAt) => setForm((current) => ({ ...current, expiresAt }))} />
             <div className="space-y-1">
@@ -1084,6 +1168,19 @@ function DevNexTechInvitesPanel({
               </div>
               <Switch checked={form.blockUnknownInvites} onCheckedChange={(blockUnknownInvites) => setForm((current) => ({ ...current, blockUnknownInvites }))} />
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/10 px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-white">Ativar Página de Convite</p>
+                <p className="text-xs font-semibold text-zinc-500">Publica a landing em /invite/{form.customSlug || form.code || "codigo"}.</p>
+              </div>
+              <Switch checked={form.landingPageEnabled} onCheckedChange={(landingPageEnabled) => setForm((current) => ({ ...current, landingPageEnabled }))} />
+            </div>
+            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 lg:col-span-2 lg:grid-cols-4">
+              <DevSelect label="Tema" value={form.landingPageTheme} onChange={(landingPageTheme) => setForm((current) => ({ ...current, landingPageTheme: landingPageTheme as typeof form.landingPageTheme }))} options={["discord", "nextech", "dark", "neon", "cyber", "gamer", "premium", "minimal", "modern"]} />
+              <DevSelect label="Background" value={form.backgroundEffect} onChange={(backgroundEffect) => setForm((current) => ({ ...current, backgroundEffect: backgroundEffect as typeof form.backgroundEffect }))} options={["fixed", "parallax", "zoom", "blur"]} />
+              <DevSelect label="Overlay" value={form.overlayStyle} onChange={(overlayStyle) => setForm((current) => ({ ...current, overlayStyle: overlayStyle as typeof form.overlayStyle }))} options={["black", "blue", "red", "gradient", "none"]} />
+              <DevSelect label="Partículas" value={form.particleStyle} onChange={(particleStyle) => setForm((current) => ({ ...current, particleStyle: particleStyle as typeof form.particleStyle }))} options={["none", "dots", "sparks", "neon", "smoke", "lines", "stars", "hex"]} />
+            </div>
             <DevTextInput label="Canal do painel" value={form.panelChannelId} onChange={(panelChannelId) => setForm((current) => ({ ...current, panelChannelId: panelChannelId.replace(/\D/g, "") }))} />
             <DevTextInput label="Canal dos logs" value={form.logChannelId} onChange={(logChannelId) => setForm((current) => ({ ...current, logChannelId: logChannelId.replace(/\D/g, "") }))} />
             <DevTextInput label="Canal dos avisos" value={form.alertChannelId} onChange={(alertChannelId) => setForm((current) => ({ ...current, alertChannelId: alertChannelId.replace(/\D/g, "") }))} />
@@ -1095,9 +1192,18 @@ function DevNexTechInvitesPanel({
             <DevTextInput label="Cor do painel" value={form.panelColor} onChange={(panelColor) => setForm((current) => ({ ...current, panelColor }))} />
             <DevTextInput label="Banner / imagem / GIF" type="url" value={form.imageUrl} onChange={(imageUrl) => setForm((current) => ({ ...current, imageUrl }))} />
             <DevTextInput label="Vídeo" type="url" value={form.videoUrl} onChange={(videoUrl) => setForm((current) => ({ ...current, videoUrl }))} />
+            <DevTextInput label="Logo personalizado" type="url" value={form.logoUrl} onChange={(logoUrl) => setForm((current) => ({ ...current, logoUrl }))} />
             <DevTextInput label="Texto do botão" value={form.buttonLabel} onChange={(buttonLabel) => setForm((current) => ({ ...current, buttonLabel }))} />
             <DevTextInput label="Emoji do botão" value={form.buttonEmoji} onChange={(buttonEmoji) => setForm((current) => ({ ...current, buttonEmoji }))} />
             <DevTextInput label="Rodapé" value={form.footerText} onChange={(footerText) => setForm((current) => ({ ...current, footerText }))} />
+            <div className="grid gap-2 rounded-lg border border-zinc-800 bg-black/30 p-3 lg:col-span-2 sm:grid-cols-3">
+              <DevToggle label="Nome" checked={form.showServerName} onChange={(showServerName) => setForm((current) => ({ ...current, showServerName }))} />
+              <DevToggle label="Descrição" checked={form.showServerDescription} onChange={(showServerDescription) => setForm((current) => ({ ...current, showServerDescription }))} />
+              <DevToggle label="Online" checked={form.showOnlineCount} onChange={(showOnlineCount) => setForm((current) => ({ ...current, showOnlineCount }))} />
+              <DevToggle label="Membros" checked={form.showMemberCount} onChange={(showMemberCount) => setForm((current) => ({ ...current, showMemberCount }))} />
+              <DevToggle label="Convite" checked={form.showInviteCode} onChange={(showInviteCode) => setForm((current) => ({ ...current, showInviteCode }))} />
+              <DevToggle label="Badges" checked={form.showVerificationBadges} onChange={(showVerificationBadges) => setForm((current) => ({ ...current, showVerificationBadges }))} />
+            </div>
             <div className="space-y-1 lg:col-span-2">
               <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Observações</label>
               <textarea className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Detalhes internos do cliente, liberação ou restrição." />
@@ -1179,6 +1285,7 @@ function DevTextInput({
   label,
   min,
   onChange,
+  placeholder,
   required,
   type = "text",
   value
@@ -1186,6 +1293,7 @@ function DevTextInput({
   label: string;
   min?: number;
   onChange: (value: string) => void;
+  placeholder?: string;
   required?: boolean;
   type?: string;
   value: string;
@@ -1193,8 +1301,28 @@ function DevTextInput({
   return (
     <div className="space-y-1">
       <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</label>
-      <input className="h-10 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" min={min} required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input className="h-10 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" min={min} placeholder={placeholder} required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
+  );
+}
+
+function DevSelect({ label, onChange, options, value }: { label: string; onChange: (value: string) => void; options: string[]; value: string }) {
+  return (
+    <label className="space-y-1">
+      <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</span>
+      <select className="h-10 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function DevToggle({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/30 px-3 py-2">
+      <span className="text-sm font-bold text-white">{label}</span>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
   );
 }
 

@@ -274,3 +274,55 @@
     transform: translate3d(var(--confetti-x, 40px), 105vh, 0) rotate(760deg);
   }
 }
+
+@layer components {
+  .invite-bg--fixed { transform: scale(1.02); }
+  .invite-bg--parallax { animation: invite-pan 18s ease-in-out infinite alternate; }
+  .invite-bg--zoom { animation: invite-zoom 14s ease-in-out infinite alternate; }
+  .invite-bg--blur { filter: blur(6px); transform: scale(1.06); }
+
+  .invite-overlay--black { background: rgba(0, 0, 0, 0.64); }
+  .invite-overlay--blue { background: linear-gradient(135deg, rgba(0, 0, 0, 0.66), rgba(20, 91, 255, 0.28)); }
+  .invite-overlay--red { background: linear-gradient(135deg, rgba(0, 0, 0, 0.68), rgba(185, 28, 28, 0.28)); }
+  .invite-overlay--gradient { background: linear-gradient(135deg, rgba(0, 0, 0, 0.74), rgba(255, 213, 0, 0.18), rgba(0, 0, 0, 0.72)); }
+  .invite-overlay--none { background: transparent; }
+
+  .invite-particles {
+    opacity: 0.58;
+    background-image: radial-gradient(circle, rgba(255, 213, 0, 0.72) 1px, transparent 1.8px);
+    background-size: 44px 44px;
+    animation: invite-particles 18s linear infinite;
+  }
+
+  .invite-particles--hex {
+    background-image:
+      linear-gradient(30deg, rgba(255, 213, 0, 0.18) 12%, transparent 12.5%, transparent 87%, rgba(255, 213, 0, 0.18) 87.5%, rgba(255, 213, 0, 0.18)),
+      linear-gradient(150deg, rgba(255, 213, 0, 0.18) 12%, transparent 12.5%, transparent 87%, rgba(255, 213, 0, 0.18) 87.5%, rgba(255, 213, 0, 0.18));
+    background-size: 48px 84px;
+  }
+
+  .invite-particles--lines {
+    background-image: linear-gradient(90deg, rgba(255, 213, 0, 0.18) 1px, transparent 1px), linear-gradient(rgba(255, 213, 0, 0.12) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+
+  .invite-particles--smoke {
+    background-image: radial-gradient(circle at 20% 70%, rgba(255, 213, 0, 0.16), transparent 20%), radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.1), transparent 22%);
+    background-size: 420px 420px;
+  }
+}
+
+@keyframes invite-pan {
+  from { transform: scale(1.05) translate3d(-1.5%, -1%, 0); }
+  to { transform: scale(1.08) translate3d(1.5%, 1%, 0); }
+}
+
+@keyframes invite-zoom {
+  from { transform: scale(1.02); }
+  to { transform: scale(1.1); }
+}
+
+@keyframes invite-particles {
+  from { background-position: 0 0; }
+  to { background-position: 240px 240px; }
+}

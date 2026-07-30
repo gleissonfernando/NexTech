@@ -12,6 +12,7 @@ const GiveawayRoulettePage = lazy(() => import("./pages/GiveawayRoulette").then(
 const NexTechProductPage = lazy(() => import("./pages/NexTechProductPage").then((module) => ({ default: module.NexTechProductPage })));
 const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((module) => ({ default: module.PaymentReturnPage })));
 const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
+const PublicInvitePage = lazy(() => import("./pages/PublicInvitePage").then((module) => ({ default: module.PublicInvitePage })));
 const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
 const TermsPage = lazy(() => import("./pages/Terms").then((module) => ({ default: module.TermsPage })));
 const MONITORING_STATUS_URL = "https://nextech-status.discloud.app";
@@ -46,6 +47,7 @@ export function App() {
   const statusPath = path === "/status";
   const termsPath = path === "/termos" || path === "/terms";
   const botRegistrationPath = path === "/cadastrar-bot" || path.startsWith("/cadastrar-bot/");
+  const publicInviteCode = inviteCodeFromPath(path);
   const paymentReturnStatus = paymentReturnStatusFromPath(path);
   const pixPaymentOrderId = pixPaymentOrderIdFromPath(path);
   const rouletteToken = rouletteTokenFromPath(path);
@@ -76,17 +78,17 @@ export function App() {
   }, [statusPath]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
       return;
     }
 
     if (auth?.access.verified && !protectedPanelPath && !publicLandingPath) {
       window.location.replace(dashboardUrl(auth.user.dashboardBotSlug));
     }
-  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicLandingPath, rouletteToken, statusPath, termsPath]);
+  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicInviteCode, publicLandingPath, rouletteToken, statusPath, termsPath]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
       return;
     }
 
@@ -95,7 +97,7 @@ export function App() {
     }
 
     loginDiscord();
-  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, routeError, rouletteToken, statusPath, termsPath]);
+  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, publicInviteCode, routeError, rouletteToken, statusPath, termsPath]);
 
   if (docsPath) {
     return <LazyPage><DocsPage /></LazyPage>;
@@ -123,6 +125,10 @@ export function App() {
 
   if (botRegistrationPath) {
     return <LazyPage><BotRegistrationPage /></LazyPage>;
+  }
+
+  if (publicInviteCode) {
+    return <LazyPage><PublicInvitePage code={publicInviteCode} /></LazyPage>;
   }
 
   if (rouletteToken) {
@@ -228,6 +234,17 @@ function rouletteTokenFromPath(path: string) {
 
   try {
     return decodeURIComponent(token);
+  } catch {
+    return null;
+  }
+}
+
+function inviteCodeFromPath(path: string) {
+  if (!path.startsWith("/invite/")) return null;
+  const code = path.slice("/invite/".length).split("/")[0]?.trim();
+  if (!code) return null;
+  try {
+    return decodeURIComponent(code);
   } catch {
     return null;
   }

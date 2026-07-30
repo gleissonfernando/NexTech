@@ -122,6 +122,7 @@ import type {
   PriceTable,
   PriceTablesDashboard,
   PublicNexTechProduct,
+  PublicNexTechInvitePage,
   PublicKickClips,
   RhAdminDashboard,
   SaveClipsConfigPayload,
@@ -2473,6 +2474,16 @@ export async function publishNexTechInvitePanel(botId: string, guildId: string) 
     undefined,
     { timeout: 45_000 }
   );
+  return data;
+}
+
+export async function getPublicNexTechInvitePage(code: string) {
+  const { data } = await api.get<PublicNexTechInvitePage>(`/invite/${encodeURIComponent(code)}`);
+  return data;
+}
+
+export async function recordPublicNexTechInviteClick(code: string, target: "app" | "browser" | "official") {
+  const { data } = await api.post<{ ok: boolean; redirectUrl: string }>(`/invite/${encodeURIComponent(code)}/click`, { target });
   return data;
 }
 

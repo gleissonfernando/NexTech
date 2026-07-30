@@ -49,6 +49,12 @@ app.use(
           "https://files.kick.com",
           "https://img.kick.com",
           "https://cdn.kick.com"
+        ],
+        "media-src": [
+          "'self'",
+          "blob:",
+          "https://cdn.discordapp.com",
+          "https://media.discordapp.net"
         ]
       }
     },
