@@ -125,6 +125,12 @@ export type SaveNexTechInviteInput = {
   videoUrl?: string | null;
 };
 
+export type ReplaceNexTechInviteUrlInput = {
+  customSlug?: string | null;
+  inviteUrl: string;
+  updateAllActive?: boolean;
+};
+
 type PublicViewInput = {
   ip: string | null;
   referrer: string | null;
@@ -370,6 +376,91 @@ export async function updateNexTechInvite(inviteId: string, input: Partial<SaveN
   }
 }
 
+export async function replaceNexTechInviteUrl(scope: Scope, input: ReplaceNexTechInviteUrlInput, actor: Actor) {
+  const collections = await getMongoCollections();
+  const botId = normalizeBotId(scope.botId);
+  const guildId = normalizeSnowflake(scope.guildId);
+  if (!botId) throw Object.assign(new Error("Informe o bot do convite."), { statusCode: 400 });
+  if (!guildId) throw Object.assign(new Error("Informe o servidor do convite."), { statusCode: 400 });
+
+  const exactCode = inviteCodeFromUrl(input.inviteUrl);
+  const code = normalizeInviteCode(exactCode);
+  const inviteUrl = normalizeInviteUrl(input.inviteUrl, exactCode || code);
+  if (!code || !inviteUrl) throw Object.assign(new Error("Informe uma URL de convite válida."), { statusCode: 400 });
+
+  const scopeFilter = inviteScopeFilter({ botId, guildId });
+  const slug = normalizeSlug(input.customSlug) ?? FALLBACK_OFFICIAL_INVITE.customSlug;
+  let current = await collections.nexTechInvites.findOne(
+    { ...scopeFilter, status: "active" },
+    { sort: { updatedAt: -1 } }
+  );
+  if (!current) {
+    current = await collections.nexTechInvites.findOne(
+      {
+        ...scopeFilter,
+        $or: [
+          { customSlug: slug },
+          { code }
+        ]
+      },
+      { sort: { updatedAt: -1 } }
+    );
+  }
+
+  const updated = current
+    ? await collections.nexTechInvites.findOneAndUpdate(
+      { _id: current._id },
+      {
+        $set: {
+          code,
+          customSlug: current.customSlug ?? slug,
+          expiresAt: null,
+          inviteUrl,
+          landingPageEnabled: true,
+          status: "active",
+          updatedAt: new Date(),
+          updatedBy: actor.id
+        }
+      },
+      { returnDocument: "after" }
+    )
+    : await createFallbackScopedInvite({ botId, guildId, code, inviteUrl, slug }, actor);
+
+  if (!updated) throw Object.assign(new Error("Não foi possível atualizar o convite oficial."), { statusCode: 500 });
+
+  let propagatedCount = 0;
+  if (input.updateAllActive !== false) {
+    const result = await collections.nexTechInvites.updateMany(
+      {
+        ...scopeFilter,
+        _id: { $ne: updated._id },
+        status: "active"
+      },
+      {
+        $set: {
+          code,
+          expiresAt: null,
+          inviteUrl,
+          updatedAt: new Date(),
+          updatedBy: actor.id
+        }
+      }
+    );
+    propagatedCount = result.modifiedCount;
+  }
+
+  await createInviteLog("invite.url_replaced", actor, updated, {
+    propagatedCount,
+    updateAllActive: input.updateAllActive !== false
+  });
+  await emitDashboardUpdated(updated);
+
+  return {
+    invite: inviteDto(updated),
+    propagatedCount
+  };
+}
+
 export async function deleteNexTechInvite(inviteId: string, actor: Actor) {
   const collections = await getMongoCollections();
   const current = await collections.nexTechInvites.findOne({ _id: inviteId });
@@ -610,6 +701,89 @@ async function createInviteLog(action: string, actor: Actor, invite: MongoNexTec
     inviteId: invite._id
   };
   await collections.nexTechInviteLogs.insertOne(log);
+}
+
+async function createFallbackScopedInvite(input: {
+  botId: string;
+  code: string;
+  guildId: string;
+  inviteUrl: string;
+  slug: string;
+}, actor: Actor) {
+  const collections = await getMongoCollections();
+  const now = new Date();
+  const invite: MongoNexTechInvite = {
+    _id: randomUUID(),
+    adminChannelId: null,
+    alertChannelId: null,
+    appOpenClicks: 0,
+    bannerUrl: null,
+    blockUnknownInvites: true,
+    botId: input.botId,
+    backgroundEffect: "fixed",
+    buttonEmoji: "<:link:1525682228170981478>",
+    buttonLabel: "Entrar no Servidor",
+    browserOpenClicks: 0,
+    channelId: null,
+    clicks: 0,
+    clientName: "NexTech",
+    code: input.code,
+    conversionCount: 0,
+    createdAt: now,
+    createdBy: actor.id,
+    customSlug: input.slug,
+    description: FALLBACK_OFFICIAL_INVITE.description,
+    discordInviteId: null,
+    expiresAt: null,
+    footerText: "NexTech",
+    guildId: input.guildId,
+    guildName: "NexTech",
+    imageUrl: FALLBACK_OFFICIAL_INVITE.assetUrl,
+    inviteUrl: input.inviteUrl,
+    landingPageEnabled: true,
+    landingPageTheme: "nextech",
+    lastAccessAt: null,
+    lastAccess: null,
+    logChannelId: null,
+    logoUrl: FALLBACK_OFFICIAL_INVITE.assetUrl,
+    maxUses: null,
+    name: FALLBACK_OFFICIAL_INVITE.name,
+    notes: null,
+    overlayStyle: "black",
+    pageViews: 0,
+    particleStyle: "hex",
+    panelChannelId: null,
+    panelColor: "#FFD500",
+    panelTitle: "NEXTTECH",
+    permissions: {},
+    showInviteCode: true,
+    showMemberCount: true,
+    showOnlineCount: true,
+    showServerDescription: true,
+    showServerName: true,
+    showVerificationBadges: true,
+    statsChannelId: null,
+    status: "active",
+    updatedAt: now,
+    updatedBy: actor.id,
+    usages: [],
+    usedCount: 0,
+    videoUrl: null
+  };
+
+  try {
+    await collections.nexTechInvites.insertOne(invite);
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      const existing = await collections.nexTechInvites.findOne(
+        { ...inviteScopeFilter({ botId: input.botId, guildId: input.guildId }), code: input.code },
+        { sort: { updatedAt: -1 } }
+      );
+      if (existing) return existing;
+    }
+    throw error;
+  }
+  return invite;
 }
 
 async function emitDashboardUpdated(invite: MongoNexTechInvite) {

@@ -67,6 +67,7 @@ import {
   getSystemHealth,
   getSystemMetrics,
   publishNexTechInvitePanel,
+  replaceNexTechInviteUrl,
   sendMaintenanceAlert,
   saveDevAccessEntry,
   resendDevInvoiceDm,
@@ -760,6 +761,8 @@ function DevNexTechInvitesPanel({
   const [form, setForm] = useState(emptyInviteForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [replacingInviteUrl, setReplacingInviteUrl] = useState(false);
+  const [replacementInviteUrl, setReplacementInviteUrl] = useState("");
   const [publishingPanel, setPublishingPanel] = useState(false);
   const [togglingModule, setTogglingModule] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -829,6 +832,10 @@ function DevNexTechInvitesPanel({
       socket.disconnect();
     };
   }, [selectedBot?.id, selectedScopeGuildId]);
+
+  useEffect(() => {
+    setReplacementInviteUrl(dashboard?.officialInvite?.inviteUrl ?? "");
+  }, [dashboard?.officialInvite?.inviteUrl]);
 
   async function reload() {
     if (!selectedBot || !selectedScopeGuildId) return;
@@ -1045,6 +1052,42 @@ function DevNexTechInvitesPanel({
     }
   }
 
+  async function handleReplaceInviteUrl() {
+    if (!selectedBot || !selectedScopeGuildId) {
+      setMessage("Selecione um bot e um servidor antes de trocar o convite oficial.");
+      return;
+    }
+
+    const nextUrl = replacementInviteUrl.trim();
+    if (!nextUrl) {
+      setMessage("Cole a nova URL do convite antes de trocar.");
+      return;
+    }
+
+    setReplacingInviteUrl(true);
+    setMessage(null);
+    try {
+      const result = await replaceNexTechInviteUrl(selectedBot.id, selectedScopeGuildId, {
+        customSlug: officialInvite?.customSlug || form.customSlug || "nextech",
+        inviteUrl: nextUrl,
+        updateAllActive: true
+      });
+      await reload();
+      setForm((current) => ({
+        ...current,
+        code: result.invite.code,
+        customSlug: result.invite.customSlug ?? current.customSlug,
+        inviteUrl: result.invite.inviteUrl ?? nextUrl,
+        status: "active"
+      }));
+      setMessage(`Convite oficial trocado. ${result.propagatedCount} convite(s) ativo(s) do bot também receberam a nova URL.`);
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível trocar a URL do convite.");
+    } finally {
+      setReplacingInviteUrl(false);
+    }
+  }
+
   const invites = dashboard?.invites ?? [];
   const logs = dashboard?.logs ?? [];
   const stats = dashboard?.stats ?? { active: 0, blockedInvites: 0, cancelled: 0, clicks: 0, conversions: 0, expired: 0, memberCount: 0, paused: 0, remainingUses: 0, totalUses: 0 };
@@ -1129,6 +1172,30 @@ function DevNexTechInvitesPanel({
           <NexTechInviteDetail label="URL" value={officialInvite?.inviteUrl ?? "Configure abaixo"} />
           <NexTechInviteDetail label="Página" value={officialInvite ? `${window.location.origin}/invite/${officialInvite.customSlug || officialInvite.code}` : "Configure abaixo"} />
           <NexTechInviteDetail label="Bloqueio" value={officialInvite?.blockUnknownInvites ? "Ativo" : "Inativo"} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-[#FFD500]/18 bg-zinc-950/80">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><RefreshCw className="h-5 w-5 text-[#FFEA70]" />Trocar convite expirado</CardTitle>
+          <CardDescription>Atualiza o convite oficial e todas as URLs de convites ativos deste bot/servidor.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <DevTextInput
+            label="Nova URL do Discord"
+            onChange={setReplacementInviteUrl}
+            placeholder="https://discord.gg/novoCodigo"
+            type="url"
+            value={replacementInviteUrl}
+          />
+          <Button
+            disabled={replacingInviteUrl || !selectedBot || !selectedScopeGuildId}
+            onClick={() => void handleReplaceInviteUrl()}
+            type="button"
+          >
+            {replacingInviteUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Trocar URL dos bots
+          </Button>
         </CardContent>
       </Card>
 
@@ -1364,6 +1431,7 @@ function inviteLogLabel(action: string) {
   const labels: Record<string, string> = {
     "invite.created": "Convite criado",
     "invite.deleted": "Convite excluído",
+    "invite.url_replaced": "URL do convite trocada",
     "invite.updated": "Convite atualizado"
   };
   return labels[action] ?? action;

@@ -4953,6 +4953,12 @@ export type SaveNexTechInvitePayload = {
   videoUrl?: string | null;
 };
 
+export type ReplaceNexTechInviteUrlPayload = {
+  customSlug?: string | null;
+  inviteUrl: string;
+  updateAllActive?: boolean;
+};
+
 export type PublicNexTechInvitePage = {
   config: {
     backgroundEffect: NonNullable<NexTechInvite["backgroundEffect"]>;

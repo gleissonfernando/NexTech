@@ -114,6 +114,7 @@ import {
   deleteNexTechInvite,
   generateNexTechInviteCode,
   getNexTechInviteDashboard,
+  replaceNexTechInviteUrl,
   updateNexTechInvite
 } from "../services/nexTechInviteService";
 import { devPlansRouter } from "./plans";
@@ -389,6 +390,12 @@ const nexTechInviteSchema = z.object({
   videoUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
 });
 
+const replaceNexTechInviteUrlSchema = z.object({
+  customSlug: z.string().min(2).max(80).nullable().optional().or(z.literal("")),
+  inviteUrl: z.string().url().max(2048),
+  updateAllActive: z.boolean().optional()
+});
+
 export const devRouter = Router();
 
 devRouter.use(requireDevAccess);
@@ -552,6 +559,27 @@ devRouter.post("/bots/:botId/guilds/:guildId/nextech-invites/panel", async (req,
     return res.json({
       messageId: success.messageId ?? null
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/guilds/:guildId/nextech-invites/replace-url", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem permissão para alterar convites deste bot." });
+    }
+
+    const input = replaceNexTechInviteUrlSchema.parse(req.body ?? {});
+    return res.json(await replaceNexTechInviteUrl({
+      botId: req.params.botId,
+      guildId: req.params.guildId
+    }, input, {
+      id: auth.user.discordId,
+      name: auth.user.globalName || auth.user.username
+    }));
   } catch (error) {
     return next(error);
   }

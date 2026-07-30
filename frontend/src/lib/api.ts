@@ -124,6 +124,7 @@ import type {
   PublicNexTechProduct,
   PublicNexTechInvitePage,
   PublicKickClips,
+  ReplaceNexTechInviteUrlPayload,
   RhAdminDashboard,
   SaveClipsConfigPayload,
   SaveCustomPanelCategoryPayload,
@@ -2473,6 +2474,14 @@ export async function publishNexTechInvitePanel(botId: string, guildId: string) 
     `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites/panel`,
     undefined,
     { timeout: 45_000 }
+  );
+  return data;
+}
+
+export async function replaceNexTechInviteUrl(botId: string, guildId: string, payload: ReplaceNexTechInviteUrlPayload) {
+  const { data } = await api.post<{ invite: NexTechInvite; propagatedCount: number }>(
+    `/dev/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/nextech-invites/replace-url`,
+    payload
   );
   return data;
 }
