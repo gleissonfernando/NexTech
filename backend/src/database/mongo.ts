@@ -1051,6 +1051,9 @@ export type MongoManualRegistrationSubmission = {
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
   channelId?: string | null;
+  logError?: string | null;
+  logMessageId?: string | null;
+  logStatus?: "pending" | "sent" | "failed" | null;
   requestedName?: string | null;
   registrationType?: "request" | "manual";
   registrationVersion?: number;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDecisionDmPayload, createManualRegistrationDecisionLogPayload, createPanelPayload } from "./manualRegistrationService";
+import { createDecisionDmPayload, createManualRegistrationCreatedLogPayload, createManualRegistrationDecisionLogPayload, createPanelPayload } from "./manualRegistrationService";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 
 const settings = {
@@ -45,6 +45,26 @@ test("log de aprovação do Pedido de Set usa o formato de Registro aprovado", (
   assert.match(content, /Personagem: Tairan cooper/);
   assert.match(content, /Recrutador: melo gst/);
   assert.doesNotMatch(content, /Log de Pedido de Set/);
+});
+
+test("log inicial do Pedido de Set contém canal criado e dados do formulário", () => {
+  const payload = createManualRegistrationCreatedLogPayload(settings, { ...submission, channelId: "555555555555555555", status: "pending" }, {
+    channelId: "555555555555555555",
+    guildId: "999999999999999999",
+    guildName: "Vortex",
+    memberDisplayName: "Tairan Cooper"
+  });
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /Novo registro realizado/);
+  assert.match(serialized, /<@111111111111111111>/);
+  assert.match(serialized, /Nome no servidor: Tairan Cooper/);
+  assert.match(serialized, /Servidor:\*\* Vortex/);
+  assert.match(serialized, /Canal criado: <#555555555555555555>/);
+  assert.match(serialized, /https:\/\/discord\.com\/channels\/999999999999999999\/555555555555555555/);
+  assert.match(serialized, /Registro:\*\* sub-1/);
+  assert.match(serialized, /Nome do personagem: Tairan cooper/);
+  assert.match(serialized, /Recrutador: melo gst/);
 });
 
 test("painel do Pedido de Set usa modelo compacto de registro", () => {

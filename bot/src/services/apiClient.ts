@@ -1048,6 +1048,9 @@ export type ManualRegistrationSubmission = {
   removalReason: string | null;
   fields: Array<{ id: string; label: string; value: string }>;
   messageId: string | null;
+  logError: string | null;
+  logMessageId: string | null;
+  logStatus: "pending" | "sent" | "failed" | null;
   rejectionReason: string | null;
   requestedRoleId: string | null;
 };
@@ -3308,6 +3311,11 @@ export class ApiClient {
     await this.http.patch(`/manual-registration/bot/submissions/${id}/message`, { messageId });
   }
   async updateManualRegistrationSubmissionChannel(id: string, channelId: string | null, messageId: string | null) { const {data}=await this.http.patch<{submission:ManualRegistrationSubmission}>(`/manual-registration/bot/submissions/${id}/message`,{channelId,messageId}); return data.submission; }
+
+  async updateManualRegistrationSubmissionLogState(id: string, input: { logError?: string | null; logMessageId?: string | null; logStatus: "pending" | "sent" | "failed" }) {
+    const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${id}/log-state`, input);
+    return data.submission;
+  }
 
   async reviewManualRegistrationSubmission(input: { actorId: string; actorRoleIds?: string[]; actorIsAdministrator?: boolean; guildId: string; id: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
     const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/status`, input);

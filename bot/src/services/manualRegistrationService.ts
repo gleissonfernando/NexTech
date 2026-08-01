@@ -34,6 +34,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 const PREFIX = "manual_registration";
 const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
 const configDrafts = new Map<string, { approvedRoleId?: string | null; approverRoleIds?: string[]; manualRegistrationRoleIds?: string[]; panelChannelId?: string | null; requestCategoryId?: string | null; logChannelId?: string | null; logMentionRoleId?: string | null }>();
+const registrationProcesses = new Set<string>();
 type SetApprovalResult = { farmChannelId: string | null; metaChannelId: string; roleIds: string[]; submission: ManualRegistrationSubmission };
 
 export function startManualRegistrationService(client: Client<true>, context: BotContext) {
@@ -490,11 +491,28 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   formSessions.delete(token);
   const requestedRoleId = session.requestedRoleId;
   const fields = session.answers;
+  const processingKey = `${interaction.guild.id}:${interaction.user.id}`;
+  if (registrationProcesses.has(processingKey)) {
+    await interaction.editReply("Seu pedido já está sendo processado. Aguarde a conclusão antes de tentar novamente.");
+    return;
+  }
+  registrationProcesses.add(processingKey);
   let submission: ManualRegistrationSubmission;
   try {
+    console.log("[REGISTRO] Iniciando registro", { guildId: interaction.guild.id, userId: interaction.user.id });
+    if (!settings.automaticApproval) {
+      const validation = await validateManualRegistrationRequestConfig(interaction.guild, settings);
+      if (!validation.ok) {
+        await interaction.editReply(validation.message);
+        registrationProcesses.delete(processingKey);
+        return;
+      }
+    }
     submission = await context.api.createManualRegistrationSubmission({ fields, guildId: interaction.guild.id, requestedRoleId, userAvatar: interaction.user.displayAvatarURL(), userId: interaction.user.id, username: interaction.user.tag });
   } catch (error) {
+    console.error("[REGISTRO] Falha no fluxo", { error, guildId: interaction.guild.id, stage: "create_submission", userId: interaction.user.id });
     await interaction.editReply(manualRegistrationErrorMessage(error));
+    registrationProcesses.delete(processingKey);
     return;
   }
   let automaticError: string | null = null;
@@ -522,17 +540,46 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   }
   if (settings.automaticApproval && !automaticError && submission.status === "approved") {
     await interaction.editReply(settings.approvalMessage);
+    registrationProcesses.delete(processingKey);
     return;
   }
-  const category = settings.requestCategoryId ? await interaction.guild.channels.fetch(settings.requestCategoryId).catch(() => null) : null;
-  if (category?.type !== ChannelType.GuildCategory) { await interaction.editReply("O pedido foi salvo, mas a categoria privada não está configurada ou foi removida. Avise a administração."); return; }
-  const botMember = interaction.guild.members.me;
-  if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels)) { await interaction.editReply("O bot precisa da permissão **Gerenciar Canais** para abrir o pedido."); return; }
-  const requestedName = submission.requestedName || interaction.user.username;
-  const channel = await interaction.guild.channels.create({ name: `set-${slug(requestedName)}-${submission.id.slice(0, 4)}`.slice(0, 95), parent: category.id, type: ChannelType.GuildText, permissionOverwrites: [{ id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: submission.userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }, { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }, ...settings.approverRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))] });
-  const message = await channel.send(createReviewPayload(settings, submission, interaction.guild));
-  submission = await context.api.updateManualRegistrationSubmissionChannel(submission.id, channel.id, message.id);
-  await interaction.editReply(automaticError ? `${settings.successMessage}\n\nA aprovacao automática ficou pendente: ${automaticError}` : settings.automaticApproval ? settings.approvalMessage : settings.successMessage);
+  try {
+    const category = settings.requestCategoryId ? await interaction.guild.channels.fetch(settings.requestCategoryId).catch(() => null) : null;
+    if (category?.type !== ChannelType.GuildCategory) throw new Error("Categoria privada não encontrada.");
+    const requestedName = submission.requestedName || interaction.user.username;
+    const teamRoleIds = manualRegistrationTeamRoleIds(settings);
+    const channel = await interaction.guild.channels.create({
+      name: registrationRequestChannelName(requestedName, submission.id),
+      parent: category.id,
+      reason: `Pedido de Set ${submission.id}`,
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
+        ...teamRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }))
+      ]
+    });
+    console.log("[REGISTRO] Canal criado", { channelId: channel.id, guildId: interaction.guild.id, userId: interaction.user.id });
+    const message = await channel.send(createReviewPayload(settings, submission, interaction.guild));
+    submission = await context.api.updateManualRegistrationSubmissionChannel(submission.id, channel.id, message.id);
+    try {
+      const logMessage = await sendRegistrationCreatedLog(interaction.guild, settings, submission);
+      await context.api.updateManualRegistrationSubmissionLogState(submission.id, { logError: null, logMessageId: logMessage?.id ?? null, logStatus: "sent" });
+      console.log("[REGISTRO] Log enviada", { guildId: interaction.guild.id, logChannelId: settings.logChannelId, messageId: logMessage?.id ?? null, userId: interaction.user.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao enviar log do registro.";
+      console.error("[REGISTRO] Falha no fluxo", { error, guildId: interaction.guild.id, stage: "send_log", userId: interaction.user.id });
+      await context.api.updateManualRegistrationSubmissionLogState(submission.id, { logError: message, logMessageId: null, logStatus: "failed" }).catch((apiError) => console.error("[REGISTRO] Falha ao marcar log como failed", apiError));
+      await context.api.postLog({ guildId: interaction.guild.id, message, metadata: { channelId: channel.id, submissionId: submission.id }, type: "manual-registration.log_failed", userId: interaction.user.id }).catch(() => null);
+    }
+    await interaction.editReply(automaticError ? `${settings.successMessage}\n\nA aprovacao automática ficou pendente: ${automaticError}` : settings.successMessage);
+  } catch (error) {
+    console.error("[REGISTRO] Falha no fluxo", { error, guildId: interaction.guild.id, stage: "create_channel", submissionId: submission.id, userId: interaction.user.id });
+    await context.api.postLog({ guildId: interaction.guild.id, message: error instanceof Error ? error.message : "Falha ao criar canal do Pedido de Set.", metadata: { submissionId: submission.id }, type: "manual-registration.channel_create_failed", userId: interaction.user.id }).catch(() => null);
+    await interaction.editReply("Não foi possível criar o canal da solicitação. Verifique a categoria configurada e as permissões do bot.");
+  } finally {
+    registrationProcesses.delete(processingKey);
+  }
 }
 
 async function processSetApproval(input: {
@@ -805,6 +852,61 @@ function registrationFieldSummary(settings: ManualRegistrationSettings) {
   return `${labels.slice(0, -1).join(", ")} e ${labels.at(-1)}`;
 }
 
+function manualRegistrationTeamRoleIds(settings: ManualRegistrationSettings) {
+  return [...new Set([...settings.approverRoleIds, ...settings.staffRoleIds, ...settings.manualRegistrationRoleIds].filter(Boolean))];
+}
+
+function registrationRequestChannelName(username: string, id: string) {
+  const base = `solicitacao-${username}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 86);
+  return `${base || "solicitacao"}-${id.slice(0, 4)}`.slice(0, 95);
+}
+
+async function validateManualRegistrationRequestConfig(guild: Guild, settings: ManualRegistrationSettings): Promise<{ ok: true } | { ok: false; message: string }> {
+  const pending: string[] = [];
+  if (!settings.requestCategoryId) pending.push("Categoria das solicitações.");
+  if (!settings.logChannelId) pending.push("Canal de logs.");
+  if (pending.length) return { ok: false, message: manualRegistrationConfigError(pending) };
+
+  const category = await guild.channels.fetch(settings.requestCategoryId!).catch(() => null);
+  const logChannel = await guild.channels.fetch(settings.logChannelId!).catch(() => null);
+  if (category?.type !== ChannelType.GuildCategory) pending.push("Categoria das solicitações inválida ou removida.");
+  if (!logChannel?.isSendable()) pending.push("Canal de logs inválido ou sem envio de mensagens.");
+
+  const botMember = guild.members.me;
+  if (!botMember) pending.push("Bot não localizado como membro do servidor.");
+  if (botMember && !botMember.permissions.has(PermissionFlagsBits.ManageChannels)) pending.push("Permissão Gerenciar Canais para o bot.");
+  if (category && "permissionsFor" in category && botMember) {
+    const permissions = category.permissionsFor(botMember);
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel)) pending.push("Permissão Ver Canal na categoria das solicitações.");
+    if (!permissions?.has(PermissionFlagsBits.ManageChannels)) pending.push("Permissão Gerenciar Canais na categoria das solicitações.");
+  }
+  if (logChannel && "permissionsFor" in logChannel && botMember) {
+    const permissions = logChannel.permissionsFor(botMember);
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel)) pending.push("Permissão Ver Canal no canal de logs.");
+    if (!permissions?.has(PermissionFlagsBits.SendMessages)) pending.push("Permissão Enviar Mensagens no canal de logs.");
+  }
+
+  return pending.length ? { ok: false, message: manualRegistrationConfigError(pending) } : { ok: true };
+}
+
+function manualRegistrationConfigError(items: string[]) {
+  return [
+    "O sistema não está totalmente configurado.",
+    "",
+    "Configurações pendentes:",
+    ...items.map((item) => `- ${item}`),
+    "",
+    "Utilize o painel de configurações para concluir a configuração."
+  ].join("\n");
+}
+
 function createReviewPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, guild: Guild | null = null, approval?: { farmChannelId?: string | null; metaChannelId?: string | null; roleIds?: string[] }) {
   const statusText = submission.status === "approved" ? "Aprovado" : submission.status === "processing" ? "Processando" : submission.status === "failed" ? "Falha na aprovação" : submission.status === "rejected" ? submission.rejectionReason?.startsWith("Cancelado") ? "Cancelado" : "Recusado" : "Pendente";
   const imageUrl = settings.panelImage ? resolvePanelImageUrl(settings.panelImage.imageUrl, settings.panelImage) : null;
@@ -840,6 +942,66 @@ function createReviewPayload(settings: ManualRegistrationSettings, submission: M
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+export function createManualRegistrationCreatedLogPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: { channelId: string; guildId: string; guildName: string; memberDisplayName: string; serverIconUrl?: string | null }, guild: Guild | null = null) {
+  const createdAt = new Date(submission.createdAt ?? Date.now());
+  const fieldLines = submission.fields.length
+    ? submission.fields.map((field) => `- ${field.label}: ${field.value}`).join("\n").slice(0, 2500)
+    : "- Nenhum campo informado.";
+  const body = {
+    type: 10,
+    content: replaceSystemEmojis([
+      `# ${systemEmojiText("prancheta", guild, guild?.client)} Novo registro realizado`,
+      "",
+      `${systemEmojiText("homem", guild, guild?.client)} **Usuário:** <@${submission.userId}>`,
+      `- Nome no servidor: ${input.memberDisplayName}`,
+      `- ID do usuário: ${submission.userId}`,
+      "",
+      `${systemEmojiText("discord", guild, guild?.client)} **Servidor:** ${input.guildName}`,
+      `- ID do servidor: ${input.guildId}`,
+      `- Canal criado: <#${input.channelId}>`,
+      `- ID do canal: ${input.channelId}`,
+      `- Link direto: https://discord.com/channels/${input.guildId}/${input.channelId}`,
+      "",
+      `${systemEmojiText("folha", guild, guild?.client)} **Registro:** ${submission.id}`,
+      "- Status: Aguardando atendimento",
+      `- Data: ${formatBrazilDateTime(createdAt)}`,
+      "",
+      `${systemEmojiText("prancheta_caneta", guild, guild?.client)} **Dados preenchidos**`,
+      fieldLines
+    ].join("\n"), guild, guild?.client ?? null)
+  };
+  const components: unknown[] = [
+    input.serverIconUrl ? { type: 9, components: [body], accessory: { type: 11, media: { url: input.serverIconUrl } } } : body,
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, guild, guild?.client ?? null) : "-# *NexTech - Todos os direitos reservados*" }
+  ];
+  const mentionRoleId = settings.logMentionRoleId ?? null;
+  return {
+    allowedMentions: { parse: [] as never[], roles: mentionRoleId ? [mentionRoleId] : [], users: [submission.userId] },
+    components: [{ type: 17, accent_color: parseColor(settings.color), components }],
+    content: mentionRoleId ? `<@&${mentionRoleId}>` : undefined,
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+async function sendRegistrationCreatedLog(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {
+  if (!settings.logChannelId) throw new Error("Canal de logs não configurado.");
+  if (!submission.channelId) throw new Error("Canal da solicitação não está salvo no registro.");
+  const channel = await guild.channels.fetch(settings.logChannelId).catch((error) => {
+    console.error("[REGISTRO] Falha ao buscar canal de logs", { error, guildId: guild.id, logChannelId: settings.logChannelId });
+    return null;
+  });
+  if (!channel?.isSendable()) throw new Error("Canal de logs não encontrado ou sem permissão de envio.");
+  const member = await guild.members.fetch(submission.userId).catch(() => null);
+  return channel.send(createManualRegistrationCreatedLogPayload(settings, submission, {
+    channelId: submission.channelId,
+    guildId: guild.id,
+    guildName: guild.name,
+    memberDisplayName: member?.displayName ?? submission.username,
+    serverIconUrl: guild.iconURL({ size: 256 })
+  }, guild));
 }
 
 function reviewStatusEmoji(status: ManualRegistrationSubmission["status"], guild: Guild | null) {
@@ -920,9 +1082,17 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
 
 async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput) {
   if (!settings.logChannelId) return;
-  const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
-  if (!channel?.isSendable()) return;
-  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch(() => null);
+  const channel = await guild.channels.fetch(settings.logChannelId).catch((error) => {
+    console.error("[REGISTRO] Falha ao buscar canal de log de decisão", { error, guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
+    return null;
+  });
+  if (!channel?.isSendable()) {
+    console.error("[REGISTRO] Canal de log de decisão inválido ou sem permissão", { guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
+    return;
+  }
+  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch((error) => {
+    console.error("[REGISTRO] Falha ao enviar log de decisão", { error, guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
+  });
 }
 
 export function createDecisionDmPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: { goalChannelId?: string | null; guild: Guild; reason?: string | null; status: "approved" | "rejected" }) {
@@ -971,9 +1141,17 @@ function goalChannelDmText(guild: Guild, channelId: string) {
 
 async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings, text: string) {
   if (!settings.logChannelId) return;
-  const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
-  if (!channel?.isSendable()) return;
-  await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta", guild, guild.client)} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+  const channel = await guild.channels.fetch(settings.logChannelId).catch((error) => {
+    console.error("[REGISTRO] Falha ao buscar canal de log de ação", { error, guildId: guild.id, logChannelId: settings.logChannelId });
+    return null;
+  });
+  if (!channel?.isSendable()) {
+    console.error("[REGISTRO] Canal de log de ação inválido ou sem permissão", { guildId: guild.id, logChannelId: settings.logChannelId });
+    return;
+  }
+  await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta", guild, guild.client)} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch((error) => {
+    console.error("[REGISTRO] Falha ao enviar log de ação", { error, guildId: guild.id, logChannelId: settings.logChannelId });
+  });
 }
 
 async function closeRequestChannel(guild: Guild, context: BotContext, submission: ManualRegistrationSubmission, reason: string) {

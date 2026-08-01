@@ -76,6 +76,9 @@ export type ManualRegistrationSubmissionDto = {
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
   channelId: string | null;
+  logError: string | null;
+  logMessageId: string | null;
+  logStatus: "pending" | "sent" | "failed" | null;
   requestedName: string;
   registrationType: "request" | "manual";
   removedAt: string | null;
@@ -279,6 +282,9 @@ export async function createManualRegistrationSubmission(input: {
     })),
     guildId: input.guildId,
     channelId: null,
+    logError: null,
+    logMessageId: null,
+    logStatus: "pending",
     requestedName: input.fields.find((field) => ["nome_personagem", "requested_name", "nome"].includes(field.id))?.value ?? input.fields[0]?.value ?? input.username,
     registrationType: input.registrationType ?? "request",
     registrationVersion: 2,
@@ -324,7 +330,7 @@ export async function createManualRegistrationDashboardSubmission(input: {
       { id: "id_fivem", label: "ID in-game", value: input.gameId }
     ],
     guildId: input.guildId, messageId: null, rejectedAt: null, rejectedBy: null, rejectionReason: null,
-    channelId: null, requestedName: input.characterName, registrationType: "manual", registrationVersion: 2, removedAt: null, removedBy: null, removalReason: null,
+    channelId: null, logError: null, logMessageId: null, logStatus: "pending", requestedName: input.characterName, registrationType: "manual", registrationVersion: 2, removedAt: null, removedBy: null, removalReason: null,
     requestedRoleId: input.requestedRoleId, status: "pending", updatedAt: now,
     userAvatar: input.userAvatar ?? null, userId: input.userId, username: input.username
   };
@@ -352,6 +358,25 @@ export async function updateManualRegistrationSubmissionChannel(id: string, botI
   const { manualRegistrationSubmissions } = await getMongoCollections();
   const saved = await manualRegistrationSubmissions.findOneAndUpdate({ _id: id, botId: normalizeBotId(botId), status: "pending", $or: [{ channelId: null }, { channelId: { $exists: false } }, { channelId }] }, { $set: { channelId, messageId, updatedAt: new Date() } }, { returnDocument: "after" });
   if (!saved) throw conflict("Este pedido já possui outro canal ativo ou foi processado.");
+  emitManualRegistrationUpdated(saved.guildId, normalizeBotId(botId));
+  return toSubmissionDto(saved);
+}
+
+export async function updateManualRegistrationSubmissionLogState(id: string, botId: string | null, input: { logError?: string | null; logMessageId?: string | null; logStatus: "pending" | "sent" | "failed" }) {
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const saved = await manualRegistrationSubmissions.findOneAndUpdate(
+    { _id: id, botId: normalizeBotId(botId) },
+    {
+      $set: {
+        logError: normalizeText(input.logError, 800),
+        logMessageId: normalizeSnowflake(input.logMessageId),
+        logStatus: input.logStatus,
+        updatedAt: new Date()
+      }
+    },
+    { returnDocument: "after" }
+  );
+  if (!saved) throw Object.assign(new Error("Pedido de set não encontrado."), { statusCode: 404 });
   emitManualRegistrationUpdated(saved.guildId, normalizeBotId(botId));
   return toSubmissionDto(saved);
 }
@@ -690,6 +715,9 @@ function toSubmissionDto(submission: MongoManualRegistrationSubmission): ManualR
     fields: submission.fields,
     guildId: submission.guildId,
     channelId: submission.channelId ?? null,
+    logError: submission.logError ?? null,
+    logMessageId: submission.logMessageId ?? null,
+    logStatus: submission.logStatus ?? null,
     requestedName: submission.requestedName ?? submission.fields.find((field) => field.id === "nome_personagem")?.value ?? submission.username,
     registrationType: submission.registrationType ?? "request",
     removedAt: submission.removedAt?.toISOString() ?? null,

@@ -20,6 +20,7 @@ import {
   saveManualRegistrationSettings,
   updateManualRegistrationSubmissionMessage,
   updateManualRegistrationSubmissionChannel,
+  updateManualRegistrationSubmissionLogState,
   updateManualRegistrationSubmissionRole,
   updateManualRegistrationSubmissionStatus
 } from "../services/manualRegistrationService";
@@ -104,6 +105,11 @@ const submissionSchema = z.object({
 const messageSchema = z.object({
   messageId: optionalSnowflakeSchema,
   channelId: optionalSnowflakeSchema
+});
+const logStateSchema = z.object({
+  logError: z.string().max(800).nullable().optional(),
+  logMessageId: optionalSnowflakeSchema,
+  logStatus: z.enum(["pending", "sent", "failed"])
 });
 
 const statusSchema = z.object({
@@ -267,6 +273,17 @@ manualRegistrationRouter.patch("/bot/submissions/:id/message", requireBot, async
     const botId = await resolveRequestBotId(req);
     if (input.channelId !== undefined) return res.json({ submission: await updateManualRegistrationSubmissionChannel(id, botId, input.channelId ?? null, input.messageId ?? null) });
     await updateManualRegistrationSubmissionMessage(id, botId, input.messageId ?? null); return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualRegistrationRouter.patch("/bot/submissions/:id/log-state", requireBot, async (req, res, next) => {
+  try {
+    const id = z.string().min(1).parse(req.params.id);
+    const input = logStateSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ submission: await updateManualRegistrationSubmissionLogState(id, botId, input) });
   } catch (error) {
     return next(error);
   }
