@@ -481,6 +481,59 @@ export async function getCurrentWeekFivemGoalReport(
   };
 }
 
+export async function finalizeCurrentFivemGoalPeriod(input: {
+  actorId: string | null;
+  botId?: string | null;
+  finalizationType?: "manual" | "automatic";
+  guildId: string;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  const report = await getCurrentWeekFivemGoalReport(input.guildId, normalizedBotId);
+  const { fivemGoalLogs } = await getMongoCollections();
+  const existing = await fivemGoalLogs.findOne({
+    action: "period.finalized",
+    ...scopeQuery(input.guildId, normalizedBotId),
+    "details.periodEnd": report.periodEnd,
+    "details.periodStart": report.periodStart
+  });
+
+  if (existing) {
+    return {
+      alreadyFinalized: true,
+      finalized: false,
+      logId: existing._id,
+      report
+    };
+  }
+
+  await writeFivemGoalLog({
+    action: "period.finalized",
+    botId: normalizedBotId,
+    details: {
+      approvedCount: report.approvedCount,
+      finalizationType: input.finalizationType ?? "manual",
+      participantCount: report.participantCount,
+      pendingCount: report.pendingCount,
+      periodEnd: report.periodEnd,
+      periodStart: report.periodStart,
+      refusedCount: report.refusedCount,
+      totalApprovedValue: report.totalApprovedValue,
+      totalPendingValue: report.totalPendingValue,
+      totalRecords: report.totalRecords
+    },
+    guildId: input.guildId,
+    metaId: null,
+    userId: input.actorId
+  });
+
+  return {
+    alreadyFinalized: false,
+    finalized: true,
+    logId: null,
+    report
+  };
+}
+
 export async function listFivemGoalConfigs(guildId: string, botId?: string | null, ensureLegacy = false) {
   const normalizedBotId = normalizeBotId(botId);
   if (ensureLegacy) {
@@ -1069,7 +1122,7 @@ function normalizeItems(items: FivemGoalItemDto[]) {
       category: normalizeText(item.category, 80),
       color: /^#[0-9a-f]{6}$/i.test(item.color ?? "") ? item.color : null,
       createdAt,
-      emoji: normalizeText(item.emoji, 80),
+      emoji: normalizeText(item.emoji, 80) || fixedSystemEmojiText("caixa"),
       enabled: item.enabled !== false,
       id: normalizeText(item.id, 80) || slug(name) || `item-${index + 1}`,
       name,

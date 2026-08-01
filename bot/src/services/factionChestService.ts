@@ -306,24 +306,25 @@ async function cancelMovement(interaction: ButtonInteraction) {
 
 function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
   const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
+  const client = guild.client;
   const intro = [
-      `# ${systemEmojiText("caixa", guild)} ${settings.systemName}`,
+      `# ${systemEmojiText("caixa", guild, client)} ${settings.systemName}`,
       "",
-      `${systemEmojiText("prancheta", guild)} Sistema de registro manual do baú`,
+      `${systemEmojiText("prancheta", guild, client)} Sistema de registro manual do baú`,
       "",
-      `${systemEmojiText("interrogacao", guild)} Informe exatamente os itens e as quantidades adicionadas ou retiradas do baú.`,
+      `${systemEmojiText("interrogacao", guild, client)} Informe exatamente os itens e as quantidades adicionadas ou retiradas do baú.`,
       "Toda ação será registrada e poderá ser consultada pela gerência.",
       "",
-      `${systemEmojiText("mais", guild)} **Adicionar**`,
+      `${systemEmojiText("mais", guild, client)} **Adicionar**`,
       "Para adicionar um ou vários itens ao baú, clique em **Adicionar**.",
       "",
-      `${systemEmojiText("porta", guild)} **Remover**`,
+      `${systemEmojiText("porta", guild, client)} **Remover**`,
       "Para retirar um ou vários itens do baú, clique em **Remover**."
     ].join("\n");
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar").setEmoji(systemComponentEmoji("mais", guild)).setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar").setEmoji(systemComponentEmoji("mais", guild, client)).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover").setEmoji(systemComponentEmoji("porta", guild, client)).setStyle(ButtonStyle.Danger)
   );
 
   return {
@@ -332,7 +333,7 @@ function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
       type: 17,
       accent_color: parseColor(settings.color),
       components: [
-        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(intro, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(intro, guild) },
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(intro, guild, client) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(intro, guild, client) },
         { type: 14, divider: true, spacing: 1 },
         row,
         { type: 14, divider: true, spacing: 1 },
@@ -347,6 +348,7 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
   const first = logs[0];
   const adding = first?.action === "add";
   const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
+  const client = guild.client;
   const total = logs.reduce((sum, log) => sum + log.quantity, 0);
   const actionLabel = adding ? "ADIÇÃO" : "REMOÇÃO";
   const itemLines = logs.map((log) => `${log.itemName}: ${log.quantity}`).join("\n");
@@ -354,14 +356,14 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
   const itemLabel = logs.length === 1 ? "Item" : "Itens";
   const itemValue = logs.length === 1 ? `${logs[0]?.itemName ?? "-"}: ${logs[0]?.quantity ?? 0}` : `\n${itemLines}`;
   const content = [
-    `**${systemEmojiText("caixa", guild)} ${settings.systemName} — ${actionLabel}**`,
-    `${adding ? systemEmojiText("mais", guild) : systemEmojiText("porta", guild)} **Ação:** ${actionLabel}`,
-    `${systemEmojiText("prancheta", guild)} **${itemLabel}:** ${itemValue}`,
-    `${systemEmojiText("caixa", guild)} **Quantidade:** ${total}`,
-    `${systemEmojiText("folha", guild)} **Motivo:** ${first?.reason || "Não informado"}`,
-    `${systemEmojiText("homem", guild)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`,
-    `${systemEmojiText("relogio", guild)} **Horário:** ${first ? formatDateTime(first.createdAt) : "-"}`,
-    `${systemEmojiText("prancheta", guild)} **Identificação:** ${operationCode}`
+    `**${systemEmojiText("caixa", guild, client)} ${settings.systemName} — ${actionLabel}**`,
+    `${adding ? systemEmojiText("mais", guild, client) : systemEmojiText("porta", guild, client)} **Ação:** ${actionLabel}`,
+    `${systemEmojiText("prancheta", guild, client)} **${itemLabel}:** ${itemValue}`,
+    `${systemEmojiText("caixa", guild, client)} **Quantidade:** ${total}`,
+    `${systemEmojiText("folha", guild, client)} **Motivo:** ${first?.reason || "Não informado"}`,
+    `${systemEmojiText("homem", guild, client)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`,
+    `${systemEmojiText("relogio", guild, client)} **Horário:** ${first ? formatDateTime(first.createdAt) : "-"}`,
+    `${systemEmojiText("prancheta", guild, client)} **Identificação:** ${operationCode}`
   ].join("\n");
   const auditContent = balanceLines ? `${content}\n\n**Saldos:**\n${balanceLines}` : content;
 
@@ -371,7 +373,7 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
       type: 17,
       accent_color: adding ? 0x22c55e : 0xef4444,
       components: [
-        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(auditContent, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(auditContent, guild) },
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(auditContent, guild, client) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(auditContent, guild, client) },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: "-# NexTech - Todos os direitos reservados" }
       ]
@@ -382,30 +384,32 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
 
 function confirmationPayload(token: string, action: "add" | "remove", items: Array<{ name: string; quantity: number }>, reason: string | null, guild: Guild | null) {
   const total = items.reduce((sum, item) => sum + item.quantity, 0);
+  const client = guild?.client ?? null;
   const content = [
-    `# ${systemEmojiText("prancheta", guild)} Confirme a movimentação`,
+    `# ${systemEmojiText("prancheta", guild, client)} Confirme a movimentação`,
     "",
-    `**Ação:** ${action === "add" ? "ADIÇÃO" : "REMOÇÃO"}`,
+    `${action === "add" ? systemEmojiText("mais", guild, client) : systemEmojiText("porta", guild, client)} **Ação:** ${action === "add" ? "ADIÇÃO" : "REMOÇÃO"}`,
     "",
-    items.map((item) => `- ${item.name} x${item.quantity}`).join("\n"),
+    items.map((item) => `- ${systemEmojiText("caixa", guild, client)} ${item.name} x${item.quantity}`).join("\n"),
     "",
-    `**Quantidade total:** ${total}`,
-    `**Motivo:** ${reason || "Não informado"}`
+    `${systemEmojiText("caixa", guild, client)} **Quantidade total:** ${total}`,
+    `${systemEmojiText("folha", guild, client)} **Motivo:** ${reason || "Não informado"}`
   ].join("\n");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${token}`).setLabel("Confirmar").setEmoji(systemComponentEmoji("visto", guild)).setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${token}`).setLabel("Cancelar").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${token}`).setLabel("Confirmar").setEmoji(systemComponentEmoji("visto", guild, client)).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${token}`).setLabel("Cancelar").setEmoji(systemComponentEmoji("porta", guild, client)).setStyle(ButtonStyle.Secondary)
   );
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [{ type: 17, accent_color: action === "add" ? 0x22c55e : 0xef4444, components: [{ type: 10, content: replaceSystemEmojis(content, guild) }, row] }],
+    components: [{ type: 17, accent_color: action === "add" ? 0x22c55e : 0xef4444, components: [{ type: 10, content: replaceSystemEmojis(content, guild, client) }, row] }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
   };
 }
 
 function chestManagementPanel(settings: FactionChestSettings, itemCount: number, ephemeral: boolean, guild: Guild | null): any {
+  const client = guild?.client ?? null;
   const content = [
-    `# ${systemEmojiText("caixa", guild)} GERENCIAMENTO DO SISTEMA DE BAÚ`,
+    `# ${systemEmojiText("caixa", guild, client)} GERENCIAMENTO DO SISTEMA DE BAÚ`,
     "",
     "Utilize as opções abaixo para configurar e administrar os baús deste servidor.",
     "",
@@ -418,13 +422,13 @@ function chestManagementPanel(settings: FactionChestSettings, itemCount: number,
     "**Planilha:** Não configurada"
   ].join("\n");
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:config`).setLabel("Configurar canais").setEmoji(systemComponentEmoji("engrenagem", guild)).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji(systemComponentEmoji("prancheta", guild)).setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId),
-    new ButtonBuilder().setCustomId(`${PREFIX}:close`).setLabel("Fechar").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:config`).setLabel("Configurar canais").setEmoji(systemComponentEmoji("engrenagem", guild, client)).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji(systemComponentEmoji("prancheta", guild, client)).setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId),
+    new ButtonBuilder().setCustomId(`${PREFIX}:close`).setLabel("Fechar").setEmoji(systemComponentEmoji("porta", guild, client)).setStyle(ButtonStyle.Secondary)
   );
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: replaceSystemEmojis(content, guild) }, { type: 14, divider: true, spacing: 1 }, buttons] }],
+    components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: replaceSystemEmojis(content, guild, client) }, { type: 14, divider: true, spacing: 1 }, buttons] }],
     flags: (ephemeral ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
   };
 }

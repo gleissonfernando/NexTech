@@ -4281,6 +4281,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [showChannelConfig, setShowChannelConfig] = useState(false);
+  const [activeGoalTab, setActiveGoalTab] = useState<"overview" | "goals" | "items" | "channels" | "permissions" | "finalization" | "history" | "appearance">("overview");
+  const [goalDetailTab, setGoalDetailTab] = useState<"info" | "items" | "participants" | "channels" | "permissions" | "finalization" | "reports">("info");
 
   useEffect(() => {
     if (!guild) return;
@@ -4294,7 +4296,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
         setConfigs(dashboard.configs ?? []);
         setSubmissions(dashboard.submissions ?? []);
         setReport(dashboard.report ?? null);
-        setDraft((dashboard.configs ?? [])[0] ?? null);
+        setDraft(null);
         setChannels(options.channels);
         setCategories((options.categories ?? []).map((category) => ({ ...category, parentId: null, type: "text" as const })));
         setRoles(options.roles);
@@ -4321,7 +4323,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
         setConfigs(dashboard.configs ?? []);
         setSubmissions(dashboard.submissions ?? []);
         setReport(dashboard.report ?? null);
-        setDraft((current) => (dashboard.configs ?? []).find((config) => config.id === current?.id) ?? current);
+        setDraft((current) => current ? (dashboard.configs ?? []).find((config) => config.id === current.id) ?? current : null);
       }).catch(() => null);
     };
     socket.on("fivem:goals:updated", refreshReport);
@@ -4387,6 +4389,12 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
 
   async function save() {
     if (!guild || !settings) return;
+    const missingEmojiItem = settings.items.find((item) => !item.emoji?.trim());
+    if (missingEmojiItem) {
+      setError(`Adicione um emoji no item "${missingEmojiItem.name || "sem nome"}" antes de salvar.`);
+      setMessage(null);
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -4403,6 +4411,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
 
   function createDraft() {
     if (!guild) return;
+    setActiveGoalTab("goals");
+    setGoalDetailTab("info");
     setDraft({
       approverRoleIds: [],
       botId: botId ?? null,
@@ -4417,7 +4427,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       id: "new",
       logChannelId: settings?.logChannelId ?? null,
       managerRoleIds: settings?.managerRoleIds?.length ? settings.managerRoleIds : settings?.managerRoleId ? [settings.managerRoleId] : [],
-      name: "Nova Meta",
+      name: "Meta semanal",
       panelChannelId: settings?.requestPanelChannelId ?? null,
       panelMessageId: null,
       participantRoleIds: settings?.viewerRoleIds?.length ? settings.viewerRoleIds : settings?.viewRoleId ? [settings.viewRoleId] : [],
@@ -4493,27 +4503,28 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     }
   }
 
+  const activeConfig = configs.find((config) => config.status === "active") ?? configs[0] ?? null;
+  const participantCount = new Set(submissions.map((entry) => entry.userId)).size || new Set(entries.map((entry) => entry.userId)).size;
+  const weeklyRecords = report?.totalRecords ?? entries.length;
+  const nextFinishLabel = `${weekdayLabel(settings?.cycle?.startDay ?? 1)} às ${settings?.cycle?.startTime ?? "00:00"}`;
+  const filteredConfigs = configs
+    .filter((config) => goalFilter === "all" || config.status === goalFilter || config.period === goalFilter)
+    .filter((config) => `${config.name} ${config.type} ${config.description ?? ""}`.toLowerCase().includes(goalSearch.toLowerCase()));
+  const activeItems = settings?.items.filter((item) => item.enabled) ?? [];
+  const correction = settings?.correctionManagement ?? defaultGoalCorrectionManagement();
+
   return (
     <Card className="border-emerald-500/10 bg-zinc-950/75">
-      <CardHeader>
+      <CardHeader className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-emerald-300" /> Gerenciamento de Metas FiveM</CardTitle>
-            <CardDescription>Metas independentes com cargos, canais, comprovantes, aprovação e histórico.</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-xl"><ListChecks className="h-5 w-5 text-emerald-300" /> Sistema de Metas</CardTitle>
+            <CardDescription>Cadastre metas, configure os itens, gerencie os canais e acompanhe os resultados semanais.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManage || !settings || saving || loading} onClick={createDraft} size="sm" type="button" variant="outline">
-              <ListChecks className="mr-2 h-4 w-4" />
-              Criar Meta
-            </Button>
-            <Button disabled={!settings || loading} onClick={() => setShowChannelConfig((current) => !current)} size="sm" type="button" variant="outline">
-              <Settings className="mr-2 h-4 w-4" />
-              Configurar canais
-            </Button>
-            <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-              Salvar Geral
-            </Button>
+            <Button disabled={!canManage || !settings || saving || loading} onClick={createDraft} size="sm" type="button"><Plus className="mr-2 h-4 w-4" />Nova meta</Button>
+            <Button disabled={!settings || loading} onClick={() => { setActiveGoalTab("channels"); setDraft(null); setShowChannelConfig(true); }} size="sm" type="button" variant="outline"><Settings className="mr-2 h-4 w-4" />Configurações gerais</Button>
+            <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button" variant="outline">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button>
           </div>
         </div>
       </CardHeader>
@@ -4522,191 +4533,216 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
         {message ? <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</div> : null}
         {loading || !settings ? <div className="h-40 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/60" /> : (
           <>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <MetricCard icon={ListChecks} label="Metas criadas" value={String(configs.length)} />
-              <MetricCard icon={Users} label="Participantes" value={String(new Set(submissions.map((entry) => entry.userId)).size || new Set(entries.map((entry) => entry.userId)).size)} />
-              <MetricCard icon={Clock3} label="Pendentes" value={String(submissions.filter((entry) => entry.status === "pending").length)} />
-              <MetricCard icon={CalendarClock} label="Hoje" value={String(entries.filter((entry) => new Date(entry.createdAt).toDateString() === new Date().toDateString()).length)} />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard icon={ListChecks} label="Metas ativas" value={String(configs.filter((config) => config.status === "active").length)} />
+              <MetricCard icon={Users} label="Participantes" value={String(participantCount)} />
+              <MetricCard icon={CalendarClock} label="Registros na semana" value={String(weeklyRecords)} />
+              <MetricCard icon={Clock3} label="Próxima finalização" value={nextFinishLabel} />
             </div>
-            {report ? (
-              <section className="border-y border-zinc-800 py-4">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">Relatório automático da semana</p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {new Date(report.periodStart).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} até {new Date(new Date(report.periodEnd).getTime() - 1).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-                      {` - ${report.totalRecords} registros`}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-zinc-500">Total oficial aprovado</p>
-                    <p className="text-xl font-semibold text-emerald-300">{formatGoalCurrency(report.totalApprovedValue)}</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                  <MetricCard icon={Users} label="Pagadores" value={String(report.participantCount)} />
-                  <MetricCard icon={CheckCircle2} label="Aprovadas" value={String(report.approvedCount)} />
-                  <MetricCard icon={Clock3} label="Pendentes" value={`${report.pendingCount} (${formatGoalCurrency(report.totalPendingValue)})`} />
-                  <MetricCard icon={XCircle} label="Reprovadas" value={String(report.refusedCount)} />
-                </div>
-                {report.types.length ? (
-                  <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-zinc-900 pt-3 text-sm">
-                    {report.types.map((type) => (
-                      <div className="flex items-center gap-2" key={type.metaId}>
-                        <span className="text-zinc-500">{type.name}</span>
-                        <span className="font-semibold text-zinc-200">{formatGoalCurrency(type.totalApprovedValue)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {report.members.length ? (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full min-w-[620px] text-left text-sm">
-                      <thead className="border-b border-zinc-800 text-xs text-zinc-500">
-                        <tr><th className="pb-2 font-medium">Ranking</th><th className="pb-2 font-medium">Usuário</th><th className="pb-2 font-medium">Aprovadas</th><th className="pb-2 font-medium">Pendentes</th><th className="pb-2 text-right font-medium">Total aprovado</th></tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-900">
-                        {report.members.slice(0, 20).map((member, index) => (
-                          <tr key={member.userId}>
-                            <td className="py-2 text-zinc-500">{index + 1}o</td>
-                            <td className="py-2 font-medium text-zinc-200">{member.userId}</td>
-                            <td className="py-2 text-emerald-300">{member.approvedCount}</td>
-                            <td className="py-2 text-amber-300">{member.pendingCount}</td>
-                            <td className="py-2 text-right font-semibold text-white">{formatGoalCurrency(member.totalApprovedValue)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : <p className="mt-4 text-sm text-zinc-500">Nenhuma meta registrada nesta semana.</p>}
-              </section>
-            ) : null}
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative min-w-[220px] flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
-                    <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] pl-9 pr-3 text-sm text-zinc-100" onChange={(event) => setGoalSearch(event.target.value)} placeholder="Buscar meta" value={goalSearch} />
-                  </div>
-                  <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setGoalFilter(event.target.value)} value={goalFilter}>
-                    <option value="all">Todas</option>
-                    <option value="active">Ativas</option>
-                    <option value="paused">Pausadas</option>
-                    <option value="finished">Finalizadas</option>
-                    <option value="daily">Diarias</option>
-                    <option value="weekly">Semanais</option>
-                    <option value="monthly">Mensais</option>
-                    <option value="custom">Personalizadas</option>
-                  </select>
-                </div>
-                <div className="grid gap-3">
-                  {configs
-                    .filter((config) => goalFilter === "all" || config.status === goalFilter || config.period === goalFilter)
-                    .filter((config) => `${config.name} ${config.type} ${config.description ?? ""}`.toLowerCase().includes(goalSearch.toLowerCase()))
-                    .map((config) => {
-                      const progress = Math.min(100, Math.round((config.currentValue / Math.max(1, config.targetValue)) * 100));
-                      return (
-                        <button className={`rounded-lg border p-3 text-left transition ${draft?.id === config.id ? "border-emerald-500/50 bg-emerald-500/10" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"}`} key={config.id} onClick={() => setDraft(config)} type="button">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="font-semibold text-white">{config.name}</p>
-                              <p className="mt-1 text-xs text-zinc-400">{config.type} - {config.period} - {config.participantRoleIds.length} cargos</p>
-                            </div>
-                            <Badge variant={config.status === "active" ? "success" : config.status === "paused" ? "warning" : "muted"}>{config.status}</Badge>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
-                            <div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} />
-                          </div>
-                          <div className="mt-2 flex justify-between text-xs text-zinc-500">
-                            <span>{config.currentValue} / {config.targetValue}</span>
-                            <span>{config.totalParticipants} participantes</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-              {draft ? (
-                <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-white">{draft.id === "new" ? "Criar meta" : "Editar meta"}</p>
-                    <Button disabled={!canManage || saving} onClick={() => void saveDraft()} size="sm" type="button">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button>
-                  </div>
-                  <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchDraft({ name: value })} value={draft.name} />
-                  <TicketField disabled={!canManage} label="Descrição" onChange={(value) => patchDraft({ description: value })} value={draft.description ?? ""} />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-xs font-medium text-zinc-400">Status
-                      <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ status: event.target.value as FivemGoalConfig["status"] })} value={draft.status}>
-                        <option value="active">Ativa</option>
-                        <option value="paused">Pausada</option>
-                        <option value="finished">Finalizada</option>
-                      </select>
-                    </label>
-                    <label className="block text-xs font-medium text-zinc-400">Periodo
-                      <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ period: event.target.value as FivemGoalConfig["period"] })} value={draft.period}>
-                        <option value="daily">Diaria</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="monthly">Mensal</option>
-                        <option value="custom">Personalizada</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-black/30 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase text-zinc-500">Itens que aparecem no registro</p>
-                      <span className="text-[11px] text-zinc-600">{settings.items.filter((item) => item.enabled).length}/{settings.items.length} ativos</span>
+            <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
+              {[
+                ["overview", "Visão geral"],
+                ["goals", "Metas"],
+                ["items", "Itens"],
+                ["channels", "Canais"],
+                ["permissions", "Permissões"],
+                ["finalization", "Finalização automática"],
+                ["history", "Histórico"],
+                ["appearance", "Aparência"]
+              ].map(([id, label]) => (
+                <button className={`rounded-md border px-3 py-2 text-sm font-medium transition ${activeGoalTab === id ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-100" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-zinc-100"}`} key={id} onClick={() => { setActiveGoalTab(id as typeof activeGoalTab); setDraft(null); }} type="button">{label}</button>
+              ))}
+            </div>
+            {activeGoalTab === "overview" ? (
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+                <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Meta atual</p>
+                      <p className="mt-1 text-sm text-zinc-400">{activeConfig ? `${activeConfig.name} • ${periodLabel(activeConfig.period)}` : "Nenhuma meta ativa configurada."}</p>
                     </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {settings.items.map((item, index) => (
-                        <label className={`flex min-h-10 min-w-0 items-center gap-2 overflow-hidden rounded-md border px-3 text-sm ${item.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-zinc-100" : "border-zinc-800 bg-zinc-950 text-zinc-500"}`} key={item.id} title={item.name}>
-                          <input checked={item.enabled} className="shrink-0" disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />
-                          <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/10" style={{ backgroundColor: item.color ?? "#22c55e" }} />
-                          <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                    {!settings.items.length ? <p className="mt-3 text-xs text-zinc-500">Nenhum item cadastrado. Use Configurar canais para abrir a configuração completa e adicionar itens.</p> : null}
+                    {activeConfig ? <Badge variant={activeConfig.status === "active" ? "success" : "muted"}>{activeConfig.status === "active" ? "Ativa" : activeConfig.status}</Badge> : null}
                   </div>
-                  {draft.id !== "new" ? (
-                    <div className="flex flex-wrap gap-2">
-                      <Button disabled={!canManage || saving} onClick={() => void removeDraft(false)} size="sm" type="button" variant="destructive"><Trash2 className="mr-2 h-4 w-4" />Excluir meta</Button>
-                      <Button disabled={!canManage || saving} onClick={() => void removeDraft(true)} size="sm" type="button" variant="outline">Excluir com histórico</Button>
+                  {activeConfig ? (
+                    <div className="mt-4 grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
+                      <p>Finalização: <span className="font-semibold text-white">{nextFinishLabel}</span></p>
+                      <p>Modo: <span className="font-semibold text-white">{settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}</span></p>
+                      <p>Aprovação: <span className="font-semibold text-white">{activeConfig.requiresApproval ? "Manual" : "Automática"}</span></p>
+                      <p>Itens ativos: <span className="font-semibold text-white">{activeItems.length}</span></p>
                     </div>
                   ) : null}
-                </div>
-              ) : null}
-            </div>
-            {showChannelConfig ? (
-              <>
-            <section className="space-y-3 border-y border-zinc-800 py-4">
-              <div>
-                <p className="text-sm font-semibold text-white">Configuração geral</p>
-                <p className="mt-1 text-xs text-zinc-500">Ativação, categoria das salas, canal de logs e cargos responsáveis do Sistema de Metas.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button disabled={!activeConfig} onClick={() => { setDraft(activeConfig); setGoalDetailTab("info"); }} size="sm" type="button" variant="outline">Gerenciar meta</Button>
+                    <Button onClick={createDraft} size="sm" type="button" variant="outline">Criar nova meta</Button>
+                    <Button onClick={() => setActiveGoalTab("items")} size="sm" type="button" variant="outline">Cadastrar item</Button>
+                    <Button onClick={() => setActiveGoalTab("channels")} size="sm" type="button" variant="outline">Configurar canais</Button>
+                  </div>
+                </section>
+                <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                  <p className="text-sm font-semibold text-white">Canais do sistema</p>
+                  <div className="mt-4 space-y-3 text-sm text-zinc-300">
+                    <p>Painel: <span className="font-semibold text-white">{channelLabel(channels, settings.requestPanelChannelId)}</span></p>
+                    <p>Categoria: <span className="font-semibold text-white">{channelLabel(categories, settings.categoryId, false)}</span></p>
+                    <p>Logs: <span className="font-semibold text-white">{channelLabel(channels, settings.logChannelId)}</span></p>
+                  </div>
+                  <Button className="mt-4" onClick={() => setActiveGoalTab("channels")} size="sm" type="button" variant="outline">Configurar canais</Button>
+                </section>
+                <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 xl:col-span-2">
+                  <p className="text-sm font-semibold text-white">Metas recentes</p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {configs.slice(0, 4).map((config) => <GoalSummaryCard config={config} key={config.id} onManage={() => { setActiveGoalTab("goals"); setDraft(config); setGoalDetailTab("info"); }} />)}
+                    {!configs.length ? <p className="text-sm text-zinc-500">Nenhuma meta criada.</p> : null}
+                  </div>
+                </section>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
+            ) : null}
+            {activeGoalTab === "goals" ? (
+              draft ? (
+                <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <button className="text-sm text-zinc-400 hover:text-white" onClick={() => setDraft(null)} type="button">← Voltar para metas</button>
+                      <p className="mt-2 text-lg font-semibold text-white">{draft.name || "Meta semanal"}</p>
+                      <p className="text-sm text-zinc-400">Status: {draft.status === "active" ? "Ativa" : draft.status}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={!canManage || saving} onClick={() => void saveDraft()} size="sm" type="button">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar alterações</Button>
+                      {draft.id !== "new" ? <Button disabled={!canManage || saving} onClick={() => void removeDraft(false)} size="sm" type="button" variant="outline"><Trash2 className="mr-2 h-4 w-4" />Mais ações</Button> : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
+                    {[
+                      ["info", "Informações"],
+                      ["items", "Itens da meta"],
+                      ["participants", "Participantes"],
+                      ["channels", "Canais"],
+                      ["permissions", "Permissões"],
+                      ["finalization", "Finalização"],
+                      ["reports", "Relatórios"]
+                    ].map(([id, label]) => <button className={`rounded-md border px-3 py-2 text-sm ${goalDetailTab === id ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-100" : "border-zinc-800 text-zinc-400"}`} key={id} onClick={() => setGoalDetailTab(id as typeof goalDetailTab)} type="button">{label}</button>)}
+                  </div>
+                  {goalDetailTab === "info" ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <TicketField disabled={!canManage} label="Nome da meta" onChange={(value) => patchDraft({ name: value || periodDefaultName(draft.period) })} value={draft.name} />
+                      <label className="block text-xs font-medium text-zinc-400">Status
+                        <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ status: event.target.value as FivemGoalConfig["status"] })} value={draft.status}>
+                          <option value="active">Ativa</option>
+                          <option value="paused">Pausada</option>
+                          <option value="finished">Finalizada</option>
+                        </select>
+                      </label>
+                      <div className="lg:col-span-2"><TicketArea disabled={!canManage} label="Descrição" onChange={(value) => patchDraft({ description: value })} value={draft.description ?? ""} /></div>
+                      <label className="block text-xs font-medium text-zinc-400">Tipo
+                        <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ type: event.target.value })} value={draft.type}>
+                          <option value="personalizada">Personalizada</option>
+                          <option value="farm">Farm</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-medium text-zinc-400">Periodicidade
+                        <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ name: draft.name || periodDefaultName(event.target.value as FivemGoalConfig["period"]), period: event.target.value as FivemGoalConfig["period"] })} value={draft.period}>
+                          <option value="weekly">Semanal</option>
+                          <option value="monthly">Mensal</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                  {goalDetailTab === "items" ? <GoalItemsEditor canManage={canManage} items={settings.items} onAdd={addItem} onPatch={patchItem} /> : null}
+                  {goalDetailTab === "participants" ? (
+                    <div className="space-y-4">
+                      <MultiRoleSelect disabled={!canManage} label="Cargos participantes" onChange={(values) => patchDraft({ participantRoleIds: values })} roles={roles} values={draft.participantRoleIds} />
+                      <div className="flex flex-wrap gap-2">{draft.participantRoleIds.map((roleId) => <span className="rounded-full border border-zinc-700 px-3 py-1 text-sm text-zinc-200" key={roleId}>{roleLabel(roles, roleId)}</span>)}</div>
+                      <p className="text-sm text-zinc-500">{participantCount} participantes encontrados no período.</p>
+                    </div>
+                  ) : null}
+                  {goalDetailTab === "channels" ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do painel" onChange={(value) => patchDraft({ panelChannelId: value })} placeholder="Usar canal global" value={draft.panelChannelId} />
+                      <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs da meta" onChange={(value) => patchDraft({ logChannelId: value })} placeholder="Usar canal global" value={draft.logChannelId} />
+                    </div>
+                  ) : null}
+                  {goalDetailTab === "permissions" ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <MultiRoleSelect disabled={!canManage} label="Cargos administradores" onChange={(values) => patchDraft({ managerRoleIds: values })} roles={roles} values={draft.managerRoleIds} />
+                      <MultiRoleSelect disabled={!canManage} label="Cargos aprovadores" onChange={(values) => patchDraft({ approverRoleIds: values })} roles={roles} values={draft.approverRoleIds} />
+                    </div>
+                  ) : null}
+                  {goalDetailTab === "finalization" ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="block text-xs font-medium text-zinc-400">Método de aprovação
+                        <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ requiresApproval: event.target.value === "manual" })} value={draft.requiresApproval ? "manual" : "auto"}>
+                          <option value="auto">Automática</option>
+                          <option value="manual">Manual</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-medium text-zinc-400">Comprovante
+                        <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ requiresProof: event.target.value === "true" })} value={String(draft.requiresProof)}>
+                          <option value="true">Obrigatório</option>
+                          <option value="false">Opcional</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                  {goalDetailTab === "reports" ? <GoalReportTable report={report} /> : null}
+                </section>
+              ) : (
+                <section className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-[260px] flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                      <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] pl-9 pr-3 text-sm text-zinc-100" onChange={(event) => setGoalSearch(event.target.value)} placeholder="Buscar meta" value={goalSearch} />
+                    </div>
+                    <select className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" onChange={(event) => setGoalFilter(event.target.value)} value={goalFilter}>
+                      <option value="all">Todas</option>
+                      <option value="active">Ativas</option>
+                      <option value="paused">Pausadas</option>
+                      <option value="finished">Finalizadas</option>
+                      <option value="weekly">Semanais</option>
+                      <option value="monthly">Mensais</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    {filteredConfigs.map((config) => <GoalSummaryCard config={config} key={config.id} onManage={() => { setDraft(config); setGoalDetailTab("info"); }} />)}
+                    {!filteredConfigs.length ? <p className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Nenhuma meta encontrada.</p> : null}
+                  </div>
+                </section>
+              )
+            ) : null}
+            {activeGoalTab === "items" ? <GoalItemsEditor canManage={canManage} items={settings.items} onAdd={addItem} onPatch={patchItem} /> : null}
+            {activeGoalTab === "channels" ? (
+              <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Canais do sistema</p>
+                <p className="mt-1 text-sm text-zinc-400">Configuração única por servidor para painel, salas, logs e relatórios.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
               <label className="block text-xs font-medium text-zinc-400">Status
                 <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ enabled: event.target.value === "true" })} value={String(settings.enabled)}>
                   <option value="true">Ativado</option>
                   <option value="false">Desativado</option>
                 </select>
               </label>
+              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do painel" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione o canal do painel" value={settings.requestPanelChannelId} />
+              <FivemChannelSelect channels={categories} disabled={!canManage} label="Categoria das salas" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
+              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Selecione o canal de logs" value={settings.logChannelId} />
+              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
-              <FivemChannelSelect channels={categories} compact disabled={!canManage} label="Categoria padrão onde os canais de meta serão criados" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
-              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
-              <MultiRoleSelect compact disabled={!canManage} label="Cargos que podem visualizar" onChange={(values) => patch({ viewerRoleIds: values, viewRoleId: values[0] ?? null })} roles={roles} values={settings.viewerRoleIds?.length ? settings.viewerRoleIds : settings.viewRoleId ? [settings.viewRoleId] : []} />
-              <MultiRoleSelect compact disabled={!canManage} label="Cargos administradores" onChange={(values) => patch({ managerRoleIds: values, managerRoleId: values[0] ?? null })} roles={roles} values={settings.managerRoleIds?.length ? settings.managerRoleIds : settings.managerRoleId ? [settings.managerRoleId] : []} />
               </div>
+              <Button disabled={!canManage || saving || !settings.enabled || !settings.requestPanelEnabled || !settings.requestPanelChannelId} onClick={() => void publishRequestPanel()} size="sm" type="button"><Upload className="mr-2 h-4 w-4" />Publicar painel</Button>
             </section>
-            <section className="space-y-3 border-y border-zinc-800 py-4">
+            ) : null}
+            {activeGoalTab === "permissions" ? (
+              <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <div>
-                <p className="text-sm font-semibold text-white">Gerenciamento de correções</p>
-                <p className="mt-1 text-xs text-zinc-500">Permissões e prazo para o comando /editar-meta solicitar que um membro refaça um registro confirmado.</p>
+                <p className="text-sm font-semibold text-white">Permissões da meta</p>
+                <p className="mt-1 text-sm text-zinc-400">Cargos participantes, administradores, aprovadores e gerentes de correção.</p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <RoleSelect compact disabled={!canManage} label="Cargo de Gerente de Metas" onChange={(value) => patchCorrectionManagement({ managerRoleId: value || null })} roles={roles} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).managerRoleId ?? ""} />
-                <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs de correção" onChange={(value) => patchCorrectionManagement({ logChannelId: value })} placeholder="Usar canal de logs geral" value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).logChannelId} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <MultiRoleSelect disabled={!canManage} label="Cargos participantes" onChange={(values) => patch({ viewerRoleIds: values, viewRoleId: values[0] ?? null })} roles={roles} values={settings.viewerRoleIds?.length ? settings.viewerRoleIds : settings.viewRoleId ? [settings.viewRoleId] : []} />
+                <MultiRoleSelect disabled={!canManage} label="Cargos administradores" onChange={(values) => patch({ managerRoleIds: values, managerRoleId: values[0] ?? null })} roles={roles} values={settings.managerRoleIds?.length ? settings.managerRoleIds : settings.managerRoleId ? [settings.managerRoleId] : []} />
+                <RoleSelect disabled={!canManage} label="Cargo de Gerente de Metas" onChange={(value) => patchCorrectionManagement({ managerRoleId: value || null })} roles={roles} value={correction.managerRoleId ?? ""} />
+                <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs de correção" onChange={(value) => patchCorrectionManagement({ logChannelId: value })} placeholder="Usar canal de logs geral" value={correction.logChannelId} />
                 <label className="block text-xs font-medium text-zinc-400">Prazo padrão
-                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchCorrectionManagement({ defaultDeadline: event.target.value as NonNullable<FivemGoalSettings["correctionManagement"]>["defaultDeadline"] })} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).defaultDeadline}>
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchCorrectionManagement({ defaultDeadline: event.target.value as NonNullable<FivemGoalSettings["correctionManagement"]>["defaultDeadline"] })} value={correction.defaultDeadline}>
                     <option value="none">Sem prazo</option>
                     <option value="12h">12 horas</option>
                     <option value="24h">24 horas</option>
@@ -4715,172 +4751,187 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                     <option value="custom">Personalizado</option>
                   </select>
                 </label>
-                <TicketField disabled={!canManage || (settings.correctionManagement ?? defaultGoalCorrectionManagement()).defaultDeadline !== "custom"} label="Prazo personalizado (horas)" onChange={(value) => patchCorrectionManagement({ customDeadlineHours: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String((settings.correctionManagement ?? defaultGoalCorrectionManagement()).customDeadlineHours ?? "")} />
-                <TicketField disabled={!canManage} label="Máximo por período" onChange={(value) => patchCorrectionManagement({ maxCorrectionsPerPeriod: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String((settings.correctionManagement ?? defaultGoalCorrectionManagement()).maxCorrectionsPerPeriod ?? "")} />
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowAdministrators} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowAdministrators: event.target.checked })} type="checkbox" />Administradores</span></label>
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowClosedPeriods} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowClosedPeriods: event.target.checked })} type="checkbox" />Períodos encerrados</span></label>
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).requireReason} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ requireReason: event.target.checked })} type="checkbox" />Exigir motivo</span></label>
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowRestoreOriginal} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowRestoreOriginal: event.target.checked })} type="checkbox" />Restaurar original</span></label>
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).notifyUser} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ notifyUser: event.target.checked })} type="checkbox" />Notificar usuário</span></label>
-                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).notifyResponsibleTeam} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ notifyResponsibleTeam: event.target.checked })} type="checkbox" />Notificar equipe</span></label>
+                <TicketField disabled={!canManage || correction.defaultDeadline !== "custom"} label="Prazo personalizado (horas)" onChange={(value) => patchCorrectionManagement({ customDeadlineHours: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String(correction.customDeadlineHours ?? "")} />
+                <TicketField disabled={!canManage} label="Máximo por período" onChange={(value) => patchCorrectionManagement({ maxCorrectionsPerPeriod: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String(correction.maxCorrectionsPerPeriod ?? "")} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {([
+                  ["allowAdministrators", "Permitir administradores"],
+                  ["allowClosedPeriods", "Períodos encerrados"],
+                  ["requireReason", "Exigir motivo"],
+                  ["allowRestoreOriginal", "Restaurar original"],
+                  ["notifyUser", "Notificar usuário"],
+                  ["notifyResponsibleTeam", "Notificar equipe"]
+                ] as Array<[keyof Pick<NonNullable<FivemGoalSettings["correctionManagement"]>, "allowAdministrators" | "allowClosedPeriods" | "requireReason" | "allowRestoreOriginal" | "notifyUser" | "notifyResponsibleTeam">, string]>).map(([key, label]) => (
+                  <label className="flex h-11 items-center gap-2 rounded-md border border-zinc-800 px-3 text-sm text-zinc-300" key={key}>
+                    <input checked={Boolean(correction[key as keyof typeof correction])} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ [key]: event.target.checked } as Partial<typeof correction>)} type="checkbox" />
+                    {label}
+                  </label>
+                ))}
               </div>
             </section>
-            <label className="flex items-center gap-3 border-y border-zinc-800 py-3 text-sm text-zinc-300">
-              <input checked={settings.autoCreateWithManualRegistration} disabled={!canManage} onChange={(event) => patch({ autoCreateWithManualRegistration: event.target.checked })} type="checkbox" />
-              <span><strong className="block text-white">Vincular Pedido de Set com Metas</strong><span className="text-xs text-zinc-500">Ao aprovar um set, cria ou localiza automaticamente o canal individual de meta do membro.</span></span>
-            </label>
-            {settings.autoCreateWithManualRegistration && !settings.categoryId ? (
-              <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                Configure a categoria padrão das metas acima ou escolha uma categoria específica em cada set dentro do Pedido de Set.
-              </div>
             ) : null}
-            <section className="space-y-3 border-y border-zinc-800 py-4">
-              <div>
-                <p className="text-sm font-semibold text-white">Finalização automática</p>
-                <p className="mt-1 text-xs text-zinc-500">Define fuso, início do período e canal onde os resumos semanais serão enviados.</p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="block text-xs font-medium text-zinc-400">Resumo semanal
-                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ weeklySummaryEnabled: event.target.value === "true" })} value={String(settings.weeklySummaryEnabled ?? true)}>
+            {activeGoalTab === "finalization" ? (
+              <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-white">Finalização automática</p>
+                  <p className="mt-1 text-sm text-zinc-400">Define o período, horário, fuso e canal dos relatórios.</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <label className="block text-xs font-medium text-zinc-400">Resumo semanal
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ weeklySummaryEnabled: event.target.value === "true" })} value={String(settings.weeklySummaryEnabled ?? true)}>
+                      <option value="true">Automático</option>
+                      <option value="false">Manual</option>
+                    </select>
+                  </label>
+                  <TicketField disabled={!canManage} label="Fuso horário" onChange={(value) => patch({ timezone: value })} value={settings.timezone ?? "America/Sao_Paulo"} />
+                  <label className="block text-xs font-medium text-zinc-400">Dia de finalização
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startDay: Number(event.target.value) } })} value={String(settings.cycle?.startDay ?? 1)}>
+                      <option value="0">Domingo</option>
+                      <option value="1">Segunda-feira</option>
+                      <option value="2">Terça-feira</option>
+                      <option value="3">Quarta-feira</option>
+                      <option value="4">Quinta-feira</option>
+                      <option value="5">Sexta-feira</option>
+                      <option value="6">Sábado</option>
+                    </select>
+                  </label>
+                  <TicketField disabled={!canManage} label="Horário" onChange={(value) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startTime: value } })} value={settings.cycle?.startTime ?? "00:00"} />
+                </div>
+              </section>
+            ) : null}
+            {activeGoalTab === "history" ? <GoalReportTable report={report} /> : null}
+            {activeGoalTab === "appearance" ? (
+              <section className="grid gap-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4 md:grid-cols-2">
+                <TicketField disabled={!canManage} label="Título do painel" onChange={(value) => patch({ requestPanelTitle: value })} value={settings.requestPanelTitle} />
+                <label className="block text-xs font-medium text-zinc-400">Painel manual
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ requestPanelEnabled: event.target.value === "true" })} value={String(settings.requestPanelEnabled)}>
                     <option value="true">Ativado</option>
                     <option value="false">Desativado</option>
                   </select>
                 </label>
-                <TicketField disabled={!canManage} label="Fuso horário" onChange={(value) => patch({ timezone: value })} value={settings.timezone ?? "America/Sao_Paulo"} />
-                <label className="block text-xs font-medium text-zinc-400">Dia de início
-                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startDay: Number(event.target.value) } })} value={String(settings.cycle?.startDay ?? 1)}>
-                    <option value="0">Domingo</option>
-                    <option value="1">Segunda-feira</option>
-                    <option value="2">Terça-feira</option>
-                    <option value="3">Quarta-feira</option>
-                    <option value="4">Quinta-feira</option>
-                    <option value="5">Sexta-feira</option>
-                    <option value="6">Sábado</option>
-                  </select>
-                </label>
-                <TicketField disabled={!canManage} label="Horário" onChange={(value) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startTime: value } })} value={settings.cycle?.startTime ?? "00:00"} />
-                <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
-              </div>
-            </section>
-            <section className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.04] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">Painel de Solicitação de Canal de Meta</p>
-                  <p className="mt-1 text-sm text-zinc-400">Use quando o Pedido Set estiver desligado ou quando quiser permitir solicitação manual do canal individual.</p>
-                </div>
-                <Button disabled={!canManage || saving || !settings.enabled || !settings.requestPanelEnabled || !settings.requestPanelChannelId} onClick={() => void publishRequestPanel()} size="sm" type="button">
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                  Enviar/Atualizar painel
-                </Button>
-              </div>
-              {settings.enabled && settings.requestPanelEnabled && !settings.requestPanelChannelId ? (
-                <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">Configure o canal onde os membros vao solicitar o canal de meta.</div>
-              ) : null}
-              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block text-xs font-medium text-zinc-400">Painel manual
-                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ requestPanelEnabled: event.target.value === "true" })} value={String(settings.requestPanelEnabled)}>
-                      <option value="true">Ativado</option>
-                      <option value="false">Desativado</option>
-                    </select>
-                  </label>
-              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal onde o painel de solicitar sala de meta será postado" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione um canal" value={settings.requestPanelChannelId} />
-                  <TicketField disabled={!canManage} label="Titulo do painel" onChange={(value) => patch({ requestPanelTitle: value })} value={settings.requestPanelTitle} />
-                  <label className="flex items-end gap-2 text-xs text-zinc-300">
-                    <span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3">
-                      <input checked={settings.requestRequiresApproval} disabled={!canManage} onChange={(event) => patch({ requestRequiresApproval: event.target.checked })} type="checkbox" />
-                      Exigir aprovação manual
-                    </span>
-                  </label>
-                  <div className="md:col-span-2">
-                    <TicketArea disabled={!canManage} label="Texto do painel" onChange={(value) => patch({ requestPanelDescription: value })} value={settings.requestPanelDescription} />
-                  </div>
-                </div>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                  <p className="text-xs font-semibold uppercase text-zinc-500">Prévia Components V2</p>
-                  <div className="mt-3 rounded-lg border-l-4 border-white bg-[#101013] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-base font-semibold text-white">💼 CRIAR SALA DE FARM</p>
-                        <p className="mt-4 text-sm font-semibold text-zinc-100">Bem-vindo(a) ao Sistema de Farm!</p>
-                        <p className="mt-3 text-sm leading-6 text-zinc-300">Clique no botão abaixo para criar sua sala privada automaticamente.</p>
-                        <p className="mt-3 whitespace-pre-line text-xs leading-5 text-zinc-300">• Apenas você terá acesso à sua sala{"\n"}• Use com organização{"\n"}• Para dúvidas, chame a gerência</p>
-                      </div>
-                      {guild?.iconUrl ? <img alt="" className="h-16 w-16 rounded-md object-cover" src={guild.iconUrl} /> : null}
-                    </div>
-                    <div className="mt-4 border-t border-zinc-700 pt-3">
-                      <p className="text-sm font-semibold text-white">Criar sala de farm</p>
-                      <p className="mt-1 text-xs text-zinc-300">Cria automaticamente uma sala privada para registrar seu farm.</p>
-                      <span className="mt-3 inline-flex rounded-md bg-zinc-700 px-3 py-2 text-xs font-semibold text-white">Solicitar Sala de Farm</span>
-                    </div>
-                    <p className="mt-3 border-t border-zinc-700 pt-2 text-xs italic text-zinc-400">NexTech - Todos os direitos reservados</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section className="space-y-3 border-y border-zinc-800 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">Campos do modal</p>
-                  <p className="mt-1 text-xs text-zinc-500">Cadastre somente os campos que você quer pedir no modal. Se nenhum campo for cadastrado, o bot perguntará apenas a quantidade obrigatória.</p>
-                </div>
-                <Button disabled={!canManage || settings.fields.length >= 5} onClick={addGoalField} size="sm" type="button" variant="outline">Adicionar campo</Button>
-              </div>
-              {settings.fields.map((field, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 md:grid-cols-[1fr_1fr_120px_auto]" key={`fivem-goal-field-${index}`}>
-                  <TicketField disabled={!canManage} label="Label" onChange={(value) => patchField(index, { id: slugTicketOption(value, index), label: value })} value={field.label} />
-                  <TicketField disabled={!canManage} label="Placeholder" onChange={(value) => patchField(index, { placeholder: value })} value={field.placeholder ?? ""} />
-                  <label className="block text-xs font-medium text-zinc-400">Tipo
-                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchField(index, { style: event.target.value as FivemGoalField["style"] })} value={field.style}>
-                      <option value="short">Curto</option>
-                      <option value="paragraph">Longo</option>
-                    </select>
-                  </label>
-                  <div className="flex items-end">
-                    <Button disabled={!canManage} onClick={() => removeGoalField(index)} size="icon" title="Remover campo" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                </div>
-              ))}
-              {!settings.fields.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-500">Nenhum campo extra cadastrado para aparecer no modal.</p> : null}
-            </section>
-            <section className="space-y-3 border-y border-zinc-800 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">Itens da Meta</p>
-                  <p className="mt-1 text-xs text-zinc-500">Cadastre os itens dinâmicos usados nos registros. A quantidade obrigatória fica interna para relatórios e não aparece no registro comum.</p>
-                </div>
-                <Button disabled={!canManage} onClick={addItem} size="sm" type="button" variant="outline">Adicionar item</Button>
-              </div>
-              {settings.items.map((item, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[90px_1fr_150px_150px_100px_90px_90px]" key={`fivem-goal-item-${index}`}>
-                  <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchItem(index, { emoji: value })} value={item.emoji ?? ""} />
-                  <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchItem(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
-                  <label className="block text-xs font-medium text-zinc-400">Tipo
-                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchItem(index, { type: event.target.value as FivemGoalItem["type"], updatedAt: new Date().toISOString() })} value={item.type ?? "required"}>
-                      <option value="required">Obrigatório</option>
-                      <option value="additional">Adicional</option>
-                      <option value="optional">Opcional</option>
-                    </select>
-                  </label>
-                  <TicketField disabled={!canManage} label="Qtd. obrigatória" onChange={(value) => patchItem(index, { requiredAmount: Math.max(1, Number(value) || 1), updatedAt: new Date().toISOString() })} value={String(item.requiredAmount ?? 1)} />
-                  <TicketField disabled={!canManage} label="Cor" onChange={(value) => patchItem(index, { color: value })} type="color" value={item.color ?? "#FFD500"} />
-                  <TicketField disabled={!canManage} label="Ordem" onChange={(value) => patchItem(index, { order: Math.max(0, Number(value) || index + 1), updatedAt: new Date().toISOString() })} value={String(item.order ?? index + 1)} />
-                  <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={item.enabled} disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked })} type="checkbox" />Ativo</span></label>
-                </div>
-              ))}
-            </section>
-              </>
+                <div className="md:col-span-2"><TicketArea disabled={!canManage} label="Texto do painel" onChange={(value) => patch({ requestPanelDescription: value })} value={settings.requestPanelDescription} /></div>
+              </section>
             ) : null}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard icon={ListChecks} label="Metas" value={String(entries.length)} />
-              <MetricCard icon={Users} label="Usuários" value={String(new Set(entries.map((entry) => entry.userId)).size)} />
-              <MetricCard icon={CalendarClock} label="Hoje" value={String(entries.filter((entry) => new Date(entry.createdAt).toDateString() === new Date().toDateString()).length)} />
-            </div>
+            <label className="flex items-center gap-3 border-y border-zinc-800 py-3 text-sm text-zinc-300">
+              <input checked={settings.autoCreateWithManualRegistration} disabled={!canManage} onChange={(event) => patch({ autoCreateWithManualRegistration: event.target.checked })} type="checkbox" />
+              <span><strong className="block text-white">Vincular Pedido de Set com Metas</strong><span className="text-xs text-zinc-500">Ao aprovar um set, cria ou localiza automaticamente o canal individual de meta do membro.</span></span>
+            </label>
+            {settings.autoCreateWithManualRegistration && !settings.categoryId ? <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">Configure a categoria padrão das metas para o Pedido de Set conseguir criar a sala de farm ao aprovar.</div> : null}
           </>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function GoalSummaryCard({ config, onManage }: { config: FivemGoalConfig; onManage: () => void }) {
+  const progress = Math.min(100, Math.round((config.currentValue / Math.max(1, config.targetValue)) * 100));
+  return (
+    <article className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-base font-semibold text-white">{config.name}</p>
+          <p className="mt-1 text-sm text-zinc-400">{config.type} • {periodLabel(config.period)}</p>
+        </div>
+        <Badge variant={config.status === "active" ? "success" : config.status === "paused" ? "warning" : "muted"}>{config.status === "active" ? "Ativa" : config.status}</Badge>
+      </div>
+      <div className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+        <p>{config.fields.length} campos cadastrados</p>
+        <p>{config.participantRoleIds.length} cargos participantes</p>
+        <p>{config.totalParticipants} participantes</p>
+        <p>Atualizada em {new Date(config.updatedAt).toLocaleDateString("pt-BR")}</p>
+      </div>
+      <div className="mt-4">
+        <div className="flex justify-between text-xs text-zinc-500"><span>Progresso geral</span><span>{progress}%</span></div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-800"><div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} /></div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button onClick={onManage} size="sm" type="button" variant="outline">Gerenciar</Button>
+        <Button disabled size="sm" type="button" variant="outline">Duplicar</Button>
+        <Button disabled size="sm" type="button" variant="outline">Mais opções</Button>
+      </div>
+    </article>
+  );
+}
+
+function GoalItemsEditor({ canManage, items, onAdd, onPatch }: { canManage: boolean; items: FivemGoalItem[]; onAdd: () => void; onPatch: (index: number, value: Partial<FivemGoalItem>) => void }) {
+  return (
+    <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Itens da meta</p>
+          <p className="mt-1 text-sm text-zinc-400">Cadastre os itens que os participantes poderão registrar.</p>
+        </div>
+        <Button disabled={!canManage} onClick={onAdd} size="sm" type="button" variant="outline"><Plus className="mr-2 h-4 w-4" />Adicionar item</Button>
+      </div>
+      <div className="grid gap-3">
+        {items.map((item, index) => (
+          <div className="rounded-lg border border-zinc-800 bg-black/25 p-3" key={item.id || index}>
+            <div className="grid gap-3 lg:grid-cols-[90px_minmax(180px,1fr)_150px_160px_100px_90px_100px]">
+              <TicketField disabled={!canManage} label="Emoji obrigatório" onChange={(value) => onPatch(index, { emoji: value })} value={item.emoji ?? ""} />
+              <TicketField disabled={!canManage} label="Nome" onChange={(value) => onPatch(index, { id: slugTicketOption(value, index), name: value, updatedAt: new Date().toISOString() })} value={item.name} />
+              <label className="block text-xs font-medium text-zinc-400">Tipo
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => onPatch(index, { type: event.target.value as FivemGoalItem["type"], updatedAt: new Date().toISOString() })} value={item.type ?? "required"}>
+                  <option value="required">Obrigatório</option>
+                  <option value="additional">Adicional</option>
+                  <option value="optional">Opcional</option>
+                </select>
+              </label>
+              <TicketField disabled={!canManage} label="Valor interno da meta" onChange={(value) => onPatch(index, { requiredAmount: Math.max(1, Number(value) || 1), updatedAt: new Date().toISOString() })} value={String(item.requiredAmount ?? 1)} />
+              <TicketField disabled={!canManage} label="Cor" onChange={(value) => onPatch(index, { color: value })} type="color" value={item.color ?? "#FFD500"} />
+              <TicketField disabled={!canManage} label="Ordem" onChange={(value) => onPatch(index, { order: Math.max(0, Number(value) || index + 1), updatedAt: new Date().toISOString() })} value={String(item.order ?? index + 1)} />
+              <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={item.enabled} disabled={!canManage} onChange={(event) => onPatch(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />Ativo</span></label>
+            </div>
+          </div>
+        ))}
+        {!items.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-500">Nenhum item cadastrado.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function GoalReportTable({ report }: { report: FivemGoalReport | null }) {
+  if (!report) return <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Nenhum relatório carregado.</section>;
+  return (
+    <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Relatório do período</p>
+          <p className="mt-1 text-xs text-zinc-500">{new Date(report.periodStart).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} até {new Date(new Date(report.periodEnd).getTime() - 1).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} • {report.totalRecords} registros</p>
+        </div>
+        <p className="text-lg font-semibold text-emerald-300">{formatGoalCurrency(report.totalApprovedValue)}</p>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <MetricCard icon={Users} label="Pagadores" value={String(report.participantCount)} />
+        <MetricCard icon={CheckCircle2} label="Aprovadas" value={String(report.approvedCount)} />
+        <MetricCard icon={Clock3} label="Pendentes" value={`${report.pendingCount} (${formatGoalCurrency(report.totalPendingValue)})`} />
+        <MetricCard icon={XCircle} label="Reprovadas" value={String(report.refusedCount)} />
+      </div>
+    </section>
+  );
+}
+
+function weekdayLabel(day: number) {
+  return ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"][day] ?? "Segunda-feira";
+}
+
+function periodLabel(period: FivemGoalConfig["period"]) {
+  return period === "monthly" ? "Mensal" : period === "daily" ? "Diária" : period === "custom" ? "Personalizada" : "Semanal";
+}
+
+function periodDefaultName(period: FivemGoalConfig["period"]) {
+  return period === "monthly" ? "Meta mensal" : "Meta semanal";
+}
+
+function channelLabel(channels: GuildChannelOption[], id: string | null | undefined, prefix = true) {
+  if (!id) return "Não configurado";
+  const channel = channels.find((item) => item.id === id);
+  return channel ? `${prefix ? "#" : ""}${channel.name}` : id;
+}
+
+function roleLabel(roles: GuildRoleOption[], id: string) {
+  return roles.find((role) => role.id === id)?.name ?? id;
 }
 
 function fivemModeDescription(mode: "general" | "orders" | "goals") {

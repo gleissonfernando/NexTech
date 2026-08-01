@@ -39,7 +39,7 @@ import { policePromotionHistoryAliasCommand, policePromotionHistoryCommand, poli
 import { recrutamentoCommand, ztkResetCommand } from "../services/ztkWebhookService";
 import { nexTechInviteCommand } from "../services/nexTechInviteService";
 import { safeBotDiagnosticCommand } from "./safeBotDiagnostic";
-import { cancelarEdicaoMetaCommand, editarMetaCommand } from "../services/fivemGoalService";
+import { cancelarEdicaoMetaCommand, editarMetaCommand, gerenciamentoFarmingCommand } from "../services/fivemGoalService";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -104,6 +104,7 @@ export function createCommandCollection() {
     safeBotDiagnosticCommand,
     editarMetaCommand,
     cancelarEdicaoMetaCommand,
+    gerenciamentoFarmingCommand,
     rankCommand,
     rankingCommandQru
   ].forEach((command) => {

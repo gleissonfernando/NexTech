@@ -35,6 +35,7 @@ const EDIT_USER_SELECT_CUSTOM_ID = `${PREFIX}:edit:user`;
 const EDIT_RECORD_SELECT_CUSTOM_ID_PREFIX = `${PREFIX}:edit:record`;
 const EDIT_REASON_MODAL_PREFIX = `${PREFIX}:edit:reason`;
 const EDIT_CONFIRM_PREFIX = `${PREFIX}:edit:confirm`;
+const MANAGEMENT_PREFIX = `${PREFIX}:manage`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const pendingFarmItems = new Set<string>();
@@ -59,6 +60,14 @@ export const cancelarEdicaoMetaCommand: BotCommand = {
   moduleId: "fivem-goals",
   async execute(interaction, context) {
     await cancelEditMeta(interaction, context);
+  }
+};
+
+export const gerenciamentoFarmingCommand: BotCommand = {
+  data: new SlashCommandBuilder().setName("gerenciamento-farming").setDescription("Abre o painel administrativo do Sistema de Metas/Farming."),
+  moduleId: "fivem-goals",
+  async execute(interaction, context) {
+    await showFarmingManagementPanel(interaction, context);
   }
 };
 
@@ -248,7 +257,7 @@ async function validateGoalTargetCategory(guild: Guild, categoryId: string | nul
 }
 
 export async function handleFivemGoalMessage(message: Message, context: BotContext) {
-  if (!message.guild || message.author.bot || !message.attachments.size) return false;
+  if (!message.guild || message.author.bot) return false;
   const goalChannel = await context.api.getFivemGoalChannelByChannel(message.channel.id).catch(() => null);
 
   if (!goalChannel) {
@@ -272,6 +281,13 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
 
   const settings = await context.api.getFivemGoalSettings(message.guild.id).catch(() => null);
   if (!settings?.enabled) return false;
+
+  if (settings.setRequestEnabled && !(await hasApprovedSetRegistration(context, message.guild.id, message.author.id))) {
+    await quarantineUnregisteredFarmChannel(message, context, goalChannel.userId);
+    return true;
+  }
+
+  if (!message.attachments.size) return false;
 
   const image = message.attachments.find(isAllowedGoalImage);
 
@@ -344,6 +360,11 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
     return true;
   }
 
+  if (interaction.customId.startsWith(`${MANAGEMENT_PREFIX}:`)) {
+    await handleFarmingManagementInteraction(interaction, context);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:user:`)) {
     await handleUserGoalPanelAction(interaction, context);
     return true;
@@ -380,6 +401,17 @@ async function handleGoalChannelRequest(interaction: ButtonInteraction, context:
     await interaction.editReply("O sistema de metas não está ativo neste servidor.");
     return;
   }
+  if (settings.setRequestEnabled && !(await hasApprovedSetRegistration(context, interaction.guild.id, interaction.user.id))) {
+    await interaction.editReply("Você ainda não possui um Pedido de Set aprovado. Faça seu registro no canal de Pedido de Set; sem esse cadastro aprovado, suas metas não serão contabilizadas.");
+    await context.api.postLog({
+      guildId: interaction.guild.id,
+      message: "Solicitação de sala de farm bloqueada porque o usuário não possui Pedido de Set aprovado.",
+      metadata: { setRequestEnabled: true },
+      type: "fivem.goals.room_request_without_set",
+      userId: interaction.user.id
+    }).catch(() => null);
+    return;
+  }
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   const channelId = await ensureFivemGoalChannelForUser(context, interaction.guild, interaction.user.id, member?.displayName ?? interaction.user.username);
   if (!channelId) {
@@ -387,6 +419,45 @@ async function handleGoalChannelRequest(interaction: ButtonInteraction, context:
     return;
   }
   await interaction.editReply(`Seu canal individual de meta esta pronto: <#${channelId}>`);
+}
+
+async function hasApprovedSetRegistration(context: BotContext, guildId: string, userId: string) {
+  const submission = await context.api.getLatestManualRegistrationSubmission(guildId, userId).catch(() => null);
+  return submission?.status === "approved";
+}
+
+async function quarantineUnregisteredFarmChannel(message: Message, context: BotContext, ownerId: string) {
+  await message.delete().catch(() => null);
+  const warning = [
+    "⚠️ Cadastro de Set obrigatório",
+    "",
+    `<@${ownerId}>, este canal de farm está vinculado a uma pessoa que não possui Pedido de Set aprovado.`,
+    "",
+    "Caso você ainda não tenha feito o Pedido de Set no canal de registro, faça o cadastro e aguarde aprovação.",
+    "Enquanto o Set não estiver aprovado, as metas enviadas aqui não serão contabilizadas.",
+    "",
+    "Este canal será removido para evitar registros inválidos."
+  ].join("\n");
+  if (message.channel.isSendable()) {
+    await message.channel.send({ allowedMentions: { users: [ownerId] }, content: warning }).catch(() => null);
+  }
+  await context.api.postLog({
+    guildId: message.guild?.id ?? "",
+    message: "Canal de farm removido porque o usuário não possui Pedido de Set aprovado.",
+    metadata: {
+      channelId: message.channel.id,
+      ownerId,
+      triggerMessageAuthorId: message.author.id
+    },
+    type: "fivem.goals.orphan_room_removed",
+    userId: ownerId
+  }).catch(() => null);
+  await context.api.deleteFivemGoalChannelByChannel(message.channel.id).catch(() => null);
+  if (!message.channel.isDMBased() && "delete" in message.channel) {
+    setTimeout(() => {
+      void message.channel.delete("Sala de farm removida: usuário sem Pedido de Set aprovado.").catch(() => null);
+    }, 5000);
+  }
 }
 
 async function showEditMetaPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
@@ -451,7 +522,7 @@ async function cancelEditMeta(interaction: ChatInputCommandInteraction, context:
   await sendGoalLog(interaction.guild, context, `ℹ️ Correção de meta cancelada\n\nCancelado por: <@${interaction.user.id}> | ${interaction.user.id}\nUsuário: <@${correction.userId}> | ${correction.userId}\nRegistro original: ${correction.originalRegistrationId}\nMotivo: ${cancellationReason}\nValor original restaurado: ${restoreOriginalOnCancel ? "sim" : "não"}\nData: ${formatBrazilDateTime(new Date())}\nEstado final: cancelled`, correction);
 }
 
-async function canUseGoalCorrectionCommand(interaction: ChatInputCommandInteraction | ButtonInteraction | UserSelectMenuInteraction, settings: FivemGoalSettings) {
+async function canUseGoalCorrectionCommand(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction, settings: FivemGoalSettings) {
   if (!interaction.guild) return false;
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return false;
@@ -462,6 +533,266 @@ async function canUseGoalCorrectionCommand(interaction: ChatInputCommandInteract
   ].filter((value): value is string => Boolean(value)));
   if (managerRoleIds.size && member.roles.cache.some((role) => managerRoleIds.has(role.id))) return true;
   return settings.correctionManagement?.allowAdministrators === true && member.permissions.has(PermissionFlagsBits.Administrator);
+}
+
+async function showFarmingManagementPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
+    await interaction.reply({
+      content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem utilizar este comando.",
+      ephemeral: true
+    });
+    return;
+  }
+  await interaction.reply(createFarmingManagementPayload(settings, interaction.guild, null));
+}
+
+async function handleFarmingManagementInteraction(interaction: Interaction, context: BotContext) {
+  if (!interaction.guild || !("customId" in interaction)) return;
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!settings?.enabled || !(interaction.isModalSubmit() || interaction.isButton() || interaction.isStringSelectMenu()) || !(await canUseGoalCorrectionCommand(interaction, settings))) {
+    if (interaction.isRepliable()) {
+      await interaction.reply({ content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem utilizar este comando.", ephemeral: true }).catch(() => null);
+    }
+    return;
+  }
+
+  const action = interaction.customId.split(":")[2] ?? "";
+  if (interaction.isButton() && action === "refresh") {
+    await interaction.update(createFarmingManagementPayload(settings, interaction.guild, "Painel atualizado."));
+    return;
+  }
+  if (interaction.isButton() && action === "publish") {
+    await interaction.deferUpdate();
+    await publishGoalRequestPanel(interaction.guild, context);
+    const next = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => settings);
+    await interaction.editReply(createFarmingManagementPayload(next, interaction.guild, "Painel de solicitação atualizado no canal configurado."));
+    return;
+  }
+  if (interaction.isButton() && action === "add_item") {
+    const modal = new ModalBuilder()
+      .setCustomId(`${MANAGEMENT_PREFIX}:add_item_modal`)
+      .setTitle("Adicionar item");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("name").setLabel("Nome").setPlaceholder("Dinheiro Sujo").setMaxLength(80).setRequired(true).setStyle(TextInputStyle.Short)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("emoji").setLabel("Emoji").setPlaceholder("💵").setMaxLength(80).setRequired(true).setStyle(TextInputStyle.Short)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("requiredAmount").setLabel("Valor interno").setPlaceholder("100000").setMaxLength(20).setRequired(true).setStyle(TextInputStyle.Short)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("type").setLabel("Tipo").setPlaceholder("Obrigatório, adicional ou opcional").setMaxLength(20).setRequired(true).setStyle(TextInputStyle.Short))
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+  if (interaction.isModalSubmit() && action === "add_item_modal") {
+    await interaction.deferReply({ ephemeral: true });
+    const name = interaction.fields.getTextInputValue("name").trim();
+    const emoji = interaction.fields.getTextInputValue("emoji").trim();
+    const requiredAmount = parseGoalNumericValue(interaction.fields.getTextInputValue("requiredAmount"));
+    const typeText = interaction.fields.getTextInputValue("type").trim().toLowerCase();
+    const type = typeText.startsWith("adic") ? "additional" : typeText.startsWith("opc") ? "optional" : "required";
+    if (!emoji) {
+      await interaction.editReply("Informe um emoji para o item.");
+      return;
+    }
+    if (!requiredAmount || !Number.isSafeInteger(requiredAmount)) {
+      await interaction.editReply("Informe um valor interno válido para o item.");
+      return;
+    }
+    const saved = await context.api.addFivemGoalItem(interaction.guild.id, { actorId: interaction.user.id, emoji, name, requiredAmount, type }).catch((error) => ({ error }));
+    if ("error" in saved) {
+      await interaction.editReply(readApiError(saved.error, "Não foi possível adicionar o item."));
+      return;
+    }
+    await sendGoalLog(interaction.guild, context, `📝 Item de meta adicionado\n\nGerente: <@${interaction.user.id}> | ${interaction.user.id}\nItem: ${emoji ? `${emoji} ` : ""}${name}\nValor interno: ${formatGoalValue(requiredAmount)}\nTipo: ${goalItemTypeLabel(type)}\nData: ${formatBrazilDateTime(new Date())}`, { itemId: saved.item.id });
+    await interaction.editReply(createFarmingManagementPayload(saved.settings, interaction.guild, "Item adicionado. Ele já aparecerá nos próximos registros."));
+    return;
+  }
+  if (interaction.isButton() && action === "items") {
+    await interaction.update(createFarmingItemsPayload(settings, interaction.guild));
+    return;
+  }
+  if (interaction.isStringSelectMenu() && action === "item_select") {
+    const item = activeGoalItems({ ...settings, items: settings.items }).concat(settings.items.filter((entry) => entry.enabled === false)).find((entry) => entry.id === interaction.values[0]);
+    await interaction.update(createFarmingItemDetailPayload(settings, interaction.guild, item ?? null));
+    return;
+  }
+  if (interaction.isButton() && (action === "item_enable" || action === "item_disable" || action === "item_remove")) {
+    await interaction.deferUpdate();
+    const itemId = interaction.customId.split(":")[3] ?? "";
+    const next = await context.api.updateFivemGoalItem(interaction.guild.id, itemId, {
+      action: action === "item_enable" ? "enable" : action === "item_disable" ? "disable" : "remove",
+      actorId: interaction.user.id
+    }).catch((error) => ({ error }));
+    if ("error" in next) {
+      await interaction.followUp({ content: readApiError(next.error, "Não foi possível atualizar o item."), ephemeral: true });
+      return;
+    }
+    await sendGoalLog(interaction.guild, context, `📝 Item de meta atualizado\n\nGerente: <@${interaction.user.id}> | ${interaction.user.id}\nItem: ${itemId}\nAção: ${action.replace("item_", "")}\nData: ${formatBrazilDateTime(new Date())}`, { itemId });
+    await interaction.editReply(createFarmingItemsPayload(next, interaction.guild, "Item atualizado."));
+    return;
+  }
+  if (interaction.isButton() && action === "finalize") {
+    await interaction.update(createFarmingFinalizeConfirmPayload(settings, interaction.guild));
+    return;
+  }
+  if (interaction.isButton() && action === "finalize_cancel") {
+    await interaction.update(createFarmingManagementPayload(settings, interaction.guild, "Finalização cancelada."));
+    return;
+  }
+  if (interaction.isButton() && action === "finalize_confirm") {
+    await interaction.deferUpdate();
+    const result = await context.api.finalizeFivemGoalPeriod(interaction.guild.id, {
+      actorId: interaction.user.id,
+      finalizationType: "manual"
+    }).catch((error) => ({ error }));
+    if ("error" in result) {
+      await interaction.followUp({ content: readApiError(result.error, "Não foi possível finalizar a meta."), ephemeral: true });
+      return;
+    }
+    const report = result.report;
+    const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
+    if (!result.alreadyFinalized) {
+      await sendGoalLog(interaction.guild, context, [
+        "✅ Meta finalizada",
+        "",
+        `Gerente: <@${interaction.user.id}> | ${interaction.user.id}`,
+        `Período: ${periodText}`,
+        `Participantes: ${report.participantCount}`,
+        `Registros: ${report.totalRecords}`,
+        `Aprovadas: ${report.approvedCount}`,
+        `Pendentes: ${report.pendingCount}`,
+        `Reprovadas: ${report.refusedCount}`,
+        `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
+        `Data: ${formatBrazilDateTime(new Date())}`
+      ].join("\n"), { periodEnd: report.periodEnd, periodStart: report.periodStart });
+    }
+    const next = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => settings);
+    await interaction.editReply(createFarmingManagementPayload(next, interaction.guild, result.alreadyFinalized ? "Este período já estava finalizado." : "Meta finalizada e log registrada."));
+    return;
+  }
+}
+
+function createFarmingManagementPayload(settings: FivemGoalSettings, guild: Guild, notice: string | null) {
+  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  const activeItems = activeGoalItems(settings);
+  const correctionManagers = uniqueRoleIds([settings.correctionManagement?.managerRoleId, settings.managerRoleId, ...(settings.managerRoleIds ?? [])]);
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: 0x22c55e,
+      components: [
+        { type: 10, content: [
+          `## ${systemEmojiText("prancheta", guild)} GERENCIAMENTO DE FARMING`,
+          "",
+          "Gerencie a configuração ativa do Sistema de Metas.",
+          notice ? `\n${systemEmojiText("visto", guild)} ${notice}` : "",
+          "",
+          `Período atual: ${activeConfig ? goalPeriodLabel(activeConfig.period) : "Sem meta ativa"}`,
+          `Finalização: ${weekdayName(settings.cycle?.startDay ?? 1)} às ${settings.cycle?.startTime ?? "00:00"}`,
+          `Modo: ${settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}`,
+          `Itens ativos: ${activeItems.length}`,
+          `Gerentes: ${correctionManagers.length ? correctionManagers.map((id) => `<@&${id}>`).join(", ") : "Nenhum cargo configurado"}`
+        ].filter(Boolean).join("\n") },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:add_item`).setEmoji(systemComponentEmoji("salvar", guild)).setLabel("Adicionar item").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:items`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Gerenciar itens").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:finalize`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Finalizar meta").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:publish`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Atualizar painel").setStyle(ButtonStyle.Primary)
+        ),
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:refresh`).setEmoji(systemComponentEmoji("engrenagem", guild)).setLabel("Ver configuração").setStyle(ButtonStyle.Secondary)
+        ),
+        { type: 10, content: "-# NexTech - Todos os direitos reservados" }
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function createFarmingItemsPayload(settings: FivemGoalSettings, guild: Guild, notice: string | null = null) {
+  const items = settings.items.slice().sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name, "pt-BR"));
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: 0x22c55e,
+      components: [
+        { type: 10, content: `## ${systemEmojiText("prancheta", guild)} Gerenciar itens\n\n${notice ? `${systemEmojiText("visto", guild)} ${notice}\n\n` : ""}Selecione um item para ativar, desativar ou remover.` },
+        ...(items.length ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`${MANAGEMENT_PREFIX}:item_select`)
+            .setPlaceholder("Selecione um item")
+            .addOptions(items.slice(0, 25).map((item) => ({
+              description: `${goalItemTypeLabel(item.type)} · ${item.enabled ? "Ativo" : "Inativo"} · valor interno ${formatGoalValue(item.requiredAmount ?? 1)}`.slice(0, 100),
+              emoji: item.emoji && !item.emoji.startsWith("<") ? item.emoji : undefined,
+              label: item.name.slice(0, 100),
+              value: item.id
+            })))
+        )] : [{ type: 10, content: "Nenhum item cadastrado." }]),
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:refresh`).setEmoji(systemComponentEmoji("voltar", guild)).setLabel("Voltar").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:add_item`).setEmoji(systemComponentEmoji("salvar", guild)).setLabel("Adicionar item").setStyle(ButtonStyle.Success)
+        )
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function createFarmingFinalizeConfirmPayload(settings: FivemGoalSettings, guild: Guild) {
+  const activeConfig = settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: 0xf59e0b,
+      components: [
+        { type: 10, content: [
+          `## ${systemEmojiText("alerta", guild)} Confirmar finalização`,
+          "",
+          `Meta: ${activeConfig?.name ?? "Meta semanal"}`,
+          `Período: ${activeConfig ? goalPeriodLabel(activeConfig.period) : "Sem meta ativa"}`,
+          `Relatórios: ${settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}`,
+          "",
+          "Ao confirmar, o sistema registra o fechamento do período atual e envia o log. A mesma semana não será finalizada duas vezes."
+        ].join("\n") },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:finalize_confirm`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar finalização").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:finalize_cancel`).setEmoji(systemComponentEmoji("voltar", guild)).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+        ),
+        { type: 10, content: "-# NexTech - Todos os direitos reservados" }
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function createFarmingItemDetailPayload(settings: FivemGoalSettings, guild: Guild, item: FivemGoalItem | null) {
+  if (!item) return createFarmingItemsPayload(settings, guild, "Item não encontrado.");
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: item.enabled ? 0x22c55e : 0x71717a,
+      components: [
+        { type: 10, content: [
+          `## ${item.emoji ?? systemEmojiText("caixa", guild)} ${item.name}`,
+          "",
+          `Tipo: ${goalItemTypeLabel(item.type)}`,
+          `Status: ${item.enabled ? "Ativo" : "Inativo"}`,
+          `Valor interno: ${formatGoalValue(item.requiredAmount ?? 1)}`,
+          `Ordem: ${item.order ?? 0}`
+        ].join("\n") },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:${item.enabled ? "item_disable" : "item_enable"}:${item.id}`).setLabel(item.enabled ? "Desativar item" : "Ativar item").setStyle(item.enabled ? ButtonStyle.Secondary : ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:item_remove:${item.id}`).setLabel("Remover item").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`${MANAGEMENT_PREFIX}:items`).setEmoji(systemComponentEmoji("voltar", guild)).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
+        )
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
 }
 
 async function handleEditMetaUserSelection(interaction: UserSelectMenuInteraction, context: BotContext) {
@@ -681,16 +1012,17 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
 export function createGoalRequestPanelPayload(_title: string, _description: string, guildId?: string | null, botId?: string | null, guild?: Guild | null) {
   const requestCustomId = scopedCustomId(REQUEST_CHANNEL_CUSTOM_ID, guildId, botId);
   const iconUrl = guild?.iconURL({ size: 256 }) ?? null;
+  const client = guild?.client ?? null;
   const mainContent = [
-    `# ${systemEmojiText("VORTEXtrabalho", guild)} CRIAR SALA DE FARM`,
+    `# ${systemEmojiText("VORTEXtrabalho", guild, client)} CRIAR SALA DE FARM`,
     "",
     "**Bem-vindo(a) ao Sistema de Farm!**",
     "",
     "Clique no botão abaixo para criar sua sala privada automaticamente.",
     "",
-    "• Apenas você terá acesso à sua sala",
-    "• Use com organização",
-    "• Para dúvidas, chame a gerência"
+    `${systemEmojiText("visto", guild, client)} Apenas você terá acesso à sua sala`,
+    `${systemEmojiText("prancheta", guild, client)} Use com organização`,
+    `${systemEmojiText("interrogacao", guild, client)} Para dúvidas, chame a gerência`
   ].join("\n");
   return {
     allowedMentions: { parse: [] as never[] },
@@ -705,9 +1037,9 @@ export function createGoalRequestPanelPayload(_title: string, _description: stri
             accessory: { type: 11, media: { url: iconUrl } }
           } : { type: 10, content: mainContent },
           { type: 14, divider: true, spacing: 1 },
-          { type: 10, content: "### Criar sala de farm\nCria automaticamente uma sala privada para registrar seu farm." },
+          { type: 10, content: `### ${systemEmojiText("mais", guild, client)} Criar sala de farm\nCria automaticamente uma sala privada para registrar seu farm.` },
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(requestCustomId).setLabel("Solicitar Sala de Farm").setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId(requestCustomId).setEmoji(systemComponentEmoji("mais", guild, client)).setLabel("Solicitar Sala de Farm").setStyle(ButtonStyle.Secondary)
           ),
           { type: 14, divider: true, spacing: 1 },
           { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
@@ -811,6 +1143,9 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
     ephemeral: true,
     flags: MessageFlags.IsComponentsV2
   });
+  if (interaction.isButton()) {
+    await interaction.message.delete().catch(() => null);
+  }
 }
 
 async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
@@ -934,7 +1269,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     await interaction.editReply("Farm registrado.");
     const channel = interaction.channel;
     if (channel?.isSendable()) {
-      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, interaction.guild)).catch(() => null);
+      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, interaction.guild, selectedItem.emoji)).catch(() => null);
       if (pending.correctionRequestId && pending.replacementForRegistrationId) {
         await channel.send(createCorrectionCompletedPayload({ fields, replacementForRegistrationId: pending.replacementForRegistrationId }, interaction.guild)).catch(() => null);
       }
@@ -1048,6 +1383,15 @@ function messageHasLegacyGoalPanel(message: Message, userId: string) {
 }
 
 function formatGoalValue(value: number) { return new Intl.NumberFormat("pt-BR").format(Math.max(0, value)); }
+function goalItemTypeLabel(type: FivemGoalItem["type"] | null | undefined) {
+  return type === "additional" ? "Adicional" : type === "optional" ? "Opcional" : "Obrigatório";
+}
+function goalPeriodLabel(period: string | null | undefined) {
+  return period === "monthly" ? "Mensal" : period === "daily" ? "Diário" : period === "custom" ? "Personalizado" : "Semanal";
+}
+function weekdayName(day: number) {
+  return ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"][day] ?? "Segunda-feira";
+}
 function goalStatus(status: "pending" | "approved" | "refused" | "correction_requested") {
   return status === "approved" ? "Aprovado" : status === "refused" ? "Recusado" : status === "correction_requested" ? "Correção pendente" : "Pendente";
 }
@@ -1264,8 +1608,10 @@ export function createImageReviewPayload(userId: string, _channelId: string, sou
   };
 }
 
-function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild) {
+function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild, itemEmoji?: string | null) {
   const itemLabel = fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() || "Farm";
+  const client = guild.client;
+  const itemIcon = itemEmoji?.trim() || systemEmojiText("caixa", guild, client);
   return {
     allowedMentions: { parse: [] as never[], users: [userId] },
     components: [{
@@ -1277,15 +1623,15 @@ function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: A
           components: [{
             type: 10,
             content: [
-              `## ${systemEmojiText("visto", guild)} Farm registrado`,
+              `## ${systemEmojiText("visto", guild, client)} Farm registrado`,
               "",
-              `${systemEmojiText("homem", guild)} **Usuário:** <@${userId}> | ${userId}`,
+              `${systemEmojiText("homem", guild, client)} **Usuário:** <@${userId}> | ${userId}`,
               "",
-              `${systemEmojiText("prancheta", guild)} **Resumo**`,
-              `- ${systemEmojiText("caixa", guild)} ${itemLabel}: ${formatGoalValue(quantity)}`,
+              `${systemEmojiText("prancheta", guild, client)} **Resumo**`,
+              `- ${itemIcon} ${itemLabel}: ${formatGoalValue(quantity)}`,
               "",
-              `**Status:** ${systemEmojiText("visto", guild)} Registrado`,
-              `${systemEmojiText("relogio", guild)} Data: ${formatBrazilDateTime(new Date())}`
+              `**Status:** ${systemEmojiText("visto", guild, client)} Registrado`,
+              `${systemEmojiText("relogio", guild, client)} Data: ${formatBrazilDateTime(new Date())}`
             ].join("\n")
           }],
           accessory: { type: 11, media: { url: imageUrl } }

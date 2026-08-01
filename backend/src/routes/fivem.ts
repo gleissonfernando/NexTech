@@ -1,5 +1,6 @@
 import { Router, raw } from "express";
 import { z } from "zod";
+import { getMongoCollections } from "../database/mongo";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions, getDevBotToken } from "../services/devBotService";
 import { areGuildAssignableRoles, areGuildMembers, areGuildRoles, getGuildLiveOptions, isGuildCategoryChannel, isGuildTextChannel, userHasAnyGuildRole, validateGuildPanelChannel } from "../services/discordOptionsService";
@@ -53,6 +54,7 @@ import {
   deleteFivemGoalUserChannelByChannel,
   FIVEM_GOALS_MODULE_ID,
   deleteFivemGoalConfig,
+  finalizeCurrentFivemGoalPeriod,
   getFivemGoalDashboard,
   getFivemGoalSettings,
   getFivemGoalUserRuntime,
@@ -161,6 +163,21 @@ const goalItemSchema = z.object({
   requiredAmount: z.coerce.number().int().min(1).max(1_000_000_000).optional().default(1),
   type: z.enum(["required", "additional", "optional"]).optional().default("required"),
   updatedAt: z.string().datetime().nullable().optional().default(null)
+});
+const botGoalItemCreateSchema = z.object({
+  actorId: snowflakeSchema,
+  emoji: z.string().trim().min(1).max(80),
+  name: z.string().min(1).max(80),
+  requiredAmount: z.coerce.number().int().min(1).max(1_000_000_000),
+  type: z.enum(["required", "additional", "optional"]).optional().default("required")
+});
+const botGoalItemActionSchema = z.object({
+  actorId: snowflakeSchema,
+  action: z.enum(["enable", "disable", "remove"])
+});
+const botGoalFinalizeSchema = z.object({
+  actorId: snowflakeSchema,
+  finalizationType: z.enum(["manual", "automatic"]).optional().default("manual")
 });
 const goalSettingsSchema = z.object({
   autoCreateWithManualRegistration: z.boolean().optional(),
@@ -836,6 +853,77 @@ fivemRouter.post("/bot/goals/channels", requireBot, async (req, res, next) => {
     const input = goalUserChannelSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
     return res.status(201).json({ channel: await upsertFivemGoalUserChannel({ ...input, botId }) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/items", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = botGoalItemCreateSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    const current = await getFivemGoalSettings(guildId, botId);
+    const now = new Date().toISOString();
+    const idBase = input.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+    const existingIds = new Set(current.items.map((item) => item.id));
+    let id = idBase;
+    let suffix = 2;
+    while (existingIds.has(id)) id = `${idBase}-${suffix++}`;
+    const item = {
+      category: "Geral",
+      color: "#FFD500",
+      createdAt: now,
+      emoji: input.emoji.trim(),
+      enabled: true,
+      id,
+      name: input.name.trim(),
+      order: current.items.length + 1,
+      requiredAmount: input.requiredAmount,
+      type: input.type,
+      updatedAt: now
+    };
+    const settings = await saveFivemGoalSettings(guildId, botId, { items: [...current.items, item] }, input.actorId);
+    return res.status(201).json({ item, settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.patch("/bot/goals/:guildId/items/:itemId", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const itemId = z.string().min(1).max(80).parse(req.params.itemId);
+    const input = botGoalItemActionSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    const current = await getFivemGoalSettings(guildId, botId);
+    const now = new Date().toISOString();
+    const { fivemGoalEntries } = await getMongoCollections();
+    const historyCount = input.action === "remove" ? await fivemGoalEntries.countDocuments({ botId, guildId, itemId }) : 0;
+    const items = input.action === "remove" && historyCount === 0
+      ? current.items.filter((item) => item.id !== itemId)
+      : current.items.map((item) => item.id === itemId ? { ...item, enabled: input.action === "enable" ? true : false, updatedAt: now } : item);
+    if (items.length === current.items.length && !current.items.some((item) => item.id === itemId)) {
+      throw Object.assign(new Error("Item de meta não encontrado."), { status: 404 });
+    }
+    const settings = await saveFivemGoalSettings(guildId, botId, { items }, input.actorId);
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/finalize", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = botGoalFinalizeSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json(await finalizeCurrentFivemGoalPeriod({
+      actorId: input.actorId,
+      botId,
+      finalizationType: input.finalizationType,
+      guildId
+    }));
   } catch (error) {
     return next(error);
   }

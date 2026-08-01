@@ -1098,6 +1098,12 @@ export type FivemGoalSettings = {
   requestPanelMessageId: string | null;
   requestPanelTitle: string;
   requestRequiresApproval: boolean;
+  setRequestEnabled?: boolean;
+  weeklySummaryEnabled?: boolean;
+  cycle?: {
+    startDay: number;
+    startTime: string;
+  };
   viewRoleId: string | null;
   viewerRoleIds?: string[];
   correctionManagement?: {
@@ -3528,6 +3534,36 @@ export class ApiClient {
   async getFivemGoalSettings(guildId: string) {
     const { data } = await this.http.get<{ configs?: FivemGoalConfig[]; settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}`);
     return { ...data.settings, configs: data.configs ?? [] };
+  }
+
+  async addFivemGoalItem(guildId: string, input: { actorId: string; emoji: string; name: string; requiredAmount: number; type: FivemGoalItem["type"] }) {
+    const { data } = await this.http.post<{ item: FivemGoalItem; settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}/items`, input);
+    return data;
+  }
+
+  async updateFivemGoalItem(guildId: string, itemId: string, input: { actorId: string; action: "enable" | "disable" | "remove" }) {
+    const { data } = await this.http.patch<{ settings: FivemGoalSettings }>(`/fivem/bot/goals/${guildId}/items/${encodeURIComponent(itemId)}`, input);
+    return data.settings;
+  }
+
+  async finalizeFivemGoalPeriod(guildId: string, input: { actorId: string; finalizationType?: "manual" | "automatic" }) {
+    const { data } = await this.http.post<{
+      alreadyFinalized: boolean;
+      finalized: boolean;
+      logId: string | null;
+      report: {
+        approvedCount: number;
+        participantCount: number;
+        pendingCount: number;
+        periodEnd: string;
+        periodStart: string;
+        refusedCount: number;
+        totalApprovedValue: number;
+        totalPendingValue: number;
+        totalRecords: number;
+      };
+    }>(`/fivem/bot/goals/${guildId}/finalize`, input);
+    return data;
   }
 
   async getFivemOrderRuntime(guildId: string) {
