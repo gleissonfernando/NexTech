@@ -23,6 +23,8 @@ test("painel de solicitar sala de meta usa custom ids com escopo do servidor e b
   const payload = createGoalRequestPanelPayload("Sistema de Metas FiveM", "Solicite seu canal.", "1533162050417721486", "bot-dev-1");
   const serialized = JSON.stringify(payload);
 
+  assert.match(serialized, /CRIAR SALA DE FARM/);
+  assert.match(serialized, /Solicitar Sala de Farm/);
   assert.match(serialized, /fivem_goal:request_channel:1533162050417721486:bot-dev-1/);
-  assert.match(serialized, /fivem_goal:help:1533162050417721486:bot-dev-1/);
+  assert.doesNotMatch(serialized, /fivem_goal:help:1533162050417721486:bot-dev-1/);
 });

@@ -676,7 +676,7 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
       throw new Error(`Bot sem permissões no canal <#${channel.id}>: ${missingPermissions.join(", ")}.`);
     }
 
-    const payload = createGoalRequestPanelPayload(settings.requestPanelTitle, settings.requestPanelDescription, guild.id, settings.botId);
+    const payload = createGoalRequestPanelPayload(settings.requestPanelTitle, settings.requestPanelDescription, guild.id, settings.botId, guild);
     if (settings.requestPanelMessageId) {
       const message = await channel.messages.fetch(settings.requestPanelMessageId).catch(() => null);
       if (message) {
@@ -696,23 +696,39 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
   }
 }
 
-export function createGoalRequestPanelPayload(title: string, description: string, guildId?: string | null, botId?: string | null) {
+export function createGoalRequestPanelPayload(_title: string, _description: string, guildId?: string | null, botId?: string | null, guild?: Guild | null) {
   const requestCustomId = scopedCustomId(REQUEST_CHANNEL_CUSTOM_ID, guildId, botId);
-  const helpCustomId = scopedCustomId(`${PREFIX}:help`, guildId, botId);
+  const iconUrl = guild?.iconURL({ size: 256 }) ?? null;
+  const mainContent = [
+    `# ${systemEmojiText("VORTEXtrabalho", guild)} CRIAR SALA DE FARM`,
+    "",
+    "**Bem-vindo(a) ao Sistema de Farm!**",
+    "",
+    "Clique no botão abaixo para criar sua sala privada automaticamente.",
+    "",
+    "• Apenas você terá acesso à sua sala",
+    "• Use com organização",
+    "• Para dúvidas, chame a gerência"
+  ].join("\n");
   return {
     allowedMentions: { parse: [] as never[] },
     components: [
       {
         type: 17,
-        accent_color: 0x22c55e,
+        accent_color: 0xffffff,
         components: [
-          { type: 10, content: `# ${title || "Sistema de Metas FiveM"}\n${description || "Solicite seu canal individual de meta para enviar comprovantes e acompanhar seu progresso."}` },
-          { type: 10, content: "Use o botão abaixo para criar ou localizar seu canal individual de meta." },
+          iconUrl ? {
+            type: 9,
+            components: [{ type: 10, content: mainContent }],
+            accessory: { type: 11, media: { url: iconUrl } }
+          } : { type: 10, content: mainContent },
           { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: "### Criar sala de farm\nCria automaticamente uma sala privada para registrar seu farm." },
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(requestCustomId).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Solicitar canal de meta").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(helpCustomId).setEmoji(systemComponentEmoji("interrogacao")).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
-          )
+            new ButtonBuilder().setCustomId(requestCustomId).setLabel("Solicitar Sala de Farm").setStyle(ButtonStyle.Secondary)
+          ),
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
         ]
       }
     ],

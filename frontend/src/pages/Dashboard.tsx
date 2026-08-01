@@ -4798,13 +4798,22 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                   <p className="text-xs font-semibold uppercase text-zinc-500">Prévia Components V2</p>
-                  <div className="mt-3 rounded-lg border-l-4 border-emerald-400 bg-[#101013] p-4">
-                    <p className="text-base font-semibold text-white">{settings.requestPanelTitle}</p>
-                    <p className="mt-2 text-sm leading-6 text-zinc-300">{settings.requestPanelDescription}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <span className="rounded-md bg-emerald-500 px-3 py-2 text-xs font-semibold text-white">Solicitar canal de meta</span>
-                      <span className="rounded-md bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200">Ajuda</span>
+                  <div className="mt-3 rounded-lg border-l-4 border-white bg-[#101013] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold text-white">💼 CRIAR SALA DE FARM</p>
+                        <p className="mt-4 text-sm font-semibold text-zinc-100">Bem-vindo(a) ao Sistema de Farm!</p>
+                        <p className="mt-3 text-sm leading-6 text-zinc-300">Clique no botão abaixo para criar sua sala privada automaticamente.</p>
+                        <p className="mt-3 whitespace-pre-line text-xs leading-5 text-zinc-300">• Apenas você terá acesso à sua sala{"\n"}• Use com organização{"\n"}• Para dúvidas, chame a gerência</p>
+                      </div>
+                      {guild?.iconUrl ? <img alt="" className="h-16 w-16 rounded-md object-cover" src={guild.iconUrl} /> : null}
                     </div>
+                    <div className="mt-4 border-t border-zinc-700 pt-3">
+                      <p className="text-sm font-semibold text-white">Criar sala de farm</p>
+                      <p className="mt-1 text-xs text-zinc-300">Cria automaticamente uma sala privada para registrar seu farm.</p>
+                      <span className="mt-3 inline-flex rounded-md bg-zinc-700 px-3 py-2 text-xs font-semibold text-white">Solicitar Sala de Farm</span>
+                    </div>
+                    <p className="mt-3 border-t border-zinc-700 pt-2 text-xs italic text-zinc-400">NexTech - Todos os direitos reservados</p>
                   </div>
                 </div>
               </div>
