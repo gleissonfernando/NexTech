@@ -1396,10 +1396,27 @@ export type MongoFivemOrderLog = {
 export type MongoFivemFinanceSettings = {
   _id: string;
   adminRoleIds: string[];
+  addRoleIds?: string[];
   allowBalanceQuery: boolean;
   allowNegativeBalance: boolean;
   confirmAdd: boolean;
   confirmRemove: boolean;
+  confirmWithdraw?: boolean;
+  balanceCents?: number;
+  configureRoleIds?: string[];
+  defaultOperationRoleId?: string | null;
+  factionId?: string;
+  factionName?: string;
+  factionRoleId?: string | null;
+  refundRoleIds?: string[];
+  removeRoleIds?: string[];
+  totalInCents?: number;
+  totalOutCents?: number;
+  transactionCount?: number;
+  lastTransactionAt?: Date | null;
+  viewerRoleIds?: string[];
+  withdrawRoleIds?: string[];
+  historyRoleIds?: string[];
   historyEnabled: boolean;
   historyPageSize: number;
   maxTransactionAmount: number;
@@ -1428,12 +1445,16 @@ export type MongoFivemFinanceTransactionStatus = "completed" | "reviewed" | "can
 export type MongoFivemFinanceTransaction = {
   _id: string;
   amount: number;
+  amountCents?: number;
   botId: string | null;
   createdAt: Date;
+  factionId?: string;
+  factionName?: string;
   guildId: string;
   logChannelId: string | null;
   logMessageId: string | null;
   newBalance: number;
+  newBalanceCents?: number;
   notes: string | null;
   managerId?: string;
   managerName?: string;
@@ -1442,12 +1463,13 @@ export type MongoFivemFinanceTransaction = {
   reason?: string;
   targetUserId?: string;
   oldBalance: number;
+  oldBalanceCents?: number;
   proofImageUrl: string;
   proofMessageId: string | null;
   status: MongoFivemFinanceTransactionStatus;
   tempChannelId: string | null;
   transactionId: string;
-  type: "add" | "remove";
+  type: "add" | "remove" | "withdraw";
   updatedAt: Date;
   userAvatar: string | null;
   userId: string;
@@ -5880,6 +5902,7 @@ async function ensureMongoIndexes(db: Db) {
 }
 
 async function createMongoIndexes(db: Db) {
+  await db.collection<MongoFivemFinanceSettings>("fivem_finance_settings").dropIndex("botId_1_guildId_1").catch(() => undefined);
   await db.collection<MongoCustomPanelCategory>("custom_panel_categories").updateMany(
     { deletedAt: { $exists: false } },
     { $set: { deletedAt: null } }
@@ -6008,14 +6031,14 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, financialTransactionId: 1 }),
     db.collection<MongoFivemOrder>("fivem_orders").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemOrderLog>("fivem_order_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
-    db.collection<MongoFivemFinanceSettings>("fivem_finance_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
-    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
-    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, transactionId: 1 }, { unique: true }),
+    db.collection<MongoFivemFinanceSettings>("fivem_finance_settings").createIndex({ botId: 1, guildId: 1, factionId: 1 }, { unique: true }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, factionId: 1, createdAt: -1 }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, factionId: 1, transactionId: 1 }, { unique: true }),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex(
-      { botId: 1, guildId: 1, "metadata.laundryOrderId": 1 },
+      { botId: 1, guildId: 1, factionId: 1, "metadata.laundryOrderId": 1 },
       { partialFilterExpression: { "metadata.laundryOrderId": { $type: "string" } }, unique: true }
     ),
-    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, factionId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceLog>("fivem_finance_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoWashingSettings>("washing_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoWashingPercentageRule>("washing_percentage_rules").createIndex({ botId: 1, guildId: 1, active: 1, priority: -1 }),

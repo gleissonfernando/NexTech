@@ -27,6 +27,7 @@ import { env, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { FivemFacAbsence, FivemFacLifecycleResult, FivemFacSettings } from "./apiClient";
 import { assertPanelChannelPermissions } from "./panelDeliveryService";
+import { resolvePanelImageUrl } from "./panelVisualRenderer";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const FAC_PREFIX = "fivem_fac";
@@ -1143,47 +1144,96 @@ async function notifyAbsenceUser(guild: Guild, absence: FivemFacAbsence, message
 }
 
 function buildPanelPayload(settings: FivemFacSettings, guild: Guild | null = null) {
+  return buildPanelPayloadV2(settings, guild);
+}
+
+function buildPanelPayloadV2(settings: FivemFacSettings, guild: Guild | null = null) {
   const title = settings.messages.panelTitle || `${systemEmojiText("calendario", guild)} Sistema de Ausências FAC`;
   const description = settings.messages.panelDescription || "Solicite sua ausência de forma organizada. A equipe recebe o pedido em um canal privado, avalia o motivo e o sistema aplica ou remove o cargo automaticamente quando chegar a data correta.";
-  const panelComponents: Array<Record<string, unknown>> = [
-    {
-      type: 10,
-      content: replaceSystemEmojis([
-        `# ${title}`,
-        description,
-        "",
-        "### Como funciona",
-        `${systemEmojiText("prancheta_caneta", guild)} **Solicitação:** informe nome RP, data de início, data de retorno e motivo.`,
-        `${systemEmojiText("prancheta_acertos", guild)} **Análise:** a staff aprova ou reprova pelo painel interno.`,
-        `${systemEmojiText("homem", guild)} **Cargo:** aplicado somente após aprovação.`,
-        `${systemEmojiText("relogio", guild)} **Retorno:** removido automaticamente ao fim da ausência.`
-      ].join("\n"), guild)
-    }
-  ];
-  if (settings.panelVisual.enabledSections.image && settings.panelVisual.imageUrl && settings.panelVisual.imagePosition !== "none") {
-    panelComponents.push({ type: 12, items: [{ media: { url: settings.panelVisual.imageUrl } }] });
+  const imageUrl = settings.panelVisual.enabledSections.image && settings.panelVisual.imagePosition !== "none"
+    ? resolvePanelImageUrl(settings.panelVisual.imageUrl)
+    : null;
+  const textComponent = {
+    type: 10,
+    content: replaceSystemEmojis([
+      `# ${title}`,
+      settings.panelVisual.enabledSections.description ? description : "",
+      "",
+      "### Como funciona",
+      `${systemEmojiText("prancheta_caneta", guild)} **Solicitação:** informe nome RP, data de início, data de retorno e motivo.`,
+      `${systemEmojiText("prancheta_acertos", guild)} **Análise:** a staff aprova ou reprova pelo painel interno.`,
+      `${systemEmojiText("homem", guild)} **Cargo:** aplicado somente após aprovação.`,
+      `${systemEmojiText("relogio", guild)} **Retorno:** removido automaticamente ao fim da ausência.`
+    ].filter((line, index, lines) => line || lines[index - 1]).join("\n"), guild, guild?.client ?? null)
+  };
+  const imageComponent = imageUrl ? { type: 12, items: [{ media: { url: imageUrl }, description: "Banner do painel de ausência" }] } : null;
+  const panelComponents: Array<Record<string, unknown>> = [];
+
+  if (imageUrl && settings.panelVisual.imagePosition === "right_small") {
+    panelComponents.push({
+      type: 9,
+      components: [textComponent],
+      accessory: { type: 11, media: { url: imageUrl }, description: "Banner do painel de ausência" }
+    });
+  } else {
+    if (imageComponent && settings.panelVisual.imagePosition === "top") panelComponents.push(imageComponent);
+    panelComponents.push(textComponent);
+    if (imageComponent && settings.panelVisual.imagePosition === "bottom") panelComponents.push(imageComponent);
   }
+
   return {
     allowedMentions: { parse: [] as never[] },
     content: "",
     components: [
       { type: 17, accent_color: panelColor(settings.panelVisual.panelColor), components: panelComponents },
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(REQUEST_BUTTON_ID)
-          .setEmoji(systemComponentEmoji("calendario", guild))
-          .setLabel("Solicitar ausência")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(MINE_BUTTON_ID)
-          .setEmoji(systemComponentEmoji("prancheta", guild))
-          .setLabel("Minhas ausências")
-          .setStyle(ButtonStyle.Secondary)
-      )
+      ...buildPanelButtonRows(settings, guild)
     ],
     embeds: [],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function buildPanelButtonRows(settings: FivemFacSettings, guild: Guild | null) {
+  if (!settings.panelVisual.enabledSections.buttons || settings.panelVisual.buttonsPosition === "none") {
+    return [];
+  }
+
+  const buttons = settings.panelVisual.buttons
+    .filter((button) => button.enabled)
+    .sort((left, right) => left.order - right.order)
+    .map((button) => {
+      const builder = new ButtonBuilder()
+        .setLabel(button.label.slice(0, 80) || "Abrir")
+        .setStyle(panelButtonStyle(button.style, button.type));
+      const emoji = button.emoji ? replaceSystemEmojis(button.emoji, guild, guild?.client ?? null).trim() : "";
+      if (emoji) builder.setEmoji(emoji);
+
+      if (button.type === "url") {
+        builder.setURL(isHttpUrl(button.url) ? button.url! : "https://discord.com");
+      } else {
+        builder.setCustomId(button.action === "my_absences" ? MINE_BUTTON_ID : REQUEST_BUTTON_ID);
+      }
+
+      return builder;
+    });
+
+  const rows: Array<ActionRowBuilder<ButtonBuilder>> = [];
+  while (buttons.length && rows.length < 5) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.splice(0, 5)));
+  }
+  return rows;
+}
+
+function panelButtonStyle(style: string, type: "action" | "url") {
+  if (type === "url") return ButtonStyle.Link;
+  if (style === "secondary") return ButtonStyle.Secondary;
+  if (style === "success") return ButtonStyle.Success;
+  if (style === "danger") return ButtonStyle.Danger;
+  return ButtonStyle.Primary;
+}
+
+function isHttpUrl(value: string | null | undefined) {
+  return typeof value === "string" && /^https?:\/\//i.test(value);
 }
 
 function panelColor(value: string | null | undefined) {

@@ -1243,7 +1243,7 @@ function normalizePanelButton(button: unknown, index: number): MongoPanelButtonC
   return {
     id: normalizeShortText(item.id, 40) ?? `button_${index + 1}`,
     label: normalizeShortText(item.label, 80) ?? `Botao ${index + 1}`,
-    emoji: normalizeShortText(item.emoji, 40),
+    emoji: normalizeShortText(item.emoji, 80),
     style: normalizeEnum<MongoPanelButtonStyle>(item.style, ["primary", "secondary", "success", "danger", "link"], type === "url" ? "link" : "primary"),
     type,
     action,

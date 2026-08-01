@@ -36,9 +36,35 @@ export function startFivemGoalService(client: Client<true>, context: BotContext)
   });
 }
 
+export type FivemGoalSetIntegrationResult = {
+  channelId: string | null;
+  error: string | null;
+  moved: boolean;
+  previousCategoryId: string | null;
+  targetCategoryId: string | null;
+};
+
 export async function ensureFivemGoalChannelForUser(context: BotContext, guild: Guild, userId: string, username: string, categoryId?: string | null) {
+  const result = await ensureFivemGoalChannelForApprovedSet(context, guild, userId, username, categoryId, false);
+  return result.channelId;
+}
+
+export async function ensureFivemGoalChannelForApprovedSet(
+  context: BotContext,
+  guild: Guild,
+  userId: string,
+  username: string,
+  categoryId?: string | null,
+  requireConfiguredCategory = true
+): Promise<FivemGoalSetIntegrationResult> {
   const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
-  if (!settings?.enabled) return null;
+  if (!settings?.enabled) return goalSetIntegrationResult(null, null, null, false, "Sistema de metas desativado.");
+
+  const targetCategoryId = categoryId ?? settings.categoryId ?? null;
+  const categoryValidation = await validateGoalTargetCategory(guild, targetCategoryId, requireConfiguredCategory);
+  if (!categoryValidation.ok) {
+    return goalSetIntegrationResult(null, null, targetCategoryId, false, categoryValidation.error);
+  }
 
   const existing = await context.api.getFivemGoalChannelByUser(guild.id, userId).catch(() => null);
   if (existing?.channelId) {
@@ -47,16 +73,25 @@ export async function ensureFivemGoalChannelForUser(context: BotContext, guild: 
       const recent = await existingChannel.messages.fetch({ limit: 30 }).catch(() => null);
       const hasPanel = recent?.some((message) => message.author.id === guild.client.user.id && JSON.stringify(message.components.map((component) => component.toJSON())).includes(`${PREFIX}:user:refresh:${userId}`));
       if (!hasPanel) await existingChannel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
+
+      const previousCategoryId = "parentId" in existingChannel ? existingChannel.parentId ?? null : null;
+      if (targetCategoryId && previousCategoryId !== targetCategoryId && "setParent" in existingChannel) {
+        await existingChannel.setParent(targetCategoryId, { lockPermissions: false, reason: `Pedir Set aprovado para ${userId}` });
+        return goalSetIntegrationResult(existing.channelId, previousCategoryId, targetCategoryId, true, null);
+      }
+      return goalSetIntegrationResult(existing.channelId, previousCategoryId, targetCategoryId, false, null);
     }
-    return existing.channelId;
+    return goalSetIntegrationResult(existing.channelId, null, targetCategoryId, false, "Canal de metas salvo não foi encontrado ou não é um canal de texto.");
   }
 
-  if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) return null;
+  if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+    return goalSetIntegrationResult(null, null, targetCategoryId, false, "Bot sem permissão Gerenciar Canais.");
+  }
   const member = await guild.members.fetch(userId).catch(() => null);
   const channelName = renderChannelName(settings.channelNameTemplate, username, userId);
   const channel = await guild.channels.create({
     name: channelName,
-    parent: categoryId ?? settings.categoryId ?? undefined,
+    parent: targetCategoryId ?? undefined,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -71,7 +106,31 @@ export async function ensureFivemGoalChannelForUser(context: BotContext, guild: 
   await context.api.saveFivemGoalChannel({ channelId: channel.id, guildId: guild.id, userId });
   await channel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
 
-  return channel.id;
+  return goalSetIntegrationResult(channel.id, null, targetCategoryId, Boolean(targetCategoryId), null);
+}
+
+function goalSetIntegrationResult(channelId: string | null, previousCategoryId: string | null, targetCategoryId: string | null, moved: boolean, error: string | null): FivemGoalSetIntegrationResult {
+  return { channelId, error, moved, previousCategoryId, targetCategoryId };
+}
+
+async function validateGoalTargetCategory(guild: Guild, categoryId: string | null, required: boolean) {
+  if (!categoryId) {
+    return required
+      ? { error: "Categoria de metas não configurada no painel administrativo.", ok: false as const }
+      : { error: null, ok: true as const };
+  }
+
+  const category = await guild.channels.fetch(categoryId).catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) {
+    return { error: "Categoria de metas configurada não existe mais ou não é uma categoria.", ok: false as const };
+  }
+
+  const botMember = guild.members.me;
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels) || !category.permissionsFor(botMember)?.has(PermissionFlagsBits.ManageChannels)) {
+    return { error: "Bot sem permissão para mover canais para a categoria de metas configurada.", ok: false as const };
+  }
+
+  return { error: null, ok: true as const };
 }
 
 export async function handleFivemGoalMessage(message: Message, context: BotContext) {

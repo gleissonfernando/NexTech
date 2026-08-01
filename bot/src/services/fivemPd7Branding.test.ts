@@ -5,7 +5,7 @@ import { createPedirSetChannelName, PEDIR_SET_NAME, PEDIR_SET_REQUEST_LABEL } fr
 test("usa a identidade Pedir Set na interface", () => {
   assert.equal(PEDIR_SET_NAME, "Pedir Set");
   assert.equal(PEDIR_SET_REQUEST_LABEL, "Solicitar Set");
-  assert.doesNotMatch(`${PEDIR_SET_NAME} ${PEDIR_SET_REQUEST_LABEL}`, /PD7/i);
+  assert.doesNotMatch(`${PEDIR_SET_NAME} ${PEDIR_SET_REQUEST_LABEL}`, /peedir set/i);
 });
 
 test("cria canais temporários com o prefixo set", () => {

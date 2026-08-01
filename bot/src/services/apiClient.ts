@@ -1148,10 +1148,27 @@ export type FivemOrder = {
 
 export type FivemFinanceSettings = {
   adminRoleIds: string[];
+  addRoleIds?: string[];
   allowBalanceQuery: boolean;
   allowNegativeBalance: boolean;
   confirmAdd: boolean;
   confirmRemove: boolean;
+  confirmWithdraw?: boolean;
+  balanceCents?: number;
+  configureRoleIds?: string[];
+  defaultOperationRoleId?: string | null;
+  factionId?: string;
+  factionName?: string;
+  factionRoleId?: string | null;
+  refundRoleIds?: string[];
+  removeRoleIds?: string[];
+  totalInCents?: number;
+  totalOutCents?: number;
+  transactionCount?: number;
+  lastTransactionAt?: string | null;
+  viewerRoleIds?: string[];
+  withdrawRoleIds?: string[];
+  historyRoleIds?: string[];
   historyEnabled: boolean;
   historyPageSize: number;
   maxTransactionAmount: number;
@@ -1174,8 +1191,9 @@ export type FivemFinanceSettings = {
 };
 export type FivemFinanceTransaction = {
   amount: number; createdAt: string; id: string; logChannelId: string | null; logMessageId: string | null; newBalance: number; oldBalance: number;
+  amountCents?: number; factionId?: string; factionName?: string; metadata?: Record<string, unknown>; newBalanceCents?: number; oldBalanceCents?: number;
   proofImageUrl: string; proofMessageId: string | null; status: "completed" | "reviewed" | "cancelled" | "corrected"; tempChannelId: string | null; transactionId: string;
-  type: "add" | "remove"; updatedAt: string; userAvatar: string | null; userId: string; username: string;
+  type: "add" | "remove" | "withdraw"; updatedAt: string; userAvatar: string | null; userId: string; username: string;
   managerId?: string; managerName?: string; personName?: string; reason?: string; targetUserId?: string; notes?: string | null;
 };
 
@@ -3650,7 +3668,7 @@ export class ApiClient {
     return data;
   }
 
-  async createFivemFinanceTransaction(guildId: string, input: { amount: number; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl?: string; proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove"; userAvatar?: string | null; userId: string; username: string; managerId?:string;managerName?:string;personName?:string;reason?:string;targetUserId?:string }) {
+  async createFivemFinanceTransaction(guildId: string, input: { amount: number; amountCents?: number; factionId?: string | null; factionName?: string | null; logChannelId?: string | null; logMessageId?: string | null; proofImageUrl?: string; proofMessageId?: string | null; tempChannelId?: string | null; type: "add" | "remove" | "withdraw"; userAvatar?: string | null; userId: string; username: string; managerId?:string;managerName?:string;metadata?:Record<string, unknown>;personName?:string;reason?:string;targetUserId?:string }) {
     const { data } = await this.http.post<{ transaction: FivemFinanceTransaction }>(`/fivem-finance/bot/${guildId}/transactions`, input);
     return data.transaction;
   }

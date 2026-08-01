@@ -230,6 +230,18 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     }));
   }
 
+  function updatePanelButton(buttonId: string, patch: Partial<FivemFacSettings["panelVisual"]["buttons"][number]>) {
+    setSettings((current) => ({
+      ...current,
+      panelVisual: {
+        ...current.panelVisual,
+        buttons: current.panelVisual.buttons.map((button) => (
+          button.id === buttonId ? { ...button, ...patch } : button
+        ))
+      }
+    }));
+  }
+
   function setPanelBannerUrl(imageUrl: string | null) {
     setSettings((current) => ({
       ...current,
@@ -569,6 +581,37 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
                     ) : null}
                   </div>
                 ) : null}
+              </div>
+              <div className="rounded-lg border border-zinc-900 bg-zinc-950/60 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                  <MessageSquareText className="h-4 w-4 text-zinc-500" />
+                  Botões do painel
+                </div>
+                <div className="mt-3 grid gap-3">
+                  {settings.panelVisual.buttons.map((button) => (
+                    <div className="grid gap-3 rounded-md border border-zinc-900 bg-black/20 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,180px)_120px]" key={button.id}>
+                      <TextField
+                        disabled={!canManage}
+                        label="Texto"
+                        onChange={(label) => updatePanelButton(button.id, { label })}
+                        value={button.label}
+                      />
+                      <TextField
+                        disabled={!canManage}
+                        label="Emoji"
+                        onChange={(emoji) => updatePanelButton(button.id, { emoji: emoji.trim() || null })}
+                        value={button.emoji ?? ""}
+                      />
+                      <label className="space-y-2">
+                        <span className="text-sm font-medium text-zinc-200">Ativo</span>
+                        <div className="flex h-11 items-center">
+                          <Switch checked={button.enabled} disabled={!canManage} onCheckedChange={(enabled) => updatePanelButton(button.id, { enabled })} />
+                        </div>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">Aceita emoji normal, emoji customizado do Discord ou formato :nome: configurado no sistema.</p>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <TextField disabled={!canManage} label="Mensagem aprovada" onChange={(value) => updateMessage("approved", value)} value={settings.messages.approved} />

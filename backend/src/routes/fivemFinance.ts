@@ -21,10 +21,22 @@ const snowflake = z.string().regex(/^\d{5,32}$/);
 const optionalSnowflake = z.union([snowflake, z.literal(""), z.null()]).optional();
 const settingsSchema = z.object({
   adminRoleIds: z.array(snowflake).max(100).optional(),
+  addRoleIds: z.array(snowflake).max(100).optional(),
   allowBalanceQuery: z.boolean().optional(),
   allowNegativeBalance: z.boolean().optional(),
   confirmAdd: z.boolean().optional(),
   confirmRemove: z.boolean().optional(),
+  confirmWithdraw: z.boolean().optional(),
+  configureRoleIds: z.array(snowflake).max(100).optional(),
+  defaultOperationRoleId: optionalSnowflake,
+  factionId: z.string().min(1).max(120).optional(),
+  factionName: z.string().min(1).max(120).optional(),
+  factionRoleId: optionalSnowflake,
+  refundRoleIds: z.array(snowflake).max(100).optional(),
+  removeRoleIds: z.array(snowflake).max(100).optional(),
+  viewerRoleIds: z.array(snowflake).max(100).optional(),
+  withdrawRoleIds: z.array(snowflake).max(100).optional(),
+  historyRoleIds: z.array(snowflake).max(100).optional(),
   historyEnabled: z.boolean().optional(),
   historyPageSize: z.coerce.number().int().min(5).max(25).optional(),
   maxTransactionAmount: z.coerce.number().positive().max(1_000_000_000_000).optional(),
@@ -45,16 +57,19 @@ const settingsSchema = z.object({
 });
 const transactionSchema = z.object({
   amount: z.coerce.number().positive().max(1_000_000_000_000),
+  amountCents: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  factionId: z.string().min(1).max(120).nullable().optional(),
+  factionName: z.string().min(1).max(120).nullable().optional(),
   logChannelId: optionalSnowflake,
   logMessageId: optionalSnowflake,
   proofImageUrl: z.union([z.string().url().max(2048), z.literal("")]).default(""),
   proofMessageId: optionalSnowflake,
   tempChannelId: optionalSnowflake,
-  type: z.enum(["add", "remove"]),
+  type: z.enum(["add", "remove", "withdraw"]),
   userAvatar: z.string().url().max(2048).nullable().optional(),
   userId: snowflake,
   username: z.string().min(1).max(120)
-  ,managerId: snowflake.optional(), managerName: z.string().min(1).max(120).optional(), personName: z.string().min(1).max(120).optional(), reason: z.string().max(1000).optional(), targetUserId: snowflake.optional()
+  ,managerId: snowflake.optional(), managerName: z.string().min(1).max(120).optional(), metadata: z.record(z.unknown()).optional(), personName: z.string().min(1).max(120).optional(), reason: z.string().max(1000).optional(), targetUserId: snowflake.optional()
 });
 const correctionSchema = z.object({ amount: z.coerce.number().positive().max(1_000_000_000_000).optional(), notes: z.string().max(1000).nullable().optional(), status: z.enum(["completed", "reviewed", "cancelled", "corrected"]).optional() });
 
