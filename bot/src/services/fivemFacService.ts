@@ -69,6 +69,15 @@ type InteractionAccess = {
   roleIds: string[];
 };
 
+type DashboardPanelVisual = {
+  imageEnabled: boolean;
+  imageExtension?: string | null;
+  imageMimeType?: string | null;
+  imagePosition?: string | null;
+  imageUrl: string | null;
+  useGlobalDefault?: boolean;
+} | null;
+
 export function startFivemFacService(client: Client, context: BotContext) {
   if (!isBotModuleEnabled("fivem-fac")) {
     return;
@@ -783,12 +792,14 @@ async function publishRequestedFivemFacPanel(client: Client, context: BotContext
 async function publishFivemFacPanel(client: Client, context: BotContext, guildId: string) {
   const guild = await client.guilds.fetch(guildId);
   const settings = await context.api.getFivemFacSettings(guildId);
+  const dashboardPanelVisual = await context.api.getPanelVisualSettings(guildId, "fivem-absence").catch(() => null);
+  const effectiveSettings = applyDashboardPanelVisual(settings, dashboardPanelVisual);
 
-  if (!settings.enabled || !settings.panelChannelId) {
+  if (!effectiveSettings.enabled || !effectiveSettings.panelChannelId) {
     throw new Error("FAC não está ativo ou sem canal de painel.");
   }
 
-  const channel = await guild.channels.fetch(settings.panelChannelId);
+  const channel = await guild.channels.fetch(effectiveSettings.panelChannelId);
 
   if (!channel || !channel.isTextBased()) {
     throw new Error("Canal de painel FAC inválido.");
@@ -796,11 +807,11 @@ async function publishFivemFacPanel(client: Client, context: BotContext, guildId
 
   assertPanelChannelPermissions(channel, client, "FAC", { requirePinMessages: false });
 
-  const payload = buildPanelPayload(settings, guild);
-  let messageId: string | null = settings.panelMessageId ?? null;
+  const payload = buildPanelPayload(effectiveSettings, guild);
+  let messageId: string | null = effectiveSettings.panelMessageId ?? null;
 
-  if (settings.panelMessageId) {
-    const oldMessage = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
+  if (effectiveSettings.panelMessageId) {
+    const oldMessage = await channel.messages.fetch(effectiveSettings.panelMessageId).catch(() => null);
 
     if (oldMessage) {
       await oldMessage.edit(payload);
@@ -817,7 +828,7 @@ async function publishFivemFacPanel(client: Client, context: BotContext, guildId
   const message = await channel.send(payload);
   messageId = message.id;
 
-  if (messageId !== settings.panelMessageId) {
+  if (messageId !== effectiveSettings.panelMessageId) {
     const saved = await context.api.updateFivemFacPanelState({
       guildId,
       messageId
@@ -1147,6 +1158,27 @@ export function buildPanelPayload(settings: FivemFacSettings, guild: Guild | nul
   return buildPanelPayloadV2(settings, guild);
 }
 
+export function applyDashboardPanelVisual(settings: FivemFacSettings, visual: DashboardPanelVisual): FivemFacSettings {
+  if (!visual?.imageEnabled || !visual.imageUrl) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    panelVisual: {
+      ...settings.panelVisual,
+      imageExtension: visual.imageExtension ?? settings.panelVisual.imageExtension ?? null,
+      imageMimeType: visual.imageMimeType ?? settings.panelVisual.imageMimeType ?? null,
+      imagePosition: facPanelImagePosition(visual.imagePosition, settings.panelVisual.imagePosition),
+      imageUrl: visual.imageUrl,
+      enabledSections: {
+        ...settings.panelVisual.enabledSections,
+        image: true
+      }
+    }
+  };
+}
+
 function buildPanelPayloadV2(settings: FivemFacSettings, guild: Guild | null = null) {
   const title = settings.messages.panelTitle || `${systemEmojiText("calendario", guild)} Sistema de Ausências FAC`;
   const description = settings.messages.panelDescription || "Solicite sua ausência de forma organizada. A equipe recebe o pedido em um canal privado, avalia o motivo e o sistema aplica ou remove o cargo automaticamente quando chegar a data correta.";
@@ -1191,6 +1223,14 @@ function buildPanelPayloadV2(settings: FivemFacSettings, guild: Guild | null = n
     embeds: [],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function facPanelImagePosition(value: string | null | undefined, fallback: FivemFacSettings["panelVisual"]["imagePosition"]) {
+  if (value === "none") return "none";
+  if (value === "side" || value === "thumbnail") return "right_small";
+  if (value === "bottom" || value === "footer") return "bottom";
+  if (value) return "top";
+  return fallback === "none" ? "top" : fallback;
 }
 
 function buildPanelButtonRows(settings: FivemFacSettings, guild: Guild | null) {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { API_URL, uploadPanelImage } from "../../lib/api";
+import type { PanelImageSettings } from "../../types";
 
 type PanelMediaUrlFieldProps = {
   accept?: string;
@@ -8,7 +9,7 @@ type PanelMediaUrlFieldProps = {
   disabled?: boolean;
   guildId?: string | null;
   label: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, settings?: PanelImageSettings) => void;
   onMessage?: (message: string) => void;
   panelId: string;
   type?: string;
@@ -37,7 +38,7 @@ export function PanelMediaUrlField({
     setUploading(true);
     try {
       const saved = await uploadPanelImage(guildId, panelId, file, botId);
-      onChange(saved.imageUrl);
+      onChange(saved.imageUrl, saved);
       onMessage?.("Midia enviada. Salve o painel para aplicar.");
     } catch (error) {
       onMessage?.(readError(error, "Nao foi possivel enviar a midia."));
@@ -80,7 +81,7 @@ export function PanelMediaUrlField({
 }
 
 export function dashboardMediaUrl(value: string) {
-  if (!value.startsWith("/api/")) return value;
+  if (!value.startsWith("/api/") && !value.startsWith("/uploads/")) return value;
   try {
     const origin = new URL(API_URL).origin;
     return `${origin}${value}`;

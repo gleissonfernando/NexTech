@@ -16,14 +16,12 @@ import {
   type LucideIcon
 } from "lucide-react";
 import {
-  API_URL,
   getFivemFac,
   getFivemFacOptions,
   publishFivemFacPanel,
   removeFivemFacAbsencePhoto,
   saveFivemFacSettings,
-  uploadFivemFacAbsencePhoto,
-  uploadFivemFacPanelImage
+  uploadFivemFacAbsencePhoto
 } from "../../lib/api";
 import type {
   DashboardGuild,
@@ -36,6 +34,7 @@ import type {
   GuildLiveOptions,
   GuildRoleOption
 } from "../../types";
+import { PanelMediaUrlField } from "../panels/PanelMediaUrlField";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -132,7 +131,6 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [panelImageUploading, setPanelImageUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
@@ -242,11 +240,13 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     }));
   }
 
-  function setPanelBannerUrl(imageUrl: string | null) {
+  function setPanelBannerUrl(imageUrl: string | null, metadata?: { imageExtension?: string | null; imageMimeType?: string | null } | null) {
     setSettings((current) => ({
       ...current,
       panelVisual: {
         ...current.panelVisual,
+        imageExtension: metadata?.imageExtension ?? inferImageExtension(imageUrl),
+        imageMimeType: metadata?.imageMimeType ?? inferImageMimeType(imageUrl),
         imageUrl,
         imagePosition: imageUrl ? (current.panelVisual.imagePosition === "none" ? "top" : current.panelVisual.imagePosition) : "none",
         enabledSections: {
@@ -353,23 +353,6 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
       setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar cargos e canais do Discord.");
     } finally {
       setSyncing(false);
-    }
-  }
-
-  async function handlePanelBannerUpload(file: File | null) {
-    if (!botId || !guild || !file) return;
-
-    setPanelImageUploading(true);
-    setMessage(null);
-
-    try {
-      const saved = await uploadFivemFacPanelImage(guild.id, botId, file);
-      setSettings(saved);
-      setMessage("Banner enviado. Salve ou publique o painel para aplicar no Discord.");
-    } catch (error) {
-      setMessage(readRequestMessage(error) ?? "Não foi possível enviar o banner do painel.");
-    } finally {
-      setPanelImageUploading(false);
     }
   }
 
@@ -531,17 +514,22 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
                   Banner do painel
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
-                  <TextField
-                    disabled={!canManage || panelImageUploading}
+                  <PanelMediaUrlField
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+                    botId={botId}
+                    disabled={!canManage || saving}
+                    guildId={guild?.id ?? null}
                     label="URL do banner"
-                    onChange={(value) => setPanelBannerUrl(value.trim() || null)}
+                    onChange={(value, media) => setPanelBannerUrl(value.trim() || null, media)}
+                    onMessage={setMessage}
+                    panelId="fivem-fac-absence-banner"
                     value={settings.panelVisual.imageUrl ?? ""}
                   />
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-zinc-200">Posição</span>
                     <select
                       className="social-input h-11"
-                      disabled={!canManage || panelImageUploading || !settings.panelVisual.imageUrl}
+                      disabled={!canManage || !settings.panelVisual.imageUrl}
                       onChange={(event) => updatePanelVisual({ imagePosition: event.target.value as FivemFacSettings["panelVisual"]["imagePosition"] })}
                       value={settings.panelVisual.imagePosition}
                     >
@@ -552,29 +540,10 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
                     </select>
                   </label>
                 </div>
-                {settings.panelVisual.imageUrl ? (
-                  <div className="mt-3 overflow-hidden rounded-md border border-zinc-900 bg-zinc-950">
-                    <img alt="Banner do painel de ausência" className="max-h-48 w-full object-contain" src={dashboardMediaUrl(settings.panelVisual.imageUrl)} />
-                  </div>
-                ) : null}
                 {canManage ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button className="relative" disabled={panelImageUploading} size="sm" type="button" variant="outline">
-                      {panelImageUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      Enviar banner
-                      <input
-                        accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
-                        className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
-                        disabled={panelImageUploading}
-                        onChange={(event) => {
-                          void handlePanelBannerUpload(event.target.files?.[0] ?? null);
-                          event.currentTarget.value = "";
-                        }}
-                        type="file"
-                      />
-                    </Button>
                     {settings.panelVisual.imageUrl ? (
-                      <Button disabled={panelImageUploading} onClick={() => setPanelBannerUrl(null)} size="sm" type="button" variant="outline">
+                      <Button disabled={saving} onClick={() => setPanelBannerUrl(null)} size="sm" type="button" variant="outline">
                         <Trash2 className="h-4 w-4" />
                         Remover banner
                       </Button>
@@ -944,12 +913,16 @@ function readRequestMessage(error: unknown) {
   return typeof response?.data?.message === "string" ? response.data.message : null;
 }
 
-function dashboardMediaUrl(value: string) {
-  if (!value.startsWith("/")) return value;
+function inferImageExtension(value: string | null) {
+  const extension = value?.split(/[?#]/, 1)[0]?.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase() ?? null;
+  return extension && ["gif", "jpeg", "jpg", "png", "webp"].includes(extension) ? extension : null;
+}
 
-  try {
-    return `${new URL(API_URL).origin}${value}`;
-  } catch {
-    return value;
-  }
+function inferImageMimeType(value: string | null) {
+  const extension = inferImageExtension(value);
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "gif") return "image/gif";
+  return null;
 }
