@@ -1721,6 +1721,74 @@ export type ManualRegistrationDashboard = {
   submissions: ManualRegistrationSubmission[];
 };
 
+export type FactionChestSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  categoryId: string | null;
+  panelChannelId: string | null;
+  logChannelId: string | null;
+  auditChannelId: string | null;
+  registerRoleIds: string[];
+  auditRoleIds: string[];
+  viewRoleIds: string[];
+  adminRoleIds: string[];
+  systemName: string;
+  panelImageUrl: string | null;
+  color: string;
+  panelMessageId: string | null;
+  lastPanelRequestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type FactionChestItem = {
+  id: string;
+  botId: string;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  aliases?: string[];
+  quantity: number;
+  minimumQuantity?: number;
+  category: string;
+  description: string | null;
+  imageUrl: string | null;
+  active?: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FactionChestLog = {
+  id: string;
+  botId: string;
+  guildId: string;
+  operationCode?: string | null;
+  action: "add" | "remove" | "create" | "update" | "delete" | "publish" | "config" | "view" | "audit" | "export";
+  itemId: string | null;
+  itemName: string;
+  quantity: number;
+  previousQuantity: number | null;
+  nextQuantity: number | null;
+  reason: string | null;
+  actorId: string;
+  actorName: string;
+  channelId: string | null;
+  messageId: string | null;
+  createdAt: string;
+};
+
+export type FactionChestDashboard = {
+  items: FactionChestItem[];
+  logs: FactionChestLog[];
+  settings: FactionChestSettings;
+  summary: { itemCount: number; totalQuantity: number };
+};
+
 export type FivemGoalField = {
   id: string;
   label: string;

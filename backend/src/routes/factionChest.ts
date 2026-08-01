@@ -30,9 +30,12 @@ const settingsSchema = z.object({
   viewRoleIds: z.array(snowflake).max(50).optional()
 });
 const itemSchema = z.object({
+  active: z.boolean().optional(),
+  aliases: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
   category: z.string().trim().min(1).max(80).default("Geral"),
   description: z.string().trim().max(500).nullable().default(null),
   imageUrl: z.string().trim().max(2048).nullable().default(null),
+  minimumQuantity: z.coerce.number().int().min(0).max(999999).optional(),
   name: z.string().trim().min(1).max(80),
   quantity: z.coerce.number().int().min(0).max(999999)
 });
@@ -40,11 +43,15 @@ const movementSchema = z.object({
   action: z.enum(["add", "remove"]),
   actorId: snowflake,
   actorName: z.string().trim().min(1).max(100),
+  bauId: z.string().trim().max(100).nullable().optional(),
   channelId: snowflake.nullable().optional(),
-  item: z.string().trim().min(1).max(80),
+  item: z.string().trim().max(80).default(""),
+  items: z.string().trim().max(4000).nullable().optional(),
   messageId: snowflake.nullable().optional(),
-  quantity: z.coerce.number().int().min(1).max(999999),
+  quantity: z.coerce.number().int().min(1).max(999999).optional(),
   reason: z.string().trim().max(500).nullable().optional()
+}).refine((value) => Boolean(value.items?.trim()) || (Boolean(value.item.trim()) && typeof value.quantity === "number"), {
+  message: "Informe itens ou item e quantidade."
 });
 
 export const factionChestRouter = Router();

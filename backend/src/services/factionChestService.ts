@@ -16,17 +16,19 @@ export type FactionChestSettingsInput = Partial<Pick<MongoFactionChestSettings,
 >>;
 
 export type FactionChestItemInput = Partial<Pick<MongoFactionChestItem,
-  "name" | "quantity" | "category" | "description" | "imageUrl"
+  "name" | "quantity" | "category" | "description" | "imageUrl" | "aliases" | "active" | "minimumQuantity"
 >>;
 
 export type FactionChestMovementInput = {
   action: "add" | "remove";
   actorId: string;
   actorName: string;
+  bauId?: string | null;
   channelId?: string | null;
   item: string;
+  items?: string | null;
   messageId?: string | null;
-  quantity: number;
+  quantity?: number;
   reason?: string | null;
 };
 
@@ -134,6 +136,16 @@ export async function saveFactionChestItem(botId: string, guildId: string, itemI
     patch.normalizedName = normalizedName!;
   }
 
+  if (Array.isArray(input.aliases)) {
+    const aliases = [...new Set(input.aliases.map((alias) => normalizeDisplayText(alias, 80)).filter(Boolean))].slice(0, 50);
+    patch.aliases = aliases;
+    patch.normalizedAliases = aliases.map(normalizeItemName);
+  }
+  if (typeof input.active === "boolean") patch.active = input.active;
+  if (typeof input.minimumQuantity === "number") {
+    if (!Number.isInteger(input.minimumQuantity) || input.minimumQuantity < 0) throw serviceError("Quantidade mínima inválida.", 400);
+    patch.minimumQuantity = input.minimumQuantity;
+  }
   if (typeof input.quantity === "number") {
     if (!Number.isInteger(input.quantity) || input.quantity < 0) throw serviceError("Quantidade inválida.", 400);
     patch.quantity = input.quantity;
@@ -152,7 +164,11 @@ export async function saveFactionChestItem(botId: string, guildId: string, itemI
     guildId,
     imageUrl: input.imageUrl?.trim() || null,
     name: name || "Novo item",
-        normalizedName: normalizedName ?? normalizeItemName("Novo item"),
+    normalizedName: normalizedName ?? normalizeItemName("Novo item"),
+    aliases: Array.isArray(input.aliases) ? [...new Set(input.aliases.map((alias) => normalizeDisplayText(alias, 80)).filter(Boolean))].slice(0, 50) : [],
+    normalizedAliases: Array.isArray(input.aliases) ? [...new Set(input.aliases.map((alias) => normalizeDisplayText(alias, 80)).filter(Boolean))].slice(0, 50).map(normalizeItemName) : [],
+    active: input.active ?? true,
+    minimumQuantity: input.minimumQuantity ?? 0,
     quantity: input.quantity ?? 0
   };
   for (const key of Object.keys(patch) as Array<keyof MongoFactionChestItem>) {
@@ -175,71 +191,69 @@ export async function saveFactionChestItem(botId: string, guildId: string, itemI
 
 export async function recordFactionChestMovement(botId: string, guildId: string, input: FactionChestMovementInput) {
   const { factionChestItems, factionChestLogs } = await getMongoCollections();
-  const quantity = Math.trunc(input.quantity);
-  if (!Number.isInteger(quantity) || quantity <= 0) throw serviceError("Informe uma quantidade maior que zero.", 400);
+  const parsed = parseMovementItems(input.items ?? (input.quantity ? `${input.item} x${input.quantity}` : input.item));
+  if (!parsed.length) throw serviceError("Informe os itens no formato Nome do item xQuantidade.", 400);
 
-  const name = normalizeDisplayText(input.item, 80);
-  if (!name) throw serviceError("Informe o nome do item.", 400);
+  const allItems = await factionChestItems.find({ botId, guildId }).toArray();
+  const matched = parsed.map((entry) => {
+    const normalized = normalizeItemName(entry.name);
+    const item = allItems.find((candidate) => {
+      if (candidate.active === false) return false;
+      return candidate.normalizedName === normalized || (candidate.normalizedAliases ?? []).includes(normalized);
+    });
+    if (!item) throw serviceError(`Item não cadastrado. Chame a gerência para caso de dúvidas.\nItem: ${entry.name}`, 404);
+    return { ...entry, item };
+  });
 
-  const normalizedName = normalizeItemName(name);
   const now = new Date();
-  const current = await factionChestItems.findOne({ botId, guildId, normalizedName });
-  const previousQuantity = current?.quantity ?? 0;
-  const nextQuantity = input.action === "add" ? previousQuantity + quantity : previousQuantity - quantity;
+  const operationCode = await nextOperationCode(botId, guildId);
+  const results: Array<{ item: MongoFactionChestItem; log: MongoFactionChestLog }> = [];
 
-  if (nextQuantity < 0) throw serviceError("Quantidade insuficiente no baú para remover esse valor.", 409);
-
-  let item: MongoFactionChestItem;
-  if (current) {
+  for (const entry of matched) {
+    const previousQuantity = entry.item.quantity;
+    const nextQuantity = input.action === "add" ? previousQuantity + entry.quantity : previousQuantity - entry.quantity;
+    if (nextQuantity < 0) {
+      throw serviceError(`Estoque insuficiente para realizar esta retirada.\nItem: ${entry.item.name}\nDisponível: ${previousQuantity}\nSolicitado: ${entry.quantity}`, 409);
+    }
     const updated = await factionChestItems.findOneAndUpdate(
-      { _id: current._id, botId, guildId, quantity: previousQuantity },
+      { _id: entry.item._id, botId, guildId, quantity: previousQuantity },
       { $set: { quantity: nextQuantity, updatedAt: now, updatedBy: input.actorId } },
       { returnDocument: "after" }
     );
     if (!updated) throw serviceError("O item foi alterado ao mesmo tempo. Tente novamente.", 409);
-    item = updated;
-  } else {
-    if (input.action === "remove") throw serviceError("Item não encontrado no baú.", 404);
-    item = {
+
+    const log: MongoFactionChestLog = {
       _id: randomUUID(),
+      action: input.action,
+      actorId: input.actorId,
+      actorName: normalizeDisplayText(input.actorName, 100) || input.actorId,
+      bauId: input.bauId ?? null,
       botId,
-      category: "Geral",
+      channelId: input.channelId ?? null,
       createdAt: now,
-      createdBy: input.actorId,
-      description: null,
       guildId,
-      imageUrl: null,
-      name,
-      normalizedName,
-      quantity: nextQuantity,
-      updatedAt: now,
-      updatedBy: input.actorId
+      itemId: updated._id,
+      itemName: updated.name,
+      messageId: input.messageId ?? null,
+      metadata: { totalItems: matched.length },
+      nextQuantity,
+      operationCode,
+      previousQuantity,
+      quantity: entry.quantity,
+      reason: normalizeDisplayText(input.reason ?? "", 500) || null
     };
-    await factionChestItems.insertOne(item);
+    await factionChestLogs.insertOne(log);
+    results.push({ item: updated, log });
   }
 
-  const log: MongoFactionChestLog = {
-    _id: randomUUID(),
-    action: input.action,
-    actorId: input.actorId,
-    actorName: normalizeDisplayText(input.actorName, 100) || input.actorId,
-    botId,
-    channelId: input.channelId ?? null,
-    createdAt: now,
-    guildId,
-    itemId: item._id,
-    itemName: item.name,
-    messageId: input.messageId ?? null,
-    metadata: null,
-    nextQuantity,
-    previousQuantity,
-    quantity,
-    reason: normalizeDisplayText(input.reason ?? "", 500) || null
-  };
-  await factionChestLogs.insertOne(log);
-
   emitFactionChestUpdated(botId, guildId, "movement");
-  return { item: itemDto(item), log: logDto(log) };
+  return {
+    item: results[0] ? itemDto(results[0].item) : null,
+    items: results.map((result) => itemDto(result.item)),
+    log: results[0] ? logDto(results[0].log) : null,
+    logs: results.map((result) => logDto(result.log)),
+    operationCode
+  };
 }
 
 function normalizeSettingsInput(input: FactionChestSettingsInput): FactionChestSettingsInput {
@@ -271,7 +285,7 @@ function logDto(value: MongoFactionChestLog) {
 }
 
 function normalizeItemName(value: string) {
-  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ");
 }
 
 function normalizeDisplayText(value: string, maxLength: number) {
@@ -284,4 +298,35 @@ function emitFactionChestUpdated(botId: string, guildId: string, scope: "setting
 
 function serviceError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode });
+}
+
+function parseMovementItems(value: string) {
+  const normalized = normalizeDisplayText(value, 4000);
+  const lines = normalized.includes("\n") ? normalized.split(/\r?\n/) : splitInlineItems(normalized);
+  const merged = new Map<string, { name: string; quantity: number }>();
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = line.match(/^(.+?)(?:\s*[xX]\s*|\s+)(\d+)$/);
+    if (!match) throw serviceError(`Formato não reconhecido: ${line}`, 400);
+    const name = normalizeDisplayText(match[1] ?? "", 80);
+    const quantity = Number.parseInt(match[2] ?? "", 10);
+    if (!name) throw serviceError("Item sem nome.", 400);
+    if (!Number.isInteger(quantity) || quantity <= 0) throw serviceError(`Quantidade inválida para ${name}.`, 400);
+    const key = normalizeItemName(name);
+    const current = merged.get(key);
+    merged.set(key, { name: current?.name ?? name, quantity: (current?.quantity ?? 0) + quantity });
+  }
+  return [...merged.values()];
+}
+
+function splitInlineItems(value: string) {
+  const matches = [...value.matchAll(/(.+?)(?:\s*[xX]\s*|\s+)(\d+)(?=\s+\S.+?(?:\s*[xX]\s*|\s+)\d+|$)/g)];
+  return matches.length ? matches.map((match) => `${match[1]?.trim()} x${match[2]}`) : [value];
+}
+
+async function nextOperationCode(botId: string, guildId: string) {
+  const { factionChestLogs } = await getMongoCollections();
+  const count = await factionChestLogs.countDocuments({ botId, guildId, operationCode: { $type: "string" } });
+  return `#BAU-${String(count + 1).padStart(6, "0")}`;
 }

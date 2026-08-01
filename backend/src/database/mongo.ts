@@ -2572,12 +2572,17 @@ export type MongoFactionChestItem = {
   _id: string;
   botId: string;
   guildId: string;
+  bauId?: string | null;
   name: string;
   normalizedName: string;
+  aliases?: string[];
+  normalizedAliases?: string[];
   quantity: number;
+  minimumQuantity?: number;
   category: string;
   description: string | null;
   imageUrl: string | null;
+  active?: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -2588,6 +2593,8 @@ export type MongoFactionChestLog = {
   _id: string;
   botId: string;
   guildId: string;
+  bauId?: string | null;
+  operationCode?: string | null;
   action: "add" | "remove" | "create" | "update" | "delete" | "publish" | "config" | "view" | "audit" | "export";
   itemId: string | null;
   itemName: string;

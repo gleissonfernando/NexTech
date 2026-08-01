@@ -123,6 +123,7 @@ export type ViewId =
   | "fivem-commands"
   | "ztk-webhook"
   | "manual-registration"
+  | "faction-chest"
   | "notifications"
   | "tickets"
   | "entry-leave"
@@ -225,6 +226,7 @@ const navItems: NavItem[] = [
   { id: "fivem-commands", label: "Comandos FiveM", icon: ScrollText, moduleId: "fivem-commands" },
   { id: "ztk-webhook", label: "ZTK Webhook", icon: Trophy, moduleId: "ztk-webhook" },
   { id: "manual-registration", label: "Pedido de Set", icon: ListChecks, moduleId: "manual-registration" },
+  { id: "faction-chest", label: "Sistema de Baú", icon: Archive, moduleId: "faction-chest" },
   { id: "tickets", label: "Tickets", icon: Archive, moduleId: "tickets" },
   { id: "entry-leave", label: "Entrada/Saída", icon: UserPlus, moduleIds: ["welcome", "leave"] },
   { id: "auto-roles", label: "Cargos automaticos", icon: Users, moduleId: "roles" },

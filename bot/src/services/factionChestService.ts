@@ -29,6 +29,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./sy
 const MODULE_ID = "faction-chest";
 const PREFIX = "faction_chest";
 const handledRequests = new Map<string, string>();
+const pendingMovements = new Map<string, { action: "add" | "remove"; actorId: string; actorName: string; channelId: string | null; expiresAt: number; guildId: string; items: string; reason: string | null }>();
 let polling = false;
 
 export const bauCommand: BotCommand = {
@@ -38,6 +39,9 @@ export const bauCommand: BotCommand = {
     .addSubcommand((subcommand) => subcommand
       .setName("config")
       .setDescription("Configura canais do painel de baú."))
+    .addSubcommand((subcommand) => subcommand
+      .setName("gerenciamento")
+      .setDescription("Abre o gerenciamento do Sistema de Baú."))
     .addSubcommand((subcommand) => subcommand
       .setName("publicar")
       .setDescription("Publica ou atualiza o painel de entrada e saída do baú.")),
@@ -60,8 +64,9 @@ export const bauCommand: BotCommand = {
       return;
     }
 
-    if (interaction.options.getSubcommand() === "config") {
-      await interaction.reply(chestConfigPanel(dashboard.settings, true));
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === "config" || subcommand === "gerenciamento") {
+      await interaction.reply(chestManagementPanel(dashboard.settings, dashboard.summary.itemCount, true, interaction.guild));
       return;
     }
 
@@ -102,6 +107,9 @@ export async function handleFactionChestInteraction(interaction: Interaction, co
   else if (interaction.isButton() && action === "remove") await openMovementModal(interaction, "remove");
   else if (interaction.isButton() && action === "config") await showConfig(interaction, context);
   else if (interaction.isButton() && action === "publish") await requestPublish(interaction, context);
+  else if (interaction.isButton() && action === "confirm") await confirmMovement(interaction, context);
+  else if (interaction.isButton() && action === "cancel") await cancelMovement(interaction);
+  else if (interaction.isButton() && action === "close") await interaction.update({ components: [], content: "Gerenciamento fechado." });
   else if (interaction.isChannelSelectMenu() && action?.startsWith("channel_")) await saveChannel(interaction, context, action);
   else if (interaction.isModalSubmit() && action === "movement") await submitMovement(interaction, context);
   else return false;
@@ -193,9 +201,8 @@ async function openMovementModal(interaction: ButtonInteraction, action: "add" |
     .setCustomId(`${PREFIX}:movement:${action}`)
     .setTitle(title)
     .addComponents(
-      inputRow("item", "Item", TextInputStyle.Short, true, 80, "Ex: Drogas / Pente / Colete"),
-      inputRow("quantity", "Quantidade", TextInputStyle.Short, true, 12, "Ex: 5"),
-      inputRow("reason", "Motivo", TextInputStyle.Paragraph, true, 500, "Ex: Uso / Entrega / Apreensão / Retirada")
+      inputRow("items", "Itens e quantidades", TextInputStyle.Paragraph, true, 1000, "Ex: Lockpick x5\nG3 x2\nMunição de G3 x500"),
+      inputRow("reason", "Motivo", TextInputStyle.Paragraph, false, 500, "Ex: Uso / Entrega / Apreensão / Retirada")
     );
   await interaction.showModal(modal);
 }
@@ -213,24 +220,61 @@ async function submitMovement(interaction: ModalSubmitInteraction, context: BotC
     return;
   }
 
-  const quantity = Number.parseInt(interaction.fields.getTextInputValue("quantity").trim(), 10);
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    await interaction.reply({ content: "Informe uma quantidade maior que zero.", ephemeral: true });
+  const items = interaction.fields.getTextInputValue("items").trim();
+  const parsed = parseMovementPreview(items);
+  if ("error" in parsed) {
+    await interaction.reply({ content: parsed.error, ephemeral: true });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const movement = await context.api.recordFactionChestMovement(interaction.guildId!, {
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const reason = interaction.fields.getTextInputValue("reason").trim() || null;
+  pendingMovements.set(token, {
     action,
     actorId: interaction.user.id,
     actorName: displayName(interaction.member) || interaction.user.username,
     channelId: interaction.channelId,
-    item: interaction.fields.getTextInputValue("item"),
-    quantity,
-    reason: interaction.fields.getTextInputValue("reason")
+    expiresAt: Date.now() + 60_000,
+    guildId: interaction.guildId!,
+    items,
+    reason
   });
 
-  const payload = movementLogPayload(dashboard.settings, movement.log, interaction.guild!);
+  await interaction.reply(confirmationPayload(token, action, parsed.items, reason, interaction.guild));
+}
+
+async function confirmMovement(interaction: ButtonInteraction, context: BotContext) {
+  const token = interaction.customId.split(":")[2] ?? "";
+  const pending = pendingMovements.get(token);
+  if (!pending || pending.expiresAt < Date.now()) {
+    pendingMovements.delete(token);
+    await interaction.reply({ content: "Esta confirmação expirou. Envie a movimentação novamente.", ephemeral: true });
+    return;
+  }
+  if (pending.actorId !== interaction.user.id || pending.guildId !== interaction.guildId) {
+    await interaction.reply({ content: "Esta confirmação pertence a outro usuário.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  pendingMovements.delete(token);
+
+  const dashboard = await context.api.getFactionChestDashboard(interaction.guildId!);
+  if (!canRegisterMovement(interaction.member, interaction, dashboard.settings)) {
+    await interaction.editReply({ content: "Você não possui cargo autorizado para movimentar o baú.", components: [] });
+    return;
+  }
+
+  const movement = await context.api.recordFactionChestMovement(interaction.guildId!, {
+    action: pending.action,
+    actorId: pending.actorId,
+    actorName: pending.actorName,
+    channelId: pending.channelId,
+    items: pending.items,
+    reason: pending.reason
+  });
+
+  const payload = movementLogPayload(dashboard.settings, movement.logs, movement.operationCode, interaction.guild!);
   const sourceChannel = interaction.channel;
   if (sourceChannel && "send" in sourceChannel) {
     await (sourceChannel as TextChannel).send(payload).catch((error: unknown) => {
@@ -238,7 +282,7 @@ async function submitMovement(interaction: ModalSubmitInteraction, context: BotC
     });
   }
 
-  const logChannelId = action === "remove" ? dashboard.settings.auditChannelId ?? dashboard.settings.logChannelId : dashboard.settings.logChannelId;
+  const logChannelId = pending.action === "remove" ? dashboard.settings.auditChannelId ?? dashboard.settings.logChannelId : dashboard.settings.logChannelId;
   if (logChannelId && logChannelId !== interaction.channelId) {
     const channel = await resolveTextChannel(interaction.guild!, logChannelId);
     await channel?.send(payload).catch((error) => {
@@ -246,59 +290,143 @@ async function submitMovement(interaction: ModalSubmitInteraction, context: BotC
     });
   }
 
-  await interaction.editReply(action === "add" ? "Adição registrada no baú." : "Remoção registrada no baú.");
+  await interaction.editReply({ content: pending.action === "add" ? "Movimentação registrada com sucesso." : "Movimentação registrada com sucesso.", components: [] });
+}
+
+async function cancelMovement(interaction: ButtonInteraction) {
+  const token = interaction.customId.split(":")[2] ?? "";
+  const pending = pendingMovements.get(token);
+  if (pending?.actorId !== interaction.user.id) {
+    await interaction.reply({ content: "Esta confirmação pertence a outro usuário.", ephemeral: true });
+    return;
+  }
+  pendingMovements.delete(token);
+  await interaction.update({ content: "Operação cancelada. Nenhum item foi alterado.", components: [] });
 }
 
 function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
-  const embed = new EmbedBuilder()
-    .setColor(parseColor(settings.color))
-    .setTitle(`${systemEmojiText("caixa", guild)} ${settings.systemName}`)
-    .setDescription(replaceSystemEmojis([
-      "🧾 **Sistema de registro manual do baú**",
+  const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
+  const intro = [
+      `# ${systemEmojiText("caixa", guild)} ${settings.systemName}`,
       "",
-      "• Informe exatamente o item e a quantidade Adicionada/Retirada do baú",
+      `${systemEmojiText("prancheta", guild)} Sistema de registro manual do baú`,
       "",
-      "⚠️ *Qualquer ação é controlada pelo gerente de baú*",
+      `${systemEmojiText("interrogacao", guild)} Informe exatamente os itens e as quantidades adicionadas ou retiradas do baú.`,
+      "Toda ação será registrada e poderá ser consultada pela gerência.",
       "",
-      "➕ **Adicionar**",
-      "Para adicionar um item no baú, clique em **Adicionar**.",
+      `${systemEmojiText("mais", guild)} **Adicionar**`,
+      "Para adicionar um ou vários itens ao baú, clique em **Adicionar**.",
       "",
-      "➖ **Remover**",
-      "Para remover um item no baú, clique em **Remover**."
-    ].join("\n"), guild))
-    .setFooter({ text: "BalaCloud — Todos os direitos reservados" });
+      `${systemEmojiText("porta", guild)} **Remover**`,
+      "Para retirar um ou vários itens do baú, clique em **Remover**."
+    ].join("\n");
 
-  const thumbnail = settings.panelImageUrl || guild.iconURL({ size: 128 });
-  if (thumbnail) embed.setThumbnail(thumbnail);
-
-  const rows = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar").setEmoji(systemComponentEmoji("mais", guild)).setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Danger)
-    )
-  ];
+  );
 
-  return { allowedMentions: { parse: [] }, components: rows, embeds: [embed] };
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: parseColor(settings.color),
+      components: [
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(intro, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(intro, guild) },
+        { type: 14, divider: true, spacing: 1 },
+        row,
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
 }
 
-function movementLogPayload(settings: FactionChestSettings, log: FactionChestLog, guild: Guild) {
-  const adding = log.action === "add";
-  const embed = new EmbedBuilder()
-    .setColor(adding ? 0x22c55e : 0xef4444)
-    .setTitle(`${systemEmojiText("caixa", guild)} ${settings.systemName} — ${adding ? "ADIÇÃO" : "REMOÇÃO"}`)
-    .setDescription(replaceSystemEmojis([
-      `${adding ? "➕" : "➖"} **Ação:** ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
-      `📝 **Item:** ${log.itemName}`,
-      `🧾 **Quantidade:** ${log.quantity}`,
-      `📋 **Motivo:** ${log.reason || "-"}`,
-      `👤 **Registrado por:** ${log.actorName} | ${log.actorId}`
-    ].join("\n"), guild))
-    .setFooter({ text: "BalaCloud — Todos os direitos reservados" })
-    .setTimestamp(new Date(log.createdAt));
+function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLog[], operationCode: string, guild: Guild) {
+  const first = logs[0];
+  const adding = first?.action === "add";
+  const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
+  const total = logs.reduce((sum, log) => sum + log.quantity, 0);
+  const items = logs.map((log) => `- ${log.itemName} x${log.quantity}`).join("\n");
+  const balances = logs.map((log) => `- ${log.itemName}: ${log.previousQuantity ?? 0} → ${log.nextQuantity ?? 0}`).join("\n");
+  const content = [
+    `# ${systemEmojiText("caixa", guild)} ${settings.systemName} — ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
+    `${adding ? systemEmojiText("mais", guild) : systemEmojiText("porta", guild)} **Ação:** ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
+    `${systemEmojiText("prancheta", guild)} **Itens:**`,
+    items,
+    `${systemEmojiText("caixa", guild)} **Quantidade total:** ${total}`,
+    `${systemEmojiText("folha", guild)} **Motivo:** ${first?.reason || "Não informado"}`,
+    `${systemEmojiText("homem", guild)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`,
+    `${systemEmojiText("relogio", guild)} **Horário:** ${first ? formatDateTime(first.createdAt) : "-"}`,
+    `${systemEmojiText("prancheta", guild)} **Identificação:** ${operationCode}`,
+    "",
+    "**Saldos:**",
+    balances
+  ].join("\n");
 
-  const thumbnail = settings.panelImageUrl || guild.iconURL({ size: 128 });
-  if (thumbnail) embed.setThumbnail(thumbnail);
-  return { allowedMentions: { parse: [] }, embeds: [embed] };
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: adding ? 0x22c55e : 0xef4444,
+      components: [
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(content, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(content, guild) },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function confirmationPayload(token: string, action: "add" | "remove", items: Array<{ name: string; quantity: number }>, reason: string | null, guild: Guild | null) {
+  const total = items.reduce((sum, item) => sum + item.quantity, 0);
+  const content = [
+    `# ${systemEmojiText("prancheta", guild)} Confirme a movimentação`,
+    "",
+    `**Ação:** ${action === "add" ? "ADIÇÃO" : "REMOÇÃO"}`,
+    "",
+    items.map((item) => `- ${item.name} x${item.quantity}`).join("\n"),
+    "",
+    `**Quantidade total:** ${total}`,
+    `**Motivo:** ${reason || "Não informado"}`
+  ].join("\n");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${token}`).setLabel("Confirmar").setEmoji(systemComponentEmoji("visto", guild)).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${token}`).setLabel("Cancelar").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Secondary)
+  );
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{ type: 17, accent_color: action === "add" ? 0x22c55e : 0xef4444, components: [{ type: 10, content: replaceSystemEmojis(content, guild) }, row] }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+  };
+}
+
+function chestManagementPanel(settings: FactionChestSettings, itemCount: number, ephemeral: boolean, guild: Guild | null): any {
+  const content = [
+    `# ${systemEmojiText("caixa", guild)} GERENCIAMENTO DO SISTEMA DE BAÚ`,
+    "",
+    "Utilize as opções abaixo para configurar e administrar os baús deste servidor.",
+    "",
+    `**Baú selecionado:** ${settings.systemName}`,
+    `**Status:** ${settings.enabled ? "Ativo" : "Inativo"}`,
+    `**Itens cadastrados:** ${itemCount}`,
+    `**Painel publicado:** ${settings.panelMessageId ? "Sim" : "Não"}`,
+    `**Canal do painel:** ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "não configurado"}`,
+    `**Canal de logs:** ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}`,
+    "**Planilha:** Não configurada"
+  ].join("\n");
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:config`).setLabel("Configurar canais").setEmoji(systemComponentEmoji("engrenagem", guild)).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:publish`).setLabel(settings.panelMessageId ? "Atualizar painel" : "Publicar painel").setEmoji(systemComponentEmoji("prancheta", guild)).setStyle(ButtonStyle.Success).setDisabled(!settings.panelChannelId),
+    new ButtonBuilder().setCustomId(`${PREFIX}:close`).setLabel("Fechar").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Secondary)
+  );
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: replaceSystemEmojis(content, guild) }, { type: 14, divider: true, spacing: 1 }, buttons] }],
+    flags: (ephemeral ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
+  };
 }
 
 function chestConfigPanel(settings: FactionChestSettings, ephemeral: boolean): any {
@@ -321,6 +449,40 @@ function chestConfigPanel(settings: FactionChestSettings, ephemeral: boolean): a
   ];
 
   return { components: rows, embeds: [embed], flags: ephemeral ? MessageFlags.Ephemeral : undefined };
+}
+
+function parseMovementPreview(value: string): { items: Array<{ name: string; quantity: number }> } | { error: string } {
+  const text = value.trim();
+  if (!text) return { error: "Informe os itens no formato Nome do item xQuantidade." };
+  const lines = text.includes("\n") ? text.split(/\r?\n/) : splitInlineItems(text);
+  const merged = new Map<string, { name: string; quantity: number }>();
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = line.match(/^(.+?)(?:\s*[xX]\s*|\s+)(\d+)$/);
+    if (!match) return { error: `Formato não reconhecido: ${line}` };
+    const name = (match[1] ?? "").trim();
+    const quantity = Number.parseInt(match[2] ?? "", 10);
+    if (!name) return { error: "Item sem nome." };
+    if (!Number.isInteger(quantity) || quantity <= 0) return { error: `Quantidade inválida para ${name}.` };
+    const key = normalizeItemName(name);
+    const current = merged.get(key);
+    merged.set(key, { name: current?.name ?? name, quantity: (current?.quantity ?? 0) + quantity });
+  }
+  return { items: [...merged.values()] };
+}
+
+function splitInlineItems(value: string) {
+  const matches = [...value.matchAll(/(.+?)(?:\s*[xX]\s*|\s+)(\d+)(?=\s+\S.+?(?:\s*[xX]\s*|\s+)\d+|$)/g)];
+  return matches.length ? matches.map((match) => `${match[1]?.trim()} x${match[2]}`) : [value];
+}
+
+function normalizeItemName(value: string) {
+  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
 }
 
 function inputRow(customId: string, label: string, style: TextInputStyle, required: boolean, maxLength: number, placeholder: string) {

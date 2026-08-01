@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import {
     Activity,
+    Archive,
     AtSign,
     BadgeCheck,
     Bell,
@@ -54,7 +55,7 @@ import {
     Users,
     XCircle
 } from "lucide-react";
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipsPanel } from "../components/clips/ClipsPanel";
 import { BoosterPanel } from "../components/boosters/BoosterPanel";
 import { CustomBotOrdersPanel } from "../components/custom-bot-orders/CustomBotOrdersPanel";
@@ -109,6 +110,7 @@ import {
     cloneEmojiToGuild,
     cloneSelectedEmojiCloneBotToken,
     createFivemGoalConfig,
+    createFactionChestItem,
     createManualRegistrationSubmission,
     createServerBackup,
     deleteAdvancedModulePanel,
@@ -128,6 +130,7 @@ import {
     getCustomerPlansDashboard,
     getDashboardBotGuildConfig,
     getDashboardBySlug,
+    getFactionChestDashboard,
     getDashboardMaintenanceState,
     getDashboardMe,
     getDevBotBilling,
@@ -154,6 +157,7 @@ import {
     publishAdvancedModulePanel,
     publishFivemGoalPanel,
     publishManualRegistrationPanel,
+    publishFactionChestPanel,
     publishReportSystemPanel,
     publishRulesPanel,
     publishTermsPanel,
@@ -175,6 +179,7 @@ import {
     saveGlobalBlacklistSettings,
     saveLiveDetectionSettings,
     saveManualRegistrationSettings,
+    saveFactionChestSettings,
     saveMessageControlSettings,
     savePoliceTimeClockSettings,
     saveServerBackupSettings,
@@ -207,6 +212,9 @@ import type {
     DashboardMeResponse,
     EmojiCloneRemoteEmoji,
     EmojiLibraryItem,
+    FactionChestDashboard,
+    FactionChestItem,
+    FactionChestSettings,
     FivemGoalConfig,
     FivemGoalEntry,
     FivemGoalField,
@@ -875,6 +883,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-commands": "fivem-commands",
   "ztk-webhook": "ztk-webhook",
   "manual-registration": "manual-registration",
+  "faction-chest": "faction-chest",
   "voice-recorder": "voice-recorder",
   music: "music",
   "self-bot-protection": "safe-bot",
@@ -2090,6 +2099,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "manual-registration", canManageDashboard)}
             goalsEnabled={enabledModules.includes("fivem-goals")}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "faction-chest" ? (
+          <FactionChestPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "faction-chest", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -7653,6 +7669,190 @@ function TicketsView({
       />
     </div>
   );
+}
+
+function FactionChestPanel({ botId, canManage, guild }: { botId: string | null; canManage: boolean; guild: DashboardGuild | null }) {
+  const [dashboard, setDashboard] = useState<FactionChestDashboard | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [bulkItems, setBulkItems] = useState("Lockpick x100\nG3 x20\nMunição de G3 x5000");
+  const [itemDraft, setItemDraft] = useState({ aliases: "", category: "Geral", minimumQuantity: 0, name: "", quantity: 0 });
+  const guildId = guild?.id ?? "";
+
+  const load = useCallback(async () => {
+    if (!guildId) return;
+    setLoading(true);
+    try {
+      setDashboard(await getFactionChestDashboard(guildId, botId));
+    } finally {
+      setLoading(false);
+    }
+  }, [botId, guildId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!guildId) return undefined;
+    const socket = createDashboardSocket();
+    const refresh = () => void load();
+    socket.on("faction-chest:updated", refresh);
+    return () => {
+      socket.off("faction-chest:updated", refresh);
+      socket.close();
+    };
+  }, [botId, guildId, load]);
+
+  async function patchSettings(patch: Partial<FactionChestSettings>) {
+    if (!guildId) return;
+    setSaving(true);
+    try {
+      const settings = await saveFactionChestSettings(guildId, patch, botId);
+      setDashboard((current) => current ? { ...current, settings } : current);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function publishPanel() {
+    if (!guildId) return;
+    setSaving(true);
+    try {
+      const settings = await publishFactionChestPanel(guildId, botId);
+      setDashboard((current) => current ? { ...current, settings } : current);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createSingleItem() {
+    if (!guildId || !itemDraft.name.trim()) return;
+    setSaving(true);
+    try {
+      const item = await createFactionChestItem(guildId, {
+        active: true,
+        aliases: itemDraft.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
+        category: itemDraft.category || "Geral",
+        minimumQuantity: itemDraft.minimumQuantity,
+        name: itemDraft.name.trim(),
+        quantity: itemDraft.quantity
+      }, botId);
+      setDashboard((current) => current ? { ...current, items: [item, ...current.items.filter((entry) => entry.id !== item.id)] } : current);
+      setItemDraft({ aliases: "", category: "Geral", minimumQuantity: 0, name: "", quantity: 0 });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createBulkItems() {
+    if (!guildId) return;
+    const items = parseBulkChestItems(bulkItems);
+    if (!items.length) return;
+    setSaving(true);
+    try {
+      const created: FactionChestItem[] = [];
+      for (const item of items) {
+        created.push(await createFactionChestItem(guildId, { active: true, category: "Geral", name: item.name, quantity: item.quantity }, botId));
+      }
+      setDashboard((current) => current ? { ...current, items: [...created, ...current.items.filter((entry) => !created.some((item) => item.id === entry.id))] } : current);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!guild) return <Card><CardHeader><CardTitle>Sistema de Baú</CardTitle><CardDescription>Selecione um servidor para configurar.</CardDescription></CardHeader></Card>;
+  if (loading && !dashboard) return <Card><CardHeader><CardTitle>Sistema de Baú</CardTitle><CardDescription>Carregando configurações...</CardDescription></CardHeader></Card>;
+  if (!dashboard) return <Card><CardHeader><CardTitle>Sistema de Baú</CardTitle><CardDescription>Não foi possível carregar o módulo.</CardDescription></CardHeader></Card>;
+
+  const { settings, summary } = dashboard;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Boxes className="h-5 w-5" /> Sistema de Baú</CardTitle>
+          <CardDescription>Gerencie o baú selecionado, canais, itens e publicação do painel.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-3">
+          <MetricCard icon={Boxes} label="Baú selecionado" value={settings.systemName} />
+          <MetricCard icon={CheckCircle2} label="Status" value={settings.enabled ? "Ativo" : "Inativo"} />
+          <MetricCard icon={Archive} label="Itens cadastrados" value={String(summary.itemCount)} />
+          <label className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/60 p-3 text-sm text-zinc-100">
+            <Switch checked={settings.enabled} disabled={!canManage || saving} onCheckedChange={(enabled) => patchSettings({ enabled })} />
+            Ativar Sistema de Baú
+          </label>
+          <Field label="Nome exibido no painel">
+            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ systemName: event.currentTarget.value })} defaultValue={settings.systemName} />
+          </Field>
+          <Field label="Imagem ou logotipo">
+            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ panelImageUrl: event.currentTarget.value || null })} defaultValue={settings.panelImageUrl ?? ""} placeholder="https://..." />
+          </Field>
+          <Field label="Canal do painel">
+            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ panelChannelId: event.currentTarget.value || null })} defaultValue={settings.panelChannelId ?? ""} placeholder="ID do canal" />
+          </Field>
+          <Field label="Canal de logs">
+            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ logChannelId: event.currentTarget.value || null })} defaultValue={settings.logChannelId ?? ""} placeholder="ID do canal" />
+          </Field>
+          <Field label="Canal administrativo">
+            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ auditChannelId: event.currentTarget.value || null })} defaultValue={settings.auditChannelId ?? ""} placeholder="ID do canal" />
+          </Field>
+          <div className="lg:col-span-3 flex flex-wrap gap-2">
+            <Button disabled={!canManage || saving || !settings.panelChannelId} onClick={publishPanel}><Send className="mr-2 h-4 w-4" /> Publicar painel</Button>
+            <Button disabled={saving} onClick={load} variant="outline"><RefreshCw className="mr-2 h-4 w-4" /> Atualizar</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cadastrar itens</CardTitle>
+          <CardDescription>Itens cadastrados são os únicos aceitos no modal do Discord.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-5">
+            <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 lg:col-span-2" disabled={!canManage || saving} onChange={(event) => setItemDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do item" value={itemDraft.name} />
+            <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onChange={(event) => setItemDraft((current) => ({ ...current, quantity: Number(event.target.value) || 0 }))} placeholder="Quantidade" type="number" value={itemDraft.quantity} />
+            <input className="h-10 rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onChange={(event) => setItemDraft((current) => ({ ...current, aliases: event.target.value }))} placeholder="Aliases, separados por vírgula" value={itemDraft.aliases} />
+            <Button disabled={!canManage || saving || !itemDraft.name.trim()} onClick={createSingleItem}><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
+          </div>
+          <textarea className="min-h-[130px] w-full rounded-md border border-zinc-800 bg-[#09090b] p-3 text-sm text-zinc-100" disabled={!canManage || saving} onChange={(event) => setBulkItems(event.target.value)} value={bulkItems} />
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!canManage || saving} onClick={createBulkItems} variant="outline"><Plus className="mr-2 h-4 w-4" /> Cadastrar em massa</Button>
+            <span className="text-xs text-zinc-500">Formato recomendado: Nome do item xQuantidade, um por linha.</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Estoque atual</CardTitle>
+          <CardDescription>Total no baú: {summary.totalQuantity}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {dashboard.items.map((item) => (
+            <div className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm" key={item.id}>
+              <div>
+                <p className="font-medium text-zinc-100">{item.name}</p>
+                <p className="text-xs text-zinc-500">{item.category} {item.aliases?.length ? `| aliases: ${item.aliases.join(", ")}` : ""}</p>
+              </div>
+              <Badge variant={item.active === false ? "danger" : "success"}>{item.quantity}</Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function parseBulkChestItems(value: string) {
+  return value.split(/\r?\n/).map((line) => {
+    const match = line.trim().match(/^(.+?)(?:\s*[xX]\s*|\s+)(\d+)$/);
+    return match ? { name: (match[1] ?? "").trim(), quantity: Number.parseInt(match[2] ?? "0", 10) } : null;
+  }).filter((item): item is { name: string; quantity: number } => Boolean(item?.name && item.quantity > 0));
+}
+
+function Field({ children, label }: { children: ReactNode; label: string }) {
+  return <label className="space-y-1 text-sm text-zinc-300"><span>{label}</span>{children}</label>;
 }
 
 function ManualRegistrationPanel({

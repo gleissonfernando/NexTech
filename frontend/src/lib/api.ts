@@ -51,6 +51,9 @@ import {
     type EmojiCloneRemoteEmoji,
     type EmojiLibraryItem,
     type FivemFacAbsence,
+    type FactionChestDashboard,
+    type FactionChestItem,
+    type FactionChestSettings,
     type FivemFacResponse,
     type FivemFacSettings,
     type FivemGoalConfig,
@@ -1250,6 +1253,41 @@ export async function createManualRegistrationSubmission(guildId: string, payloa
     params: botId ? { botId } : undefined
   });
   return data.submission;
+}
+
+export async function getFactionChestDashboard(guildId: string, botId?: string | null) {
+  const { data } = await api.get<FactionChestDashboard>(`/faction-chests/${guildId}`, {
+    params: botId ? { botId } : undefined
+  });
+  return data;
+}
+
+export async function saveFactionChestSettings(guildId: string, payload: Partial<FactionChestSettings>, botId?: string | null) {
+  const { data } = await api.patch<{ settings: FactionChestSettings }>(`/faction-chests/${guildId}/settings`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.settings;
+}
+
+export async function createFactionChestItem(guildId: string, payload: Partial<FactionChestItem> & { name: string; quantity: number }, botId?: string | null) {
+  const { data } = await api.post<{ item: FactionChestItem }>(`/faction-chests/${guildId}/items`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.item;
+}
+
+export async function updateFactionChestItem(guildId: string, itemId: string, payload: Partial<FactionChestItem>, botId?: string | null) {
+  const { data } = await api.patch<{ item: FactionChestItem }>(`/faction-chests/${guildId}/items/${itemId}`, payload, {
+    params: botId ? { botId } : undefined
+  });
+  return data.item;
+}
+
+export async function publishFactionChestPanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ settings: FactionChestSettings }>(`/faction-chests/${guildId}/publish`, undefined, {
+    params: botId ? { botId } : undefined
+  });
+  return data.settings;
 }
 
 export async function getSocialNotifications(
