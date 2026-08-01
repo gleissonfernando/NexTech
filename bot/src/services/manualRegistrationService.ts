@@ -33,7 +33,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatu
 
 const PREFIX = "manual_registration";
 const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
-const configDrafts = new Map<string, { approvedRoleId?: string | null; approverRoleIds?: string[]; manualRegistrationRoleIds?: string[]; panelChannelId?: string | null; requestCategoryId?: string | null; logChannelId?: string | null; logMentionRoleId?: string | null }>();
+const configDrafts = new Map<string, { approvedRoleId?: string | null; approverRoleIds?: string[]; autoRoleIds?: string[]; manualRegistrationRoleIds?: string[]; panelChannelId?: string | null; requestCategoryId?: string | null; logChannelId?: string | null; logMentionRoleId?: string | null }>();
 const registrationProcesses = new Set<string>();
 type SetApprovalResult = { farmChannelId: string | null; metaChannelId: string; roleIds: string[]; submission: ManualRegistrationSubmission };
 
@@ -141,7 +141,7 @@ export async function publishManualRegistrationPanel(interaction: ChatInputComma
 export async function showSetConfigPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild || !(await isSetAdministrator(interaction.guild, interaction.user.id))) return void await interaction.reply({ content: "Você não possui permissão para configurar o Set.", ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
-  await interaction.reply({ ...configMainPayload(settings), ephemeral: true });
+  await interaction.reply({ ...configMainPayload(settings, interaction.guild), ephemeral: true });
 }
 
 export async function executeManualSetRegistration(interaction: ChatInputCommandInteraction, context: BotContext) {
@@ -205,21 +205,77 @@ async function resolveOrCreatePanelChannel(guild: Guild, settings: ManualRegistr
 }
 
 function configKey(guildId: string, userId: string) { return `${guildId}:${userId}`; }
-function configMainPayload(settings: ManualRegistrationSettings) {
-  return { components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("engrenagem")} Configuração do Set\n**Cargo aprovado:** ${settings.approvedRoleId ? `<@&${settings.approvedRoleId}>` : "Não configurado"}\n**Cargos revisores:** ${settings.approverRoleIds.length ? settings.approverRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Cadastro manual:** ${settings.manualRegistrationRoleIds.length ? settings.manualRegistrationRoleIds.map((id) => `<@&${id}>`).join(", ") : "Nenhum"}\n**Canal do painel:** ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "Não configurado"}\n**Categoria dos pedidos:** ${settings.requestCategoryId ? `<#${settings.requestCategoryId}>` : "Não configurada"}` }, new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:approved`).setEmoji(systemComponentEmoji("visto")).setLabel("Configurar cargo de aprovado").setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`${PREFIX}:config:reviewers`).setEmoji(systemComponentEmoji("homem")).setLabel("Cargos de aprovação/recusa").setStyle(ButtonStyle.Secondary)), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:channels`).setEmoji(systemComponentEmoji("discord")).setLabel("Configurações de canais").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:config:manual`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Permissão cadastro manual").setStyle(ButtonStyle.Secondary))] }], flags: MessageFlags.IsComponentsV2 as const };
+function configMainPayload(settings: ManualRegistrationSettings, guild: Guild | null = null, notice?: string | null) {
+  const assignmentRoleIds = manualRegistrationAssignmentRoleIds(settings);
+  const summary = [
+    `# ${systemEmojiText("engrenagem", guild, guild?.client)} Painel7 - Sistema de PD7/Set`,
+    "",
+    `Servidor: **${guild?.name ?? settings.guildId}**`,
+    `Status: **${settings.enabled ? "Ativado" : "Desativado"}**`,
+    `Canal do painel: ${settings.panelChannelId ? `<#${settings.panelChannelId}>` : "Não configurado"}`,
+    `Categoria temporária: ${settings.requestCategoryId ? `<#${settings.requestCategoryId}>` : "Não configurada"}`,
+    `Cargos administrativos: **${manualRegistrationAdminRoleIds(settings).length}**`,
+    `Cargos de atribuição: **${assignmentRoleIds.length}**`,
+    `Última atualização: ${settings.updatedAt ? `<t:${Math.floor(new Date(settings.updatedAt).getTime() / 1000)}:F>` : "Nunca"}`,
+    "Responsável pela última alteração: registrado no histórico da dashboard"
+  ].join("\n");
+  const components: unknown[] = [{ type: 10, content: notice ? `${summary}\n\n${notice}` : summary }, { type: 14, divider: true, spacing: 1 }];
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:channels`).setEmoji(systemComponentEmoji("discord", guild, guild?.client)).setLabel("Configurações de Canais").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:assignment`).setEmoji(systemComponentEmoji("visto", guild, guild?.client)).setLabel("Cargo de Atribuição").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:reviewers`).setEmoji(systemComponentEmoji("homem", guild, guild?.client)).setLabel("Administrativas").setStyle(ButtonStyle.Secondary)
+  ));
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:form`).setEmoji(systemComponentEmoji("prancheta_caneta", guild, guild?.client)).setLabel("Formulário").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:appearance`).setEmoji(systemComponentEmoji("prancheta", guild, guild?.client)).setLabel("Aparência").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:publish`).setEmoji(systemComponentEmoji("acessar", guild, guild?.client)).setLabel("Publicar Painel").setStyle(ButtonStyle.Success)
+  ));
+  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:sync`).setEmoji(systemComponentEmoji("relogio", guild, guild?.client)).setLabel("Sincronizar").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:view`).setEmoji(systemComponentEmoji("interrogacao", guild, guild?.client)).setLabel("Visualizar").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${PREFIX}:config:toggle`).setEmoji(systemComponentEmoji(settings.enabled ? "exclamacao" : "visto", guild, guild?.client)).setLabel(settings.enabled ? "Desativar Sistema" : "Ativar Sistema").setStyle(settings.enabled ? ButtonStyle.Danger : ButtonStyle.Success)
+  ));
+  return { components: [{ type: 17, accent_color: parseColor(settings.color), components }], flags: MessageFlags.IsComponentsV2 as const };
 }
 async function handleSetConfigInteraction(interaction: ButtonInteraction | any, context: BotContext) {
   if (!interaction.guild || !(await isSetAdministrator(interaction.guild, interaction.user.id))) return void await interaction.reply({ content: "Você não possui permissão administrativa.", ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id), key = configKey(interaction.guild.id, interaction.user.id), draft = configDrafts.get(key) ?? {};
   const action = interaction.customId.split(":")[2] ?? "main";
-  if (interaction.isRoleSelectMenu()) { const field = action === "approved_select" ? "approvedRoleId" : action === "reviewers_select" ? "approverRoleIds" : action === "log_mention_select" ? "logMentionRoleId" : "manualRegistrationRoleIds"; configDrafts.set(key, { ...draft, [field]: field === "approvedRoleId" || field === "logMentionRoleId" ? interaction.values[0] ?? null : interaction.values }); return void await interaction.deferUpdate(); }
+  if (interaction.isRoleSelectMenu()) { const field = action === "assignment_select" ? "autoRoleIds" : action === "reviewers_select" ? "approverRoleIds" : action === "log_mention_select" ? "logMentionRoleId" : "manualRegistrationRoleIds"; configDrafts.set(key, { ...draft, [field]: field === "logMentionRoleId" ? interaction.values[0] ?? null : interaction.values }); return void await interaction.deferUpdate(); }
   if (interaction.isChannelSelectMenu()) { const field = action === "panel_select" ? "panelChannelId" : action === "category_select" ? "requestCategoryId" : "logChannelId"; configDrafts.set(key, { ...draft, [field]: interaction.values[0] ?? null }); return void await interaction.deferUpdate(); }
-  if (action === "back") { configDrafts.delete(key); return void await interaction.update(configMainPayload(settings)); }
-  if (action.startsWith("save_")) { const module = action.slice(5); const patch = module === "approved" ? { approvedRoleId: draft.approvedRoleId } : module === "reviewers" ? { approverRoleIds: draft.approverRoleIds } : module === "manual" ? { manualRegistrationRoleIds: draft.manualRegistrationRoleIds } : { panelChannelId: draft.panelChannelId, requestCategoryId: draft.requestCategoryId, logChannelId: draft.logChannelId, logMentionRoleId: draft.logMentionRoleId }; if (!Object.values(patch).some((value) => value !== undefined)) return void await interaction.reply({ content: "Nenhuma alteração pendente neste módulo.", ephemeral: true }); const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, patch); configDrafts.delete(key); return void await interaction.update(configMainPayload(saved)); }
-  const backSave = (module: string) => new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:save_${module}`).setEmoji(systemComponentEmoji("salvar")).setLabel("Salvar").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:config:back`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary));
-  if (action === "approved") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("visto")} Cargo atribuído ao aprovar\nSelecione um cargo e clique em **Salvar**.` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:approved_select`).setPlaceholder("Selecione o cargo aprovado").setMinValues(1).setMaxValues(1)), backSave("approved")] }] });
-  if (action === "reviewers" || action === "manual") { const module = action; return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: module === "reviewers" ? `# ${systemEmojiText("homem")} Cargos que aprovam ou recusam` : `# ${systemEmojiText("prancheta_caneta")} Cargos para cadastro manual` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:${module}_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave(module)] }] }); }
-  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("discord")} Canais do sistema de Set\nSelecione o painel, a categoria privada, o canal de logs e o cargo mencionado nos logs.` }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos pedidos").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_mention_select`).setPlaceholder("Cargo mencionado nos logs").setMinValues(0).setMaxValues(1)), backSave("channels")] }] });
+  if (action === "back") { configDrafts.delete(key); return void await interaction.update(configMainPayload(settings, interaction.guild)); }
+  if (action === "cancel") { configDrafts.delete(key); return void await interaction.update({ components: [], content: "Painel7 fechado." }); }
+  if (action === "toggle") { const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, { enabled: !settings.enabled }); return void await interaction.update(configMainPayload(saved, interaction.guild, `Status alterado para **${saved.enabled ? "Ativado" : "Desativado"}**.`)); }
+  if (action === "publish") { await interaction.deferUpdate(); await publishConfiguredPanel(interaction.guild, context); const saved = await context.api.getManualRegistrationSettings(interaction.guild.id); return void await interaction.editReply(configMainPayload(saved, interaction.guild, "Painel público publicado ou atualizado com as configurações atuais.")); }
+  if (action === "sync" || action === "view") {
+    const validation = await validateManualRegistrationRequestConfig(interaction.guild, settings);
+    const notice = validation.ok ? "Sincronização concluída: canais, categoria e permissões principais estão válidos." : validation.message;
+    return void await interaction.update(configMainPayload(settings, interaction.guild, notice));
+  }
+  if (action.startsWith("save_")) {
+    const module = action.slice(5);
+    const patch = module === "assignment" ? { approvedRoleId: draft.autoRoleIds?.[0] ?? null, autoRoleIds: draft.autoRoleIds ?? [] } : module === "reviewers" ? { approverRoleIds: draft.approverRoleIds, staffRoleIds: draft.approverRoleIds } : module === "manual" ? { manualRegistrationRoleIds: draft.manualRegistrationRoleIds } : { panelChannelId: draft.panelChannelId, requestCategoryId: draft.requestCategoryId, logChannelId: draft.logChannelId, logMentionRoleId: draft.logMentionRoleId };
+    if (!Object.values(patch).some((value) => value !== undefined)) return void await interaction.reply({ content: "Nenhuma alteração pendente neste módulo.", ephemeral: true });
+    if (module === "channels") {
+      const candidate: ManualRegistrationSettings = {
+        ...settings,
+        logChannelId: draft.logChannelId ?? settings.logChannelId,
+        logMentionRoleId: draft.logMentionRoleId ?? settings.logMentionRoleId,
+        panelChannelId: draft.panelChannelId ?? settings.panelChannelId,
+        requestCategoryId: draft.requestCategoryId ?? settings.requestCategoryId
+      };
+      const validation = await validateManualRegistrationRequestConfig(interaction.guild, candidate);
+      if (!validation.ok) return void await interaction.reply({ content: validation.message, ephemeral: true });
+    }
+    const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, patch);
+    configDrafts.delete(key);
+    return void await interaction.update(configMainPayload(saved, interaction.guild, "Configuração salva."));
+  }
+  const backSave = (module: string) => new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:save_${module}`).setEmoji(systemComponentEmoji("salvar", interaction.guild, interaction.client)).setLabel("Salvar").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:config:back`).setEmoji(systemComponentEmoji("voltar", interaction.guild, interaction.client)).setLabel("Voltar").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(`${PREFIX}:config:cancel`).setEmoji(systemComponentEmoji("exclamacao", interaction.guild, interaction.client)).setLabel("Cancelar").setStyle(ButtonStyle.Danger));
+  if (action === "assignment") return void await interaction.update({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("visto", interaction.guild, interaction.client)} Configurar Cargo de Atribuição\nSelecione todos os cargos que o usuário receberá quando for aprovado. O primeiro cargo selecionado também fica como cargo principal de compatibilidade.` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:assignment_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave("assignment")] }], flags: MessageFlags.IsComponentsV2 });
+  if (action === "reviewers" || action === "manual") { const module = action; return void await interaction.update({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: module === "reviewers" ? `# ${systemEmojiText("homem", interaction.guild, interaction.client)} Configurações Administrativas\nSelecione os cargos que podem ver canais temporários, aprovar, reprovar, publicar painel e administrar o PD7/Set.` : `# ${systemEmojiText("prancheta_caneta", interaction.guild, interaction.client)} Cargos para cadastro manual` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:${module}_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave(module)] }], flags: MessageFlags.IsComponentsV2 }); }
+  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("discord", interaction.guild, interaction.client)} Configurações de Canais\nSelecione o canal público do painel, a categoria dos canais temporários, o canal de logs e o cargo mencionado nos logs.` }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos canais temporários").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_mention_select`).setPlaceholder("Cargo mencionado nos logs").setMinValues(0).setMaxValues(1)), backSave("channels")] }], flags: MessageFlags.IsComponentsV2 });
+  if (action === "form" || action === "appearance") return void await interaction.update({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: action === "form" ? `# ${systemEmojiText("prancheta_caneta", interaction.guild, interaction.client)} Configurar Formulário\nO formulário usa somente os campos ativos salvos na dashboard. Campos removidos não aparecem nas próximas solicitações.\n\nUse a dashboard para criar, editar, remover, ordenar e pré-visualizar campos com segurança.` : `# ${systemEmojiText("prancheta", interaction.guild, interaction.client)} Configurar Aparência\nTítulo, descrição, imagem, banner, thumbnail, rodapé, textos e emojis são configurados na dashboard e refletidos no painel público pelo botão Publicar Painel.` }, backSave("noop")] }], flags: MessageFlags.IsComponentsV2 });
 }
 async function isSetAdministrator(guild: Guild, userId: string) { const member = await guild.members.fetch(userId).catch(() => null); return Boolean(member && (guild.ownerId === userId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild))); }
 
@@ -287,6 +343,10 @@ export async function handleManualRegistrationInteraction(interaction: Interacti
   }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:approve:`)) {
     await approveSubmission(interaction, context);
+    return true;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:approve_confirm:`)) {
+    await executeApproveSubmission(interaction, context);
     return true;
   }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:reject:`)) {
@@ -416,12 +476,25 @@ async function showRegistrationModal(interaction: ButtonInteraction | StringSele
   if (!interaction.guildId) return;
   const settings = await context.api.getManualRegistrationSettings(interaction.guildId);
   const activeSubmission = await context.api.getLatestManualRegistrationSubmission(interaction.guildId, interaction.user.id).catch(() => null);
-  if (activeSubmission?.status === "pending" || activeSubmission?.status === "approved") {
+  if (activeSubmission?.status === "pending" || activeSubmission?.status === "processing" || activeSubmission?.status === "failed" || activeSubmission?.status === "approved") {
     await interaction.reply({
-      content: activeSubmission.status === "pending" ? "Você já possui um pedido de set pendente." : "Você já possui um cadastro de set ativo.",
+      content: activeSubmission.status === "approved" ? "Você já possui um Set ativo e não pode solicitar novamente." : "Você já possui uma solicitação de Set em andamento.",
       ephemeral: true
     });
     return;
+  }
+  const member = interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null;
+  const assignmentRoles = manualRegistrationAssignmentRoleIds(settings);
+  if (member && assignmentRoles.some((roleId) => member.roles.cache.has(roleId))) {
+    await interaction.reply({ content: "Você já possui um Set ativo no servidor e não pode fazer uma nova solicitação.", ephemeral: true });
+    return;
+  }
+  if (interaction.guild) {
+    const existingRequestChannel = await findUserTemporarySetChannel(interaction.guild, settings, interaction.user.id);
+    if (existingRequestChannel) {
+      await interaction.reply({ content: "Você já possui um canal temporário de solicitação em andamento.", ephemeral: true });
+      return;
+    }
   }
   const fields = settings.fields.filter((field) => field.enabled !== false);
   if (!fields.length) {
@@ -552,9 +625,11 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
       name: registrationRequestChannelName(requestedName, submission.id),
       parent: category.id,
       reason: `Pedido de Set ${submission.id}`,
+      topic: `PD7_SET_REQUEST user=${submission.userId} submission=${submission.id} guild=${interaction.guild.id}`,
       type: ChannelType.GuildText,
       permissionOverwrites: [
         { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: submission.userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
         { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
         ...teamRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }))
       ]
@@ -665,6 +740,54 @@ async function traceSetApproval(context: BotContext, step: string, metadata: Rec
 
 async function approveSubmission(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
+  const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
+  if (!(await canReview(interaction, settings))) {
+    await interaction.reply({ content: "Você não possui permissão para aprovar pedidos de set.", ephemeral: true });
+    return;
+  }
+  const id = interaction.customId.split(":")[2] ?? "";
+  const targetId = interaction.customId.split(":")[3] ?? null;
+  const submission = targetId ? await context.api.getLatestManualRegistrationSubmission(interaction.guild.id, targetId).catch(() => null) : null;
+  if (!targetId) {
+    await interaction.reply({ content: "Não foi possível identificar o membro deste pedido.", ephemeral: true });
+    return;
+  }
+  if (!submission || submission.status !== "pending" && submission.status !== "failed") {
+    await interaction.reply({ content: "Este pedido já está sendo processado ou já foi concluído.", ephemeral: true });
+    return;
+  }
+  const actor = await interaction.guild.members.fetch(interaction.user.id);
+  const roleIds = [...new Set([submission.requestedRoleId, settings.approvedRoleId, ...(settings.autoRoleIds ?? [])].filter((value): value is string => Boolean(value)))];
+  await interaction.reply({
+    components: [{
+      type: 17,
+      accent_color: parseColor(settings.color),
+      components: [
+        {
+          type: 10,
+          content: [
+            `# ${systemEmojiText("alerta", interaction.guild, interaction.client)} Confirmar aprovação do Set`,
+            "",
+            `Usuário: <@${submission.userId}>`,
+            `Nome aplicado: **${submission.requestedName || submission.username}**`,
+            `Cargos atribuídos: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "nenhum cargo configurado"}`,
+            `Canal temporário: ${submission.channelId ? `<#${submission.channelId}>` : "não salvo"}`,
+            `Administrador: <@${interaction.user.id}> | ${actor.displayName || interaction.user.username}`
+          ].join("\n")
+        },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${PREFIX}:approve_confirm:${id}:${targetId}`).setEmoji(systemComponentEmoji("visto", interaction.guild, interaction.client)).setLabel("Confirmar aprovação").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`${PREFIX}:config:cancel`).setEmoji(systemComponentEmoji("voltar", interaction.guild, interaction.client)).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
+        )
+      ]
+    }],
+    ephemeral: true,
+    flags: MessageFlags.IsComponentsV2
+  });
+}
+
+async function executeApproveSubmission(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id);
   if (!(await canReview(interaction, settings))) {
@@ -674,17 +797,19 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
   const id = interaction.customId.split(":")[2] ?? "";
   const targetId = interaction.customId.split(":")[3] ?? null;
   const submission = targetId ? await context.api.getLatestManualRegistrationSubmission(interaction.guild.id, targetId).catch(() => null) : null;
-  if (!targetId) {
-    await interaction.editReply("Não foi possível identificar o membro deste pedido.");
-    return;
-  }
-  if (!submission || submission.status !== "pending" && submission.status !== "failed") {
-    await interaction.editReply("Este pedido já está sendo processado ou já foi concluído.");
+  if (!targetId || !submission || submission.status !== "pending" && submission.status !== "failed") {
+    await interaction.editReply("Essa solicitação já foi finalizada.");
     return;
   }
   const actor = await interaction.guild.members.fetch(interaction.user.id);
   const processingPreview = { ...submission, status: "processing" as const };
-  await interaction.message.edit(createReviewPayload(settings, processingPreview, interaction.guild)).catch(() => null);
+  if (submission.channelId) {
+    const requestChannel = await interaction.guild.channels.fetch(submission.channelId).catch(() => null);
+    if (requestChannel && "messages" in requestChannel && submission.messageId) {
+      const requestMessage = await requestChannel.messages.fetch(submission.messageId).catch(() => null);
+      await requestMessage?.edit(createReviewPayload(settings, processingPreview, interaction.guild)).catch(() => null);
+    }
+  }
   await interaction.editReply("Aprovação em processamento. Validando cargos, canal de meta, painel e logs...");
   try {
     const result = await processSetApproval({
@@ -700,7 +825,13 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
     });
     const member = await interaction.guild.members.fetch(result.submission.userId).catch(() => null);
     if (member && settings.dmNotifications) await member.send(createDecisionDmPayload(settings, result.submission, { goalChannelId: result.metaChannelId, guild: interaction.guild, status: "approved" })).catch(() => null);
-    await interaction.message.edit(createReviewPayload(settings, result.submission, interaction.guild, { farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds })).catch(() => null);
+    if (result.submission.channelId) {
+      const requestChannel = await interaction.guild.channels.fetch(result.submission.channelId).catch(() => null);
+      if (requestChannel && "messages" in requestChannel && result.submission.messageId) {
+        const requestMessage = await requestChannel.messages.fetch(result.submission.messageId).catch(() => null);
+        await requestMessage?.edit(createReviewPayload(settings, result.submission, interaction.guild, { farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds })).catch(() => null);
+      }
+    }
     await sendRegistrationDecisionLog(interaction.guild, settings, result.submission, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds, status: "approved" });
     await traceSetApproval(context, "[SET_LOG_SENT]", { actorId: interaction.user.id, guildId: interaction.guild.id, requestId: result.submission.id, userId: result.submission.userId });
     await interaction.editReply(`Usuário aprovado com sucesso. O canal de meta foi criado e o sistema de farm foi vinculado: <#${result.metaChannelId}>`);
@@ -708,7 +839,13 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
   } catch (error) {
     const reason = manualRegistrationErrorMessage(error);
     const failed = targetId ? await context.api.getLatestManualRegistrationSubmission(interaction.guild.id, targetId).catch(() => null) : null;
-    if (failed) await interaction.message.edit(createReviewPayload(settings, failed, interaction.guild)).catch(() => null);
+    if (failed?.channelId) {
+      const requestChannel = await interaction.guild.channels.fetch(failed.channelId).catch(() => null);
+      if (requestChannel && "messages" in requestChannel && failed.messageId) {
+        const requestMessage = await requestChannel.messages.fetch(failed.messageId).catch(() => null);
+        await requestMessage?.edit(createReviewPayload(settings, failed, interaction.guild)).catch(() => null);
+      }
+    }
     await interaction.editReply(`Não foi possível concluir a aprovação. O canal de meta não foi criado.\n\n${reason}`);
   }
 }
@@ -816,15 +953,15 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
   const startButton = new ButtonBuilder()
     .setCustomId(`${PREFIX}:start`)
     .setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta", guild, guild?.client))
-    .setLabel("INICIAR REGISTRO")
+    .setLabel("Solicitar Set")
     .setStyle(ButtonStyle.Secondary);
   components.push({
     type: 9,
     components: [{
       type: 10,
       content: [
-        `### ${systemEmojiText("prancheta_caneta", guild, guild?.client)} Iniciar formulário`,
-        "Clique no botão ao lado para continuar."
+        `### ${systemEmojiText("prancheta_caneta", guild, guild?.client)} Solicitar Set`,
+        "Clique no botão ao lado para abrir sua solicitação."
       ].join("\n")
     }],
     accessory: startButton.toJSON()
@@ -856,6 +993,14 @@ function manualRegistrationTeamRoleIds(settings: ManualRegistrationSettings) {
   return [...new Set([...settings.approverRoleIds, ...settings.staffRoleIds, ...settings.manualRegistrationRoleIds].filter(Boolean))];
 }
 
+function manualRegistrationAdminRoleIds(settings: ManualRegistrationSettings) {
+  return [...new Set([...settings.approverRoleIds, ...settings.staffRoleIds].filter(Boolean))];
+}
+
+function manualRegistrationAssignmentRoleIds(settings: ManualRegistrationSettings) {
+  return [...new Set([settings.approvedRoleId, ...(settings.autoRoleIds ?? []), ...settings.setRoles.map((item) => item.roleId)].filter((value): value is string => Boolean(value)))];
+}
+
 function registrationRequestChannelName(username: string, id: string) {
   const base = `solicitacao-${username}`
     .toLowerCase()
@@ -868,14 +1013,33 @@ function registrationRequestChannelName(username: string, id: string) {
   return `${base || "solicitacao"}-${id.slice(0, 4)}`.slice(0, 95);
 }
 
+async function findUserTemporarySetChannel(guild: Guild, settings: ManualRegistrationSettings, userId: string) {
+  if (!settings.requestCategoryId) return null;
+  const channels = guild.channels.cache.filter((channel) => (
+    channel.type === ChannelType.GuildText
+    && channel.parentId === settings.requestCategoryId
+    && "topic" in channel
+    && typeof channel.topic === "string"
+    && channel.topic.includes("PD7_SET_REQUEST")
+    && channel.topic.includes(`user=${userId}`)
+  ));
+  if (channels.size) return channels.first() ?? null;
+  const category = await guild.channels.fetch(settings.requestCategoryId).catch(() => null);
+  if (category?.type !== ChannelType.GuildCategory) return null;
+  return guild.channels.cache.find((channel) => channel.type === ChannelType.GuildText && channel.parentId === category.id && "topic" in channel && typeof channel.topic === "string" && channel.topic.includes("PD7_SET_REQUEST") && channel.topic.includes(`user=${userId}`)) ?? null;
+}
+
 async function validateManualRegistrationRequestConfig(guild: Guild, settings: ManualRegistrationSettings): Promise<{ ok: true } | { ok: false; message: string }> {
   const pending: string[] = [];
+  if (!settings.panelChannelId) pending.push("Canal do painel.");
   if (!settings.requestCategoryId) pending.push("Categoria das solicitações.");
   if (!settings.logChannelId) pending.push("Canal de logs.");
   if (pending.length) return { ok: false, message: manualRegistrationConfigError(pending) };
 
+  const panelChannel = await guild.channels.fetch(settings.panelChannelId!).catch(() => null);
   const category = await guild.channels.fetch(settings.requestCategoryId!).catch(() => null);
   const logChannel = await guild.channels.fetch(settings.logChannelId!).catch(() => null);
+  if (!panelChannel?.isSendable()) pending.push("Canal do painel inválido ou sem envio de mensagens.");
   if (category?.type !== ChannelType.GuildCategory) pending.push("Categoria das solicitações inválida ou removida.");
   if (!logChannel?.isSendable()) pending.push("Canal de logs inválido ou sem envio de mensagens.");
 
@@ -886,6 +1050,13 @@ async function validateManualRegistrationRequestConfig(guild: Guild, settings: M
     const permissions = category.permissionsFor(botMember);
     if (!permissions?.has(PermissionFlagsBits.ViewChannel)) pending.push("Permissão Ver Canal na categoria das solicitações.");
     if (!permissions?.has(PermissionFlagsBits.ManageChannels)) pending.push("Permissão Gerenciar Canais na categoria das solicitações.");
+  }
+  if (panelChannel && "permissionsFor" in panelChannel && botMember) {
+    const permissions = panelChannel.permissionsFor(botMember);
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel)) pending.push("Permissão Ver Canal no canal do painel.");
+    if (!permissions?.has(PermissionFlagsBits.SendMessages)) pending.push("Permissão Enviar Mensagens no canal do painel.");
+    if (!permissions?.has(PermissionFlagsBits.EmbedLinks)) pending.push("Permissão Incorporar Links no canal do painel.");
+    if (settings.panelImage && !permissions?.has(PermissionFlagsBits.AttachFiles)) pending.push("Permissão Anexar Arquivos no canal do painel.");
   }
   if (logChannel && "permissionsFor" in logChannel && botMember) {
     const permissions = logChannel.permissionsFor(botMember);

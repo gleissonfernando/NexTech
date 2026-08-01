@@ -88,14 +88,14 @@ test("painel do Pedido de Set usa modelo compacto de registro", () => {
 
   assert.match(serialized, /Antes de começar/);
   assert.match(serialized, /Em caso de divergência/);
-  assert.match(serialized, /INICIAR REGISTRO/);
-  assert.match(serialized, /Clique no botão ao lado para continuar/);
+  assert.match(serialized, /Solicitar Set/);
+  assert.match(serialized, /Clique no botão ao lado para abrir sua solicitação/);
   assert.doesNotMatch(serialized, /Escolha um dos/);
   assert.doesNotMatch(serialized, /Confirme o set disponível/);
   const container = payload.components[0] as { components: Array<{ accessory?: { custom_id?: string; label?: string; type?: number }; components?: unknown[]; type?: number }> };
   const startSection = container.components.find((component) => component.type === 9 && component.accessory?.custom_id === "manual_registration:start");
   assert.equal(startSection?.accessory?.type, 2);
-  assert.equal(startSection?.accessory?.label, "INICIAR REGISTRO");
+  assert.equal(startSection?.accessory?.label, "Solicitar Set");
 });
 
 test("DM de aprovação mostra link direto do canal de meta sem menção desconhecida", () => {

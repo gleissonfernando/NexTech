@@ -1686,6 +1686,9 @@ export type ManualRegistrationSubmission = {
   guildId: string;
   id: string;
   messageId: string | null;
+  logError: string | null;
+  logMessageId: string | null;
+  logStatus: "pending" | "sent" | "failed" | null;
   rejectedAt: string | null;
   rejectedBy: string | null;
   rejectionReason: string | null;

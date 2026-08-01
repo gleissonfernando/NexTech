@@ -8258,11 +8258,11 @@ function ManualRegistrationPanel({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-[#FFEA70]" /> Sistema de Pedido de Set</CardTitle>
-            <CardDescription>Painel, sets solicitaveis, modal, aprovação, cargos e logs em Components V2.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-[#FFEA70]" /> Sistema PD7 / Set</CardTitle>
+            <CardDescription>Configuração única para painel público, canais temporários, formulário, cargos de atribuição, administração e logs.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManage || !settings?.enabled || !settings.panelChannelId || !settings.requestCategoryId || !settings.approvedRoleId || !settings.approverRoleIds.length || saving || loading} onClick={() => void publishSetPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Enviar painel</Button>
+            <Button disabled={!canManage || !settings?.enabled || !settings.panelChannelId || !settings.requestCategoryId || !settings.logChannelId || !manualAssignmentRoleIds(settings).length || !settings.approverRoleIds.length || saving || loading} onClick={() => void publishSetPanel()} size="sm" type="button" variant="outline"><Upload className="mr-2 h-4 w-4" />Publicar painel</Button>
             <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               Salvar
@@ -8337,7 +8337,7 @@ function ManualRegistrationPanel({
             <TicketField disabled={!canManage} label="Rodapé" onChange={(value) => patchSettings({ footerText: value })} value={settings.footerText ?? ""} />
 
             <div className="grid gap-3 md:grid-cols-2">
-              <RoleSelect compact disabled={!canManage} label="Cargo atribuido ao aprovar" onChange={(approvedRoleId) => patchSettings({ approvedRoleId })} roles={roles.filter((role) => role.assignable)} value={settings.approvedRoleId ?? ""} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos de atribuição ao aprovar" onChange={(values) => patchSettings({ approvedRoleId: values[0] ?? null, autoRoleIds: values })} roles={roles.filter((role) => role.assignable)} values={manualAssignmentRoleIds(settings)} />
               <MultiRoleSelect compact disabled={!canManage} label="Cargos para remover" onChange={(values) => patchSettings({ removeRoleIds: values })} roles={roles} values={settings.removeRoleIds} />
               <MultiRoleSelect compact disabled={!canManage} label="Cargos aprovadores" onChange={(values) => patchSettings({ approverRoleIds: values })} roles={roles} values={settings.approverRoleIds} />
               <MultiRoleSelect compact disabled={!canManage} label="Cargos para cadastro manual" onChange={(values) => patchSettings({ manualRegistrationRoleIds: values })} roles={roles} values={settings.manualRegistrationRoleIds} />
@@ -9343,6 +9343,10 @@ function slugTicketOption(value: string, index: number) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80) || `opcao-${index + 1}`;
+}
+
+function manualAssignmentRoleIds(settings: ManualRegistrationSettings) {
+  return [...new Set([settings.approvedRoleId, ...(settings.autoRoleIds ?? [])].filter((value): value is string => Boolean(value)))];
 }
 
 function TicketField({

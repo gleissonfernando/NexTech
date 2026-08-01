@@ -19,7 +19,6 @@ import { startFivemActionService } from "../services/fivemActionService";
 import { startFivemCaptchaService } from "../services/fivemCaptchaService";
 import { startFivemCommandsService } from "../services/fivemCommandsService";
 import { startFactionChestService } from "../services/factionChestService";
-import { startFivemPd7Service } from "../services/fivemPd7Service";
 import { startZtkWebhookService } from "../services/ztkWebhookService";
 import { startPolicePatrolReportService } from "../services/policePatrolReportService";
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
@@ -363,7 +362,6 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("giveaway", isBotModuleEnabled("giveaway"), () => startGiveawayService(client, context.api, context.socket));
   startRuntimeService("mission-tools", isBotModuleEnabled("mission-tools"), () => startMissionToolsService(client, context));
   startRuntimeService("fivem-fac", isBotModuleEnabled("fivem-fac"), () => startFivemFacService(client, context));
-  startRuntimeService("fivem-pd7", isBotModuleEnabled("fivem-factions"), () => startFivemPd7Service(client, context));
   startRuntimeService("fivem-goals", isBotModuleEnabled("fivem-goals"), () => startFivemGoalService(client, context));
   startRuntimeService("ztk-webhook", isBotModuleEnabled("ztk-webhook"), () => startZtkWebhookService(client, context));
   startRuntimeService("fivem-finance", isBotModuleEnabled("fivem-finance"), () => startFivemFinanceService(client, context));

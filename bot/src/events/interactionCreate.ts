@@ -35,7 +35,6 @@ import { handleRhAdminInteraction } from "../services/rhAdminService";
 import { handleRemoverInteraction } from "../commands/remover";
 import { handleOpenDutyNotificationInteraction } from "../commands/notificar";
 import { handleFivemHierarchyConfigInteraction } from "../services/fivemHierarchyConfigService";
-import { handleFivemPd7Interaction } from "../services/fivemPd7Service";
 import { handleLivesInteraction } from "../services/liveService";
 import { handlePoliceTimeClockInteraction } from "../services/policeTimeClockBotService";
 import { handleMessageControlInteraction } from "../services/messageControlService";
@@ -103,8 +102,6 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   if (interaction.isButton() && await handleBoosterInteraction(interaction, context)) {
     return;
   }
-  if (await handleFivemPd7Interaction(interaction, context)) return;
-
   if (await handleFivemHierarchyConfigInteraction(interaction, context)) return;
 
   if (await handleRemoverInteraction(interaction, context)) {
