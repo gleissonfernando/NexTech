@@ -1802,11 +1802,15 @@ export type FivemGoalField = {
 export type FivemGoalItem = {
   category: string | null;
   color: string | null;
+  createdAt: string | null;
   emoji: string | null;
   enabled: boolean;
   id: string;
   name: string;
   order: number;
+  requiredAmount: number;
+  type: "required" | "additional" | "optional";
+  updatedAt: string | null;
 };
 
 export type FivemGoalSettings = {
@@ -1820,17 +1824,44 @@ export type FivemGoalSettings = {
   items: FivemGoalItem[];
   logChannelId: string | null;
   managerRoleId: string | null;
+  correctionManagement?: {
+    allowAdministrators: boolean;
+    allowClosedPeriods: boolean;
+    defaultDeadline: "none" | "12h" | "24h" | "48h" | "weekly_close" | "custom";
+    customDeadlineHours: number | null;
+    logChannelId: string | null;
+    managerRoleId: string | null;
+    maxCorrectionsPerPeriod: number | null;
+    notifyResponsibleTeam: boolean;
+    notifyUser: boolean;
+    requireReason: boolean;
+    allowRestoreOriginal: boolean;
+  };
   requestPanelChannelId: string | null;
   requestPanelDescription: string;
   requestPanelEnabled: boolean;
   requestPanelMessageId: string | null;
   requestPanelTitle: string;
   requestRequiresApproval: boolean;
+  summaryChannelId?: string | null;
+  timezone?: string;
   updatedAt: string | null;
   viewRoleId: string | null;
+  weeklySummaryEnabled?: boolean;
+  cycle?: {
+    absencePolicy: "none" | "daily" | "full" | "manual";
+    endDay: number;
+    endTime: string;
+    firstExecution: string | null;
+    frequency: "weekly" | "custom";
+    latePolicy: "accept" | "reject" | "flag";
+    startDay: number;
+    startTime: string;
+  };
 };
 
 export type FivemGoalEntry = {
+  attachmentId: string | null;
   botId: string | null;
   channelId: string;
   createdAt: string;
@@ -1839,7 +1870,13 @@ export type FivemGoalEntry = {
   id: string;
   imageUrl: string;
   itemId: string | null;
+  metaId: string | null;
   quantity: number | null;
+  status: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated";
+  correctionRequestId: string | null;
+  replacedByRegistrationId: string | null;
+  replacementForRegistrationId: string | null;
+  sourceMessageId: string | null;
   updatedAt: string;
   userId: string;
 };
@@ -1895,7 +1932,10 @@ export type FivemGoalSubmission = {
   refusedBy: string | null;
   refusalReason: string | null;
   roleIdsSnapshot: string[];
-  status: "pending" | "approved" | "refused";
+  status: "pending" | "approved" | "refused" | "correction_requested";
+  registrationId?: string | null;
+  correctionRequestId?: string | null;
+  replacementForRegistrationId?: string | null;
   updatedAt: string;
   userId: string;
   value: number;

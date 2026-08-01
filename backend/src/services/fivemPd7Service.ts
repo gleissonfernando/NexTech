@@ -34,6 +34,8 @@ export type Pd7Settings = {
 
 export type Pd7Request = {
   _id: string;
+  approvedAt?: Date | null;
+  approvedBy?: string | null;
   botId: string;
   guildId: string;
   factionId: string;
@@ -43,6 +45,11 @@ export type Pd7Request = {
   status: "pending" | "approved" | "rejected" | "closed";
   channelId: string | null;
   panelMessageId: string | null;
+  goalCategoryId?: string | null;
+  goalChannelId?: string | null;
+  pd7RegistrationId?: string | null;
+  pd7TemporaryChannelId?: string | null;
+  source?: "PD7" | string | null;
   handledBy: string | null;
   rejectionReason: string | null;
   createdAt: Date;
@@ -137,10 +144,17 @@ export async function createPd7Request(input: Omit<Pd7Request, "_id" | "status" 
     _id: randomUUID(),
     channelId: null,
     createdAt: now,
+    approvedAt: null,
+    approvedBy: null,
+    goalCategoryId: null,
+    goalChannelId: null,
     handledBy: null,
     panelMessageId: null,
+    pd7RegistrationId: null,
+    pd7TemporaryChannelId: null,
     rejectionReason: null,
     resolvedAt: null,
+    source: null,
     status: "pending",
     updatedAt: now
   };

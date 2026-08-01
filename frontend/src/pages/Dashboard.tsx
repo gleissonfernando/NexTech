@@ -4327,6 +4327,17 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     setSettings((current) => current ? { ...current, ...patchValue } : current);
   }
 
+  function patchCorrectionManagement(patchValue: Partial<NonNullable<FivemGoalSettings["correctionManagement"]>>) {
+    setSettings((current) => current ? {
+      ...current,
+      correctionManagement: {
+        ...defaultGoalCorrectionManagement(),
+        ...(current.correctionManagement ?? {}),
+        ...patchValue
+      }
+    } : current);
+  }
+
   function patchDraft(patchValue: Partial<FivemGoalConfig>) {
     setDraft((current) => current ? { ...current, ...patchValue } : current);
   }
@@ -4340,7 +4351,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
   }
 
   function addItem() {
-    setSettings((current) => current ? { ...current, items: [...current.items, { category: "Geral", color: "#FFD500", emoji: PANEL_EMOJIS.caixa, enabled: true, id: `item-${current.items.length + 1}`, name: `Item ${current.items.length + 1}`, order: current.items.length + 1 }] } : current);
+    const now = new Date().toISOString();
+    setSettings((current) => current ? { ...current, items: [...current.items, { category: "Geral", color: "#FFD500", createdAt: now, emoji: PANEL_EMOJIS.caixa, enabled: true, id: `item-${current.items.length + 1}`, name: `Item ${current.items.length + 1}`, order: current.items.length + 1, requiredAmount: 1, type: "required", updatedAt: now }] } : current);
   }
 
   async function save() {
@@ -4622,7 +4634,12 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </div>
               ) : null}
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <section className="space-y-3 border-y border-zinc-800 py-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Configuração geral</p>
+                <p className="mt-1 text-xs text-zinc-500">Ativação, categoria das salas, canal de logs e cargos responsáveis do Sistema de Metas.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs font-medium text-zinc-400">Status
                 <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ enabled: event.target.value === "true" })} value={String(settings.enabled)}>
                   <option value="true">Ativado</option>
@@ -4634,7 +4651,36 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
               <RoleSelect disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
               <RoleSelect disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
-            </div>
+              </div>
+            </section>
+            <section className="space-y-3 border-y border-zinc-800 py-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Gerenciamento de correções</p>
+                <p className="mt-1 text-xs text-zinc-500">Permissões e prazo para o comando /editar-meta solicitar que um membro refaça um registro confirmado.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <RoleSelect disabled={!canManage} label="Cargo de Gerente de Metas" onChange={(value) => patchCorrectionManagement({ managerRoleId: value || null })} roles={roles} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).managerRoleId ?? ""} />
+                <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs de correção" onChange={(value) => patchCorrectionManagement({ logChannelId: value })} placeholder="Usar canal de logs geral" value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).logChannelId} />
+                <label className="block text-xs font-medium text-zinc-400">Prazo padrão
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchCorrectionManagement({ defaultDeadline: event.target.value as NonNullable<FivemGoalSettings["correctionManagement"]>["defaultDeadline"] })} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).defaultDeadline}>
+                    <option value="none">Sem prazo</option>
+                    <option value="12h">12 horas</option>
+                    <option value="24h">24 horas</option>
+                    <option value="48h">48 horas</option>
+                    <option value="weekly_close">Até fechamento semanal</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </label>
+                <TicketField disabled={!canManage || (settings.correctionManagement ?? defaultGoalCorrectionManagement()).defaultDeadline !== "custom"} label="Prazo personalizado (horas)" onChange={(value) => patchCorrectionManagement({ customDeadlineHours: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String((settings.correctionManagement ?? defaultGoalCorrectionManagement()).customDeadlineHours ?? "")} />
+                <TicketField disabled={!canManage} label="Máximo por período" onChange={(value) => patchCorrectionManagement({ maxCorrectionsPerPeriod: value.trim() ? Math.max(1, Number(value) || 1) : null })} value={String((settings.correctionManagement ?? defaultGoalCorrectionManagement()).maxCorrectionsPerPeriod ?? "")} />
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowAdministrators} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowAdministrators: event.target.checked })} type="checkbox" />Administradores</span></label>
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowClosedPeriods} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowClosedPeriods: event.target.checked })} type="checkbox" />Períodos encerrados</span></label>
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).requireReason} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ requireReason: event.target.checked })} type="checkbox" />Exigir motivo</span></label>
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).allowRestoreOriginal} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ allowRestoreOriginal: event.target.checked })} type="checkbox" />Restaurar original</span></label>
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).notifyUser} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ notifyUser: event.target.checked })} type="checkbox" />Notificar usuário</span></label>
+                <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).notifyResponsibleTeam} disabled={!canManage} onChange={(event) => patchCorrectionManagement({ notifyResponsibleTeam: event.target.checked })} type="checkbox" />Notificar equipe</span></label>
+              </div>
+            </section>
             <label className="flex items-center gap-3 border-y border-zinc-800 py-3 text-sm text-zinc-300">
               <input checked={settings.autoCreateWithManualRegistration} disabled={!canManage} onChange={(event) => patch({ autoCreateWithManualRegistration: event.target.checked })} type="checkbox" />
               <span><strong className="block text-white">Vincular Pedido de Set com Metas</strong><span className="text-xs text-zinc-500">Ao aprovar um set, cria ou localiza automaticamente o canal individual de meta do membro.</span></span>
@@ -4644,7 +4690,35 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 Configure a categoria padrão das metas acima ou escolha uma categoria específica em cada set dentro do Pedido de Set.
               </div>
             ) : null}
-            <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.04] p-4">
+            <section className="space-y-3 border-y border-zinc-800 py-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Finalização automática</p>
+                <p className="mt-1 text-xs text-zinc-500">Define fuso, início do período e canal onde os resumos semanais serão enviados.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <label className="block text-xs font-medium text-zinc-400">Resumo semanal
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ weeklySummaryEnabled: event.target.value === "true" })} value={String(settings.weeklySummaryEnabled ?? true)}>
+                    <option value="true">Ativado</option>
+                    <option value="false">Desativado</option>
+                  </select>
+                </label>
+                <TicketField disabled={!canManage} label="Fuso horário" onChange={(value) => patch({ timezone: value })} value={settings.timezone ?? "America/Sao_Paulo"} />
+                <label className="block text-xs font-medium text-zinc-400">Dia de início
+                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startDay: Number(event.target.value) } })} value={String(settings.cycle?.startDay ?? 1)}>
+                    <option value="0">Domingo</option>
+                    <option value="1">Segunda-feira</option>
+                    <option value="2">Terça-feira</option>
+                    <option value="3">Quarta-feira</option>
+                    <option value="4">Quinta-feira</option>
+                    <option value="5">Sexta-feira</option>
+                    <option value="6">Sábado</option>
+                  </select>
+                </label>
+                <TicketField disabled={!canManage} label="Horário" onChange={(value) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startTime: value } })} value={settings.cycle?.startTime ?? "00:00"} />
+                <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
+              </div>
+            </section>
+            <section className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.04] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">Painel de Solicitação de Canal de Meta</p>
@@ -4690,9 +4764,12 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-white">Campos do modal</p>
+            </section>
+            <section className="space-y-3 border-y border-zinc-800 py-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Campos do modal</p>
+                <p className="mt-1 text-xs text-zinc-500">Perguntas extras do registro. A quantidade continua validada e confirmada antes de salvar.</p>
+              </div>
               {settings.fields.map((field, index) => (
                 <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 md:grid-cols-[1fr_1fr_120px]" key={`fivem-goal-field-${index}`}>
                   <TicketField disabled={!canManage} label="Label" onChange={(value) => patchField(index, { id: slugTicketOption(value, index), label: value })} value={field.label} />
@@ -4705,22 +4782,33 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                   </label>
                 </div>
               ))}
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">Itens de meta</p>
+            </section>
+            <section className="space-y-3 border-y border-zinc-800 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Itens da Meta</p>
+                  <p className="mt-1 text-xs text-zinc-500">Cadastre os itens dinâmicos usados nos registros. A quantidade obrigatória fica interna para relatórios e não aparece no registro comum.</p>
+                </div>
                 <Button disabled={!canManage} onClick={addItem} size="sm" type="button" variant="outline">Adicionar item</Button>
               </div>
               {settings.items.map((item, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[90px_1fr_1fr_100px_90px]" key={`fivem-goal-item-${index}`}>
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[90px_1fr_150px_150px_100px_90px_90px]" key={`fivem-goal-item-${index}`}>
                   <TicketField disabled={!canManage} label="Emoji" onChange={(value) => patchItem(index, { emoji: value })} value={item.emoji ?? ""} />
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchItem(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
-                  <TicketField disabled={!canManage} label="Categoria" onChange={(value) => patchItem(index, { category: value })} value={item.category ?? ""} />
+                  <label className="block text-xs font-medium text-zinc-400">Tipo
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchItem(index, { type: event.target.value as FivemGoalItem["type"], updatedAt: new Date().toISOString() })} value={item.type ?? "required"}>
+                      <option value="required">Obrigatório</option>
+                      <option value="additional">Adicional</option>
+                      <option value="optional">Opcional</option>
+                    </select>
+                  </label>
+                  <TicketField disabled={!canManage} label="Qtd. obrigatória" onChange={(value) => patchItem(index, { requiredAmount: Math.max(1, Number(value) || 1), updatedAt: new Date().toISOString() })} value={String(item.requiredAmount ?? 1)} />
                   <TicketField disabled={!canManage} label="Cor" onChange={(value) => patchItem(index, { color: value })} type="color" value={item.color ?? "#FFD500"} />
+                  <TicketField disabled={!canManage} label="Ordem" onChange={(value) => patchItem(index, { order: Math.max(0, Number(value) || index + 1), updatedAt: new Date().toISOString() })} value={String(item.order ?? index + 1)} />
                   <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={item.enabled} disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked })} type="checkbox" />Ativo</span></label>
                 </div>
               ))}
-            </div>
+            </section>
             <div className="grid gap-3 sm:grid-cols-3">
               <MetricCard icon={ListChecks} label="Metas" value={String(entries.length)} />
               <MetricCard icon={Users} label="Usuários" value={String(new Set(entries.map((entry) => entry.userId)).size)} />
@@ -4743,6 +4831,35 @@ function fivemModeDescription(mode: "general" | "orders" | "goals") {
   }
 
   return "Central dos modulos FiveM liberados para este bot. Metas e Encomendas possuem menus próprios quando liberados; Hierarquia fica na área Polícia.";
+}
+
+function defaultGoalCycle(): NonNullable<FivemGoalSettings["cycle"]> {
+  return {
+    absencePolicy: "none",
+    endDay: 0,
+    endTime: "23:59",
+    firstExecution: null,
+    frequency: "weekly",
+    latePolicy: "flag",
+    startDay: 1,
+    startTime: "00:00"
+  };
+}
+
+function defaultGoalCorrectionManagement(): NonNullable<FivemGoalSettings["correctionManagement"]> {
+  return {
+    allowAdministrators: false,
+    allowClosedPeriods: false,
+    defaultDeadline: "weekly_close",
+    customDeadlineHours: null,
+    logChannelId: null,
+    managerRoleId: null,
+    maxCorrectionsPerPeriod: null,
+    notifyResponsibleTeam: true,
+    notifyUser: true,
+    requireReason: true,
+    allowRestoreOriginal: true
+  };
 }
 
 function fivemModeSteps(mode: "general" | "orders" | "goals") {

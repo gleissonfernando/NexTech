@@ -21,7 +21,7 @@ export type CreateLogInput = {
   metadata?: unknown;
 };
 export type Pd7Config = { _id:string; botId:string; guildId:string; factionId:string; factionName:string; enabled:boolean; categoryPD7:string|null; panelChannelPD7:string|null; logChannelPD7:string|null; allowedRolesPD7:string[]; responsibleUsersPD7:string[]; approvedRolePD7:string|null; rejectedRolePD7:string|null; fields:Array<{id:string;label:string;placeholder:string|null;required:boolean;style:"short"|"paragraph";order:number}>; autoDeleteMinutes:number|null; panelMessageId:string|null; publishRequestedAt:string|null };
-export type Pd7Request = { _id:string; botId:string; guildId:string; factionId:string; userId:string; username:string; fields:Array<{id:string;label:string;value:string}>; status:"pending"|"approved"|"rejected"|"closed"; channelId:string|null; panelMessageId:string|null; handledBy:string|null; rejectionReason:string|null; createdAt:string; resolvedAt:string|null };
+export type Pd7Request = { _id:string; approvedAt?:string|null; approvedBy?:string|null; botId:string; guildId:string; factionId:string; userId:string; username:string; fields:Array<{id:string;label:string;value:string}>; status:"pending"|"approved"|"rejected"|"closed"; channelId:string|null; panelMessageId:string|null; goalCategoryId?:string|null; goalChannelId?:string|null; handledBy:string|null; pd7RegistrationId?:string|null; pd7TemporaryChannelId?:string|null; rejectionReason:string|null; source?:string|null; createdAt:string; resolvedAt:string|null };
 export type ZtkWebhookClanRuntime = { active:boolean; clanName:string; discordWebhookChannelId?:string|null; discordWebhookId?:string|null; dominationChannelId?:string|null; id:string; onlineChannelId?:string|null; onlineRankingMessageId?:string|null; participationRankingMessageId?:string|null; rankingChannelId?:string|null; rankingMessageId?:string|null; recruitmentChannelId?:string|null; recruitmentRankingMessageId?:string|null; rewardChannelId?:string|null; settingsChannelId?:string|null; weeklyAutoResetEnabled?:boolean; weeklyDominationLogChannelId?:string|null; weeklyDominationLogWeekKey?:string|null; weeklyRankingResetAt?:string|null; weeklyRecruitmentLogChannelId?:string|null; weeklyRecruitmentLogWeekKey?:string|null; webhookEnabled:boolean };
 export type ZtkWeeklyLogRuntime = { botId: string; channelId: string; clan: ZtkWebhookClanRuntime; guildId: string; items: Array<{ id: string | null; lastAt: string | null; name: string; position: number; total: number }>; kind: "domination" | "recruitment"; periodEnd: string; periodStart: string; total: number; weekKey: string };
 export type ZtkWebhookRecruitmentDashboard = { clans: ZtkWebhookClanRuntime[]; selectedClan: ZtkWebhookClanRuntime | null; dominationRankings: NonNullable<import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["dominationRankings"]>; recruitmentRankings: NonNullable<import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["recruitmentRankings"]>; rankings: import("../websocket/socketClient").ZtkWebhookEventReceivedEvent["rankings"] };
@@ -797,6 +797,7 @@ export type PoliceTimeClockSettings = {
   panelMessageId: string | null;
   logChannelId: string | null;
   managerRoleId: string | null;
+  managerRoleIds?: string[];
   closeRoleId: string | null;
   reportRoleId: string | null;
   exportRoleId: string | null;
@@ -1061,10 +1062,17 @@ export type FivemGoalField = {
 };
 
 export type FivemGoalItem = {
+  category?: string | null;
+  color?: string | null;
+  createdAt?: string | null;
   emoji: string | null;
   enabled: boolean;
   id: string;
   name: string;
+  order?: number;
+  requiredAmount?: number;
+  type?: "required" | "additional" | "optional";
+  updatedAt?: string | null;
 };
 
 export type FivemGoalSettings = {
@@ -1078,6 +1086,7 @@ export type FivemGoalSettings = {
   items: FivemGoalItem[];
   logChannelId: string | null;
   managerRoleId: string | null;
+  managerRoleIds?: string[];
   requestPanelChannelId: string | null;
   requestPanelDescription: string;
   requestPanelEnabled: boolean;
@@ -1085,6 +1094,19 @@ export type FivemGoalSettings = {
   requestPanelTitle: string;
   requestRequiresApproval: boolean;
   viewRoleId: string | null;
+  correctionManagement?: {
+    allowAdministrators: boolean;
+    allowClosedPeriods: boolean;
+    defaultDeadline: "none" | "12h" | "24h" | "48h" | "weekly_close" | "custom";
+    customDeadlineHours: number | null;
+    logChannelId: string | null;
+    managerRoleId: string | null;
+    maxCorrectionsPerPeriod: number | null;
+    notifyResponsibleTeam: boolean;
+    notifyUser: boolean;
+    requireReason: boolean;
+    allowRestoreOriginal: boolean;
+  };
 };
 
 export type FivemGoalConfig = {
@@ -1106,7 +1128,9 @@ export type FivemGoalConfig = {
   type: string;
   viewerRoleIds: string[];
 };
-export type FivemGoalSubmission = { createdAt: string; description: string | null; id: string; metaId: string; proofUrl: string | null; status: "pending" | "approved" | "refused"; userId: string; value: number };
+export type FivemGoalEntry = { attachmentId: string | null; channelId: string; correctionRequestId: string | null; createdAt: string; fields: Array<{ id: string; label: string; value: string }>; guildId: string; id: string; imageUrl: string; itemId: string | null; metaId: string | null; quantity: number | null; replacedByRegistrationId: string | null; replacementForRegistrationId: string | null; sourceMessageId: string | null; status: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated"; userId: string };
+export type FivemGoalCorrectionRequest = { cancelledAt: string | null; correctedAt: string | null; expiresAt: string | null; guildId: string; id: string; originalRegistration: FivemGoalEntry | null; originalRegistrationId: string; reason: string; replacementRegistrationId: string | null; requestedAt: string; requestedByName: string | null; requestedByUserId: string; roomId: string; status: "pending" | "corrected" | "cancelled" | "expired"; userId: string };
+export type FivemGoalSubmission = { correctionRequestId: string | null; createdAt: string; description: string | null; id: string; metaId: string; proofUrl: string | null; registrationId: string | null; replacementForRegistrationId: string | null; status: "pending" | "approved" | "refused" | "correction_requested"; userId: string; value: number };
 export type FivemGoalUserRuntime = { configs: FivemGoalConfig[]; ranking: Array<{ rank: number; total: number; userId: string }>; submissions: FivemGoalSubmission[]; userId: string };
 
 export type FivemOrderStatus = "open" | "pending_approval" | "approved" | "in_production" | "ready" | "delivered" | "cancelled" | "rejected";
@@ -3706,20 +3730,45 @@ export class ApiClient {
     return data;
   }
 
+  async getFivemGoalCorrectionCandidates(guildId: string, userId: string) {
+    const { data } = await this.http.get<{ entries: FivemGoalEntry[] }>(`/fivem/bot/goals/${guildId}/users/${userId}/correction-candidates`);
+    return data.entries;
+  }
+
+  async getPendingFivemGoalCorrections(guildId: string, userId: string, roomId?: string | null) {
+    const { data } = await this.http.get<{ corrections: FivemGoalCorrectionRequest[] }>(`/fivem/bot/goals/${guildId}/users/${userId}/corrections/pending`, { params: roomId ? { roomId } : undefined });
+    return data.corrections;
+  }
+
+  async requestFivemGoalCorrection(guildId: string, input: { originalRegistrationId: string; reason: string; requestedByName?: string | null; requestedByUserId: string }) {
+    const { data } = await this.http.post<{ correction: FivemGoalCorrectionRequest }>(`/fivem/bot/goals/${guildId}/corrections`, input);
+    return data.correction;
+  }
+
+  async cancelFivemGoalCorrection(guildId: string, input: { cancelledByUserId: string; cancellationReason: string; originalRegistrationId: string; restoreOriginalOnCancel: boolean }) {
+    const { data } = await this.http.post<{ correction: FivemGoalCorrectionRequest }>(`/fivem/bot/goals/${guildId}/corrections/cancel`, input);
+    return data.correction;
+  }
+
   async saveFivemGoalChannel(input: { channelId: string; guildId: string; userId: string }) {
     const { data } = await this.http.post<{ channel: FivemGoalUserChannel }>("/fivem/bot/goals/channels", input);
     return data.channel;
   }
 
   async createFivemGoalEntry(input: {
+    attachmentId?: string | null;
     channelId: string;
     fields: Array<{ id: string; label: string; value: string }>;
     guildId: string;
+    idempotencyKey?: string | null;
     imageUrl: string;
     itemId?: string | null;
     metaId?: string | null;
     quantity?: number | null;
+    correctionRequestId?: string | null;
+    replacementForRegistrationId?: string | null;
     roleIdsSnapshot?: string[];
+    sourceMessageId?: string | null;
     userId: string;
   }) {
     const { data } = await this.http.post("/fivem/bot/goals/entries", input);

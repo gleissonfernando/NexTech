@@ -3,6 +3,7 @@ import { fixedSystemEmojiText } from "../config/systemEmojis";
 import {
   ensureGuild,
   getMongoCollections,
+  type MongoFivemGoalCorrectionRequest,
   type MongoFivemGoalConfig,
   type MongoFivemGoalEntry,
   type MongoFivemGoalLog,
@@ -28,11 +29,15 @@ export type FivemGoalFieldDto = {
 export type FivemGoalItemDto = {
   category: string | null;
   color: string | null;
+  createdAt: string | null;
   emoji: string | null;
   enabled: boolean;
   id: string;
   name: string;
   order: number;
+  requiredAmount: number;
+  type: "required" | "additional" | "optional";
+  updatedAt: string | null;
 };
 
 export type FivemGoalSettingsDto = {
@@ -79,11 +84,25 @@ export type FivemGoalSettingsDto = {
   cycle: { startDay: number; startTime: string; endDay: number; endTime: string; firstExecution: string | null; frequency: "weekly" | "custom"; absencePolicy: "none" | "daily" | "full" | "manual"; latePolicy: "accept" | "reject" | "flag" };
   panelVisual: { title: string; description: string; footer: string | null; imageUrl: string | null; mediaUrl: string | null; mediaType: "image" | "gif" | "video" | "none"; loopVideo: boolean; color: string };
   notificationSettings: { mentionUserOnFailure: boolean; mentionManagerOnFailure: boolean; approvalDm: string; rejectionDm: string; farewellDm: string };
+  correctionManagement: {
+    allowAdministrators: boolean;
+    allowClosedPeriods: boolean;
+    defaultDeadline: "none" | "12h" | "24h" | "48h" | "weekly_close" | "custom";
+    customDeadlineHours: number | null;
+    logChannelId: string | null;
+    managerRoleId: string | null;
+    maxCorrectionsPerPeriod: number | null;
+    notifyResponsibleTeam: boolean;
+    notifyUser: boolean;
+    requireReason: boolean;
+    allowRestoreOriginal: boolean;
+  };
   cooldownSeconds: number;
   tutorial: { completedBy: string[]; skippedBy: string[] };
 };
 
 export type FivemGoalEntryDto = {
+  attachmentId: string | null;
   botId: string | null;
   channelId: string;
   createdAt: string;
@@ -92,8 +111,36 @@ export type FivemGoalEntryDto = {
   id: string;
   imageUrl: string;
   itemId: string | null;
+  metaId: string | null;
   quantity: number | null;
+  status: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated";
+  correctionRequestId: string | null;
+  replacedByRegistrationId: string | null;
+  replacementForRegistrationId: string | null;
+  sourceMessageId: string | null;
   updatedAt: string;
+  userId: string;
+};
+
+export type FivemGoalCorrectionRequestDto = {
+  botId: string | null;
+  cancelledAt: string | null;
+  cancelledByUserId: string | null;
+  cancellationReason: string | null;
+  correctedAt: string | null;
+  expiresAt: string | null;
+  guildId: string;
+  id: string;
+  originalRegistration: FivemGoalEntryDto | null;
+  originalRegistrationId: string;
+  reason: string;
+  replacementRegistrationId: string | null;
+  requestedAt: string;
+  requestedByName: string | null;
+  requestedByUserId: string;
+  restoreOriginalOnCancel: boolean | null;
+  roomId: string;
+  status: "pending" | "corrected" | "cancelled" | "expired";
   userId: string;
 };
 
@@ -163,7 +210,10 @@ export type FivemGoalSubmissionDto = {
   refusedBy: string | null;
   refusalReason: string | null;
   roleIdsSnapshot: string[];
-  status: "pending" | "approved" | "refused";
+  status: "pending" | "approved" | "refused" | "correction_requested";
+  registrationId: string | null;
+  correctionRequestId: string | null;
+  replacementForRegistrationId: string | null;
   updatedAt: string;
   userId: string;
   value: number;
@@ -215,10 +265,10 @@ const DEFAULT_FIELDS: FivemGoalFieldDto[] = [
 ];
 
 const DEFAULT_ITEMS: FivemGoalItemDto[] = [
-  { category: "Dinheiro", color: "#22c55e", emoji: fixedSystemEmojiText("dinheiro"), enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1 },
-  { category: "Itens", color: "#38bdf8", emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "diamante", name: "Diamante", order: 2 },
-  { category: "Armas", color: "#f97316", emoji: fixedSystemEmojiText("arma"), enabled: true, id: "armas", name: "Armas", order: 3 },
-  { category: "Itens", color: "#a855f7", emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "contrabando", name: "Contrabando", order: 4 }
+  { category: "Dinheiro", color: "#22c55e", createdAt: null, emoji: fixedSystemEmojiText("dinheiro"), enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1, requiredAmount: 100000, type: "required", updatedAt: null },
+  { category: "Itens", color: "#38bdf8", createdAt: null, emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "diamante", name: "Diamante", order: 2, requiredAmount: 1, type: "additional", updatedAt: null },
+  { category: "Armas", color: "#f97316", createdAt: null, emoji: fixedSystemEmojiText("arma"), enabled: true, id: "armas", name: "Armas", order: 3, requiredAmount: 1, type: "additional", updatedAt: null },
+  { category: "Itens", color: "#a855f7", createdAt: null, emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "contrabando", name: "Contrabando", order: 4, requiredAmount: 1, type: "additional", updatedAt: null }
 ];
 
 export function defaultFivemGoalSettings(guildId: string, botId: string | null = null): FivemGoalSettingsDto {
@@ -271,6 +321,7 @@ export function defaultFivemGoalSettings(guildId: string, botId: string | null =
     ,cycle: { startDay: 1, startTime: "00:00", endDay: 0, endTime: "23:59", firstExecution: null, frequency: "weekly", absencePolicy: "none", latePolicy: "flag" }
     ,panelVisual: { title: "Sistema de Metas", description: "Solicite sua sala ou envie seu cadastro para análise.", footer: null, imageUrl: null, mediaUrl: null, mediaType: "none", loopVideo: false, color: "#22c55e" }
     ,notificationSettings: { mentionUserOnFailure: true, mentionManagerOnFailure: true, approvalDm: "Bem-vindo ao {nome_servidor}! Sua solicitação foi aprovada como {tipo_aprovacao}.", rejectionDm: "Sua solicitação para entrar no {nome_servidor} não foi aprovada neste momento.", farewellDm: "Obrigado por fazer parte do {nome_servidor}." }
+    ,correctionManagement: { allowAdministrators: false, allowClosedPeriods: false, defaultDeadline: "weekly_close", customDeadlineHours: null, logChannelId: null, managerRoleId: null, maxCorrectionsPerPeriod: null, notifyResponsibleTeam: true, notifyUser: true, requireReason: true, allowRestoreOriginal: true }
     ,cooldownSeconds: 30
     ,tutorial: { completedBy: [], skippedBy: [] }
   };
@@ -563,32 +614,57 @@ export async function deleteFivemGoalUserChannelByChannel(channelId: string, bot
 }
 
 export async function createFivemGoalEntry(input: {
+  attachmentId?: string | null;
   botId?: string | null;
   channelId: string;
   fields: Array<{ id: string; label: string; value: string }>;
   guildId: string;
   imageUrl: string;
+  idempotencyKey?: string | null;
   itemId?: string | null;
   metaId?: string | null;
   quantity?: number | null;
+  correctionRequestId?: string | null;
+  replacementForRegistrationId?: string | null;
   roleIdsSnapshot?: string[];
+  sourceMessageId?: string | null;
   userId: string;
 }) {
   const now = new Date();
+  const normalizedBotId = normalizeBotId(input.botId);
+  const sourceMessageId = normalizeSnowflake(input.sourceMessageId);
+  const attachmentId = normalizeText(input.attachmentId, 120);
+  const idempotencyKey = normalizeText(input.idempotencyKey, 240)
+    ?? (sourceMessageId && attachmentId ? `${input.guildId}:${input.channelId}:${sourceMessageId}:${attachmentId}` : null);
+  const { fivemGoalEntries } = await getMongoCollections();
+  const existing = idempotencyKey
+    ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), idempotencyKey })
+    : sourceMessageId && attachmentId
+      ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), sourceMessageId, attachmentId })
+      : null;
+  if (existing) return toEntryDto(existing);
+
   const doc: MongoFivemGoalEntry = {
     _id: randomUUID(),
-    botId: normalizeBotId(input.botId),
+    attachmentId,
+    botId: normalizedBotId,
     channelId: input.channelId,
     createdAt: now,
     fields: input.fields.map((field) => ({ id: field.id, label: field.label.slice(0, 100), value: field.value.slice(0, 1500) })),
     guildId: input.guildId,
     imageUrl: input.imageUrl.slice(0, 2048),
+    idempotencyKey,
     itemId: input.itemId ?? null,
+    metaId: input.metaId ?? null,
     quantity: typeof input.quantity === "number" && Number.isFinite(input.quantity) ? input.quantity : null,
+    status: "confirmed",
+    correctionRequestId: normalizeText(input.correctionRequestId, 120),
+    replacementForRegistrationId: normalizeText(input.replacementForRegistrationId, 120),
+    replacedByRegistrationId: null,
+    sourceMessageId,
     updatedAt: now,
     userId: input.userId
   };
-  const { fivemGoalEntries } = await getMongoCollections();
   await fivemGoalEntries.insertOne(doc);
   await createFivemGoalSubmission({
     botId: input.botId,
@@ -597,10 +673,17 @@ export async function createFivemGoalEntry(input: {
     guildId: input.guildId,
     metaId: input.metaId ?? null,
     proofUrl: input.imageUrl,
+    idempotencyKey,
+    registrationId: doc._id,
+    correctionRequestId: doc.correctionRequestId,
+    replacementForRegistrationId: doc.replacementForRegistrationId,
     roleIdsSnapshot: input.roleIdsSnapshot ?? [],
     userId: input.userId,
     value: doc.quantity ?? 0
   }).catch(() => null);
+  if (doc.correctionRequestId && doc.replacementForRegistrationId) {
+    await completeFivemGoalCorrectionRequest(input.guildId, normalizedBotId, doc.correctionRequestId, doc.replacementForRegistrationId, doc._id, input.userId);
+  }
   return toEntryDto(doc);
 }
 
@@ -614,6 +697,152 @@ export async function listFivemGoalEntries(guildId: string, botId?: string | nul
   return rows.map(toEntryDto);
 }
 
+export async function listCurrentFivemGoalCorrectionCandidates(guildId: string, botId: string | null, userId: string) {
+  const normalizedBotId = normalizeBotId(botId);
+  const { start, end } = currentSaoPauloWeek();
+  const { fivemGoalEntries } = await getMongoCollections();
+  const rows = await fivemGoalEntries.find({
+    ...scopeQuery(guildId, normalizedBotId),
+    userId,
+    createdAt: { $gte: start, $lt: end },
+    $or: [{ status: "confirmed" }, { status: { $exists: false } }]
+  }).sort({ createdAt: -1 }).limit(25).toArray();
+  return rows.map(toEntryDto);
+}
+
+export async function listPendingFivemGoalCorrections(guildId: string, botId: string | null, userId: string, roomId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const { fivemGoalCorrectionRequests, fivemGoalEntries } = await getMongoCollections();
+  const rows = await fivemGoalCorrectionRequests.find({
+    ...scopeQuery(guildId, normalizedBotId),
+    userId,
+    status: "pending",
+    ...(roomId ? { roomId } : {})
+  }).sort({ requestedAt: 1 }).limit(25).toArray();
+  const originals = rows.length
+    ? await fivemGoalEntries.find({ ...scopeQuery(guildId, normalizedBotId), _id: { $in: rows.map((row) => row.originalRegistrationId) } }).toArray()
+    : [];
+  const originalsById = new Map(originals.map((row) => [row._id, toEntryDto(row)]));
+  return rows.map((row) => toCorrectionRequestDto(row, originalsById.get(row.originalRegistrationId) ?? null));
+}
+
+export async function requestFivemGoalCorrection(input: {
+  botId?: string | null;
+  guildId: string;
+  originalRegistrationId: string;
+  reason: string;
+  requestedByName?: string | null;
+  requestedByUserId: string;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  const reason = normalizeText(input.reason, 1000);
+  if (!reason || reason.length < 8) {
+    throw Object.assign(new Error("O motivo da correção deve ter pelo menos 8 caracteres."), { status: 400 });
+  }
+  const now = new Date();
+  const settings = await getFivemGoalSettings(input.guildId, normalizedBotId);
+  const { fivemGoalEntries, fivemGoalCorrectionRequests, fivemGoalSubmissions } = await getMongoCollections();
+  const original = await fivemGoalEntries.findOne({
+    _id: input.originalRegistrationId,
+    ...scopeQuery(input.guildId, normalizedBotId),
+    $or: [{ status: "confirmed" }, { status: { $exists: false } }]
+  });
+  if (!original) {
+    throw Object.assign(new Error("Registro confirmado não encontrado ou já está em correção."), { status: 404 });
+  }
+  const deadline = resolveCorrectionDeadline(settings, now);
+  const doc: MongoFivemGoalCorrectionRequest = {
+    _id: randomUUID(),
+    botId: normalizedBotId,
+    guildId: input.guildId,
+    userId: original.userId,
+    roomId: original.channelId,
+    originalRegistrationId: original._id,
+    replacementRegistrationId: null,
+    requestedByUserId: input.requestedByUserId,
+    requestedByName: normalizeText(input.requestedByName, 120),
+    reason,
+    status: "pending",
+    restoreOriginalOnCancel: null,
+    requestedAt: now,
+    expiresAt: deadline,
+    correctedAt: null,
+    cancelledAt: null,
+    cancelledByUserId: null,
+    cancellationReason: null,
+    originalState: { ...original, _id: original._id, createdAt: original.createdAt.toISOString(), updatedAt: original.updatedAt.toISOString() }
+  };
+  try {
+    await fivemGoalCorrectionRequests.insertOne(doc);
+  } catch (error) {
+    throw Object.assign(new Error("Este registro já possui uma solicitação de correção em andamento."), { status: 409 });
+  }
+  await fivemGoalEntries.updateOne({ _id: original._id, ...scopeQuery(input.guildId, normalizedBotId) }, { $set: { status: "correction_requested", correctionRequestId: doc._id, updatedAt: now } });
+  await fivemGoalSubmissions.updateMany(
+    { ...scopeQuery(input.guildId, normalizedBotId), $or: [{ registrationId: original._id }, ...(original.idempotencyKey ? [{ idempotencyKey: original.idempotencyKey }] : []), { proofUrl: original.imageUrl, userId: original.userId }] },
+    { $set: { status: "correction_requested", correctionRequestId: doc._id, updatedAt: now } }
+  );
+  await writeFivemGoalLog({ action: "correction.requested", botId: normalizedBotId, details: { originalRegistrationId: original._id, reason, quantity: original.quantity, roomId: original.channelId }, guildId: input.guildId, metaId: original.metaId ?? null, userId: input.requestedByUserId });
+  if (normalizedBotId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId: input.guildId });
+  return toCorrectionRequestDto(doc, toEntryDto({ ...original, status: "correction_requested", correctionRequestId: doc._id, updatedAt: now }));
+}
+
+export async function completeFivemGoalCorrectionRequest(guildId: string, botId: string | null, correctionRequestId: string, originalRegistrationId: string, replacementRegistrationId: string, userId: string) {
+  const normalizedBotId = normalizeBotId(botId);
+  const now = new Date();
+  const { fivemGoalCorrectionRequests, fivemGoalEntries } = await getMongoCollections();
+  const row = await fivemGoalCorrectionRequests.findOneAndUpdate(
+    { _id: correctionRequestId, ...scopeQuery(guildId, normalizedBotId), originalRegistrationId, userId, status: "pending" },
+    { $set: { replacementRegistrationId, correctedAt: now, status: "corrected" } },
+    { returnDocument: "after" }
+  );
+  if (!row) throw Object.assign(new Error("Solicitação de correção pendente não encontrada."), { status: 404 });
+  const original = await fivemGoalEntries.findOne({ _id: originalRegistrationId, ...scopeQuery(guildId, normalizedBotId), userId });
+  await fivemGoalEntries.updateOne(
+    { _id: originalRegistrationId, ...scopeQuery(guildId, normalizedBotId), userId },
+    { $set: { status: "corrected", replacedByRegistrationId: replacementRegistrationId, updatedAt: now } }
+  );
+  await writeFivemGoalLog({ action: "correction.corrected", botId: normalizedBotId, details: { correctionRequestId, originalRegistrationId, replacementRegistrationId }, guildId, metaId: original?.metaId ?? null, userId });
+  if (normalizedBotId) emitRealtimeToRoom(dashboardLogRealtimeRoom(guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId });
+  return toCorrectionRequestDto(row, null);
+}
+
+export async function cancelFivemGoalCorrectionRequest(input: {
+  botId?: string | null;
+  cancelledByUserId: string;
+  cancellationReason: string;
+  guildId: string;
+  originalRegistrationId: string;
+  restoreOriginalOnCancel: boolean;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  const reason = normalizeText(input.cancellationReason, 1000);
+  if (!reason || reason.length < 8) throw Object.assign(new Error("O motivo do cancelamento deve ter pelo menos 8 caracteres."), { status: 400 });
+  const now = new Date();
+  const { fivemGoalCorrectionRequests, fivemGoalEntries, fivemGoalSubmissions } = await getMongoCollections();
+  const row = await fivemGoalCorrectionRequests.findOneAndUpdate(
+    { ...scopeQuery(input.guildId, normalizedBotId), originalRegistrationId: input.originalRegistrationId, status: "pending" },
+    { $set: { cancelledAt: now, cancelledByUserId: input.cancelledByUserId, cancellationReason: reason, restoreOriginalOnCancel: input.restoreOriginalOnCancel, status: "cancelled" } },
+    { returnDocument: "after" }
+  );
+  if (!row) throw Object.assign(new Error("Correção pendente não encontrada para este registro."), { status: 404 });
+  const nextEntryStatus = input.restoreOriginalOnCancel ? "confirmed" as const : "invalidated" as const;
+  const original = await fivemGoalEntries.findOne({ _id: input.originalRegistrationId, ...scopeQuery(input.guildId, normalizedBotId), userId: row.userId });
+  await fivemGoalEntries.updateOne(
+    { _id: input.originalRegistrationId, ...scopeQuery(input.guildId, normalizedBotId), userId: row.userId },
+    input.restoreOriginalOnCancel
+      ? { $set: { status: nextEntryStatus, updatedAt: now }, $unset: { correctionRequestId: "" } }
+      : { $set: { status: nextEntryStatus, updatedAt: now } }
+  );
+  await fivemGoalSubmissions.updateMany(
+    { ...scopeQuery(input.guildId, normalizedBotId), correctionRequestId: row._id },
+    { $set: { status: input.restoreOriginalOnCancel ? "approved" : "refused", updatedAt: now, refusalReason: input.restoreOriginalOnCancel ? null : reason } }
+  );
+  await writeFivemGoalLog({ action: "correction.cancelled", botId: normalizedBotId, details: { originalRegistrationId: input.originalRegistrationId, reason, restoreOriginalOnCancel: input.restoreOriginalOnCancel, status: "cancelled" }, guildId: input.guildId, metaId: original?.metaId ?? null, userId: input.cancelledByUserId });
+  if (normalizedBotId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId: input.guildId });
+  return toCorrectionRequestDto(row, null);
+}
+
 export async function createFivemGoalSubmission(input: {
   botId?: string | null;
   description?: string | null;
@@ -622,6 +851,9 @@ export async function createFivemGoalSubmission(input: {
   metaId?: string | null;
   proofUrl?: string | null;
   roleIdsSnapshot?: string[];
+  registrationId?: string | null;
+  correctionRequestId?: string | null;
+  replacementForRegistrationId?: string | null;
   userId: string;
   value: number;
   idempotencyKey?: string | null;
@@ -657,6 +889,9 @@ export async function createFivemGoalSubmission(input: {
     refusalReason: null,
     roleIdsSnapshot: normalizeRoleIds(input.roleIdsSnapshot ?? []),
     status,
+    registrationId: normalizeText(input.registrationId, 120),
+    correctionRequestId: normalizeText(input.correctionRequestId, 120),
+    replacementForRegistrationId: normalizeText(input.replacementForRegistrationId, 120),
     updatedAt: now,
     userId: input.userId,
     value: input.value
@@ -804,6 +1039,7 @@ function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto
     cycle: normalizeCycle(settings.cycle),
     panelVisual: normalizePanelVisual(settings.panelVisual, defaults.panelVisual),
     notificationSettings: normalizeNotifications(settings.notificationSettings, defaults.notificationSettings),
+    correctionManagement: normalizeCorrectionManagement(settings.correctionManagement, defaults.correctionManagement),
     cooldownSeconds: typeof settings.cooldownSeconds === "number" && Number.isFinite(settings.cooldownSeconds) ? Math.min(3600, Math.max(3, Math.trunc(settings.cooldownSeconds))) : 30,
     tutorial: {
       completedBy: normalizeRoleIds(settings.tutorial?.completedBy ?? []),
@@ -829,16 +1065,22 @@ function normalizeFields(fields: FivemGoalFieldDto[]) {
 }
 
 function normalizeItems(items: FivemGoalItemDto[]) {
+  const now = new Date().toISOString();
   const normalized = (Array.isArray(items) ? items : []).map((item, index) => {
     const name = normalizeText(item.name, 80) || `Item ${index + 1}`;
+    const createdAt = normalizeIsoDate(item.createdAt) ?? now;
     return {
       category: normalizeText(item.category, 80),
       color: /^#[0-9a-f]{6}$/i.test(item.color ?? "") ? item.color : null,
+      createdAt,
       emoji: normalizeText(item.emoji, 80),
       enabled: item.enabled !== false,
       id: normalizeText(item.id, 80) || slug(name) || `item-${index + 1}`,
       name,
-      order: Number.isFinite(item.order) ? Math.trunc(item.order) : index + 1
+      order: Number.isFinite(item.order) ? Math.trunc(item.order) : index + 1,
+      requiredAmount: normalizeTargetValue(item.requiredAmount),
+      type: normalizeGoalItemType(item.type),
+      updatedAt: normalizeIsoDate(item.updatedAt) ?? createdAt
     };
   }).slice(0, 100);
   return normalized.length ? normalized : DEFAULT_ITEMS.map((item) => ({ ...item }));
@@ -890,6 +1132,7 @@ function toSettingsDto(settings: MongoFivemGoalSettings): FivemGoalSettingsDto {
     cycle: settings.cycle ?? defaults.cycle,
     panelVisual: settings.panelVisual ?? defaults.panelVisual,
     notificationSettings: settings.notificationSettings ?? defaults.notificationSettings,
+    correctionManagement: normalizeCorrectionManagement(settings.correctionManagement, defaults.correctionManagement),
     cooldownSeconds: settings.cooldownSeconds ?? defaults.cooldownSeconds,
     tutorial: settings.tutorial ?? defaults.tutorial
   });
@@ -900,7 +1143,50 @@ function toUserChannelDto(row: MongoFivemGoalUserChannel): FivemGoalUserChannelD
 }
 
 function toEntryDto(row: MongoFivemGoalEntry): FivemGoalEntryDto {
-  return { botId: normalizeBotId(row.botId), channelId: row.channelId, createdAt: row.createdAt.toISOString(), fields: row.fields, guildId: row.guildId, id: row._id, imageUrl: row.imageUrl, itemId: row.itemId, quantity: row.quantity, updatedAt: row.updatedAt.toISOString(), userId: row.userId };
+  return {
+    attachmentId: row.attachmentId ?? null,
+    botId: normalizeBotId(row.botId),
+    channelId: row.channelId,
+    correctionRequestId: row.correctionRequestId ?? null,
+    createdAt: row.createdAt.toISOString(),
+    fields: row.fields,
+    guildId: row.guildId,
+    id: row._id,
+    imageUrl: row.imageUrl,
+    itemId: row.itemId,
+    metaId: row.metaId ?? null,
+    quantity: row.quantity,
+    replacedByRegistrationId: row.replacedByRegistrationId ?? null,
+    replacementForRegistrationId: row.replacementForRegistrationId ?? null,
+    sourceMessageId: row.sourceMessageId ?? null,
+    status: row.status ?? "confirmed",
+    updatedAt: row.updatedAt.toISOString(),
+    userId: row.userId
+  };
+}
+
+function toCorrectionRequestDto(row: MongoFivemGoalCorrectionRequest, originalRegistration: FivemGoalEntryDto | null): FivemGoalCorrectionRequestDto {
+  return {
+    botId: normalizeBotId(row.botId),
+    cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    cancelledByUserId: row.cancelledByUserId ?? null,
+    cancellationReason: row.cancellationReason ?? null,
+    correctedAt: row.correctedAt?.toISOString() ?? null,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+    guildId: row.guildId,
+    id: row._id,
+    originalRegistration,
+    originalRegistrationId: row.originalRegistrationId,
+    reason: row.reason,
+    replacementRegistrationId: row.replacementRegistrationId ?? null,
+    requestedAt: row.requestedAt.toISOString(),
+    requestedByName: row.requestedByName ?? null,
+    requestedByUserId: row.requestedByUserId,
+    restoreOriginalOnCancel: row.restoreOriginalOnCancel ?? null,
+    roomId: row.roomId,
+    status: row.status,
+    userId: row.userId
+  };
 }
 
 function toConfigDto(row: MongoFivemGoalConfig, progress?: { currentValue: number; totalParticipants: number }): FivemGoalConfigDto {
@@ -957,6 +1243,9 @@ function toSubmissionDto(row: MongoFivemGoalSubmission): FivemGoalSubmissionDto 
     refusalReason: row.refusalReason ?? null,
     roleIdsSnapshot: row.roleIdsSnapshot ?? [],
     status: row.status,
+    registrationId: row.registrationId ?? null,
+    correctionRequestId: row.correctionRequestId ?? null,
+    replacementForRegistrationId: row.replacementForRegistrationId ?? null,
     updatedAt: row.updatedAt.toISOString(),
     userId: row.userId,
     value: row.value
@@ -1087,6 +1376,33 @@ function normalizeNotifications(value: FivemGoalSettingsDto["notificationSetting
   return { mentionUserOnFailure: value?.mentionUserOnFailure !== false, mentionManagerOnFailure: value?.mentionManagerOnFailure !== false, approvalDm: normalizeText(value?.approvalDm, 1500) || fallback.approvalDm, rejectionDm: normalizeText(value?.rejectionDm, 1500) || fallback.rejectionDm, farewellDm: normalizeText(value?.farewellDm, 1500) || fallback.farewellDm };
 }
 
+function normalizeCorrectionManagement(value: FivemGoalSettingsDto["correctionManagement"] | undefined, fallback: FivemGoalSettingsDto["correctionManagement"]): FivemGoalSettingsDto["correctionManagement"] {
+  const defaultDeadline = value?.defaultDeadline === "none" || value?.defaultDeadline === "12h" || value?.defaultDeadline === "24h" || value?.defaultDeadline === "48h" || value?.defaultDeadline === "custom"
+    ? value.defaultDeadline
+    : "weekly_close";
+  return {
+    allowAdministrators: value?.allowAdministrators === true,
+    allowClosedPeriods: value?.allowClosedPeriods === true,
+    defaultDeadline,
+    customDeadlineHours: clamp(value?.customDeadlineHours, 1, 24 * 30),
+    logChannelId: normalizeSnowflake(value?.logChannelId) ?? normalizeSnowflake(fallback.logChannelId),
+    managerRoleId: normalizeSnowflake(value?.managerRoleId) ?? normalizeSnowflake(fallback.managerRoleId),
+    maxCorrectionsPerPeriod: clamp(value?.maxCorrectionsPerPeriod, 1, 1000),
+    notifyResponsibleTeam: value?.notifyResponsibleTeam !== false,
+    notifyUser: value?.notifyUser !== false,
+    requireReason: value?.requireReason !== false,
+    allowRestoreOriginal: value?.allowRestoreOriginal !== false
+  };
+}
+
+function resolveCorrectionDeadline(settings: FivemGoalSettingsDto, now: Date) {
+  const mode = settings.correctionManagement.defaultDeadline;
+  if (mode === "none") return null;
+  if (mode === "weekly_close") return currentSaoPauloWeek(now).end;
+  const hours = mode === "12h" ? 12 : mode === "24h" ? 24 : mode === "48h" ? 48 : settings.correctionManagement.customDeadlineHours;
+  return hours ? new Date(now.getTime() + hours * 60 * 60 * 1000) : null;
+}
+
 function normalizeTimezone(value: string | null | undefined) {
   const candidate = normalizeText(value, 80) || "America/Sao_Paulo";
   try { new Intl.DateTimeFormat("pt-BR", { timeZone: candidate }).format(); return candidate; } catch { return "America/Sao_Paulo"; }
@@ -1102,6 +1418,16 @@ function normalizeStatus(value: unknown): FivemGoalConfigStatus {
 
 function normalizePeriod(value: unknown): FivemGoalConfigPeriod {
   return value === "daily" || value === "monthly" || value === "custom" ? value : "weekly";
+}
+
+function normalizeGoalItemType(value: unknown): "required" | "additional" | "optional" {
+  return value === "additional" || value === "optional" ? value : "required";
+}
+
+function normalizeIsoDate(value: unknown) {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
 function normalizeResetConfig(value: FivemGoalConfigDto["resetConfig"] | undefined) {

@@ -348,22 +348,22 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
   const adding = first?.action === "add";
   const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
   const total = logs.reduce((sum, log) => sum + log.quantity, 0);
-  const items = logs.map((log) => `- ${log.itemName} x${log.quantity}`).join("\n");
-  const balances = logs.map((log) => `- ${log.itemName}: ${log.previousQuantity ?? 0} → ${log.nextQuantity ?? 0}`).join("\n");
+  const actionLabel = adding ? "ADIÇÃO" : "REMOÇÃO";
+  const itemLines = logs.map((log) => `${log.itemName}: ${log.quantity}`).join("\n");
+  const balanceLines = logs.map((log) => `${log.itemName}: ${log.previousQuantity ?? 0} → ${log.nextQuantity ?? 0}`).join("\n");
+  const itemLabel = logs.length === 1 ? "Item" : "Itens";
+  const itemValue = logs.length === 1 ? `${logs[0]?.itemName ?? "-"}: ${logs[0]?.quantity ?? 0}` : `\n${itemLines}`;
   const content = [
-    `# ${systemEmojiText("caixa", guild)} ${settings.systemName} — ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
-    `${adding ? systemEmojiText("mais", guild) : systemEmojiText("porta", guild)} **Ação:** ${adding ? "ADIÇÃO" : "REMOÇÃO"}`,
-    `${systemEmojiText("prancheta", guild)} **Itens:**`,
-    items,
-    `${systemEmojiText("caixa", guild)} **Quantidade total:** ${total}`,
+    `**${systemEmojiText("caixa", guild)} ${settings.systemName} — ${actionLabel}**`,
+    `${adding ? systemEmojiText("mais", guild) : systemEmojiText("porta", guild)} **Ação:** ${actionLabel}`,
+    `${systemEmojiText("prancheta", guild)} **${itemLabel}:** ${itemValue}`,
+    `${systemEmojiText("caixa", guild)} **Quantidade:** ${total}`,
     `${systemEmojiText("folha", guild)} **Motivo:** ${first?.reason || "Não informado"}`,
     `${systemEmojiText("homem", guild)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`,
     `${systemEmojiText("relogio", guild)} **Horário:** ${first ? formatDateTime(first.createdAt) : "-"}`,
-    `${systemEmojiText("prancheta", guild)} **Identificação:** ${operationCode}`,
-    "",
-    "**Saldos:**",
-    balances
+    `${systemEmojiText("prancheta", guild)} **Identificação:** ${operationCode}`
   ].join("\n");
+  const auditContent = balanceLines ? `${content}\n\n**Saldos:**\n${balanceLines}` : content;
 
   return {
     allowedMentions: { parse: [] as never[] },
@@ -371,9 +371,9 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
       type: 17,
       accent_color: adding ? 0x22c55e : 0xef4444,
       components: [
-        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(content, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(content, guild) },
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(auditContent, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(auditContent, guild) },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+        { type: 10, content: "-# BalaCloud — Todos os direitos reservados" }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const

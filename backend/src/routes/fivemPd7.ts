@@ -131,11 +131,18 @@ fivemPd7Router.patch("/bot/requests/:requestId", requireBot, async (req, res, ne
     const botId = await resolveRequestBotId(req);
     if (!botId) throw new Error("Bot inválido");
     const patch = z.object({
+      approvedAt: z.coerce.date().nullable().optional(),
+      approvedBy: optionalSnowflake.optional(),
       channelId: optionalSnowflake.optional(),
+      goalCategoryId: optionalSnowflake.optional(),
+      goalChannelId: optionalSnowflake.optional(),
       handledBy: optionalSnowflake.optional(),
       panelMessageId: optionalSnowflake.optional(),
+      pd7RegistrationId: z.string().max(120).nullable().optional(),
+      pd7TemporaryChannelId: optionalSnowflake.optional(),
       rejectionReason: z.string().max(1000).nullable().optional(),
       resolvedAt: z.coerce.date().nullable().optional(),
+      source: z.string().max(40).nullable().optional(),
       status: z.enum(["pending", "approved", "rejected", "closed"]).optional()
     }).parse(req.body);
     return res.json({ request: await updatePd7Request(id.parse(req.params.requestId), botId, patch) });

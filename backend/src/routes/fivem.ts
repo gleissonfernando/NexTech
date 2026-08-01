@@ -49,6 +49,7 @@ import {
 import {
   createFivemGoalConfig,
   createFivemGoalEntry,
+  cancelFivemGoalCorrectionRequest,
   deleteFivemGoalUserChannelByChannel,
   FIVEM_GOALS_MODULE_ID,
   deleteFivemGoalConfig,
@@ -57,10 +58,13 @@ import {
   getFivemGoalUserRuntime,
   getFivemGoalUserChannelByChannel,
   getFivemGoalUserChannelByUser,
+  listCurrentFivemGoalCorrectionCandidates,
   listFivemGoalConfigs,
   listFivemGoalEntries,
+  listPendingFivemGoalCorrections,
   listFivemGoalSubmissions,
   moderateFivemGoalSubmission,
+  requestFivemGoalCorrection,
   requestFivemGoalPanelPublish,
   saveFivemGoalSettings,
   updateFivemGoalRequestPanelState,
@@ -148,11 +152,15 @@ const goalFieldSchema = z.object({
 const goalItemSchema = z.object({
   category: z.string().max(80).nullable().optional().default(null),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional().default(null),
+  createdAt: z.string().datetime().nullable().optional().default(null),
   emoji: z.string().max(80).nullable().optional().default(null),
   enabled: z.boolean(),
   id: z.string().max(80),
   name: z.string().min(1).max(80),
-  order: z.coerce.number().int().min(0).max(10000)
+  order: z.coerce.number().int().min(0).max(10000),
+  requiredAmount: z.coerce.number().int().min(1).max(1_000_000_000).optional().default(1),
+  type: z.enum(["required", "additional", "optional"]).optional().default("required"),
+  updatedAt: z.string().datetime().nullable().optional().default(null)
 });
 const goalSettingsSchema = z.object({
   autoCreateWithManualRegistration: z.boolean().optional(),
@@ -195,6 +203,19 @@ const goalSettingsSchema = z.object({
   cycle: z.object({ startDay: z.coerce.number().int().min(0).max(6), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endDay: z.coerce.number().int().min(0).max(6), endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), firstExecution: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), frequency: z.enum(["weekly", "custom"]), absencePolicy: z.enum(["none", "daily", "full", "manual"]), latePolicy: z.enum(["accept", "reject", "flag"]) }).optional(),
   panelVisual: z.object({ title: z.string().max(120), description: z.string().max(1200), footer: z.string().max(200).nullable(), imageUrl: z.string().max(2048).nullable(), mediaUrl: z.string().max(2048).nullable(), mediaType: z.enum(["image", "gif", "video", "none"]), loopVideo: z.boolean(), color: z.string().regex(/^#[0-9a-f]{6}$/i) }).optional(),
   notificationSettings: z.object({ mentionUserOnFailure: z.boolean(), mentionManagerOnFailure: z.boolean(), approvalDm: z.string().max(1500), rejectionDm: z.string().max(1500), farewellDm: z.string().max(1500) }).optional(),
+  correctionManagement: z.object({
+    allowAdministrators: z.boolean(),
+    allowClosedPeriods: z.boolean(),
+    defaultDeadline: z.enum(["none", "12h", "24h", "48h", "weekly_close", "custom"]),
+    customDeadlineHours: z.coerce.number().int().min(1).max(720).nullable(),
+    logChannelId: optionalSnowflakeSchema,
+    managerRoleId: optionalSnowflakeSchema,
+    maxCorrectionsPerPeriod: z.coerce.number().int().min(1).max(1000).nullable(),
+    notifyResponsibleTeam: z.boolean(),
+    notifyUser: z.boolean(),
+    requireReason: z.boolean(),
+    allowRestoreOriginal: z.boolean()
+  }).optional(),
   cooldownSeconds: z.coerce.number().int().min(3).max(3600).optional(),
   tutorial: z.object({ completedBy: z.array(snowflakeSchema).max(1000), skippedBy: z.array(snowflakeSchema).max(1000) }).optional()
 });
@@ -230,15 +251,32 @@ const goalUserChannelSchema = z.object({
   userId: snowflakeSchema
 });
 const goalEntrySchema = z.object({
+  attachmentId: z.string().max(120).nullable().optional(),
   channelId: snowflakeSchema,
   fields: z.array(z.object({ id: z.string().max(80), label: z.string().max(100), value: z.string().max(1500) })).max(5),
   guildId: guildIdSchema,
+  idempotencyKey: z.string().max(240).nullable().optional(),
   imageUrl: z.string().max(2048),
   itemId: z.string().max(80).nullable().optional(),
   metaId: z.string().max(80).nullable().optional(),
   quantity: z.coerce.number().nullable().optional(),
+  correctionRequestId: z.string().max(120).nullable().optional(),
+  replacementForRegistrationId: z.string().max(120).nullable().optional(),
   roleIdsSnapshot: z.array(snowflakeSchema).max(100).optional(),
+  sourceMessageId: snowflakeSchema.nullable().optional(),
   userId: snowflakeSchema
+});
+const goalCorrectionRequestSchema = z.object({
+  originalRegistrationId: z.string().min(1).max(120),
+  reason: z.string().min(8).max(1000),
+  requestedByName: z.string().max(120).nullable().optional(),
+  requestedByUserId: snowflakeSchema
+});
+const goalCorrectionCancelSchema = z.object({
+  cancelledByUserId: snowflakeSchema,
+  cancellationReason: z.string().min(8).max(1000),
+  originalRegistrationId: z.string().min(1).max(120),
+  restoreOriginalOnCancel: z.boolean()
 });
 const hierarchyEntrySchema = z.object({
   active: z.boolean().optional(),
@@ -743,6 +781,51 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/runtime", requireBot, async (
     const userId = snowflakeSchema.parse(req.params.userId);
     const botId = await resolveRequestBotId(req);
     return res.json(await getFivemGoalUserRuntime(guildId, userId, botId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId/users/:userId/correction-candidates", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ entries: await listCurrentFivemGoalCorrectionCandidates(guildId, botId, userId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId/users/:userId/corrections/pending", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const userId = snowflakeSchema.parse(req.params.userId);
+    const roomId = optionalSnowflakeSchema.parse(req.query.roomId) ?? null;
+    const botId = await resolveRequestBotId(req);
+    return res.json({ corrections: await listPendingFivemGoalCorrections(guildId, botId, userId, roomId || null) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/corrections", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = goalCorrectionRequestSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.status(201).json({ correction: await requestFivemGoalCorrection({ ...input, botId, guildId }) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/corrections/cancel", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = goalCorrectionCancelSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ correction: await cancelFivemGoalCorrectionRequest({ ...input, botId, guildId }) });
   } catch (error) {
     return next(error);
   }
@@ -1315,7 +1398,7 @@ async function validateFacResources(guildId: string, botId: string, input: z.inf
 
 async function validateGoalResources(guildId: string, botId: string, input: z.infer<typeof goalSettingsSchema>) {
   const botToken = await getDevBotToken(botId);
-  const channelIds = [input.logChannelId, input.requestPanelChannelId].filter((channelId): channelId is string => typeof channelId === "string" && Boolean(channelId));
+  const channelIds = [input.logChannelId, input.requestPanelChannelId, input.correctionManagement?.logChannelId].filter((channelId): channelId is string => typeof channelId === "string" && Boolean(channelId));
 
   const channelChecks = await Promise.all(
     [...new Set(channelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken))
@@ -1334,7 +1417,7 @@ async function validateGoalResources(guildId: string, botId: string, input: z.in
     await assertPanelChannelReady(guildId, botId, input.requestPanelChannelId);
   }
 
-  const roleIds = [input.viewRoleId, input.managerRoleId].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
+  const roleIds = [input.viewRoleId, input.managerRoleId, input.correctionManagement?.managerRoleId].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
     throw createRouteError("Um dos cargos selecionados não pertence a este servidor.", 400);
   }
@@ -1463,6 +1546,11 @@ function normalizeGoalSettingsInput(input: z.infer<typeof goalSettingsSchema>) {
     })),
     logChannelId: normalizeOptionalId(input.logChannelId),
     managerRoleId: normalizeOptionalId(input.managerRoleId),
+    correctionManagement: input.correctionManagement ? {
+      ...input.correctionManagement,
+      logChannelId: normalizeOptionalId(input.correctionManagement.logChannelId),
+      managerRoleId: normalizeOptionalId(input.correctionManagement.managerRoleId)
+    } : undefined,
     requestPanelChannelId: normalizeOptionalId(input.requestPanelChannelId),
     requestPanelMessageId: normalizeOptionalId(input.requestPanelMessageId),
     setFormFields: input.setFormFields?.map((field) => ({
