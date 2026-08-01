@@ -923,10 +923,8 @@ async function recoverReportPanelInChannel(channel: TextChannel, context: BotCon
     return;
   }
 
-  const ticket = await context.api.getTicket(topic.ticketId).catch(() => null)
-    ?? await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
+  const ticket = await getReportTicketForTopic(channel, context, topic);
   if (!ticket) {
-    await logIabEvent(context, channel.guild, settings, topic, "Painel pendente", "Não encontrei o ticket salvo para restaurar o painel interno deste canal.", context.client.user?.id ?? null);
     return;
   }
 
@@ -1163,11 +1161,13 @@ function makeTopic(topic: ReportTopic) {
 
 async function resolveReportTopic(channel: TextChannel, context: BotContext, settings: GuildSettings) {
   const fromTopic = topicFromString(channel.topic);
-  if (fromTopic) return fromTopic;
+  if (fromTopic) {
+    const ticket = await getReportTicketForTopic(channel, context, fromTopic);
+    return ticket ? fromTopic : null;
+  }
 
   const ticket = await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
-  if (!ticket || ticket.status === "CLOSED") return null;
-  if (!isReportSystemTicket(ticket)) return null;
+  if (!isUsableReportSystemTicket(ticket)) return null;
 
   const categoryId = ticket.categoryId ?? "iab";
   const categoryName = ticket.categoryName ?? "Corregedoria";
@@ -1202,6 +1202,16 @@ function topicFromString(value: string | null | undefined): ReportTopic | null {
   } catch {
     return null;
   }
+}
+
+async function getReportTicketForTopic(channel: TextChannel, context: BotContext, topic: ReportTopic) {
+  const ticket = await context.api.getTicket(topic.ticketId).catch(() => null)
+    ?? await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
+  return isUsableReportSystemTicket(ticket) ? ticket : null;
+}
+
+export function isUsableReportSystemTicket(ticket: Pick<TicketRecord, "status" | "subject" | "ticketType"> | null | undefined): ticket is Pick<TicketRecord, "status" | "subject" | "ticketType"> {
+  return Boolean(ticket && ticket.status !== "CLOSED" && isReportSystemTicket(ticket));
 }
 
 export function isReportSystemTicket(ticket: Pick<TicketRecord, "subject" | "ticketType">) {
