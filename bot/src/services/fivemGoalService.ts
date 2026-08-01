@@ -20,11 +20,12 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { FivemGoalSettings } from "./apiClient";
-import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
+import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
 const WEEKLY_RANKING_LIMIT = 10;
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
+const FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX = `${PREFIX}:room:close`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const pendingImages = new Map<string, { channelId: string; expiresAt: number; imageUrl: string; metaId: string | null; userId: string }>();
@@ -71,8 +72,12 @@ export async function ensureFivemGoalChannelForApprovedSet(
     const existingChannel = await guild.channels.fetch(existing.channelId).catch(() => null);
     if (existingChannel?.isTextBased() && !existingChannel.isDMBased() && "messages" in existingChannel) {
       const recent = await existingChannel.messages.fetch({ limit: 30 }).catch(() => null);
-      const hasPanel = recent?.some((message) => message.author.id === guild.client.user.id && JSON.stringify(message.components.map((component) => component.toJSON())).includes(`${PREFIX}:user:refresh:${userId}`));
-      if (!hasPanel) await existingChannel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
+      const hasPanel = recent?.some((message) => message.author.id === guild.client.user.id && messageHasFarmRoomPanel(message, userId));
+      if (!hasPanel) {
+        const legacyPanel = recent?.find((message) => message.author.id === guild.client.user.id && messageHasLegacyGoalPanel(message, userId));
+        if (legacyPanel) await legacyPanel.edit(createFarmRoomPanelPayload(guild, settings, userId)).catch(() => null);
+        else await existingChannel.send(createFarmRoomPanelPayload(guild, settings, userId)).catch(() => null);
+      }
 
       const previousCategoryId = "parentId" in existingChannel ? existingChannel.parentId ?? null : null;
       if (targetCategoryId && previousCategoryId !== targetCategoryId && "setParent" in existingChannel) {
@@ -104,7 +109,7 @@ export async function ensureFivemGoalChannelForApprovedSet(
   });
 
   await context.api.saveFivemGoalChannel({ channelId: channel.id, guildId: guild.id, userId });
-  await channel.send(await createUserGoalPanel(context, guild.id, userId, username)).catch(() => null);
+  await channel.send(createFarmRoomPanelPayload(guild, settings, userId)).catch(() => null);
 
   return goalSetIntegrationResult(channel.id, null, targetCategoryId, Boolean(targetCategoryId), null);
 }
@@ -204,6 +209,11 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(`${FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX}:`)) {
+    await closeFarmRoom(interaction, context);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:user:`)) {
     await handleUserGoalPanelAction(interaction, context);
     return true;
@@ -245,6 +255,46 @@ async function handleGoalChannelRequest(interaction: ButtonInteraction, context:
     return;
   }
   await interaction.editReply(`Seu canal individual de meta esta pronto: <#${channelId}>`);
+}
+
+async function closeFarmRoom(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild || !interaction.channelId) return;
+  const room = await context.api.getFivemGoalChannelByChannel(interaction.channelId).catch(() => null);
+  if (!room) {
+    await interaction.reply({ content: "Esta sala de farm não está mais registrada no sistema.", ephemeral: true });
+    return;
+  }
+
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!(await canCloseFarmRoom(interaction, room.userId, settings))) {
+    await interaction.reply({ content: "Você não possui permissão para fechar esta sala.", ephemeral: true });
+    return;
+  }
+
+  await interaction.reply({ content: "Fechando esta sala de farm.", ephemeral: true });
+  await context.api.deleteFivemGoalChannelByChannel(interaction.channelId).catch(() => null);
+  const channel = interaction.channel;
+  if (channel && channel.type === ChannelType.GuildText && channel.deletable) {
+    setTimeout(() => void channel.delete(`Sala de farm fechada por ${interaction.user.tag}`).catch((error) => {
+      void context.api.postLog({
+        guildId: interaction.guild!.id,
+        message: error instanceof Error ? error.message : "Não foi possível apagar a sala de farm.",
+        metadata: { channelId: interaction.channelId },
+        type: "fivem.goals.room_close_failed",
+        userId: interaction.user.id
+      }).catch(() => null);
+    }), 1_000).unref();
+  }
+}
+
+async function canCloseFarmRoom(interaction: ButtonInteraction, ownerId: string, settings: FivemGoalSettings | null) {
+  if (!interaction.guild) return false;
+  if (interaction.user.id === ownerId || interaction.guild.ownerId === interaction.user.id) return true;
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
+  const managerRoleIds = new Set([settings?.managerRoleId].filter((value): value is string => Boolean(value)));
+  return member.roles.cache.some((role) => managerRoleIds.has(role.id));
 }
 
 async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
@@ -380,7 +430,6 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   }).catch(() => null);
 
   await interaction.editReply("Meta registrada com sucesso.");
-  await refreshUserGoalPanel(context, interaction.guild.id, interaction.channelId ?? "", interaction.user.id).catch(() => null);
 }
 
 async function handleUserGoalPanelAction(interaction: ButtonInteraction, context: BotContext) {
@@ -413,49 +462,73 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
     return;
   }
   if (action === "refresh") {
-    await interaction.update(await createUserGoalPanel(context, interaction.guild.id, ownerId, interaction.user.username));
+    const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+    await interaction.update(createFarmRoomPanelPayload(interaction.guild, settings, ownerId));
   }
 }
 
-async function createUserGoalPanel(context: BotContext, guildId: string, userId: string, username: string) {
-  const runtime = await context.api.getFivemGoalUserRuntime(guildId, userId);
-  const guild = context.client.guilds.cache.get(guildId) ?? null;
-  const active = runtime.configs.find((item) => item.status === "active") ?? runtime.configs[0] ?? null;
-  const approved = runtime.submissions.filter((item) => item.status === "approved" && (!active || item.metaId === active.id));
-  const current = approved.reduce((total, item) => total + item.value, 0);
-  const target = Math.max(1, active?.targetValue ?? 1);
-  const percent = Math.min(100, Math.floor(current / target * 100));
-  const filled = Math.round(percent / 10);
-  const rank = runtime.ranking.find((item) => item.userId === userId)?.rank ?? null;
-  const content = [
-    `# ${systemEmojiText("trofeu", guild)} Painel Individual de Metas`,
-    `${systemEmojiText("homem", guild)} **Responsável:** <@${userId}> (${username})`,
-    `${systemEmojiText("prancheta", guild)} **Meta atual:** ${active?.name ?? "Nenhuma meta ativa"}`,
-    `${systemEmojiText("calendario", guild)} **Criado:** <t:${Math.floor(Date.now() / 1000)}:d>`,
-    `${systemEmojiText("prancheta_acertos", guild)} **Progresso:** ${formatGoalValue(current)} / ${formatGoalValue(target)}`,
-    `\`${"█".repeat(filled)}${"░".repeat(10 - filled)}\` **${percent}%**`,
-    `${systemEmojiText("trofeu_alt", guild)} **Ranking geral:** ${rank ? `#${rank}` : "Ainda sem posição"}`,
-    `${systemStatusEmoji(percent >= 100 ? "success" : "active", guild)} **Status:** ${percent >= 100 ? "Meta concluída" : "Em andamento"}`
-  ].join("\n");
+export function createFarmRoomPanelPayload(guild: Guild | null, settings: Pick<FivemGoalSettings, "managerRoleId"> | null, userId: string) {
+  const managerMention = settings?.managerRoleId ? `<@&${settings.managerRoleId}>` : "Gerente de Farm";
+  const iconUrl = guild?.iconURL({ size: 256 }) ?? null;
   return {
     allowedMentions: { parse: [] as never[] },
-    components: [{ type: 17, accent_color: percent >= 100 ? 0x22c55e : 0x3b82f6, components: [{ type: 10, content }] }, new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:add:${userId}`).setEmoji(systemComponentEmoji("mais", guild)).setLabel("Adicionar Meta").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:history:${userId}`).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Histórico").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:ranking:${userId}`).setEmoji(systemComponentEmoji("trofeu", guild)).setLabel("Ranking").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:refresh:${userId}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Atualizar").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`${PREFIX}:user:review:${userId}`).setEmoji(systemComponentEmoji("interrogacao", guild)).setLabel("Solicitar Revisao").setStyle(ButtonStyle.Secondary)
-    )],
+    components: [
+      {
+        type: 17,
+        accent_color: 0xffffff,
+        components: [
+          iconUrl ? {
+            type: 9,
+            components: [{
+              type: 10,
+              content: [
+                `# ${systemEmojiText("VORTEXtrabalho", guild)} SALA DE FARM`,
+                "",
+                `${systemEmojiText("interrogacao", guild)} Sala criada para organizar o registro do farm.`,
+                "",
+                `- Para dúvidas, contate ${managerMention}.`,
+                "- Ao concluir, peça o fechamento quando necessário."
+              ].join("\n")
+            }],
+            accessory: { type: 11, media: { url: iconUrl } }
+          } : {
+            type: 10,
+            content: [
+              `# ${systemEmojiText("VORTEXtrabalho", guild)} SALA DE FARM`,
+              "",
+              `${systemEmojiText("interrogacao", guild)} Sala criada para organizar o registro do farm.`,
+              "",
+              `- Para dúvidas, contate ${managerMention}.`,
+              "- Ao concluir, peça o fechamento quando necessário."
+            ].join("\n")
+          },
+          { type: 14, divider: false, spacing: 1 },
+          {
+            type: 10,
+            content: `### ${systemEmojiText("porta", guild)} Fechar sala\nSolicita o fechamento da sala.`
+          },
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`${FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX}:${userId}`)
+              .setEmoji(systemComponentEmoji("porta", guild))
+              .setLabel("Fechar Canal")
+              .setStyle(ButtonStyle.Danger)
+          ),
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+        ]
+      }
+    ],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }
 
-async function refreshUserGoalPanel(context: BotContext, guildId: string, channelId: string, userId: string) {
-  const channel = await context.client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return;
-  const messages = await channel.messages.fetch({ limit: 30 });
-  const panel = messages.find((message) => message.author.id === context.client.user?.id && message.components.some((row) => JSON.stringify(row.toJSON()).includes(`${PREFIX}:user:refresh:${userId}`)));
-  if (panel) await panel.edit(await createUserGoalPanel(context, guildId, userId, userId));
+function messageHasFarmRoomPanel(message: Message, userId: string) {
+  return JSON.stringify(message.components.map((component) => component.toJSON())).includes(`${FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX}:${userId}`);
+}
+
+function messageHasLegacyGoalPanel(message: Message, userId: string) {
+  return JSON.stringify(message.components.map((component) => component.toJSON())).includes(`${PREFIX}:user:refresh:${userId}`);
 }
 
 function formatGoalValue(value: number) { return new Intl.NumberFormat("pt-BR").format(Math.max(0, value)); }

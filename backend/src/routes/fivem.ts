@@ -49,6 +49,7 @@ import {
 import {
   createFivemGoalConfig,
   createFivemGoalEntry,
+  deleteFivemGoalUserChannelByChannel,
   FIVEM_GOALS_MODULE_ID,
   deleteFivemGoalConfig,
   getFivemGoalDashboard,
@@ -708,6 +709,16 @@ fivemRouter.get("/bot/goals/channel/:channelId", requireBot, async (req, res, ne
     const channelId = snowflakeSchema.parse(req.params.channelId);
     const botId = await resolveRequestBotId(req);
     return res.json({ channel: await getFivemGoalUserChannelByChannel(channelId, botId) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.delete("/bot/goals/channel/:channelId", requireBot, async (req, res, next) => {
+  try {
+    const channelId = snowflakeSchema.parse(req.params.channelId);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ channel: await deleteFivemGoalUserChannelByChannel(channelId, botId) });
   } catch (error) {
     return next(error);
   }

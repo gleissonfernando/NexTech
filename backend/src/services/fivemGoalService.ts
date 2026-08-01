@@ -542,6 +542,26 @@ export async function getFivemGoalUserChannelByChannel(channelId: string, botId?
   return row ? toUserChannelDto(row) : null;
 }
 
+export async function deleteFivemGoalUserChannelByChannel(channelId: string, botId?: string | null) {
+  const normalizedBotId = normalizeBotId(botId);
+  const { fivemGoalUserChannels } = await getMongoCollections();
+  const row = await fivemGoalUserChannels.findOne({ botId: normalizedBotId, channelId });
+  if (!row) return null;
+  await fivemGoalUserChannels.deleteOne({ _id: row._id, botId: normalizedBotId });
+  await writeFivemGoalLog({
+    action: "room.closed",
+    botId: normalizedBotId,
+    details: { channelId },
+    guildId: row.guildId,
+    metaId: null,
+    userId: row.userId
+  });
+  if (normalizedBotId) {
+    emitRealtimeToRoom(dashboardLogRealtimeRoom(row.guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId: row.guildId });
+  }
+  return toUserChannelDto(row);
+}
+
 export async function createFivemGoalEntry(input: {
   botId?: string | null;
   channelId: string;

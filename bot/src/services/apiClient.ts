@@ -3688,6 +3688,11 @@ export class ApiClient {
     return data.channel;
   }
 
+  async deleteFivemGoalChannelByChannel(channelId: string) {
+    const { data } = await this.http.delete<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/channel/${channelId}`);
+    return data.channel;
+  }
+
   async getFivemGoalChannelByUser(guildId: string, userId: string) {
     const { data } = await this.http.get<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/${guildId}/users/${userId}/channel`);
     return data.channel;
