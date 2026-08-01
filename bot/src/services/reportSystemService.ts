@@ -425,9 +425,11 @@ async function openReportFromPanel(interaction: StringSelectMenuInteraction | Bu
     categoryName: category.name,
     channelId: channel.id,
     guildId: interaction.guildId!,
+    moduleType: "police",
     openerId: interaction.user.id,
     status: mode === "anonymous" ? "PENDING" : "OPEN",
-    subject: `${mode === "anonymous" ? "Denúncia anonima" : "Denúncia identificada"} - ${category.name}`
+    subject: `${mode === "anonymous" ? "Denúncia anonima" : "Denúncia identificada"} - ${category.name}`,
+    ticketType: "report-system"
   });
   const topic: ReportTopic = {
     categoryId: category.id,
@@ -1165,6 +1167,7 @@ async function resolveReportTopic(channel: TextChannel, context: BotContext, set
 
   const ticket = await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
   if (!ticket || ticket.status === "CLOSED") return null;
+  if (!isReportSystemTicket(ticket)) return null;
 
   const categoryId = ticket.categoryId ?? "iab";
   const categoryName = ticket.categoryName ?? "Corregedoria";
@@ -1199,6 +1202,11 @@ function topicFromString(value: string | null | undefined): ReportTopic | null {
   } catch {
     return null;
   }
+}
+
+export function isReportSystemTicket(ticket: Pick<TicketRecord, "subject" | "ticketType">) {
+  if (ticket.ticketType === "report-system") return true;
+  return /^Denúncia\s+(?:anonima|anônima|identificada)\s+-\s+/i.test(ticket.subject.trim());
 }
 
 function createPublicReportModal(categoryId: string, mode: "anonymous" | "identified", categoryName: string) {
@@ -1268,9 +1276,11 @@ async function submitPublicReport(interaction: ModalSubmitInteraction, context: 
     categoryName: destinationCategory.name,
     channelId: channel.id,
     guildId: interaction.guildId!,
+    moduleType: "police",
     openerId: interaction.user.id,
     status: mode === "anonymous" ? "PENDING" : "OPEN",
-    subject: `${mode === "anonymous" ? "Denúncia anonima" : "Denúncia identificada"} - ${destinationCategory.name}`
+    subject: `${mode === "anonymous" ? "Denúncia anonima" : "Denúncia identificada"} - ${destinationCategory.name}`,
+    ticketType: "report-system"
   });
   const topic: ReportTopic = {
     categoryId: destinationCategory.id,
