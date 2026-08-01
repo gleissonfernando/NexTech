@@ -6,6 +6,7 @@
 - Avoid realtime feedback loops in bot setup flows. Bot sync endpoints should be idempotent and only emit socket events when persisted data actually changes.
 - In production, do not auto-start all registered DEV bots unless `START_REGISTERED_DEV_BOTS=true` is explicitly configured; starting every bot at once can trigger request-abuse blocking.
 - Keep the backend and bot internal auth header contract aligned: the bot sends `x-bot-token` with `BOT_API_TOKEN`, and the backend must accept both `x-bot-token` and legacy `bot-token`. Do not change one side without updating `scripts/deploy-check.mjs`.
+- When the user asks to redo/refazer/rebuild something, treat it as an instruction to actually replace or reconstruct that feature, screen, message, or panel as requested. Do not keep existing elements just because they already work or were previously present; remove anything outside the new requested scope unless the user explicitly asks to preserve it.
 
 
 

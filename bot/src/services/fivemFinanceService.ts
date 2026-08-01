@@ -225,16 +225,15 @@ function mainPanel(settings: FivemFinanceSettings, transactions: FivemFinanceTra
       `**Última movimentação:** ${lastMovement}`
     ].filter(Boolean).join("\n"),
     image: settings.bannerMode === "none" ? null : settings.panelImage,
-    actions: [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar dinheiro").setEmoji(systemComponentEmoji("dinheiro", guild)).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover dinheiro").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`${PREFIX}:withdraw`).setLabel("Sacar dinheiro").setEmoji(systemComponentEmoji("caixa", guild)).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:history`).setLabel("Ver histórico").setEmoji(systemComponentEmoji("prancheta_acertos", guild)).setStyle(ButtonStyle.Secondary).setDisabled(!settings.historyEnabled),
-        new ButtonBuilder().setCustomId(`${PREFIX}:refresh`).setLabel("Atualizar painel").setEmoji(systemComponentEmoji("relogio", guild)).setStyle(ButtonStyle.Secondary)
-      )
-    ]
+    actions: [createFinancePanelActionRow(guild)]
   });
+}
+
+export function createFinancePanelActionRow(guild: Guild | null = null) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}:add`).setLabel("Adicionar dinheiro").setEmoji(systemComponentEmoji("dinheiro", guild)).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}:remove`).setLabel("Remover dinheiro").setEmoji(systemComponentEmoji("porta", guild)).setStyle(ButtonStyle.Danger)
+  );
 }
 
 async function showTransactionModal(interaction: ButtonInteraction, type: "add" | "remove" | "withdraw", settings: FivemFinanceSettings) {
