@@ -1079,6 +1079,7 @@ export type FivemGoalItem = {
 export type FivemGoalSettings = {
   configs?: FivemGoalConfig[];
   autoCreateWithManualRegistration: boolean;
+  botId: string | null;
   categoryId: string | null;
   channelNameTemplate: string;
   enabled: boolean;
@@ -3791,7 +3792,7 @@ export class ApiClient {
     return data;
   }
 
-  async updateFivemGoalPanelState(input: { guildId: string; messageId?: string | null }) {
+  async updateFivemGoalPanelState(input: { channelId?: string | null; guildId: string; messageId?: string | null }) {
     const { data } = await this.http.post<{ settings: FivemGoalSettings }>("/fivem/bot/goals/panel-state", input);
     return data.settings;
   }

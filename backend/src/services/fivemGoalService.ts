@@ -380,12 +380,14 @@ export async function requestFivemGoalPanelPublish(guildId: string, botId: strin
   return settings;
 }
 
-export async function updateFivemGoalRequestPanelState(guildId: string, botId: string | null, messageId: string | null) {
-  const settings = await saveFivemGoalSettings(guildId, botId, { requestPanelMessageId: messageId }, null);
+export async function updateFivemGoalRequestPanelState(guildId: string, botId: string | null, messageId: string | null, channelId?: string | null) {
+  const patch: Partial<FivemGoalSettingsDto> = { requestPanelMessageId: messageId };
+  if (channelId !== undefined) patch.requestPanelChannelId = channelId;
+  const settings = await saveFivemGoalSettings(guildId, botId, patch, null);
   await writeFivemGoalLog({
     action: "request_panel.state_updated",
     botId: normalizeBotId(botId),
-    details: { messageId },
+    details: { channelId: channelId ?? settings.requestPanelChannelId, messageId },
     guildId,
     metaId: null,
     userId: null

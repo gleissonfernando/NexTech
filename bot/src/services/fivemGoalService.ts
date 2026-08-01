@@ -291,12 +291,12 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
 export async function handleFivemGoalInteraction(interaction: Interaction, context: BotContext) {
   if (!("customId" in interaction) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
 
-  if (interaction.isButton() && interaction.customId === REQUEST_CHANNEL_CUSTOM_ID) {
+  if (interaction.isButton() && isScopedCustomId(interaction.customId, REQUEST_CHANNEL_CUSTOM_ID, interaction.guildId)) {
     await handleGoalChannelRequest(interaction, context);
     return true;
   }
 
-  if (interaction.isButton() && interaction.customId === `${PREFIX}:help`) {
+  if (interaction.isButton() && isScopedCustomId(interaction.customId, `${PREFIX}:help`, interaction.guildId)) {
     await interaction.reply({ content: "Clique em Solicitar canal de meta. Depois envie suas fotos apenas no seu canal individual para registrar comprovantes.", ephemeral: true });
     return true;
   }
@@ -621,25 +621,65 @@ async function canCloseFarmRoom(interaction: ButtonInteraction, ownerId: string,
 }
 
 async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
-  const settings = await context.api.getFivemGoalSettings(guild.id);
-  if (!settings.enabled || !settings.requestPanelEnabled || !settings.requestPanelChannelId) return;
-  const channel = await guild.channels.fetch(settings.requestPanelChannelId).catch(() => null);
-  if (!channel || !("send" in channel) || !("messages" in channel)) return;
-  const payload = createGoalRequestPanelPayload(settings.requestPanelTitle, settings.requestPanelDescription);
-  if (settings.requestPanelMessageId) {
-    const message = await channel.messages.fetch(settings.requestPanelMessageId).catch(() => null);
-    if (message) {
-      await message.edit(payload).catch(() => null);
-      return;
+  let settings: FivemGoalSettings | null = null;
+  try {
+    settings = await context.api.getFivemGoalSettings(guild.id);
+    await logGoalPanelPublish(context, guild.id, settings, "start", "Iniciando publicação do painel de solicitação de sala de meta.");
+
+    if (!settings.enabled) throw new Error("Sistema de metas desativado na dashboard.");
+    if (!settings.requestPanelEnabled) throw new Error("Painel de solicitação de sala de meta desativado na dashboard.");
+    if (!settings.requestPanelChannelId) throw new Error("Canal do painel de solicitação de meta não configurado.");
+
+    const channel = await guild.channels.fetch(settings.requestPanelChannelId);
+    if (!channel) throw new Error(`Canal configurado não encontrado: ${settings.requestPanelChannelId}.`);
+    if ("guildId" in channel && channel.guildId !== guild.id) {
+      throw new Error(`Canal configurado pertence a outro servidor: ${channel.guildId}.`);
     }
-  }
-  const message = await channel.send(payload).catch(() => null);
-  if (message) {
-    await context.api.updateFivemGoalPanelState({ guildId: guild.id, messageId: message.id }).catch(() => null);
+    if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
+      throw new Error(`Canal configurado não é canal de texto/anúncio: tipo ${channel.type}.`);
+    }
+    if (!("send" in channel) || !("messages" in channel) || !channel.isSendable()) {
+      throw new Error("Canal configurado não aceita envio de mensagens pelo bot.");
+    }
+
+    const botMember = guild.members.me;
+    if (!botMember) throw new Error("Bot não encontrado como membro do servidor.");
+    const requiredPermissions = [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.EmbedLinks,
+      PermissionFlagsBits.ReadMessageHistory,
+      PermissionFlagsBits.UseApplicationCommands
+    ];
+    const permissions = channel.permissionsFor(botMember);
+    const missingPermissions = requiredPermissions.filter((permission) => !permissions?.has(permission)).map(goalPermissionName);
+    if (missingPermissions.length) {
+      throw new Error(`Bot sem permissões no canal <#${channel.id}>: ${missingPermissions.join(", ")}.`);
+    }
+
+    const payload = createGoalRequestPanelPayload(settings.requestPanelTitle, settings.requestPanelDescription, guild.id, settings.botId);
+    if (settings.requestPanelMessageId) {
+      const message = await channel.messages.fetch(settings.requestPanelMessageId).catch(() => null);
+      if (message) {
+        const edited = await message.edit(payload);
+        await context.api.updateFivemGoalPanelState({ channelId: channel.id, guildId: guild.id, messageId: edited.id });
+        await logGoalPanelPublish(context, guild.id, settings, "updated", "Painel de solicitação de sala de meta atualizado no Discord.", { channelId: channel.id, messageId: edited.id });
+        return;
+      }
+      await logGoalPanelPublish(context, guild.id, settings, "old_message_missing", "Mensagem antiga do painel não encontrada; publicando uma nova.", { channelId: channel.id, messageId: settings.requestPanelMessageId });
+    }
+
+    const message = await channel.send(payload);
+    await context.api.updateFivemGoalPanelState({ channelId: channel.id, guildId: guild.id, messageId: message.id });
+    await logGoalPanelPublish(context, guild.id, settings, "sent", "Painel de solicitação de sala de meta publicado no Discord.", { channelId: channel.id, messageId: message.id });
+  } catch (error) {
+    await logGoalPanelPublish(context, guild.id, settings, "error", readUnknownError(error), {}, error);
   }
 }
 
-function createGoalRequestPanelPayload(title: string, description: string) {
+export function createGoalRequestPanelPayload(title: string, description: string, guildId?: string | null, botId?: string | null) {
+  const requestCustomId = scopedCustomId(REQUEST_CHANNEL_CUSTOM_ID, guildId, botId);
+  const helpCustomId = scopedCustomId(`${PREFIX}:help`, guildId, botId);
   return {
     allowedMentions: { parse: [] as never[] },
     components: [
@@ -651,14 +691,57 @@ function createGoalRequestPanelPayload(title: string, description: string) {
           { type: 10, content: "Use o botão abaixo para criar ou localizar seu canal individual de meta." },
           { type: 14, divider: true, spacing: 1 },
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(REQUEST_CHANNEL_CUSTOM_ID).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Solicitar canal de meta").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`${PREFIX}:help`).setEmoji(systemComponentEmoji("interrogacao")).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId(requestCustomId).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Solicitar canal de meta").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(helpCustomId).setEmoji(systemComponentEmoji("interrogacao")).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
           )
         ]
       }
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function scopedCustomId(base: string, guildId?: string | null, botId?: string | null) {
+  return guildId ? `${base}:${guildId}:${encodeURIComponent(botId ?? "default")}` : base;
+}
+
+function isScopedCustomId(customId: string, base: string, guildId?: string | null) {
+  if (customId === base) return true;
+  const prefix = `${base}:`;
+  if (!customId.startsWith(prefix)) return false;
+  const [, scopedGuildId] = customId.slice(prefix.length).match(/^([^:]+)/) ?? [];
+  return Boolean(scopedGuildId && guildId && scopedGuildId === guildId);
+}
+
+async function logGoalPanelPublish(
+  context: BotContext,
+  guildId: string,
+  settings: FivemGoalSettings | null,
+  stage: string,
+  message: string,
+  metadata: Record<string, unknown> = {},
+  error?: unknown
+) {
+  await context.api.postLog({
+    guildId,
+    message,
+    metadata: {
+      marker: stage === "error" ? "[FARM_PANEL_PUBLISH_ERROR]" : "[FARM_PANEL_PUBLISH_START]",
+      botId: settings?.botId ?? null,
+      channelId: settings?.requestPanelChannelId ?? null,
+      messageId: settings?.requestPanelMessageId ?? null,
+      requestPanelEnabled: settings?.requestPanelEnabled ?? null,
+      stage,
+      ...metadata,
+      ...(error instanceof Error ? { errorName: error.name, errorMessage: error.message, errorStack: error.stack?.slice(0, 1500) } : {})
+    },
+    type: stage === "error" ? "fivem.goals.request_panel_publish_failed" : "fivem.goals.request_panel_publish",
+    userId: null
+  }).catch(() => null);
+}
+
+function readUnknownError(error: unknown) {
+  return error instanceof Error ? error.message : "Falha desconhecida ao publicar o painel de solicitação de sala de meta.";
 }
 
 async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {

@@ -854,12 +854,13 @@ fivemRouter.post("/bot/goals/entries", requireBot, async (req, res, next) => {
 fivemRouter.post("/bot/goals/panel-state", requireBot, async (req, res, next) => {
   try {
     const input = z.object({
+      channelId: optionalSnowflakeSchema,
       guildId: guildIdSchema,
       messageId: optionalSnowflakeSchema
     }).parse(req.body);
     const botId = await resolveRequestBotId(req);
     return res.json({
-      settings: await updateFivemGoalRequestPanelState(input.guildId, botId, input.messageId ?? null)
+      settings: await updateFivemGoalRequestPanelState(input.guildId, botId, input.messageId ?? null, input.channelId)
     });
   } catch (error) {
     return next(error);

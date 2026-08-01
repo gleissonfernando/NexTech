@@ -4442,7 +4442,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     try {
       const saved = await publishFivemGoalPanel(guild.id, botId);
       setSettings(saved);
-      setMessage("Painel de solicitação enviado para o bot atualizar no Discord.");
+      setMessage("Solicitação enviada ao bot. Se o painel não aparecer no Discord, confira o canal, permissões e logs técnicos do Sistema de Metas.");
     } catch {
       setError("Não foi possível publicar o painel. Confira canal, permissão do bot e se o sistema está ativo.");
     } finally {
