@@ -257,13 +257,6 @@ export type FivemGoalReportDto = {
   }>;
 };
 
-const DEFAULT_FIELDS: FivemGoalFieldDto[] = [
-  { id: "euro_sujo", label: "Euro Sujo", maxLength: 80, minLength: 1, placeholder: "Ex: 100000", required: true, style: "short" },
-  { id: "itens", label: "Itens", maxLength: 300, minLength: 1, placeholder: "Ex: 5 Diamantes", required: true, style: "short" },
-  { id: "quantidade", label: "Quantidade", maxLength: 80, minLength: 1, placeholder: "Ex: 5", required: true, style: "short" },
-  { id: "observacao", label: "Observação", maxLength: 1000, minLength: null, placeholder: "Detalhes extras", required: false, style: "paragraph" }
-];
-
 const DEFAULT_ITEMS: FivemGoalItemDto[] = [
   { category: "Dinheiro", color: "#22c55e", createdAt: null, emoji: fixedSystemEmojiText("dinheiro"), enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1, requiredAmount: 100000, type: "required", updatedAt: null },
   { category: "Itens", color: "#38bdf8", createdAt: null, emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "diamante", name: "Diamante", order: 2, requiredAmount: 1, type: "additional", updatedAt: null },
@@ -278,7 +271,7 @@ export function defaultFivemGoalSettings(guildId: string, botId: string | null =
     categoryId: null,
     channelNameTemplate: "meta-{username}",
     enabled: false,
-    fields: DEFAULT_FIELDS.map((field) => ({ ...field })),
+    fields: [],
     guildId,
     items: DEFAULT_ITEMS.map((item) => ({ ...item })),
     logChannelId: null,
@@ -1063,7 +1056,7 @@ function normalizeFields(fields: FivemGoalFieldDto[]) {
       style: field.style === "paragraph" ? "paragraph" as const : "short" as const
     };
   }).slice(0, 5);
-  return normalized.length ? normalized : DEFAULT_FIELDS.map((field) => ({ ...field }));
+  return normalized;
 }
 
 function normalizeItems(items: FivemGoalItemDto[]) {
@@ -1274,7 +1267,7 @@ function normalizeConfigInput(input: Partial<FivemGoalConfigDto>, guildId: strin
     deleteRoleIds: normalizeRoleIds(input.deleteRoleIds ?? []),
     description: normalizeText(input.description, 1000),
     editRoleIds: normalizeRoleIds(input.editRoleIds ?? []),
-    fields: normalizeFields(input.fields ?? DEFAULT_FIELDS),
+    fields: normalizeFields(input.fields ?? []),
     logChannelId: normalizeSnowflake(input.logChannelId),
     managerRoleIds: normalizeRoleIds(input.managerRoleIds ?? []),
     name: normalizeText(input.name, 100) || "Nova Meta",

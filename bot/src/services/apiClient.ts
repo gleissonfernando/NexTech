@@ -1096,6 +1096,7 @@ export type FivemGoalSettings = {
   requestPanelTitle: string;
   requestRequiresApproval: boolean;
   viewRoleId: string | null;
+  viewerRoleIds?: string[];
   correctionManagement?: {
     allowAdministrators: boolean;
     allowClosedPeriods: boolean;

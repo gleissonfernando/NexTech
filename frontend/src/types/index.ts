@@ -1824,6 +1824,7 @@ export type FivemGoalSettings = {
   items: FivemGoalItem[];
   logChannelId: string | null;
   managerRoleId: string | null;
+  managerRoleIds?: string[];
   correctionManagement?: {
     allowAdministrators: boolean;
     allowClosedPeriods: boolean;
@@ -1847,6 +1848,7 @@ export type FivemGoalSettings = {
   timezone?: string;
   updatedAt: string | null;
   viewRoleId: string | null;
+  viewerRoleIds?: string[];
   weeklySummaryEnabled?: boolean;
   cycle?: {
     absencePolicy: "none" | "daily" | "full" | "manual";

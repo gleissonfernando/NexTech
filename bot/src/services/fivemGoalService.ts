@@ -140,14 +140,16 @@ export async function ensureFivemGoalChannelForApprovedSet(
   }
   const member = await guild.members.fetch(userId).catch(() => null);
   const channelName = gameId?.trim() ? renderApprovedSetChannelName(username, gameId) : renderChannelName(settings.channelNameTemplate, username, userId);
+  const viewerRoleIds = uniqueRoleIds([...(settings.viewerRoleIds ?? []), settings.viewRoleId]);
+  const managerRoleIds = uniqueRoleIds([...(settings.managerRoleIds ?? []), settings.managerRoleId]);
   const channel = await guild.channels.create({
     name: channelName,
     parent: targetCategoryId ?? undefined,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
-      ...(settings.viewRoleId ? [{ id: settings.viewRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] }] : []),
-      ...(settings.managerRoleId ? [{ id: settings.managerRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] }] : []),
+      ...viewerRoleIds.map((roleId) => ({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] })),
+      ...managerRoleIds.map((roleId) => ({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory] })),
       { id: botMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] }
     ],
     reason: `Canal de metas FiveM para ${userId}`,
@@ -207,6 +209,23 @@ function goalPermissionName(permission: bigint) {
     [PermissionFlagsBits.UseApplicationCommands, "Usar Comandos de Aplicativo"]
   ]);
   return names.get(permission) ?? permission.toString();
+}
+
+function uniqueRoleIds(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function goalFieldsForModal(fields: FivemGoalSettings["fields"]) {
+  const configured = fields.slice(0, 5);
+  return configured.length ? configured : [{
+    id: "quantidade",
+    label: "Quantidade",
+    maxLength: 80,
+    minLength: 1,
+    placeholder: "Ex: 50000",
+    required: true,
+    style: "short" as const
+  }];
 }
 
 async function validateGoalTargetCategory(guild: Guild, categoryId: string | null, required: boolean) {
@@ -616,7 +635,7 @@ async function canCloseFarmRoom(interaction: ButtonInteraction, ownerId: string,
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
-  const managerRoleIds = new Set([settings?.managerRoleId].filter((value): value is string => Boolean(value)));
+  const managerRoleIds = new Set([settings?.managerRoleId, ...(settings?.managerRoleIds ?? [])].filter((value): value is string => Boolean(value)));
   return member.roles.cache.some((role) => managerRoleIds.has(role.id));
 }
 
@@ -763,7 +782,7 @@ async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuIn
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
   const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
   pending.metaId = activeConfig?.id ?? null;
-  const fieldsToRender = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
+  const fieldsToRender = goalFieldsForModal(activeConfig?.fields?.length ? activeConfig.fields : settings.fields);
   const modal = new ModalBuilder()
     .setCustomId(`${PREFIX}:modal:${encodeURIComponent(imageToken ?? "")}`)
     .setTitle((activeConfig?.name ?? "Registrar Farm").slice(0, 45));
@@ -803,7 +822,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   const imageUrl = pending.imageUrl;
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
   const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
-  const fieldsToRead = (activeConfig?.fields?.length ? activeConfig.fields : settings.fields).slice(0, 5);
+  const fieldsToRead = goalFieldsForModal(activeConfig?.fields?.length ? activeConfig.fields : settings.fields);
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   const fields = fieldsToRead.map((field) => ({
     id: field.id,
@@ -937,8 +956,9 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
   }
 }
 
-export function createFarmRoomPanelPayload(guild: Guild | null, settings: Pick<FivemGoalSettings, "managerRoleId"> | null, userId: string) {
-  const managerMention = settings?.managerRoleId ? `<@&${settings.managerRoleId}>` : "Gerente de Farm";
+export function createFarmRoomPanelPayload(guild: Guild | null, settings: Pick<FivemGoalSettings, "managerRoleId" | "managerRoleIds"> | null, userId: string) {
+  const managerIds = uniqueRoleIds([...(settings?.managerRoleIds ?? []), settings?.managerRoleId]);
+  const managerMention = managerIds.length ? managerIds.map((roleId) => `<@&${roleId}>`).join(", ") : "Gerente de Farm";
   const iconUrl = guild?.iconURL({ size: 256 }) ?? null;
   return {
     allowedMentions: { parse: [] as never[] },

@@ -4354,6 +4354,28 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     setSettings((current) => current ? { ...current, fields: current.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...value } : field) } : current);
   }
 
+  function addGoalField() {
+    setSettings((current) => current ? {
+      ...current,
+      fields: [
+        ...current.fields,
+        {
+          id: `campo-${current.fields.length + 1}`,
+          label: `Campo ${current.fields.length + 1}`,
+          maxLength: 120,
+          minLength: null,
+          placeholder: "",
+          required: true,
+          style: "short" as const
+        }
+      ].slice(0, 5)
+    } : current);
+  }
+
+  function removeGoalField(index: number) {
+    setSettings((current) => current ? { ...current, fields: current.fields.filter((_, fieldIndex) => fieldIndex !== index) } : current);
+  }
+
   function patchItem(index: number, value: Partial<FivemGoalItem>) {
     setSettings((current) => current ? { ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...value } : item) } : current);
   }
@@ -4394,11 +4416,11 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       guildId: guild.id,
       id: "new",
       logChannelId: settings?.logChannelId ?? null,
-      managerRoleIds: settings?.managerRoleId ? [settings.managerRoleId] : [],
+      managerRoleIds: settings?.managerRoleIds?.length ? settings.managerRoleIds : settings?.managerRoleId ? [settings.managerRoleId] : [],
       name: "Nova Meta",
       panelChannelId: settings?.requestPanelChannelId ?? null,
       panelMessageId: null,
-      participantRoleIds: settings?.viewRoleId ? [settings.viewRoleId] : [],
+      participantRoleIds: settings?.viewerRoleIds?.length ? settings.viewerRoleIds : settings?.viewRoleId ? [settings.viewRoleId] : [],
       period: "weekly",
       requiresApproval: false,
       requiresProof: true,
@@ -4440,6 +4462,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     setError(null);
     setMessage(null);
     try {
+      const configured = await saveFivemGoalSettings(guild.id, settings, botId);
+      setSettings(configured);
       const saved = await publishFivemGoalPanel(guild.id, botId);
       setSettings(saved);
       setMessage("Solicitação enviada ao bot. Se o painel não aparecer no Discord, confira o canal, permissões e logs técnicos do Sistema de Metas.");
@@ -4669,8 +4693,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
               <FivemChannelSelect channels={categories} compact disabled={!canManage} label="Categoria padrão onde os canais de meta serão criados" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
               <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
-              <RoleSelect compact disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
-              <RoleSelect compact disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos que podem visualizar" onChange={(values) => patch({ viewerRoleIds: values, viewRoleId: values[0] ?? null })} roles={roles} values={settings.viewerRoleIds?.length ? settings.viewerRoleIds : settings.viewRoleId ? [settings.viewRoleId] : []} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos administradores" onChange={(values) => patch({ managerRoleIds: values, managerRoleId: values[0] ?? null })} roles={roles} values={settings.managerRoleIds?.length ? settings.managerRoleIds : settings.managerRoleId ? [settings.managerRoleId] : []} />
               </div>
             </section>
             <section className="space-y-3 border-y border-zinc-800 py-4">
@@ -4786,12 +4810,15 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               </div>
             </section>
             <section className="space-y-3 border-y border-zinc-800 py-4">
-              <div>
-                <p className="text-sm font-semibold text-white">Campos do modal</p>
-                <p className="mt-1 text-xs text-zinc-500">Perguntas extras do registro. A quantidade continua validada e confirmada antes de salvar.</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Campos do modal</p>
+                  <p className="mt-1 text-xs text-zinc-500">Cadastre somente os campos que você quer pedir no modal. Se nenhum campo for cadastrado, o bot perguntará apenas a quantidade obrigatória.</p>
+                </div>
+                <Button disabled={!canManage || settings.fields.length >= 5} onClick={addGoalField} size="sm" type="button" variant="outline">Adicionar campo</Button>
               </div>
               {settings.fields.map((field, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 md:grid-cols-[1fr_1fr_120px]" key={`fivem-goal-field-${index}`}>
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 md:grid-cols-[1fr_1fr_120px_auto]" key={`fivem-goal-field-${index}`}>
                   <TicketField disabled={!canManage} label="Label" onChange={(value) => patchField(index, { id: slugTicketOption(value, index), label: value })} value={field.label} />
                   <TicketField disabled={!canManage} label="Placeholder" onChange={(value) => patchField(index, { placeholder: value })} value={field.placeholder ?? ""} />
                   <label className="block text-xs font-medium text-zinc-400">Tipo
@@ -4800,8 +4827,12 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                       <option value="paragraph">Longo</option>
                     </select>
                   </label>
+                  <div className="flex items-end">
+                    <Button disabled={!canManage} onClick={() => removeGoalField(index)} size="icon" title="Remover campo" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
                 </div>
               ))}
+              {!settings.fields.length ? <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-500">Nenhum campo extra cadastrado para aparecer no modal.</p> : null}
             </section>
             <section className="space-y-3 border-y border-zinc-800 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
