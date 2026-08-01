@@ -24,7 +24,7 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { BotCommand } from "../types";
-import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalSettings } from "./apiClient";
+import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalSettings } from "./apiClient";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
@@ -37,8 +37,7 @@ const EDIT_REASON_MODAL_PREFIX = `${PREFIX}:edit:reason`;
 const EDIT_CONFIRM_PREFIX = `${PREFIX}:edit:confirm`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const pendingImages = new Map<string, { attachmentId: string; channelId: string; correctionRequestId: string | null; expiresAt: number; imageUrl: string; metaId: string | null; replacementForRegistrationId: string | null; sourceMessageId: string; userId: string }>();
-const pendingConfirmations = new Map<string, { attachmentId: string; channelId: string; correctionRequestId: string | null; expiresAt: number; fields: Array<{ id: string; label: string; value: string }>; imageUrl: string; metaId: string | null; quantity: number; replacementForRegistrationId: string | null; sourceMessageId: string; userId: string }>();
+const pendingFarmItems = new Set<string>();
 const pendingEditSelections = new Map<string, { entries: FivemGoalEntry[]; expiresAt: number; guildId: string; managerId: string; targetUserId: string }>();
 const pendingEditConfirmations = new Map<string, { entry: FivemGoalEntry; expiresAt: number; guildId: string; managerId: string; managerName: string; reason: string; targetUserId: string }>();
 
@@ -351,39 +350,22 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
   }
 
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:register:`)) {
-    await showGoalModal(interaction, context);
+    await showFarmItemSelect(interaction, context);
     return true;
   }
 
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:choose:`)) {
-    const token = interaction.customId.split(":")[2] ?? "";
-    const pending = pendingImages.get(token);
-    if (pending) pending.metaId = interaction.values[0] ?? null;
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:item:`)) {
     await showGoalModal(interaction, context);
     return true;
   }
 
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:correct:`)) {
-    const token = interaction.customId.split(":")[2] ?? "";
-    const pending = pendingImages.get(token);
-    const requestId = interaction.values[0] ?? null;
-    if (pending) {
-      const correction = await context.api.getPendingFivemGoalCorrections(interaction.guildId ?? "", interaction.user.id, interaction.channelId).then((items) => items.find((item) => item.id === requestId)).catch(() => null);
-      pending.correctionRequestId = correction?.id ?? null;
-      pending.replacementForRegistrationId = correction?.originalRegistrationId ?? null;
-      pending.metaId = correction?.originalRegistration?.metaId ?? pending.metaId;
-    }
-    await showGoalModal(interaction, context);
+    await showFarmItemSelect(interaction, context, interaction.values[0] ?? null);
     return true;
   }
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:modal:`)) {
     await submitGoalModal(interaction, context);
-    return true;
-  }
-
-  if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:confirm:`)) {
-    await confirmGoalRegistration(interaction, context);
     return true;
   }
 
@@ -779,41 +761,92 @@ function readUnknownError(error: unknown) {
   return error instanceof Error ? error.message : "Falha desconhecida ao publicar o painel de solicitação de sala de meta.";
 }
 
-async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
+async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, correctionRequestId: string | null = null) {
   if (!interaction.guild) return;
-  const [, , imageToken] = interaction.customId.split(":");
-  const pending = pendingImages.get(imageToken ?? "");
+  const sourceMessageId = interaction.customId.split(":")[2] ?? "";
+  const pending = await recoverFarmImageContext(interaction, context, sourceMessageId, correctionRequestId);
 
-  if (!pending || pending.expiresAt < Date.now()) {
-    pendingImages.delete(imageToken ?? "");
-    await interaction.reply({ content: "Essa foto expirou. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
+  if (!pending) {
+    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
     return;
   }
 
   if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
-    await interaction.reply({ content: "Somente o dono do canal de meta pode registrar essa foto, dentro do próprio canal.", ephemeral: true });
+    await interaction.reply({ content: "Este painel pertence a outro usuário.", ephemeral: true });
     return;
   }
 
-  const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
-  const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
-  pending.metaId = activeConfig?.id ?? null;
-  const fieldsToRender = goalFieldsForModal(activeConfig?.fields?.length ? activeConfig.fields : settings.fields);
-  const modal = new ModalBuilder()
-    .setCustomId(`${PREFIX}:modal:${encodeURIComponent(imageToken ?? "")}`)
-    .setTitle((activeConfig?.name ?? "Registrar Farm").slice(0, 45));
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  const items = activeGoalItems(settings);
+  if (!items.length) {
+    await interaction.reply({
+      content: "Nenhum item de meta foi cadastrado neste servidor.\n\nSolicite que um administrador configure os itens antes de realizar o registro.",
+      ephemeral: true
+    });
+    return;
+  }
 
-  fieldsToRender.forEach((field) => {
-    const input = new TextInputBuilder()
-      .setCustomId(field.id)
-      .setLabel(field.label.slice(0, 45))
-      .setPlaceholder(field.placeholder ?? "Digite aqui")
-      .setRequired(field.required)
-      .setStyle(field.style === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short);
-    if (field.minLength !== null) input.setMinLength(field.minLength);
-    if (field.maxLength !== null) input.setMaxLength(field.maxLength);
-    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+  await interaction.reply({
+    allowedMentions: { parse: [] },
+    components: [{
+      type: 17,
+      accent_color: 0xfacc15,
+      components: [
+        { type: 10, content: `## ${systemEmojiText("prancheta", interaction.guild)} Selecione o item\n\nSelecione o item que deseja registrar:` },
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`${PREFIX}:item:${sourceMessageId}:${interaction.user.id}:${correctionRequestId ?? "none"}`)
+            .setPlaceholder("Selecione o item")
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(items.slice(0, 25).map((item) => ({
+              description: item.category?.slice(0, 100) || undefined,
+              emoji: item.emoji && !item.emoji.startsWith("<") ? item.emoji : undefined,
+              label: item.name.slice(0, 100),
+              value: item.id
+            })))
+        )
+      ]
+    }],
+    ephemeral: true,
+    flags: MessageFlags.IsComponentsV2
   });
+}
+
+async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const [, , sourceMessageId, ownerId, correctionRequestId] = interaction.customId.split(":");
+  const selectedItemId = interaction.isStringSelectMenu() ? interaction.values[0] ?? "" : "";
+  const pending = await recoverFarmImageContext(interaction, context, sourceMessageId ?? "", correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : null);
+
+  if (!pending || !selectedItemId) {
+    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
+    return;
+  }
+
+  if (pending.userId !== interaction.user.id || pending.userId !== ownerId || pending.channelId !== interaction.channelId) {
+    await interaction.reply({ content: "Este painel pertence a outro usuário.", ephemeral: true });
+    return;
+  }
+
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  const selectedItem = activeGoalItems(settings).find((item) => item.id === selectedItemId);
+  if (!selectedItem) {
+    await interaction.reply({ content: "O item selecionado não está mais cadastrado ou foi desativado.", ephemeral: true });
+    return;
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`${PREFIX}:modal:${sourceMessageId}:${selectedItem.id}:${interaction.user.id}:${correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : "none"}`)
+    .setTitle("Registrar Farm")
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("quantity")
+        .setLabel("Quantidade")
+        .setPlaceholder("Digite a quantidade entregue")
+        .setRequired(true)
+        .setStyle(TextInputStyle.Short)
+    ));
 
   await interaction.showModal(modal);
 }
@@ -821,119 +854,96 @@ async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuIn
 async function submitGoalModal(interaction: ModalSubmitInteraction, context: BotContext) {
   if (!interaction.guild) return;
   await interaction.deferReply({ ephemeral: true });
-  const token = interaction.customId.split(":")[2] ?? "";
-  const pending = pendingImages.get(token);
-
-  if (!pending || pending.expiresAt < Date.now()) {
-    pendingImages.delete(token);
-    await interaction.editReply("Essa foto expirou. Envie a imagem novamente no seu canal de meta.");
+  const [, , sourceMessageId, itemId, ownerId, correctionRequestId] = interaction.customId.split(":");
+  const lockKey = `${interaction.guild.id}:${sourceMessageId}:${interaction.user.id}:${itemId}`;
+  if (pendingFarmItems.has(lockKey)) {
+    await interaction.editReply("Esse item já está sendo registrado. Aguarde alguns instantes.");
     return;
   }
+  pendingFarmItems.add(lockKey);
 
-  if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
-    await interaction.editReply("Essa foto só pode ser registrada pelo dono, no canal individual de meta correto.");
-    return;
-  }
+  try {
+    const pending = await recoverFarmImageContext(interaction, context, sourceMessageId ?? "", correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : null);
 
-  const imageUrl = pending.imageUrl;
-  const settings = await context.api.getFivemGoalSettings(interaction.guild.id);
-  const activeConfig = settings.configs?.find((config) => config.id === pending.metaId) ?? settings.configs?.find((config) => config.status === "active") ?? settings.configs?.[0] ?? null;
-  const fieldsToRead = goalFieldsForModal(activeConfig?.fields?.length ? activeConfig.fields : settings.fields);
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-  const fields = fieldsToRead.map((field) => ({
-    id: field.id,
-    label: field.label,
-    value: interaction.fields.getTextInputValue(field.id) || "-"
-  }));
-  const valueField = fields.find((field) => /giro|euro|dinheiro|valor|money/i.test(`${field.id} ${field.label}`))
-    ?? fields.find((field) => /quantidade|qtd/i.test(`${field.id} ${field.label}`));
-  const quantity = valueField ? parseGoalNumericValue(valueField.value) : null;
-  if (!Number.isFinite(quantity) || !quantity || quantity <= 0) {
-    await interaction.editReply("Informe uma quantidade válida maior que zero.");
-    return;
-  }
-
-  const confirmationToken = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  pendingConfirmations.set(confirmationToken, {
-    attachmentId: pending.attachmentId,
-    channelId: pending.channelId,
-    correctionRequestId: pending.correctionRequestId,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-    fields,
-    imageUrl,
-    metaId: activeConfig?.id ?? null,
-    quantity,
-    replacementForRegistrationId: pending.replacementForRegistrationId,
-    sourceMessageId: pending.sourceMessageId,
-    userId: interaction.user.id
-  });
-  pendingImages.delete(token);
-  cleanupPendingImages();
-
-  await interaction.editReply(createGoalConfirmationPayload(confirmationToken, interaction.user.id, imageUrl, fields, quantity, interaction.guild));
-}
-
-async function confirmGoalRegistration(interaction: ButtonInteraction, context: BotContext) {
-  if (!interaction.guild) return;
-  await interaction.deferUpdate();
-  const token = interaction.customId.split(":")[2] ?? "";
-  const pending = pendingConfirmations.get(token);
-
-  if (!pending || pending.expiresAt < Date.now()) {
-    pendingConfirmations.delete(token);
-    await interaction.followUp({ content: "Essa confirmação expirou. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
-    return;
-  }
-
-  if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
-    await interaction.followUp({ content: "Somente o dono do canal de meta pode confirmar esse registro.", ephemeral: true });
-    return;
-  }
-
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-  const saved = await context.api.createFivemGoalEntry({
-    attachmentId: pending.attachmentId,
-    channelId: interaction.channelId ?? "",
-    fields: pending.fields,
-    guildId: interaction.guild.id,
-    imageUrl: pending.imageUrl,
-    metaId: pending.metaId,
-    quantity: pending.quantity,
-    correctionRequestId: pending.correctionRequestId,
-    replacementForRegistrationId: pending.replacementForRegistrationId,
-    roleIdsSnapshot: member ? [...member.roles.cache.keys()] : [],
-    sourceMessageId: pending.sourceMessageId,
-    userId: interaction.user.id
-  }).catch((error) => ({ error }));
-  if ("error" in saved) {
-    await interaction.followUp({ content: "Não foi possível registrar essa meta. Confira se essa imagem já foi usada.", ephemeral: true });
-    return;
-  }
-
-  pendingConfirmations.delete(token);
-  await context.api.postLog({
-    guildId: interaction.guild.id,
-    message: "Meta confirmada a partir de foto enviada no canal individual.",
-    metadata: {
-      channelId: interaction.channelId,
-      imageUrl: pending.imageUrl,
-      quantity: pending.quantity,
-      sourceMessageId: pending.sourceMessageId
-    },
-    type: "fivem.goals.entry_confirmed",
-    userId: interaction.user.id
-  }).catch(() => null);
-
-  await interaction.editReply(createConfirmedInteractionPayload(interaction.guild));
-  const channel = interaction.channel;
-  if (channel?.isSendable()) {
-    await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, pending.fields, pending.quantity, interaction.guild)).catch(() => null);
-    if (pending.correctionRequestId && pending.replacementForRegistrationId) {
-      await channel.send(createCorrectionCompletedPayload(pending, interaction.guild)).catch(() => null);
+    if (!pending || !itemId) {
+      await interaction.editReply("Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.");
+      return;
     }
-  }
-  if (pending.correctionRequestId && pending.replacementForRegistrationId) {
-    await sendGoalLog(interaction.guild, context, `✅ Correção de meta concluída\n\nUsuário: <@${interaction.user.id}>\nRegistro original: ${pending.replacementForRegistrationId}\nNovo registro: ${"entry" in saved ? saved.entry?.id ?? "-" : "-"}\nItem: ${fieldItemLabel(pending.fields)}\nNova quantidade: ${formatGoalValue(pending.quantity)}`, { id: pending.correctionRequestId });
+
+    if (pending.userId !== interaction.user.id || pending.userId !== ownerId || pending.channelId !== interaction.channelId) {
+      await interaction.editReply("Este painel pertence a outro usuário.");
+      return;
+    }
+
+    const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+    const selectedItem = activeGoalItems(settings).find((item) => item.id === itemId);
+    if (!selectedItem) {
+      await interaction.editReply("O item selecionado não está mais cadastrado ou foi desativado.");
+      return;
+    }
+
+    const quantity = parseGoalNumericValue(interaction.fields.getTextInputValue("quantity"));
+    if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0) {
+      await interaction.editReply("Informe uma quantidade válida maior que zero.");
+      return;
+    }
+    const quantityValue = quantity as number;
+
+    const activeConfig = settings?.configs?.find((config) => config.status === "active") ?? settings?.configs?.[0] ?? null;
+    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const fields = [
+      { id: "item", label: "Item", value: selectedItem.name },
+      { id: "quantity", label: "Quantidade", value: String(quantity) }
+    ];
+    const idempotencyKey = `${interaction.guild.id}:${pending.sourceMessageId}:${interaction.user.id}:${selectedItem.id}`;
+    const saved = await context.api.createFivemGoalEntry({
+      attachmentId: pending.attachmentId,
+      channelId: interaction.channelId ?? "",
+      fields,
+      guildId: interaction.guild.id,
+      idempotencyKey,
+      imageUrl: pending.imageUrl,
+      itemId: selectedItem.id,
+      metaId: pending.metaId ?? activeConfig?.id ?? null,
+      quantity: quantityValue,
+      correctionRequestId: pending.correctionRequestId,
+      replacementForRegistrationId: pending.replacementForRegistrationId,
+      roleIdsSnapshot: member ? [...member.roles.cache.keys()] : [],
+      sourceMessageId: pending.sourceMessageId,
+      userId: interaction.user.id
+    }).catch((error) => ({ error }));
+    if ("error" in saved) {
+      await interaction.editReply("Não foi possível registrar essa meta. Tente novamente em alguns instantes.");
+      return;
+    }
+
+    await context.api.postLog({
+      guildId: interaction.guild.id,
+      message: "Meta confirmada a partir de foto enviada no canal individual.",
+      metadata: {
+        channelId: interaction.channelId,
+        imageUrl: pending.imageUrl,
+        itemId: selectedItem.id,
+        quantity: quantityValue,
+        sourceMessageId: pending.sourceMessageId
+      },
+      type: "fivem.goals.entry_confirmed",
+      userId: interaction.user.id
+    }).catch(() => null);
+
+    await interaction.editReply("Farm registrado.");
+    const channel = interaction.channel;
+    if (channel?.isSendable()) {
+      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, interaction.guild)).catch(() => null);
+      if (pending.correctionRequestId && pending.replacementForRegistrationId) {
+        await channel.send(createCorrectionCompletedPayload({ fields, replacementForRegistrationId: pending.replacementForRegistrationId }, interaction.guild)).catch(() => null);
+      }
+    }
+    if (pending.correctionRequestId && pending.replacementForRegistrationId) {
+      await sendGoalLog(interaction.guild, context, `✅ Correção de meta concluída\n\nUsuário: <@${interaction.user.id}>\nRegistro original: ${pending.replacementForRegistrationId}\nNovo registro: ${"entry" in saved ? saved.entry?.id ?? "-" : "-"}\nItem: ${selectedItem.name}\nNova quantidade: ${formatGoalValue(quantityValue)}`, { id: pending.correctionRequestId });
+    }
+  } finally {
+    pendingFarmItems.delete(lockKey);
   }
 }
 
@@ -1186,22 +1196,50 @@ function readApiError(error: unknown, fallback: string) {
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
-function createImageReviewPayload(userId: string, channelId: string, sourceMessageId: string, attachmentId: string, imageUrl: string, settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = []) {
-  const token = createToken();
-  const configs = (settings.configs ?? []).filter((item) => item.status === "active");
-  const onlyCorrection = corrections.length === 1 ? corrections[0] : null;
-  pendingImages.set(token, {
-    attachmentId,
-    channelId,
-    correctionRequestId: onlyCorrection?.id ?? null,
-    expiresAt: Date.now() + 60 * 60 * 1000,
-    imageUrl,
-    metaId: onlyCorrection?.originalRegistration?.metaId ?? (configs.length === 1 ? configs[0]?.id ?? null : null),
-    replacementForRegistrationId: onlyCorrection?.originalRegistrationId ?? null,
+type FarmImageContext = {
+  attachmentId: string;
+  channelId: string;
+  correctionRequestId: string | null;
+  imageUrl: string;
+  metaId: string | null;
+  replacementForRegistrationId: string | null;
+  sourceMessageId: string;
+  userId: string;
+};
+
+async function recoverFarmImageContext(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, context: BotContext, sourceMessageId: string, correctionRequestId: string | null = null): Promise<FarmImageContext | null> {
+  if (!interaction.guild || !interaction.channel || !sourceMessageId || !("messages" in interaction.channel)) return null;
+  const goalChannel = await context.api.getFivemGoalChannelByChannel(interaction.channelId ?? "").catch(() => null);
+  if (!goalChannel) return null;
+  const sourceMessage = await interaction.channel.messages.fetch(sourceMessageId).catch(() => null);
+  if (!sourceMessage || sourceMessage.author.id !== goalChannel.userId) return null;
+  const image = sourceMessage.attachments.find(isAllowedGoalImage);
+  if (!image) return null;
+
+  const correction = correctionRequestId
+    ? await context.api.getPendingFivemGoalCorrections(interaction.guild.id, goalChannel.userId, interaction.channelId ?? "").then((items) => items.find((item) => item.id === correctionRequestId) ?? null).catch(() => null)
+    : null;
+  const autoCorrection = correction ?? await context.api.getPendingFivemGoalCorrections(interaction.guild.id, goalChannel.userId, interaction.channelId ?? "").then((items) => items.length === 1 ? items[0] ?? null : null).catch(() => null);
+
+  return {
+    attachmentId: image.id,
+    channelId: interaction.channelId ?? "",
+    correctionRequestId: autoCorrection?.id ?? null,
+    imageUrl: image.url,
+    metaId: autoCorrection?.originalRegistration?.metaId ?? null,
+    replacementForRegistrationId: autoCorrection?.originalRegistrationId ?? null,
     sourceMessageId,
-    userId
-  });
-  cleanupPendingImages();
+    userId: goalChannel.userId
+  };
+}
+
+function activeGoalItems(settings: FivemGoalSettings | null | undefined): FivemGoalItem[] {
+  return (settings?.items ?? [])
+    .filter((item) => item.enabled !== false && item.id && item.name.trim())
+    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name, "pt-BR"));
+}
+
+export function createImageReviewPayload(userId: string, _channelId: string, sourceMessageId: string, _attachmentId: string, imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = []) {
   const correctionIntro = corrections.length ? "\n\n⚠️ Existe correção pendente. Esta imagem será usada para refazer uma meta solicitada." : "";
 
   return {
@@ -1215,58 +1253,13 @@ function createImageReviewPayload(userId: string, channelId: string, sourceMessa
           { type: 10, content: replaceSystemEmojis(`## ${systemEmojiText("prancheta_acertos")} Registro de Farm\n\n${systemEmojiText("homem")} Usuário: <@${userId}>\n${systemEmojiText("interrogacao")} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, null) },
           { type: 14, divider: true, spacing: 1 },
           ...(corrections.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-            new StringSelectMenuBuilder().setCustomId(`${PREFIX}:correct:${token}`).setPlaceholder("Qual meta você está refazendo?").addOptions(corrections.slice(0, 25).map((item) => ({ description: item.reason.slice(0, 100), label: correctionOptionLabel(item).slice(0, 100), value: item.id })))
-          )] : configs.length > 1 && !onlyCorrection ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-            new StringSelectMenuBuilder().setCustomId(`${PREFIX}:choose:${token}`).setPlaceholder("Selecione o tipo de meta").addOptions(configs.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, label: item.name.slice(0, 100), value: item.id })))
+            new StringSelectMenuBuilder().setCustomId(`${PREFIX}:correct:${sourceMessageId}`).setPlaceholder("Qual meta você está refazendo?").addOptions(corrections.slice(0, 25).map((item) => ({ description: item.reason.slice(0, 100), label: correctionOptionLabel(item).slice(0, 100), value: item.id })))
           )] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(`${PREFIX}:register:${token}`).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Registrar Farm").setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId(`${PREFIX}:register:${sourceMessageId}`).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Registrar Farm").setStyle(ButtonStyle.Primary)
           )])
         ]
       }
     ],
-    flags: MessageFlags.IsComponentsV2 as const
-  };
-}
-
-function createGoalConfirmationPayload(token: string, userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild) {
-  const itemLabel = fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() || "Farm";
-  return {
-    allowedMentions: { parse: [] as never[], users: [userId] },
-    components: [{
-      type: 17,
-      accent_color: 0xfacc15,
-      components: [
-        { type: 12, items: [{ media: { url: imageUrl }, description: "comprovante de meta" }] },
-        {
-          type: 10,
-          content: [
-            `## ${systemEmojiText("alerta", guild)} Confirmar registro`,
-            "",
-            `${systemEmojiText("homem", guild)} **Usuário:** <@${userId}> | ${userId}`,
-            `${systemEmojiText("caixa", guild)} **Item:** ${itemLabel}`,
-            `${systemEmojiText("prancheta", guild)} **Quantidade:** ${formatGoalValue(quantity)}`,
-            `${systemEmojiText("calendario", guild)} **Data:** ${formatBrazilDateTime(new Date())}`
-          ].join("\n")
-        },
-        { type: 14, divider: true, spacing: 1 },
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(`${PREFIX}:confirm:${token}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar").setStyle(ButtonStyle.Success)
-        )
-      ]
-    }],
-    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
-  };
-}
-
-function createConfirmedInteractionPayload(guild: Guild) {
-  return {
-    components: [{
-      type: 17,
-      accent_color: 0x22c55e,
-      components: [
-        { type: 10, content: `## ${systemEmojiText("visto", guild)} Registro confirmado\nA meta foi salva e o comprovante foi publicado no canal.` }
-      ]
-    }],
     flags: MessageFlags.IsComponentsV2 as const
   };
 }
@@ -1329,16 +1322,6 @@ function rankEmoji(rank: number, guild: Guild | null) {
 function isAllowedGoalImage(attachment: Attachment) {
   const contentType = attachment.contentType?.split(";")[0]?.toLowerCase() ?? "";
   return ALLOWED_IMAGE_TYPES.has(contentType) || ALLOWED_IMAGE_EXTENSIONS.test(attachment.url);
-}
-
-function cleanupPendingImages() {
-  const now = Date.now();
-  for (const [token, item] of pendingImages) {
-    if (item.expiresAt < now) pendingImages.delete(token);
-  }
-  for (const [token, item] of pendingConfirmations) {
-    if (item.expiresAt < now) pendingConfirmations.delete(token);
-  }
 }
 
 function parseGoalNumericValue(value: string) {

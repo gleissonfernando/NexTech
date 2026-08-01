@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload, createGoalRequestPanelPayload, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRoomPanelPayload, createGoalRequestPanelPayload, createImageReviewPayload, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -27,4 +27,21 @@ test("painel de solicitar sala de meta usa custom ids com escopo do servidor e b
   assert.match(serialized, /Solicitar Sala de Farm/);
   assert.match(serialized, /fivem_goal:request_channel:1533162050417721486:bot-dev-1/);
   assert.doesNotMatch(serialized, /fivem_goal:help:1533162050417721486:bot-dev-1/);
+});
+
+test("painel de registro de farm preserva a mensagem original no custom id", () => {
+  const payload = createImageReviewPayload(
+    "111111111111111111",
+    "222222222222222222",
+    "333333333333333333",
+    "attachment-1",
+    "https://cdn.discordapp.com/image.png",
+    { items: [] } as any
+  );
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /Registro de Farm/);
+  assert.match(serialized, /Registrar Farm/);
+  assert.match(serialized, /fivem_goal:register:333333333333333333/);
+  assert.doesNotMatch(serialized, /fivem_goal:confirm:/);
 });

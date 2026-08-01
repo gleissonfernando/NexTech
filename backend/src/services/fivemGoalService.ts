@@ -629,8 +629,9 @@ export async function createFivemGoalEntry(input: {
   const normalizedBotId = normalizeBotId(input.botId);
   const sourceMessageId = normalizeSnowflake(input.sourceMessageId);
   const attachmentId = normalizeText(input.attachmentId, 120);
+  const itemId = normalizeText(input.itemId, 80);
   const idempotencyKey = normalizeText(input.idempotencyKey, 240)
-    ?? (sourceMessageId && attachmentId ? `${input.guildId}:${input.channelId}:${sourceMessageId}:${attachmentId}` : null);
+    ?? (sourceMessageId && attachmentId ? `${input.guildId}:${input.channelId}:${sourceMessageId}:${attachmentId}:${itemId ?? "default"}` : null);
   const { fivemGoalEntries } = await getMongoCollections();
   const existing = idempotencyKey
     ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), idempotencyKey })
@@ -649,7 +650,7 @@ export async function createFivemGoalEntry(input: {
     guildId: input.guildId,
     imageUrl: input.imageUrl.slice(0, 2048),
     idempotencyKey,
-    itemId: input.itemId ?? null,
+    itemId,
     metaId: input.metaId ?? null,
     quantity: typeof input.quantity === "number" && Number.isFinite(input.quantity) ? input.quantity : null,
     status: "confirmed",

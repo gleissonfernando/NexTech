@@ -6077,9 +6077,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels").createIndex({ botId: 1, channelId: 1 }, { unique: true }),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalEntry>("fivem_goal_entries").dropIndex("fivem_goal_entry_source_attachment_unique").catch(() => undefined),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex(
-      { botId: 1, guildId: 1, sourceMessageId: 1, attachmentId: 1 },
-      { name: "fivem_goal_entry_source_attachment_unique", partialFilterExpression: { sourceMessageId: { $type: "string" }, attachmentId: { $type: "string" } }, unique: true }
+      { botId: 1, guildId: 1, sourceMessageId: 1, attachmentId: 1, itemId: 1 },
+      { name: "fivem_goal_entry_source_attachment_item_unique", partialFilterExpression: { sourceMessageId: { $type: "string" }, attachmentId: { $type: "string" }, itemId: { $type: "string" } }, unique: true }
     ),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex(
       { botId: 1, guildId: 1, idempotencyKey: 1 },
