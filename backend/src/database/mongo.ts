@@ -2359,6 +2359,8 @@ export type MongoPanelButtonConfig = {
 
 export type MongoPanelVisualConfig = {
   panelColor: string;
+  imageExtension?: string | null;
+  imageMimeType?: string | null;
   imageUrl: string | null;
   imagePosition: MongoPanelImagePosition;
   buttonsPosition: MongoPanelButtonsPosition;

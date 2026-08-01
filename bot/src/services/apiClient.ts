@@ -1952,6 +1952,8 @@ export type FivemFacPanelButton = {
 
 export type FivemFacPanelVisual = {
   panelColor: string;
+  imageExtension?: string | null;
+  imageMimeType?: string | null;
   imageUrl: string | null;
   imagePosition: "right_small" | "top" | "bottom" | "none";
   buttonsPosition: "inside_panel" | "outside_panel" | "below" | "rows" | "none";

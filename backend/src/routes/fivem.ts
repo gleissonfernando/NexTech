@@ -98,6 +98,8 @@ const facSettingsSchema = z.object({
   }).partial().optional(),
   panelVisual: z.object({
     panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    imageExtension: z.string().max(12).nullable().optional(),
+    imageMimeType: z.string().max(80).nullable().optional(),
     imageUrl: z.string().max(2048).nullable().optional(),
     imagePosition: z.enum(["right_small", "top", "bottom", "none"]).optional(),
     buttonsPosition: z.enum(["inside_panel", "outside_panel", "below", "rows", "none"]).optional(),

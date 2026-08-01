@@ -160,6 +160,8 @@ const DEFAULT_MESSAGES: MongoFivemFacMessages = {
 };
 const DEFAULT_PANEL_VISUAL: MongoPanelVisualConfig = {
   panelColor: "#2b2d31",
+  imageExtension: null,
+  imageMimeType: null,
   imageUrl: null,
   imagePosition: "none",
   buttonsPosition: "inside_panel",
@@ -866,6 +868,8 @@ export async function saveFivemFacPanelImageFile(
 
   return saveFivemFacSettings(guildId, botId, {
     panelVisual: {
+      imageExtension: extension,
+      imageMimeType: mimeType,
       imageUrl,
       imagePosition: "top",
       enabledSections: {
@@ -1200,9 +1204,14 @@ function normalizeMessages(messages: Partial<MongoFivemFacMessages>): MongoFivem
 
 function normalizePanelVisual(input: Partial<MongoPanelVisualConfig>): MongoPanelVisualConfig {
   const defaults = DEFAULT_PANEL_VISUAL;
+  const imageUrl = normalizeImageUrl(input.imageUrl);
+  const inferredExtension = inferImageExtensionFromUrl(imageUrl);
+  const imageExtension = normalizePanelImageExtension(input.imageExtension) ?? inferredExtension;
   return {
     panelColor: normalizePanelColor(input.panelColor, defaults.panelColor),
-    imageUrl: normalizeImageUrl(input.imageUrl),
+    imageExtension,
+    imageMimeType: normalizePanelImageMimeType(input.imageMimeType) ?? mimeTypeFromExtension(imageExtension),
+    imageUrl,
     imagePosition: normalizeEnum(input.imagePosition, ["right_small", "top", "bottom", "none"], defaults.imagePosition),
     buttonsPosition: normalizeEnum(input.buttonsPosition, ["inside_panel", "outside_panel", "below", "rows", "none"], defaults.buttonsPosition),
     buttons: normalizePanelButtons(input.buttons),
@@ -1264,13 +1273,37 @@ function normalizePanelColor(value: unknown, fallback: string) {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim() : fallback;
 }
 
+function normalizePanelImageExtension(value: unknown) {
+  return typeof value === "string" && /^[a-z0-9]{1,12}$/i.test(value.trim()) ? value.trim().toLowerCase() : null;
+}
+
+function normalizePanelImageMimeType(value: unknown) {
+  return typeof value === "string" && /^(image|video)\/[a-z0-9.+-]{1,60}$/i.test(value.trim()) ? value.trim().toLowerCase() : null;
+}
+
+function inferImageExtensionFromUrl(value: string | null) {
+  if (!value) return null;
+  const match = value.split(/[?#]/, 1)[0]?.match(/\.([a-z0-9]{1,12})$/i);
+  const extension = match?.[1]?.toLowerCase() ?? null;
+  return extension && FAC_PHOTO_MIME_EXTENSIONS[`image/${extension === "jpg" ? "jpeg" : extension}`] ? extension : null;
+}
+
+function mimeTypeFromExtension(extension: string | null) {
+  if (!extension) return null;
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "gif") return "image/gif";
+  return null;
+}
+
 function normalizeImageUrl(value: unknown) {
   if (typeof value !== "string") {
     return null;
   }
 
   const normalized = value.trim();
-  return normalized && (/^https?:\/\//i.test(normalized) || normalized.startsWith("/uploads/")) ? normalized : null;
+  return normalized && (/^https?:\/\//i.test(normalized) || normalized.startsWith("/api/persistent-images/") || normalized.startsWith("/uploads/")) ? normalized : null;
 }
 
 function normalizeUrl(value: unknown) {

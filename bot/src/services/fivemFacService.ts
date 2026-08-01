@@ -1143,7 +1143,7 @@ async function notifyAbsenceUser(guild: Guild, absence: FivemFacAbsence, message
   }
 }
 
-function buildPanelPayload(settings: FivemFacSettings, guild: Guild | null = null) {
+export function buildPanelPayload(settings: FivemFacSettings, guild: Guild | null = null) {
   return buildPanelPayloadV2(settings, guild);
 }
 
@@ -1151,7 +1151,7 @@ function buildPanelPayloadV2(settings: FivemFacSettings, guild: Guild | null = n
   const title = settings.messages.panelTitle || `${systemEmojiText("calendario", guild)} Sistema de Ausências FAC`;
   const description = settings.messages.panelDescription || "Solicite sua ausência de forma organizada. A equipe recebe o pedido em um canal privado, avalia o motivo e o sistema aplica ou remove o cargo automaticamente quando chegar a data correta.";
   const imageUrl = settings.panelVisual.enabledSections.image && settings.panelVisual.imagePosition !== "none"
-    ? resolvePanelImageUrl(settings.panelVisual.imageUrl)
+    ? resolvePanelImageUrl(settings.panelVisual.imageUrl, settings.panelVisual)
     : null;
   const textComponent = {
     type: 10,
