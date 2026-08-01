@@ -345,27 +345,23 @@ function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
 }
 
 function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLog[], operationCode: string, guild: Guild) {
+  void operationCode;
   const first = logs[0];
   const adding = first?.action === "add";
   const imageUrl = settings.panelImageUrl || guild.iconURL({ size: 128 });
   const client = guild.client;
   const total = logs.reduce((sum, log) => sum + log.quantity, 0);
   const actionLabel = adding ? "ADIÇÃO" : "REMOÇÃO";
-  const itemLines = logs.map((log) => `${log.itemName}: ${log.quantity}`).join("\n");
-  const balanceLines = logs.map((log) => `${log.itemName}: ${log.previousQuantity ?? 0} → ${log.nextQuantity ?? 0}`).join("\n");
   const itemLabel = logs.length === 1 ? "Item" : "Itens";
-  const itemValue = logs.length === 1 ? `${logs[0]?.itemName ?? "-"}: ${logs[0]?.quantity ?? 0}` : `\n${itemLines}`;
+  const itemValue = logs.map((log) => logs.length === 1 ? `${log.quantity} ${log.itemName}` : `${log.itemName}: ${log.quantity}`).join(logs.length === 1 ? "" : "\n");
   const content = [
-    `**${systemEmojiText("caixa", guild, client)} ${settings.systemName} — ${actionLabel}**`,
+    `## ${systemEmojiText("caixa", guild, client)} ${settings.systemName} — ${actionLabel}`,
     `${adding ? systemEmojiText("mais", guild, client) : systemEmojiText("porta", guild, client)} **Ação:** ${actionLabel}`,
-    `${systemEmojiText("prancheta", guild, client)} **${itemLabel}:** ${itemValue}`,
+    `${systemEmojiText("prancheta", guild, client)} **${itemLabel}:** ${logs.length === 1 ? itemValue : `\n${itemValue}`}`,
     `${systemEmojiText("caixa", guild, client)} **Quantidade:** ${total}`,
     `${systemEmojiText("folha", guild, client)} **Motivo:** ${first?.reason || "Não informado"}`,
-    `${systemEmojiText("homem", guild, client)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`,
-    `${systemEmojiText("relogio", guild, client)} **Horário:** ${first ? formatDateTime(first.createdAt) : "-"}`,
-    `${systemEmojiText("prancheta", guild, client)} **Identificação:** ${operationCode}`
+    `${systemEmojiText("homem", guild, client)} **Registrado por:** ${first?.actorName ?? "-"} | ${first?.actorId ?? "-"}`
   ].join("\n");
-  const auditContent = balanceLines ? `${content}\n\n**Saldos:**\n${balanceLines}` : content;
 
   return {
     allowedMentions: { parse: [] as never[] },
@@ -373,7 +369,7 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
       type: 17,
       accent_color: adding ? 0x22c55e : 0xef4444,
       components: [
-        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(auditContent, guild, client) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(auditContent, guild, client) },
+        imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(content, guild, client) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(content, guild, client) },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: "-# NexTech - Todos os direitos reservados" }
       ]
