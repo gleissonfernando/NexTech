@@ -38,6 +38,7 @@ import { qruCommand, rankCommand, rankingCommandQru } from "../services/policeQr
 import { policePromotionHistoryAliasCommand, policePromotionHistoryCommand, policePromotionsCommand } from "../services/policePromotionService";
 import { recrutamentoCommand, ztkResetCommand } from "../services/ztkWebhookService";
 import { nexTechInviteCommand } from "../services/nexTechInviteService";
+import { safeBotDiagnosticCommand } from "./safeBotDiagnostic";
 import type { BotCommand } from "../types";
 
 export function createCommandCollection() {
@@ -99,6 +100,7 @@ export function createCommandCollection() {
     recrutamentoCommand,
     ztkResetCommand,
     nexTechInviteCommand,
+    safeBotDiagnosticCommand,
     rankCommand,
     rankingCommandQru
   ].forEach((command) => {

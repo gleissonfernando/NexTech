@@ -131,6 +131,7 @@ const LIVE_OPTIONS_STALE_TTL_MS = 15 * 60_000;
 const MAX_DISCORD_RATE_LIMIT_RETRIES = 1;
 const MAX_DISCORD_RETRY_DELAY_MS = 5_000;
 const TEXT_CHANNEL_TYPES = new Set([0, 5]);
+const MESSAGE_CONTAINER_CHANNEL_TYPES = new Set([0, 5, 15]);
 const VOICE_CHANNEL_TYPES = new Set([2, 13]);
 const ADMINISTRATOR = 0x8n;
 const MANAGE_ROLES = 0x10000000n;
@@ -585,6 +586,10 @@ export async function getGuildMemberOptions(
 
 export async function isGuildTextChannel(guildId: string, channelId: string, botToken?: string | null) {
   return isGuildChannelType(guildId, channelId, TEXT_CHANNEL_TYPES, botToken);
+}
+
+export async function isGuildMessageContainerChannel(guildId: string, channelId: string, botToken?: string | null) {
+  return isGuildChannelType(guildId, channelId, MESSAGE_CONTAINER_CHANNEL_TYPES, botToken);
 }
 
 export async function isGuildTextOrCategoryChannel(guildId: string, channelId: string, botToken?: string | null) {

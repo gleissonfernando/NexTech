@@ -48,6 +48,14 @@ export async function getModerationSettings(guildId: string, context: BotContext
   return settings;
 }
 
+export function clearModerationSettingsCache(guildId?: string | null) {
+  if (!guildId) {
+    cache.clear();
+    return;
+  }
+  cache.delete(runtimeScopeKey(guildId));
+}
+
 export function isWhitelistedChannel(message: Message, channelIds: string[]) {
   return containsChannel(message, channelIds);
 }

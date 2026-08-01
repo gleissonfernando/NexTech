@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { publishTicketPanel } from "../services/ticketPanelService";
+import { openTicketFromCommand, publishTicketPanel } from "../services/ticketPanelService";
 import type { BotCommand } from "../types";
 
 export const ticketCommand: BotCommand = {
@@ -24,15 +24,6 @@ export const ticketCommand: BotCommand = {
     }
 
     const subject = interaction.options.getString("assunto") ?? "Atendimento";
-    const ticket = await context.api.createTicket({
-      guildId: interaction.guild.id,
-      openerId: interaction.user.id,
-      subject
-    });
-
-    await interaction.reply({
-      content: `Ticket criado: ${ticket.ticket.id}`,
-      ephemeral: true
-    });
+    await openTicketFromCommand(interaction, context, subject);
   }
 };

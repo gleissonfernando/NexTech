@@ -922,7 +922,7 @@ async function recoverReportPanelInChannel(channel: TextChannel, context: BotCon
   }
 
   const ticket = await context.api.getTicket(topic.ticketId).catch(() => null)
-    ?? await context.api.getTicketByChannel(channel.id).catch(() => null);
+    ?? await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
   if (!ticket) {
     await logIabEvent(context, channel.guild, settings, topic, "Painel pendente", "Não encontrei o ticket salvo para restaurar o painel interno deste canal.", context.client.user?.id ?? null);
     return;
@@ -1163,7 +1163,7 @@ async function resolveReportTopic(channel: TextChannel, context: BotContext, set
   const fromTopic = topicFromString(channel.topic);
   if (fromTopic) return fromTopic;
 
-  const ticket = await context.api.getTicketByChannel(channel.id).catch(() => null);
+  const ticket = await context.api.getTicketByChannel(channel.id, channel.guild.id).catch(() => null);
   if (!ticket || ticket.status === "CLOSED") return null;
 
   const categoryId = ticket.categoryId ?? "iab";

@@ -172,11 +172,15 @@ export type TicketRecord = {
   botId: string | null;
   guildId: string;
   channelId: string | null;
+  panelId?: string | null;
   openerId: string;
   ownerId?: string;
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  migrationStatus?: string | null;
+  moduleType: string;
+  ticketType: string | null;
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
   status: string;
@@ -1485,6 +1489,7 @@ export type SelfBotProtectionSettings = {
   mediaChannelIds: string[];
   linkChannelIds: string[];
   allowedDomains: string[];
+  allowSubdomains: boolean;
   allowedInviteGuildIds: string[];
   blockedFileExtensions: string[];
   blockImages: boolean;
@@ -2763,20 +2768,25 @@ export class ApiClient {
     categoryName?: string | null;
     guildId: string;
     channelId?: string | null;
+    moduleType?: "default" | "police";
     openerId: string;
+    panelId?: string | null;
     responsibleRoleId?: string | null;
     status?: string;
     subject: string;
+    ticketId?: string;
+    ticketType?: string | null;
   }) {
     const { data } = await this.http.post("/tickets", input);
     return data as { created?: boolean; ticket: TicketRecord };
   }
 
-  async getOpenTicket(input: { categoryId?: string | null; guildId: string; openerId: string }) {
+  async getOpenTicket(input: { categoryId?: string | null; guildId: string; moduleType?: "default" | "police"; openerId: string }) {
     const { data } = await this.http.get<{ ticket: TicketRecord | null }>("/tickets/bot/open", {
       params: {
         categoryId: input.categoryId ?? undefined,
         guildId: input.guildId,
+        moduleType: input.moduleType ?? "default",
         openerId: input.openerId
       }
     });
@@ -2790,8 +2800,10 @@ export class ApiClient {
     return data.rule;
   }
 
-  async getTicketByChannel(channelId: string) {
-    const { data } = await this.http.get<{ ticket: TicketRecord | null }>(`/tickets/bot/channel/${channelId}`);
+  async getTicketByChannel(channelId: string, guildId?: string) {
+    const { data } = await this.http.get<{ ticket: TicketRecord | null }>(`/tickets/bot/channel/${channelId}`, {
+      params: { guildId }
+    });
     return data.ticket;
   }
 

@@ -4,8 +4,11 @@ import { requireAuth, requireBot } from "../middleware/auth";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoomWithAck } from "../realtime/events";
 import {
   areGuildAssignableRoles,
+  areGuildMembers,
   areGuildRoles,
   ensureSafeBotDiscordResources,
+  isGuildCategoryChannel,
+  isGuildMessageContainerChannel,
   isGuildTextChannel
 } from "../services/discordOptionsService";
 import {
@@ -87,6 +90,7 @@ const settingsSchema = z.object({
   mediaChannelIds: z.array(snowflakeSchema).max(250).optional(),
   linkChannelIds: z.array(snowflakeSchema).max(250).optional(),
   allowedDomains: z.array(z.string().min(3).max(120)).max(250).optional(),
+  allowSubdomains: z.boolean().optional(),
   allowedInviteGuildIds: z.array(snowflakeSchema).max(250).optional(),
   blockedFileExtensions: z.array(z.string().min(1).max(12)).max(100).optional(),
   blockImages: z.boolean().optional(),
@@ -614,17 +618,40 @@ async function validateResources(
   const channelIds = [
     input.logChannelId,
     input.punishmentLogChannelId,
-    ...(input.ignoredChannelIds ?? []),
-    ...(input.protectedChannelIds ?? []),
-    ...(input.mediaChannelIds ?? []),
-    ...(input.linkChannelIds ?? [])
+    ...Object.values(input.moduleLogChannelIds ?? {})
   ].filter((channelId): channelId is string => Boolean(channelId));
   const channelChecks = await Promise.all(
     [...new Set(channelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken))
   );
 
   if (!channelChecks.every(Boolean)) {
-    throw createRouteError("Um dos canais selecionados não pertence a este servidor.", 400);
+    throw createRouteError("Um dos canais de log selecionados não pertence a este servidor ou não aceita mensagens.", 400);
+  }
+
+  const protectedChannelIds = [
+    ...(input.ignoredChannelIds ?? []),
+    ...(input.protectedChannelIds ?? []),
+    ...(input.mediaChannelIds ?? []),
+    ...(input.linkChannelIds ?? [])
+  ];
+  const protectedChannelChecks = await Promise.all(
+    [...new Set(protectedChannelIds)].map((channelId) => isGuildMessageContainerChannel(guildId, channelId, botToken))
+  );
+  if (!protectedChannelChecks.every(Boolean)) {
+    throw createRouteError("Um dos canais, fóruns ou canais de anúncio selecionados não pertence a este servidor.", 400);
+  }
+
+  const categoryChecks = await Promise.all(
+    [...new Set(input.ignoredCategoryIds ?? [])].map((categoryId) => isGuildCategoryChannel(guildId, categoryId, botToken))
+  );
+  if (!categoryChecks.every(Boolean)) throw createRouteError("Uma das categorias ignoradas não pertence a este servidor.", 400);
+
+  if (input.ignoredRoleIds?.length && !(await areGuildRoles(guildId, input.ignoredRoleIds, botToken))) {
+    throw createRouteError("Um dos cargos ignorados não pertence a este servidor.", 400);
+  }
+  const ignoredMemberIds = [...(input.ignoredUserIds ?? []), ...(input.ignoredBotIds ?? [])];
+  if (ignoredMemberIds.length && !(await areGuildMembers(guildId, ignoredMemberIds, botToken))) {
+    throw createRouteError("Um dos usuários ou bots ignorados não pertence a este servidor.", 400);
   }
 
   const roleIds = [input.addRoleId, input.removeRoleId].filter((roleId): roleId is string => Boolean(roleId));

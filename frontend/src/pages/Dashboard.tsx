@@ -8191,6 +8191,8 @@ function TicketPanelConfigurator({
           enabled: true,
           label: `Atendimento ${current.ticketPanelOptions.length + 1}`,
           mentionRoleId: null,
+          moduleType: "default" as const,
+          ticketType: "support",
           value: `atendimento-${current.ticketPanelOptions.length + 1}`
         }
       ].slice(0, 25)
@@ -8942,6 +8944,8 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
       enabled: true,
       label: "Suporte",
       mentionRoleId: null,
+      moduleType: "default" as const,
+      ticketType: "support",
       value: "suporte"
     }]).map(normalizeTicketOptionDraft)
   };
@@ -8960,6 +8964,8 @@ function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): T
     enabled: option.enabled !== false,
     label,
     mentionRoleId: option.mentionRoleId?.trim() || null,
+    moduleType: option.moduleType === "police" ? "police" : "default",
+    ticketType: option.ticketType?.trim().toLowerCase() || (option.moduleType === "police" ? "police" : "support"),
     value: option.value?.trim() || slugTicketOption(label, index)
   };
 }

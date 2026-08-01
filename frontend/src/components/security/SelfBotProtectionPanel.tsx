@@ -31,6 +31,7 @@ import type {
   DashboardBot,
   DashboardGuild,
   GuildChannelOption,
+  GuildCategoryOption,
   GuildRoleOption,
   GuildSettings,
   SelfBotProtectionIncident,
@@ -170,6 +171,7 @@ const emptySettings: SelfBotProtectionSettings = {
   mediaChannelIds: [],
   linkChannelIds: [],
   allowedDomains: ["youtube.com", "youtu.be", "twitch.tv", "kick.com", "github.com"],
+  allowSubdomains: true,
   allowedInviteGuildIds: [],
   blockedFileExtensions: ["zip", "rar", "exe", "bat", "js", "html", "dll", "scr", "apk", "msi"],
   blockImages: true,
@@ -243,6 +245,7 @@ export function SelfBotProtectionPanel({
   const [stats, setStats] = useState<SelfBotProtectionStats>(emptyStats);
   const [incidents, setIncidents] = useState<SelfBotProtectionIncident[]>([]);
   const [channels, setChannels] = useState<GuildChannelOption[]>([]);
+  const [categories, setCategories] = useState<GuildCategoryOption[]>([]);
   const [roles, setRoles] = useState<GuildRoleOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -265,6 +268,7 @@ export function SelfBotProtectionPanel({
         setStats(emptyStats);
         setIncidents([]);
         setChannels([]);
+        setCategories([]);
         setRoles([]);
         return;
       }
@@ -283,6 +287,7 @@ export function SelfBotProtectionPanel({
       setStats(dashboard.stats);
       setIncidents(dashboard.incidents);
       setChannels(options.channels);
+      setCategories(options.categories ?? []);
       setRoles(roleOptions);
     }
 
@@ -363,7 +368,7 @@ export function SelfBotProtectionPanel({
     }));
   }
 
-  function toggleId(key: "ignoredChannelIds" | "ignoredRoleIds" | "protectedChannelIds" | "mediaChannelIds" | "linkChannelIds", id: string) {
+  function toggleId(key: "ignoredCategoryIds" | "ignoredChannelIds" | "ignoredRoleIds" | "protectedChannelIds" | "mediaChannelIds" | "linkChannelIds", id: string) {
     setSettings((current) => {
       const selected = new Set(current[key]);
 
@@ -462,6 +467,7 @@ export function SelfBotProtectionPanel({
         ignoredBotIds: nextSettings.ignoredBotIds,
         ignoredCategoryIds: nextSettings.ignoredCategoryIds,
         allowedDomains: nextSettings.allowedDomains,
+        allowSubdomains: nextSettings.allowSubdomains,
         allowedInviteGuildIds: nextSettings.allowedInviteGuildIds,
         blockedFileExtensions: nextSettings.blockedFileExtensions,
         blockImages: nextSettings.blockImages,
@@ -702,13 +708,24 @@ export function SelfBotProtectionPanel({
               />
               <TextListField disabled={disabled} label="IDs de usuários ignorados" onChange={(values) => updateSetting("ignoredUserIds", values)} value={settings.ignoredUserIds} />
               <TextListField disabled={disabled} label="IDs de bots permitidos" onChange={(values) => updateSetting("ignoredBotIds", values)} value={settings.ignoredBotIds} />
-              <TextListField disabled={disabled} label="IDs de categorias ignoradas" onChange={(values) => updateSetting("ignoredCategoryIds", values)} value={settings.ignoredCategoryIds} />
+              <Checklist
+                disabled={disabled}
+                emptyText="Nenhuma categoria disponível."
+                icon={Hash}
+                items={categories.map((category) => ({ id: category.id, label: category.name }))}
+                label="Categorias ignoradas"
+                onToggle={(id) => toggleId("ignoredCategoryIds", id)}
+                selectedIds={settings.ignoredCategoryIds}
+              />
             </div>
           </Section>
 
           <Section icon={ImageOff} title="Links, mídia e arquivos">
             <div className="grid gap-4 lg:grid-cols-2">
               <TextListField disabled={disabled} label="Domínios permitidos" onChange={(values) => updateSetting("allowedDomains", values)} value={settings.allowedDomains} />
+              <ToggleRow checked={settings.allowSubdomains} disabled={disabled} label="Permitir subdomínios da whitelist" onChange={(value) => updateSetting("allowSubdomains", value)} />
+              <TextListField disabled={disabled} label="IDs de canais ou fóruns permitidos para links" onChange={(values) => updateSetting("linkChannelIds", values)} value={settings.linkChannelIds} />
+              <TextListField disabled={disabled} label="IDs de canais ou fóruns permitidos para mídia" onChange={(values) => updateSetting("mediaChannelIds", values)} value={settings.mediaChannelIds} />
               <TextListField disabled={disabled} label="Extensões bloqueadas" onChange={(values) => updateSetting("blockedFileExtensions", values)} value={settings.blockedFileExtensions} />
               <TextListField disabled={disabled} label="IDs de servidores com convite permitido" onChange={(values) => updateSetting("allowedInviteGuildIds", values)} value={settings.allowedInviteGuildIds} />
               <div className="grid gap-2 sm:grid-cols-2">
@@ -1125,6 +1142,11 @@ function Checklist({
   selectedIds: string[];
 }) {
   const selected = new Set(selectedIds);
+  const knownIds = new Set(items.map((item) => item.id));
+  const staleItems = selectedIds
+    .filter((id) => !knownIds.has(id))
+    .map((id) => ({ id, label: `${id} (removido ou indisponível)` }));
+  const visibleItems = [...items, ...staleItems];
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
@@ -1133,7 +1155,7 @@ function Checklist({
         {label}
       </p>
       <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-        {items.length ? items.map((item) => (
+        {visibleItems.length ? visibleItems.map((item) => (
           <label
             className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700"
             key={item.id}

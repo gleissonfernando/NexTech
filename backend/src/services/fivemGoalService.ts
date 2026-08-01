@@ -54,6 +54,33 @@ export type FivemGoalSettingsDto = {
   requestRequiresApproval: boolean;
   updatedAt: string | null;
   viewRoleId: string | null;
+  version: number;
+  roomRequestEnabled: boolean;
+  setRequestEnabled: boolean;
+  automaticImageCaptureEnabled: boolean;
+  absenceEnabled: boolean;
+  weeklySummaryEnabled: boolean;
+  directMessagesEnabled: boolean;
+  memberCleanupEnabled: boolean;
+  automaticNicknameEnabled: boolean;
+  automaticRoleEnabled: boolean;
+  timezone: string;
+  approvalChannelId: string | null;
+  summaryChannelId: string | null;
+  auditChannelId: string | null;
+  verificationRoleId: string | null;
+  managerRoleIds: string[];
+  viewerRoleIds: string[];
+  categoryRules: Array<{ id: string; name: string; sourceRoleId: string; categoryId: string; grantedRoleId: string | null; buttonLabel: string; priority: number; active: boolean }>;
+  approvalTypes: Array<{ id: string; name: string; buttonLabel: string; roleId: string | null; categoryId: string | null; nicknameTemplate: string | null; active: boolean; displayOrder: number }>;
+  setFormFields: Array<{ id: string; label: string; placeholder: string | null; required: boolean; maxLength: number; showInLogs: boolean; order: number }>;
+  commandPermissions: { visibleRoleIds: string[]; executableRoleIds: string[]; visibleUserIds: string[]; executableUserIds: string[]; allowAdministrators: boolean; allowOwner: boolean };
+  actionPermissions: Record<string, string[]>;
+  cycle: { startDay: number; startTime: string; endDay: number; endTime: string; firstExecution: string | null; frequency: "weekly" | "custom"; absencePolicy: "none" | "daily" | "full" | "manual"; latePolicy: "accept" | "reject" | "flag" };
+  panelVisual: { title: string; description: string; footer: string | null; imageUrl: string | null; mediaUrl: string | null; mediaType: "image" | "gif" | "video" | "none"; loopVideo: boolean; color: string };
+  notificationSettings: { mentionUserOnFailure: boolean; mentionManagerOnFailure: boolean; approvalDm: string; rejectionDm: string; farewellDm: string };
+  cooldownSeconds: number;
+  tutorial: { completedBy: string[]; skippedBy: string[] };
 };
 
 export type FivemGoalEntryDto = {
@@ -214,6 +241,38 @@ export function defaultFivemGoalSettings(guildId: string, botId: string | null =
     requestRequiresApproval: false,
     updatedAt: null,
     viewRoleId: null
+    ,version: 1
+    ,roomRequestEnabled: true
+    ,setRequestEnabled: false
+    ,automaticImageCaptureEnabled: true
+    ,absenceEnabled: false
+    ,weeklySummaryEnabled: true
+    ,directMessagesEnabled: true
+    ,memberCleanupEnabled: true
+    ,automaticNicknameEnabled: true
+    ,automaticRoleEnabled: true
+    ,timezone: "America/Sao_Paulo"
+    ,approvalChannelId: null
+    ,summaryChannelId: null
+    ,auditChannelId: null
+    ,verificationRoleId: null
+    ,managerRoleIds: []
+    ,viewerRoleIds: []
+    ,categoryRules: []
+    ,approvalTypes: []
+    ,setFormFields: [
+      { id: "nome", label: "Nome", placeholder: "Seu nome", required: true, maxLength: 80, showInLogs: true, order: 1 },
+      { id: "nome_jogo", label: "Nome no jogo", placeholder: "Seu nome no jogo", required: true, maxLength: 80, showInLogs: true, order: 2 },
+      { id: "id", label: "ID", placeholder: "Seu ID", required: true, maxLength: 40, showInLogs: true, order: 3 },
+      { id: "telefone", label: "Telefone", placeholder: "Seu telefone", required: true, maxLength: 40, showInLogs: true, order: 4 }
+    ]
+    ,commandPermissions: { visibleRoleIds: [], executableRoleIds: [], visibleUserIds: [], executableUserIds: [], allowAdministrators: true, allowOwner: true }
+    ,actionPermissions: {}
+    ,cycle: { startDay: 1, startTime: "00:00", endDay: 0, endTime: "23:59", firstExecution: null, frequency: "weekly", absencePolicy: "none", latePolicy: "flag" }
+    ,panelVisual: { title: "Sistema de Metas", description: "Solicite sua sala ou envie seu cadastro para análise.", footer: null, imageUrl: null, mediaUrl: null, mediaType: "none", loopVideo: false, color: "#22c55e" }
+    ,notificationSettings: { mentionUserOnFailure: true, mentionManagerOnFailure: true, approvalDm: "Bem-vindo ao {nome_servidor}! Sua solicitação foi aprovada como {tipo_aprovacao}.", rejectionDm: "Sua solicitação para entrar no {nome_servidor} não foi aprovada neste momento.", farewellDm: "Obrigado por fazer parte do {nome_servidor}." }
+    ,cooldownSeconds: 30
+    ,tutorial: { completedBy: [], skippedBy: [] }
   };
 }
 
@@ -227,7 +286,10 @@ export async function getFivemGoalSettings(guildId: string, botId?: string | nul
 export async function saveFivemGoalSettings(guildId: string, botId: string | null, input: Partial<FivemGoalSettingsDto>, actorId: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const current = await getFivemGoalSettings(guildId, normalizedBotId);
-  const next = normalizeSettings({ ...current, ...input, botId: normalizedBotId, guildId });
+  if (typeof input.version === "number" && input.version !== current.version) {
+    throw Object.assign(new Error("Esta configuração foi alterada por outra pessoa. Atualize a página antes de salvar novamente."), { status: 409 });
+  }
+  const next = normalizeSettings({ ...current, ...input, botId: normalizedBotId, guildId, version: current.version + 1 });
   const now = new Date();
   const { fivemGoalSettings } = await getMongoCollections();
 
@@ -680,6 +742,7 @@ async function ensureDefaultGoalConfigFromLegacy(settings: FivemGoalSettingsDto,
 }
 
 function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto {
+  const defaults = defaultFivemGoalSettings(settings.guildId, settings.botId);
   return {
     ...settings,
     categoryId: normalizeSnowflake(settings.categoryId),
@@ -695,7 +758,37 @@ function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto
     requestPanelTitle: normalizeText(settings.requestPanelTitle, 120) || "Sistema de Metas FiveM",
     requestRequiresApproval: settings.requestRequiresApproval === true,
     autoCreateWithManualRegistration: settings.autoCreateWithManualRegistration !== false,
-    viewRoleId: normalizeSnowflake(settings.viewRoleId)
+    viewRoleId: normalizeSnowflake(settings.viewRoleId),
+    version: Number.isInteger(settings.version) && settings.version > 0 ? settings.version : 1,
+    roomRequestEnabled: settings.roomRequestEnabled !== false,
+    setRequestEnabled: settings.setRequestEnabled === true,
+    automaticImageCaptureEnabled: settings.automaticImageCaptureEnabled !== false,
+    absenceEnabled: settings.absenceEnabled === true,
+    weeklySummaryEnabled: settings.weeklySummaryEnabled !== false,
+    directMessagesEnabled: settings.directMessagesEnabled !== false,
+    memberCleanupEnabled: settings.memberCleanupEnabled !== false,
+    automaticNicknameEnabled: settings.automaticNicknameEnabled !== false,
+    automaticRoleEnabled: settings.automaticRoleEnabled !== false,
+    timezone: normalizeTimezone(settings.timezone),
+    approvalChannelId: normalizeSnowflake(settings.approvalChannelId),
+    summaryChannelId: normalizeSnowflake(settings.summaryChannelId),
+    auditChannelId: normalizeSnowflake(settings.auditChannelId),
+    verificationRoleId: normalizeSnowflake(settings.verificationRoleId),
+    managerRoleIds: normalizeRoleIds(settings.managerRoleIds ?? (settings.managerRoleId ? [settings.managerRoleId] : [])),
+    viewerRoleIds: normalizeRoleIds(settings.viewerRoleIds ?? (settings.viewRoleId ? [settings.viewRoleId] : [])),
+    categoryRules: normalizeCategoryRules(settings.categoryRules),
+    approvalTypes: normalizeApprovalTypes(settings.approvalTypes),
+    setFormFields: normalizeSetFormFields(settings.setFormFields),
+    commandPermissions: normalizeCommandPermissions(settings.commandPermissions),
+    actionPermissions: normalizeActionPermissions(settings.actionPermissions),
+    cycle: normalizeCycle(settings.cycle),
+    panelVisual: normalizePanelVisual(settings.panelVisual, defaults.panelVisual),
+    notificationSettings: normalizeNotifications(settings.notificationSettings, defaults.notificationSettings),
+    cooldownSeconds: typeof settings.cooldownSeconds === "number" && Number.isFinite(settings.cooldownSeconds) ? Math.min(3600, Math.max(3, Math.trunc(settings.cooldownSeconds))) : 30,
+    tutorial: {
+      completedBy: normalizeRoleIds(settings.tutorial?.completedBy ?? []),
+      skippedBy: normalizeRoleIds(settings.tutorial?.skippedBy ?? [])
+    }
   };
 }
 
@@ -732,6 +825,7 @@ function normalizeItems(items: FivemGoalItemDto[]) {
 }
 
 function toSettingsDto(settings: MongoFivemGoalSettings): FivemGoalSettingsDto {
+  const defaults = defaultFivemGoalSettings(settings.guildId, normalizeBotId(settings.botId));
   return normalizeSettings({
     autoCreateWithManualRegistration: settings.autoCreateWithManualRegistration !== false,
     botId: normalizeBotId(settings.botId),
@@ -750,7 +844,34 @@ function toSettingsDto(settings: MongoFivemGoalSettings): FivemGoalSettingsDto {
     requestPanelTitle: settings.requestPanelTitle ?? "Sistema de Metas FiveM",
     requestRequiresApproval: settings.requestRequiresApproval === true,
     updatedAt: settings.updatedAt?.toISOString() ?? null,
-    viewRoleId: settings.viewRoleId
+    viewRoleId: settings.viewRoleId,
+    version: settings.version ?? 1,
+    roomRequestEnabled: settings.roomRequestEnabled ?? defaults.roomRequestEnabled,
+    setRequestEnabled: settings.setRequestEnabled ?? defaults.setRequestEnabled,
+    automaticImageCaptureEnabled: settings.automaticImageCaptureEnabled ?? defaults.automaticImageCaptureEnabled,
+    absenceEnabled: settings.absenceEnabled ?? defaults.absenceEnabled,
+    weeklySummaryEnabled: settings.weeklySummaryEnabled ?? defaults.weeklySummaryEnabled,
+    directMessagesEnabled: settings.directMessagesEnabled ?? defaults.directMessagesEnabled,
+    memberCleanupEnabled: settings.memberCleanupEnabled ?? defaults.memberCleanupEnabled,
+    automaticNicknameEnabled: settings.automaticNicknameEnabled ?? defaults.automaticNicknameEnabled,
+    automaticRoleEnabled: settings.automaticRoleEnabled ?? defaults.automaticRoleEnabled,
+    timezone: settings.timezone ?? defaults.timezone,
+    approvalChannelId: settings.approvalChannelId ?? null,
+    summaryChannelId: settings.summaryChannelId ?? null,
+    auditChannelId: settings.auditChannelId ?? null,
+    verificationRoleId: settings.verificationRoleId ?? null,
+    managerRoleIds: settings.managerRoleIds ?? [],
+    viewerRoleIds: settings.viewerRoleIds ?? [],
+    categoryRules: settings.categoryRules ?? [],
+    approvalTypes: settings.approvalTypes ?? [],
+    setFormFields: settings.setFormFields ?? defaults.setFormFields,
+    commandPermissions: settings.commandPermissions ?? defaults.commandPermissions,
+    actionPermissions: settings.actionPermissions ?? {},
+    cycle: settings.cycle ?? defaults.cycle,
+    panelVisual: settings.panelVisual ?? defaults.panelVisual,
+    notificationSettings: settings.notificationSettings ?? defaults.notificationSettings,
+    cooldownSeconds: settings.cooldownSeconds ?? defaults.cooldownSeconds,
+    tutorial: settings.tutorial ?? defaults.tutorial
   });
 }
 
@@ -874,6 +995,81 @@ async function writeFivemGoalLog(input: Omit<MongoFivemGoalLog, "_id" | "created
     metaId: input.metaId ?? null,
     userId: input.userId ?? null
   });
+}
+
+function normalizeCategoryRules(value: FivemGoalSettingsDto["categoryRules"] | undefined) {
+  return (Array.isArray(value) ? value : []).slice(0, 50).map((rule, index) => ({
+    id: normalizeText(rule.id, 80) || randomUUID(),
+    name: normalizeText(rule.name, 80) || `Regra ${index + 1}`,
+    sourceRoleId: normalizeSnowflake(rule.sourceRoleId) || "",
+    categoryId: normalizeSnowflake(rule.categoryId) || "",
+    grantedRoleId: normalizeSnowflake(rule.grantedRoleId),
+    buttonLabel: normalizeText(rule.buttonLabel, 80) || normalizeText(rule.name, 80) || `Opção ${index + 1}`,
+    priority: Number.isFinite(rule.priority) ? Math.max(0, Math.trunc(rule.priority)) : index,
+    active: rule.active !== false
+  })).filter((rule) => rule.sourceRoleId && rule.categoryId).sort((a, b) => a.priority - b.priority);
+}
+
+function normalizeApprovalTypes(value: FivemGoalSettingsDto["approvalTypes"] | undefined) {
+  return (Array.isArray(value) ? value : []).slice(0, 20).map((item, index) => ({
+    id: normalizeText(item.id, 80) || randomUUID(),
+    name: normalizeText(item.name, 80) || `Tipo ${index + 1}`,
+    buttonLabel: normalizeText(item.buttonLabel, 80) || normalizeText(item.name, 80) || `Aprovar ${index + 1}`,
+    roleId: normalizeSnowflake(item.roleId),
+    categoryId: normalizeSnowflake(item.categoryId),
+    nicknameTemplate: normalizeText(item.nicknameTemplate, 80),
+    active: item.active !== false,
+    displayOrder: Number.isFinite(item.displayOrder) ? Math.max(0, Math.trunc(item.displayOrder)) : index
+  })).sort((a, b) => a.displayOrder - b.displayOrder);
+}
+
+function normalizeSetFormFields(value: FivemGoalSettingsDto["setFormFields"] | undefined) {
+  return (Array.isArray(value) ? value : []).slice(0, 10).map((field, index) => ({
+    id: normalizeText(field.id, 80) || `campo-${index + 1}`,
+    label: normalizeText(field.label, 45) || `Campo ${index + 1}`,
+    placeholder: normalizeText(field.placeholder, 100),
+    required: field.required !== false,
+    maxLength: Number.isFinite(field.maxLength) ? Math.min(1500, Math.max(1, Math.trunc(field.maxLength))) : 100,
+    showInLogs: field.showInLogs !== false,
+    order: Number.isFinite(field.order) ? Math.max(0, Math.trunc(field.order)) : index
+  })).sort((a, b) => a.order - b.order);
+}
+
+function normalizeCommandPermissions(value: FivemGoalSettingsDto["commandPermissions"] | undefined) {
+  return {
+    visibleRoleIds: normalizeRoleIds(value?.visibleRoleIds ?? []), executableRoleIds: normalizeRoleIds(value?.executableRoleIds ?? []),
+    visibleUserIds: normalizeRoleIds(value?.visibleUserIds ?? []), executableUserIds: normalizeRoleIds(value?.executableUserIds ?? []),
+    allowAdministrators: value?.allowAdministrators !== false, allowOwner: value?.allowOwner !== false
+  };
+}
+
+function normalizeActionPermissions(value: Record<string, string[]> | undefined) {
+  const result: Record<string, string[]> = {};
+  for (const [key, roleIds] of Object.entries(value ?? {}).slice(0, 50)) {
+    const normalizedKey = normalizeText(key, 80);
+    if (normalizedKey) result[normalizedKey] = normalizeRoleIds(roleIds);
+  }
+  return result;
+}
+
+function normalizeCycle(value: FivemGoalSettingsDto["cycle"] | undefined) {
+  const time = (candidate: string | undefined, fallback: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(candidate ?? "") ? candidate! : fallback;
+  const day = (candidate: number | undefined, fallback: number) => Number.isInteger(candidate) && candidate! >= 0 && candidate! <= 6 ? candidate! : fallback;
+  return { startDay: day(value?.startDay, 1), startTime: time(value?.startTime, "00:00"), endDay: day(value?.endDay, 0), endTime: time(value?.endTime, "23:59"), firstExecution: /^\d{4}-\d{2}-\d{2}$/.test(value?.firstExecution ?? "") ? value!.firstExecution : null, frequency: value?.frequency === "custom" ? "custom" as const : "weekly" as const, absencePolicy: value?.absencePolicy === "daily" || value?.absencePolicy === "full" || value?.absencePolicy === "manual" ? value.absencePolicy : "none" as const, latePolicy: value?.latePolicy === "accept" || value?.latePolicy === "reject" ? value.latePolicy : "flag" as const };
+}
+
+function normalizePanelVisual(value: FivemGoalSettingsDto["panelVisual"] | undefined, fallback: FivemGoalSettingsDto["panelVisual"]) {
+  const mediaType = value?.mediaType === "image" || value?.mediaType === "gif" || value?.mediaType === "video" ? value.mediaType : "none" as const;
+  return { title: normalizeText(value?.title, 120) || fallback.title, description: normalizeText(value?.description, 1200) || fallback.description, footer: normalizeText(value?.footer, 200), imageUrl: normalizeText(value?.imageUrl, 2048), mediaUrl: normalizeText(value?.mediaUrl, 2048), mediaType, loopVideo: value?.loopVideo === true, color: /^#[0-9a-f]{6}$/i.test(value?.color ?? "") ? value!.color : fallback.color };
+}
+
+function normalizeNotifications(value: FivemGoalSettingsDto["notificationSettings"] | undefined, fallback: FivemGoalSettingsDto["notificationSettings"]) {
+  return { mentionUserOnFailure: value?.mentionUserOnFailure !== false, mentionManagerOnFailure: value?.mentionManagerOnFailure !== false, approvalDm: normalizeText(value?.approvalDm, 1500) || fallback.approvalDm, rejectionDm: normalizeText(value?.rejectionDm, 1500) || fallback.rejectionDm, farewellDm: normalizeText(value?.farewellDm, 1500) || fallback.farewellDm };
+}
+
+function normalizeTimezone(value: string | null | undefined) {
+  const candidate = normalizeText(value, 80) || "America/Sao_Paulo";
+  try { new Intl.DateTimeFormat("pt-BR", { timeZone: candidate }).format(); return candidate; } catch { return "America/Sao_Paulo"; }
 }
 
 function normalizeRoleIds(values: string[]) {

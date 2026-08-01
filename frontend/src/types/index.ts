@@ -416,6 +416,8 @@ export type TicketPanelOption = {
   enabled: boolean;
   label: string;
   mentionRoleId: string | null;
+  moduleType?: "default" | "police";
+  ticketType?: string | null;
   value: string;
 };
 
@@ -861,6 +863,7 @@ export type SelfBotProtectionSettings = {
   mediaChannelIds: string[];
   linkChannelIds: string[];
   allowedDomains: string[];
+  allowSubdomains: boolean;
   allowedInviteGuildIds: string[];
   blockedFileExtensions: string[];
   blockImages: boolean;
@@ -2562,6 +2565,29 @@ export type FivemFacSettings = {
   memberRoleIds: string[];
   logChannelId: string | null;
   messages: FivemFacMessages;
+  panelVisual: {
+    panelColor: string;
+    imageUrl: string | null;
+    imagePosition: "right_small" | "top" | "bottom" | "none";
+    buttonsPosition: "inside_panel" | "outside_panel" | "below" | "rows" | "none";
+    buttons: Array<{
+      id: string;
+      label: string;
+      emoji: string | null;
+      style: "primary" | "secondary" | "success" | "danger" | "link";
+      type: "action" | "url";
+      action: "request_absence" | "my_absences" | "url";
+      url: string | null;
+      order: number;
+      enabled: boolean;
+    }>;
+    componentsOrder: Array<"image" | "text" | "buttons">;
+    enabledSections: {
+      image: boolean;
+      buttons: boolean;
+      description: boolean;
+    };
+  };
   lastPanelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;

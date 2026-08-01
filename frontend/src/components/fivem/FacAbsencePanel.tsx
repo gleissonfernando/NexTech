@@ -16,12 +16,14 @@ import {
   type LucideIcon
 } from "lucide-react";
 import {
+  API_URL,
   getFivemFac,
   getFivemFacOptions,
   publishFivemFacPanel,
   removeFivemFacAbsencePhoto,
   saveFivemFacSettings,
-  uploadFivemFacAbsencePhoto
+  uploadFivemFacAbsencePhoto,
+  uploadFivemFacPanelImage
 } from "../../lib/api";
 import type {
   DashboardGuild,
@@ -57,6 +59,43 @@ const defaultMessages: FivemFacMessages = {
   finished: "Sua ausência foi finalizada e o cargo configurado foi removido."
 };
 
+const defaultPanelVisual: FivemFacSettings["panelVisual"] = {
+  panelColor: "#2b2d31",
+  imageUrl: null,
+  imagePosition: "none",
+  buttonsPosition: "inside_panel",
+  buttons: [
+    {
+      id: "request",
+      label: "Solicitar Ausência",
+      emoji: "<:calendario:1525682184948547724>",
+      style: "primary",
+      type: "action",
+      action: "request_absence",
+      url: null,
+      order: 1,
+      enabled: true
+    },
+    {
+      id: "mine",
+      label: "Minhas Ausências",
+      emoji: "<:prancheta:1525682279588827196>",
+      style: "secondary",
+      type: "action",
+      action: "my_absences",
+      url: null,
+      order: 2,
+      enabled: true
+    }
+  ],
+  componentsOrder: ["image", "text", "buttons"],
+  enabledSections: {
+    buttons: true,
+    description: true,
+    image: false
+  }
+};
+
 const emptySettings: FivemFacSettings = {
   id: "",
   botId: "",
@@ -75,6 +114,7 @@ const emptySettings: FivemFacSettings = {
   memberRoleIds: [],
   logChannelId: null,
   messages: defaultMessages,
+  panelVisual: defaultPanelVisual,
   lastPanelRequestedAt: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
@@ -92,6 +132,7 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [panelImageUploading, setPanelImageUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const canUse = Boolean(botId && guild);
@@ -179,6 +220,31 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
     }));
   }
 
+  function updatePanelVisual(patch: Partial<FivemFacSettings["panelVisual"]>) {
+    setSettings((current) => ({
+      ...current,
+      panelVisual: {
+        ...current.panelVisual,
+        ...patch
+      }
+    }));
+  }
+
+  function setPanelBannerUrl(imageUrl: string | null) {
+    setSettings((current) => ({
+      ...current,
+      panelVisual: {
+        ...current.panelVisual,
+        imageUrl,
+        imagePosition: imageUrl ? (current.panelVisual.imagePosition === "none" ? "top" : current.panelVisual.imagePosition) : "none",
+        enabledSections: {
+          ...current.panelVisual.enabledSections,
+          image: Boolean(imageUrl)
+        }
+      }
+    }));
+  }
+
   function toggleRole(key: "viewerRoleIds" | "approverRoleIds" | "memberRoleIds" | "autoApproveRoleIds", roleId: string) {
     setSettings((current) => {
       const selected = new Set(current[key]);
@@ -215,6 +281,7 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
       logChannelId: settings.logChannelId,
       memberRoleIds: settings.memberRoleIds,
       messages: settings.messages,
+      panelVisual: settings.panelVisual,
       panelChannelId: settings.panelChannelId,
       viewerRoleIds: settings.viewerRoleIds
     };
@@ -274,6 +341,23 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
       setMessage(readRequestMessage(error) ?? "Não foi possível sincronizar cargos e canais do Discord.");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handlePanelBannerUpload(file: File | null) {
+    if (!botId || !guild || !file) return;
+
+    setPanelImageUploading(true);
+    setMessage(null);
+
+    try {
+      const saved = await uploadFivemFacPanelImage(guild.id, botId, file);
+      setSettings(saved);
+      setMessage("Banner enviado. Salve ou publique o painel para aplicar no Discord.");
+    } catch (error) {
+      setMessage(readRequestMessage(error) ?? "Não foi possível enviar o banner do painel.");
+    } finally {
+      setPanelImageUploading(false);
     }
   }
 
@@ -429,6 +513,63 @@ export function FacAbsencePanel({ botId, canManage, guild, variant = "fac" }: Fa
             <div className="grid gap-3">
               <TextField disabled={!canManage} label="Titulo do painel" onChange={(value) => updateMessage("panelTitle", value)} value={settings.messages.panelTitle} />
               <TextareaField disabled={!canManage} label="Descrição do painel" onChange={(value) => updateMessage("panelDescription", value)} value={settings.messages.panelDescription} />
+              <div className="rounded-lg border border-zinc-900 bg-zinc-950/60 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                  <ImageIcon className="h-4 w-4 text-zinc-500" />
+                  Banner do painel
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                  <TextField
+                    disabled={!canManage || panelImageUploading}
+                    label="URL do banner"
+                    onChange={(value) => setPanelBannerUrl(value.trim() || null)}
+                    value={settings.panelVisual.imageUrl ?? ""}
+                  />
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-zinc-200">Posição</span>
+                    <select
+                      className="social-input h-11"
+                      disabled={!canManage || panelImageUploading || !settings.panelVisual.imageUrl}
+                      onChange={(event) => updatePanelVisual({ imagePosition: event.target.value as FivemFacSettings["panelVisual"]["imagePosition"] })}
+                      value={settings.panelVisual.imagePosition}
+                    >
+                      <option value="top">Topo</option>
+                      <option value="bottom">Final</option>
+                      <option value="right_small">Lateral pequena</option>
+                      <option value="none">Sem banner</option>
+                    </select>
+                  </label>
+                </div>
+                {settings.panelVisual.imageUrl ? (
+                  <div className="mt-3 overflow-hidden rounded-md border border-zinc-900 bg-zinc-950">
+                    <img alt="Banner do painel de ausência" className="max-h-48 w-full object-contain" src={dashboardMediaUrl(settings.panelVisual.imageUrl)} />
+                  </div>
+                ) : null}
+                {canManage ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button className="relative" disabled={panelImageUploading} size="sm" type="button" variant="outline">
+                      {panelImageUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      Enviar banner
+                      <input
+                        accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+                        className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                        disabled={panelImageUploading}
+                        onChange={(event) => {
+                          void handlePanelBannerUpload(event.target.files?.[0] ?? null);
+                          event.currentTarget.value = "";
+                        }}
+                        type="file"
+                      />
+                    </Button>
+                    {settings.panelVisual.imageUrl ? (
+                      <Button disabled={panelImageUploading} onClick={() => setPanelBannerUrl(null)} size="sm" type="button" variant="outline">
+                        <Trash2 className="h-4 w-4" />
+                        Remover banner
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <TextField disabled={!canManage} label="Mensagem aprovada" onChange={(value) => updateMessage("approved", value)} value={settings.messages.approved} />
                 <TextField disabled={!canManage} label="Mensagem reprovada" onChange={(value) => updateMessage("rejected", value)} value={settings.messages.rejected} />
@@ -758,4 +899,14 @@ function readRequestMessage(error: unknown) {
 
   const response = (error as { response?: { data?: { message?: unknown } } }).response;
   return typeof response?.data?.message === "string" ? response.data.message : null;
+}
+
+function dashboardMediaUrl(value: string) {
+  if (!value.startsWith("/")) return value;
+
+  try {
+    return `${new URL(API_URL).origin}${value}`;
+  } catch {
+    return value;
+  }
 }

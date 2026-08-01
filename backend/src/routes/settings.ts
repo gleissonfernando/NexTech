@@ -112,6 +112,8 @@ const settingsSchema = z.object({
     enabled: z.boolean().optional().default(true),
     label: z.string().min(1).max(80),
     mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional().default(null),
+    moduleType: z.enum(["default", "police"]).optional().default("default"),
+    ticketType: z.string().min(1).max(80).nullable().optional().default(null),
     value: z.string().min(1).max(80)
   })).max(25).optional(),
   reportSystem: z.object({

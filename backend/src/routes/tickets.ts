@@ -10,6 +10,7 @@ import { claimTicket, createTicket, findOpenTicket, getTicketByChannel, getTicke
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const ticketSchema = z.object({
+  ticketId: z.string().uuid().optional(),
   guildId: z.string().min(1),
   channelId: z.string().optional().nullable(),
   openerId: z.string().min(1),
@@ -17,8 +18,11 @@ const ticketSchema = z.object({
   allowedRoleIds: z.array(z.string()).optional(),
   categoryId: z.string().optional().nullable(),
   categoryName: z.string().optional().nullable(),
+  moduleType: z.enum(["default", "police"]).optional().default("default"),
+  panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional()
+  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  ticketType: z.string().min(1).max(80).optional().nullable()
 });
 
 const ticketStatusSchema = z.object({
@@ -124,7 +128,8 @@ ticketsRouter.get("/bot/channel/:channelId", async (req, res, next) => {
       return res.status(403).json({ message: "Rota disponível apenas para o bot." });
     }
     const botId = await resolveRequestBotId(req);
-    const ticket = await getTicketByChannel(req.params.channelId, botId);
+    const guildId = typeof req.query.guildId === "string" ? req.query.guildId : undefined;
+    const ticket = await getTicketByChannel(req.params.channelId, botId, guildId);
     return res.json({ ticket });
   } catch (error) {
     return next(error);
@@ -140,10 +145,11 @@ ticketsRouter.get("/bot/open", async (req, res, next) => {
     const guildId = typeof req.query.guildId === "string" ? req.query.guildId : "";
     const openerId = typeof req.query.openerId === "string" ? req.query.openerId : "";
     const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : null;
+    const moduleType = req.query.moduleType === "police" ? "police" : "default";
     if (!guildId || !openerId) {
       return res.status(400).json({ message: "guildId e openerId são obrigatórios." });
     }
-    const ticket = await findOpenTicket(guildId, botId, openerId, categoryId);
+    const ticket = await findOpenTicket(guildId, botId, openerId, categoryId, moduleType);
     return res.json({ ticket });
   } catch (error) {
     return next(error);
@@ -169,7 +175,8 @@ ticketsRouter.patch("/bot/:ticketId/status", async (req, res, next) => {
       return res.status(403).json({ message: "Rota disponível apenas para o bot." });
     }
     const input = ticketStatusSchema.parse(req.body);
-    const ticket = await updateTicketStatus(req.params.ticketId, {
+    const botId = await resolveRequestBotId(req);
+    const ticket = await updateTicketStatus(req.params.ticketId, botId, {
       ...input,
       closedAt: input.closedAt ? new Date(input.closedAt) : undefined
     });
@@ -185,7 +192,8 @@ ticketsRouter.patch("/bot/:ticketId/channel", async (req, res, next) => {
       return res.status(403).json({ message: "Rota disponível apenas para o bot." });
     }
     const input = z.object({ channelId: z.string().nullable() }).parse(req.body);
-    const ticket = await updateTicketChannel(req.params.ticketId, input.channelId);
+    const botId = await resolveRequestBotId(req);
+    const ticket = await updateTicketChannel(req.params.ticketId, botId, input.channelId);
     return res.json({ ticket });
   } catch (error) {
     return next(error);
@@ -198,7 +206,8 @@ ticketsRouter.post("/bot/:ticketId/claim", async (req, res, next) => {
       return res.status(403).json({ message: "Rota disponível apenas para o bot." });
     }
     const input = ticketClaimSchema.parse(req.body);
-    const result = await claimTicket(req.params.ticketId, input.responsibleUserId);
+    const botId = await resolveRequestBotId(req);
+    const result = await claimTicket(req.params.ticketId, botId, input.responsibleUserId);
     return res.status(result.claimed ? 200 : 409).json(result);
   } catch (error) {
     return next(error);

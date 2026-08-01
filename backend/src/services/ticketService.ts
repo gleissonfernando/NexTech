@@ -6,11 +6,15 @@ export type TicketDto = {
   botId: string | null;
   guildId: string;
   channelId?: string | null;
+  panelId?: string | null;
   openerId: string;
   ownerId?: string;
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  moduleType: string;
+  ticketType: string | null;
+  migrationStatus?: string | null;
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
   status: MongoTicket["status"];
@@ -28,12 +32,18 @@ type CreateTicketInput = Pick<TicketDto, "guildId" | "channelId" | "openerId" | 
   botId?: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  moduleType?: string | null;
+  panelId?: string | null;
   responsibleRoleId?: string | null;
   status?: MongoTicket["status"];
+  ticketId?: string;
+  ticketType?: string | null;
 };
 
 export async function createTicket(input: CreateTicketInput) {
-  const existing = await findOpenTicket(input.guildId, normalizeBotId(input.botId), input.openerId, input.categoryId ?? null);
+  const normalizedBotId = normalizeBotId(input.botId);
+  const moduleType = normalizeModuleType(input.moduleType);
+  const existing = await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
   if (existing) {
     return { created: false, ticket: existing };
   }
@@ -43,11 +53,15 @@ export async function createTicket(input: CreateTicketInput) {
     botId: normalizeBotId(input.botId),
     guildId: input.guildId,
     channelId: input.channelId,
+    panelId: input.panelId ?? input.categoryId ?? null,
     openerId: input.openerId,
     ownerId: input.openerId,
     subject: input.subject,
     categoryId: input.categoryId ?? null,
     categoryName: input.categoryName ?? null,
+    moduleType,
+    ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
+    migrationStatus: "ok",
     responsibleRoleId: input.responsibleRoleId ?? null,
     responsibleUserId: null,
     status: input.status ?? "OPEN",
@@ -58,22 +72,25 @@ export async function createTicket(input: CreateTicketInput) {
     closedAt: null
   };
 
-  memoryTickets.unshift(ticket);
-
   try {
     await ensureGuild(input.guildId);
 
     const { tickets } = await getMongoCollections();
     const doc: MongoTicket = {
-      _id: randomUUID(),
-      botId: normalizeBotId(input.botId),
+      _id: input.ticketId ?? randomUUID(),
+      activeKey: ticketActiveKey(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType),
+      botId: normalizedBotId,
       guildId: input.guildId,
       channelId: input.channelId ?? null,
+      panelId: input.panelId ?? input.categoryId ?? null,
       openerId: input.openerId,
       ownerId: input.openerId,
       subject: input.subject,
       categoryId: input.categoryId ?? null,
       categoryName: input.categoryName ?? null,
+      moduleType,
+      ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
+      migrationStatus: "ok",
       responsibleRoleId: input.responsibleRoleId ?? null,
       responsibleUserId: null,
       allowedRoleIds: input.allowedRoleIds ?? [],
@@ -89,6 +106,7 @@ export async function createTicket(input: CreateTicketInput) {
     };
 
     await tickets.insertOne(doc);
+    memoryTickets.unshift({ ...ticket, id: doc._id });
 
     return {
       created: true,
@@ -102,13 +120,17 @@ export async function createTicket(input: CreateTicketInput) {
       }
     };
   } catch (error) {
-    console.warn("[mongo] ticket mantido em memória:", error instanceof Error ? error.message : error);
-    return { created: true, ticket };
+    if (isDuplicateKeyError(error)) {
+      const concurrent = await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
+      if (concurrent) return { created: false, ticket: concurrent };
+    }
+    throw error;
   }
 }
 
-export async function findOpenTicket(guildId: string, botId: string | null | undefined, openerId: string, categoryId?: string | null) {
+export async function findOpenTicket(guildId: string, botId: string | null | undefined, openerId: string, categoryId?: string | null, moduleTypeInput?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
+  const moduleType = normalizeModuleType(moduleTypeInput);
   const activeStatuses: MongoTicket["status"][] = ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"];
   const categoryQuery = categoryId ? { categoryId } : {};
 
@@ -117,6 +139,7 @@ export async function findOpenTicket(guildId: string, botId: string | null | und
     const ticket = await tickets.findOne({
       ...scopedQuery(guildId, normalizedBotId),
       ...categoryQuery,
+      moduleType,
       openerId,
       status: { $in: activeStatuses }
     }, { sort: { createdAt: -1 } });
@@ -127,6 +150,7 @@ export async function findOpenTicket(guildId: string, botId: string | null | und
       && ticket.botId === normalizedBotId
       && ticket.openerId === openerId
       && (!categoryId || ticket.categoryId === categoryId)
+      && ticket.moduleType === moduleType
       && activeStatuses.includes(ticket.status)
     ) ?? null;
   }
@@ -150,11 +174,15 @@ export async function listTickets(guildId?: string, botId?: string | null) {
       botId: normalizeBotId(ticket.botId),
       guildId: ticket.guildId,
       channelId: ticket.channelId,
+      panelId: ticket.panelId ?? ticket.categoryId ?? null,
       openerId: ticket.openerId,
       ownerId: ticket.ownerId ?? ticket.openerId,
       subject: ticket.subject,
       categoryId: ticket.categoryId ?? null,
       categoryName: ticket.categoryName ?? null,
+      moduleType: normalizeModuleType(ticket.moduleType),
+      ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
+      migrationStatus: ticket.migrationStatus ?? null,
       responsibleRoleId: ticket.responsibleRoleId ?? null,
       responsibleUserId: ticket.responsibleUserId ?? null,
       status: ticket.status,
@@ -171,14 +199,14 @@ export async function listTickets(guildId?: string, botId?: string | null) {
   }
 }
 
-export async function getTicketByChannel(channelId: string, botId?: string | null) {
+export async function getTicketByChannel(channelId: string, botId?: string | null, guildId?: string) {
   const normalizedBotId = normalizeBotId(botId);
   try {
     const { tickets } = await getMongoCollections();
-    const ticket = await tickets.findOne({ channelId, ...scopedQuery(undefined, normalizedBotId) });
+    const ticket = await tickets.findOne({ channelId, ...scopedQuery(guildId, normalizedBotId) });
     return ticket ? toDto(ticket) : null;
   } catch {
-    return memoryTickets.find((ticket) => ticket.channelId === channelId && ticket.botId === normalizedBotId) ?? null;
+    return memoryTickets.find((ticket) => ticket.channelId === channelId && ticket.botId === normalizedBotId && (!guildId || ticket.guildId === guildId)) ?? null;
   }
 }
 
@@ -193,7 +221,7 @@ export async function getTicketById(ticketId: string, botId?: string | null) {
   }
 }
 
-export async function updateTicketStatus(ticketId: string, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete">>) {
+export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete">>) {
   const { tickets } = await getMongoCollections();
   const $set: Partial<MongoTicket> = {};
   for (const [key, value] of Object.entries(input) as Array<[keyof typeof input, unknown]>) {
@@ -201,24 +229,30 @@ export async function updateTicketStatus(ticketId: string, input: Partial<Pick<M
       ($set as Record<string, unknown>)[key] = value;
     }
   }
-  await tickets.updateOne({ _id: ticketId }, { $set });
-  const ticket = await tickets.findOne({ _id: ticketId });
+  const closesReservation = input.status ? !isActiveTicketStatus(input.status) : false;
+  await tickets.updateOne(
+    { _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) },
+    closesReservation ? { $set, $unset: { activeKey: "" } } : { $set }
+  );
+  const ticket = await tickets.findOne({ _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) });
   return ticket ? toDto(ticket) : null;
 }
 
-export async function updateTicketChannel(ticketId: string, channelId: string | null) {
+export async function updateTicketChannel(ticketId: string, botId: string | null, channelId: string | null) {
   const { tickets } = await getMongoCollections();
-  await tickets.updateOne({ _id: ticketId }, { $set: { channelId } });
-  const ticket = await tickets.findOne({ _id: ticketId });
+  const scope = { _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) };
+  await tickets.updateOne(scope, { $set: { channelId } });
+  const ticket = await tickets.findOne(scope);
   return ticket ? toDto(ticket) : null;
 }
 
-export async function claimTicket(ticketId: string, userId: string) {
+export async function claimTicket(ticketId: string, botId: string | null, userId: string) {
   try {
     const { tickets } = await getMongoCollections();
     const claimed = await tickets.findOneAndUpdate(
       {
         _id: ticketId,
+        ...scopedQuery(undefined, normalizeBotId(botId)),
         responsibleUserId: { $in: [null, ""] },
         status: { $nin: ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"] }
       },
@@ -235,10 +269,10 @@ export async function claimTicket(ticketId: string, userId: string) {
       return { claimed: true, ticket: toDto(claimed) };
     }
 
-    const existing = await tickets.findOne({ _id: ticketId });
+    const existing = await tickets.findOne({ _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) });
     return { claimed: false, ticket: existing ? toDto(existing) : null };
   } catch (error) {
-    const ticket = memoryTickets.find((item) => item.id === ticketId);
+    const ticket = memoryTickets.find((item) => item.id === ticketId && item.botId === normalizeBotId(botId));
     if (!ticket || ticket.responsibleUserId || ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"].includes(ticket.status)) {
       return { claimed: false, ticket: ticket ?? null };
     }
@@ -277,11 +311,15 @@ function toDto(ticket: MongoTicket): TicketDto {
     botId: normalizeBotId(ticket.botId),
     guildId: ticket.guildId,
     channelId: ticket.channelId,
+    panelId: ticket.panelId ?? ticket.categoryId ?? null,
     openerId: ticket.openerId,
     ownerId: ticket.ownerId ?? ticket.openerId,
     subject: ticket.subject,
     categoryId: ticket.categoryId ?? null,
     categoryName: ticket.categoryName ?? null,
+    moduleType: normalizeModuleType(ticket.moduleType),
+    ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
+    migrationStatus: ticket.migrationStatus ?? null,
     responsibleRoleId: ticket.responsibleRoleId ?? null,
     responsibleUserId: ticket.responsibleUserId ?? null,
     status: ticket.status,
@@ -315,4 +353,27 @@ function scopedQuery(guildId: string | undefined, botId: string | null) {
       };
 
   return guildId ? { guildId, ...botScope } : botScope;
+}
+
+export function ticketActiveKey(guildId: string, botId: string | null, openerId: string, categoryId: string | null, moduleType = "default") {
+  return [botId ?? "primary", guildId, normalizeModuleType(moduleType), openerId, categoryId ?? "default"].join(":");
+}
+
+export function isActiveTicketStatus(status: MongoTicket["status"]) {
+  return ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(status);
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && Number((error as { code?: unknown }).code) === 11000;
+}
+
+function normalizeModuleType(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "police" ? "police" : "default";
+}
+
+function normalizeTicketType(value: string | null | undefined, moduleType: string, categoryId?: string | null) {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized) return normalized;
+  return moduleType === "police" ? "police" : categoryId?.trim() || "support";
 }

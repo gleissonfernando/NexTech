@@ -11,7 +11,8 @@
     "start:worker": "node dist/worker.js",
     "start:scheduler": "node dist/scheduler.js",
     "start:backfill": "node dist/backfill.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "archiver": "^8.0.0",

@@ -16,9 +16,12 @@ import {
   type ChatInputCommandInteraction,
   type Guild,
   type Interaction,
+  type InteractionEditReplyOptions,
   type InteractionReplyOptions,
   type InteractionUpdateOptions,
   type Message,
+  type MessageCreateOptions,
+  type MessageEditOptions,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
   type TextChannel
@@ -28,7 +31,7 @@ import type { BotContext, GuildSettings, PanelImageSettings, TicketPanelOption }
 import { resetSelectMenuMessage } from "../utils/selectMenuReset";
 import type { TicketPanelPublishAck } from "../websocket/socketClient";
 import type { TicketRecord } from "./apiClient";
-import { getFreshGuildSettings } from "./guildSettingsCache";
+import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
 import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import { systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 import { buildTranscriptLuaCommand, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
@@ -42,11 +45,13 @@ const OPEN_BUTTON_ID = "ticket_open_button";
 const OPEN_CATEGORY_PREFIX = "ticket_open_category:";
 const OPEN_CLIENT_PREFIX = "ticket_open_client:";
 const OPEN_CONTINUE_PREFIX = "ticket_open_continue:";
+const TICKET_MEMBER_MODAL_PREFIX = "ticket_member:";
 let ticketPanelServiceStarted = false;
 const panelPublicationLocks = new Map<string, Promise<string | null>>();
-const openTicketSessions = new Map<string, { clientStatus: "yes" | "no" | null; createdAt: number; optionValue: string | null; userId: string }>();
+const openTicketSessions = new Map<string, { botId: string | null; clientStatus: "yes" | "no" | null; createdAt: number; guildId: string; optionValue: string | null; userId: string }>();
 const ticketCreationLocks = new Map<string, Promise<void>>();
 const OPEN_TICKET_SESSION_TTL_MS = 10 * 60 * 1000;
+const PENDING_TICKET_LEASE_MS = 2 * 60 * 1000;
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
   { label: "Em análise", value: "IN_ANALYSIS" },
@@ -57,6 +62,14 @@ const STATUS_OPTIONS = [
   { label: "Encerrado", value: "CLOSED" }
 ];
 type TranscriptCreateResult = Awaited<ReturnType<BotContext["api"]["createTranscript"]>>;
+type TicketModuleType = "default" | "police";
+type TicketScopedId = {
+  action: string;
+  botId: string | null;
+  guildId: string | null;
+  legacy: boolean;
+  targetId: string;
+};
 
 export async function publishTicketPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) {
@@ -154,7 +167,7 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return false;
   }
 
-  if (interaction.isButton() && interaction.customId === OPEN_BUTTON_ID) {
+  if (interaction.isButton() && (interaction.customId === OPEN_BUTTON_ID || interaction.customId.startsWith(`${OPEN_BUTTON_ID}:`))) {
     await handleTicketOpenButton(interaction, context);
     return true;
   }
@@ -189,59 +202,71 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return true;
   }
 
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_MEMBER_MODAL_PREFIX)) {
+    await handleTicketMemberModal(interaction, context);
+    return true;
+  }
+
   if (!interaction.isStringSelectMenu() || interaction.customId !== TICKET_PANEL_CUSTOM_ID) {
     return false;
   }
 
   const selectedValue = interaction.values[0];
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === selectedValue);
 
   if (!settings?.ticketEnabled || !option) {
-    await interaction.reply({ content: "Esta opção de ticket não está mais disponível.", ephemeral: true });
+    await interaction.editReply("Esta opção de ticket não está mais disponível.");
     return true;
   }
 
   void resetSelectMenuMessage(interaction);
 
-  const token = createOpenTicketSession(interaction.user.id, option.value);
-  await interaction.reply(renderTicketPreOpenPayload(settings, token, interaction.guild, getOpenTicketSession(token), "Categoria selecionada. Informe se você é cliente para continuar."));
+  const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, option.value);
+  await interaction.editReply(renderTicketPreOpenEditPayload(settings, token, interaction.guild, getOpenTicketSession(token), "Categoria selecionada. Informe se você é cliente para continuar."));
 
   return true;
 }
 
 async function handleTicketOpenButton(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
-
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
-  const options = activeTicketOptions(settings);
-  if (!settings?.ticketEnabled || !options.length) {
-    await interaction.reply({ content: "Nenhuma categoria de ticket ativa foi configurada na Dashboard.", flags: MessageFlags.Ephemeral });
+  if (interaction.customId.startsWith(`${OPEN_BUTTON_ID}:`) && !validatePanelOpenButton(interaction)) {
+    await interaction.reply({ content: "Este painel pertence a outro bot ou servidor.", flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const token = createOpenTicketSession(interaction.user.id);
-  await interaction.reply(renderTicketPreOpenPayload(settings, token, interaction.guild, getOpenTicketSession(token)));
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const options = activeTicketOptions(settings);
+  if (!settings?.ticketEnabled || !options.length) {
+    await interaction.editReply("Nenhuma categoria de ticket ativa foi configurada na Dashboard.");
+    return;
+  }
+
+  const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
+  await interaction.editReply(renderTicketPreOpenEditPayload(settings, token, interaction.guild, getOpenTicketSession(token)));
 }
 
 async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
   if (!interaction.guild) return;
 
+  await interaction.deferUpdate();
   const isCategory = interaction.customId.startsWith(OPEN_CATEGORY_PREFIX);
   const token = interaction.customId.slice((isCategory ? OPEN_CATEGORY_PREFIX : OPEN_CLIENT_PREFIX).length);
   const session = getOpenTicketSession(token);
-  if (!session || session.userId !== interaction.user.id || isExpiredOpenTicketSession(session)) {
+  if (!session || !isOpenTicketSessionForInteraction(session, interaction) || isExpiredOpenTicketSession(session)) {
     openTicketSessions.delete(token);
-    await interaction.reply({ content: "Esta abertura expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "Esta abertura expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const selectedValue = interaction.values[0] ?? null;
   if (isCategory) {
     const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === selectedValue);
     if (!settings?.ticketEnabled || !option) {
-      await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
+      await interaction.followUp({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
       return;
     }
     session.optionValue = option.value;
@@ -249,7 +274,7 @@ async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteractio
     session.clientStatus = selectedValue;
   }
 
-  await interaction.update(ticketPreOpenUpdatePayload(settings, token, interaction.guild, session));
+  await interaction.editReply(ticketPreOpenUpdatePayload(settings, token, interaction.guild, session));
 }
 
 async function handleTicketOpenContinue(interaction: ButtonInteraction, context: BotContext) {
@@ -257,7 +282,7 @@ async function handleTicketOpenContinue(interaction: ButtonInteraction, context:
 
   const token = interaction.customId.slice(OPEN_CONTINUE_PREFIX.length);
   const session = getOpenTicketSession(token);
-  if (!session || session.userId !== interaction.user.id || isExpiredOpenTicketSession(session)) {
+  if (!session || !isOpenTicketSessionForInteraction(session, interaction) || isExpiredOpenTicketSession(session)) {
     openTicketSessions.delete(token);
     await interaction.reply({ content: "Esta abertura expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
     return;
@@ -272,7 +297,7 @@ async function handleTicketOpenContinue(interaction: ButtonInteraction, context:
     return;
   }
 
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
   if (!settings?.ticketEnabled || !option) {
     await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
@@ -287,16 +312,8 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
 
   const token = interaction.customId.slice(OPEN_MODAL_PREFIX.length);
   const session = consumeOpenTicketSession(token);
-  if (!session || session.userId !== interaction.user.id) {
+  if (!session || !isOpenTicketSessionForInteraction(session, interaction)) {
     await interaction.reply({ content: "Este formulário expirou. Selecione a categoria novamente no painel.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
-  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
-
-  if (!settings?.ticketEnabled || !option || !session.clientStatus) {
-    await interaction.reply({ content: "Esta categoria de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -310,13 +327,24 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.user.id, option.value);
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
+    logTicketTechnical("settings_load_failed", interaction, { error });
+    return null;
+  });
+  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
+
+  if (!settings?.ticketEnabled || !option || !session.clientStatus) {
+    await interaction.editReply("Esta categoria de ticket não está mais disponível.");
+    return;
+  }
+
+  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, option.value, resolveTicketModuleType(option));
   if (ticketCreationLocks.has(lockKey)) {
     await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
     return;
   }
 
-  const creation = createTicketFromModal(interaction, context, settings, option, subject, details, clientLabel)
+  const creation = createTicketForInteraction(interaction, context, settings, option, subject, details, clientLabel)
     .finally(() => {
       if (ticketCreationLocks.get(lockKey) === creation) {
         ticketCreationLocks.delete(lockKey);
@@ -328,8 +356,35 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   return true;
 }
 
-async function createTicketFromModal(
-  interaction: ModalSubmitInteraction,
+export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, rawSubject: string) {
+  if (!interaction.guild) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const subject = normalizeTicketSubject(rawSubject.padEnd(10, " ")) ?? "Atendimento geral";
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
+    logTicketTechnical("settings_load_failed", interaction, { error });
+    return null;
+  });
+  const option = activeTicketOptions(settings)[0];
+  if (!settings?.ticketEnabled || !option) {
+    await interaction.editReply("O sistema de tickets está desativado ou não possui modalidade ativa.");
+    return;
+  }
+
+  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, option.value, resolveTicketModuleType(option));
+  if (ticketCreationLocks.has(lockKey)) {
+    await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
+    return;
+  }
+  const creation = createTicketForInteraction(interaction, context, settings, option, subject, null, "Não informado")
+    .finally(() => {
+      if (ticketCreationLocks.get(lockKey) === creation) ticketCreationLocks.delete(lockKey);
+    });
+  ticketCreationLocks.set(lockKey, creation);
+  await creation;
+}
+
+async function createTicketForInteraction(
+  interaction: ModalSubmitInteraction | ChatInputCommandInteraction,
   context: BotContext,
   settings: GuildSettings,
   option: TicketPanelOption,
@@ -339,15 +394,55 @@ async function createTicketFromModal(
 ) {
   const guild = interaction.guild;
   if (!guild) return;
+  const startedAt = performance.now();
+  logTicketTechnical("request_started", interaction, { categoryId: option.value, categoryChannelId: option.categoryId ?? settings.ticketCategoryId });
+  const moduleType = resolveTicketModuleType(option);
+  const ticketType = resolveTicketType(option, moduleType);
 
+  const opener = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!opener) {
+    logTicketTechnical("opener_left_guild", interaction, { categoryId: option.value });
+    await interaction.editReply("Você não está mais neste servidor, então o ticket não pôde ser criado.");
+    return;
+  }
+
+  try {
+    await validateTicketChannelPrerequisites(guild, settings, option);
+  } catch (error) {
+    logTicketTechnical("prerequisite_check_failed", interaction, { error });
+    await interaction.editReply(ticketUserFacingError(error));
+    return;
+  }
+
+  const categoryId = option.categoryId ?? settings.ticketCategoryId;
+  const orphanChannel = guild.channels.cache.find((channel): channel is TextChannel => {
+    if (channel.type !== ChannelType.GuildText || channel.parentId !== categoryId) return false;
+    const metadata = parseTicketChannelTopic(channel.topic);
+    return metadata?.openerId === interaction.user.id
+      && metadata.categoryId === option.value
+      && metadata.moduleType === moduleType
+      && (!metadata.botId || metadata.botId === interaction.client.user?.id);
+  }) ?? null;
+  if (orphanChannel) {
+    const recovered = await recoverTicketRecord(orphanChannel, context);
+    if (recovered?.channelId === orphanChannel.id && ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(recovered.status)) {
+      logTicketTechnical("orphan_channel_recovered", interaction, { channelId: orphanChannel.id, ticketId: recovered.id });
+      await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${orphanChannel.id}>`);
+      return;
+    }
+  }
+
+  const databaseStartedAt = performance.now();
   const existing = await context.api.getOpenTicket({
     categoryId: option.value,
     guildId: guild.id,
+    moduleType,
     openerId: interaction.user.id
   }).catch((error) => {
-    console.warn("[ticket-panel] falha ao validar ticket aberto:", error instanceof Error ? error.message : error);
-    return null;
+    logTicketTechnical("duplicate_check_failed", interaction, { categoryId: option.value, error });
+    throw error;
   });
+  logTicketTechnical("duplicate_check_completed", interaction, { databaseMs: elapsed(databaseStartedAt), existingTicketId: existing?.id ?? null });
 
   if (existing) {
     const existingChannel = existing.channelId
@@ -359,12 +454,17 @@ async function createTicketFromModal(
       return;
     }
 
-    await context.api.updateTicketStatus(existing.id, {
+    if (existing.status === "PENDING" && isPendingTicketLeaseActive(existing.createdAt)) {
+      await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
+      return;
+    }
+
+    const invalidated = await context.api.updateTicketStatus(existing.id, {
       isIncomplete: true,
       status: "INCOMPLETE"
-    }).catch((error) => {
-      console.warn("[ticket-panel] falha ao invalidar ticket sem canal:", error instanceof Error ? error.message : error);
     });
+    if (!invalidated) throw new Error(`Ticket inconsistente ${existing.id} não pôde ser invalidado.`);
+    logTicketTechnical("stale_ticket_invalidated", interaction, { staleTicketId: existing.id });
   }
 
   const ticket = await context.api.createTicket({
@@ -372,10 +472,13 @@ async function createTicketFromModal(
     categoryId: option.value,
     categoryName: option.label,
     guildId: guild.id,
+    moduleType,
     openerId: interaction.user.id,
+    panelId: option.value,
     responsibleRoleId: option.mentionRoleId ?? null,
     status: "PENDING",
-    subject
+    subject,
+    ticketType
   });
 
   if (ticket.created === false) {
@@ -393,10 +496,16 @@ async function createTicketFromModal(
 
   let channel: TextChannel | null = null;
   try {
-    channel = await createTicketChannel(guild, settings, interaction.user.id, option, subject);
-    await context.api.updateTicketChannel(ticket.ticket.id, channel.id);
+    const channelStartedAt = performance.now();
+    channel = await createTicketChannel(guild, settings, interaction.user.id, option, subject, ticket.ticket.id);
+    logTicketTechnical("channel_created", interaction, { channelId: channel.id, channelMs: elapsed(channelStartedAt), ticketId: ticket.ticket.id });
+    const linked = await context.api.updateTicketChannel(ticket.ticket.id, channel.id);
+    if (!linked?.channelId) throw new Error("A API não confirmou o vínculo entre ticket e canal.");
   } catch (error) {
-    console.warn("[ticket-panel] não foi possível criar/vincular canal de ticket:", error instanceof Error ? error.stack ?? error.message : error);
+    logTicketTechnical("channel_create_failed", interaction, { error, ticketId: ticket.ticket.id });
+    if (channel) await channel.delete("Rollback: falha ao persistir vínculo do ticket").catch((cleanupError) => {
+      logTicketTechnical("channel_rollback_failed", interaction, { channelId: channel?.id, error: cleanupError, ticketId: ticket.ticket.id });
+    });
     await context.api.updateTicketStatus(ticket.ticket.id, {
       isIncomplete: true,
       status: "INCOMPLETE"
@@ -414,12 +523,21 @@ async function createTicketFromModal(
       type: "ticket.channel_create_failed",
       userId: interaction.user.id
     }).catch(() => null);
-    await interaction.editReply("Não consegui criar o canal do ticket. Verifique a categoria e as permissões do bot.");
+    await interaction.editReply(ticketUserFacingError(error));
     return;
   }
 
-  await context.api.updateTicketStatus(ticket.ticket.id, { status: "OPEN" }).catch(() => null);
-  await channel.send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, guild, clientLabel));
+  try {
+    await channel.send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, guild, clientLabel));
+    const opened = await context.api.updateTicketStatus(ticket.ticket.id, { status: "OPEN" });
+    if (!opened) throw new Error("A API não confirmou a ativação do ticket.");
+  } catch (error) {
+    logTicketTechnical("initial_panel_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
+    await channel.delete("Rollback: falha ao finalizar criação do ticket").catch(() => null);
+    await context.api.updateTicketStatus(ticket.ticket.id, { isIncomplete: true, status: "INCOMPLETE" }).catch(() => null);
+    await interaction.editReply("O ticket não pôde ser finalizado. Nenhum canal incompleto foi mantido; tente novamente.");
+    return;
+  }
   await context.api.recordTicketEvent(ticket.ticket.id, {
     authorId: interaction.user.id,
     content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}. Cliente: ${clientLabel}.`,
@@ -431,32 +549,47 @@ async function createTicketFromModal(
       channelId: channel.id,
       client: clientLabel,
       details,
+      moduleType,
+      panelId: option.value,
       subject
     }
   }).catch(() => null);
 
+  await sendTicketOpeningLog(guild, settings, interaction.user.id, option, channel.id, ticket.ticket.id, subject).catch((error) => {
+    logTicketTechnical("opening_log_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
+  });
+
+  logTicketTechnical("request_completed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id, totalMs: elapsed(startedAt) });
   await interaction.editReply(`Ticket criado: <#${channel.id}>`);
 }
 
 async function handleTicketAction(interaction: ButtonInteraction, context: BotContext) {
-  const [, action, ticketId] = interaction.customId.split(":");
-  if (!ticketId) {
+  const parsed = parseScopedComponentId(interaction.customId, TICKET_ACTION_PREFIX);
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
     await interaction.reply({ content: "Ticket inválido.", flags: MessageFlags.Ephemeral });
     return;
   }
+  const { action, targetId: ticketId } = parsed;
 
   if (action === "newpass") {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await canManageSensitiveTicketLogAction(interaction))) {
+      await interaction.editReply("Você não possui permissão para gerar senhas de transcript.");
+      return;
+    }
     const password = await context.api.createTranscriptTemporaryPassword(ticketId);
-    await interaction.reply({
-      content: `Nova senha temporária criada: ||${password.password}||\nValidade: ${new Date(password.expiresAt).toLocaleString("pt-BR")}`,
-      flags: MessageFlags.Ephemeral
-    });
+    await interaction.editReply(`Nova senha temporária criada: ||${password.password}||\nValidade: ${new Date(password.expiresAt).toLocaleString("pt-BR")}`);
     return;
   }
 
   if (action === "revoke") {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await canManageSensitiveTicketLogAction(interaction))) {
+      await interaction.editReply("Você não possui permissão para revogar senhas de transcript.");
+      return;
+    }
     await context.api.revokeTranscriptTemporaryPasswords(ticketId);
-    await interaction.reply({ content: "Senhas temporárias revogadas para este transcript.", flags: MessageFlags.Ephemeral });
+    await interaction.editReply("Senhas temporárias revogadas para este transcript.");
     return;
   }
 
@@ -465,72 +598,82 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     return;
   }
 
-  const ticket = await context.api.getTicket(ticketId);
-  if (!ticket) {
-    await interaction.reply({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (isTicketOpener(ticket, interaction.user.id)) {
-    await interaction.reply({ content: "Quem abriu este ticket não pode assumir nem usar os botões internos do atendimento.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  if (action === "claim") {
-    await interaction.deferUpdate();
-    const claim = await context.api.claimTicket(ticketId, interaction.user.id);
-    if (!claim.claimed) {
-      await interaction.followUp({ content: "Este atendimento já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
-      return;
-    }
-    const updatedTicket = claim.ticket;
-    await context.api.recordTicketEvent(ticketId, {
-      authorId: interaction.user.id,
-      content: `Ticket assumido por ${interaction.user.tag}.`,
-      eventType: "ticket.claimed",
-      guildId: interaction.guildId!
-    }).catch(() => null);
-    await interaction.message.edit(createOpenTicketPayload(
-      ticketId,
-      updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
-      updatedTicket?.openerId ?? ticket.openerId,
-      interaction.user.id,
-      "Em análise",
-      updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
-      updatedTicket?.subject ?? ticket.subject,
-      null,
-      interaction.guild
-    )).catch(() => null);
+  if (["add", "remove", "transfer"].includes(action ?? "")) {
+    await interaction.showModal(createTicketMemberModal(action as "add" | "remove" | "transfer", ticketId, interaction.guildId, interaction.client.user?.id ?? null));
     return;
   }
 
   if (action === "close") {
-    await interaction.showModal(
-      new ModalBuilder()
-        .setCustomId(`${CLOSE_MODAL_PREFIX}${ticketId}`)
-        .setTitle("Finalizar Ticket")
-        .addComponents(
-          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("reason").setLabel("Motivo do fechamento").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("result").setLabel("Resultado da análise").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("notes").setLabel("Observações internas").setRequired(false).setStyle(TextInputStyle.Paragraph).setMaxLength(900))
-        )
-    );
+    await interaction.showModal(createTicketCloseModal(ticketId, interaction.guildId, interaction.client.user?.id ?? null));
     return;
   }
 
-  await interaction.reply({ content: "Ação ainda não configurada para este painel.", flags: MessageFlags.Ephemeral });
-}
+  if (action !== "claim") {
+    await interaction.reply({ content: "Ação ainda não configurada para este painel.", flags: MessageFlags.Ephemeral });
+    return;
+  }
 
-async function handleTicketStatus(interaction: StringSelectMenuInteraction, context: BotContext) {
-  const ticketId = interaction.customId.slice(TICKET_STATUS_PREFIX.length);
-  const status = interaction.values[0];
-  const label = STATUS_OPTIONS.find((item) => item.value === status)?.label ?? status;
-  const ticket = await context.api.getTicket(ticketId);
+  await interaction.deferUpdate();
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
   if (!ticket) {
-    await interaction.reply({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
     return;
   }
   if (isTicketOpener(ticket, interaction.user.id)) {
-    await interaction.reply({ content: "Quem abriu este ticket não pode alterar status nem usar os botões internos do atendimento.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "Quem abriu este ticket não pode assumir nem usar os botões internos do atendimento.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.followUp({ content: "Você não possui permissão da equipe para gerenciar este ticket.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const claim = await context.api.claimTicket(ticketId, interaction.user.id);
+  if (!claim.claimed) {
+    await interaction.followUp({ content: "Este atendimento já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
+    return;
+  }
+  const updatedTicket = claim.ticket;
+  await context.api.recordTicketEvent(ticketId, {
+    authorId: interaction.user.id,
+    content: `Ticket assumido por ${interaction.user.tag}.`,
+    eventType: "ticket.claimed",
+    guildId: interaction.guildId!
+  }).catch(() => null);
+  await interaction.message.edit(createOpenTicketPayload(
+    ticketId,
+    updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
+    updatedTicket?.openerId ?? ticket.openerId,
+    interaction.user.id,
+    "Em análise",
+    updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
+    updatedTicket?.subject ?? ticket.subject,
+    null,
+    interaction.guild
+  )).catch(() => null);
+}
+
+async function handleTicketStatus(interaction: StringSelectMenuInteraction, context: BotContext) {
+  const parsed = parseScopedComponentId(interaction.customId, TICKET_STATUS_PREFIX, "status");
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+    await interaction.reply({ content: "Ticket inválido.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const ticketId = parsed.targetId;
+  const status = interaction.values[0];
+  const label = STATUS_OPTIONS.find((item) => item.value === status)?.label ?? status;
+  await interaction.deferUpdate();
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
+  if (!ticket) {
+    await interaction.followUp({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id)) {
+    await interaction.followUp({ content: "Quem abriu este ticket não pode alterar status nem usar os botões internos do atendimento.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.followUp({ content: "Você não possui permissão da equipe para gerenciar este ticket.", flags: MessageFlags.Ephemeral });
     return;
   }
   const updatedTicket = await context.api.updateTicketStatus(ticketId, { status });
@@ -540,7 +683,7 @@ async function handleTicketStatus(interaction: StringSelectMenuInteraction, cont
     eventType: "ticket.status_changed",
     guildId: interaction.guildId!
   }).catch(() => null);
-  await interaction.update(createOpenTicketPayload(
+  await interaction.message.edit(createOpenTicketPayload(
     ticketId,
     updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
     updatedTicket?.openerId ?? ticket.openerId,
@@ -553,17 +696,127 @@ async function handleTicketStatus(interaction: StringSelectMenuInteraction, cont
   ));
 }
 
-async function handleTicketCloseModal(interaction: ModalSubmitInteraction, context: BotContext) {
-  const ticketId = interaction.customId.slice(CLOSE_MODAL_PREFIX.length);
+async function handleTicketMemberModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  const parsed = parseScopedComponentId(interaction.customId, TICKET_MEMBER_MODAL_PREFIX);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const action = parsed?.action as "add" | "remove" | "transfer" | undefined;
+  const ticketId = parsed?.targetId;
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+    await interaction.editReply("Ação de membro inválida.");
+    return;
+  }
+  if (!ticketId || !action || !["add", "remove", "transfer"].includes(action)) {
+    await interaction.editReply("Ação de membro inválida.");
+    return;
+  }
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
+  if (!ticket || !interaction.guild || interaction.channel?.type !== ChannelType.GuildText) {
+    await interaction.editReply("Não consegui localizar o canal ou o registro deste ticket.");
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.editReply("Você não possui permissão da equipe para gerenciar membros deste ticket.");
+    return;
+  }
 
-  const currentTicket = await context.api.getTicket(ticketId);
+  const targetId = interaction.fields.getTextInputValue("user_id").replace(/[^0-9]/g, "");
+  if (!/^\d{5,32}$/.test(targetId)) {
+    await interaction.editReply("Informe um ID de usuário válido.");
+    return;
+  }
+  if (targetId === ticket.openerId && action === "remove") {
+    await interaction.editReply("O autor principal não pode ser removido do próprio ticket.");
+    return;
+  }
+
+  const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+  if ((action === "add" || action === "transfer") && !target) {
+    await interaction.editReply("Esse usuário não está mais no servidor.");
+    return;
+  }
+
+  if (action === "remove") {
+    await interaction.channel.permissionOverwrites.delete(targetId, `Ticket ${ticketId}: usuário removido por ${interaction.user.id}`);
+  } else if (action === "add") {
+    await interaction.channel.permissionOverwrites.edit(targetId, {
+      AttachFiles: true,
+      EmbedLinks: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      UseApplicationCommands: true,
+      ViewChannel: true
+    }, { reason: `Ticket ${ticketId}: usuário adicionado por ${interaction.user.id}` });
+  } else {
+    const targetCanManage = target && (
+      target.permissions.has(PermissionFlagsBits.Administrator)
+      || target.permissions.has(PermissionFlagsBits.ManageChannels)
+      || Boolean(ticket.responsibleRoleId && target.roles.cache.has(ticket.responsibleRoleId))
+    );
+    if (!targetCanManage) {
+      await interaction.editReply("O novo responsável precisa possuir o cargo da equipe ou permissão para gerenciar canais.");
+      return;
+    }
+    await context.api.updateTicketStatus(ticketId, { responsibleUserId: targetId, status: "IN_ANALYSIS" });
+  }
+
+  await context.api.recordTicketEvent(ticketId, {
+    authorId: interaction.user.id,
+    content: `Membro ${targetId} ${action === "add" ? "adicionado" : action === "remove" ? "removido" : "definido como responsável"} por ${interaction.user.tag}.`,
+    eventType: `ticket.member_${action}`,
+    guildId: interaction.guild.id,
+    metadata: { targetId }
+  }).catch(() => null);
+  await interaction.editReply(action === "add" ? "Usuário adicionado ao ticket." : action === "remove" ? "Usuário removido do ticket." : "Ticket transferido para o novo responsável.");
+}
+
+function createTicketMemberModal(action: "add" | "remove" | "transfer", ticketId: string, guildId: string | null, botId: string | null) {
+  const labels = { add: "Adicionar Usuário", remove: "Remover Usuário", transfer: "Transferir Ticket" };
+  return new ModalBuilder()
+    .setCustomId(scopedComponentId(TICKET_MEMBER_MODAL_PREFIX, action, guildId, botId, ticketId))
+    .setTitle(labels[action])
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("user_id")
+        .setLabel("ID do usuário")
+        .setPlaceholder("Cole o ID numérico do usuário")
+        .setRequired(true)
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(5)
+        .setMaxLength(32)
+    ));
+}
+
+function createTicketCloseModal(ticketId: string, guildId: string | null, botId: string | null) {
+  return new ModalBuilder()
+    .setCustomId(scopedComponentId(CLOSE_MODAL_PREFIX, "close", guildId, botId, ticketId))
+    .setTitle("Finalizar Ticket")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("reason").setLabel("Motivo do fechamento").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("result").setLabel("Resultado da análise").setRequired(true).setStyle(TextInputStyle.Paragraph).setMaxLength(900)),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("notes").setLabel("Observações internas").setRequired(false).setStyle(TextInputStyle.Paragraph).setMaxLength(900))
+    );
+}
+
+async function handleTicketCloseModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  const parsed = parseScopedComponentId(interaction.customId, CLOSE_MODAL_PREFIX, "close");
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+    await interaction.editReply("Ticket inválido.");
+    return;
+  }
+  const ticketId = parsed.targetId;
+
+  const currentTicket = await getTicketOrRecover(interaction, context, ticketId);
   if (!currentTicket) {
     await interaction.editReply("Não consegui localizar o ticket.");
     return;
   }
   if (isTicketOpener(currentTicket, interaction.user.id)) {
     await interaction.editReply("Quem abriu este ticket não pode finalizar nem usar os botões internos do atendimento.");
+    return;
+  }
+  if (!(await canManageTicketInteraction(interaction, currentTicket))) {
+    await interaction.editReply("Você não possui permissão da equipe para finalizar este ticket.");
     return;
   }
 
@@ -647,7 +900,7 @@ function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null =
     ?? defaultTicketBannerUrl();
   const action = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(OPEN_BUTTON_ID)
+      .setCustomId(`${OPEN_BUTTON_ID}:${settings.guildId}:${guild?.client.user?.id ?? settings.botId ?? "unknown"}`)
       .setEmoji(systemComponentEmoji("prancheta", guild))
       .setLabel("Abrir Ticket")
       .setStyle(ButtonStyle.Primary)
@@ -729,10 +982,10 @@ function formatTicketRules(value: string) {
     .join("\n");
 }
 
-function createOpenTicketSession(userId: string, optionValue: string | null = null) {
+function createOpenTicketSession(guildId: string, botId: string | null, userId: string, optionValue: string | null = null) {
   cleanupOpenTicketSessions();
   const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 24);
-  openTicketSessions.set(token, { clientStatus: null, createdAt: Date.now(), optionValue, userId });
+  openTicketSessions.set(token, { botId, clientStatus: null, createdAt: Date.now(), guildId, optionValue, userId });
   return token;
 }
 
@@ -753,6 +1006,13 @@ function consumeOpenTicketSession(token: string) {
 
 function isExpiredOpenTicketSession(session: { createdAt: number }) {
   return Date.now() - session.createdAt > OPEN_TICKET_SESSION_TTL_MS;
+}
+
+function isOpenTicketSessionForInteraction(session: { botId: string | null; guildId: string; userId: string }, interaction: Interaction) {
+  const currentBotId = interaction.client.user?.id ?? null;
+  return session.userId === interaction.user.id
+    && session.guildId === interaction.guildId
+    && (!session.botId || !currentBotId || session.botId === currentBotId);
 }
 
 function cleanupOpenTicketSessions() {
@@ -816,6 +1076,17 @@ function renderTicketPreOpenPayload(
     footer: null,
     guild
   }) as InteractionReplyOptions;
+}
+
+function renderTicketPreOpenEditPayload(
+  settings: GuildSettings,
+  token: string,
+  guild: Guild,
+  session: { clientStatus: "yes" | "no" | null; optionValue: string | null } | null,
+  notice: string | null = null
+): InteractionEditReplyOptions {
+  const payload = renderTicketPreOpenPayload(settings, token, guild, session, notice);
+  return { ...payload, flags: MessageFlags.IsComponentsV2 } as InteractionEditReplyOptions;
 }
 
 function ticketPreOpenUpdatePayload(
@@ -955,25 +1226,11 @@ async function publishConfiguredTicketPanelUnlocked(client: Client, context: Bot
   return panelMessage.id;
 }
 
-async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, subject: string) {
-  const categoryId = option.categoryId ?? settings.ticketCategoryId;
-  const mentionRoleId = option.mentionRoleId && guild.roles.cache.has(option.mentionRoleId) && option.mentionRoleId !== guild.roles.everyone.id
-    ? option.mentionRoleId
-    : null;
-
-  if (!categoryId) {
-    throw new Error("Categoria de tickets não configurada.");
-  }
-
-  const category = await guild.channels.fetch(categoryId).catch(() => null);
-  if (!category || category.type !== ChannelType.GuildCategory) {
-    throw new Error("Categoria de tickets não encontrada ou inválida.");
-  }
-
-  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
-  if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
-    throw new Error("O bot precisa da permissão Gerenciar Canais para criar tickets.");
-  }
+async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, subject: string, ticketId: string) {
+  const { categoryId, me, staffRoleIds } = await validateTicketChannelPrerequisites(guild, settings, option);
+  const mentionRoleId = option.mentionRoleId && staffRoleIds.includes(option.mentionRoleId) ? option.mentionRoleId : null;
+  const moduleType = resolveTicketModuleType(option);
+  const ticketType = resolveTicketType(option, moduleType);
 
   const safeName = subject
     .toLowerCase()
@@ -986,6 +1243,16 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
   return guild.channels.create({
     name: `ticket-${safeName}-${openerId.slice(-4)}`,
     parent: categoryId,
+    topic: createTicketChannelTopic({
+      botId: guild.client.user?.id ?? null,
+      categoryId: option.value,
+      guildId: guild.id,
+      moduleType,
+      openerId,
+      panelId: option.value,
+      ticketId,
+      ticketType
+    }),
     permissionOverwrites: [
       {
         id: guild.roles.everyone.id,
@@ -993,46 +1260,351 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
       },
       {
         id: openerId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
       },
       {
         id: me.id,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory]
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
       },
-      ...(mentionRoleId ? [{
-        id: mentionRoleId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
-      }] : [])
+      ...staffRoleIds.map((roleId) => ({
+        id: roleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
+      }))
     ],
     reason: `Ticket aberto por ${openerId}: ${option.label} - ${subject}`,
     type: ChannelType.GuildText
   }).then((channel) => channel as TextChannel);
 }
 
-function ticketCreationLockKey(guildId: string, userId: string, categoryId: string) {
-  return `${guildId}:${userId}:${categoryId}`;
+async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildSettings, option: TicketPanelOption) {
+  const categoryId = option.categoryId ?? settings.ticketCategoryId;
+  if (!categoryId) throw new Error("Categoria de tickets não configurada.");
+  const category = await guild.channels.fetch(categoryId).catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) throw new Error("Categoria de tickets não encontrada ou inválida.");
+
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!me) throw new Error("Não foi possível localizar o membro do bot neste servidor.");
+  const requiredPermissions = [
+    [PermissionFlagsBits.ViewChannel, "Ver canais"],
+    [PermissionFlagsBits.ManageChannels, "Gerenciar canais"],
+    [PermissionFlagsBits.ManageRoles, "Gerenciar cargos"],
+    [PermissionFlagsBits.SendMessages, "Enviar mensagens"],
+    [PermissionFlagsBits.EmbedLinks, "Inserir links"],
+    [PermissionFlagsBits.AttachFiles, "Anexar arquivos"],
+    [PermissionFlagsBits.ReadMessageHistory, "Ver histórico de mensagens"]
+  ] as const;
+  const categoryPermissions = category.permissionsFor(me);
+  const missingPermissions = requiredPermissions.filter(([permission]) => !categoryPermissions?.has(permission)).map(([, label]) => label);
+  if (missingPermissions.length) throw new Error(`Permissões ausentes para o bot: ${missingPermissions.join(", ")}.`);
+
+  const staffRoleIds = [...new Set([
+    option.mentionRoleId,
+    ...(settings.reportSystem?.adminRoleIds ?? [])
+  ].filter((roleId): roleId is string => Boolean(roleId && guild.roles.cache.has(roleId) && roleId !== guild.roles.everyone.id)))];
+  return { categoryId, me, staffRoleIds };
 }
 
-function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null, clientLabel: string | null = null) {
+async function sendTicketOpeningLog(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, channelId: string, ticketId: string, subject: string) {
+  const logChannelId = settings.logChannelId || settings.reportSystem?.logChannelId;
+  if (!logChannelId) return;
+  const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+  if (!logChannel?.isTextBased() || !("send" in logChannel)) throw new Error("Canal de logs de tickets indisponível.");
+  await logChannel.send({
+    allowedMentions: { parse: [] },
+    content: `[SafeBot][TicketCreate][Handler:main] Ticket ${ticketId} aberto por ${openerId} em <#${channelId}>. Categoria: ${option.label}. Assunto: ${subject}`
+  });
+}
+
+function logTicketTechnical(stage: string, interaction: ModalSubmitInteraction | ChatInputCommandInteraction, data: Record<string, unknown>) {
+  const serialized = Object.fromEntries(Object.entries(data).map(([key, value]) => [
+    key,
+    value instanceof Error ? value.stack ?? value.message : value
+  ]));
+  console.info(JSON.stringify({
+    at: new Date().toISOString(),
+    guildId: interaction.guildId,
+    handler: "[SafeBot][TicketCreate][Handler:main]",
+    interactionId: interaction.id,
+    stage,
+    userId: interaction.user.id,
+    ...serialized
+  }));
+}
+
+function ticketUserFacingError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("Permissões ausentes para o bot:")) {
+    return `${message} Peça a um administrador para corrigir as permissões na categoria configurada.`;
+  }
+  if (message.startsWith("Categoria de tickets")) {
+    return `${message} Peça a um administrador para atualizar o painel na Dashboard.`;
+  }
+  return "Não consegui criar o canal do ticket. Verifique a categoria e as permissões do bot.";
+}
+
+function elapsed(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100;
+}
+
+function ticketCreationLockKey(guildId: string, botId: string | null, userId: string, categoryId: string, moduleType: TicketModuleType) {
+  return `${guildId}:${botId ?? "unknown"}:${moduleType}:${userId}:${categoryId}`;
+}
+
+async function getTicketOrRecover(
+  interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
+  context: BotContext,
+  ticketId: string
+) {
+  const ticket = await context.api.getTicket(ticketId);
+  if (ticket) {
+    const currentBotId = interaction.client.user?.id ?? null;
+    if (ticket.guildId !== interaction.guildId || (ticket.botId && currentBotId && ticket.botId !== currentBotId)) {
+      console.warn("[ticket-panel] ticket rejeitado por escopo divergente", {
+        currentBotId,
+        expectedBotId: ticket.botId,
+        expectedGuildId: ticket.guildId,
+        guildId: interaction.guildId,
+        ticketId
+      });
+      return null;
+    }
+    return ticket;
+  }
+  if (interaction.channel?.type !== ChannelType.GuildText) return ticket;
+  return recoverTicketRecord(interaction.channel, context, ticketId);
+}
+
+async function recoverTicketRecord(channel: TextChannel, context: BotContext, expectedTicketId?: string) {
+  const metadata = parseTicketChannelTopic(channel.topic);
+  if (!metadata || (expectedTicketId && metadata.ticketId !== expectedTicketId)) return null;
+  const currentBotId = context.client.user?.id ?? null;
+  if ((metadata.guildId && metadata.guildId !== channel.guild.id) || (metadata.botId && currentBotId && metadata.botId !== currentBotId)) {
+    console.warn("[SafeBot][TicketReconcile][Handler:main] reconstrução rejeitada por escopo divergente", {
+      channelId: channel.id,
+      currentBotId,
+      guildId: channel.guild.id,
+      metadata
+    });
+    return null;
+  }
+  const existing = await context.api.getTicket(metadata.ticketId).catch(() => null);
+  if (existing) {
+    if (existing.status !== "PENDING" || (existing.channelId && existing.channelId !== channel.id)) return existing;
+    if (!existing.channelId) await context.api.updateTicketChannel(existing.id, channel.id);
+    const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+    const hasInitialPanel = recent?.some((message) => message.author.id === context.client.user?.id && JSON.stringify(message.components.map((component) => component.toJSON())).includes(existing.id));
+    if (!hasInitialPanel) {
+      await channel.send(createOpenTicketPayload(existing.id, existing.categoryName ?? metadata.categoryId, existing.openerId, existing.responsibleUserId ?? null, "Aguardando atendimento", existing.responsibleRoleId ?? null, existing.subject, null, channel.guild));
+    }
+    return await context.api.updateTicketStatus(existing.id, { status: "OPEN" }) ?? existing;
+  }
+  const recovered = await context.api.createTicket({
+    categoryId: metadata.categoryId,
+    categoryName: metadata.categoryId,
+    channelId: channel.id,
+    guildId: channel.guild.id,
+    moduleType: metadata.moduleType as TicketModuleType,
+    openerId: metadata.openerId,
+    panelId: metadata.panelId,
+    status: "OPEN",
+    subject: channel.name,
+    ticketId: metadata.ticketId,
+    ticketType: metadata.ticketType
+  }).catch((error) => {
+    console.error("[SafeBot][TicketReconcile][Handler:main]", {
+      channelId: channel.id,
+      error: error instanceof Error ? error.stack ?? error.message : String(error),
+      guildId: channel.guild.id,
+      ticketId: metadata.ticketId
+    });
+    return null;
+  });
+  if (!recovered?.ticket || recovered.ticket.channelId !== channel.id) return null;
+  await context.api.recordTicketEvent(recovered.ticket.id, {
+    authorId: context.client.user?.id ?? null,
+    content: `Registro reconstruído a partir do tópico do canal ${channel.id}.`,
+    eventType: "ticket.recovered_from_channel",
+    guildId: channel.guild.id,
+    metadata: { channelId: channel.id }
+  }).catch(() => null);
+  console.warn("[SafeBot][TicketReconcile][Handler:main] registro reconstruído", {
+    channelId: channel.id,
+    guildId: channel.guild.id,
+    ticketId: recovered.ticket.id
+  });
+  return recovered.ticket;
+}
+
+export function parseTicketChannelTopic(topic: string | null) {
+  const normalized = topic?.trim();
+  if (!normalized?.startsWith("SafeBot ")) return null;
+  const metadata = Object.fromEntries([...normalized.slice("SafeBot ".length).matchAll(/([a-zA-Z]+)=([^\s]+)/g)].map(([, key, value]) => [key, value]));
+  const ticketId = metadata.ticket;
+  const openerId = metadata.opener;
+  const categoryId = metadata.category;
+  if (!ticketId || !/^[0-9a-f-]{36}$/i.test(ticketId) || !openerId || !/^\d{5,32}$/.test(openerId) || !categoryId) return null;
+  const moduleType = metadata.module === "police" ? "police" : "default";
+  return {
+    botId: metadata.bot && /^\d{5,32}$/.test(metadata.bot) ? metadata.bot : null,
+    categoryId,
+    guildId: metadata.guild && /^\d{5,32}$/.test(metadata.guild) ? metadata.guild : null,
+    moduleType,
+    openerId,
+    panelId: metadata.panel ?? categoryId,
+    ticketId,
+    ticketType: metadata.type ?? (moduleType === "police" ? "police" : categoryId)
+  };
+}
+
+export function createTicketChannelTopic(input: {
+  botId: string | null;
+  categoryId: string;
+  guildId: string;
+  moduleType: TicketModuleType;
+  openerId: string;
+  panelId: string;
+  ticketId: string;
+  ticketType: string;
+}) {
+  return [
+    "SafeBot",
+    `ticket=${input.ticketId}`,
+    `guild=${input.guildId}`,
+    input.botId ? `bot=${input.botId}` : null,
+    `opener=${input.openerId}`,
+    `panel=${sanitizeTopicToken(input.panelId)}`,
+    `category=${sanitizeTopicToken(input.categoryId)}`,
+    `module=${input.moduleType}`,
+    `type=${sanitizeTopicToken(input.ticketType)}`
+  ].filter(Boolean).join(" ").slice(0, 1024);
+}
+
+export function scopedComponentId(prefix: string, action: string, guildId: string | null, botId: string | null, targetId: string) {
+  return `${prefix}${action}:${guildId ?? "unknown"}:${botId ?? "unknown"}:${targetId}`;
+}
+
+export function parseScopedComponentId(customId: string, prefix: string, defaultAction?: string): TicketScopedId | null {
+  if (!customId.startsWith(prefix)) return null;
+  const payload = customId.slice(prefix.length);
+  const parts = payload.split(":");
+
+  if (defaultAction && parts.length === 1) {
+    return { action: defaultAction, botId: null, guildId: null, legacy: true, targetId: parts[0] ?? "" };
+  }
+
+  if (!defaultAction && parts.length === 2) {
+    return { action: parts[0] ?? "", botId: null, guildId: null, legacy: true, targetId: parts[1] ?? "" };
+  }
+
+  if (parts.length === 4) {
+    return {
+      action: parts[0] ?? defaultAction ?? "",
+      botId: parts[2] === "unknown" ? null : parts[2] ?? null,
+      guildId: parts[1] === "unknown" ? null : parts[1] ?? null,
+      legacy: false,
+      targetId: parts[3] ?? ""
+    };
+  }
+
+  return null;
+}
+
+function validateScopedComponentInteraction(interaction: Interaction, parsed: TicketScopedId) {
+  const currentBotId = interaction.client.user?.id ?? null;
+  if (!parsed.targetId) return false;
+  if (parsed.guildId && parsed.guildId !== interaction.guildId) {
+    console.warn("[ticket-panel] interação rejeitada por guildId divergente", {
+      action: parsed.action,
+      currentGuildId: interaction.guildId,
+      expectedGuildId: parsed.guildId,
+      targetId: parsed.targetId
+    });
+    return false;
+  }
+  if (parsed.botId && currentBotId && parsed.botId !== currentBotId) {
+    console.warn("[ticket-panel] interação rejeitada por botId divergente", {
+      action: parsed.action,
+      currentBotId,
+      expectedBotId: parsed.botId,
+      guildId: interaction.guildId,
+      targetId: parsed.targetId
+    });
+    return false;
+  }
+  return true;
+}
+
+function validatePanelOpenButton(interaction: ButtonInteraction) {
+  const [, guildId, botId] = interaction.customId.split(":");
+  const currentBotId = interaction.client.user?.id ?? null;
+  if (guildId && guildId !== interaction.guildId) return false;
+  if (botId && botId !== "unknown" && currentBotId && botId !== currentBotId) return false;
+  return true;
+}
+
+function resolveTicketModuleType(option: TicketPanelOption): TicketModuleType {
+  return option.moduleType === "police" ? "police" : "default";
+}
+
+function resolveTicketType(option: TicketPanelOption, moduleType: TicketModuleType) {
+  const normalized = option.ticketType?.trim().toLowerCase();
+  if (normalized) return sanitizeTopicToken(normalized);
+  return moduleType === "police" ? "police" : sanitizeTopicToken(option.value || "support");
+}
+
+function sanitizeTopicToken(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "default";
+}
+
+export function isPendingTicketLeaseActive(createdAt: string, now = Date.now()) {
+  const createdAtMs = Date.parse(createdAt);
+  return Number.isFinite(createdAtMs) && now - createdAtMs >= 0 && now - createdAtMs < PENDING_TICKET_LEASE_MS;
+}
+
+async function canManageTicketInteraction(
+  interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
+  ticket: TicketRecord
+) {
+  if (!interaction.guild) return false;
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  return Boolean(member && (
+    member.id === interaction.guild.ownerId
+    || member.permissions.has(PermissionFlagsBits.Administrator)
+    || member.permissions.has(PermissionFlagsBits.ManageChannels)
+    || (ticket.responsibleRoleId && member.roles.cache.has(ticket.responsibleRoleId))
+  ));
+}
+
+async function canManageSensitiveTicketLogAction(interaction: ButtonInteraction) {
+  if (!interaction.guild) return false;
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  return Boolean(member && (
+    member.id === interaction.guild.ownerId
+    || member.permissions.has(PermissionFlagsBits.Administrator)
+    || member.permissions.has(PermissionFlagsBits.ManageChannels)
+  ));
+}
+
+function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null, clientLabel: string | null = null): MessageCreateOptions & MessageEditOptions {
+  const guildId = guild?.id ?? null;
+  const botId = guild?.client.user?.id ?? null;
   const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}claim:${ticketId}`).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
-    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}add:${ticketId}`).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}remove:${ticketId}`).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Remover Usuário").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}close:${ticketId}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Ticket").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "claim", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "add", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "remove", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Remover Usuário").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "transfer", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Transferir").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "close", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Ticket").setStyle(ButtonStyle.Danger)
   );
   const statusMenu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`${TICKET_STATUS_PREFIX}${ticketId}`)
+      .setCustomId(scopedComponentId(TICKET_STATUS_PREFIX, "status", guildId, botId, ticketId))
       .setPlaceholder("Alterar Status")
       .addOptions(STATUS_OPTIONS.map((item) => ({ label: item.label, value: item.value })))
   );
   const mentionLine = mentionRoleId ? `<@&${mentionRoleId}>` : "";
   const createdAt = new Date();
 
-  return {
-    allowedMentions: { roles: mentionRoleId ? [mentionRoleId] : [], users: [openerId, responsibleUserId].filter(Boolean) as string[] },
-    components: [actions, statusMenu],
-    content: [
+  const content = [
       mentionLine,
       "## Ticket Aberto",
       `Categoria: ${category}`,
@@ -1048,8 +1620,20 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
       `ID do Ticket: #${ticketId}`,
       "",
       details ? `Detalhes iniciais:\n${details}` : "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
-    ].filter(Boolean).join("\n")
-  };
+    ].filter(Boolean).join("\n");
+
+  return componentsV2Payload({
+    accentColor: 0xffd500,
+    allowedMentions: { roles: mentionRoleId ? [mentionRoleId] : [], users: [openerId, responsibleUserId].filter(Boolean) as string[] },
+    components: [
+      { type: 10, content },
+      { type: 14, divider: true, spacing: 1 },
+      actions,
+      statusMenu
+    ],
+    footer: null,
+    guild
+  }) as MessageCreateOptions & MessageEditOptions;
 }
 
 async function collectChannelMessages(channel: TextChannel) {
@@ -1144,9 +1728,9 @@ async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: 
     actions: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setEmoji(systemComponentEmoji("link", guild)).setLabel("Abrir Transcript").setStyle(ButtonStyle.Link).setURL(url),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}noop:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}newpass:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${TICKET_ACTION_PREFIX}revoke:${transcript.transcript.id}`).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "noop", guild.id, guild.client.user?.id ?? null, transcript.transcript.id)).setEmoji(systemComponentEmoji("link", guild)).setLabel("Copiar Link").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "newpass", guild.id, guild.client.user?.id ?? null, transcript.transcript.id)).setEmoji(systemComponentEmoji("relogio", guild)).setLabel("Gerar Nova Senha").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "revoke", guild.id, guild.client.user?.id ?? null, transcript.transcript.id)).setEmoji(systemComponentEmoji("perigo", guild)).setLabel("Revogar Senhas").setStyle(ButtonStyle.Danger)
       )
     ],
     description: "O atendimento foi finalizado e o transcript foi salvo com segurança. O acesso ao link e senha deve permanecer restrito ao canal de logs configurado.",

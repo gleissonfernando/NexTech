@@ -54,6 +54,7 @@ export type SelfBotProtectionSettingsDto = {
   mediaChannelIds: string[];
   linkChannelIds: string[];
   allowedDomains: string[];
+  allowSubdomains: boolean;
   allowedInviteGuildIds: string[];
   blockedFileExtensions: string[];
   blockImages: boolean;
@@ -280,6 +281,7 @@ export function defaultSelfBotProtectionSettings(guildId: string, botId: string)
     mediaChannelIds: [],
     linkChannelIds: [],
     allowedDomains: ["youtube.com", "youtu.be", "twitch.tv", "kick.com", "github.com"],
+    allowSubdomains: true,
     allowedInviteGuildIds: [],
     blockedFileExtensions: ["zip", "rar", "exe", "bat", "js", "html", "dll", "scr", "apk", "msi"],
     blockImages: true,
@@ -410,6 +412,7 @@ export async function saveSelfBotProtectionSettings(
         mediaChannelIds: next.mediaChannelIds,
         linkChannelIds: next.linkChannelIds,
         allowedDomains: next.allowedDomains,
+        allowSubdomains: next.allowSubdomains,
         allowedInviteGuildIds: next.allowedInviteGuildIds,
         blockedFileExtensions: next.blockedFileExtensions,
         blockImages: next.blockImages,
@@ -709,6 +712,7 @@ function toSettingsDto(settings: MongoSelfBotProtectionSettings): SelfBotProtect
     mediaChannelIds: settings.mediaChannelIds ?? [],
     linkChannelIds: settings.linkChannelIds ?? [],
     allowedDomains: settings.allowedDomains ?? [],
+    allowSubdomains: settings.allowSubdomains ?? true,
     allowedInviteGuildIds: settings.allowedInviteGuildIds ?? [],
     blockedFileExtensions: settings.blockedFileExtensions ?? [],
     blockImages: settings.blockImages ?? true,
@@ -894,6 +898,7 @@ function normalizeSettings(settings: SelfBotProtectionSettingsDto): SelfBotProte
     mediaChannelIds: normalizeSnowflakes(settings.mediaChannelIds),
     linkChannelIds: normalizeSnowflakes(settings.linkChannelIds),
     allowedDomains: normalizeDomainList(settings.allowedDomains),
+    allowSubdomains: settings.allowSubdomains !== false,
     allowedInviteGuildIds: normalizeSnowflakes(settings.allowedInviteGuildIds),
     blockedFileExtensions: normalizeExtensionList(settings.blockedFileExtensions),
     blockImages: settings.blockImages !== false,

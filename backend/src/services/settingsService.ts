@@ -167,6 +167,8 @@ export type TicketPanelOptionDto = {
   enabled: boolean;
   label: string;
   mentionRoleId: string | null;
+  moduleType: "default" | "police";
+  ticketType: string | null;
   value: string;
 };
 
@@ -613,6 +615,8 @@ const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
     enabled: true,
     label: "Suporte",
     mentionRoleId: null,
+    moduleType: "default",
+    ticketType: "support",
     value: "suporte"
   }
 ];
@@ -1893,6 +1897,8 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
         enabled: record.enabled !== false,
         label,
         mentionRoleId: normalizeSnowflake(String(record.mentionRoleId ?? "")),
+        moduleType: record.moduleType === "police" ? "police" : "default",
+        ticketType: normalizeTicketType(record.ticketType, record.moduleType === "police" ? "police" : "default", value),
         value
       };
     })
@@ -1900,6 +1906,12 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
     .slice(0, 25);
 
   return options.length ? options : DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
+}
+
+function normalizeTicketType(value: unknown, moduleType: "default" | "police", fallback: string) {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+  if (normalized) return normalized;
+  return moduleType === "police" ? "police" : fallback || "support";
 }
 
 function defaultReportSystemSettings(): ReportSystemSettingsDto {

@@ -26,8 +26,9 @@ import type {
   SelfBotPunishmentAction
 } from "./apiClient";
 import { isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
-import { canModerateMessage, getModerationSettings } from "./moderationChannelPolicy";
+import { getModerationSettings } from "./moderationChannelPolicy";
 import { deleteMessageWithAudit } from "./deletedMessageLogService";
+import { extractMessageDomains, extractUrlCandidates, isChannelIgnoredOrAllowed, isDiscordAttachmentUrl, isDiscordInternalUrl } from "./messageProtectionPolicy";
 
 const MODULE_ID = "safe-bot";
 const SELF_BOT_ROLE_NAME = "Self Bot";
@@ -44,7 +45,6 @@ const filterWarningQueues = new Map<string, Promise<void>>();
 const messageHistory = new Map<string, SafeBotHistoryEntry[]>();
 const setupCache = new Map<string, SafeBotRuntime>();
 const setupQueues = new Map<string, Promise<SafeBotRuntime | null>>();
-const URL_PATTERN = /(?:https?:\/\/|www\.|discord\.gg\/|discord(?:app)?\.com\/invite\/|(?:[a-z0-9-]+\.)+[a-z]{2,63}(?:\/[^\s<>()\]]*)?)/i;
 const IMAGE_PATTERN = /\.(?:png|jpe?g|gif|webp)(?:$|[?#])/i;
 const VIDEO_PATTERN = /\.(?:mp4|mov|avi|webm)(?:$|[?#])/i;
 const FILE_PATTERN = /\.(?:zip|rar|7z|exe|bat)(?:$|[?#])/i;
@@ -69,12 +69,6 @@ type DetectedPayload = {
   label: "Arquivo" | "Imagem" | "Link" | "Video";
   moduleId: SelfBotProtectionModuleId;
   reason: string;
-};
-
-type PunishmentOutcome = {
-  action: SelfBotPunishmentAction | "none";
-  error: string | null;
-  succeeded: boolean;
 };
 
 type SequencePunishmentOutcome = {
@@ -316,10 +310,6 @@ export async function handleSafeBotMessage(message: Message, context: BotContext
 
   const isFilterChannelMessage = message.channelId === runtime.filterChannelId;
 
-  if ((await canModerateMessage(message, context, MODULE_ID, { respectPrivilegedImmunity: false })).ignored && !isFilterChannelMessage) {
-    return false;
-  }
-
   const key = runtimeScopeKey(message.guild.id, message.author.id);
   const previous = processingQueues.get(key) ?? Promise.resolve(false);
   const next = previous
@@ -406,61 +396,38 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
     return true;
   }
 
-  if (isIgnoredChannel(message, runtime) || !isProtectedChannel(message, runtime)) {
-    return false;
-  }
-
   if (member.roles.cache.has(runtime.roleId)) {
-    const detected = detectMarkedUserPayload(message);
+    const detections = detectMessageContents(message);
 
-    if (!detected) {
-      rememberSafeBotMessage(message);
-      return false;
+    for (const detected of detections) {
+      if (!(await shouldApplyProtection(message, member, runtime, context, detected.moduleId, detected))) continue;
+      const punishment = await applyConfiguredPunishment(
+        context,
+        member,
+        message,
+        runtime,
+        detected.moduleId,
+        `SafeBot: ${detected.label} enviado por usuário marcado como Self Bot.`
+      );
+      await Promise.allSettled([
+        sendSelfBotDetectedLog(message, runtime, detected, punishment),
+        recordSafeBotIncident(context, message, runtime, {
+          actionError: punishment.error,
+          actions: punishment.actions,
+          details: "Usuário marcado com cargo Self Bot enviou conteúdo bloqueado.",
+          moduleId: detected.moduleId,
+          punishmentSucceeded: punishment.succeeded,
+          type: `Self Bot detectado: ${detected.label}`
+        })
+      ]);
+      return true;
     }
-
-    if (!(await isRuntimeModuleAuthorized(context, guild.id, detected.moduleId))) {
-      return false;
-    }
-
-    if (isContentAllowedChannel(message, runtime, detected.moduleId)) {
-      return false;
-    }
-
-    const punishment = await applyConfiguredPunishment(
-      context,
-      member,
-      message,
-      runtime,
-      detected.moduleId,
-      `SafeBot: ${detected.label} enviado por usuário marcado como Self Bot.`
-    );
-    await Promise.allSettled([
-      sendSelfBotDetectedLog(message, runtime, detected, punishment),
-      recordSafeBotIncident(context, message, runtime, {
-        actionError: punishment.error,
-        actions: punishment.actions,
-        details: "Usuário marcado com cargo Self Bot enviou conteúdo bloqueado.",
-        moduleId: detected.moduleId,
-        punishmentSucceeded: punishment.succeeded,
-        type: `Self Bot detectado: ${detected.label}`
-      })
-    ]);
-    return true;
-  }
-
-  const detectedForWhitelist = detectMessageContent(message);
-  if (detectedForWhitelist && isContentAllowedChannel(message, runtime, detectedForWhitelist.moduleId)) {
-    return false;
   }
 
   const flood = rememberAndDetectFlood(message, runtime);
 
   if (flood) {
-    if (!(await isRuntimeModuleAuthorized(context, guild.id, flood.moduleId))) {
-      return false;
-    }
-
-    if (isContentAllowedChannel(message, runtime, flood.moduleId)) {
+    if (!(await shouldApplyProtection(message, member, runtime, context, flood.moduleId))) {
       return false;
     }
 
@@ -480,6 +447,48 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
   }
 
   return false;
+}
+
+async function shouldApplyProtection(
+  message: Message,
+  member: GuildMember,
+  runtime: SafeBotRuntime,
+  context: BotContext,
+  moduleId: SelfBotProtectionModuleId,
+  detected?: DetectedPayload
+) {
+  if (!(await isRuntimeModuleAuthorized(context, message.guild!.id, moduleId))) return false;
+  const settings = runtime.protectionSettings;
+  if (!settings) return false;
+  if (moduleId === "anti-imagens" && !settings.blockImages) return false;
+  if (moduleId === "anti-gif" && !settings.blockGifs) return false;
+  if (moduleId === "anti-anexos" && detected?.label === "Video" && !settings.blockVideos) return false;
+  if (moduleId === "anti-convites" && await hasOnlyAllowedDiscordInvites(message, settings, context)) return false;
+  const domains = moduleId === "anti-convites"
+    ? []
+    : extractMessageDomains(message.content).filter((domain) => domain !== "discord.gg" && domain !== "discord.com" && domain !== "discordapp.com");
+  const decision = isChannelIgnoredOrAllowed(message, settings, moduleId, {
+    domains,
+    member
+  });
+  if (process.env.SAFE_BOT_DIAGNOSTIC_LOGS === "true") {
+    console.info("[SafeBot][MessagePolicy][Handler:v2]", {
+      ...decision,
+      guildId: message.guildId,
+      userId: message.author.id
+    });
+  }
+  return !decision.allowed;
+}
+
+async function hasOnlyAllowedDiscordInvites(message: Message, settings: SelfBotProtectionSettings, context: BotContext) {
+  if (!settings.allowedInviteGuildIds.length) return false;
+  const codes = extractUrlCandidates(message.content)
+    .map((url) => url.match(/(?:discord\.gg|discord(?:app)?\.com\/invite)\/([a-z0-9-]+)/i)?.[1] ?? null)
+    .filter((code): code is string => Boolean(code));
+  if (!codes.length) return false;
+  const invites = await Promise.all([...new Set(codes)].map((code) => context.client.fetchInvite(code).catch(() => null)));
+  return invites.every((invite) => Boolean(invite?.guild?.id && settings.allowedInviteGuildIds.includes(invite.guild.id)));
 }
 
 async function applyFilterChannelPunishment(
@@ -631,6 +640,10 @@ async function getSafeBotRuntime(guild: Guild, context: BotContext) {
   const cached = setupCache.get(key);
 
   if (cached && cached.expiresAt > Date.now()) {
+    cached.protectionSettings = await getModerationSettings(guild.id, context).catch((error) => {
+      console.warn("[safe-bot] não foi possível atualizar a política em cache:", errorMessage(error));
+      return cached.protectionSettings;
+    });
     return cached;
   }
 
@@ -791,129 +804,6 @@ function secondsToDuration(totalSeconds: number) {
   return { dias, horas, minutos, segundos };
 }
 
-function isContentAllowedChannel(
-  message: Message,
-  runtime: SafeBotRuntime,
-  moduleId: SelfBotProtectionModuleId
-) {
-  const allowedChannelIds = contentAllowedChannelIds(runtime, moduleId);
-
-  if (!allowedChannelIds.length) {
-    return false;
-  }
-
-  if (allowedChannelIds.includes(message.channelId)) {
-    return true;
-  }
-
-  return messageMatchesChannelIds(message, allowedChannelIds);
-}
-
-function contentAllowedChannelIds(runtime: SafeBotRuntime, moduleId: SelfBotProtectionModuleId) {
-  if (["anti-imagens", "anti-gif", "anti-anexos"].includes(moduleId)) {
-    return runtime.protectionSettings?.mediaChannelIds ?? [];
-  }
-
-  if (["anti-links", "anti-convites", "anti-divulgacao", "anti-scam", "anti-phishing", "anti-token-grabber", "anti-nitro-scam"].includes(moduleId)) {
-    return runtime.protectionSettings?.linkChannelIds ?? [];
-  }
-
-  return [];
-}
-
-function isIgnoredChannel(message: Message, runtime: SafeBotRuntime) {
-  const ignoredChannelIds = runtime.protectionSettings?.ignoredChannelIds ?? [];
-
-  return messageMatchesChannelIds(message, [
-    ...ignoredChannelIds,
-    ...(runtime.protectionSettings?.ignoredCategoryIds ?? [])
-  ]);
-}
-
-function isProtectedChannel(message: Message, runtime: SafeBotRuntime) {
-  if (runtime.protectionSettings?.enabled) {
-    return true;
-  }
-
-  const protectedChannelIds = runtime.protectionSettings?.protectedChannelIds ?? [];
-
-  if (!protectedChannelIds.length) {
-    return true;
-  }
-
-  return messageMatchesChannelIds(message, protectedChannelIds);
-}
-
-function messageMatchesChannelIds(message: Message, ids: string[]) {
-  if (!ids.length) return false;
-  if (ids.includes(message.channelId)) return true;
-  const parentId = message.channel.isThread() ? message.channel.parentId : null;
-  const categoryId = message.channel.isThread()
-    ? message.channel.parent?.parentId ?? null
-    : "parentId" in message.channel ? message.channel.parentId : null;
-  return Boolean(parentId && ids.includes(parentId))
-    || Boolean(categoryId && ids.includes(categoryId));
-}
-
-async function punishMarkedUser(
-  member: GuildMember,
-  message: Message,
-  runtime: SafeBotRuntime,
-  detected: DetectedPayload
-): Promise<PunishmentOutcome> {
-  const action = resolveConfiguredPunishment(runtime.protectionSettings);
-  const reason = `SafeBot: ${detected.label} enviado por usuário marcado como Self Bot.`;
-
-  try {
-    if (action === "ban") {
-      if (!member.bannable) {
-        throw new Error("O bot não pode banir este membro por falta de permissão ou hierarquia.");
-      }
-
-      await member.ban({
-        deleteMessageSeconds: 60 * 60,
-        reason
-      });
-    } else if (action === "kick") {
-      if (!member.kickable) {
-        throw new Error("O bot não pode expulsar este membro por falta de permissão ou hierarquia.");
-      }
-
-      await member.kick(reason);
-    } else if (action === "timeout") {
-      if (!member.moderatable) {
-        throw new Error("O bot não pode aplicar mute neste membro por falta de permissão ou hierarquia.");
-      }
-
-      await member.timeout((runtime.protectionSettings?.timeoutSeconds ?? 300) * 1_000, reason);
-    } else if (action === "warn") {
-      await warnInChannel(member, message, `SafeBot: ${detected.label} bloqueado no servidor ${message.guild?.name ?? ""}.`);
-    }
-
-    return {
-      action,
-      error: null,
-      succeeded: true
-    };
-  } catch (error) {
-    return {
-      action,
-      error: errorMessage(error),
-      succeeded: false
-    };
-  }
-}
-
-function resolveConfiguredPunishment(settings: SelfBotProtectionSettings | null): SelfBotPunishmentAction | "none" {
-  const sequence = settings?.punishmentSequence?.length ? settings.punishmentSequence : ["ban"];
-
-  if (sequence.includes("ban")) return "ban";
-  if (sequence.includes("kick")) return "kick";
-  if (sequence.includes("timeout")) return "timeout";
-  if (sequence.includes("warn")) return "warn";
-  return "none";
-}
-
 function rememberSafeBotMessage(message: Message, runtime?: SafeBotRuntime) {
   const key = runtimeScopeKey(message.guildId, message.author.id);
   const historyWindowMs = Math.max(
@@ -922,12 +812,12 @@ function rememberSafeBotMessage(message: Message, runtime?: SafeBotRuntime) {
   ) * 1_000;
   const entries = (messageHistory.get(key) ?? [])
     .filter((entry) => Date.now() - entry.at <= historyWindowMs);
-  const detected = detectMessageContent(message);
+  const detections = detectMessageContents(message);
 
   entries.push({
     at: Date.now(),
-    hasImage: detected?.label === "Imagem",
-    hasLink: detected?.label === "Link",
+    hasImage: detections.some((detected) => ["anti-imagens", "anti-gif"].includes(detected.moduleId)),
+    hasLink: detections.some((detected) => detected.label === "Link"),
     message
   });
   messageHistory.set(key, entries.slice(-50));
@@ -978,79 +868,68 @@ function rememberAndDetectFlood(message: Message, runtime: SafeBotRuntime) {
   return null;
 }
 
-function detectMarkedUserPayload(message: Message) {
-  return detectMessageContent(message);
-}
-
-function detectMessageContent(message: Message): DetectedPayload | null {
+export function detectMessageContents(message: Message): DetectedPayload[] {
   const text = message.content ?? "";
+  const detections: DetectedPayload[] = [];
+
+  const urls = extractUrlCandidates(text).filter((url) => !isDiscordInternalUrl(url) && !isDiscordAttachmentUrl(url));
+  const inviteUrls = urls.filter((url) => /(?:discord\.gg|discord(?:app)?\.com\/invite)\//i.test(url));
+  const externalUrls = urls.filter((url) => !inviteUrls.includes(url));
+  if (inviteUrls.length) {
+    detections.push({
+      label: "Link",
+      moduleId: "anti-convites",
+      reason: truncate(inviteUrls.join(" "), 500)
+    });
+  }
+  if (externalUrls.length) {
+    detections.push({
+      label: "Link",
+      moduleId: "anti-links",
+      reason: truncate(externalUrls.join(" "), 500)
+    });
+  }
 
   for (const attachment of message.attachments.values()) {
     const contentType = attachment.contentType?.toLowerCase() ?? "";
     const name = `${attachment.name ?? ""} ${attachment.url}`.toLowerCase();
 
     if (contentType.startsWith("application/") || FILE_PATTERN.test(name)) {
-      return {
+      detections.push({
         label: "Arquivo",
         moduleId: "anti-anexos",
         reason: attachment.name ?? attachment.url
-      };
+      });
+      continue;
     }
 
     if (contentType.startsWith("video/") || VIDEO_PATTERN.test(name)) {
-      return {
+      detections.push({
         label: "Video",
         moduleId: "anti-anexos",
         reason: attachment.name ?? attachment.url
-      };
+      });
+      continue;
     }
 
     if (contentType.startsWith("image/") || IMAGE_PATTERN.test(name)) {
-      return {
+      detections.push({
         label: "Imagem",
         moduleId: contentType.includes("gif") || /\.gif(?:$|[?#])/i.test(name) ? "anti-gif" : "anti-imagens",
         reason: attachment.name ?? attachment.url
-      };
+      });
     }
   }
 
   if (message.stickers.size > 0) {
-    return {
+    detections.push({
       label: "Imagem",
-      moduleId: "anti-imagens",
+      moduleId: "anti-stickers",
       reason: "Sticker enviado"
-    };
+    });
   }
 
-  for (const embed of message.embeds) {
-    const embedUrl = `${embed.url ?? ""} ${embed.image?.url ?? ""} ${embed.thumbnail?.url ?? ""} ${embed.video?.url ?? ""}`.toLowerCase();
-
-    if (VIDEO_PATTERN.test(embedUrl) || embed.video) {
-      return {
-        label: "Video",
-        moduleId: "anti-anexos",
-        reason: embed.url ?? "Embed com video"
-      };
-    }
-
-    if (IMAGE_PATTERN.test(embedUrl) || embed.image || embed.thumbnail) {
-      return {
-        label: "Imagem",
-        moduleId: /\.gif(?:$|[?#])/i.test(embedUrl) ? "anti-gif" : "anti-imagens",
-        reason: embed.url ?? "Embed com imagem"
-      };
-    }
-  }
-
-  if (URL_PATTERN.test(text)) {
-    return {
-      label: "Link",
-      moduleId: "anti-links",
-      reason: truncate(text, 500)
-    };
-  }
-
-  return null;
+  return [...new Map(detections.map((detected) => [detected.moduleId, detected])).values()];
 }
 
 async function deleteMessages(context: BotContext, messages: Message[], moduleId: SelfBotProtectionModuleId, reason: string) {

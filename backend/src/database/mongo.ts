@@ -109,6 +109,8 @@ export type MongoGuildSettings = {
     enabled?: boolean;
     label: string;
     mentionRoleId?: string | null;
+    moduleType?: "default" | "police" | string;
+    ticketType?: string | null;
     value: string;
   }>;
   reportSystem?: Record<string, unknown>;
@@ -212,14 +214,19 @@ export type MongoSafeBotMessageState = {
 
 export type MongoTicket = {
   _id: string;
+  activeKey?: string;
   botId?: string | null;
   guildId: string;
   channelId: string | null;
+  panelId?: string | null;
   openerId: string;
   ownerId?: string;
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  moduleType?: "default" | "police" | string;
+  ticketType?: string | null;
+  migrationStatus?: "ok" | "pending_review" | string;
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
   allowedRoleIds?: string[];
@@ -1113,6 +1120,33 @@ export type MongoFivemGoalSettings = {
   updatedAt: Date;
   updatedBy?: string | null;
   viewRoleId: string | null;
+  version?: number;
+  roomRequestEnabled?: boolean;
+  setRequestEnabled?: boolean;
+  automaticImageCaptureEnabled?: boolean;
+  absenceEnabled?: boolean;
+  weeklySummaryEnabled?: boolean;
+  directMessagesEnabled?: boolean;
+  memberCleanupEnabled?: boolean;
+  automaticNicknameEnabled?: boolean;
+  automaticRoleEnabled?: boolean;
+  timezone?: string;
+  approvalChannelId?: string | null;
+  summaryChannelId?: string | null;
+  auditChannelId?: string | null;
+  verificationRoleId?: string | null;
+  managerRoleIds?: string[];
+  viewerRoleIds?: string[];
+  categoryRules?: Array<{ id: string; name: string; sourceRoleId: string; categoryId: string; grantedRoleId: string | null; buttonLabel: string; priority: number; active: boolean }>;
+  approvalTypes?: Array<{ id: string; name: string; buttonLabel: string; roleId: string | null; categoryId: string | null; nicknameTemplate: string | null; active: boolean; displayOrder: number }>;
+  setFormFields?: Array<{ id: string; label: string; placeholder: string | null; required: boolean; maxLength: number; showInLogs: boolean; order: number }>;
+  commandPermissions?: { visibleRoleIds: string[]; executableRoleIds: string[]; visibleUserIds: string[]; executableUserIds: string[]; allowAdministrators: boolean; allowOwner: boolean };
+  actionPermissions?: Record<string, string[]>;
+  cycle?: { startDay: number; startTime: string; endDay: number; endTime: string; firstExecution: string | null; frequency: "weekly" | "custom"; absencePolicy: "none" | "daily" | "full" | "manual"; latePolicy: "accept" | "reject" | "flag" };
+  panelVisual?: { title: string; description: string; footer: string | null; imageUrl: string | null; mediaUrl: string | null; mediaType: "image" | "gif" | "video" | "none"; loopVideo: boolean; color: string };
+  notificationSettings?: { mentionUserOnFailure: boolean; mentionManagerOnFailure: boolean; approvalDm: string; rejectionDm: string; farewellDm: string };
+  cooldownSeconds?: number;
+  tutorial?: { completedBy: string[]; skippedBy: string[] };
 };
 
 export type MongoFivemGoalUserChannel = {
@@ -1429,6 +1463,140 @@ export type MongoFivemFinanceLog = {
   data: Record<string, unknown>;
   guildId: string;
   transactionId: string | null;
+};
+
+export type MongoWashingRuleType = "exact" | "range" | "minimum" | "progressive" | "default";
+export type MongoWashingSessionStatus = "open" | "quoted" | "confirmed" | "cancelled" | "expired";
+export type MongoWashingTransactionStatus = "confirmed" | "cancelled" | "cash_pending" | "cash_integrated" | "cash_failed";
+
+export type MongoWashingSettings = {
+  _id: string;
+  adminRoleIds: string[];
+  botId: string | null;
+  cashIntegrationEnabled: boolean;
+  color: string;
+  enabled: boolean;
+  factionDefaultPercentageBp: number;
+  footerText: string | null;
+  guildId: string;
+  logChannelId: string | null;
+  maxSessionMinutes: number;
+  maxValueCents: number;
+  memberDefaultPercentageBp: number;
+  minValueCents: number;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelMessageId: string | null;
+  panelTitle: string;
+  registerRoleIds: string[];
+  reviewRoleIds: string[];
+  tempCategoryId: string | null;
+  tutorialEnabled: boolean;
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoWashingPercentageRule = {
+  _id: string;
+  active: boolean;
+  botId: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  exactValueCents: number | null;
+  factionPercentageBp: number;
+  guildId: string;
+  maxValueCents: number | null;
+  memberPercentageBp: number;
+  minValueCents: number | null;
+  name: string;
+  priority: number;
+  type: MongoWashingRuleType;
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoWashingSession = {
+  _id: string;
+  activeKey: string | null;
+  amountCents: number | null;
+  botId: string | null;
+  channelId: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+  factionAmountCents: number | null;
+  factionPercentageBp: number | null;
+  guildId: string;
+  imageCapturedAt: Date | null;
+  imageHash: string | null;
+  imageMessageId: string | null;
+  imageMimeType: string | null;
+  imageName: string | null;
+  imageSize: number | null;
+  imageUrl: string | null;
+  memberAmountCents: number | null;
+  memberPercentageBp: number | null;
+  panelMessageId: string | null;
+  ruleId: string | null;
+  ruleName: string | null;
+  status: MongoWashingSessionStatus;
+  transactionId: string | null;
+  updatedAt: Date;
+  userAvatar: string | null;
+  userId: string;
+  username: string;
+};
+
+export type MongoWashingTransaction = {
+  _id: string;
+  amountCents: number;
+  botId: string | null;
+  cashError: string | null;
+  cashIntegrationStatus: "disabled" | "pending" | "integrated" | "failed";
+  cashTransactionId: string | null;
+  channelId: string | null;
+  confirmedAt: Date;
+  confirmedBy: string;
+  createdAt: Date;
+  factionAmountCents: number;
+  factionPercentageBp: number;
+  goalCycleId: string | null;
+  guildId: string;
+  idempotencyKey: string;
+  imageMessageId: string | null;
+  imageUrl: string | null;
+  memberAmountCents: number;
+  memberPercentageBp: number;
+  metadata?: Record<string, unknown>;
+  ruleId: string | null;
+  ruleName: string | null;
+  sessionId: string | null;
+  status: MongoWashingTransactionStatus;
+  updatedAt: Date;
+  userAvatar: string | null;
+  userId: string;
+  username: string;
+};
+
+export type MongoWashingTutorialStatus = {
+  _id: string;
+  botId: string | null;
+  completed: boolean;
+  completedAt: Date | null;
+  guildId: string;
+  step: number;
+  updatedAt: Date;
+  userId: string;
+};
+
+export type MongoWashingAuditLog = {
+  _id: string;
+  action: string;
+  actorId: string | null;
+  botId: string | null;
+  createdAt: Date;
+  data: Record<string, unknown>;
+  guildId: string;
+  targetId: string | null;
 };
 
 export type MongoFivemHierarchyEntry = {
@@ -4458,6 +4626,7 @@ export type MongoSelfBotProtectionSettings = {
   mediaChannelIds: string[];
   linkChannelIds: string[];
   allowedDomains?: string[];
+  allowSubdomains?: boolean;
   allowedInviteGuildIds?: string[];
   blockedFileExtensions?: string[];
   blockImages?: boolean;
@@ -5506,6 +5675,12 @@ export async function getMongoCollections() {
     fivemFinanceSettings: db.collection<MongoFivemFinanceSettings>("fivem_finance_settings"),
     fivemFinanceTransactions: db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions"),
     fivemFinanceLogs: db.collection<MongoFivemFinanceLog>("fivem_finance_logs"),
+    washingSettings: db.collection<MongoWashingSettings>("washing_settings"),
+    washingPercentageRules: db.collection<MongoWashingPercentageRule>("washing_percentage_rules"),
+    washingSessions: db.collection<MongoWashingSession>("washing_sessions"),
+    washingTransactions: db.collection<MongoWashingTransaction>("washing_transactions"),
+    washingTutorialStatus: db.collection<MongoWashingTutorialStatus>("washing_tutorial_status"),
+    washingAuditLogs: db.collection<MongoWashingAuditLog>("washing_audit_logs"),
     fivemHierarchyPanels: db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels"),
     fivemHierarchyLogs: db.collection<MongoFivemHierarchyLog>("fivem_hierarchy_logs"),
     ztkWebhookClans: db.collection<MongoZtkWebhookClan>("ztk_webhook_clans"),
@@ -5723,6 +5898,13 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, openerId: 1, categoryId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
+    db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, _id: 1 }),
+    db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, panelId: 1, moduleType: 1 }),
+    db.collection<MongoTicket>("Ticket").createIndex(
+      { activeKey: 1 },
+      { unique: true, partialFilterExpression: { activeKey: { $type: "string" } } }
+    ),
     db.collection<MongoHierarchyForwardingRule>("hierarchy_forwarding").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoHierarchyForwardingRule>("hierarchy_forwarding").createIndex(
       { botId: 1, guildId: 1, denouncedRoleId: 1 },
@@ -5835,6 +6017,25 @@ async function createMongoIndexes(db: Db) {
     ),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceLog>("fivem_finance_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoWashingSettings>("washing_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoWashingPercentageRule>("washing_percentage_rules").createIndex({ botId: 1, guildId: 1, active: 1, priority: -1 }),
+    db.collection<MongoWashingPercentageRule>("washing_percentage_rules").createIndex({ botId: 1, guildId: 1, type: 1, minValueCents: 1, maxValueCents: 1 }),
+    db.collection<MongoWashingSession>("washing_sessions").createIndex({ botId: 1, guildId: 1, userId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoWashingSession>("washing_sessions").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
+    db.collection<MongoWashingSession>("washing_sessions").createIndex(
+      { activeKey: 1 },
+      { unique: true, partialFilterExpression: { activeKey: { $type: "string" } } }
+    ),
+    db.collection<MongoWashingSession>("washing_sessions").createIndex({ expiresAt: 1, status: 1 }),
+    db.collection<MongoWashingTransaction>("washing_transactions").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoWashingTransaction>("washing_transactions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
+    db.collection<MongoWashingTransaction>("washing_transactions").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoWashingTransaction>("washing_transactions").createIndex(
+      { botId: 1, guildId: 1, idempotencyKey: 1 },
+      { unique: true }
+    ),
+    db.collection<MongoWashingTutorialStatus>("washing_tutorial_status").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
+    db.collection<MongoWashingAuditLog>("washing_audit_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex({ botId: 1, guildId: 1, deletedAt: 1, enabled: 1 }),
     db.collection<MongoFivemHierarchyPanel>("fivem_hierarchy_panels").createIndex(

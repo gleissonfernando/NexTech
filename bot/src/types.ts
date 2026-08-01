@@ -188,6 +188,8 @@ export type TicketPanelOption = {
   enabled: boolean;
   label: string;
   mentionRoleId?: string | null;
+  moduleType?: "default" | "police";
+  ticketType?: string | null;
   value: string;
 };
 

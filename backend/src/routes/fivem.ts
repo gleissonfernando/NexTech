@@ -166,7 +166,34 @@ const goalSettingsSchema = z.object({
   requestPanelMessageId: optionalSnowflakeSchema,
   requestPanelTitle: z.string().max(120).optional(),
   requestRequiresApproval: z.boolean().optional(),
-  viewRoleId: optionalSnowflakeSchema
+  viewRoleId: optionalSnowflakeSchema,
+  version: z.coerce.number().int().min(1).optional(),
+  roomRequestEnabled: z.boolean().optional(),
+  setRequestEnabled: z.boolean().optional(),
+  automaticImageCaptureEnabled: z.boolean().optional(),
+  absenceEnabled: z.boolean().optional(),
+  weeklySummaryEnabled: z.boolean().optional(),
+  directMessagesEnabled: z.boolean().optional(),
+  memberCleanupEnabled: z.boolean().optional(),
+  automaticNicknameEnabled: z.boolean().optional(),
+  automaticRoleEnabled: z.boolean().optional(),
+  timezone: z.string().min(1).max(80).optional(),
+  approvalChannelId: optionalSnowflakeSchema,
+  summaryChannelId: optionalSnowflakeSchema,
+  auditChannelId: optionalSnowflakeSchema,
+  verificationRoleId: optionalSnowflakeSchema,
+  managerRoleIds: z.array(snowflakeSchema).max(100).optional(),
+  viewerRoleIds: z.array(snowflakeSchema).max(100).optional(),
+  categoryRules: z.array(z.object({ id: z.string().max(80), name: z.string().min(1).max(80), sourceRoleId: snowflakeSchema, categoryId: snowflakeSchema, grantedRoleId: optionalSnowflakeSchema, buttonLabel: z.string().min(1).max(80), priority: z.coerce.number().int().min(0).max(1000), active: z.boolean() })).max(50).optional(),
+  approvalTypes: z.array(z.object({ id: z.string().max(80), name: z.string().min(1).max(80), buttonLabel: z.string().min(1).max(80), roleId: optionalSnowflakeSchema, categoryId: optionalSnowflakeSchema, nicknameTemplate: z.string().max(80).nullable().optional(), active: z.boolean(), displayOrder: z.coerce.number().int().min(0).max(1000) })).max(20).optional(),
+  setFormFields: z.array(z.object({ id: z.string().max(80), label: z.string().min(1).max(45), placeholder: z.string().max(100).nullable().optional(), required: z.boolean(), maxLength: z.coerce.number().int().min(1).max(1500), showInLogs: z.boolean(), order: z.coerce.number().int().min(0).max(1000) })).max(10).optional(),
+  commandPermissions: z.object({ visibleRoleIds: z.array(snowflakeSchema).max(100), executableRoleIds: z.array(snowflakeSchema).max(100), visibleUserIds: z.array(snowflakeSchema).max(100), executableUserIds: z.array(snowflakeSchema).max(100), allowAdministrators: z.boolean(), allowOwner: z.boolean() }).optional(),
+  actionPermissions: z.record(z.array(snowflakeSchema).max(100)).optional(),
+  cycle: z.object({ startDay: z.coerce.number().int().min(0).max(6), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endDay: z.coerce.number().int().min(0).max(6), endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), firstExecution: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), frequency: z.enum(["weekly", "custom"]), absencePolicy: z.enum(["none", "daily", "full", "manual"]), latePolicy: z.enum(["accept", "reject", "flag"]) }).optional(),
+  panelVisual: z.object({ title: z.string().max(120), description: z.string().max(1200), footer: z.string().max(200).nullable(), imageUrl: z.string().max(2048).nullable(), mediaUrl: z.string().max(2048).nullable(), mediaType: z.enum(["image", "gif", "video", "none"]), loopVideo: z.boolean(), color: z.string().regex(/^#[0-9a-f]{6}$/i) }).optional(),
+  notificationSettings: z.object({ mentionUserOnFailure: z.boolean(), mentionManagerOnFailure: z.boolean(), approvalDm: z.string().max(1500), rejectionDm: z.string().max(1500), farewellDm: z.string().max(1500) }).optional(),
+  cooldownSeconds: z.coerce.number().int().min(3).max(3600).optional(),
+  tutorial: z.object({ completedBy: z.array(snowflakeSchema).max(1000), skippedBy: z.array(snowflakeSchema).max(1000) }).optional()
 });
 const goalConfigSchema = z.object({
   approverRoleIds: z.array(snowflakeSchema).max(100).optional(),
@@ -1410,11 +1437,25 @@ function normalizeFacSettingsInput(input: z.infer<typeof facSettingsSchema>) {
 function normalizeGoalSettingsInput(input: z.infer<typeof goalSettingsSchema>) {
   return {
     ...input,
+    approvalTypes: input.approvalTypes?.map((approvalType) => ({
+      ...approvalType,
+      categoryId: normalizeOptionalId(approvalType.categoryId),
+      nicknameTemplate: approvalType.nicknameTemplate?.trim() || null,
+      roleId: normalizeOptionalId(approvalType.roleId)
+    })),
     categoryId: normalizeOptionalId(input.categoryId),
+    categoryRules: input.categoryRules?.map((rule) => ({
+      ...rule,
+      grantedRoleId: normalizeOptionalId(rule.grantedRoleId)
+    })),
     logChannelId: normalizeOptionalId(input.logChannelId),
     managerRoleId: normalizeOptionalId(input.managerRoleId),
     requestPanelChannelId: normalizeOptionalId(input.requestPanelChannelId),
     requestPanelMessageId: normalizeOptionalId(input.requestPanelMessageId),
+    setFormFields: input.setFormFields?.map((field) => ({
+      ...field,
+      placeholder: field.placeholder?.trim() || null
+    })),
     viewRoleId: normalizeOptionalId(input.viewRoleId)
   };
 }
