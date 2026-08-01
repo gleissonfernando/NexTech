@@ -628,12 +628,10 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
   const imageUrl = settings.panelImage ? resolvePanelImageUrl(settings.panelImage.imageUrl, settings.panelImage) : null;
   const imageIsVideo = isVideoPanelMedia(settings.panelImage, imageUrl);
   const posterUrl = imageIsVideo ? resolvePanelImageUrl(settings.panelImage?.mediaPosterUrl ?? settings.panelImage?.mediaThumbnailUrl ?? null) : null;
-  const imagePosition = imageUrl ? settings.panelImage?.imagePosition ?? settings.bannerPosition : "none";
   const thumbnailUrl = resolveImageUrl(settings.thumbnailUrl ?? null);
   const components: unknown[] = [];
   const blockComponents = renderPanelBlocks(settings.panelImage?.blocks ?? []);
   if (blockComponents.length) components.push(...blockComponents);
-  if (!blockComponents.length && imageUrl && ["top", "banner"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   const panelName = settings.title?.trim() || settings.name?.trim() || "Pedido de Set";
   const introText = settings.description?.trim() || "Preencha seu cadastro para liberar o acesso.";
   const heading = {
@@ -644,7 +642,7 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
       `${systemEmojiText("interrogacao", guild, guild?.client)} ${introText}`
     ].join("\n\n")
   };
-  const sideImageUrl = imageUrl && ["thumbnail", "side"].includes(imagePosition) ? (imageIsVideo ? posterUrl : imageUrl) : thumbnailUrl;
+  const sideImageUrl = imageUrl ? (imageIsVideo ? posterUrl : imageUrl) : thumbnailUrl;
   components.push(sideImageUrl ? {
     type: 9,
     components: [{
@@ -653,10 +651,7 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
     }],
     accessory: { type: 11, media: { url: sideImageUrl } }
   } : heading);
-  if (!blockComponents.length && imageUrl && ["thumbnail", "side"].includes(imagePosition) && !sideImageUrl) components.push(mediaGallery(imageUrl));
-  if (!blockComponents.length && imageUrl && ["below_title", "below_text"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   components.push({ type: 14, divider: false, spacing: 2 });
-  if (!blockComponents.length && imageUrl && imagePosition === "middle") components.push(mediaGallery(imageUrl));
   components.push({
     type: 10,
     content: [
@@ -670,25 +665,29 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
     content: `> ${systemEmojiText("alerta", guild, guild?.client)} Em caso de divergência, a equipe pode solicitar ajuste manual.`
   });
   components.push({ type: 14, divider: true, spacing: 1 });
+  const startButton = new ButtonBuilder()
+    .setCustomId(`${PREFIX}:start`)
+    .setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta", guild, guild?.client))
+    .setLabel("INICIAR REGISTRO")
+    .setStyle(ButtonStyle.Secondary);
   components.push({
-    type: 10,
-    content: [
-      `### ${systemEmojiText("prancheta_caneta", guild, guild?.client)} Iniciar formulário`,
-      "Clique no botão abaixo para continuar."
-    ].join("\n")
+    type: 9,
+    components: [{
+      type: 10,
+      content: [
+        `### ${systemEmojiText("prancheta_caneta", guild, guild?.client)} Iniciar formulário`,
+        "Clique no botão ao lado para continuar."
+      ].join("\n")
+    }],
+    accessory: startButton.toJSON()
   });
-  if (!blockComponents.length && imageUrl && ["before_buttons", "above_buttons", "bottom"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
-  components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta", guild, guild?.client)).setLabel("INICIAR REGISTRO").setStyle(ButtonStyle.Secondary)
-  ));
   components.push({ type: 14, divider: true, spacing: 1 });
   components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, guild, guild?.client ?? null) : "-# *BalaCloud - Todos os direitos reservados*" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
       accentColor: parseColor(settings.color),
-      components,
-      footer: imageUrl && imagePosition === "footer" ? { image: imageUrl, text: settings.footerText ?? "© NexTech Systems" } : undefined
+      components
     })],
     flags: MessageFlags.IsComponentsV2 as const
   };
