@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTicketChannelTopic, isPendingTicketLeaseActive, parseScopedComponentId, parseTicketChannelTopic, scopedComponentId } from "./ticketPanelService";
+import { createTicketChannelTopic, isPendingTicketLeaseActive, parseScopedComponentId, parseTicketChannelTopic, parseTicketPanelText, scopedComponentId } from "./ticketPanelService";
 
 test("tópico legado do canal mantém metadados suficientes para reconstrução padrão", () => {
   assert.deepEqual(
@@ -59,6 +59,38 @@ test("customId escopado preserva bot e guild, mas parser ainda aceita legado", (
     legacy: true,
     targetId: "123e4567-e89b-12d3-a456-426614174000"
   });
+});
+
+test("recupera metadados de ticket antigo pelo texto do painel", () => {
+  assert.deepEqual(
+    parseTicketPanelText(
+      [
+        "<@&123456789012345678>",
+        "## Ticket Aberto",
+        "Categoria: Atendimento 1",
+        "Assunto: aaaaaaaaaa",
+        "Cliente: Não",
+        "Autor: <@142687249020158018>",
+        "ID do usuário: 142687249020158018",
+        "ID do Ticket: #f2180fe3-84a0-4e18-a81a-9ff827ba1777"
+      ].join("\n"),
+      { guildId: "1505184193766752386", name: "ticket-aaaa-8018", parentId: "222222222222222222" },
+      "f2180fe3-84a0-4e18-a81a-9ff827ba1777",
+      "1492325134550302952"
+    ),
+    {
+      botId: "1492325134550302952",
+      categoryId: "222222222222222222",
+      guildId: "1505184193766752386",
+      moduleType: "default",
+      openerId: "142687249020158018",
+      panelId: "222222222222222222",
+      responsibleRoleId: "123456789012345678",
+      subject: "aaaaaaaaaa",
+      ticketId: "f2180fe3-84a0-4e18-a81a-9ff827ba1777",
+      ticketType: "atendimento-1"
+    }
+  );
 });
 
 test("reserva pendente recente bloqueia concorrência e expira para reconciliação", () => {

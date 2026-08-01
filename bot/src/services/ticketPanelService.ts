@@ -70,6 +70,18 @@ type TicketScopedId = {
   legacy: boolean;
   targetId: string;
 };
+type TicketRecoveryMetadata = {
+  botId: string | null;
+  categoryId: string;
+  guildId: string | null;
+  moduleType: TicketModuleType;
+  openerId: string;
+  panelId: string;
+  responsibleRoleId?: string | null;
+  subject?: string | null;
+  ticketId: string;
+  ticketType: string;
+};
 
 export async function publishTicketPanel(interaction: ChatInputCommandInteraction, context: BotContext) {
   if (!interaction.guild) {
@@ -1375,7 +1387,7 @@ async function getTicketOrRecover(
 }
 
 async function recoverTicketRecord(channel: TextChannel, context: BotContext, expectedTicketId?: string) {
-  const metadata = parseTicketChannelTopic(channel.topic);
+  const metadata = parseTicketChannelTopic(channel.topic) ?? await recoverTicketMetadataFromPanelMessage(channel, context, expectedTicketId);
   if (!metadata || (expectedTicketId && metadata.ticketId !== expectedTicketId)) return null;
   const currentBotId = context.client.user?.id ?? null;
   if ((metadata.guildId && metadata.guildId !== channel.guild.id) || (metadata.botId && currentBotId && metadata.botId !== currentBotId)) {
@@ -1406,8 +1418,9 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
     moduleType: metadata.moduleType as TicketModuleType,
     openerId: metadata.openerId,
     panelId: metadata.panelId,
+    responsibleRoleId: metadata.responsibleRoleId ?? null,
     status: "OPEN",
-    subject: channel.name,
+    subject: metadata.subject ?? channel.name,
     ticketId: metadata.ticketId,
     ticketType: metadata.ticketType
   }).catch((error) => {
@@ -1420,6 +1433,18 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
     return null;
   });
   if (!recovered?.ticket || recovered.ticket.channelId !== channel.id) return null;
+  if (!channel.topic?.startsWith("SafeBot ")) {
+    await channel.setTopic(createTicketChannelTopic({
+      botId: currentBotId,
+      categoryId: metadata.categoryId,
+      guildId: channel.guild.id,
+      moduleType: metadata.moduleType,
+      openerId: metadata.openerId,
+      panelId: metadata.panelId,
+      ticketId: recovered.ticket.id,
+      ticketType: metadata.ticketType
+    })).catch(() => null);
+  }
   await context.api.recordTicketEvent(recovered.ticket.id, {
     authorId: context.client.user?.id ?? null,
     content: `Registro reconstruído a partir do tópico do canal ${channel.id}.`,
@@ -1435,7 +1460,54 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
   return recovered.ticket;
 }
 
-export function parseTicketChannelTopic(topic: string | null) {
+async function recoverTicketMetadataFromPanelMessage(channel: TextChannel, context: BotContext, expectedTicketId?: string) {
+  const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+  if (!recent?.size) return null;
+  const botId = context.client.user?.id ?? null;
+  for (const message of recent.values()) {
+    if (botId && message.author.id !== botId) continue;
+    const metadata = parseTicketPanelText(messageSearchText(message), channel, expectedTicketId, botId);
+    if (metadata) return metadata;
+  }
+  for (const message of recent.values()) {
+    const metadata = parseTicketPanelText(messageSearchText(message), channel, expectedTicketId, botId);
+    if (metadata) return metadata;
+  }
+  return null;
+}
+
+function messageSearchText(message: Message) {
+  return [
+    message.content,
+    JSON.stringify(message.components.map((component) => component.toJSON())),
+    JSON.stringify(message.embeds.map((embed) => embed.toJSON()))
+  ].join("\n").replace(/\\n/g, "\n").replace(/\\"/g, "\"");
+}
+
+export function parseTicketPanelText(text: string, channel: Pick<TextChannel, "guildId" | "parentId" | "name">, expectedTicketId?: string, botId: string | null = null): TicketRecoveryMetadata | null {
+  const ticketId = text.match(/ID do Ticket:\s*#?([0-9a-f-]{36})/i)?.[1] ?? expectedTicketId ?? null;
+  if (!ticketId || !/^[0-9a-f-]{36}$/i.test(ticketId) || (expectedTicketId && ticketId !== expectedTicketId)) return null;
+  const openerId = text.match(/Autor:\s*<@!?(\d{5,32})>/i)?.[1] ?? text.match(/ID do usu[aá]rio:\s*(\d{5,32})/i)?.[1] ?? null;
+  if (!openerId) return null;
+  const categoryName = cleanRecoveredTicketText(text.match(/Categoria:\s*([^\n\r]+)/i)?.[1]) ?? "Atendimento";
+  const subject = cleanRecoveredTicketText(text.match(/Assunto:\s*([^\n\r]+)/i)?.[1]) ?? channel.name;
+  const categoryId = channel.parentId ?? slugRecoveredTicketToken(categoryName) ?? "ticket";
+  const responsibleRoleId = text.match(/<@&(\d{5,32})>/)?.[1] ?? null;
+  return {
+    botId,
+    categoryId,
+    guildId: channel.guildId,
+    moduleType: "default" as const,
+    openerId,
+    panelId: categoryId,
+    responsibleRoleId,
+    subject,
+    ticketId,
+    ticketType: slugRecoveredTicketToken(categoryName) ?? categoryId
+  };
+}
+
+export function parseTicketChannelTopic(topic: string | null): TicketRecoveryMetadata | null {
   const normalized = topic?.trim();
   if (!normalized?.startsWith("SafeBot ")) return null;
   const metadata = Object.fromEntries([...normalized.slice("SafeBot ".length).matchAll(/([a-zA-Z]+)=([^\s]+)/g)].map(([, key, value]) => [key, value]));
@@ -1454,6 +1526,17 @@ export function parseTicketChannelTopic(topic: string | null) {
     ticketId,
     ticketType: metadata.type ?? (moduleType === "police" ? "police" : categoryId)
   };
+}
+
+function cleanRecoveredTicketText(value: string | null | undefined) {
+  const text = value?.replace(/[*_`]/g, "").replace(/\\+/g, "").trim();
+  if (!text || text === "-" || text === "Não informado") return null;
+  return text.slice(0, 120);
+}
+
+function slugRecoveredTicketToken(value: string) {
+  const slug = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || null;
 }
 
 export function createTicketChannelTopic(input: {
