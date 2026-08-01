@@ -45,8 +45,8 @@ export type FivemGoalSetIntegrationResult = {
   targetCategoryId: string | null;
 };
 
-export async function ensureFivemGoalChannelForUser(context: BotContext, guild: Guild, userId: string, username: string, categoryId?: string | null) {
-  const result = await ensureFivemGoalChannelForApprovedSet(context, guild, userId, username, categoryId, false);
+export async function ensureFivemGoalChannelForUser(context: BotContext, guild: Guild, userId: string, username: string, categoryId?: string | null, gameId?: string | null) {
+  const result = await ensureFivemGoalChannelForApprovedSet(context, guild, userId, username, categoryId, false, gameId);
   return result.channelId;
 }
 
@@ -56,7 +56,8 @@ export async function ensureFivemGoalChannelForApprovedSet(
   userId: string,
   username: string,
   categoryId?: string | null,
-  requireConfiguredCategory = true
+  requireConfiguredCategory = true,
+  gameId?: string | null
 ): Promise<FivemGoalSetIntegrationResult> {
   const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   if (!settings?.enabled) return goalSetIntegrationResult(null, null, null, false, "Sistema de metas desativado.");
@@ -93,7 +94,7 @@ export async function ensureFivemGoalChannelForApprovedSet(
     return goalSetIntegrationResult(null, null, targetCategoryId, false, "Bot sem permissão Gerenciar Canais.");
   }
   const member = await guild.members.fetch(userId).catch(() => null);
-  const channelName = renderChannelName(settings.channelNameTemplate, username, userId);
+  const channelName = gameId?.trim() ? renderApprovedSetChannelName(username, gameId) : renderChannelName(settings.channelNameTemplate, username, userId);
   const channel = await guild.channels.create({
     name: channelName,
     parent: targetCategoryId ?? undefined,
@@ -603,6 +604,13 @@ function renderChannelName(template: string, username: string, userId: string) {
     .replace(/\{username\}/gi, username)
     .replace(/\{user\}/gi, username)
     .replace(/\{id\}/gi, userId)
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .slice(0, 90);
+}
+
+export function renderApprovedSetChannelName(username: string, gameId: string) {
+  return `📕┋${username} | ${gameId}`
     .toLowerCase()
     .replace(/\s+/g, "-")
     .slice(0, 90);

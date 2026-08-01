@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createManualRegistrationDecisionLogPayload } from "./manualRegistrationService";
+import { createManualRegistrationDecisionLogPayload, createPanelPayload } from "./manualRegistrationService";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 
 const settings = {
@@ -45,4 +45,30 @@ test("log de aprovação do Pedido de Set usa o formato de Registro aprovado", (
   assert.match(content, /Personagem: Tairan cooper/);
   assert.match(content, /Recrutador: melo gst/);
   assert.doesNotMatch(content, /Log de Pedido de Set/);
+});
+
+test("painel do Pedido de Set usa modelo compacto de registro", () => {
+  const payload = createPanelPayload({
+    ...settings,
+    bannerPosition: "top",
+    description: "Preencha seu cadastro para liberar o acesso.",
+    emoji: "📝",
+    fields: [
+      { enabled: true, id: "nome_personagem", label: "Nome do personagem", maxLength: 80, minLength: 2, name: "nome_personagem", placeholder: null, required: true, style: "short" },
+      { enabled: true, id: "id_fivem", label: "ID", maxLength: 32, minLength: 1, name: "id_fivem", placeholder: null, required: true, style: "short" },
+      { enabled: true, id: "telefone", label: "Telefone", maxLength: 32, minLength: 1, name: "telefone", placeholder: null, required: false, style: "short" },
+      { enabled: true, id: "recrutador", label: "Recrutador", maxLength: 80, minLength: 1, name: "recrutador", placeholder: null, required: false, style: "short" }
+    ],
+    footerText: "BalaCloud - Todos os direitos reservados",
+    name: "Pedido de Set",
+    thumbnailUrl: null,
+    title: "Pedido de Set"
+  } as unknown as ManualRegistrationSettings);
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /Antes de começar/);
+  assert.match(serialized, /Em caso de divergência/);
+  assert.match(serialized, /INICIAR REGISTRO/);
+  assert.doesNotMatch(serialized, /Escolha um dos/);
+  assert.doesNotMatch(serialized, /Confirme o set disponível/);
 });

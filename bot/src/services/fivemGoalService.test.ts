@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload } from "./fivemGoalService";
+import { createFarmRoomPanelPayload, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -13,4 +13,8 @@ test("painel inicial da sala de farm usa somente o modelo de fechamento", () => 
   assert.match(serialized, /fivem_goal:room:close:987654321098765432/);
   assert.match(serialized, /<@&123456789012345678>/);
   assert.doesNotMatch(serialized, /Adicionar Meta|Histórico|Ranking|Atualizar|Solicitar Revisao/);
+});
+
+test("canal de meta aprovado pelo set usa prefixo com nome e id in-game", () => {
+  assert.equal(renderApprovedSetChannelName("Tairan cooper", "15774"), "📕┋tairan-cooper-|-15774");
 });

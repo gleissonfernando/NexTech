@@ -254,18 +254,14 @@ export async function createManualRegistrationSubmission(input: {
   const normalizedBotId = normalizeBotId(input.botId);
   const settings = await getManualRegistrationSettings(input.guildId, normalizedBotId);
   const { manualRegistrationSubmissions } = await getMongoCollections();
-  const latest = await manualRegistrationSubmissions.findOne(
-    { ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId },
-    { sort: { createdAt: -1 } }
-  );
   const active = await manualRegistrationSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId, status: { $in: ["pending", "approved"] } });
   if (active?.status === "pending") throw conflict("Você já possui um pedido de set pendente.");
   if (active?.status === "approved") throw conflict("Você já possui um cadastro de set ativo.");
+  const latest = settings.allowResubmit ? null : await manualRegistrationSubmissions.findOne(
+    { ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId },
+    { sort: { createdAt: -1 } }
+  );
   if (!settings.allowResubmit && latest?.status === "rejected") throw conflict("Um novo pedido não está liberado após uma recusa.");
-  if (latest && settings.cooldownMinutes > 0 && now.getTime() - latest.createdAt.getTime() < settings.cooldownMinutes * 60_000) {
-    const availableAt = new Date(latest.createdAt.getTime() + settings.cooldownMinutes * 60_000);
-    throw conflict(`Aguarde até ${availableAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} para solicitar novamente.`);
-  }
   const requestedRoleId = normalizeSnowflake(input.requestedRoleId);
   if (settings.setRoles.length && !settings.setRoles.some((item) => item.enabled && item.requestable && item.roleId === requestedRoleId)) {
     throw Object.assign(new Error("O set selecionado não está disponível."), { statusCode: 400 });

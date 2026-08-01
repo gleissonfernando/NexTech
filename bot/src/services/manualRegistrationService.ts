@@ -150,7 +150,7 @@ export async function executeManualSetRegistration(interaction: ChatInputCommand
     await member.roles.add(role, `Cadastro manual por ${interaction.user.tag}`);
     await member.setNickname(requestedName, "Cadastro manual de Set").catch((error) => context.api.postLog({ guildId: interaction.guild!.id, type: "manual-registration.nickname_failed", message: error instanceof Error ? error.message : "Falha ao alterar apelido", userId: user.id, executorId: interaction.user.id }).catch(() => null));
     const saved = await context.api.reviewManualRegistrationSubmission({ actorId: interaction.user.id, actorRoleIds: [...actor.roles.cache.keys()], guildId: interaction.guild.id, id: submission.id, status: "approved" });
-    await linkApprovedSetToGoals(context, interaction.guild, user.id, requestedName, saved.id, selectedGoalCategoryId(settings, saved));
+    await linkApprovedSetToGoals(context, interaction.guild, user.id, requestedName, saved.id, selectedGoalCategoryId(settings, saved), submissionGameId(saved));
     await sendActionLog(interaction.guild, settings, `Cadastro manual\nUsuário: <@${user.id}>\nNome: ${requestedName}\nResponsável: <@${interaction.user.id}>\nObservação: ${note}`);
     await interaction.editReply(`Cadastro manual concluído para <@${user.id}> como **${requestedName}**.`);
   } catch (error) { await interaction.editReply(manualRegistrationErrorMessage(error)); }
@@ -486,7 +486,7 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
       const member = await assignSetRoles(interaction.guild, settings, submission);
       submission = await context.api.reviewManualRegistrationSubmission({ actorId: interaction.client.user.id, actorRoleIds: settings.approverRoleIds, guildId: interaction.guild.id, id: submission.id, status: "approved" });
       if (settings.dmNotifications) await member.send(settings.approvalMessage).catch(() => null);
-      await linkApprovedSetToGoals(context, interaction.guild, submission.userId, member.user.username, submission.id, selectedGoalCategoryId(settings, submission));
+      await linkApprovedSetToGoals(context, interaction.guild, submission.userId, submission.requestedName || member.displayName || member.user.username, submission.id, selectedGoalCategoryId(settings, submission), submissionGameId(submission));
       await sendRegistrationDecisionLog(interaction.guild, settings, submission, { actorId: interaction.client.user.id, actorLabel: interaction.client.user.username, decidedAt: new Date(), status: "approved" });
     } catch (error) {
       automaticError = error instanceof Error ? error.message : "Não foi possível aplicar o cargo automaticamente.";
@@ -558,7 +558,7 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
   await member.setNickname(saved.requestedName, "Pedido de Set aprovado").catch((error) => context.api.postLog({ guildId: interaction.guild!.id, message: error instanceof Error ? error.message : "Falha ao alterar apelido", metadata: { submissionId: id }, type: "manual-registration.nickname_failed", userId: saved.userId, executorId: interaction.user.id }).catch(() => null));
   await context.api.postLog({ guildId: interaction.guild.id, message: "Cargo do Pedido de Set entregue.", metadata: { roleIds, submissionId: id }, type: "manual-registration.role_delivered", userId: saved.userId }).catch(() => null);
   if (settings.dmNotifications) await member.send(settings.approvalMessage).catch(() => null);
-  await linkApprovedSetToGoals(context, interaction.guild, saved.userId, member.user.username, saved.id, selectedGoalCategoryId(settings, saved));
+  await linkApprovedSetToGoals(context, interaction.guild, saved.userId, saved.requestedName || member.displayName || member.user.username, saved.id, selectedGoalCategoryId(settings, saved), submissionGameId(saved));
   await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
   await sendRegistrationDecisionLog(interaction.guild, settings, saved, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), status: "approved" });
   await interaction.editReply("Pedido de set aprovado e cargo entregue.");
@@ -624,13 +624,12 @@ async function canReview(interaction: ButtonInteraction | ModalSubmitInteraction
   return member.roles.cache.some((role) => allowed.has(role.id));
 }
 
-function createPanelPayload(settings: ManualRegistrationSettings) {
+export function createPanelPayload(settings: ManualRegistrationSettings) {
   const imageUrl = settings.panelImage ? resolvePanelImageUrl(settings.panelImage.imageUrl, settings.panelImage) : null;
   const imageIsVideo = isVideoPanelMedia(settings.panelImage, imageUrl);
   const posterUrl = imageIsVideo ? resolvePanelImageUrl(settings.panelImage?.mediaPosterUrl ?? settings.panelImage?.mediaThumbnailUrl ?? null) : null;
   const imagePosition = imageUrl ? settings.panelImage?.imagePosition ?? settings.bannerPosition : "none";
   const thumbnailUrl = resolveImageUrl(settings.thumbnailUrl ?? null);
-  const availableSets = settings.setRoles.filter((item) => item.enabled && item.requestable).length;
   const components: unknown[] = [];
   const blockComponents = renderPanelBlocks(settings.panelImage?.blocks ?? []);
   if (blockComponents.length) components.push(...blockComponents);
@@ -641,7 +640,8 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
     type: 10,
     content: [
       replaceSystemEmojis(`# ${settings.emoji ? `${settings.emoji} ` : `${systemEmojiText("prancheta_caneta")} `}${panelName}`),
-      introText
+      "",
+      `${systemEmojiText("interrogacao")} ${introText}`
     ].join("\n\n")
   };
   const sideImageUrl = imageUrl && ["thumbnail", "side"].includes(imagePosition) ? (imageIsVideo ? posterUrl : imageUrl) : thumbnailUrl;
@@ -655,31 +655,34 @@ function createPanelPayload(settings: ManualRegistrationSettings) {
   } : heading);
   if (!blockComponents.length && imageUrl && ["thumbnail", "side"].includes(imagePosition) && !sideImageUrl) components.push(mediaGallery(imageUrl));
   if (!blockComponents.length && imageUrl && ["below_title", "below_text"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
-  components.push({ type: 14, divider: false, spacing: 1 });
+  components.push({ type: 14, divider: false, spacing: 2 });
   if (!blockComponents.length && imageUrl && imagePosition === "middle") components.push(mediaGallery(imageUrl));
   components.push({
     type: 10,
     content: [
-      replaceSystemEmojis(`### ${settings.emoji ? "" : `${systemEmojiText("prancheta")} `}Antes de começar`),
+      replaceSystemEmojis(`### ${systemEmojiText("prancheta")} Antes de começar`),
       `- Tenha em mãos ${registrationFieldSummary(settings)}.`,
-      "- Revise os dados antes de enviar.",
-      availableSets > 1 ? `- Escolha um dos ${availableSets} sets disponíveis.` : "- Confirme o set disponível."
+      "- Revise os dados antes de enviar."
     ].join("\n")
   });
-  components.push({ type: 14, divider: false, spacing: 1 });
+  components.push({
+    type: 10,
+    content: `> ${systemEmojiText("alerta")} Em caso de divergência, a equipe pode solicitar ajuste manual.`
+  });
+  components.push({ type: 14, divider: true, spacing: 1 });
   components.push({
     type: 10,
     content: [
-      "### Iniciar formulário",
+      `### ${systemEmojiText("prancheta_caneta")} Iniciar formulário`,
       "Clique no botão abaixo para continuar."
     ].join("\n")
   });
   if (!blockComponents.length && imageUrl && ["before_buttons", "above_buttons", "bottom"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta")).setLabel("Iniciar Registro").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta")).setLabel("INICIAR REGISTRO").setStyle(ButtonStyle.Secondary)
   ));
   components.push({ type: 14, divider: true, spacing: 1 });
-  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# ${settings.footerText}`) : "-# Todos os direitos reservados" });
+  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`) : "-# *BalaCloud - Todos os direitos reservados*" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
@@ -799,7 +802,7 @@ async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings,
   await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta")} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch(() => null);
 }
 
-async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string, categoryId?: string | null) {
+async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string, categoryId?: string | null, gameId?: string | null) {
   const goalSettings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   if (!goalSettings?.enabled) {
     await context.api.postLog({ guildId: guild.id, message: "Pedido de Set aprovado sem canal de meta: sistema de metas desativado ou indisponível.", metadata: { submissionId }, type: "manual-registration.goal_link_skipped", userId }).catch(() => null);
@@ -809,7 +812,7 @@ async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId:
     await context.api.postLog({ guildId: guild.id, message: "Pedido de Set aprovado sem canal de meta: vínculo automático desativado.", metadata: { submissionId }, type: "manual-registration.goal_link_disabled", userId }).catch(() => null);
     return null;
   }
-  const channelId = await ensureFivemGoalChannelForUser(context, guild, userId, username, categoryId ?? undefined).catch(() => null);
+  const channelId = await ensureFivemGoalChannelForUser(context, guild, userId, username, categoryId ?? undefined, gameId).catch(() => null);
   await context.api.postLog({ guildId: guild.id, message: channelId ? "Pedido de Set vinculado ao canal individual de meta." : "Não foi possível criar o canal individual de meta após aprovar o set.", metadata: { channelId, submissionId }, type: channelId ? "manual-registration.goal_linked" : "manual-registration.goal_link_failed", userId }).catch(() => null);
   return channelId;
 }
@@ -833,6 +836,10 @@ async function closeRequestChannel(guild: Guild, context: BotContext, submission
 
 function selectedGoalCategoryId(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {
   return settings.setRoles.find((item) => item.roleId === submission.requestedRoleId)?.categoryId ?? null;
+}
+
+function submissionGameId(submission: ManualRegistrationSubmission) {
+  return submissionFieldValue(submission, ["id_fivem", "id", "id_in_game", "id_ingame"]);
 }
 
 function submissionFieldValue(submission: ManualRegistrationSubmission, aliases: string[]) {
