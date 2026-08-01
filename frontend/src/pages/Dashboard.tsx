@@ -4630,7 +4630,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </select>
               </label>
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
-              <FivemChannelSelect channels={categories} disabled={!canManage} label="Categoria dos canais" onChange={(value) => patch({ categoryId: value })} placeholder="Sem categoria" prefix="" value={settings.categoryId} />
+              <FivemChannelSelect channels={categories} disabled={!canManage} label="Categoria padrão onde os canais de meta serão criados" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
               <RoleSelect disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
               <RoleSelect disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
@@ -4639,13 +4639,18 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               <input checked={settings.autoCreateWithManualRegistration} disabled={!canManage} onChange={(event) => patch({ autoCreateWithManualRegistration: event.target.checked })} type="checkbox" />
               <span><strong className="block text-white">Vincular Pedido de Set com Metas</strong><span className="text-xs text-zinc-500">Ao aprovar um set, cria ou localiza automaticamente o canal individual de meta do membro.</span></span>
             </label>
+            {settings.autoCreateWithManualRegistration && !settings.categoryId ? (
+              <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                Configure a categoria padrão das metas acima ou escolha uma categoria específica em cada set dentro do Pedido de Set.
+              </div>
+            ) : null}
             <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.04] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">Painel de Solicitação de Canal de Meta</p>
                   <p className="mt-1 text-sm text-zinc-400">Use quando o Pedido Set estiver desligado ou quando quiser permitir solicitação manual do canal individual.</p>
                 </div>
-                <Button disabled={!canManage || saving || !settings.enabled || !settings.requestPanelChannelId} onClick={() => void publishRequestPanel()} size="sm" type="button">
+                <Button disabled={!canManage || saving || !settings.enabled || !settings.requestPanelEnabled || !settings.requestPanelChannelId} onClick={() => void publishRequestPanel()} size="sm" type="button">
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                   Enviar/Atualizar painel
                 </Button>
@@ -4661,7 +4666,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                       <option value="false">Desativado</option>
                     </select>
                   </label>
-                  <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do painel" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione um canal" value={settings.requestPanelChannelId} />
+              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal onde o painel de solicitar sala de meta será postado" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione um canal" value={settings.requestPanelChannelId} />
                   <TicketField disabled={!canManage} label="Titulo do painel" onChange={(value) => patch({ requestPanelTitle: value })} value={settings.requestPanelTitle} />
                   <label className="flex items-end gap-2 text-xs text-zinc-300">
                     <span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3">
@@ -8209,11 +8214,12 @@ function ManualRegistrationPanel({
                   <EmojiField applicationEmojis={applicationEmojis} disabled={!canManage} label="Emoji" onChange={(value) => patchSetRole(index, { emoji: value })} value={item.emoji ?? ""} />
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchSetRole(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
                   <RoleSelect disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchSetRole(index, { roleId: value })} roles={roles} value={item.roleId} />
-                  <label className="block text-xs font-medium text-zinc-400">Categoria da meta
+                  <label className="block text-xs font-medium text-zinc-400">Destino do canal de meta ao aprovar
                     <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSetRole(index, { categoryId: event.target.value || null })} value={item.categoryId ?? ""}>
                       <option value="">Categoria padrão das metas</option>
                       {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                     </select>
+                    <span className="mt-1 block text-[11px] text-zinc-500">Quando este set for aprovado, o canal 📕┋nome | id será criado nessa categoria.</span>
                   </label>
                   <TicketField disabled={!canManage} label="Descrição" onChange={(value) => patchSetRole(index, { description: value })} value={item.description ?? ""} />
                   <div className="flex flex-col justify-end text-xs text-zinc-500"><span>Entregues</span><span className="mt-2 text-sm font-semibold text-zinc-200">{submissions.filter((submission) => submission.status === "approved" && submission.requestedRoleId === item.roleId).length}</span></div>

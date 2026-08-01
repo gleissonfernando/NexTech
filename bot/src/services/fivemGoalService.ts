@@ -35,6 +35,9 @@ export function startFivemGoalService(client: Client<true>, context: BotContext)
     const guild = client.guilds.cache.get(payload.guildId);
     if (guild) void publishGoalRequestPanel(guild, context);
   });
+  for (const guild of client.guilds.cache.values()) {
+    void publishGoalRequestPanel(guild, context);
+  }
 }
 
 export type FivemGoalSetIntegrationResult = {
@@ -306,9 +309,10 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
   const payload = createGoalRequestPanelPayload(settings.requestPanelTitle, settings.requestPanelDescription);
   if (settings.requestPanelMessageId) {
     const message = await channel.messages.fetch(settings.requestPanelMessageId).catch(() => null);
-    if (!message) return;
-    await message.edit(payload).catch(() => null);
-    return;
+    if (message) {
+      await message.edit(payload).catch(() => null);
+      return;
+    }
   }
   const message = await channel.send(payload).catch(() => null);
   if (message) {
@@ -325,13 +329,14 @@ function createGoalRequestPanelPayload(title: string, description: string) {
         accent_color: 0x22c55e,
         components: [
           { type: 10, content: `# ${title || "Sistema de Metas FiveM"}\n${description || "Solicite seu canal individual de meta para enviar comprovantes e acompanhar seu progresso."}` },
-          { type: 10, content: "Use o botão abaixo para criar ou localizar seu canal individual de meta." }
+          { type: 10, content: "Use o botão abaixo para criar ou localizar seu canal individual de meta." },
+          { type: 14, divider: true, spacing: 1 },
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(REQUEST_CHANNEL_CUSTOM_ID).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Solicitar canal de meta").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`${PREFIX}:help`).setEmoji(systemComponentEmoji("interrogacao")).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
+          )
         ]
-      },
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(REQUEST_CHANNEL_CUSTOM_ID).setLabel("Solicitar canal de meta").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`${PREFIX}:help`).setLabel("Ajuda").setStyle(ButtonStyle.Secondary)
-      )
+      }
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
