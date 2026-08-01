@@ -8170,8 +8170,8 @@ function ManualRegistrationPanel({
   }
 
   async function removeSubmission(submission: ManualRegistrationSubmission) {
-    if (!guild || !canManage || !["pending", "approved"].includes(submission.status)) return;
-    const reason = window.prompt(`${submission.status === "pending" ? "Motivo para cancelar o pedido pendente" : "Motivo para remover o cadastro"} de ${submission.requestedName}?`);
+    if (!guild || !canManage || !["pending", "failed", "approved"].includes(submission.status)) return;
+    const reason = window.prompt(`${submission.status === "approved" ? "Motivo para remover o cadastro" : "Motivo para cancelar o pedido"} de ${submission.requestedName}?`);
     if (!reason?.trim()) return;
     setSaving(true);
     setMessage(null);
@@ -8179,7 +8179,7 @@ function ManualRegistrationPanel({
     try {
       const removed = await deleteManualRegistrationSubmission(guild.id, submission.id, reason.trim(), botId);
       setSubmissions((current) => current.filter((item) => item.id !== removed.id));
-      setMessage(submission.status === "pending" ? "Pedido pendente cancelado e limpeza solicitada ao bot." : "Cadastro removido e remoção de cargo solicitada ao bot.");
+      setMessage(submission.status === "approved" ? "Cadastro removido e remoção de cargo solicitada ao bot." : "Pedido cancelado e limpeza solicitada ao bot.");
     } catch {
       setError("Não foi possível excluir o cadastro.");
     } finally {
@@ -8384,8 +8384,8 @@ function ManualRegistrationPanel({
                     <p className="mt-1 text-xs text-zinc-500">{submission.fields.map((field) => `${field.label}: ${field.value}`).join(" | ")}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={submission.status === "approved" ? "success" : submission.status === "rejected" ? "danger" : "muted"}>{submission.status}</Badge>
-                    <Button disabled={!canManage || saving || !["pending", "approved"].includes(submission.status)} onClick={() => void removeSubmission(submission)} size="icon" title="Excluir cadastro" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
+                    <Badge variant={submission.status === "approved" ? "success" : submission.status === "failed" || submission.status === "processing" ? "warning" : submission.status === "rejected" ? "danger" : "muted"}>{submission.status}</Badge>
+                    <Button disabled={!canManage || saving || !["pending", "failed", "approved"].includes(submission.status)} onClick={() => void removeSubmission(submission)} size="icon" title="Excluir cadastro" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
               ))}

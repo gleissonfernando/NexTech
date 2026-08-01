@@ -1690,7 +1690,7 @@ export type ManualRegistrationSubmission = {
   rejectedBy: string | null;
   rejectionReason: string | null;
   requestedRoleId: string | null;
-  status: "pending" | "approved" | "rejected" | "removed";
+  status: "pending" | "processing" | "approved" | "failed" | "rejected" | "removed";
   channelId: string | null;
   requestedName: string;
   registrationType: "request" | "manual";

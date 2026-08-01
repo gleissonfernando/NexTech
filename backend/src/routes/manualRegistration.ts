@@ -6,9 +6,12 @@ import { canReadDashboardGuild, canManageDashboardGuild } from "../services/dash
 import { authorizeBotRuntimeModule, canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 import {
+  beginManualRegistrationApproval,
+  completeManualRegistrationApproval,
   createManualRegistrationSubmission,
   createManualRegistrationDashboardSubmission,
   deleteManualRegistrationSubmission,
+  failManualRegistrationApproval,
   getLatestManualRegistrationSubmission,
   getManualRegistrationSettings,
   listManualRegistrationLogs,
@@ -110,6 +113,24 @@ const statusSchema = z.object({
   guildId: snowflakeSchema,
   rejectionReason: z.string().max(800).nullable().optional(),
   status: z.enum(["approved", "rejected"])
+});
+const approvalBeginSchema = z.object({
+  actorId: snowflakeSchema,
+  actorRoleIds: z.array(snowflakeSchema).max(100).default([]),
+  actorIsAdministrator: z.boolean().default(false),
+  guildId: snowflakeSchema
+});
+const approvalCompleteSchema = z.object({
+  actorId: snowflakeSchema,
+  farmChannelId: optionalSnowflakeSchema,
+  guildId: snowflakeSchema,
+  metaChannelId: optionalSnowflakeSchema,
+  roleIds: z.array(snowflakeSchema).max(100).default([])
+});
+const approvalFailSchema = z.object({
+  actorId: snowflakeSchema,
+  guildId: snowflakeSchema,
+  reason: z.string().trim().min(1).max(800)
 });
 const roleUpdateSchema = z.object({ actorId: snowflakeSchema, guildId: snowflakeSchema, requestedRoleId: snowflakeSchema });
 const dashboardRegistrationSchema = z.object({
@@ -260,6 +281,42 @@ manualRegistrationRouter.patch("/bot/submissions/:id/status", requireBot, async 
     return res.json({
       submission: await updateManualRegistrationSubmissionStatus({ ...input, id, botId })
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualRegistrationRouter.post("/bot/submissions/:id/approval/begin", requireBot, async (req, res, next) => {
+  try {
+    const id = z.string().min(1).parse(req.params.id);
+    const input = approvalBeginSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    await assertRuntimeModule(botId, input.guildId);
+    return res.json({ submission: await beginManualRegistrationApproval({ ...input, botId, id }) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualRegistrationRouter.post("/bot/submissions/:id/approval/complete", requireBot, async (req, res, next) => {
+  try {
+    const id = z.string().min(1).parse(req.params.id);
+    const input = approvalCompleteSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    await assertRuntimeModule(botId, input.guildId);
+    return res.json({ submission: await completeManualRegistrationApproval({ ...input, botId, id }) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualRegistrationRouter.post("/bot/submissions/:id/approval/fail", requireBot, async (req, res, next) => {
+  try {
+    const id = z.string().min(1).parse(req.params.id);
+    const input = approvalFailSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    await assertRuntimeModule(botId, input.guildId);
+    return res.json({ submission: await failManualRegistrationApproval({ ...input, botId, id }) });
   } catch (error) {
     return next(error);
   }

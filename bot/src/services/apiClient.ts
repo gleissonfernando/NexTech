@@ -1033,12 +1033,13 @@ export type ManualRegistrationSettings = {
 };
 
 export type ManualRegistrationSubmission = {
+  botId?: string | null;
   createdAt: string;
   id: string;
   guildId: string;
   userId: string;
   username: string;
-  status: "pending" | "approved" | "rejected" | "removed";
+  status: "pending" | "processing" | "approved" | "failed" | "rejected" | "removed";
   channelId: string | null;
   requestedName: string;
   registrationType: "request" | "manual";
@@ -3308,6 +3309,21 @@ export class ApiClient {
 
   async reviewManualRegistrationSubmission(input: { actorId: string; actorRoleIds?: string[]; actorIsAdministrator?: boolean; guildId: string; id: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
     const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/status`, input);
+    return data.submission;
+  }
+
+  async beginManualRegistrationApproval(input: { actorId: string; actorRoleIds?: string[]; actorIsAdministrator?: boolean; guildId: string; id: string }) {
+    const { data } = await this.http.post<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/approval/begin`, input);
+    return data.submission;
+  }
+
+  async completeManualRegistrationApproval(input: { actorId: string; farmChannelId?: string | null; guildId: string; id: string; metaChannelId?: string | null; roleIds?: string[] }) {
+    const { data } = await this.http.post<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/approval/complete`, input);
+    return data.submission;
+  }
+
+  async failManualRegistrationApproval(input: { actorId: string; guildId: string; id: string; reason: string }) {
+    const { data } = await this.http.post<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/approval/fail`, input);
     return data.submission;
   }
 

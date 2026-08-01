@@ -1062,7 +1062,7 @@ export type MongoManualRegistrationSubmission = {
   rejectedBy?: string | null;
   rejectionReason?: string | null;
   requestedRoleId?: string | null;
-  status: "pending" | "approved" | "rejected" | "removed";
+  status: "pending" | "processing" | "approved" | "failed" | "rejected" | "removed";
   updatedAt: Date;
   userAvatar?: string | null;
   userId: string;
@@ -6066,6 +6066,9 @@ async function createMongoIndexes(db: Db) {
     ),
     db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
       { botId: 1, guildId: 1, userId: 1 }, { name: "manual_registration_active_user_unique", unique: true, partialFilterExpression: { status: "approved", registrationVersion: 2 } }
+    ),
+    db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions").createIndex(
+      { botId: 1, guildId: 1, userId: 1 }, { name: "manual_registration_inflight_user_unique", unique: true, partialFilterExpression: { status: { $in: ["pending", "processing", "failed"] }, registrationVersion: 2 } }
     ),
     db.collection<MongoManualRegistrationLog>("manual_registration_logs").createIndex(
       { botId: 1, guildId: 1, createdAt: -1 }

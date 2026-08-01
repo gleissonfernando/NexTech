@@ -87,14 +87,14 @@ export type ManualRegistrationSubmissionDto = {
   rejectedBy: string | null;
   rejectionReason: string | null;
   requestedRoleId: string | null;
-  status: "pending" | "approved" | "rejected" | "removed";
+  status: "pending" | "processing" | "approved" | "failed" | "rejected" | "removed";
   updatedAt: string;
   userAvatar: string | null;
   userId: string;
   username: string;
 };
 
-export type ManualRegistrationRemovableStatus = "pending" | "approved";
+export type ManualRegistrationRemovableStatus = "pending" | "failed" | "approved";
 
 export type ManualRegistrationLogDto = {
   action: string;
@@ -252,8 +252,10 @@ export async function createManualRegistrationSubmission(input: {
   const normalizedBotId = normalizeBotId(input.botId);
   const settings = await getManualRegistrationSettings(input.guildId, normalizedBotId);
   const { manualRegistrationSubmissions } = await getMongoCollections();
-  const active = await manualRegistrationSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId, status: { $in: ["pending", "approved"] } });
+  const active = await manualRegistrationSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId, status: { $in: ["pending", "processing", "failed", "approved"] } });
   if (active?.status === "pending") throw conflict("Você já possui um pedido de set pendente.");
+  if (active?.status === "processing") throw conflict("Seu pedido de set já está sendo processado.");
+  if (active?.status === "failed") throw conflict("Seu pedido de set precisa ser revisado pela equipe antes de enviar outro.");
   if (active?.status === "approved") throw conflict("Você já possui um cadastro de set ativo.");
   const latest = settings.allowResubmit ? null : await manualRegistrationSubmissions.findOne(
     { ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId },
@@ -360,13 +362,92 @@ export async function updateManualRegistrationSubmissionRole(input: { actorId: s
   if (!settings.setRoles.some((item) => item.enabled && item.roleId === input.requestedRoleId)) throw Object.assign(new Error("O set selecionado não está ativo."), { statusCode: 400 });
   const { manualRegistrationSubmissions } = await getMongoCollections();
   const saved = await manualRegistrationSubmissions.findOneAndUpdate(
-    { _id: input.id, ...scopeQuery(input.guildId, botId), status: "pending" },
+    { _id: input.id, ...scopeQuery(input.guildId, botId), status: { $in: ["pending", "failed"] } },
     { $set: { requestedRoleId: input.requestedRoleId, updatedAt: new Date() } },
     { returnDocument: "after" }
   );
   if (!saved) throw Object.assign(new Error("Pedido pendente não encontrado."), { statusCode: 404 });
   await writeManualRegistrationLog({ action: "submission.role_updated", botId, data: { requestedRoleId: input.requestedRoleId }, executorId: input.actorId, guildId: input.guildId, submissionId: input.id, targetUserId: saved.userId });
   emitManualRegistrationUpdated(input.guildId, botId);
+  return toSubmissionDto(saved);
+}
+
+export async function beginManualRegistrationApproval(input: {
+  actorId: string;
+  actorRoleIds?: string[];
+  actorIsAdministrator?: boolean;
+  botId?: string | null;
+  guildId: string;
+  id: string;
+}) {
+  const botId = normalizeBotId(input.botId);
+  const pendingSubmission = await (await getMongoCollections()).manualRegistrationSubmissions.findOne({ _id: input.id, ...scopeQuery(input.guildId, botId), status: { $in: ["pending", "failed"] } });
+  if (!pendingSubmission) throw conflict("Pedido já está sendo processado, já foi aprovado ou não existe.");
+  const settings = await getManualRegistrationSettings(pendingSubmission.guildId, botId);
+  const authorizedRoles = pendingSubmission.registrationType === "manual" ? settings.manualRegistrationRoleIds : settings.approverRoleIds;
+  if (!input.actorIsAdministrator && !input.actorRoleIds?.some((roleId) => authorizedRoles.includes(roleId))) throw Object.assign(new Error("O responsável não possui um cargo autorizado."), { statusCode: 403 });
+  const now = new Date();
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const saved = await manualRegistrationSubmissions.findOneAndUpdate(
+    { _id: input.id, ...scopeQuery(input.guildId, botId), status: { $in: ["pending", "failed"] } },
+    { $set: { status: "processing", rejectionReason: null, updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  if (!saved) throw conflict("Este pedido já está sendo processado por outro responsável.");
+  await writeManualRegistrationLog({ action: "submission.approval_processing", botId, data: {}, executorId: input.actorId, guildId: saved.guildId, submissionId: saved._id, targetUserId: saved.userId });
+  emitManualRegistrationUpdated(saved.guildId, botId);
+  return toSubmissionDto(saved);
+}
+
+export async function completeManualRegistrationApproval(input: {
+  actorId: string;
+  botId?: string | null;
+  guildId: string;
+  id: string;
+  metaChannelId?: string | null;
+  farmChannelId?: string | null;
+  roleIds?: string[];
+}) {
+  const botId = normalizeBotId(input.botId);
+  const now = new Date();
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const saved = await manualRegistrationSubmissions.findOneAndUpdate(
+    { _id: input.id, ...scopeQuery(input.guildId, botId), status: "processing" },
+    { $set: { status: "approved", approvedAt: now, approvedBy: input.actorId, rejectedAt: null, rejectedBy: null, rejectionReason: null, updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  if (!saved) throw conflict("Pedido não está mais em processamento.");
+  await writeManualRegistrationLog({
+    action: "submission.approved",
+    botId,
+    data: { farmChannelId: input.farmChannelId ?? null, metaChannelId: input.metaChannelId ?? null, requestedRoleId: saved.requestedRoleId ?? null, roleIds: input.roleIds ?? [] },
+    executorId: input.actorId,
+    guildId: saved.guildId,
+    submissionId: saved._id,
+    targetUserId: saved.userId
+  });
+  emitManualRegistrationUpdated(saved.guildId, botId);
+  return toSubmissionDto(saved);
+}
+
+export async function failManualRegistrationApproval(input: {
+  actorId: string;
+  botId?: string | null;
+  guildId: string;
+  id: string;
+  reason: string;
+}) {
+  const botId = normalizeBotId(input.botId);
+  const now = new Date();
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const saved = await manualRegistrationSubmissions.findOneAndUpdate(
+    { _id: input.id, ...scopeQuery(input.guildId, botId), status: "processing" },
+    { $set: { status: "failed", rejectionReason: normalizeText(input.reason, 800), updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  if (!saved) throw conflict("Pedido não está mais em processamento.");
+  await writeManualRegistrationLog({ action: "submission.approval_failed", botId, data: { reason: saved.rejectionReason ?? null }, executorId: input.actorId, guildId: saved.guildId, submissionId: saved._id, targetUserId: saved.userId });
+  emitManualRegistrationUpdated(saved.guildId, botId);
   return toSubmissionDto(saved);
 }
 
@@ -379,7 +460,7 @@ export async function updateManualRegistrationSubmissionStatus(input: {
   rejectionReason?: string | null;
   status: "approved" | "rejected";
 }) {
-  const pendingSubmission = await (await getMongoCollections()).manualRegistrationSubmissions.findOne({ _id: input.id, botId: normalizeBotId(input.botId), status: "pending" });
+  const pendingSubmission = await (await getMongoCollections()).manualRegistrationSubmissions.findOne({ _id: input.id, botId: normalizeBotId(input.botId), status: input.status === "approved" ? "processing" : { $in: ["pending", "failed"] } });
   if (!pendingSubmission) throw Object.assign(new Error("Pedido já processado ou inexistente."), { statusCode: 409 });
   const settings = await getManualRegistrationSettings(pendingSubmission.guildId, input.botId);
   const authorizedRoles = pendingSubmission.registrationType === "manual" ? settings.manualRegistrationRoleIds : settings.approverRoleIds;
@@ -390,7 +471,7 @@ export async function updateManualRegistrationSubmissionStatus(input: {
     ? { status: input.status, approvedAt: now, approvedBy: input.actorId, rejectedAt: null, rejectedBy: null, updatedAt: now }
     : { status: input.status, rejectedAt: now, rejectedBy: input.actorId, rejectionReason: normalizeText(input.rejectionReason, 800), approvedAt: null, approvedBy: null, updatedAt: now };
   const saved = await manualRegistrationSubmissions.findOneAndUpdate(
-    { _id: input.id, botId: normalizeBotId(input.botId), status: "pending" },
+    { _id: input.id, botId: normalizeBotId(input.botId), status: input.status === "approved" ? "processing" : { $in: ["pending", "failed"] } },
     { $set: update },
     { returnDocument: "after" }
   );
@@ -647,7 +728,7 @@ function conflict(message: string) {
 }
 
 export function isManualRegistrationRemovableStatus(status: MongoManualRegistrationSubmission["status"]): status is ManualRegistrationRemovableStatus {
-  return status === "pending" || status === "approved";
+  return status === "pending" || status === "failed" || status === "approved";
 }
 
 function settingsLogSnapshot(settings: ManualRegistrationSettingsDto) {
