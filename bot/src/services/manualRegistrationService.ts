@@ -925,17 +925,18 @@ async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistr
   await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch(() => null);
 }
 
-function createDecisionDmPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: { goalChannelId?: string | null; guild: Guild; reason?: string | null; status: "approved" | "rejected" }) {
+export function createDecisionDmPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: { goalChannelId?: string | null; guild: Guild; reason?: string | null; status: "approved" | "rejected" }) {
   const approved = input.status === "approved";
   const title = approved ? "Registro aprovado" : "Registro recusado";
   const statusEmoji = approved ? systemEmojiText("visto", input.guild, input.guild.client) : systemEmojiText("exclamacao", input.guild, input.guild.client);
   const managerMention = settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : "alguém da gerência";
+  const goalChannelText = input.goalChannelId ? goalChannelDmText(input.guild, input.goalChannelId) : null;
   const lines = approved ? [
     `# ${statusEmoji} ${title}`,
     "",
     settings.approvalMessage || "Seu pedido de set foi aprovado.",
     "",
-    input.goalChannelId ? `${systemEmojiText("prancheta_acertos", input.guild, input.guild.client)} Canal de meta: <#${input.goalChannelId}>` : `${systemEmojiText("alerta", input.guild, input.guild.client)} Canal de meta ainda não foi localizado. Entre em contato com a gerência se ele não aparecer.`,
+    goalChannelText ? `${systemEmojiText("prancheta_acertos", input.guild, input.guild.client)} Canal de meta: ${goalChannelText}` : `${systemEmojiText("alerta", input.guild, input.guild.client)} Canal de meta ainda não foi localizado. Entre em contato com a gerência se ele não aparecer.`,
     `${systemEmojiText("homem", input.guild, input.guild.client)} Usuário: ${submission.requestedName || submission.username}`
   ] : [
     `# ${statusEmoji} ${title}`,
@@ -960,6 +961,12 @@ function createDecisionDmPayload(settings: ManualRegistrationSettings, submissio
     }],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function goalChannelDmText(guild: Guild, channelId: string) {
+  const channel = guild.channels.cache.get(channelId);
+  const channelName = channel && "name" in channel && typeof channel.name === "string" ? channel.name : "canal-de-meta";
+  return `#${channelName}\nhttps://discord.com/channels/${guild.id}/${channelId}`;
 }
 
 async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings, text: string) {

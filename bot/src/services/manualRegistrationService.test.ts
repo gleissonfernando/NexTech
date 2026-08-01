@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createManualRegistrationDecisionLogPayload, createPanelPayload } from "./manualRegistrationService";
+import { createDecisionDmPayload, createManualRegistrationDecisionLogPayload, createPanelPayload } from "./manualRegistrationService";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
 
 const settings = {
@@ -76,4 +76,29 @@ test("painel do Pedido de Set usa modelo compacto de registro", () => {
   const startSection = container.components.find((component) => component.type === 9 && component.accessory?.custom_id === "manual_registration:start");
   assert.equal(startSection?.accessory?.type, 2);
   assert.equal(startSection?.accessory?.label, "INICIAR REGISTRO");
+});
+
+test("DM de aprovação mostra link direto do canal de meta sem menção desconhecida", () => {
+  const guild = {
+    channels: {
+      cache: new Map([["555555555555555555", { name: "farm-tairan-15774" }]])
+    },
+    client: {
+      application: { emojis: { cache: { get: () => null, find: () => null } } },
+      emojis: { cache: { get: () => null, find: () => null } },
+      guilds: { cache: { get: () => null } }
+    },
+    emojis: { cache: { get: () => null, find: () => null } },
+    id: "999999999999999999"
+  };
+  const payload = createDecisionDmPayload(settings, submission, {
+    goalChannelId: "555555555555555555",
+    guild: guild as never,
+    status: "approved"
+  });
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /#farm-tairan-15774/);
+  assert.match(serialized, /https:\/\/discord\.com\/channels\/999999999999999999\/555555555555555555/);
+  assert.doesNotMatch(serialized, /<#555555555555555555>/);
 });

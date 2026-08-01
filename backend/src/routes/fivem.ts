@@ -1418,7 +1418,13 @@ async function validateGoalResources(guildId: string, botId: string, input: z.in
     await assertPanelChannelReady(guildId, botId, input.requestPanelChannelId);
   }
 
-  const roleIds = [input.viewRoleId, input.managerRoleId, input.correctionManagement?.managerRoleId].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
+  const roleIds = [
+    input.viewRoleId,
+    input.managerRoleId,
+    input.correctionManagement?.managerRoleId,
+    ...(input.viewerRoleIds ?? []),
+    ...(input.managerRoleIds ?? [])
+  ].filter((roleId): roleId is string => typeof roleId === "string" && Boolean(roleId));
   if (roleIds.length && !(await areGuildRoles(guildId, [...new Set(roleIds)], botToken))) {
     throw createRouteError("Um dos cargos selecionados não pertence a este servidor.", 400);
   }

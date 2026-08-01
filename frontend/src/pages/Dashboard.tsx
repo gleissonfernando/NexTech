@@ -4394,8 +4394,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       const saved = await saveFivemGoalSettings(guild.id, settings, botId);
       setSettings(saved);
       setMessage("Metas FiveM salvas.");
-    } catch {
-      setError("Não foi possível salvar metas FiveM.");
+    } catch (error) {
+      setError(readResponseMessage(error) ?? "Não foi possível salvar metas FiveM.");
     } finally {
       setSaving(false);
     }
@@ -4449,8 +4449,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       setDraft(saved);
       setSettings(savedSettings);
       setMessage("Meta salva.");
-    } catch {
-      setError("Não foi possível salvar a meta.");
+    } catch (error) {
+      setError(readResponseMessage(error) ?? "Não foi possível salvar a meta.");
     } finally {
       setSaving(false);
     }
@@ -4467,8 +4467,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       const saved = await publishFivemGoalPanel(guild.id, botId);
       setSettings(saved);
       setMessage("Solicitação enviada ao bot. Se o painel não aparecer no Discord, confira o canal, permissões e logs técnicos do Sistema de Metas.");
-    } catch {
-      setError("Não foi possível publicar o painel. Confira canal, permissão do bot e se o sistema está ativo.");
+    } catch (error) {
+      setError(readResponseMessage(error) ?? "Não foi possível publicar o painel. Confira canal, permissão do bot e se o sistema está ativo.");
     } finally {
       setSaving(false);
     }
