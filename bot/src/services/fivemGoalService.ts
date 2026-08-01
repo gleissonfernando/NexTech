@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { FivemGoalSettings } from "./apiClient";
-import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
 const WEEKLY_RANKING_LIMIT = 10;
@@ -411,6 +411,10 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   const valueField = fields.find((field) => /giro|euro|dinheiro|valor|money/i.test(`${field.id} ${field.label}`))
     ?? fields.find((field) => /quantidade|qtd/i.test(`${field.id} ${field.label}`));
   const quantity = valueField ? parseGoalNumericValue(valueField.value) : null;
+  if (!Number.isFinite(quantity) || !quantity || quantity <= 0) {
+    await interaction.editReply("Informe uma quantidade válida maior que zero.");
+    return;
+  }
 
   await context.api.createFivemGoalEntry({
     channelId: interaction.channelId ?? "",
@@ -418,7 +422,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     guildId: interaction.guild.id,
     imageUrl,
     metaId: activeConfig?.id ?? null,
-    quantity: Number.isFinite(quantity) ? quantity : null,
+    quantity,
     roleIdsSnapshot: member ? [...member.roles.cache.keys()] : [],
     userId: interaction.user.id
   });
@@ -436,6 +440,10 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   }).catch(() => null);
 
   await interaction.editReply("Meta registrada com sucesso.");
+  const channel = interaction.channel;
+  if (channel?.isSendable()) {
+    await channel.send(createFarmRegisteredPayload(interaction.user.id, imageUrl, fields, quantity, interaction.guild, settings)).catch(() => null);
+  }
 }
 
 async function handleUserGoalPanelAction(interaction: ButtonInteraction, context: BotContext) {
@@ -454,11 +462,11 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
   if (action === "history") {
     const configs = new Map(runtime.configs.map((item) => [item.id, item.name]));
     const lines = runtime.submissions.slice(0, 20).map((item) => `• **${configs.get(item.metaId) ?? "Meta"}** — ${formatGoalValue(item.value)} — ${goalStatus(item.status)} — <t:${Math.floor(Date.parse(item.createdAt) / 1000)}:d>`);
-    await interaction.reply({ content: lines.join("\n") || "Nenhum registro encontrado.", ephemeral: true });
+    await interaction.reply(lines.length ? { content: lines.join("\n"), ephemeral: true } : noRecordsPayload(ownerId, interaction.guild));
     return;
   }
   if (action === "ranking") {
-    const lines = runtime.ranking.slice(0, WEEKLY_RANKING_LIMIT).map((item) => `${item.rank <= 3 ? ["🥇", "🥈", "🥉"][item.rank - 1] : `**${item.rank}.**`} <@${item.userId}> — ${formatGoalValue(item.total)}`);
+    const lines = runtime.ranking.slice(0, WEEKLY_RANKING_LIMIT).map((item) => `${rankEmoji(item.rank, interaction.guild)} <@${item.userId}> — ${formatGoalValue(item.total)}`);
     await interaction.reply({ content: `## Ranking de Metas\n${lines.join("\n") || "Ainda não existem valores aprovados."}`, ephemeral: true });
     return;
   }
@@ -554,17 +562,73 @@ function createImageReviewPayload(userId: string, channelId: string, imageUrl: s
         accent_color: 0x22c55e,
         components: [
           { type: 12, items: [{ media: { url: imageUrl }, description: "meta image" }] },
-          { type: 10, content: `## Foto de meta enviada\nUsuario: <@${userId}>\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }
+          { type: 10, content: replaceSystemEmojis(`## ${systemEmojiText("prancheta_acertos")} Registrar Meta\n${systemEmojiText("homem")} Usuário: <@${userId}>\n${systemEmojiText("calendario")} Data: <t:${Math.floor(Date.now() / 1000)}:F>\n\nSelecione abaixo qual item está sendo registrado com esta imagem.`, null) },
+          { type: 14, divider: true, spacing: 1 },
+          ...(configs.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+            new StringSelectMenuBuilder().setCustomId(`${PREFIX}:choose:${token}`).setPlaceholder("Selecione o tipo de meta").addOptions(configs.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, label: item.name.slice(0, 100), value: item.id })))
+          )] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(`${PREFIX}:register:${token}`).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Registrar Meta").setStyle(ButtonStyle.Success)
+          )])
         ]
-      },
-      ...(configs.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-        new StringSelectMenuBuilder().setCustomId(`${PREFIX}:choose:${token}`).setPlaceholder("Selecione o tipo de meta").addOptions(configs.slice(0, 25).map((item) => ({ description: item.description?.slice(0, 100) || undefined, label: item.name.slice(0, 100), value: item.id })))
-      )] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:register:${token}`).setLabel("Registrar Meta").setStyle(ButtonStyle.Success)
-      )])
+      }
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild, settings: FivemGoalSettings) {
+  const itemLabel = fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() || "Farm";
+  return {
+    allowedMentions: { parse: [] as never[], users: [userId] },
+    components: [{
+      type: 17,
+      accent_color: 0x22c55e,
+      components: [
+        {
+          type: 9,
+          components: [{
+            type: 10,
+            content: [
+              `## ${systemEmojiText("visto", guild)} Farm registrado`,
+              "",
+              `${systemEmojiText("homem", guild)} **Usuário:** <@${userId}> | ${userId}`,
+              "",
+              `${systemEmojiText("prancheta", guild)} **Resumo**`,
+              `- ${systemEmojiText("caixa", guild)} ${itemLabel}: ${formatGoalValue(quantity)}`,
+              "",
+              `**Status:** ${systemEmojiText("visto", guild)} Registrado`,
+              `${systemEmojiText("relogio", guild)} Data: ${formatBrazilDateTime(new Date())}`
+            ].join("\n")
+          }],
+          accessory: { type: 11, media: { url: imageUrl } }
+        },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function noRecordsPayload(userId: string, guild: Guild | null) {
+  return {
+    allowedMentions: { parse: [] as never[], users: [userId] },
+    components: [{
+      type: 17,
+      accent_color: 0x9ca3af,
+      components: [
+        { type: 10, content: [`## ${systemEmojiText("perigo", guild)} Sem registros`, "", `${systemEmojiText("homem", guild)} <@${userId}> não possui registros de farm no momento.`].join("\n") },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+      ]
+    }],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function rankEmoji(rank: number, guild: Guild | null) {
+  if (rank <= 3) return systemEmojiText(rank === 1 ? "trofeu" : "trofeu_alt", guild);
+  return `**${rank}.**`;
 }
 
 function isAllowedGoalImage(attachment: Attachment) {
@@ -601,17 +665,21 @@ function parseGoalNumericValue(value: string) {
   }
 
   const parsed = Number(`${negative ? "-" : ""}${numeric}`);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function renderChannelName(template: string, username: string, userId: string) {
-  return (template || "📈・{username}")
+  return (template || "meta-{username}")
     .replace(/\{username\}/gi, username)
     .replace(/\{user\}/gi, username)
     .replace(/\{id\}/gi, userId)
     .toLowerCase()
     .replace(/\s+/g, "-")
     .slice(0, 90);
+}
+
+function formatBrazilDateTime(value: Date) {
+  return value.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Sao_Paulo" });
 }
 
 export function renderApprovedSetChannelName(username: string, gameId: string) {

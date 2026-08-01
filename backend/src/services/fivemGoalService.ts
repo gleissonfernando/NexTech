@@ -226,7 +226,7 @@ export function defaultFivemGoalSettings(guildId: string, botId: string | null =
     autoCreateWithManualRegistration: true,
     botId,
     categoryId: null,
-    channelNameTemplate: "📈・{username}",
+    channelNameTemplate: "meta-{username}",
     enabled: false,
     fields: DEFAULT_FIELDS.map((field) => ({ ...field })),
     guildId,
@@ -766,7 +766,7 @@ function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto
   return {
     ...settings,
     categoryId: normalizeSnowflake(settings.categoryId),
-    channelNameTemplate: normalizeText(settings.channelNameTemplate, 80) || "📈・{username}",
+    channelNameTemplate: normalizeText(settings.channelNameTemplate, 80) || "meta-{username}",
     fields: normalizeFields(settings.fields),
     items: normalizeItems(settings.items),
     logChannelId: normalizeSnowflake(settings.logChannelId),
