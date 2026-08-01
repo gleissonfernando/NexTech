@@ -7785,7 +7785,7 @@ function ManualRegistrationPanel({
   }
 
   function addSetRole() {
-    setSettings((current) => current ? { ...current, setRoles: [...current.setRoles, { description: "", emoji: PANEL_EMOJIS.prancheta, enabled: true, id: `set-${current.setRoles.length + 1}`, name: `Set ${current.setRoles.length + 1}`, order: current.setRoles.length + 1, requestable: true, roleId: "" }] } : current);
+    setSettings((current) => current ? { ...current, setRoles: [...current.setRoles, { categoryId: null, description: "", emoji: PANEL_EMOJIS.prancheta, enabled: true, id: `set-${current.setRoles.length + 1}`, name: `Set ${current.setRoles.length + 1}`, order: current.setRoles.length + 1, requestable: true, roleId: "" }] } : current);
   }
 
   function removeSetRole(index: number) {
@@ -7963,6 +7963,7 @@ function ManualRegistrationPanel({
                   {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
                 </select>
               </label>
+              <RoleSelect disabled={!canManage} label="Cargo mencionado nos logs" onChange={(logMentionRoleId) => patchSettings({ logMentionRoleId })} roles={roles} value={settings.logMentionRoleId ?? ""} />
               <TicketField disabled={!canManage} label="Cooldown em minutos" onChange={(value) => patchSettings({ cooldownMinutes: Math.max(0, Number(value) || 0) })} value={String(settings.cooldownMinutes)} />
               <label className="block text-xs font-medium text-zinc-400">Banner
                 <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ bannerPosition: event.target.value as ManualRegistrationSettings["bannerPosition"] })} value={settings.bannerPosition}>
@@ -8004,10 +8005,16 @@ function ManualRegistrationPanel({
                 <Button disabled={!canManage || settings.setRoles.length >= 25} onClick={addSetRole} size="sm" type="button" variant="outline">Adicionar set</Button>
               </div>
               {settings.setRoles.map((item, index) => (
-                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[180px_1fr_1fr_1fr_110px_90px_auto]" key={`${item.id}-${index}`}>
+                <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[180px_1fr_1fr_1fr_1fr_110px_90px_auto]" key={`${item.id}-${index}`}>
                   <EmojiField applicationEmojis={applicationEmojis} disabled={!canManage} label="Emoji" onChange={(value) => patchSetRole(index, { emoji: value })} value={item.emoji ?? ""} />
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchSetRole(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
                   <RoleSelect disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchSetRole(index, { roleId: value })} roles={roles} value={item.roleId} />
+                  <label className="block text-xs font-medium text-zinc-400">Categoria da meta
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSetRole(index, { categoryId: event.target.value || null })} value={item.categoryId ?? ""}>
+                      <option value="">Categoria padrão das metas</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </label>
                   <TicketField disabled={!canManage} label="Descrição" onChange={(value) => patchSetRole(index, { description: value })} value={item.description ?? ""} />
                   <div className="flex flex-col justify-end text-xs text-zinc-500"><span>Entregues</span><span className="mt-2 text-sm font-semibold text-zinc-200">{submissions.filter((submission) => submission.status === "approved" && submission.requestedRoleId === item.roleId).length}</span></div>
                   <label className="flex flex-col justify-end gap-1 text-xs text-zinc-300"><span className="flex items-center gap-2"><input checked={item.enabled} disabled={!canManage} onChange={(event) => patchSetRole(index, { enabled: event.target.checked })} type="checkbox" />Ativo</span><span className="flex items-center gap-2"><input checked={item.requestable} disabled={!canManage} onChange={(event) => patchSetRole(index, { requestable: event.target.checked })} type="checkbox" />Solicitavel</span></label>

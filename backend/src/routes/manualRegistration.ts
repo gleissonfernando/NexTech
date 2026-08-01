@@ -58,6 +58,7 @@ const settingsSchema = z.object({
   fields: z.array(fieldSchema).max(100).optional(),
   footerText: z.string().max(180).nullable().optional(),
   logChannelId: optionalSnowflakeSchema,
+  logMentionRoleId: optionalSnowflakeSchema,
   name: z.string().max(80).optional(),
   panelCategoryId: optionalSnowflakeSchema,
   panelChannelId: optionalSnowflakeSchema,
@@ -65,6 +66,7 @@ const settingsSchema = z.object({
   rejectionMessage: z.string().max(500).optional(),
   removeRoleIds: z.array(snowflakeSchema).max(20).optional(),
   setRoles: z.array(z.object({
+    categoryId: optionalSnowflakeSchema,
     description: z.string().max(200).nullable().optional(),
     emoji: z.string().max(80).nullable().optional(),
     enabled: z.boolean(),
@@ -312,6 +314,6 @@ function normalizeSettingsInput(input: z.infer<typeof settingsSchema>) {
   return {
     ...input,
     fields: input.fields?.map((field) => ({ ...field, enabled: field.enabled !== false })),
-    setRoles: input.setRoles?.map((item) => ({ ...item, description: item.description ?? null, emoji: item.emoji ?? null }))
+    setRoles: input.setRoles?.map((item) => ({ ...item, categoryId: item.categoryId ?? null, description: item.description ?? null, emoji: item.emoji ?? null }))
   };
 }

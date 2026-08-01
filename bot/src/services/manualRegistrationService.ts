@@ -32,7 +32,7 @@ import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./sy
 
 const PREFIX = "manual_registration";
 const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
-const configDrafts = new Map<string, { approvedRoleId?: string | null; approverRoleIds?: string[]; manualRegistrationRoleIds?: string[]; panelChannelId?: string | null; requestCategoryId?: string | null; logChannelId?: string | null }>();
+const configDrafts = new Map<string, { approvedRoleId?: string | null; approverRoleIds?: string[]; manualRegistrationRoleIds?: string[]; panelChannelId?: string | null; requestCategoryId?: string | null; logChannelId?: string | null; logMentionRoleId?: string | null }>();
 
 export function startManualRegistrationService(client: Client<true>, context: BotContext) {
   context.socket.onManualRegistrationPanelPublish((payload) => {
@@ -150,7 +150,7 @@ export async function executeManualSetRegistration(interaction: ChatInputCommand
     await member.roles.add(role, `Cadastro manual por ${interaction.user.tag}`);
     await member.setNickname(requestedName, "Cadastro manual de Set").catch((error) => context.api.postLog({ guildId: interaction.guild!.id, type: "manual-registration.nickname_failed", message: error instanceof Error ? error.message : "Falha ao alterar apelido", userId: user.id, executorId: interaction.user.id }).catch(() => null));
     const saved = await context.api.reviewManualRegistrationSubmission({ actorId: interaction.user.id, actorRoleIds: [...actor.roles.cache.keys()], guildId: interaction.guild.id, id: submission.id, status: "approved" });
-    await linkApprovedSetToGoals(context, interaction.guild, user.id, requestedName, saved.id);
+    await linkApprovedSetToGoals(context, interaction.guild, user.id, requestedName, saved.id, selectedGoalCategoryId(settings, saved));
     await sendActionLog(interaction.guild, settings, `Cadastro manual\nUsuário: <@${user.id}>\nNome: ${requestedName}\nResponsável: <@${interaction.user.id}>\nObservação: ${note}`);
     await interaction.editReply(`Cadastro manual concluído para <@${user.id}> como **${requestedName}**.`);
   } catch (error) { await interaction.editReply(manualRegistrationErrorMessage(error)); }
@@ -194,14 +194,14 @@ async function handleSetConfigInteraction(interaction: ButtonInteraction | any, 
   if (!interaction.guild || !(await isSetAdministrator(interaction.guild, interaction.user.id))) return void await interaction.reply({ content: "Você não possui permissão administrativa.", ephemeral: true });
   const settings = await context.api.getManualRegistrationSettings(interaction.guild.id), key = configKey(interaction.guild.id, interaction.user.id), draft = configDrafts.get(key) ?? {};
   const action = interaction.customId.split(":")[2] ?? "main";
-  if (interaction.isRoleSelectMenu()) { const field = action === "approved_select" ? "approvedRoleId" : action === "reviewers_select" ? "approverRoleIds" : "manualRegistrationRoleIds"; configDrafts.set(key, { ...draft, [field]: field === "approvedRoleId" ? interaction.values[0] ?? null : interaction.values }); return void await interaction.deferUpdate(); }
+  if (interaction.isRoleSelectMenu()) { const field = action === "approved_select" ? "approvedRoleId" : action === "reviewers_select" ? "approverRoleIds" : action === "log_mention_select" ? "logMentionRoleId" : "manualRegistrationRoleIds"; configDrafts.set(key, { ...draft, [field]: field === "approvedRoleId" || field === "logMentionRoleId" ? interaction.values[0] ?? null : interaction.values }); return void await interaction.deferUpdate(); }
   if (interaction.isChannelSelectMenu()) { const field = action === "panel_select" ? "panelChannelId" : action === "category_select" ? "requestCategoryId" : "logChannelId"; configDrafts.set(key, { ...draft, [field]: interaction.values[0] ?? null }); return void await interaction.deferUpdate(); }
   if (action === "back") { configDrafts.delete(key); return void await interaction.update(configMainPayload(settings)); }
-  if (action.startsWith("save_")) { const module = action.slice(5); const patch = module === "approved" ? { approvedRoleId: draft.approvedRoleId } : module === "reviewers" ? { approverRoleIds: draft.approverRoleIds } : module === "manual" ? { manualRegistrationRoleIds: draft.manualRegistrationRoleIds } : { panelChannelId: draft.panelChannelId, requestCategoryId: draft.requestCategoryId, logChannelId: draft.logChannelId }; if (!Object.values(patch).some((value) => value !== undefined)) return void await interaction.reply({ content: "Nenhuma alteração pendente neste módulo.", ephemeral: true }); const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, patch); configDrafts.delete(key); return void await interaction.update(configMainPayload(saved)); }
+  if (action.startsWith("save_")) { const module = action.slice(5); const patch = module === "approved" ? { approvedRoleId: draft.approvedRoleId } : module === "reviewers" ? { approverRoleIds: draft.approverRoleIds } : module === "manual" ? { manualRegistrationRoleIds: draft.manualRegistrationRoleIds } : { panelChannelId: draft.panelChannelId, requestCategoryId: draft.requestCategoryId, logChannelId: draft.logChannelId, logMentionRoleId: draft.logMentionRoleId }; if (!Object.values(patch).some((value) => value !== undefined)) return void await interaction.reply({ content: "Nenhuma alteração pendente neste módulo.", ephemeral: true }); const saved = await context.api.saveManualRegistrationSettings(interaction.guild.id, patch); configDrafts.delete(key); return void await interaction.update(configMainPayload(saved)); }
   const backSave = (module: string) => new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:config:save_${module}`).setEmoji(systemComponentEmoji("salvar")).setLabel("Salvar").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`${PREFIX}:config:back`).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary));
   if (action === "approved") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("visto")} Cargo atribuído ao aprovar\nSelecione um cargo e clique em **Salvar**.` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:approved_select`).setPlaceholder("Selecione o cargo aprovado").setMinValues(1).setMaxValues(1)), backSave("approved")] }] });
   if (action === "reviewers" || action === "manual") { const module = action; return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: module === "reviewers" ? `# ${systemEmojiText("homem")} Cargos que aprovam ou recusam` : `# ${systemEmojiText("prancheta_caneta")} Cargos para cadastro manual` }, new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:${module}_select`).setPlaceholder("Selecione um ou vários cargos").setMinValues(1).setMaxValues(20)), backSave(module)] }] }); }
-  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("discord")} Canais do sistema de Set\nSelecione o painel, a categoria privada e o canal de logs.` }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos pedidos").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), backSave("channels")] }] });
+  if (action === "channels") return void await interaction.update({ components: [{ type: 17, accent_color: 0x7c3aed, components: [{ type: 10, content: `# ${systemEmojiText("discord")} Canais do sistema de Set\nSelecione o painel, a categoria privada, o canal de logs e o cargo mencionado nos logs.` }, new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:panel_select`).setPlaceholder("Canal do painel").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:category_select`).setPlaceholder("Categoria dos pedidos").setChannelTypes(ChannelType.GuildCategory)), new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(new ChannelSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_select`).setPlaceholder("Canal de logs").setChannelTypes(ChannelType.GuildText)), new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:config:log_mention_select`).setPlaceholder("Cargo mencionado nos logs").setMinValues(0).setMaxValues(1)), backSave("channels")] }] });
 }
 async function isSetAdministrator(guild: Guild, userId: string) { const member = await guild.members.fetch(userId).catch(() => null); return Boolean(member && (guild.ownerId === userId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild))); }
 
@@ -486,12 +486,16 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
       const member = await assignSetRoles(interaction.guild, settings, submission);
       submission = await context.api.reviewManualRegistrationSubmission({ actorId: interaction.client.user.id, actorRoleIds: settings.approverRoleIds, guildId: interaction.guild.id, id: submission.id, status: "approved" });
       if (settings.dmNotifications) await member.send(settings.approvalMessage).catch(() => null);
-      await linkApprovedSetToGoals(context, interaction.guild, submission.userId, member.user.username, submission.id);
-      await sendActionLog(interaction.guild, settings, `Pedido aprovado automaticamente\nUsuario: <@${submission.userId}>\nSet: ${submission.requestedRoleId ? `<@&${submission.requestedRoleId}>` : "padrao"}`);
+      await linkApprovedSetToGoals(context, interaction.guild, submission.userId, member.user.username, submission.id, selectedGoalCategoryId(settings, submission));
+      await sendRegistrationDecisionLog(interaction.guild, settings, submission, { actorId: interaction.client.user.id, actorLabel: interaction.client.user.username, decidedAt: new Date(), status: "approved" });
     } catch (error) {
       automaticError = error instanceof Error ? error.message : "Não foi possível aplicar o cargo automaticamente.";
       await context.api.postLog({ guildId: interaction.guild.id, message: automaticError, metadata: { submissionId: submission.id }, type: "manual-registration.auto_approval_failed", userId: interaction.user.id }).catch(() => null);
     }
+  }
+  if (settings.automaticApproval && !automaticError && submission.status === "approved") {
+    await interaction.editReply(settings.approvalMessage);
+    return;
   }
   const category = settings.requestCategoryId ? await interaction.guild.channels.fetch(settings.requestCategoryId).catch(() => null) : null;
   if (category?.type !== ChannelType.GuildCategory) { await interaction.editReply("O pedido foi salvo, mas a categoria privada não está configurada ou foi removida. Avise a administração."); return; }
@@ -507,7 +511,7 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
 async function assignSetRoles(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {
   const member = await guild.members.fetch(submission.userId).catch(() => null);
   if (!member) throw new Error("O membro não foi encontrado no servidor.");
-  const roleIds = [...new Set([...(settings.autoRoleIds ?? []), ...(submission.requestedRoleId ? [submission.requestedRoleId] : [])])];
+  const roleIds = [...new Set([submission.requestedRoleId, settings.approvedRoleId, ...(settings.autoRoleIds ?? [])].filter((value): value is string => Boolean(value)))];
   for (const roleId of roleIds) {
     const role = await guild.roles.fetch(roleId).catch(() => null);
     if (!role || !role.editable) throw new Error(`O bot não pode entregar o cargo ${roleId}; verifique a hierarquia.`);
@@ -537,7 +541,8 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
     await interaction.editReply("O membro não foi encontrado no servidor.");
     return;
   }
-  const roleIds = [...new Set([settings.approvedRoleId ?? submission?.requestedRoleId, ...(settings.autoRoleIds ?? [])].filter((value): value is string => Boolean(value)))];
+  const requestedRoleId = submission?.requestedRoleId ?? null;
+  const roleIds = [...new Set([requestedRoleId, settings.approvedRoleId, ...(settings.autoRoleIds ?? [])].filter((value): value is string => Boolean(value)))];
   if (!roleIds.length) { await interaction.editReply("O cargo de aprovado não está configurado."); return; }
   for (const roleId of roleIds) {
     const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
@@ -553,11 +558,11 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
   await member.setNickname(saved.requestedName, "Pedido de Set aprovado").catch((error) => context.api.postLog({ guildId: interaction.guild!.id, message: error instanceof Error ? error.message : "Falha ao alterar apelido", metadata: { submissionId: id }, type: "manual-registration.nickname_failed", userId: saved.userId, executorId: interaction.user.id }).catch(() => null));
   await context.api.postLog({ guildId: interaction.guild.id, message: "Cargo do Pedido de Set entregue.", metadata: { roleIds, submissionId: id }, type: "manual-registration.role_delivered", userId: saved.userId }).catch(() => null);
   if (settings.dmNotifications) await member.send(settings.approvalMessage).catch(() => null);
-  await linkApprovedSetToGoals(context, interaction.guild, saved.userId, member.user.username, saved.id);
+  await linkApprovedSetToGoals(context, interaction.guild, saved.userId, member.user.username, saved.id, selectedGoalCategoryId(settings, saved));
   await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
-  if (interaction.channel?.isThread() === false && "permissionOverwrites" in interaction.channel) await interaction.channel.permissionOverwrites.edit(saved.userId, { SendMessages: false }).catch(() => null);
-  await sendActionLog(interaction.guild, settings, `Pedido aprovado\nUsuario: <@${saved.userId}>\nStaff: <@${interaction.user.id}>\nSet: ${saved.requestedRoleId ? `<@&${saved.requestedRoleId}>` : "padrao"}`);
+  await sendRegistrationDecisionLog(interaction.guild, settings, saved, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), status: "approved" });
   await interaction.editReply("Pedido de set aprovado e cargo entregue.");
+  await closeRequestChannel(interaction.guild, context, saved, "Pedido de Set aprovado");
 }
 
 async function showRejectionModal(interaction: ButtonInteraction, context: BotContext) {
@@ -589,9 +594,9 @@ async function rejectSubmission(interaction: ModalSubmitInteraction, context: Bo
   const member = await interaction.guild.members.fetch(saved.userId).catch(() => null);
   if (member && settings.dmNotifications) await member.send(`${settings.rejectionMessage}\n\nMotivo: ${reason}`).catch(() => null);
   if (interaction.message) await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
-  if (interaction.channel?.isThread() === false && "permissionOverwrites" in interaction.channel) await interaction.channel.permissionOverwrites.edit(saved.userId, { SendMessages: false }).catch(() => null);
-  await sendActionLog(interaction.guild, settings, `Pedido recusado\nUsuario: <@${saved.userId}>\nStaff: <@${interaction.user.id}>\nMotivo: ${reason}`);
+  await sendRegistrationDecisionLog(interaction.guild, settings, saved, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), reason, status: "rejected" });
   await interaction.editReply("Pedido de set recusado.");
+  await closeRequestChannel(interaction.guild, context, saved, "Pedido de Set recusado");
 }
 
 async function showRequestStatus(interaction: ButtonInteraction, context: BotContext) {
@@ -724,14 +729,77 @@ function createReviewPayload(settings: ManualRegistrationSettings, submission: M
   };
 }
 
+type DecisionLogInput = {
+  actorId: string;
+  actorLabel: string;
+  decidedAt: Date;
+  reason?: string | null;
+  serverIconUrl?: string | null;
+  status: "approved" | "rejected";
+};
+
+export function createManualRegistrationDecisionLogPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput) {
+  const approved = input.status === "approved";
+  const statusText = approved ? "Aprovado" : "Reprovado";
+  const titleEmoji = approved ? systemEmojiText("visto") : systemEmojiText("exclamacao");
+  const characterName = submissionFieldValue(submission, ["nome_personagem", "personagem", "nome_do_personagem", "nome"]) ?? submission.requestedName ?? submission.username;
+  const gameId = submissionFieldValue(submission, ["id_fivem", "id", "id_in_game", "id_ingame"]) ?? "-";
+  const phone = submissionFieldValue(submission, ["telefone", "telefone_in_game", "telefone_ingame"]) ?? "-";
+  const recruiter = submissionFieldValue(submission, ["recrutador", "quem_recrutou"]) ?? "-";
+  const decisionLines = [
+    `- Por: <@${input.actorId}> | ${input.actorLabel}`,
+    `- Em: ${formatBrazilDateTime(input.decidedAt)}`
+  ];
+  if (!approved && input.reason?.trim()) decisionLines.push(`- Motivo: ${input.reason.trim()}`);
+  const body = {
+    type: 10,
+    content: replaceSystemEmojis([
+      `# ${titleEmoji} Registro - ${statusText}`,
+      "",
+      `${systemEmojiText("homem")} **Usuario:** <@${submission.userId}> | ${gameId} (${submission.username})`,
+      "",
+      `${systemEmojiText("prancheta")} **Dados do registro**`,
+      `- Personagem: ${characterName}`,
+      `- ID: ${gameId}`,
+      `- Telefone: ${phone}`,
+      `- Recrutador: ${recruiter}`,
+      "",
+      `- Enviado em: ${formatBrazilDateTime(submission.createdAt)}`,
+      `${titleEmoji} Status: ${statusText}`,
+      "",
+      `${systemEmojiText("homem")} **Decisao**`,
+      ...decisionLines
+    ].join("\n"))
+  };
+  const components: unknown[] = [
+    input.serverIconUrl ? { type: 9, components: [body], accessory: { type: 11, media: { url: input.serverIconUrl } } } : body,
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+  ];
+  const mentionRoleId = settings.logMentionRoleId ?? null;
+  return {
+    allowedMentions: { parse: [] as never[], roles: mentionRoleId ? [mentionRoleId] : [], users: [submission.userId, input.actorId] },
+    components: [{ type: 17, accent_color: approved ? 0x22c55e : 0xef4444, components }],
+    content: mentionRoleId ? `<@&${mentionRoleId}>` : undefined,
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput) {
+  if (!settings.logChannelId) return;
+  const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
+  if (!channel?.isSendable()) return;
+  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) })).catch(() => null);
+}
+
 async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings, text: string) {
   if (!settings.logChannelId) return;
   const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
-  await channel.send({ components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta")} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+  await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta")} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch(() => null);
 }
 
-async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string) {
+async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string, categoryId?: string | null) {
   const goalSettings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   if (!goalSettings?.enabled) {
     await context.api.postLog({ guildId: guild.id, message: "Pedido de Set aprovado sem canal de meta: sistema de metas desativado ou indisponível.", metadata: { submissionId }, type: "manual-registration.goal_link_skipped", userId }).catch(() => null);
@@ -741,9 +809,46 @@ async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId:
     await context.api.postLog({ guildId: guild.id, message: "Pedido de Set aprovado sem canal de meta: vínculo automático desativado.", metadata: { submissionId }, type: "manual-registration.goal_link_disabled", userId }).catch(() => null);
     return null;
   }
-  const channelId = await ensureFivemGoalChannelForUser(context, guild, userId, username).catch(() => null);
+  const channelId = await ensureFivemGoalChannelForUser(context, guild, userId, username, categoryId ?? undefined).catch(() => null);
   await context.api.postLog({ guildId: guild.id, message: channelId ? "Pedido de Set vinculado ao canal individual de meta." : "Não foi possível criar o canal individual de meta após aprovar o set.", metadata: { channelId, submissionId }, type: channelId ? "manual-registration.goal_linked" : "manual-registration.goal_link_failed", userId }).catch(() => null);
   return channelId;
+}
+
+async function closeRequestChannel(guild: Guild, context: BotContext, submission: ManualRegistrationSubmission, reason: string) {
+  if (!submission.channelId) return;
+  const channel = await guild.channels.fetch(submission.channelId).catch(() => null);
+  if (!channel || channel.type !== ChannelType.GuildText || !channel.deletable) return;
+  const deleted = await channel.delete(reason).then(() => true).catch((error) => {
+    void context.api.postLog({
+      guildId: guild.id,
+      message: error instanceof Error ? error.message : "Falha ao apagar canal do Pedido de Set.",
+      metadata: { channelId: submission.channelId, submissionId: submission.id },
+      type: "manual-registration.channel_close_failed",
+      userId: submission.userId
+    }).catch(() => null);
+    return false;
+  });
+  if (deleted) await context.api.updateManualRegistrationSubmissionChannel(submission.id, null, null).catch(() => null);
+}
+
+function selectedGoalCategoryId(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {
+  return settings.setRoles.find((item) => item.roleId === submission.requestedRoleId)?.categoryId ?? null;
+}
+
+function submissionFieldValue(submission: ManualRegistrationSubmission, aliases: string[]) {
+  const normalizedAliases = new Set(aliases.map(normalizeFieldKey));
+  const field = submission.fields.find((item) => normalizedAliases.has(normalizeFieldKey(item.id)) || normalizedAliases.has(normalizeFieldKey(item.label)));
+  const value = field?.value?.trim();
+  return value && value !== "-" ? value : null;
+}
+
+function normalizeFieldKey(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function formatBrazilDateTime(value: string | Date | null | undefined) {
+  const date = value instanceof Date ? value : new Date(value ?? Date.now());
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Sao_Paulo" });
 }
 
 function mediaGallery(imageUrl: string) {

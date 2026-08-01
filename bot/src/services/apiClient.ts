@@ -1002,6 +1002,7 @@ export type ManualRegistrationSettings = {
   footerText: string | null;
   guildId: string;
   logChannelId: string | null;
+  logMentionRoleId: string | null;
   manualRegistrationRoleIds: string[];
   name: string;
   panelCategoryId: string | null;
@@ -1021,7 +1022,7 @@ export type ManualRegistrationSettings = {
   } | null;
   rejectionMessage: string;
   removeRoleIds: string[];
-  setRoles: Array<{ description: string | null; emoji: string | null; enabled: boolean; id: string; name: string; order: number; requestable: boolean; roleId: string }>;
+  setRoles: Array<{ categoryId: string | null; description: string | null; emoji: string | null; enabled: boolean; id: string; name: string; order: number; requestable: boolean; roleId: string }>;
   staffRoleIds: string[];
   successMessage: string;
   thumbnailUrl: string | null;
@@ -3277,7 +3278,7 @@ export class ApiClient {
   async updateManualRegistrationSubmissionMessage(id: string, messageId: string | null) {
     await this.http.patch(`/manual-registration/bot/submissions/${id}/message`, { messageId });
   }
-  async updateManualRegistrationSubmissionChannel(id: string, channelId: string, messageId: string | null) { const {data}=await this.http.patch<{submission:ManualRegistrationSubmission}>(`/manual-registration/bot/submissions/${id}/message`,{channelId,messageId}); return data.submission; }
+  async updateManualRegistrationSubmissionChannel(id: string, channelId: string | null, messageId: string | null) { const {data}=await this.http.patch<{submission:ManualRegistrationSubmission}>(`/manual-registration/bot/submissions/${id}/message`,{channelId,messageId}); return data.submission; }
 
   async reviewManualRegistrationSubmission(input: { actorId: string; actorRoleIds?: string[]; actorIsAdministrator?: boolean; guildId: string; id: string; rejectionReason?: string | null; status: "approved" | "rejected" }) {
     const { data } = await this.http.patch<{ submission: ManualRegistrationSubmission }>(`/manual-registration/bot/submissions/${input.id}/status`, input);

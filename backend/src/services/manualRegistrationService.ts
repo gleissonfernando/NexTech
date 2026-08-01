@@ -17,6 +17,7 @@ export type ManualRegistrationFieldDto = {
 };
 
 export type ManualRegistrationSetRoleDto = {
+  categoryId: string | null;
   description: string | null;
   emoji: string | null;
   enabled: boolean;
@@ -50,6 +51,7 @@ export type ManualRegistrationSettingsDto = {
   footerText: string | null;
   guildId: string;
   logChannelId: string | null;
+  logMentionRoleId: string | null;
   name: string;
   panelCategoryId: string | null;
   panelChannelId: string | null;
@@ -140,6 +142,7 @@ export function defaultManualRegistrationSettings(guildId: string, botId: string
     footerText: "Cadastro enviado para analise da equipe.",
     guildId,
     logChannelId: null,
+    logMentionRoleId: null,
     name: "Pedido de Set",
     panelCategoryId: null,
     panelChannelId: null,
@@ -493,6 +496,7 @@ function normalizeSettings(settings: ManualRegistrationSettingsDto): ManualRegis
     fields: normalizeFields(settings.fields),
     footerText: normalizeText(settings.footerText, 180),
     logChannelId: normalizeSnowflake(settings.logChannelId),
+    logMentionRoleId: normalizeSnowflake(settings.logMentionRoleId),
     name: normalizeText(settings.name, 80) || "Pedido de Set",
     panelCategoryId: normalizeSnowflake(settings.panelCategoryId),
     panelChannelId: normalizeSnowflake(settings.panelChannelId),
@@ -511,6 +515,7 @@ function normalizeSettings(settings: ManualRegistrationSettingsDto): ManualRegis
 
 function normalizeSetRoles(values: ManualRegistrationSetRoleDto[]) {
   return (Array.isArray(values) ? values : []).map((item, index) => ({
+    categoryId: normalizeSnowflake(item.categoryId),
     description: normalizeText(item.description, 200),
     emoji: normalizeText(item.emoji, 80),
     enabled: item.enabled !== false,
@@ -567,6 +572,7 @@ function toSettingsDto(settings: MongoManualRegistrationSettings): ManualRegistr
     footerText: settings.footerText,
     guildId: settings.guildId,
     logChannelId: settings.logChannelId ?? null,
+    logMentionRoleId: settings.logMentionRoleId ?? null,
     name: settings.name,
     panelCategoryId: settings.panelCategoryId ?? null,
     panelChannelId: settings.panelChannelId ?? null,
@@ -574,7 +580,7 @@ function toSettingsDto(settings: MongoManualRegistrationSettings): ManualRegistr
     panelImage: null,
     rejectionMessage: settings.rejectionMessage ?? "Seu pedido de set foi recusado.",
     removeRoleIds: settings.removeRoleIds ?? [],
-    setRoles: settings.setRoles ?? [],
+    setRoles: (settings.setRoles ?? []).map((item) => ({ ...item, categoryId: item.categoryId ?? null })),
     staffRoleIds: settings.staffRoleIds ?? [],
     successMessage: settings.successMessage ?? "Seu pedido de set foi enviado para analise.",
     thumbnailUrl: settings.thumbnailUrl,

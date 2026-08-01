@@ -1626,6 +1626,7 @@ export type ManualRegistrationField = {
 };
 
 export type ManualRegistrationSetRole = {
+  categoryId: string | null;
   description: string | null;
   emoji: string | null;
   enabled: boolean;
@@ -1657,6 +1658,7 @@ export type ManualRegistrationSettings = {
   footerText: string | null;
   guildId: string;
   logChannelId: string | null;
+  logMentionRoleId: string | null;
   manualRegistrationRoleIds: string[];
   name: string;
   panelCategoryId: string | null;

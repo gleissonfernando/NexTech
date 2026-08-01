@@ -990,6 +990,7 @@ export type MongoManualRegistrationField = {
 };
 
 export type MongoManualRegistrationSetRole = {
+  categoryId?: string | null;
   description: string | null;
   emoji: string | null;
   enabled: boolean;
@@ -1024,6 +1025,7 @@ export type MongoManualRegistrationSettings = {
   footerText: string | null;
   guildId: string;
   logChannelId?: string | null;
+  logMentionRoleId?: string | null;
   name: string;
   panelCategoryId?: string | null;
   panelChannelId?: string | null;
