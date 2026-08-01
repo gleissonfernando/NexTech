@@ -9,6 +9,7 @@ export type FivemResourceOption = {
 };
 
 export function FivemResourceSelect({
+  compact = false,
   disabled,
   label,
   onChange,
@@ -17,6 +18,7 @@ export function FivemResourceSelect({
   prefix = "",
   value
 }: {
+  compact?: boolean;
   disabled: boolean;
   label: string;
   onChange: (value: string | null) => void;
@@ -28,6 +30,20 @@ export function FivemResourceSelect({
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => filterOptions(options, query, value ? [value] : []), [options, query, value]);
   const selected = useMemo(() => options.find((option) => option.id === value) ?? null, [options, value]);
+  const hasSelectedOption = !value || options.some((option) => option.id === value);
+
+  if (compact) {
+    return (
+      <label className="grid gap-1.5 text-xs font-medium text-zinc-400">
+        <span>{label}</span>
+        <select className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/60 disabled:opacity-60" disabled={disabled} onChange={(event) => onChange(event.target.value || null)} value={value ?? ""}>
+          <option value="">{placeholder}</option>
+          {!hasSelectedOption && value ? <option value={value}>Atual ({shortId(value)})</option> : null}
+          {options.map((option) => <option disabled={option.disabled} key={option.id} value={option.id}>{prefix}{option.name}</option>)}
+        </select>
+      </label>
+    );
+  }
 
   return (
     <div className="grid gap-2 text-xs font-medium text-zinc-400">
@@ -61,7 +77,8 @@ export function FivemResourceSelect({
   );
 }
 
-export function FivemResourceMultiSelect({ disabled, label, onChange, options, prefix = "", values }: {
+export function FivemResourceMultiSelect({ compact = false, disabled, label, onChange, options, prefix = "", values }: {
+  compact?: boolean;
   disabled: boolean;
   label: string;
   onChange: (values: string[]) => void;
@@ -122,7 +139,7 @@ export function FivemResourceMultiSelect({ disabled, label, onChange, options, p
         </div>
       ) : null}
       <SearchInput disabled={disabled} onChange={setQuery} value={query} />
-      <div className="discord-scrollbar mt-2 max-h-44 space-y-1 overflow-y-auto">
+      <div className={`discord-scrollbar mt-2 ${compact ? "max-h-28" : "max-h-44"} space-y-1 overflow-y-auto`}>
         {filtered.length ? filtered.map((option) => (
           <label className={`flex min-h-9 items-center gap-2 rounded-md px-2 text-sm ${option.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer text-zinc-300 hover:bg-zinc-900"}`} key={option.id}>
             <input checked={values.includes(option.id)} disabled={disabled || option.disabled} onChange={() => toggle(option.id)} type="checkbox" />

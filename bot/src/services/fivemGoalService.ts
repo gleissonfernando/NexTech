@@ -902,7 +902,7 @@ export function createFarmRoomPanelPayload(guild: Guild | null, settings: Pick<F
               .setStyle(ButtonStyle.Danger)
           ),
           { type: 14, divider: true, spacing: 1 },
-          { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+          { type: 10, content: "-# NexTech - Todos os direitos reservados" }
         ]
       }
     ],
@@ -1179,7 +1179,7 @@ function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: A
           accessory: { type: 11, media: { url: imageUrl } }
         },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+        { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const
@@ -1195,7 +1195,7 @@ function noRecordsPayload(userId: string, guild: Guild | null) {
       components: [
         { type: 10, content: [`## ${systemEmojiText("perigo", guild)} Sem registros`, "", `${systemEmojiText("homem", guild)} <@${userId}> não possui registros de farm no momento.`].join("\n") },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+        { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
       ]
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const

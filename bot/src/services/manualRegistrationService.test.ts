@@ -59,7 +59,7 @@ test("painel do Pedido de Set usa modelo compacto de registro", () => {
       { enabled: true, id: "telefone", label: "Telefone", maxLength: 32, minLength: 1, name: "telefone", placeholder: null, required: false, style: "short" },
       { enabled: true, id: "recrutador", label: "Recrutador", maxLength: 80, minLength: 1, name: "recrutador", placeholder: null, required: false, style: "short" }
     ],
-    footerText: "BalaCloud - Todos os direitos reservados",
+    footerText: "NexTech - Todos os direitos reservados",
     name: "Pedido de Set",
     thumbnailUrl: null,
     title: "Pedido de Set"

@@ -682,7 +682,7 @@ export function createPanelPayload(settings: ManualRegistrationSettings, guild: 
     accessory: startButton.toJSON()
   });
   components.push({ type: 14, divider: true, spacing: 1 });
-  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, guild, guild?.client ?? null) : "-# *BalaCloud - Todos os direitos reservados*" });
+  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, guild, guild?.client ?? null) : "-# *NexTech - Todos os direitos reservados*" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
@@ -782,7 +782,7 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
   const components: unknown[] = [
     input.serverIconUrl ? { type: 9, components: [body], accessory: { type: 11, media: { url: input.serverIconUrl } } } : body,
     { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: "-# *BalaCloud - Todos os direitos reservados*" }
+    { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
   ];
   const mentionRoleId = settings.logMentionRoleId ?? null;
   return {
@@ -830,7 +830,7 @@ function createDecisionDmPayload(settings: ManualRegistrationSettings, submissio
       components: [
         { type: 10, content: replaceSystemEmojis(lines.join("\n"), input.guild, input.guild.client) },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, input.guild, input.guild.client) : "-# *BalaCloud - Todos os direitos reservados*" }
+        { type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, input.guild, input.guild.client) : "-# *NexTech - Todos os direitos reservados*" }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const

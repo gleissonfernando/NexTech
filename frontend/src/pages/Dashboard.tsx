@@ -3717,11 +3717,19 @@ function FivemView({
   const goalsEnabled = enabledModules.includes("fivem-goals");
   const ordersEnabled = enabledModules.includes("fivem-orders");
 
+  if (mode === "goals") {
+    return (
+      <div className="space-y-5">
+        {goalsEnabled ? <FivemGoalsPanel botId={botId} canManage={canManage} guild={guild} /> : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <Card className="border-emerald-500/10 bg-zinc-950/75">
         <CardHeader>
-          <CardTitle>{mode === "goals" ? "Sistema de Metas FiveM" : mode === "orders" ? "Sistema de Encomendas FiveM" : "Central FiveM"}</CardTitle>
+          <CardTitle>{mode === "orders" ? "Sistema de Encomendas FiveM" : "Central FiveM"}</CardTitle>
           <CardDescription>{fivemModeDescription(mode)}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
@@ -3748,7 +3756,6 @@ function FivemView({
           </Card>
         ))}
       </div>
-      {mode === "goals" && goalsEnabled ? <FivemGoalsPanel botId={botId} canManage={canManage} guild={guild} /> : null}
       {mode === "orders" && ordersEnabled ? <FivemOrdersManager botId={botId} canManage={canManage} guild={guild} /> : null}
       {mode === "general" && enabledModules.includes("fivem-factions") ? <Pd7Panel botId={botId} canManage={canManage} guild={guild} /> : null}
     </div>
@@ -4273,6 +4280,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showChannelConfig, setShowChannelConfig] = useState(false);
 
   useEffect(() => {
     if (!guild) return;
@@ -4388,7 +4396,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       logChannelId: settings?.logChannelId ?? null,
       managerRoleIds: settings?.managerRoleId ? [settings.managerRoleId] : [],
       name: "Nova Meta",
-      panelChannelId: null,
+      panelChannelId: settings?.requestPanelChannelId ?? null,
       panelMessageId: null,
       participantRoleIds: settings?.viewRoleId ? [settings.viewRoleId] : [],
       period: "weekly",
@@ -4406,7 +4414,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
   }
 
   async function saveDraft() {
-    if (!guild || !draft) return;
+    if (!guild || !draft || !settings) return;
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -4414,8 +4422,10 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       const saved = draft.id === "new"
         ? await createFivemGoalConfig(guild.id, draft, botId)
         : await updateFivemGoalConfig(guild.id, draft.id, draft, botId);
+      const savedSettings = await saveFivemGoalSettings(guild.id, settings, botId);
       setConfigs((current) => [saved, ...current.filter((config) => config.id !== saved.id)]);
       setDraft(saved);
+      setSettings(savedSettings);
       setMessage("Meta salva.");
     } catch {
       setError("Não foi possível salvar a meta.");
@@ -4471,6 +4481,10 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
             <Button disabled={!canManage || !settings || saving || loading} onClick={createDraft} size="sm" type="button" variant="outline">
               <ListChecks className="mr-2 h-4 w-4" />
               Criar Meta
+            </Button>
+            <Button disabled={!settings || loading} onClick={() => setShowChannelConfig((current) => !current)} size="sm" type="button" variant="outline">
+              <Settings className="mr-2 h-4 w-4" />
+              Configurar canais
             </Button>
             <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
@@ -4597,8 +4611,6 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchDraft({ name: value })} value={draft.name} />
                   <TicketField disabled={!canManage} label="Descrição" onChange={(value) => patchDraft({ description: value })} value={draft.description ?? ""} />
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <TicketField disabled={!canManage} label="Tipo" onChange={(value) => patchDraft({ type: value })} value={draft.type} />
-                    <TicketField disabled={!canManage} label="Valor necessário" onChange={(value) => patchDraft({ targetValue: Number(value) || 1 })} value={String(draft.targetValue)} />
                     <label className="block text-xs font-medium text-zinc-400">Status
                       <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ status: event.target.value as FivemGoalConfig["status"] })} value={draft.status}>
                         <option value="active">Ativa</option>
@@ -4615,16 +4627,22 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                       </select>
                     </label>
                   </div>
-                  <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do painel" onChange={(value) => patchDraft({ panelChannelId: value })} placeholder="Sem painel" value={draft.panelChannelId} />
-                  <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patchDraft({ logChannelId: value })} placeholder="Sem logs" value={draft.logChannelId} />
-                  <MultiRoleSelect disabled={!canManage} label="Cargos participantes" onChange={(value) => patchDraft({ participantRoleIds: value })} roles={roles} values={draft.participantRoleIds} />
-                  <MultiRoleSelect disabled={!canManage} label="Cargos administradores" onChange={(value) => patchDraft({ managerRoleIds: value })} roles={roles} values={draft.managerRoleIds} />
-                  <MultiRoleSelect disabled={!canManage} label="Cargos aprovadores" onChange={(value) => patchDraft({ approverRoleIds: value })} roles={roles} values={draft.approverRoleIds} />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300"><input checked={draft.requiresProof} disabled={!canManage} onChange={(event) => patchDraft({ requiresProof: event.target.checked })} type="checkbox" /> Exigir comprovante</label>
-                    <label className="flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300"><input checked={draft.requiresApproval} disabled={!canManage} onChange={(event) => patchDraft({ requiresApproval: event.target.checked })} type="checkbox" /> Aprovação manual</label>
+                  <div className="rounded-lg border border-zinc-800 bg-black/30 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-zinc-500">Itens que aparecem no registro</p>
+                      <span className="text-[11px] text-zinc-600">{settings.items.filter((item) => item.enabled).length}/{settings.items.length} ativos</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {settings.items.map((item, index) => (
+                        <label className={`flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm ${item.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-zinc-100" : "border-zinc-800 bg-zinc-950 text-zinc-500"}`} key={item.id}>
+                          <input checked={item.enabled} disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />
+                          <span>{item.emoji}</span>
+                          <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {!settings.items.length ? <p className="mt-3 text-xs text-zinc-500">Nenhum item cadastrado. Use Configurar canais para abrir a configuração completa e adicionar itens.</p> : null}
                   </div>
-                  <TicketField disabled={!canManage} label="Regras" onChange={(value) => patchDraft({ rules: value })} value={draft.rules ?? ""} />
                   {draft.id !== "new" ? (
                     <div className="flex flex-wrap gap-2">
                       <Button disabled={!canManage || saving} onClick={() => void removeDraft(false)} size="sm" type="button" variant="destructive"><Trash2 className="mr-2 h-4 w-4" />Excluir meta</Button>
@@ -4634,6 +4652,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </div>
               ) : null}
             </div>
+            {showChannelConfig ? (
+              <>
             <section className="space-y-3 border-y border-zinc-800 py-4">
               <div>
                 <p className="text-sm font-semibold text-white">Configuração geral</p>
@@ -4647,10 +4667,10 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </select>
               </label>
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
-              <FivemChannelSelect channels={categories} disabled={!canManage} label="Categoria padrão onde os canais de meta serão criados" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
-              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
-              <RoleSelect disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
-              <RoleSelect disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
+              <FivemChannelSelect channels={categories} compact disabled={!canManage} label="Categoria padrão onde os canais de meta serão criados" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
+              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Sem logs" value={settings.logChannelId} />
+              <RoleSelect compact disabled={!canManage} label="Cargo que pode visualizar" onChange={(value) => patch({ viewRoleId: value || null })} roles={roles} value={settings.viewRoleId ?? ""} />
+              <RoleSelect compact disabled={!canManage} label="Cargo administrador" onChange={(value) => patch({ managerRoleId: value || null })} roles={roles} value={settings.managerRoleId ?? ""} />
               </div>
             </section>
             <section className="space-y-3 border-y border-zinc-800 py-4">
@@ -4659,8 +4679,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 <p className="mt-1 text-xs text-zinc-500">Permissões e prazo para o comando /editar-meta solicitar que um membro refaça um registro confirmado.</p>
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <RoleSelect disabled={!canManage} label="Cargo de Gerente de Metas" onChange={(value) => patchCorrectionManagement({ managerRoleId: value || null })} roles={roles} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).managerRoleId ?? ""} />
-                <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs de correção" onChange={(value) => patchCorrectionManagement({ logChannelId: value })} placeholder="Usar canal de logs geral" value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).logChannelId} />
+                <RoleSelect compact disabled={!canManage} label="Cargo de Gerente de Metas" onChange={(value) => patchCorrectionManagement({ managerRoleId: value || null })} roles={roles} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).managerRoleId ?? ""} />
+                <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs de correção" onChange={(value) => patchCorrectionManagement({ logChannelId: value })} placeholder="Usar canal de logs geral" value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).logChannelId} />
                 <label className="block text-xs font-medium text-zinc-400">Prazo padrão
                   <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchCorrectionManagement({ defaultDeadline: event.target.value as NonNullable<FivemGoalSettings["correctionManagement"]>["defaultDeadline"] })} value={(settings.correctionManagement ?? defaultGoalCorrectionManagement()).defaultDeadline}>
                     <option value="none">Sem prazo</option>
@@ -4715,7 +4735,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                   </select>
                 </label>
                 <TicketField disabled={!canManage} label="Horário" onChange={(value) => patch({ cycle: { ...(settings.cycle ?? defaultGoalCycle()), startTime: value } })} value={settings.cycle?.startTime ?? "00:00"} />
-                <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
+                <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
               </div>
             </section>
             <section className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.04] p-4">
@@ -4740,7 +4760,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                       <option value="false">Desativado</option>
                     </select>
                   </label>
-              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal onde o painel de solicitar sala de meta será postado" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione um canal" value={settings.requestPanelChannelId} />
+              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal onde o painel de solicitar sala de meta será postado" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione um canal" value={settings.requestPanelChannelId} />
                   <TicketField disabled={!canManage} label="Titulo do painel" onChange={(value) => patch({ requestPanelTitle: value })} value={settings.requestPanelTitle} />
                   <label className="flex items-end gap-2 text-xs text-zinc-300">
                     <span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3">
@@ -4809,6 +4829,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 </div>
               ))}
             </section>
+              </>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-3">
               <MetricCard icon={ListChecks} label="Metas" value={String(entries.length)} />
               <MetricCard icon={Users} label="Usuários" value={String(new Set(entries.map((entry) => entry.userId)).size)} />
@@ -7795,6 +7817,7 @@ function TicketsView({
 
 function FactionChestPanel({ botId, canManage, guild }: { botId: string | null; canManage: boolean; guild: DashboardGuild | null }) {
   const [dashboard, setDashboard] = useState<FactionChestDashboard | null>(null);
+  const [channels, setChannels] = useState<GuildChannelOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [bulkItems, setBulkItems] = useState("Lockpick x100\nG3 x20\nMunição de G3 x5000");
@@ -7805,7 +7828,12 @@ function FactionChestPanel({ botId, canManage, guild }: { botId: string | null; 
     if (!guildId) return;
     setLoading(true);
     try {
-      setDashboard(await getFactionChestDashboard(guildId, botId));
+      const [chestDashboard, liveOptions] = await Promise.all([
+        getFactionChestDashboard(guildId, botId),
+        getGuildLiveOptions(guildId, botId).catch(() => ({ channels: [], roles: [], voiceChannels: [] }))
+      ]);
+      setDashboard(chestDashboard);
+      setChannels(liveOptions.channels);
     } finally {
       setLoading(false);
     }
@@ -7909,15 +7937,9 @@ function FactionChestPanel({ botId, canManage, guild }: { botId: string | null; 
           <Field label="Imagem ou logotipo">
             <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ panelImageUrl: event.currentTarget.value || null })} defaultValue={settings.panelImageUrl ?? ""} placeholder="https://..." />
           </Field>
-          <Field label="Canal do painel">
-            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ panelChannelId: event.currentTarget.value || null })} defaultValue={settings.panelChannelId ?? ""} placeholder="ID do canal" />
-          </Field>
-          <Field label="Canal de logs">
-            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ logChannelId: event.currentTarget.value || null })} defaultValue={settings.logChannelId ?? ""} placeholder="ID do canal" />
-          </Field>
-          <Field label="Canal administrativo">
-            <input className="h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage || saving} onBlur={(event) => patchSettings({ auditChannelId: event.currentTarget.value || null })} defaultValue={settings.auditChannelId ?? ""} placeholder="ID do canal" />
-          </Field>
+          <FivemChannelSelect channels={channels} compact disabled={!canManage || saving} label="Canal do painel" onChange={(value) => patchSettings({ panelChannelId: value || null })} placeholder="Selecione o canal do painel" value={settings.panelChannelId ?? ""} />
+          <FivemChannelSelect channels={channels} compact disabled={!canManage || saving} label="Canal de logs" onChange={(value) => patchSettings({ logChannelId: value || null })} placeholder="Selecione o canal de logs" value={settings.logChannelId ?? ""} />
+          <FivemChannelSelect channels={channels} compact disabled={!canManage || saving} label="Canal administrativo" onChange={(value) => patchSettings({ auditChannelId: value || null })} placeholder="Selecione o canal administrativo" value={settings.auditChannelId ?? ""} />
           <div className="lg:col-span-3 flex flex-wrap gap-2">
             <Button disabled={!canManage || saving || !settings.panelChannelId} onClick={publishPanel}><Send className="mr-2 h-4 w-4" /> Publicar painel</Button>
             <Button disabled={saving} onClick={load} variant="outline"><RefreshCw className="mr-2 h-4 w-4" /> Atualizar</Button>
@@ -8225,13 +8247,8 @@ function ManualRegistrationPanel({
                     {memberOptions.map((member) => <option key={member.id} value={member.id}>{member.displayName} ({member.id})</option>)}
                   </select>
                 </label>
-                <RoleSelect disabled={!canManage} label="Cargo / Set" onChange={setManualRoleId} roles={roles.filter((role) => role.assignable)} value={manualRoleId} />
-                <label className="block text-xs font-medium text-zinc-400">Categoria do canal de meta
-                  <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => setGoalCategoryId(event.target.value)} value={goalCategoryId}>
-                    <option value="">Selecionar categoria</option>
-                    {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                </label>
+                <RoleSelect compact disabled={!canManage} label="Cargo / Set" onChange={setManualRoleId} roles={roles.filter((role) => role.assignable)} value={manualRoleId} />
+                <FivemResourceSelect compact disabled={!canManage} label="Categoria do canal de meta" onChange={(value) => setGoalCategoryId(value ?? "")} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="" value={goalCategoryId || null} />
                 <TicketField disabled={!canManage} label="Nome do personagem" onChange={setCharacterName} value={characterName} />
                 <TicketField disabled={!canManage} label="ID in-game" onChange={setGameId} value={gameId} />
               </div>
@@ -8261,31 +8278,11 @@ function ManualRegistrationPanel({
               />
               <TicketField disabled={!canManage} label="Cor" onChange={(value) => patchSettings({ color: value })} type="color" value={settings.color} />
               <TicketField disabled={!canManage} label="Thumbnail URL" onChange={(value) => patchSettings({ thumbnailUrl: value })} value={settings.thumbnailUrl ?? ""} />
-              <label className="block text-xs font-medium text-zinc-400">Canal do painel
-                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ panelChannelId: event.target.value || null })} value={settings.panelChannelId ?? ""}>
-                  <option value="">Selecionar canal</option>
-                  {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
-                </select>
-              </label>
-              <label className="block text-xs font-medium text-zinc-400">Categoria dos canais privados
-                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ requestCategoryId: event.target.value || null })} value={settings.requestCategoryId ?? ""}>
-                  <option value="">Selecionar categoria</option>
-                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-              </label>
-              <label className="block text-xs font-medium text-zinc-400">Canal de aprovação
-                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ approvalChannelId: event.target.value || null })} value={settings.approvalChannelId ?? ""}>
-                  <option value="">Selecionar canal</option>
-                  {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
-                </select>
-              </label>
-              <label className="block text-xs font-medium text-zinc-400">Canal de logs
-                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ logChannelId: event.target.value || null })} value={settings.logChannelId ?? ""}>
-                  <option value="">Sem canal de logs</option>
-                  {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
-                </select>
-              </label>
-              <RoleSelect disabled={!canManage} label="Cargo mencionado nos logs" onChange={(logMentionRoleId) => patchSettings({ logMentionRoleId })} roles={roles} value={settings.logMentionRoleId ?? ""} />
+              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal do painel" onChange={(value) => patchSettings({ panelChannelId: value })} placeholder="Selecionar canal" value={settings.panelChannelId} />
+              <FivemResourceSelect compact disabled={!canManage} label="Categoria dos canais privados" onChange={(value) => patchSettings({ requestCategoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Selecionar categoria" prefix="" value={settings.requestCategoryId} />
+              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de aprovação" onChange={(value) => patchSettings({ approvalChannelId: value })} placeholder="Selecionar canal" value={settings.approvalChannelId} />
+              <FivemChannelSelect channels={channels} compact disabled={!canManage} label="Canal de logs" onChange={(value) => patchSettings({ logChannelId: value })} placeholder="Sem canal de logs" value={settings.logChannelId} />
+              <RoleSelect compact disabled={!canManage} label="Cargo mencionado nos logs" onChange={(logMentionRoleId) => patchSettings({ logMentionRoleId })} roles={roles} value={settings.logMentionRoleId ?? ""} />
               <TicketField disabled={!canManage} label="Cooldown em minutos" onChange={(value) => patchSettings({ cooldownMinutes: Math.max(0, Number(value) || 0) })} value={String(settings.cooldownMinutes)} />
               <label className="block text-xs font-medium text-zinc-400">Banner
                 <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSettings({ bannerPosition: event.target.value as ManualRegistrationSettings["bannerPosition"] })} value={settings.bannerPosition}>
@@ -8300,10 +8297,10 @@ function ManualRegistrationPanel({
             <TicketField disabled={!canManage} label="Rodapé" onChange={(value) => patchSettings({ footerText: value })} value={settings.footerText ?? ""} />
 
             <div className="grid gap-3 md:grid-cols-2">
-              <RoleSelect disabled={!canManage} label="Cargo atribuido ao aprovar" onChange={(approvedRoleId) => patchSettings({ approvedRoleId })} roles={roles.filter((role) => role.assignable)} value={settings.approvedRoleId ?? ""} />
-              <MultiRoleSelect disabled={!canManage} label="Cargos para remover" onChange={(values) => patchSettings({ removeRoleIds: values })} roles={roles} values={settings.removeRoleIds} />
-              <MultiRoleSelect disabled={!canManage} label="Cargos aprovadores" onChange={(values) => patchSettings({ approverRoleIds: values })} roles={roles} values={settings.approverRoleIds} />
-              <MultiRoleSelect disabled={!canManage} label="Cargos para cadastro manual" onChange={(values) => patchSettings({ manualRegistrationRoleIds: values })} roles={roles} values={settings.manualRegistrationRoleIds} />
+              <RoleSelect compact disabled={!canManage} label="Cargo atribuido ao aprovar" onChange={(approvedRoleId) => patchSettings({ approvedRoleId })} roles={roles.filter((role) => role.assignable)} value={settings.approvedRoleId ?? ""} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos para remover" onChange={(values) => patchSettings({ removeRoleIds: values })} roles={roles} values={settings.removeRoleIds} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos aprovadores" onChange={(values) => patchSettings({ approverRoleIds: values })} roles={roles} values={settings.approverRoleIds} />
+              <MultiRoleSelect compact disabled={!canManage} label="Cargos para cadastro manual" onChange={(values) => patchSettings({ manualRegistrationRoleIds: values })} roles={roles} values={settings.manualRegistrationRoleIds} />
             </div>
 
             <div className="grid gap-2 md:grid-cols-4">
@@ -8330,14 +8327,11 @@ function ManualRegistrationPanel({
                 <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[180px_1fr_1fr_1fr_1fr_110px_90px_auto]" key={`${item.id}-${index}`}>
                   <EmojiField applicationEmojis={applicationEmojis} disabled={!canManage} label="Emoji" onChange={(value) => patchSetRole(index, { emoji: value })} value={item.emoji ?? ""} />
                   <TicketField disabled={!canManage} label="Nome" onChange={(value) => patchSetRole(index, { id: slugTicketOption(value, index), name: value })} value={item.name} />
-                  <RoleSelect disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchSetRole(index, { roleId: value })} roles={roles} value={item.roleId} />
-                  <label className="block text-xs font-medium text-zinc-400">Destino do canal de meta ao aprovar
-                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchSetRole(index, { categoryId: event.target.value || null })} value={item.categoryId ?? ""}>
-                      <option value="">Categoria padrão das metas</option>
-                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                    </select>
+                  <RoleSelect compact disabled={!canManage} label="Cargo vinculado" onChange={(value) => patchSetRole(index, { roleId: value })} roles={roles} value={item.roleId} />
+                  <div>
+                    <FivemResourceSelect compact disabled={!canManage} label="Destino do canal de meta ao aprovar" onChange={(value) => patchSetRole(index, { categoryId: value })} options={categories.map((category) => ({ id: category.id, name: category.name }))} placeholder="Categoria padrão das metas" prefix="" value={item.categoryId} />
                     <span className="mt-1 block text-[11px] text-zinc-500">Quando este set for aprovado, o canal 📕┋nome | id será criado nessa categoria.</span>
-                  </label>
+                  </div>
                   <TicketField disabled={!canManage} label="Descrição" onChange={(value) => patchSetRole(index, { description: value })} value={item.description ?? ""} />
                   <div className="flex flex-col justify-end text-xs text-zinc-500"><span>Entregues</span><span className="mt-2 text-sm font-semibold text-zinc-200">{submissions.filter((submission) => submission.status === "approved" && submission.requestedRoleId === item.roleId).length}</span></div>
                   <label className="flex flex-col justify-end gap-1 text-xs text-zinc-300"><span className="flex items-center gap-2"><input checked={item.enabled} disabled={!canManage} onChange={(event) => patchSetRole(index, { enabled: event.target.checked })} type="checkbox" />Ativo</span><span className="flex items-center gap-2"><input checked={item.requestable} disabled={!canManage} onChange={(event) => patchSetRole(index, { requestable: event.target.checked })} type="checkbox" />Solicitavel</span></label>
@@ -9410,39 +9404,44 @@ function TicketArea({
 }
 
 function MultiRoleSelect({
+  compact = false,
   disabled,
   label,
   onChange,
   roles,
   values
 }: {
+  compact?: boolean;
   disabled: boolean;
   label: string;
   onChange: (values: string[]) => void;
   roles: GuildRoleOption[];
   values: string[];
 }) {
-  return <FivemResourceMultiSelect disabled={disabled} label={label} onChange={onChange} options={roles.map((role) => ({ color: role.color, disabled: role.managed, id: role.id, name: role.name }))} prefix="@" values={values} />;
+  return <FivemResourceMultiSelect compact={compact} disabled={disabled} label={label} onChange={onChange} options={roles.map((role) => ({ color: role.color, disabled: role.managed, id: role.id, name: role.name }))} prefix="@" values={values} />;
 }
 
 function RoleSelect({
+  compact = false,
   disabled,
   label,
   onChange,
   roles,
   value
 }: {
+  compact?: boolean;
   disabled: boolean;
   label: string;
   onChange: (value: string) => void;
   roles: GuildRoleOption[];
   value: string;
 }) {
-  return <FivemResourceSelect disabled={disabled} label={label} onChange={(nextValue) => onChange(nextValue ?? "")} options={roles.map((role) => ({ color: role.color, disabled: role.managed, id: role.id, name: role.name }))} placeholder="Nenhum" prefix="@" value={value || null} />;
+  return <FivemResourceSelect compact={compact} disabled={disabled} label={label} onChange={(nextValue) => onChange(nextValue ?? "")} options={roles.map((role) => ({ color: role.color, disabled: role.managed, id: role.id, name: role.name }))} placeholder="Nenhum" prefix="@" value={value || null} />;
 }
 
-function FivemChannelSelect({ channels, disabled, label, onChange, placeholder, prefix = "#", value }: {
+function FivemChannelSelect({ channels, compact = false, disabled, label, onChange, placeholder, prefix = "#", value }: {
   channels: GuildChannelOption[];
+  compact?: boolean;
   disabled: boolean;
   label: string;
   onChange: (value: string | null) => void;
@@ -9450,7 +9449,7 @@ function FivemChannelSelect({ channels, disabled, label, onChange, placeholder, 
   prefix?: string;
   value: string | null;
 }) {
-  return <FivemResourceSelect disabled={disabled} label={label} onChange={onChange} options={channels.map((channel) => ({ id: channel.id, name: channel.name }))} placeholder={placeholder} prefix={prefix} value={value} />;
+  return <FivemResourceSelect compact={compact} disabled={disabled} label={label} onChange={onChange} options={channels.map((channel) => ({ id: channel.id, name: channel.name }))} placeholder={placeholder} prefix={prefix} value={value} />;
 }
 
 function CloningView({

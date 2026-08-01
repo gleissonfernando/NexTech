@@ -336,7 +336,7 @@ function chestPanelPayload(settings: FactionChestSettings, guild: Guild) {
         { type: 14, divider: true, spacing: 1 },
         row,
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# BalaCloud - Todos os direitos reservados" }
+        { type: 10, content: "-# NexTech - Todos os direitos reservados" }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const
@@ -373,7 +373,7 @@ function movementLogPayload(settings: FactionChestSettings, logs: FactionChestLo
       components: [
         imageUrl ? { type: 9, components: [{ type: 10, content: replaceSystemEmojis(auditContent, guild) }], accessory: { type: 11, media: { url: imageUrl } } } : { type: 10, content: replaceSystemEmojis(auditContent, guild) },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# BalaCloud — Todos os direitos reservados" }
+        { type: 10, content: "-# NexTech - Todos os direitos reservados" }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const
