@@ -327,7 +327,7 @@ export type ManualRegistrationExecuteEvent = {
   userId: string;
   username: string;
 };
-export type ManualRegistrationRemoveEvent = { botId: string; guildId: string; roleId: string | null; submissionId: string; userId: string };
+export type ManualRegistrationRemoveEvent = { botId: string; channelId?: string | null; guildId: string; messageId?: string | null; previousStatus?: "pending" | "approved"; roleId: string | null; submissionId: string; userId: string };
 
 export type DatabaseMaintenanceDeleteChannelsEvent = {
   botId?: string | null;

@@ -92,6 +92,8 @@ export type ManualRegistrationSubmissionDto = {
   username: string;
 };
 
+export type ManualRegistrationRemovableStatus = "pending" | "approved";
+
 export type ManualRegistrationLogDto = {
   action: string;
   botId: string | null;
@@ -409,7 +411,7 @@ export async function updateManualRegistrationSubmissionStatus(input: {
 export async function listManualRegistrationSubmissions(guildId: string, botId?: string | null) {
   const { manualRegistrationSubmissions } = await getMongoCollections();
   const rows = await manualRegistrationSubmissions
-    .find(scopeQuery(guildId, normalizeBotId(botId)))
+    .find({ ...scopeQuery(guildId, normalizeBotId(botId)), status: { $ne: "removed" } })
     .sort({ createdAt: -1 })
     .limit(50)
     .toArray();
@@ -419,11 +421,42 @@ export async function listManualRegistrationSubmissions(guildId: string, botId?:
 export async function deleteManualRegistrationSubmission(guildId: string, botId: string | null, id: string, actorId: string | null, reason = "Removido pela dashboard") {
   const normalizedBotId = normalizeBotId(botId);
   const { manualRegistrationSubmissions } = await getMongoCollections();
-  const now = new Date(); const deleted = await manualRegistrationSubmissions.findOneAndUpdate({ _id: id, ...scopeQuery(guildId, normalizedBotId), status: "approved" }, { $set: { status: "removed", removedAt: now, removedBy: actorId, removalReason: normalizeText(reason, 800), updatedAt: now } }, { returnDocument: "after" });
-  if (!deleted) throw Object.assign(new Error("Cadastro ativo não encontrado."), { statusCode: 404 });
-  await writeManualRegistrationLog({ action: "registration.removed", botId: normalizedBotId, data: { approvedRoleId: deleted.requestedRoleId, reason }, executorId: actorId, guildId, submissionId: id, targetUserId: deleted.userId });
-  if (normalizedBotId) emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "manual-registration:remove", { botId: normalizedBotId, guildId, roleId: deleted.requestedRoleId, submissionId: id, userId: deleted.userId });
+  const current = await manualRegistrationSubmissions.findOne({ _id: id, ...scopeQuery(guildId, normalizedBotId) });
+  if (!current || !isManualRegistrationRemovableStatus(current.status)) {
+    throw Object.assign(new Error("Cadastro ativo ou pendente não encontrado."), { statusCode: 404 });
+  }
+
+  const now = new Date();
+  const deleted = await manualRegistrationSubmissions.findOneAndUpdate(
+    { _id: id, ...scopeQuery(guildId, normalizedBotId), status: current.status },
+    { $set: { status: "removed", removedAt: now, removedBy: actorId, removalReason: normalizeText(reason, 800), updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  if (!deleted) throw Object.assign(new Error("Cadastro já foi alterado por outra ação."), { statusCode: 409 });
+
+  await writeManualRegistrationLog({
+    action: current.status === "pending" ? "submission.removed" : "registration.removed",
+    botId: normalizedBotId,
+    data: { channelId: deleted.channelId ?? null, messageId: deleted.messageId ?? null, previousStatus: current.status, requestedRoleId: deleted.requestedRoleId ?? null, reason },
+    executorId: actorId,
+    guildId,
+    submissionId: id,
+    targetUserId: deleted.userId
+  });
+  if (normalizedBotId) {
+    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "manual-registration:remove", {
+      botId: normalizedBotId,
+      channelId: deleted.channelId ?? null,
+      guildId,
+      messageId: deleted.messageId ?? null,
+      previousStatus: current.status,
+      roleId: current.status === "approved" ? deleted.requestedRoleId ?? null : null,
+      submissionId: id,
+      userId: deleted.userId
+    });
+  }
   emitManualRegistrationUpdated(guildId, normalizedBotId);
+  return toSubmissionDto(deleted);
 }
 
 export async function getLatestManualRegistrationSubmission(guildId: string, userId: string, botId?: string | null) {
@@ -604,6 +637,10 @@ function emitManualRegistrationUpdated(guildId: string, botId: string | null) {
 
 function conflict(message: string) {
   return Object.assign(new Error(message), { statusCode: 409 });
+}
+
+export function isManualRegistrationRemovableStatus(status: MongoManualRegistrationSubmission["status"]): status is ManualRegistrationRemovableStatus {
+  return status === "pending" || status === "approved";
 }
 
 function settingsLogSnapshot(settings: ManualRegistrationSettingsDto) {

@@ -25,6 +25,7 @@ import { env } from "../config/env";
 import type { BotContext } from "../types";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import type { ManualRegistrationSettings, ManualRegistrationSubmission } from "./apiClient";
+import type { ManualRegistrationRemoveEvent } from "../websocket/socketClient";
 import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 import { buildV2Container, renderPanelBlocks, resolvePanelImageUrl } from "./panelVisualRenderer";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
@@ -42,7 +43,42 @@ export function startManualRegistrationService(client: Client<true>, context: Bo
     const guild = client.guilds.cache.get(payload.guildId);
     if (guild) void executeDashboardRegistration(guild, context, payload);
   });
-  context.socket.onManualRegistrationRemove((payload) => { const guild = client.guilds.cache.get(payload.guildId); if (!guild) return; void guild.members.fetch(payload.userId).then(async (member) => { if (payload.roleId) await member.roles.remove(payload.roleId, "Cadastro de Set removido pela dashboard"); }).catch((error) => context.api.postLog({ guildId: payload.guildId, type: "manual-registration.role_removal_failed", message: error instanceof Error ? error.message : "Usuário não encontrado ou cargo não removido", userId: payload.userId }).catch(() => null)); });
+  context.socket.onManualRegistrationRemove((payload) => {
+    const guild = client.guilds.cache.get(payload.guildId);
+    if (guild) void removeManualRegistrationFromDiscord(guild, context, payload);
+  });
+}
+
+async function removeManualRegistrationFromDiscord(guild: Guild, context: BotContext, payload: ManualRegistrationRemoveEvent) {
+  if (payload.roleId) {
+    await guild.members.fetch(payload.userId)
+      .then((member) => member.roles.remove(payload.roleId!, "Cadastro de Set removido pela dashboard"))
+      .catch((error) => context.api.postLog({
+        guildId: payload.guildId,
+        message: error instanceof Error ? error.message : "Usuário não encontrado ou cargo não removido",
+        metadata: { roleId: payload.roleId, submissionId: payload.submissionId },
+        type: "manual-registration.role_removal_failed",
+        userId: payload.userId
+      }).catch(() => null));
+  }
+
+  if (!payload.channelId) return;
+  const channel = await guild.channels.fetch(payload.channelId).catch(() => null);
+  if (!channel || channel.type !== ChannelType.GuildText) return;
+  if (payload.previousStatus === "pending" && channel.deletable) {
+    await channel.delete("Pedido de Set pendente removido pela dashboard").catch((error) => context.api.postLog({
+      guildId: payload.guildId,
+      message: error instanceof Error ? error.message : "Canal pendente não removido",
+      metadata: { channelId: payload.channelId, submissionId: payload.submissionId },
+      type: "manual-registration.channel_removal_failed",
+      userId: payload.userId
+    }).catch(() => null));
+    return;
+  }
+
+  if (!payload.messageId || !("messages" in channel)) return;
+  const message = await channel.messages.fetch(payload.messageId).catch(() => null);
+  await message?.delete().catch(() => null);
 }
 
 async function executeDashboardRegistration(guild: Guild, context: BotContext, payload: { goalCategoryId: string; requestedRoleId: string; submissionId: string; userId: string; username: string }) {
@@ -361,6 +397,14 @@ async function startSetRequest(interaction: ButtonInteraction, context: BotConte
 async function showRegistrationModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, requestedRoleId: string | null) {
   if (!interaction.guildId) return;
   const settings = await context.api.getManualRegistrationSettings(interaction.guildId);
+  const activeSubmission = await context.api.getLatestManualRegistrationSubmission(interaction.guildId, interaction.user.id).catch(() => null);
+  if (activeSubmission?.status === "pending" || activeSubmission?.status === "approved") {
+    await interaction.reply({
+      content: activeSubmission.status === "pending" ? "Você já possui um pedido de set pendente." : "Você já possui um cadastro de set ativo.",
+      ephemeral: true
+    });
+    return;
+  }
   const fields = settings.fields.filter((field) => field.enabled !== false);
   if (!fields.length) {
     await interaction.reply({ content: "Nenhum campo foi configurado para o pedido.", ephemeral: true });
@@ -557,7 +601,7 @@ async function showRequestStatus(interaction: ButtonInteraction, context: BotCon
     await interaction.reply({ content: "Você ainda não possui pedidos de set.", ephemeral: true });
     return;
   }
-  const status = submission.status === "approved" ? "Aprovado" : submission.status === "rejected" ? "Recusado" : "Pendente";
+  const status = submission.status === "approved" ? "Aprovado" : submission.status === "rejected" ? "Recusado" : submission.status === "removed" ? "Removido" : "Pendente";
   await interaction.reply({ content: `Status: **${status}**\nCriado: <t:${Math.floor(new Date(submission.createdAt ?? Date.now()).getTime() / 1000)}:F>${submission.rejectionReason ? `\nMotivo: ${submission.rejectionReason}` : ""}`, ephemeral: true });
 }
 

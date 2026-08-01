@@ -182,8 +182,9 @@ manualRegistrationRouter.delete("/:guildId/submissions/:id", async (req, res, ne
     if (isBotRequest(req) || !(await canManageScopedGuild(req, guildId, botId))) {
       return res.status(403).json({ message: "Sem permissão para excluir este cadastro." });
     }
-    const reason = z.string().trim().min(3).max(800).parse(req.body?.reason); await deleteManualRegistrationSubmission(guildId, botId, id, res.locals.dashboardAuth.user.discordId, reason);
-    return res.json({ ok: true });
+    const reason = z.string().trim().min(3).max(800).parse(req.body?.reason);
+    const submission = await deleteManualRegistrationSubmission(guildId, botId, id, res.locals.dashboardAuth.user.discordId, reason);
+    return res.json({ submission });
   } catch (error) {
     return next(error);
   }

@@ -7826,15 +7826,16 @@ function ManualRegistrationPanel({
   }
 
   async function removeSubmission(submission: ManualRegistrationSubmission) {
-    if (!guild || !canManage || submission.status !== "approved") return;
-    const reason = window.prompt(`Motivo para remover o cadastro de ${submission.requestedName}?`);
+    if (!guild || !canManage || !["pending", "approved"].includes(submission.status)) return;
+    const reason = window.prompt(`${submission.status === "pending" ? "Motivo para cancelar o pedido pendente" : "Motivo para remover o cadastro"} de ${submission.requestedName}?`);
     if (!reason?.trim()) return;
     setSaving(true);
     setMessage(null);
     setError(null);
     try {
-      await deleteManualRegistrationSubmission(guild.id, submission.id, reason.trim(), botId);
-      setMessage("Remoção solicitada ao bot. O resultado será sincronizado em tempo real.");
+      const removed = await deleteManualRegistrationSubmission(guild.id, submission.id, reason.trim(), botId);
+      setSubmissions((current) => current.filter((item) => item.id !== removed.id));
+      setMessage(submission.status === "pending" ? "Pedido pendente cancelado e limpeza solicitada ao bot." : "Cadastro removido e remoção de cargo solicitada ao bot.");
     } catch {
       setError("Não foi possível excluir o cadastro.");
     } finally {
@@ -8060,7 +8061,7 @@ function ManualRegistrationPanel({
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={submission.status === "approved" ? "success" : submission.status === "rejected" ? "danger" : "muted"}>{submission.status}</Badge>
-                    <Button disabled={!canManage || saving} onClick={() => void removeSubmission(submission)} size="icon" title="Excluir cadastro" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
+                    <Button disabled={!canManage || saving || !["pending", "approved"].includes(submission.status)} onClick={() => void removeSubmission(submission)} size="icon" title="Excluir cadastro" type="button" variant="outline"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
               ))}

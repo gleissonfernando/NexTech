@@ -1238,10 +1238,11 @@ export async function publishManualRegistrationPanel(guildId: string, botId?: st
 }
 
 export async function deleteManualRegistrationSubmission(guildId: string, submissionId: string, reason: string, botId?: string | null) {
-  await api.delete(`/manual-registration/${guildId}/submissions/${submissionId}`, {
+  const { data } = await api.delete<{ submission: ManualRegistrationSubmission }>(`/manual-registration/${guildId}/submissions/${submissionId}`, {
     data: { reason },
     params: botId ? { botId } : undefined
   });
+  return data.submission;
 }
 
 export async function createManualRegistrationSubmission(guildId: string, payload: { characterName: string; gameId: string; goalCategoryId: string; requestedRoleId: string; userAvatar?: string | null; userId: string; username: string }, botId?: string | null) {
