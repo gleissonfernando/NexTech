@@ -28,7 +28,7 @@ import type { ManualRegistrationSettings, ManualRegistrationSubmission } from ".
 import type { ManualRegistrationRemoveEvent } from "../websocket/socketClient";
 import { ensureFivemGoalChannelForUser } from "./fivemGoalService";
 import { buildV2Container, renderPanelBlocks, resolvePanelImageUrl } from "./panelVisualRenderer";
-import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
+import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 const PREFIX = "manual_registration";
 const formSessions = new Map<string, { answers: Array<{ id: string; label: string; value: string }>; expiresAt: number; guildId: string; page: number; requestedRoleId: string | null; userId: string }>();
@@ -117,12 +117,12 @@ export async function publishManualRegistrationPanel(interaction: ChatInputComma
       await interaction.reply({ content: "A mensagem salva do painel não foi encontrada. Limpe o ID salvo ou remova o painel antigo antes de publicar outro.", ephemeral: true });
       return;
     }
-    await message.edit(createPanelPayload(settings));
+    await message.edit(createPanelPayload(settings, interaction.guild));
     await context.api.saveManualRegistrationSettings(interaction.guild.id, { panelChannelId: channel.id, panelMessageId: message.id });
     await interaction.reply({ content: `Painel de Pedido de Set atualizado em <#${channel.id}>.`, ephemeral: true });
     return;
   }
-  const message = await channel.send(createPanelPayload(settings));
+  const message = await channel.send(createPanelPayload(settings, interaction.guild));
   await context.api.saveManualRegistrationSettings(interaction.guild.id, { panelChannelId: channel.id, panelMessageId: message.id });
   await interaction.reply({ content: `Painel de Pedido de Set publicado em <#${channel.id}>.`, ephemeral: true });
 }
@@ -164,11 +164,11 @@ async function publishConfiguredPanel(guild: Guild, context: BotContext) {
   if (settings.panelMessageId && "messages" in channel) {
     const message = await channel.messages.fetch(settings.panelMessageId).catch(() => null);
     if (message) {
-      await message.edit(createPanelPayload(settings));
+      await message.edit(createPanelPayload(settings, guild));
       return;
     }
   }
-  const message = await channel.send(createPanelPayload(settings));
+  const message = await channel.send(createPanelPayload(settings, guild));
   await context.api.saveManualRegistrationSettings(guild.id, { panelChannelId: channel.id, panelMessageId: message.id });
 }
 
@@ -328,7 +328,7 @@ async function updateRequestedSet(interaction: StringSelectMenuInteraction, cont
   const channel = settings.approvalChannelId ? await interaction.guild.channels.fetch(settings.approvalChannelId).catch(() => null) : null;
   if (saved.messageId && channel && "messages" in channel) {
     const message = await channel.messages.fetch(saved.messageId).catch(() => null);
-    if (message) await message.edit(createReviewPayload(settings, saved)).catch(() => null);
+    if (message) await message.edit(createReviewPayload(settings, saved, interaction.guild)).catch(() => null);
   }
   await interaction.update({ components: [], content: "Set solicitado atualizado." });
 }
@@ -343,7 +343,7 @@ async function cancelSubmission(interaction: ButtonInteraction, context: BotCont
   }
   const id = interaction.customId.split(":")[2] ?? "";
   const actor = await interaction.guild.members.fetch(interaction.user.id); const saved = await context.api.reviewManualRegistrationSubmission({ actorId: interaction.user.id, actorRoleIds: [...actor.roles.cache.keys()], guildId: interaction.guild.id, id, rejectionReason: "Cancelado pela equipe responsável.", status: "rejected" });
-  await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
+  await interaction.message.edit(createReviewPayload(settings, saved, interaction.guild)).catch(() => null);
   await sendActionLog(interaction.guild, settings, `Pedido cancelado\nUsuario: <@${saved.userId}>\nStaff: <@${interaction.user.id}>`);
   await interaction.editReply("Pedido cancelado.");
 }
@@ -465,7 +465,7 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   if (session.page * 5 < activeFields.length) {
     formSessions.set(token, session);
     await interaction.editReply({
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:form_next:${token}`).setLabel(`Continuar para etapa ${session.page + 1}`).setStyle(ButtonStyle.Primary))],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:form_next:${token}`).setEmoji(systemComponentEmoji("acessar", interaction.guild, interaction.client)).setLabel(`Continuar para etapa ${session.page + 1}`).setStyle(ButtonStyle.Primary))],
       content: `Etapa ${page + 1} salva. Continue para preencher as proximas perguntas.`
     });
     return;
@@ -503,7 +503,7 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
   if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels)) { await interaction.editReply("O bot precisa da permissão **Gerenciar Canais** para abrir o pedido."); return; }
   const requestedName = submission.requestedName || interaction.user.username;
   const channel = await interaction.guild.channels.create({ name: `set-${slug(requestedName)}-${submission.id.slice(0, 4)}`.slice(0, 95), parent: category.id, type: ChannelType.GuildText, permissionOverwrites: [{ id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: submission.userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }, { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }, ...settings.approverRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))] });
-  const message = await channel.send(createReviewPayload(settings, submission));
+  const message = await channel.send(createReviewPayload(settings, submission, interaction.guild));
   submission = await context.api.updateManualRegistrationSubmissionChannel(submission.id, channel.id, message.id);
   await interaction.editReply(automaticError ? `${settings.successMessage}\n\nA aprovacao automática ficou pendente: ${automaticError}` : settings.automaticApproval ? settings.approvalMessage : settings.successMessage);
 }
@@ -559,7 +559,7 @@ async function approveSubmission(interaction: ButtonInteraction, context: BotCon
   await context.api.postLog({ guildId: interaction.guild.id, message: "Cargo do Pedido de Set entregue.", metadata: { roleIds, submissionId: id }, type: "manual-registration.role_delivered", userId: saved.userId }).catch(() => null);
   if (settings.dmNotifications) await member.send(settings.approvalMessage).catch(() => null);
   await linkApprovedSetToGoals(context, interaction.guild, saved.userId, saved.requestedName || member.displayName || member.user.username, saved.id, selectedGoalCategoryId(settings, saved), submissionGameId(saved));
-  await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
+  await interaction.message.edit(createReviewPayload(settings, saved, interaction.guild)).catch(() => null);
   await sendRegistrationDecisionLog(interaction.guild, settings, saved, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), status: "approved" });
   await interaction.editReply("Pedido de set aprovado e cargo entregue.");
   await closeRequestChannel(interaction.guild, context, saved, "Pedido de Set aprovado");
@@ -593,7 +593,7 @@ async function rejectSubmission(interaction: ModalSubmitInteraction, context: Bo
   await context.api.postLog({ guildId: interaction.guild.id, message: "Pedido de Set recusado.", metadata: { reason, submissionId: id }, type: "manual-registration.rejected", userId: saved.userId }).catch(() => null);
   const member = await interaction.guild.members.fetch(saved.userId).catch(() => null);
   if (member && settings.dmNotifications) await member.send(`${settings.rejectionMessage}\n\nMotivo: ${reason}`).catch(() => null);
-  if (interaction.message) await interaction.message.edit(createReviewPayload(settings, saved)).catch(() => null);
+  if (interaction.message) await interaction.message.edit(createReviewPayload(settings, saved, interaction.guild)).catch(() => null);
   await sendRegistrationDecisionLog(interaction.guild, settings, saved, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), reason, status: "rejected" });
   await interaction.editReply("Pedido de set recusado.");
   await closeRequestChannel(interaction.guild, context, saved, "Pedido de Set recusado");
@@ -624,7 +624,7 @@ async function canReview(interaction: ButtonInteraction | ModalSubmitInteraction
   return member.roles.cache.some((role) => allowed.has(role.id));
 }
 
-export function createPanelPayload(settings: ManualRegistrationSettings) {
+export function createPanelPayload(settings: ManualRegistrationSettings, guild: Guild | null = null) {
   const imageUrl = settings.panelImage ? resolvePanelImageUrl(settings.panelImage.imageUrl, settings.panelImage) : null;
   const imageIsVideo = isVideoPanelMedia(settings.panelImage, imageUrl);
   const posterUrl = imageIsVideo ? resolvePanelImageUrl(settings.panelImage?.mediaPosterUrl ?? settings.panelImage?.mediaThumbnailUrl ?? null) : null;
@@ -639,9 +639,9 @@ export function createPanelPayload(settings: ManualRegistrationSettings) {
   const heading = {
     type: 10,
     content: [
-      replaceSystemEmojis(`# ${settings.emoji ? `${settings.emoji} ` : `${systemEmojiText("prancheta_caneta")} `}${panelName}`),
+      replaceSystemEmojis(`# ${settings.emoji ? `${settings.emoji} ` : `${systemEmojiText("prancheta_caneta", guild, guild?.client)} `}${panelName}`, guild, guild?.client ?? null),
       "",
-      `${systemEmojiText("interrogacao")} ${introText}`
+      `${systemEmojiText("interrogacao", guild, guild?.client)} ${introText}`
     ].join("\n\n")
   };
   const sideImageUrl = imageUrl && ["thumbnail", "side"].includes(imagePosition) ? (imageIsVideo ? posterUrl : imageUrl) : thumbnailUrl;
@@ -660,29 +660,29 @@ export function createPanelPayload(settings: ManualRegistrationSettings) {
   components.push({
     type: 10,
     content: [
-      replaceSystemEmojis(`### ${systemEmojiText("prancheta")} Antes de começar`),
+      replaceSystemEmojis(`### ${systemEmojiText("prancheta", guild, guild?.client)} Antes de começar`, guild, guild?.client ?? null),
       `- Tenha em mãos ${registrationFieldSummary(settings)}.`,
       "- Revise os dados antes de enviar."
     ].join("\n")
   });
   components.push({
     type: 10,
-    content: `> ${systemEmojiText("alerta")} Em caso de divergência, a equipe pode solicitar ajuste manual.`
+    content: `> ${systemEmojiText("alerta", guild, guild?.client)} Em caso de divergência, a equipe pode solicitar ajuste manual.`
   });
   components.push({ type: 14, divider: true, spacing: 1 });
   components.push({
     type: 10,
     content: [
-      `### ${systemEmojiText("prancheta_caneta")} Iniciar formulário`,
+      `### ${systemEmojiText("prancheta_caneta", guild, guild?.client)} Iniciar formulário`,
       "Clique no botão abaixo para continuar."
     ].join("\n")
   });
   if (!blockComponents.length && imageUrl && ["before_buttons", "above_buttons", "bottom"].includes(imagePosition)) components.push(mediaGallery(imageUrl));
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta")).setLabel("INICIAR REGISTRO").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`${PREFIX}:start`).setEmoji(normalizeComponentEmoji(settings.emoji) ?? systemComponentEmoji("prancheta_caneta", guild, guild?.client)).setLabel("INICIAR REGISTRO").setStyle(ButtonStyle.Secondary)
   ));
   components.push({ type: 14, divider: true, spacing: 1 });
-  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`) : "-# *BalaCloud - Todos os direitos reservados*" });
+  components.push({ type: 10, content: settings.footerText ? replaceSystemEmojis(`-# *${settings.footerText}*`, guild, guild?.client ?? null) : "-# *BalaCloud - Todos os direitos reservados*" });
   return {
     allowedMentions: { parse: [] as never[] },
     components: [buildV2Container({
@@ -705,12 +705,12 @@ function registrationFieldSummary(settings: ManualRegistrationSettings) {
   return `${labels.slice(0, -1).join(", ")} e ${labels.at(-1)}`;
 }
 
-function createReviewPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission) {
+function createReviewPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, guild: Guild | null = null) {
   const statusText = submission.status === "approved" ? "Aprovado" : submission.status === "rejected" ? submission.rejectionReason?.startsWith("Cancelado") ? "Cancelado" : "Recusado" : "Pendente";
   const imageUrl = settings.panelImage ? resolvePanelImageUrl(settings.panelImage.imageUrl, settings.panelImage) : null;
   const content: Array<Record<string, unknown>> = [
-    { type: 10, content: replaceSystemEmojis(`# ${settings.emoji ?? systemEmojiText("prancheta_caneta")} Pedido de Set`) },
-    { type: 10, content: `Usuário: <@${submission.userId}>\nID: ${submission.userId}\nSet solicitado: ${submission.requestedRoleId ? `<@&${submission.requestedRoleId}>` : "Padrão"}\nData: <t:${Math.floor(new Date(submission.createdAt ?? Date.now()).getTime() / 1000)}:F>\nStatus: **${statusText}**` },
+    { type: 10, content: replaceSystemEmojis(`# ${settings.emoji ?? systemEmojiText("prancheta_caneta", guild, guild?.client)} Pedido de Set`, guild, guild?.client ?? null) },
+    { type: 10, content: `${systemEmojiText("homem", guild, guild?.client)} Usuário: <@${submission.userId}>\nID: ${submission.userId}\nSet solicitado: ${submission.requestedRoleId ? `<@&${submission.requestedRoleId}>` : "Padrão"}\nData: <t:${Math.floor(new Date(submission.createdAt ?? Date.now()).getTime() / 1000)}:F>\nStatus: ${reviewStatusEmoji(submission.status, guild)} **${statusText}**` },
     { type: 14 },
     { type: 10, content: submission.fields.map((field) => `**${field.label}:** ${field.value}`).join("\n").slice(0, 3500) }
   ];
@@ -721,15 +721,21 @@ function createReviewPayload(settings: ManualRegistrationSettings, submission: M
     components: [
       { type: 17, accent_color: parseColor(settings.color), components: content },
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("visto")).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("exclamacao")).setLabel("Recusar").setStyle(ButtonStyle.Danger).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:view:${submission.id}`).setEmoji(systemComponentEmoji("prancheta")).setLabel("Ver Detalhes").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`${PREFIX}:edit_set:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("prancheta_caneta")).setLabel("Editar Set").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending"),
-        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("porta")).setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending")
+        new ButtonBuilder().setCustomId(`${PREFIX}:approve:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("visto", guild, guild?.client)).setLabel("Aprovar").setStyle(ButtonStyle.Success).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:reject:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("exclamacao", guild, guild?.client)).setLabel("Recusar").setStyle(ButtonStyle.Danger).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:view:${submission.id}`).setEmoji(systemComponentEmoji("prancheta", guild, guild?.client)).setLabel("Ver Detalhes").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`${PREFIX}:edit_set:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("prancheta_caneta", guild, guild?.client)).setLabel("Editar Set").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending"),
+        new ButtonBuilder().setCustomId(`${PREFIX}:cancel:${submission.id}:${submission.userId}`).setEmoji(systemComponentEmoji("porta", guild, guild?.client)).setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setDisabled(submission.status !== "pending")
       )
     ],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function reviewStatusEmoji(status: ManualRegistrationSubmission["status"], guild: Guild | null) {
+  if (status === "approved") return systemStatusEmoji("success", guild, guild?.client);
+  if (status === "rejected" || status === "removed") return systemStatusEmoji("danger", guild, guild?.client);
+  return systemStatusEmoji("pending", guild, guild?.client);
 }
 
 type DecisionLogInput = {
@@ -741,10 +747,10 @@ type DecisionLogInput = {
   status: "approved" | "rejected";
 };
 
-export function createManualRegistrationDecisionLogPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput) {
+export function createManualRegistrationDecisionLogPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput, guild: Guild | null = null) {
   const approved = input.status === "approved";
   const statusText = approved ? "Aprovado" : "Reprovado";
-  const titleEmoji = approved ? systemEmojiText("visto") : systemEmojiText("exclamacao");
+  const titleEmoji = approved ? systemEmojiText("visto", guild, guild?.client) : systemEmojiText("exclamacao", guild, guild?.client);
   const characterName = submissionFieldValue(submission, ["nome_personagem", "personagem", "nome_do_personagem", "nome"]) ?? submission.requestedName ?? submission.username;
   const gameId = submissionFieldValue(submission, ["id_fivem", "id", "id_in_game", "id_ingame"]) ?? "-";
   const phone = submissionFieldValue(submission, ["telefone", "telefone_in_game", "telefone_ingame"]) ?? "-";
@@ -759,9 +765,9 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
     content: replaceSystemEmojis([
       `# ${titleEmoji} Registro - ${statusText}`,
       "",
-      `${systemEmojiText("homem")} **Usuario:** <@${submission.userId}> | ${gameId} (${submission.username})`,
+      `${systemEmojiText("homem", guild, guild?.client)} **Usuario:** <@${submission.userId}> | ${gameId} (${submission.username})`,
       "",
-      `${systemEmojiText("prancheta")} **Dados do registro**`,
+      `${systemEmojiText("prancheta", guild, guild?.client)} **Dados do registro**`,
       `- Personagem: ${characterName}`,
       `- ID: ${gameId}`,
       `- Telefone: ${phone}`,
@@ -770,9 +776,9 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
       `- Enviado em: ${formatBrazilDateTime(submission.createdAt)}`,
       `${titleEmoji} Status: ${statusText}`,
       "",
-      `${systemEmojiText("homem")} **Decisao**`,
+      `${systemEmojiText("homem", guild, guild?.client)} **Decisao**`,
       ...decisionLines
-    ].join("\n"))
+    ].join("\n"), guild, guild?.client ?? null)
   };
   const components: unknown[] = [
     input.serverIconUrl ? { type: 9, components: [body], accessory: { type: 11, media: { url: input.serverIconUrl } } } : body,
@@ -792,14 +798,14 @@ async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistr
   if (!settings.logChannelId) return;
   const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
-  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) })).catch(() => null);
+  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch(() => null);
 }
 
 async function sendActionLog(guild: Guild, settings: ManualRegistrationSettings, text: string) {
   if (!settings.logChannelId) return;
   const channel = await guild.channels.fetch(settings.logChannelId).catch(() => null);
   if (!channel?.isSendable()) return;
-  await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta")} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+  await channel.send({ allowedMentions: { parse: [] as never[], roles: settings.logMentionRoleId ? [settings.logMentionRoleId] : [] }, components: [{ type: 17, accent_color: parseColor(settings.color), components: [{ type: 10, content: `# ${systemEmojiText("prancheta", guild, guild.client)} Log de Pedido de Set\n${text}\nData: <t:${Math.floor(Date.now() / 1000)}:F>` }] }], content: settings.logMentionRoleId ? `<@&${settings.logMentionRoleId}>` : undefined, flags: MessageFlags.IsComponentsV2 }).catch(() => null);
 }
 
 async function linkApprovedSetToGoals(context: BotContext, guild: Guild, userId: string, username: string, submissionId: string, categoryId?: string | null, gameId?: string | null) {

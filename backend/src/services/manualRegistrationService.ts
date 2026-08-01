@@ -113,9 +113,7 @@ export type SaveManualRegistrationSettingsInput = Partial<Omit<ManualRegistratio
 const DEFAULT_FIELDS: ManualRegistrationFieldDto[] = [
   { enabled: true, id: "nome_personagem", label: "Nome do personagem", maxLength: 80, minLength: 2, name: "nome_personagem", placeholder: "Nome e sobrenome no RP", required: true, style: "short" },
   { enabled: true, id: "id_fivem", label: "ID in-game", maxLength: 32, minLength: 1, name: "id_fivem", placeholder: "Seu ID no servidor", required: true, style: "short" },
-  { enabled: true, id: "telefone", label: "Telefone in-game", maxLength: 32, minLength: 1, name: "telefone", placeholder: "Número do personagem", required: false, style: "short" },
-  { enabled: true, id: "recrutador", label: "Quem recrutou", maxLength: 80, minLength: 2, name: "recrutador", placeholder: "Nome do recrutador", required: false, style: "short" },
-  { enabled: true, id: "observacoes", label: "Observações", maxLength: 1000, minLength: null, name: "observacoes", placeholder: "Informações adicionais", required: false, style: "paragraph" }
+  { enabled: true, id: "telefone", label: "Telefone in-game", maxLength: 32, minLength: 1, name: "telefone", placeholder: "Número do personagem", required: false, style: "short" }
 ];
 
 export function defaultManualRegistrationSettings(guildId: string, botId: string | null = null): ManualRegistrationSettingsDto {
@@ -541,7 +539,14 @@ function normalizeFields(fields: ManualRegistrationFieldDto[]) {
     };
   }).filter((field) => field.label).slice(0, 100);
 
-  return normalized.length ? normalized : DEFAULT_FIELDS.map((field) => ({ ...field }));
+  if (!normalized.length) return DEFAULT_FIELDS.map((field) => ({ ...field }));
+  if (isLegacyDefaultSetFields(normalized)) return normalized.slice(0, 3);
+  return normalized;
+}
+
+function isLegacyDefaultSetFields(fields: ManualRegistrationFieldDto[]) {
+  const legacyIds = ["nome_personagem", "id_fivem", "telefone", "recrutador", "observacoes"];
+  return fields.length === legacyIds.length && legacyIds.every((id, index) => fields[index]?.id === id);
 }
 
 function toSettingsDto(settings: MongoManualRegistrationSettings): ManualRegistrationSettingsDto {
