@@ -572,15 +572,6 @@ async function processSetApproval(input: {
       const role = await guild.roles.fetch(roleId).catch(() => null);
       if (!role || !role.editable) throw new ApprovalFlowError(`O bot não pode entregar o cargo ${roleId}; verifique hierarquia e permissão Gerenciar Cargos.`);
     }
-    for (const roleId of settings.removeRoleIds) await member.roles.remove(roleId).catch(() => null);
-    for (const roleId of roleIds) {
-      await member.roles.add(roleId);
-      appliedRoleIds.push(roleId);
-    }
-    await traceSetApproval(context, "[SET_ROLE_APPLIED]", { ...traceBase, roleIds });
-
-    await member.setNickname(processing.requestedName, "Pedido de Set aprovado").catch((error) => context.api.postLog({ guildId: guild.id, message: error instanceof Error ? error.message : "Falha ao alterar apelido", metadata: { submissionId }, type: "manual-registration.nickname_failed", userId: processing.userId, executorId: actorId }).catch(() => null));
-
     const goalCategoryId = input.goalCategoryId ?? selectedGoalCategoryId(settings, processing);
     await traceSetApproval(context, "[META_CHANNEL_CREATING]", { ...traceBase, categoryId: goalCategoryId });
     const goal = await ensureFivemGoalChannelForApprovedSet(context, guild, processing.userId, processing.requestedName || member.displayName || member.user.username, goalCategoryId, true, submissionGameId(processing));
@@ -589,6 +580,15 @@ async function processSetApproval(input: {
     await traceSetApproval(context, "[META_PANEL_SENT]", { ...traceBase, channelId: goal.channelId });
     await traceSetApproval(context, "[FARM_CHANNEL_CREATED]", { ...traceBase, channelId: goal.channelId, mode: "same_as_meta" });
     await traceSetApproval(context, "[FARM_PANEL_SENT]", { ...traceBase, channelId: goal.channelId, mode: "same_as_meta" });
+
+    for (const roleId of settings.removeRoleIds) await member.roles.remove(roleId).catch(() => null);
+    for (const roleId of roleIds) {
+      await member.roles.add(roleId);
+      appliedRoleIds.push(roleId);
+    }
+    await traceSetApproval(context, "[SET_ROLE_APPLIED]", { ...traceBase, roleIds });
+
+    await member.setNickname(processing.requestedName, "Pedido de Set aprovado").catch((error) => context.api.postLog({ guildId: guild.id, message: error instanceof Error ? error.message : "Falha ao alterar apelido", metadata: { submissionId }, type: "manual-registration.nickname_failed", userId: processing.userId, executorId: actorId }).catch(() => null));
 
     const saved = await context.api.completeManualRegistrationApproval({ actorId, farmChannelId: goal.channelId, guildId: guild.id, id: processing.id, metaChannelId: goal.channelId, roleIds });
     await traceSetApproval(context, "[SET_APPROVAL_COMPLETED]", { ...traceBase, farmChannelId: goal.channelId, metaChannelId: goal.channelId, status: saved.status });
