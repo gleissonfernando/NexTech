@@ -4634,9 +4634,9 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {settings.items.map((item, index) => (
-                        <label className={`flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm ${item.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-zinc-100" : "border-zinc-800 bg-zinc-950 text-zinc-500"}`} key={item.id}>
-                          <input checked={item.enabled} disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />
-                          <span>{item.emoji}</span>
+                        <label className={`flex min-h-10 min-w-0 items-center gap-2 overflow-hidden rounded-md border px-3 text-sm ${item.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-zinc-100" : "border-zinc-800 bg-zinc-950 text-zinc-500"}`} key={item.id} title={item.name}>
+                          <input checked={item.enabled} className="shrink-0" disabled={!canManage} onChange={(event) => patchItem(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />
+                          <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/10" style={{ backgroundColor: item.color ?? "#22c55e" }} />
                           <span className="min-w-0 flex-1 truncate">{item.name}</span>
                         </label>
                       ))}
