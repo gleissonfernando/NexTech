@@ -104,6 +104,10 @@ function shutdown(signal: string, exitCode = 0) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("unhandledRejection", (reason) => {
+  if (isTransientMongoError(reason)) {
+    console.warn(JSON.stringify({ level: "warning", service: "backend", type: "mongoTransientRejection", error: readProcessError(reason), at: new Date().toISOString() }));
+    return;
+  }
   console.error(JSON.stringify({ level: "critical", service: "backend", type: "unhandledRejection", error: readProcessError(reason), at: new Date().toISOString() }));
   shutdown("unhandledRejection", 1);
 });
@@ -117,4 +121,10 @@ process.on("warning", (warning) => {
 
 function readProcessError(error: unknown) {
   return error instanceof Error ? error.stack ?? error.message : String(error);
+}
+
+function isTransientMongoError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return /Mongo(ServerSelection|Network|NetworkTimeout|PoolCleared)Error/.test(error.name)
+    || /Server selection timed out|connection \d+ to .* timed out|Connection pool .* was cleared/i.test(error.message);
 }
