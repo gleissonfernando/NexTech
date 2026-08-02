@@ -1,8 +1,8 @@
 import type { Client } from "discord.js";
 import { io, type Socket } from "socket.io-client";
 import { currentRuntimeBotId, env } from "../config/env";
-import type { GuildSettings } from "../types";
 import type { FivemOrder } from "../services/apiClient";
+import type { GuildSettings } from "../types";
 
 export type SocialPanelUpdateEvent = {
   action: "publish" | "remove" | "update";
@@ -614,7 +614,19 @@ export class BotSocketClient {
     });
 
     this.socket.on("connect_error", (error) => {
-      console.warn("[socket] falha ao conectar no backend:", error.message);
+      console.warn("[socket] falha ao conectar no backend:", error instanceof Error ? error.stack ?? error.message : String(error));
+    });
+
+    this.socket.on("reconnect_error", (error) => {
+      console.warn("[socket] falha ao reconectar no backend:", error instanceof Error ? error.stack ?? error.message : String(error));
+    });
+
+    this.socket.on("reconnect_failed", () => {
+      console.warn("[socket] reconexao ao backend falhou de forma definitiva.");
+    });
+
+    this.socket.on("error", (error) => {
+      console.warn("[socket] erro interno no socket realtime:", error instanceof Error ? error.stack ?? error.message : String(error));
     });
 
     this.socket.on("disconnect", (reason) => {

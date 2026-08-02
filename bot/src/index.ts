@@ -1,11 +1,11 @@
 import {
-  Client,
-  GatewayIntentBits,
-  Options,
-  Partials
+    Client,
+    GatewayIntentBits,
+    Options,
+    Partials
 } from "discord.js";
-import { env, isBotModuleEnabled } from "./config/env";
 import { createCommandCollection } from "./commands";
+import { env, isBotModuleEnabled } from "./config/env";
 import { registerEvents, stopEventProcessing } from "./handlers/eventHandler";
 import { ApiClient } from "./services/apiClient";
 import { isLinkAntiSpamEnabled } from "./services/linkAntiSpamService";
@@ -212,7 +212,29 @@ process.on("SIGTERM", () => {
   shutdown("SIGTERM");
 });
 
+function isIgnorableNetworkError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message || "";
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && code === "ECONNRESET"
+    || /ECONNRESET/i.test(message)
+    || /read ECONNRESET/i.test(message)
+    || /socket hang up/i.test(message);
+}
+
 process.on("unhandledRejection", (reason) => {
+  if (isIgnorableNetworkError(reason)) {
+    console.warn(JSON.stringify({
+      at: new Date().toISOString(),
+      error: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
+      level: "warning",
+      service: "bot",
+      type: "unhandledRejection",
+      note: "ignored transient network error"
+    }));
+    return;
+  }
+
   console.error(JSON.stringify({
     at: new Date().toISOString(),
     error: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
@@ -224,6 +246,18 @@ process.on("unhandledRejection", (reason) => {
 });
 
 process.on("uncaughtException", (error) => {
+  if (isIgnorableNetworkError(error)) {
+    console.warn(JSON.stringify({
+      at: new Date().toISOString(),
+      error: error.stack ?? error.message,
+      level: "warning",
+      service: "bot",
+      type: "uncaughtException",
+      note: "ignored transient network error"
+    }));
+    return;
+  }
+
   console.error(JSON.stringify({ at: new Date().toISOString(), error: error.stack ?? error.message, level: "critical", service: "bot", type: "uncaughtException" }));
   shutdown("uncaughtException", 1);
 });
