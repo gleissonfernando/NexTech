@@ -40,6 +40,7 @@ const MANAGEMENT_PREFIX = `${PREFIX}:manage`;
 const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const pendingFarmItems = new Set<string>();
+const pendingFarmModalContexts = new Map<string, FarmComponentContext & { expiresAt: number }>();
 const pendingEditSelections = new Map<string, { entries: FivemGoalEntry[]; expiresAt: number; guildId: string; managerId: string; targetUserId: string }>();
 const pendingEditConfirmations = new Map<string, { entry: FivemGoalEntry; expiresAt: number; guildId: string; managerId: string; managerName: string; reason: string; targetUserId: string }>();
 
@@ -1575,14 +1576,18 @@ function farmItemCustomId(sourceMessageId: string, ownerId: string, correctionRe
 }
 
 function farmModalCustomId(sourceMessageId: string, itemId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {
-  return guildId && channelId
-    ? `${PREFIX}:modal:${guildId}:${channelId}:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`
-    : `${PREFIX}:modal:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`;
+  const fullContext = { channelId, correctionRequestId, guildId, itemId, ownerId, sourceMessageId };
+  const legacyCustomId = `${PREFIX}:modal:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`;
+  if (!guildId || !channelId || legacyCustomId.length <= 100) return legacyCustomId;
+  return `${PREFIX}:modal_ref:${storeFarmModalContext(fullContext)}`;
 }
 
 function parseFarmComponentContext(customId: string): FarmComponentContext {
   const parts = customId.split(":");
   const action = parts[1] ?? "";
+  if (action === "modal_ref") {
+    return readFarmModalContext(parts[2] ?? "") ?? { channelId: null, correctionRequestId: null, guildId: null, itemId: null, ownerId: null, sourceMessageId: "" };
+  }
   if ((action === "register" || action === "correct") && parts.length >= 5) {
     return { channelId: parts[3] ?? null, correctionRequestId: null, guildId: parts[2] ?? null, itemId: null, ownerId: null, sourceMessageId: parts[4] ?? "" };
   }
@@ -1602,6 +1607,31 @@ function parseFarmComponentContext(customId: string): FarmComponentContext {
     return { channelId: null, correctionRequestId: correctionIdOrNull(parts[5]), guildId: null, itemId: parts[3] ?? null, ownerId: parts[4] ?? null, sourceMessageId: parts[2] ?? "" };
   }
   return { channelId: null, correctionRequestId: null, guildId: null, itemId: null, ownerId: null, sourceMessageId: "" };
+}
+
+function storeFarmModalContext(context: FarmComponentContext) {
+  cleanupFarmModalContexts();
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  pendingFarmModalContexts.set(token, { ...context, expiresAt: Date.now() + 15 * 60 * 1000 });
+  return token;
+}
+
+function readFarmModalContext(token: string) {
+  cleanupFarmModalContexts();
+  const context = pendingFarmModalContexts.get(token);
+  if (!context) return null;
+  if (context.expiresAt <= Date.now()) {
+    pendingFarmModalContexts.delete(token);
+    return null;
+  }
+  return context;
+}
+
+function cleanupFarmModalContexts() {
+  const now = Date.now();
+  for (const [token, context] of pendingFarmModalContexts) {
+    if (context.expiresAt <= now) pendingFarmModalContexts.delete(token);
+  }
 }
 
 async function resolveFarmGuild(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, guildId: string | null) {
