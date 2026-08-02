@@ -1092,6 +1092,8 @@ export type FivemGoalSettings = {
   logChannelId: string | null;
   managerRoleId: string | null;
   managerRoleIds?: string[];
+  rankingChannelId: string | null;
+  rankingMessageId?: string | null;
   requestPanelChannelId: string | null;
   requestPanelDescription: string;
   requestPanelEnabled: boolean;
@@ -1144,6 +1146,8 @@ export type FivemGoalEntry = { attachmentId: string | null; channelId: string; c
 export type FivemGoalCorrectionRequest = { cancelledAt: string | null; correctedAt: string | null; expiresAt: string | null; guildId: string; id: string; originalRegistration: FivemGoalEntry | null; originalRegistrationId: string; reason: string; replacementRegistrationId: string | null; requestedAt: string; requestedByName: string | null; requestedByUserId: string; roomId: string; status: "pending" | "corrected" | "cancelled" | "expired"; userId: string };
 export type FivemGoalSubmission = { correctionRequestId: string | null; createdAt: string; description: string | null; id: string; metaId: string; proofUrl: string | null; registrationId: string | null; replacementForRegistrationId: string | null; status: "pending" | "approved" | "refused" | "correction_requested"; userId: string; value: number };
 export type FivemGoalUserRuntime = { configs: FivemGoalConfig[]; ranking: Array<{ rank: number; total: number; userId: string }>; submissions: FivemGoalSubmission[]; userId: string };
+export type FivemGoalRankingMember = { firstFarmAt: string; items: Array<{ emoji: string | null; itemId: string | null; name: string; quantity: number }>; rank: number; registeredName: string; targetValue: number; total: number; userId: string };
+export type FivemGoalRankingRuntime = { generatedAt: string; members: FivemGoalRankingMember[]; periodEnd: string; periodStart: string; settings: { rankingChannelId: string | null; rankingMessageId?: string | null; summaryChannelId?: string | null }; totalPlayers: number };
 
 export type FivemOrderStatus = "open" | "pending_approval" | "approved" | "in_production" | "ready" | "delivered" | "cancelled" | "rejected";
 export type FivemOrderSettings = {
@@ -3792,6 +3796,11 @@ export class ApiClient {
     return data;
   }
 
+  async getFivemGoalRankingRuntime(guildId: string) {
+    const { data } = await this.http.get<FivemGoalRankingRuntime>(`/fivem/bot/goals/${guildId}/ranking`);
+    return data;
+  }
+
   async getFivemGoalCorrectionCandidates(guildId: string, userId: string) {
     const { data } = await this.http.get<{ entries: FivemGoalEntry[] }>(`/fivem/bot/goals/${guildId}/users/${userId}/correction-candidates`);
     return data.entries;
@@ -3839,6 +3848,11 @@ export class ApiClient {
 
   async updateFivemGoalPanelState(input: { channelId?: string | null; guildId: string; messageId?: string | null }) {
     const { data } = await this.http.post<{ settings: FivemGoalSettings }>("/fivem/bot/goals/panel-state", input);
+    return data.settings;
+  }
+
+  async updateFivemGoalRankingPanelState(input: { channelId?: string | null; guildId: string; messageId?: string | null }) {
+    const { data } = await this.http.post<{ settings: FivemGoalSettings }>("/fivem/bot/goals/ranking-panel-state", input);
     return data.settings;
   }
 

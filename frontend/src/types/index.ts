@@ -1828,6 +1828,8 @@ export type FivemGoalSettings = {
   logChannelId: string | null;
   managerRoleId: string | null;
   managerRoleIds?: string[];
+  rankingChannelId: string | null;
+  rankingMessageId?: string | null;
   correctionManagement?: {
     allowAdministrators: boolean;
     allowClosedPeriods: boolean;

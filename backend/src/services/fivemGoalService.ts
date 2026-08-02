@@ -51,6 +51,8 @@ export type FivemGoalSettingsDto = {
   items: FivemGoalItemDto[];
   logChannelId: string | null;
   managerRoleId: string | null;
+  rankingChannelId: string | null;
+  rankingMessageId: string | null;
   requestPanelChannelId: string | null;
   requestPanelDescription: string;
   requestPanelEnabled: boolean;
@@ -257,6 +259,25 @@ export type FivemGoalReportDto = {
   }>;
 };
 
+export type FivemGoalRankingMemberDto = {
+  firstFarmAt: string;
+  items: Array<{ emoji: string | null; itemId: string | null; name: string; quantity: number }>;
+  rank: number;
+  registeredName: string;
+  targetValue: number;
+  total: number;
+  userId: string;
+};
+
+export type FivemGoalRankingRuntimeDto = {
+  generatedAt: string;
+  members: FivemGoalRankingMemberDto[];
+  periodEnd: string;
+  periodStart: string;
+  settings: Pick<FivemGoalSettingsDto, "rankingChannelId" | "rankingMessageId" | "summaryChannelId">;
+  totalPlayers: number;
+};
+
 const DEFAULT_ITEMS: FivemGoalItemDto[] = [
   { category: "Dinheiro", color: "#22c55e", createdAt: null, emoji: fixedSystemEmojiText("dinheiro"), enabled: true, id: "euro-sujo", name: "Euro Sujo", order: 1, requiredAmount: 100000, type: "required", updatedAt: null },
   { category: "Itens", color: "#38bdf8", createdAt: null, emoji: fixedSystemEmojiText("caixa"), enabled: true, id: "diamante", name: "Diamante", order: 2, requiredAmount: 1, type: "additional", updatedAt: null },
@@ -276,6 +297,8 @@ export function defaultFivemGoalSettings(guildId: string, botId: string | null =
     items: DEFAULT_ITEMS.map((item) => ({ ...item })),
     logChannelId: null,
     managerRoleId: null,
+    rankingChannelId: null,
+    rankingMessageId: null,
     requestPanelChannelId: null,
     requestPanelDescription: "Solicite seu canal individual de meta para enviar comprovantes, acompanhar sua produção semanal e visualizar seu progresso.",
     requestPanelEnabled: true,
@@ -353,6 +376,9 @@ export async function saveFivemGoalSettings(guildId: string, botId: string | nul
 
   const saved = await getFivemGoalSettings(guildId, normalizedBotId);
   await ensureDefaultGoalConfigFromLegacy(saved, actorId);
+  if (normalizedBotId && saved.enabled && saved.rankingChannelId && saved.rankingChannelId !== current.rankingChannelId) {
+    emitRealtimeToRoom(devBotRealtimeRoom(normalizedBotId), "fivem:goals:panel_publish", { botId: normalizedBotId, guildId, settings: saved });
+  }
   return saved;
 }
 
@@ -386,6 +412,72 @@ export async function updateFivemGoalRequestPanelState(guildId: string, botId: s
     userId: null
   });
   return settings;
+}
+
+export async function updateFivemGoalRankingPanelState(guildId: string, botId: string | null, messageId: string | null, channelId?: string | null) {
+  const patch: Partial<FivemGoalSettingsDto> = { rankingMessageId: messageId };
+  if (channelId !== undefined) patch.rankingChannelId = channelId;
+  return saveFivemGoalSettings(guildId, botId, patch, null);
+}
+
+export async function getFivemGoalRankingRuntime(guildId: string, botId?: string | null): Promise<FivemGoalRankingRuntimeDto> {
+  const normalizedBotId = normalizeBotId(botId);
+  const { start, end } = currentSaoPauloWeek();
+  const { fivemGoalEntries, manualRegistrationSubmissions } = await getMongoCollections();
+  const [settings, entries, registrations] = await Promise.all([
+    getFivemGoalSettings(guildId, normalizedBotId),
+    fivemGoalEntries.find({
+      ...scopeQuery(guildId, normalizedBotId),
+      createdAt: { $gte: start, $lt: end },
+      $or: [{ status: "confirmed" }, { status: { $exists: false } }]
+    }).sort({ createdAt: 1 }).limit(10000).toArray(),
+    manualRegistrationSubmissions.find({
+      ...scopeQuery(guildId, normalizedBotId),
+      status: "approved"
+    }).sort({ approvedAt: -1, createdAt: -1 }).limit(5000).toArray()
+  ]);
+  const registeredNames = new Map<string, string>();
+  for (const registration of registrations) {
+    if (!registeredNames.has(registration.userId)) registeredNames.set(registration.userId, manualRegistrationDisplayName(registration.fields, registration.requestedName ?? registration.username));
+  }
+  const items = new Map(settings.items.map((item) => [item.id, item]));
+  const targetValue = Math.max(1, settings.items.filter((item) => item.enabled !== false).reduce((sum, item) => sum + Math.max(0, item.requiredAmount || 0), 0));
+  const members = new Map<string, Omit<FivemGoalRankingMemberDto, "rank">>();
+  for (const entry of entries) {
+    const quantity = typeof entry.quantity === "number" && Number.isFinite(entry.quantity) ? entry.quantity : 0;
+    if (quantity <= 0) continue;
+    const current = members.get(entry.userId) ?? {
+      firstFarmAt: entry.createdAt.toISOString(),
+      items: [],
+      registeredName: registeredNames.get(entry.userId) ?? "Sem cadastro no Set",
+      targetValue,
+      total: 0,
+      userId: entry.userId
+    };
+    current.total += quantity;
+    if (entry.createdAt.toISOString() < current.firstFarmAt) current.firstFarmAt = entry.createdAt.toISOString();
+    const item = entry.itemId ? items.get(entry.itemId) : null;
+    const itemName = item?.name ?? entry.fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value ?? "Farm";
+    const existingItem = current.items.find((row) => row.itemId === (entry.itemId ?? itemName));
+    if (existingItem) existingItem.quantity += quantity;
+    else current.items.push({ emoji: item?.emoji ?? null, itemId: entry.itemId ?? null, name: itemName, quantity });
+    members.set(entry.userId, current);
+  }
+  const ranked = [...members.values()]
+    .sort((a, b) => b.total - a.total || Date.parse(a.firstFarmAt) - Date.parse(b.firstFarmAt) || a.userId.localeCompare(b.userId))
+    .map((member, index) => ({ ...member, items: member.items.sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name)), rank: index + 1 }));
+  return {
+    generatedAt: new Date().toISOString(),
+    members: ranked,
+    periodEnd: end.toISOString(),
+    periodStart: start.toISOString(),
+    settings: {
+      rankingChannelId: settings.rankingChannelId,
+      rankingMessageId: settings.rankingMessageId,
+      summaryChannelId: settings.summaryChannelId
+    },
+    totalPlayers: ranked.length
+  };
 }
 
 export async function getFivemGoalDashboard(guildId: string, botId?: string | null) {
@@ -1055,6 +1147,8 @@ function normalizeSettings(settings: FivemGoalSettingsDto): FivemGoalSettingsDto
     items: normalizeItems(settings.items),
     logChannelId: normalizeSnowflake(settings.logChannelId),
     managerRoleId: normalizeSnowflake(settings.managerRoleId),
+    rankingChannelId: normalizeSnowflake(settings.rankingChannelId),
+    rankingMessageId: normalizeSnowflake(settings.rankingMessageId),
     requestPanelChannelId: normalizeSnowflake(settings.requestPanelChannelId),
     requestPanelDescription: normalizeText(settings.requestPanelDescription, 900) || "Solicite seu canal individual de meta para enviar comprovantes, acompanhar sua produção semanal e visualizar seu progresso.",
     requestPanelEnabled: settings.requestPanelEnabled !== false,
@@ -1148,6 +1242,8 @@ function toSettingsDto(settings: MongoFivemGoalSettings): FivemGoalSettingsDto {
     items: settings.items as FivemGoalItemDto[],
     logChannelId: settings.logChannelId,
     managerRoleId: settings.managerRoleId,
+    rankingChannelId: settings.rankingChannelId ?? null,
+    rankingMessageId: settings.rankingMessageId ?? null,
     requestPanelChannelId: settings.requestPanelChannelId ?? null,
     requestPanelDescription: settings.requestPanelDescription ?? "Solicite seu canal individual de meta para enviar comprovantes, acompanhar sua produção semanal e visualizar seu progresso.",
     requestPanelEnabled: settings.requestPanelEnabled !== false,
@@ -1554,6 +1650,18 @@ function normalizeSnowflake(value: string | null | undefined) {
 function normalizeText(value: string | null | undefined, maxLength: number) {
   const normalized = value?.trim().slice(0, maxLength) ?? "";
   return normalized || null;
+}
+
+function manualRegistrationDisplayName(fields: Array<{ id: string; label: string; value: string }>, fallback: string) {
+  const aliases = new Set(["nome_personagem", "personagem", "nome_do_personagem", "requested_name", "nome"].map(normalizeFieldKey));
+  const field = fields.find((item) => aliases.has(normalizeFieldKey(item.id)) || aliases.has(normalizeFieldKey(item.label)));
+  if (!field) return fallback;
+  const value = field?.value?.trim();
+  return value && value !== "-" ? field.value : fallback;
+}
+
+function normalizeFieldKey(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 function clamp(value: number | null | undefined, min: number, max: number) {

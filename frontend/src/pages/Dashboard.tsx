@@ -4724,6 +4724,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do painel" onChange={(value) => patch({ requestPanelChannelId: value })} placeholder="Selecione o canal do painel" value={settings.requestPanelChannelId} />
               <FivemChannelSelect channels={categories} disabled={!canManage} label="Categoria das salas" onChange={(value) => patch({ categoryId: value })} placeholder="Selecione a categoria de metas" prefix="" value={settings.categoryId} />
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal de logs" onChange={(value) => patch({ logChannelId: value })} placeholder="Selecione o canal de logs" value={settings.logChannelId} />
+              <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal do Ranking" onChange={(value) => patch({ rankingChannelId: value, rankingMessageId: null })} placeholder="Sem ranking automático" value={settings.rankingChannelId ?? null} />
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
               </div>

@@ -1119,6 +1119,8 @@ export type MongoFivemGoalSettings = {
   items: MongoFivemGoalItem[];
   logChannelId: string | null;
   managerRoleId: string | null;
+  rankingChannelId?: string | null;
+  rankingMessageId?: string | null;
   requestPanelChannelId?: string | null;
   requestPanelDescription?: string | null;
   requestPanelEnabled?: boolean;

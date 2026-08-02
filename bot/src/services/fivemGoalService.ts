@@ -24,12 +24,14 @@ import {
 } from "discord.js";
 import type { BotContext } from "../types";
 import type { BotCommand } from "../types";
-import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalSettings } from "./apiClient";
+import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalRankingRuntime, FivemGoalSettings } from "./apiClient";
 import { FIXED_SYSTEM_EMOJI_BY_KEY, SYSTEM_EMOJI_BY_KEY, isSystemEmojiKey, type SystemEmojiKey } from "../config/systemEmojis";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
-const WEEKLY_RANKING_LIMIT = 10;
+const RANKING_PAGE_SIZE = 15;
+const RANKING_PANEL_PREFIX = `${PREFIX}:ranking`;
+const SUMMARY_PANEL_PREFIX = `${PREFIX}:summary`;
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
 const FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX = `${PREFIX}:room:close`;
 const EDIT_USER_SELECT_CUSTOM_ID = `${PREFIX}:edit:user`;
@@ -73,13 +75,25 @@ export const gerenciamentoFarmingCommand: BotCommand = {
   }
 };
 
+export const resumoMetaCommand: BotCommand = {
+  data: new SlashCommandBuilder().setName("resumo-meta").setDescription("Mostra o resumo semanal de metas de todos os usuários."),
+  moduleId: "fivem-goals",
+  async execute(interaction, context) {
+    await showGoalSummaryCommand(interaction, context);
+  }
+};
+
 export function startFivemGoalService(client: Client<true>, context: BotContext) {
   context.socket.onFivemGoalPanelPublish((payload) => {
     const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) void publishGoalRequestPanel(guild, context);
+    if (guild) {
+      void publishGoalRequestPanel(guild, context);
+      void refreshFivemGoalRankingPanel(guild, context);
+    }
   });
   for (const guild of client.guilds.cache.values()) {
     void publishGoalRequestPanel(guild, context);
+    void refreshFivemGoalRankingPanel(guild, context);
   }
 }
 
@@ -369,6 +383,16 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(`${RANKING_PANEL_PREFIX}:`)) {
+    await handleRankingPagination(interaction, context);
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(`${SUMMARY_PANEL_PREFIX}:`)) {
+    await handleSummaryPagination(interaction, context);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:user:`)) {
     await handleUserGoalPanelAction(interaction, context);
     return true;
@@ -524,6 +548,7 @@ async function cancelEditMeta(interaction: ChatInputCommandInteraction, context:
     await room.send({ content: "ℹ️ Solicitação de correção cancelada\n\nA solicitação para refazer sua meta foi cancelada pelo gerente.", allowedMentions: { parse: [] } }).catch(() => null);
   }
   await sendGoalLog(interaction.guild, context, `ℹ️ Correção de meta cancelada\n\nCancelado por: <@${interaction.user.id}> | ${interaction.user.id}\nUsuário: <@${correction.userId}> | ${correction.userId}\nRegistro original: ${correction.originalRegistrationId}\nMotivo: ${cancellationReason}\nValor original restaurado: ${restoreOriginalOnCancel ? "sim" : "não"}\nData: ${formatBrazilDateTime(new Date())}\nEstado final: cancelled`, correction);
+  await refreshFivemGoalRankingPanel(interaction.guild, context).catch(() => null);
 }
 
 async function canUseGoalCorrectionCommand(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction, settings: FivemGoalSettings) {
@@ -914,6 +939,7 @@ async function handleEditMetaConfirmation(interaction: ButtonInteraction, contex
     await room.send(createCorrectionRequestedPayload(correction, pending.entry, interaction.user.id, interaction.guild)).catch(() => null);
   }
   await sendGoalLog(interaction.guild, context, `📝 Correção de meta solicitada\n\nGerente: <@${interaction.user.id}> | ${interaction.user.id}\nUsuário: <@${correction.userId}> | ${correction.userId}\nItem: ${entryLabel(pending.entry)}\nQuantidade original: ${formatGoalValue(pending.entry.quantity ?? 0)}\nRegistro original: ${pending.entry.id}\nMotivo: ${pending.reason}\nData: ${formatBrazilDateTime(new Date())}`, correction);
+  await refreshFivemGoalRankingPanel(interaction.guild, context).catch(() => null);
 }
 
 async function closeFarmRoom(interaction: ButtonInteraction, context: BotContext) {
@@ -1289,6 +1315,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     if (pending.correctionRequestId && pending.replacementForRegistrationId) {
       await sendGoalLog(guild, context, `✅ Correção de meta concluída\n\nUsuário: <@${interaction.user.id}>\nRegistro original: ${pending.replacementForRegistrationId}\nNovo registro: ${"entry" in saved ? saved.entry?.id ?? "-" : "-"}\nItem: ${selectedItem.name}\nNova quantidade: ${formatGoalValue(quantityValue)}`, { id: pending.correctionRequestId });
     }
+    await refreshFivemGoalRankingPanel(guild, context).catch(() => null);
   } finally {
     pendingFarmItems.delete(lockKey);
   }
@@ -1314,8 +1341,9 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
     return;
   }
   if (action === "ranking") {
-    const lines = runtime.ranking.slice(0, WEEKLY_RANKING_LIMIT).map((item) => `${rankEmoji(item.rank, interaction.guild)} <@${item.userId}> — ${formatGoalValue(item.total)}`);
-    await interaction.reply({ content: `## Ranking de Metas\n${lines.join("\n") || "Ainda não existem valores aprovados."}`, ephemeral: true });
+    const rankingRuntime = await context.api.getFivemGoalRankingRuntime(interaction.guild.id);
+    const visible = await visibleRankingMembers(interaction.guild, rankingRuntime);
+    await interaction.reply({ ...createGoalRankingPayload(interaction.guild, { ...rankingRuntime, members: visible, totalPlayers: visible.length }, 0), ephemeral: true });
     return;
   }
   if (action === "review") {
@@ -1327,6 +1355,137 @@ async function handleUserGoalPanelAction(interaction: ButtonInteraction, context
     const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
     await interaction.update(createFarmRoomPanelPayload(interaction.guild, settings, ownerId));
   }
+}
+
+async function showGoalSummaryCommand(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  await interaction.deferReply({ ephemeral: true });
+  const runtime = await context.api.getFivemGoalRankingRuntime(interaction.guild.id);
+  const visible = await visibleRankingMembers(interaction.guild, runtime);
+  await interaction.editReply(createGoalSummaryPayload(interaction.guild, { ...runtime, members: visible, totalPlayers: visible.length }, 0));
+}
+
+async function handleRankingPagination(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const page = Math.max(0, Number(interaction.customId.split(":")[2] ?? 0) || 0);
+  const runtime = await context.api.getFivemGoalRankingRuntime(interaction.guild.id);
+  const visible = await visibleRankingMembers(interaction.guild, runtime);
+  await interaction.update(createGoalRankingPayload(interaction.guild, { ...runtime, members: visible, totalPlayers: visible.length }, page));
+}
+
+async function handleSummaryPagination(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const page = Math.max(0, Number(interaction.customId.split(":")[2] ?? 0) || 0);
+  const runtime = await context.api.getFivemGoalRankingRuntime(interaction.guild.id);
+  const visible = await visibleRankingMembers(interaction.guild, runtime);
+  await interaction.update(createGoalSummaryPayload(interaction.guild, { ...runtime, members: visible, totalPlayers: visible.length }, page));
+}
+
+export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotContext) {
+  const runtime = await context.api.getFivemGoalRankingRuntime(guild.id).catch(() => null);
+  if (!runtime?.settings.rankingChannelId) return;
+  const visible = await visibleRankingMembers(guild, runtime);
+  const nextRuntime = { ...runtime, members: visible, totalPlayers: visible.length };
+  const channel = await guild.channels.fetch(runtime.settings.rankingChannelId).catch(() => null);
+  if (!channel?.isSendable()) {
+    await context.api.updateFivemGoalRankingPanelState({ channelId: null, guildId: guild.id, messageId: null }).catch(() => null);
+    return;
+  }
+  const payload = createGoalRankingPayload(guild, nextRuntime, 0);
+  const existingMessageId = runtime.settings.rankingMessageId ?? null;
+  if (existingMessageId && "messages" in channel) {
+    const message = await channel.messages.fetch(existingMessageId).catch(() => null);
+    if (message) {
+      await message.edit(payload).catch(() => null);
+      return;
+    }
+  }
+  const sent = await channel.send(payload).catch(() => null);
+  if (sent) await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: sent.id }).catch(() => null);
+}
+
+async function visibleRankingMembers(guild: Guild, runtime: FivemGoalRankingRuntime) {
+  const rows: FivemGoalRankingRuntime["members"] = [];
+  for (const member of runtime.members) {
+    const guildMember = await guild.members.fetch(member.userId).catch(() => null);
+    if (guildMember) rows.push(member);
+  }
+  return rows.map((member, index) => ({ ...member, rank: index + 1 }));
+}
+
+function createGoalRankingPayload(guild: Guild, runtime: FivemGoalRankingRuntime, page: number) {
+  const totalPages = Math.max(1, Math.ceil(runtime.members.length / RANKING_PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const rows = runtime.members.slice(safePage * RANKING_PAGE_SIZE, (safePage + 1) * RANKING_PAGE_SIZE);
+  const lines = [
+    `# ${systemEmojiText("trofeu", guild, guild.client)} RANKING DE FARM`,
+    "",
+    `${systemEmojiText("trofeu", guild, guild.client)} Página atual: ${safePage + 1}/${totalPages}`,
+    `${systemEmojiText("homem", guild, guild.client)} Total de jogadores: ${runtime.totalPlayers}`,
+    `${systemEmojiText("caixa", guild, guild.client)} Fonte: farm_logs`,
+    "",
+    rows.length ? rows.map((member) => rankingMemberLine(member, guild)).join("\n\n") : "Nenhum farm confirmado nesta semana."
+  ].join("\n");
+  const text = replaceSystemEmojis(lines.slice(0, 3800), guild, guild.client);
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [
+      {
+        type: 17,
+        accent_color: 0xffffff,
+        components: [
+          guild.iconURL({ size: 256 })
+            ? { type: 9, components: [{ type: 10, content: text }], accessory: { type: 11, media: { url: guild.iconURL({ size: 256 })! } } }
+            : { type: 10, content: text },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
+        ]
+      },
+      rankingButtons(safePage, totalPages, RANKING_PANEL_PREFIX)
+    ],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function createGoalSummaryPayload(guild: Guild, runtime: FivemGoalRankingRuntime, page: number) {
+  const totalPages = Math.max(1, Math.ceil(runtime.members.length / RANKING_PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const rows = runtime.members.slice(safePage * RANKING_PAGE_SIZE, (safePage + 1) * RANKING_PAGE_SIZE);
+  const lines = [
+    `# ${systemEmojiText("prancheta", guild, guild.client)} RESUMO DE METAS`,
+    "",
+    `Página: ${safePage + 1}/${totalPages}`,
+    `Período: ${formatBrazilDateTime(new Date(runtime.periodStart))} até ${formatBrazilDateTime(new Date(runtime.periodEnd))}`,
+    "",
+    rows.length ? rows.map((member) => {
+      const percent = Math.min(999, Math.floor((member.total / Math.max(1, member.targetValue)) * 100));
+      return `**${member.registeredName}**\nFarm: ${formatGoalValue(member.total)}\nMeta: ${percent}%`;
+    }).join("\n\n") : "Nenhum farm confirmado nesta semana."
+  ].join("\n");
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [
+      { type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: replaceSystemEmojis(lines.slice(0, 3900), guild, guild.client) }] },
+      rankingButtons(safePage, totalPages, SUMMARY_PANEL_PREFIX)
+    ],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function rankingMemberLine(member: FivemGoalRankingRuntime["members"][number], guild: Guild) {
+  const medal = member.rank === 1 ? "🥇 " : member.rank === 2 ? "🥈 " : member.rank === 3 ? "🥉 " : "";
+  const itemLines = member.items.slice(0, 6).map((item) => {
+    const emoji = item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
+    return `${emoji} ${item.name}: ${formatGoalValue(item.quantity)}`;
+  });
+  return [`${medal}#${member.rank} - ${member.registeredName} - ${formatGoalValue(member.total)} itens`, ...itemLines].join("\n");
+}
+
+function rankingButtons(page: number, totalPages: number, prefix: string) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${prefix}:${Math.max(0, page - 1)}`).setEmoji(systemComponentEmoji("voltar")).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
+    new ButtonBuilder().setCustomId(`${prefix}:${Math.min(totalPages - 1, page + 1)}`).setEmoji(systemComponentEmoji("visto")).setLabel("Próxima").setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+  );
 }
 
 export function createFarmRoomPanelPayload(guild: Guild | null, settings: Pick<FivemGoalSettings, "managerRoleId" | "managerRoleIds"> | null, userId: string) {
@@ -1798,11 +1957,6 @@ function noRecordsPayload(userId: string, guild: Guild | null) {
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
   };
-}
-
-function rankEmoji(rank: number, guild: Guild | null) {
-  if (rank <= 3) return systemEmojiText(rank === 1 ? "trofeu" : "trofeu_alt", guild);
-  return `**${rank}.**`;
 }
 
 function isAllowedGoalImage(attachment: Attachment) {

@@ -56,6 +56,7 @@ import {
   deleteFivemGoalConfig,
   finalizeCurrentFivemGoalPeriod,
   getFivemGoalDashboard,
+  getFivemGoalRankingRuntime,
   getFivemGoalSettings,
   getFivemGoalUserRuntime,
   getFivemGoalUserChannelByChannel,
@@ -70,6 +71,7 @@ import {
   requestFivemGoalPanelPublish,
   saveFivemGoalSettings,
   updateFivemGoalRequestPanelState,
+  updateFivemGoalRankingPanelState,
   updateFivemGoalConfig,
   upsertFivemGoalUserChannel
 } from "../services/fivemGoalService";
@@ -188,6 +190,8 @@ const goalSettingsSchema = z.object({
   items: z.array(goalItemSchema).max(100).optional(),
   logChannelId: optionalSnowflakeSchema,
   managerRoleId: optionalSnowflakeSchema,
+  rankingChannelId: optionalSnowflakeSchema,
+  rankingMessageId: optionalSnowflakeSchema,
   requestPanelChannelId: optionalSnowflakeSchema,
   requestPanelDescription: z.string().max(900).optional(),
   requestPanelEnabled: z.boolean().optional(),
@@ -623,6 +627,30 @@ fivemRouter.get("/bot/goals/:guildId", requireBot, async (req, res, next) => {
       settings: await getFivemGoalSettings(guildId, botId),
       submissions: await listFivemGoalSubmissions(guildId, botId)
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.get("/bot/goals/:guildId/ranking", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    return res.json(await getFivemGoalRankingRuntime(guildId, botId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/ranking-panel-state", requireBot, async (req, res, next) => {
+  try {
+    const input = z.object({
+      channelId: optionalSnowflakeSchema,
+      guildId: guildIdSchema,
+      messageId: optionalSnowflakeSchema
+    }).parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json({ settings: await updateFivemGoalRankingPanelState(input.guildId, botId, input.messageId ?? null, input.channelId ?? undefined) });
   } catch (error) {
     return next(error);
   }
