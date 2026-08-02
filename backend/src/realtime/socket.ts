@@ -97,7 +97,9 @@ export function createSocketServer(httpServer: HttpServer) {
           clearPendingBotDisconnect(statusBotId);
         }
 
-        void syncDevBotProfile(statusBotId, updatedStatus.botProfile);
+        void syncDevBotProfile(statusBotId, updatedStatus.botProfile).catch((error) => {
+          console.warn("[dev-bot] não foi possível sincronizar perfil do bot:", error instanceof Error ? error.message : error);
+        });
 
         if (updatedStatus.botGuilds) {
           void syncDevBotGuilds(
@@ -106,14 +108,18 @@ export function createSocketServer(httpServer: HttpServer) {
               id: guild.id,
               name: guild.name
             }))
-          );
+          ).catch((error) => {
+            console.warn("[dev-bot] não foi possível sincronizar servidores do bot:", error instanceof Error ? error.message : error);
+          });
         }
 
         void updateDevBotRuntimeStatus(
           statusBotId,
           updatedStatus.online === false ? "offline" : "online",
           updatedStatus.online === false ? "Bot offline." : "Bot conectado ao Discord."
-        );
+        ).catch((error) => {
+          console.warn("[dev-bot] não foi possível atualizar status runtime do bot:", error instanceof Error ? error.message : error);
+        });
       }
 
       io.emit("bot:status", updatedStatus);
