@@ -140,7 +140,7 @@ const approvalFailSchema = z.object({
 });
 const roleUpdateSchema = z.object({ actorId: snowflakeSchema, guildId: snowflakeSchema, requestedRoleId: snowflakeSchema });
 const dashboardRegistrationSchema = z.object({
-  characterName: z.string().trim().min(2).max(80),
+  characterName: z.string().min(1).max(80).refine((value) => value.trim().length >= 2, "Informe o nome do personagem."),
   gameId: z.string().trim().min(1).max(32),
   goalCategoryId: snowflakeSchema,
   requestedRoleId: snowflakeSchema,

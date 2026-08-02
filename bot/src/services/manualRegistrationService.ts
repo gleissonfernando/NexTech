@@ -694,9 +694,12 @@ async function processSetApproval(input: {
       const role = await guild.roles.fetch(roleId).catch(() => null);
       if (!role || !role.editable) throw new ApprovalFlowError(`O bot não pode entregar o cargo ${roleId}; verifique hierarquia e permissão Gerenciar Cargos.`);
     }
+    const officialName = manualRegistrationOfficialName(processing);
+    if (!officialName) throw new ApprovalFlowError("O pedido de set não possui nome do personagem salvo no formulário.");
+
     const goalCategoryId = input.goalCategoryId ?? selectedGoalCategoryId(settings, processing);
     await traceSetApproval(context, "[META_CHANNEL_CREATING]", { ...traceBase, categoryId: goalCategoryId });
-    const goal = await ensureFivemGoalChannelForApprovedSet(context, guild, processing.userId, processing.requestedName || member.displayName || member.user.username, goalCategoryId, true, submissionGameId(processing));
+    const goal = await ensureFivemGoalChannelForApprovedSet(context, guild, processing.userId, officialName, goalCategoryId, true, submissionGameId(processing));
     if (!goal.channelId || goal.error) throw new ApprovalFlowError(goal.error || "Canal de meta não foi criado.");
     await traceSetApproval(context, "[META_CHANNEL_CREATED]", { ...traceBase, channelId: goal.channelId, moved: goal.moved, targetCategoryId: goal.targetCategoryId });
     await traceSetApproval(context, "[META_PANEL_SENT]", { ...traceBase, channelId: goal.channelId });
@@ -710,7 +713,7 @@ async function processSetApproval(input: {
     }
     await traceSetApproval(context, "[SET_ROLE_APPLIED]", { ...traceBase, roleIds });
 
-    await member.setNickname(processing.requestedName, "Pedido de Set aprovado").catch((error) => context.api.postLog({ guildId: guild.id, message: error instanceof Error ? error.message : "Falha ao alterar apelido", metadata: { submissionId }, type: "manual-registration.nickname_failed", userId: processing.userId, executorId: actorId }).catch(() => null));
+    await syncApprovedSetNickname(context, guild, member, processing, officialName, actorId);
 
     const saved = await context.api.completeManualRegistrationApproval({ actorId, farmChannelId: goal.channelId, guildId: guild.id, id: processing.id, metaChannelId: goal.channelId, roleIds });
     await traceSetApproval(context, "[SET_APPROVAL_COMPLETED]", { ...traceBase, farmChannelId: goal.channelId, metaChannelId: goal.channelId, status: saved.status });
@@ -726,6 +729,35 @@ async function processSetApproval(input: {
 }
 
 class ApprovalFlowError extends Error {}
+
+async function syncApprovedSetNickname(context: BotContext, guild: Guild, member: GuildMember, submission: ManualRegistrationSubmission, officialName: string, actorId: string) {
+  const baseMetadata = {
+    officialName,
+    previousDisplayName: member.displayName,
+    previousNickname: member.nickname,
+    submissionId: submission.id
+  };
+  if (officialName.length > 32) {
+    await context.api.postLog({
+      executorId: actorId,
+      guildId: guild.id,
+      message: "Falha ao alterar apelido do Pedido de Set: o nome informado possui mais de 32 caracteres, limite do Discord.",
+      metadata: { ...baseMetadata, reason: "discord_nickname_length_limit" },
+      type: "manual-registration.nickname_failed",
+      userId: submission.userId
+    }).catch(() => null);
+    return;
+  }
+
+  await member.setNickname(officialName, `Pedido de Set aprovado: ${submission.id}`).catch((error) => context.api.postLog({
+    executorId: actorId,
+    guildId: guild.id,
+    message: error instanceof Error ? error.message : "Falha ao alterar apelido do Pedido de Set.",
+    metadata: { ...baseMetadata, reason: "discord_set_nickname_failed" },
+    type: "manual-registration.nickname_failed",
+    userId: submission.userId
+  }).catch(() => null));
+}
 
 async function traceSetApproval(context: BotContext, step: string, metadata: Record<string, unknown>) {
   await context.api.postLog({
@@ -1350,11 +1382,22 @@ function submissionGameId(submission: ManualRegistrationSubmission) {
   return submissionFieldValue(submission, ["id_fivem", "id", "id_in_game", "id_ingame"]);
 }
 
+function manualRegistrationOfficialName(submission: ManualRegistrationSubmission) {
+  const fieldValue = submissionRawFieldValue(submission, ["nome_personagem", "personagem", "nome_do_personagem", "requested_name", "nome"]);
+  const normalizedFieldValue = fieldValue?.trim();
+  if (fieldValue && normalizedFieldValue && normalizedFieldValue !== "-") return fieldValue;
+  return submission.requestedName?.trim() ? submission.requestedName : null;
+}
+
 function submissionFieldValue(submission: ManualRegistrationSubmission, aliases: string[]) {
+  const value = submissionRawFieldValue(submission, aliases)?.trim();
+  return value && value !== "-" ? value : null;
+}
+
+function submissionRawFieldValue(submission: ManualRegistrationSubmission, aliases: string[]) {
   const normalizedAliases = new Set(aliases.map(normalizeFieldKey));
   const field = submission.fields.find((item) => normalizedAliases.has(normalizeFieldKey(item.id)) || normalizedAliases.has(normalizeFieldKey(item.label)));
-  const value = field?.value?.trim();
-  return value && value !== "-" ? value : null;
+  return field?.value ?? null;
 }
 
 function normalizeFieldKey(value: string) {

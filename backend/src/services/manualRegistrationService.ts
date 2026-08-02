@@ -269,6 +269,7 @@ export async function createManualRegistrationSubmission(input: {
   if (settings.setRoles.length && !settings.setRoles.some((item) => item.enabled && item.requestable && item.roleId === requestedRoleId)) {
     throw Object.assign(new Error("O set selecionado não está disponível."), { statusCode: 400 });
   }
+  const requestedName = manualRegistrationRequestedName(input.fields) ?? input.username;
   const submission: MongoManualRegistrationSubmission = {
     _id: randomUUID(),
     approvedAt: null,
@@ -285,7 +286,7 @@ export async function createManualRegistrationSubmission(input: {
     logError: null,
     logMessageId: null,
     logStatus: "pending",
-    requestedName: input.fields.find((field) => ["nome_personagem", "requested_name", "nome"].includes(field.id))?.value ?? input.fields[0]?.value ?? input.username,
+    requestedName,
     registrationType: input.registrationType ?? "request",
     registrationVersion: 2,
     removedAt: null,
@@ -718,7 +719,7 @@ function toSubmissionDto(submission: MongoManualRegistrationSubmission): ManualR
     logError: submission.logError ?? null,
     logMessageId: submission.logMessageId ?? null,
     logStatus: submission.logStatus ?? null,
-    requestedName: submission.requestedName ?? submission.fields.find((field) => field.id === "nome_personagem")?.value ?? submission.username,
+    requestedName: manualRegistrationRequestedName(submission.fields) ?? submission.requestedName ?? submission.username,
     registrationType: submission.registrationType ?? "request",
     removedAt: submission.removedAt?.toISOString() ?? null,
     removedBy: submission.removedBy ?? null,
@@ -803,6 +804,18 @@ function normalizeSnowflake(value: string | null | undefined) {
 
 function normalizeSnowflakes(values: string[]) {
   return [...new Set((values ?? []).map(normalizeSnowflake).filter((value): value is string => Boolean(value)))];
+}
+
+function manualRegistrationRequestedName(fields: Array<{ id: string; label: string; value: string }>) {
+  const aliases = new Set(["nome_personagem", "personagem", "nome_do_personagem", "requested_name", "nome"].map(normalizeManualRegistrationFieldKey));
+  const field = fields.find((item) => aliases.has(normalizeManualRegistrationFieldKey(item.id)) || aliases.has(normalizeManualRegistrationFieldKey(item.label)));
+  if (!field) return null;
+  const normalized = field.value.trim();
+  return normalized && normalized !== "-" ? field.value : null;
+}
+
+function normalizeManualRegistrationFieldKey(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 function clamp(value: number | null | undefined, min: number, max: number) {
