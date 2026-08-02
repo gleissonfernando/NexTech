@@ -81,6 +81,7 @@ export type FivemGoalPanelPublishEvent = {
   guildId: string;
   settings?: unknown;
 };
+export type FivemGoalPanelPublishAck = (response: { error?: string; ok: boolean; rankingMessageId?: string | null; requestPanelMessageId?: string | null }) => void;
 export type FivemFinancePanelPublishEvent = { botId?: string | null; guildId: string };
 export type FivemOrderPanelPublishEvent = { botId?: string | null; guildId: string };
 export type FivemOrderStatusUpdatedEvent = { actorId?: string | null; botId?: string | null; guildId: string; order: FivemOrder };
@@ -528,7 +529,7 @@ export class BotSocketClient {
   private xMonitorPostHandler: ((payload: XMonitorPostEvent) => void) | null = null;
   private fivemFacSettingsHandler: ((payload: FivemFacSettingsEvent) => void) | null = null;
   private fivemFacPanelPublishHandler: ((payload: FivemFacPanelPublishEvent) => void) | null = null;
-  private fivemGoalPanelPublishHandler: ((payload: FivemGoalPanelPublishEvent) => void) | null = null;
+  private fivemGoalPanelPublishHandler: ((payload: FivemGoalPanelPublishEvent, ack?: FivemGoalPanelPublishAck) => void) | null = null;
   private fivemFinancePanelPublishHandler: ((payload: FivemFinancePanelPublishEvent) => void) | null = null;
   private fivemOrderPanelPublishHandler: ((payload: FivemOrderPanelPublishEvent) => void) | null = null;
   private fivemOrderStatusUpdatedHandler: ((payload: FivemOrderStatusUpdatedEvent) => void) | null = null;
@@ -886,7 +887,7 @@ export class BotSocketClient {
     this.socket?.on("fivem:fac:panel_publish", handler);
   }
 
-  onFivemGoalPanelPublish(handler: (payload: FivemGoalPanelPublishEvent) => void) {
+  onFivemGoalPanelPublish(handler: (payload: FivemGoalPanelPublishEvent, ack?: FivemGoalPanelPublishAck) => void) {
     this.fivemGoalPanelPublishHandler = handler;
     this.socket?.off("fivem:goals:panel_publish");
     this.socket?.on("fivem:goals:panel_publish", handler);

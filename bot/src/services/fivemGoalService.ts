@@ -46,6 +46,13 @@ const pendingFarmModalContexts = new Map<string, FarmComponentContext & { expire
 const pendingEditSelections = new Map<string, { entries: FivemGoalEntry[]; expiresAt: number; guildId: string; managerId: string; targetUserId: string }>();
 const pendingEditConfirmations = new Map<string, { entry: FivemGoalEntry; expiresAt: number; guildId: string; managerId: string; managerName: string; reason: string; targetUserId: string }>();
 
+type PanelPublishResult = {
+  error?: string;
+  messageId?: string | null;
+  ok: boolean;
+  skipped?: boolean;
+};
+
 export const editarMetaCommand: BotCommand = {
   data: new SlashCommandBuilder().setName("editar-meta").setDescription("Solicita que um usuário refaça um registro de meta confirmado."),
   moduleId: "fivem-goals",
@@ -84,12 +91,27 @@ export const resumoMetaCommand: BotCommand = {
 };
 
 export function startFivemGoalService(client: Client<true>, context: BotContext) {
-  context.socket.onFivemGoalPanelPublish((payload) => {
+  context.socket.onFivemGoalPanelPublish((payload, ack) => {
     const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) {
-      void publishGoalRequestPanel(guild, context);
-      void refreshFivemGoalRankingPanel(guild, context);
+    if (!guild) {
+      ack?.({ ok: false, error: "Bot não está conectado ao servidor configurado." });
+      return;
     }
+    void (async () => {
+      const [requestPanel, rankingPanel] = await Promise.all([
+        publishGoalRequestPanel(guild, context),
+        refreshFivemGoalRankingPanel(guild, context)
+      ]);
+      const ok = requestPanel.ok || rankingPanel.ok;
+      ack?.({
+        ok,
+        error: ok ? undefined : requestPanel.error ?? rankingPanel.error ?? "Nenhum painel de metas foi publicado. Verifique os canais configurados.",
+        rankingMessageId: rankingPanel.messageId ?? null,
+        requestPanelMessageId: requestPanel.messageId ?? null
+      });
+    })().catch((error) => {
+      ack?.({ ok: false, error: readUnknownError(error) });
+    });
   });
   for (const guild of client.guilds.cache.values()) {
     void publishGoalRequestPanel(guild, context);
@@ -982,15 +1004,14 @@ async function canCloseFarmRoom(interaction: ButtonInteraction, ownerId: string,
   return member.roles.cache.some((role) => managerRoleIds.has(role.id));
 }
 
-async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
+async function publishGoalRequestPanel(guild: Guild, context: BotContext): Promise<PanelPublishResult> {
   let settings: FivemGoalSettings | null = null;
   try {
     settings = await context.api.getFivemGoalSettings(guild.id);
-    await logGoalPanelPublish(context, guild.id, settings, "start", "Iniciando publicação do painel de solicitação de sala de meta.");
 
-    if (!settings.enabled) throw new Error("Sistema de metas desativado na dashboard.");
-    if (!settings.requestPanelEnabled) throw new Error("Painel de solicitação de sala de meta desativado na dashboard.");
-    if (!settings.requestPanelChannelId) throw new Error("Canal do painel de solicitação de meta não configurado.");
+    if (!settings.enabled) return { ok: false, skipped: true };
+    if (!settings.requestPanelEnabled || !settings.requestPanelChannelId) return { ok: false, skipped: true };
+    await logGoalPanelPublish(context, guild.id, settings, "start", "Iniciando publicação do painel de solicitação de sala de meta.");
 
     const channel = await guild.channels.fetch(settings.requestPanelChannelId);
     if (!channel) throw new Error(`Canal configurado não encontrado: ${settings.requestPanelChannelId}.`);
@@ -1026,7 +1047,7 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
         const edited = await message.edit(payload);
         await context.api.updateFivemGoalPanelState({ channelId: channel.id, guildId: guild.id, messageId: edited.id });
         await logGoalPanelPublish(context, guild.id, settings, "updated", "Painel de solicitação de sala de meta atualizado no Discord.", { channelId: channel.id, messageId: edited.id });
-        return;
+        return { ok: true, messageId: edited.id };
       }
       await logGoalPanelPublish(context, guild.id, settings, "old_message_missing", "Mensagem antiga do painel não encontrada; publicando uma nova.", { channelId: channel.id, messageId: settings.requestPanelMessageId });
     }
@@ -1034,8 +1055,10 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext) {
     const message = await channel.send(payload);
     await context.api.updateFivemGoalPanelState({ channelId: channel.id, guildId: guild.id, messageId: message.id });
     await logGoalPanelPublish(context, guild.id, settings, "sent", "Painel de solicitação de sala de meta publicado no Discord.", { channelId: channel.id, messageId: message.id });
+    return { ok: true, messageId: message.id };
   } catch (error) {
     await logGoalPanelPublish(context, guild.id, settings, "error", readUnknownError(error), {}, error);
+    return { ok: false, error: readUnknownError(error) };
   }
 }
 
@@ -1381,13 +1404,13 @@ async function handleSummaryPagination(interaction: ButtonInteraction, context: 
   await interaction.update(createGoalSummaryPayload(interaction.guild, { ...runtime, members: visible, totalPlayers: visible.length }, page));
 }
 
-export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotContext) {
+export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotContext): Promise<PanelPublishResult> {
   const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   const runtime = await context.api.getFivemGoalRankingRuntime(guild.id).catch(async (error) => {
     await logGoalPanelPublish(context, guild.id, settings, "ranking_runtime_error", readUnknownError(error), {}, error);
     return null;
   });
-  if (!runtime?.settings.rankingChannelId) return;
+  if (!runtime?.settings.rankingChannelId) return { ok: false, skipped: true };
   await logGoalPanelPublish(context, guild.id, settings, "ranking_start", "Iniciando publicação do ranking de farm.", { channelId: runtime.settings.rankingChannelId });
   const visible = await visibleRankingMembers(guild, runtime);
   const nextRuntime = { ...runtime, members: visible, totalPlayers: visible.length };
@@ -1398,7 +1421,7 @@ export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotCon
   if (!channel?.isSendable() || !("messages" in channel)) {
     await logGoalPanelPublish(context, guild.id, settings, "ranking_channel_invalid", "Canal do ranking não encontrado ou não aceita envio de mensagens pelo bot.", { channelId: runtime.settings.rankingChannelId });
     await context.api.updateFivemGoalRankingPanelState({ channelId: null, guildId: guild.id, messageId: null }).catch(() => null);
-    return;
+    return { ok: false, error: "Canal do ranking não encontrado ou não aceita envio de mensagens pelo bot." };
   }
   const payload = createGoalRankingPayload(guild, nextRuntime, 0);
   const existingMessageId = runtime.settings.rankingMessageId ?? null;
@@ -1412,7 +1435,7 @@ export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotCon
       if (edited) {
         await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: edited.id }).catch(() => null);
         await logGoalPanelPublish(context, guild.id, settings, "ranking_updated", "Ranking de farm atualizado no Discord.", { channelId: channel.id, messageId: edited.id });
-        return;
+        return { ok: true, messageId: edited.id };
       }
     }
     await logGoalPanelPublish(context, guild.id, settings, "ranking_old_message_missing", "Mensagem antiga do ranking não encontrada; publicando uma nova.", { channelId: channel.id, messageId: existingMessageId });
@@ -1424,7 +1447,9 @@ export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotCon
   if (sent) {
     await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: sent.id }).catch(() => null);
     await logGoalPanelPublish(context, guild.id, settings, "ranking_sent", "Ranking de farm publicado no Discord.", { channelId: channel.id, messageId: sent.id });
+    return { ok: true, messageId: sent.id };
   }
+  return { ok: false, error: "Não foi possível enviar a mensagem do ranking no canal configurado." };
 }
 
 async function visibleRankingMembers(guild: Guild, runtime: FivemGoalRankingRuntime) {

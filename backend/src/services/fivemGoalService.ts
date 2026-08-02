@@ -11,7 +11,7 @@ import {
   type MongoFivemGoalSubmission,
   type MongoFivemGoalUserChannel
 } from "../database/mongo";
-import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom, emitRealtimeToRoomWithAck } from "../realtime/events";
 
 export const FIVEM_GOALS_MODULE_ID = "fivem-goals";
 const WEEKLY_RANKING_LIMIT = 10;
@@ -395,7 +395,26 @@ export async function requestFivemGoalPanelPublish(guildId: string, botId: strin
     metaId: null,
     userId: actorId
   });
-  emitRealtimeToRoom(devBotRealtimeRoom(botId), "fivem:goals:panel_publish", { botId, guildId, settings });
+
+  const responses = await emitRealtimeToRoomWithAck<
+    { botId: string; guildId: string; settings: FivemGoalSettingsDto },
+    { error?: string; ok: boolean; rankingMessageId?: string | null; requestPanelMessageId?: string | null }
+  >(devBotRealtimeRoom(botId), "fivem:goals:panel_publish", { botId, guildId, settings }, 30_000);
+  const success = responses.find((response) => response?.ok);
+  if (!success) {
+    const errorMessage = responses.find((response) => response?.error)?.error
+      ?? "O bot DEV não confirmou a publicação. Verifique se ele está online e com permissão no canal configurado.";
+    await writeFivemGoalLog({
+      action: "request_panel.publish_failed",
+      botId,
+      details: { error: errorMessage, responses },
+      guildId,
+      metaId: null,
+      userId: actorId
+    });
+    throw Object.assign(new Error(errorMessage), { statusCode: 409 });
+  }
+
   return settings;
 }
 
