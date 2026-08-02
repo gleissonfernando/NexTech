@@ -1,3 +1,6 @@
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { AuditLogEvent, type Message, type PartialMessage } from "discord.js";
 import { currentRuntimeBotId } from "../config/env";
 import type { BotContext } from "../types";
@@ -30,12 +33,21 @@ export type DeletedMessageSticker = {
   url: string | null;
 };
 
+export type DeletedMessageReferenceSnapshot = {
+  authorDisplayName: string | null;
+  authorId: string | null;
+  authorUsername: string | null;
+  content: string | null;
+  messageId: string;
+};
+
 export type DeletedMessageSnapshot = {
   attachments: DeletedMessageAttachment[];
   authorAvatarUrl: string | null;
   authorBot: boolean;
   authorDisplayName: string | null;
   authorId: string | null;
+  authorRoleColor: number | null;
   authorTag: string | null;
   authorUsername: string | null;
   channelId: string;
@@ -53,8 +65,10 @@ export type DeletedMessageSnapshot = {
   mentionUserIds: string[];
   mentionsEveryone: boolean;
   messageId: string;
+  reference: DeletedMessageReferenceSnapshot | null;
   referenceMessageId: string | null;
   stickers: DeletedMessageSticker[];
+  webhookId: string | null;
 };
 
 export type RegisterDeletedMessageInput = {
@@ -68,10 +82,11 @@ export type RegisterDeletedMessageInput = {
   message?: Message | PartialMessage | null;
 };
 
-const SNAPSHOT_TTL_MS = 72 * 60 * 60 * 1_000;
+const SNAPSHOT_TTL_MS = configuredSnapshotTtlMs();
 const LOG_IDEMPOTENCY_TTL_MS = 5 * 60 * 1_000;
 const MAX_SNAPSHOTS = 20_000;
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>()\]]+/gi;
+const SNAPSHOT_STORE_DIR = path.join(process.env.DELETED_MESSAGE_SNAPSHOT_DIR?.trim() || tmpdir(), "nextech-deleted-message-snapshots");
 
 const snapshots = new Map<string, { expiresAt: number; snapshot: DeletedMessageSnapshot }>();
 const deletionLogStates = new Map<string, { expiresAt: number; status: "reserved" | "logged" }>();
@@ -85,11 +100,11 @@ export async function rememberDeletedMessageSnapshot(message: Message) {
 }
 
 export async function createDeletedMessageSnapshot(message: Message | PartialMessage) {
-  if (!message.guild || !message.channelId || !message.id) {
+  if (!message.id) {
     return null;
   }
 
-  const cached = getCachedSnapshot(message.guild.id, message.id);
+  const cached = await getCachedSnapshotForMessage(message);
   const current = await snapshotFromMessage(message).catch(() => null);
   const merged = mergeSnapshots(cached, current);
 
@@ -153,7 +168,7 @@ export async function registerDeletedMessageLog(context: BotContext, input: Regi
   const deletionType = input.deletionType ?? inferDeletionType(snapshot, executorId, context.client.user?.id ?? null);
   const channelLabel = snapshot.channelName ? `#${snapshot.channelName}` : `<#${snapshot.channelId}>`;
   const authorLabel = snapshot.authorTag ?? snapshot.authorUsername ?? snapshot.authorId ?? "autor desconhecido";
-  const contentState = snapshot.content.trim()
+  const contentState = hasRenderableSnapshotContent(snapshot)
     ? "conteúdo preservado"
     : "conteúdo indisponível no cache";
 
@@ -177,7 +192,7 @@ export async function registerDeletedMessageLog(context: BotContext, input: Regi
       module: input.module ?? "Logs de mensagens apagadas",
       reason: input.reason ?? null,
       ruleId: input.ruleId ?? null,
-      unavailableReason: snapshot.content.trim() ? null : "A mensagem não estava no cache do Discord nem no cache temporário do bot."
+      unavailableReason: hasRenderableSnapshotContent(snapshot) ? null : "A mensagem não estava no cache do Discord nem no cache temporário do bot."
     }
   }).catch((error) => {
     console.warn("[deleted-message-log] não foi possível registrar log:", errorMessage(error));
@@ -210,6 +225,9 @@ function rememberSnapshot(snapshot: DeletedMessageSnapshot) {
     expiresAt: Date.now() + SNAPSHOT_TTL_MS,
     snapshot
   });
+  void persistSnapshot(snapshot).catch((error) => {
+    console.warn("[deleted-message-log] falha ao persistir snapshot:", errorMessage(error));
+  });
 
   if (snapshots.size > MAX_SNAPSHOTS) {
     const removeCount = snapshots.size - MAX_SNAPSHOTS;
@@ -230,6 +248,7 @@ async function snapshotFromMessage(message: Message | PartialMessage): Promise<D
   const channelName = "name" in message.channel && typeof message.channel.name === "string"
     ? message.channel.name
     : null;
+  const reference = await snapshotReference(message);
 
   return {
     attachments: message.attachments.map((attachment) => ({
@@ -246,6 +265,7 @@ async function snapshotFromMessage(message: Message | PartialMessage): Promise<D
     authorBot: Boolean(author?.bot),
     authorDisplayName: member?.displayName ?? author?.globalName ?? author?.username ?? null,
     authorId: author?.id ?? null,
+    authorRoleColor: member?.displayColor && member.displayColor !== 0 ? member.displayColor : null,
     authorTag: author?.tag ?? null,
     authorUsername: author?.username ?? null,
     channelId: message.channelId,
@@ -273,13 +293,15 @@ async function snapshotFromMessage(message: Message | PartialMessage): Promise<D
     mentionUserIds: message.mentions.users.map((user) => user.id),
     mentionsEveryone: message.mentions.everyone,
     messageId: message.id,
+    reference,
     referenceMessageId: message.reference?.messageId ?? null,
     stickers: message.stickers.map((sticker) => ({
       format: typeof sticker.format === "number" ? sticker.format : null,
       id: sticker.id,
       name: sticker.name,
       url: typeof sticker.url === "string" ? sticker.url : null
-    }))
+    })),
+    webhookId: message.webhookId ?? null
   };
 }
 
@@ -297,6 +319,7 @@ function mergeSnapshots(
     authorAvatarUrl: current.authorAvatarUrl ?? cached.authorAvatarUrl,
     authorDisplayName: current.authorDisplayName ?? cached.authorDisplayName,
     authorId: current.authorId ?? cached.authorId,
+    authorRoleColor: current.authorRoleColor ?? cached.authorRoleColor,
     authorTag: current.authorTag ?? cached.authorTag,
     authorUsername: current.authorUsername ?? cached.authorUsername,
     channelName: current.channelName ?? cached.channelName,
@@ -310,8 +333,10 @@ function mergeSnapshots(
     mentionChannelIds: current.mentionChannelIds.length ? current.mentionChannelIds : cached.mentionChannelIds,
     mentionRoleIds: current.mentionRoleIds.length ? current.mentionRoleIds : cached.mentionRoleIds,
     mentionUserIds: current.mentionUserIds.length ? current.mentionUserIds : cached.mentionUserIds,
+    reference: current.reference ?? cached.reference,
     referenceMessageId: current.referenceMessageId ?? cached.referenceMessageId,
-    stickers: current.stickers.length ? current.stickers : cached.stickers
+    stickers: current.stickers.length ? current.stickers : cached.stickers,
+    webhookId: current.webhookId ?? cached.webhookId
   };
 }
 
@@ -388,9 +413,26 @@ function claimDeletionLog(snapshot: DeletedMessageSnapshot, allowReserved = fals
   return true;
 }
 
+async function getCachedSnapshotForMessage(message: Message | PartialMessage) {
+  const guildId = message.guild?.id ?? readStringProperty(message, "guildId");
+  if (guildId) {
+    return getCachedSnapshot(guildId, message.id) ?? await loadPersistedSnapshot(guildId, message.id);
+  }
+
+  return getCachedSnapshotByMessageId(message.id);
+}
+
 function getCachedSnapshot(guildId: string, messageId: string) {
   cleanupExpired();
   return snapshots.get(snapshotKey(guildId, messageId))?.snapshot ?? null;
+}
+
+function getCachedSnapshotByMessageId(messageId: string) {
+  cleanupExpired();
+  for (const value of snapshots.values()) {
+    if (value.snapshot.messageId === messageId) return value.snapshot;
+  }
+  return null;
 }
 
 function cleanupExpired() {
@@ -414,6 +456,108 @@ function deletionKey(snapshot: DeletedMessageSnapshot) {
 function extractLinks(content: string) {
   URL_PATTERN.lastIndex = 0;
   return [...new Set([...content.matchAll(URL_PATTERN)].map((match) => match[0]).filter(Boolean))].slice(0, 25);
+}
+
+function hasRenderableSnapshotContent(snapshot: DeletedMessageSnapshot) {
+  return Boolean(
+    snapshot.content.trim()
+    || snapshot.attachments.length
+    || snapshot.embeds.length
+    || snapshot.stickers.length
+  );
+}
+
+async function snapshotReference(message: Message | PartialMessage): Promise<DeletedMessageReferenceSnapshot | null> {
+  const referenceMessageId = message.reference?.messageId ?? null;
+  if (!referenceMessageId) return null;
+
+  const referenced = await message.fetchReference().catch(() => null);
+  if (!referenced) {
+    return {
+      authorDisplayName: null,
+      authorId: null,
+      authorUsername: null,
+      content: null,
+      messageId: referenceMessageId
+    };
+  }
+
+  const author = referenced.author ?? null;
+  const member = author?.id
+    ? referenced.guild?.members.cache.get(author.id) ?? await referenced.guild?.members.fetch(author.id).catch(() => null)
+    : null;
+
+  return {
+    authorDisplayName: member?.displayName ?? author?.globalName ?? author?.username ?? null,
+    authorId: author?.id ?? null,
+    authorUsername: author?.username ?? null,
+    content: referenced.content ?? null,
+    messageId: referenced.id
+  };
+}
+
+async function persistSnapshot(snapshot: DeletedMessageSnapshot) {
+  await mkdir(SNAPSHOT_STORE_DIR, { recursive: true });
+  await writeFile(snapshotPath(snapshot.guildId, snapshot.messageId), JSON.stringify({
+    expiresAt: Date.now() + SNAPSHOT_TTL_MS,
+    snapshot
+  }), "utf8");
+}
+
+async function loadPersistedSnapshot(guildId: string, messageId: string) {
+  const filePath = snapshotPath(guildId, messageId);
+  const raw = await readFile(filePath, "utf8").catch(() => null);
+  if (!raw) return null;
+
+  const parsed = parsePersistedSnapshot(raw);
+  if (!parsed || parsed.expiresAt <= Date.now()) {
+    await rm(filePath, { force: true }).catch(() => null);
+    return null;
+  }
+
+  snapshots.set(snapshotKey(guildId, messageId), parsed);
+  return parsed.snapshot;
+}
+
+function parsePersistedSnapshot(raw: string): { expiresAt: number; snapshot: DeletedMessageSnapshot } | null {
+  try {
+    const value = JSON.parse(raw) as { expiresAt?: unknown; snapshot?: unknown };
+    if (typeof value.expiresAt !== "number" || !isDeletedMessageSnapshot(value.snapshot)) return null;
+    return { expiresAt: value.expiresAt, snapshot: value.snapshot };
+  } catch {
+    return null;
+  }
+}
+
+function snapshotPath(guildId: string, messageId: string) {
+  return path.join(SNAPSHOT_STORE_DIR, `${safeFilePart(guildId)}-${safeFilePart(messageId)}.json`);
+}
+
+function safeFilePart(value: string) {
+  return value.replace(/[^0-9a-z_-]/gi, "_");
+}
+
+function configuredSnapshotTtlMs() {
+  const hours = Number(process.env.DELETED_MESSAGE_SNAPSHOT_TTL_HOURS);
+  if (Number.isFinite(hours) && hours > 0) {
+    return Math.min(Math.max(hours, 1), 24 * 14) * 60 * 60 * 1_000;
+  }
+  return 72 * 60 * 60 * 1_000;
+}
+
+function readStringProperty(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || !(key in value)) return null;
+  const result = (value as Record<string, unknown>)[key];
+  return typeof result === "string" && result.trim() ? result : null;
+}
+
+function isDeletedMessageSnapshot(value: unknown): value is DeletedMessageSnapshot {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && typeof (value as { guildId?: unknown }).guildId === "string"
+    && typeof (value as { channelId?: unknown }).channelId === "string"
+    && typeof (value as { messageId?: unknown }).messageId === "string";
 }
 
 function errorMessage(error: unknown) {

@@ -194,8 +194,9 @@ async function deliverDeletedMessageLog(
   const metadata = deletedMessageMetadata(log.metadata);
   const channelName = metadata.channelName ? `#${metadata.channelName}` : metadata.channelId ? `<#${metadata.channelId}>` : "canal desconhecido";
   const authorName = metadata.authorDisplayName || metadata.authorTag || metadata.authorUsername || "Autor desconhecido";
-  const content = metadata.content?.trim() || metadata.unavailableReason || "Conteúdo não disponível no cache do bot.";
+  const content = messageContentForLog(metadata);
   const deletedAt = metadata.deletedAt ? formatDate(metadata.deletedAt) : formatDate(log.createdAt);
+  const createdAt = metadata.createdAt ? formatDate(metadata.createdAt) : "horário original desconhecido";
   const maxContentInPanel = 2_800;
   const previewFileName = `mensagem-apagada-${metadata.messageId || log.id}.svg`;
   const files = [buildDeletedMessagePreview(metadata, fallbackGuildName, previewFileName)];
@@ -215,12 +216,14 @@ async function deliverDeletedMessageLog(
         "📝 **Mensagem de texto deletada**",
         "",
         `**Canal de texto:** ${channelName}`,
+        `**Horário original:** ${createdAt}`,
+        `**Horário da exclusão:** ${deletedAt}`,
         "",
         "**Mensagem:**",
         limitCodeBlock(content, maxContentInPanel),
         textOverflow ? "\nConteudo completo anexado em `.txt`." : "",
         "",
-        metadata.attachments.length ? `**Anexos:** ${metadata.attachments.length}` : null,
+        metadata.attachments.length ? `**Anexos:** ${metadata.attachments.map(formatAttachmentLine).join(" • ")}` : null,
         metadata.stickers.length ? `**Figurinhas:** ${metadata.stickers.map((item) => item.name).join(", ")}` : null,
         metadata.embeds.length ? `**Embeds:** ${metadata.embeds.length}` : null
       ].filter(Boolean).join("\n"))
@@ -239,6 +242,8 @@ async function deliverDeletedMessageLog(
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent([
       metadata.authorId ? `**ID do usuário:** \`${metadata.authorId}\`` : null,
+      metadata.messageId ? `**ID da mensagem:** \`${metadata.messageId}\`` : null,
+      metadata.channelId ? `**ID do canal:** \`${metadata.channelId}\`` : null,
       `**Apagada em:** ${deletedAt}`
     ].filter(Boolean).join(" • "))
   );
@@ -265,19 +270,22 @@ async function deliverDeletedMessageLog(
 
 type DeletedMessageLogMetadata = {
   action: string | null;
-  attachments: Array<{ contentType: string | null; name: string; size: number; url: string }>;
+  attachments: Array<{ contentType: string | null; height: number | null; name: string; size: number; spoiler: boolean; url: string; width: number | null }>;
   authorAvatarUrl: string | null;
   authorDisplayName: string | null;
   authorId: string | null;
+  authorRoleColor: number | null;
   authorTag: string | null;
   authorUsername: string | null;
+  authorBot: boolean;
   channelId: string | null;
   channelName: string | null;
   content: string | null;
   createdAt: string | null;
   deletedAt: string | null;
   deletionType: string | null;
-  embeds: Array<{ title: string | null; url: string | null }>;
+  editedAt: string | null;
+  embeds: Array<{ description: string | null; imageUrl: string | null; thumbnailUrl: string | null; title: string | null; url: string | null }>;
   executorId: string | null;
   executorTag: string | null;
   guildId: string | null;
@@ -286,9 +294,12 @@ type DeletedMessageLogMetadata = {
   messageId: string | null;
   module: string | null;
   reason: string | null;
+  reference: { authorDisplayName: string | null; authorId: string | null; authorUsername: string | null; content: string | null; messageId: string } | null;
+  referenceMessageId: string | null;
   ruleId: string | null;
-  stickers: Array<{ id: string; name: string }>;
+  stickers: Array<{ id: string; name: string; url: string | null }>;
   unavailableReason: string | null;
+  webhookId: string | null;
 };
 
 function deletedMessageMetadata(metadata: unknown): DeletedMessageLogMetadata {
@@ -300,24 +311,33 @@ function deletedMessageMetadata(metadata: unknown): DeletedMessageLogMetadata {
     action: optionalString(record.action),
     attachments: arrayOfRecords(record.attachments).map((item) => ({
       contentType: optionalString(item.contentType),
+      height: numberValue(item.height),
       name: optionalString(item.name) ?? "arquivo",
       size: typeof item.size === "number" ? item.size : 0,
-      url: optionalString(item.url) ?? ""
+      spoiler: Boolean(item.spoiler),
+      url: optionalString(item.url) ?? "",
+      width: numberValue(item.width)
     })),
     authorAvatarUrl: optionalString(record.authorAvatarUrl),
     authorDisplayName: optionalString(record.authorDisplayName),
     authorId: optionalString(record.authorId),
+    authorRoleColor: numberValue(record.authorRoleColor),
     authorTag: optionalString(record.authorTag),
     authorUsername: optionalString(record.authorUsername),
+    authorBot: Boolean(record.authorBot),
     channelId: optionalString(record.channelId),
     channelName: optionalString(record.channelName),
     content: optionalString(record.content),
     createdAt: optionalString(record.createdAt),
     deletedAt: optionalString(record.deletedAt),
     deletionType: optionalString(record.deletionType),
+    editedAt: optionalString(record.editedAt),
     embeds: arrayOfRecords(record.embeds).map((item) => ({
+      description: optionalString(item.description),
+      imageUrl: optionalString(item.imageUrl),
+      thumbnailUrl: optionalString(item.thumbnailUrl),
       title: optionalString(item.title),
-      url: optionalString(item.url)
+      url: optionalString(item.url) ?? ""
     })),
     executorId: optionalString(record.executorId),
     executorTag: optionalString(record.executorTag),
@@ -327,13 +347,58 @@ function deletedMessageMetadata(metadata: unknown): DeletedMessageLogMetadata {
     messageId: optionalString(record.messageId),
     module: optionalString(record.module),
     reason: optionalString(record.reason),
+    reference: referenceMetadata(record.reference),
+    referenceMessageId: optionalString(record.referenceMessageId),
     ruleId: optionalString(record.ruleId),
     stickers: arrayOfRecords(record.stickers).map((item) => ({
       id: optionalString(item.id) ?? "",
-      name: optionalString(item.name) ?? "sticker"
+      name: optionalString(item.name) ?? "sticker",
+      url: optionalString(item.url)
     })),
-    unavailableReason: optionalString(record.unavailableReason)
+    unavailableReason: optionalString(record.unavailableReason),
+    webhookId: optionalString(record.webhookId)
   };
+}
+
+function referenceMetadata(value: unknown): DeletedMessageLogMetadata["reference"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const messageId = optionalString(record.messageId);
+  if (!messageId) return null;
+  return {
+    authorDisplayName: optionalString(record.authorDisplayName),
+    authorId: optionalString(record.authorId),
+    authorUsername: optionalString(record.authorUsername),
+    content: optionalString(record.content),
+    messageId
+  };
+}
+
+function messageContentForLog(metadata: DeletedMessageLogMetadata) {
+  const text = metadata.content?.trim();
+  if (text) return text;
+
+  const summary = [
+    metadata.attachments.length ? `${metadata.attachments.length} anexo(s)` : null,
+    metadata.embeds.length ? `${metadata.embeds.length} embed(s)` : null,
+    metadata.stickers.length ? `${metadata.stickers.length} sticker(s)` : null
+  ].filter(Boolean).join(", ");
+
+  return summary
+    ? `Mensagem sem texto contendo ${summary}.`
+    : metadata.unavailableReason || "Conteúdo não disponível no cache do bot.";
+}
+
+function formatAttachmentLine(item: DeletedMessageLogMetadata["attachments"][number]) {
+  const details = [
+    item.name,
+    formatBytes(item.size),
+    item.contentType,
+    item.width && item.height ? `${item.width}x${item.height}` : null,
+    item.spoiler ? "spoiler" : null
+  ].filter(Boolean).join(" · ");
+
+  return details || "arquivo";
 }
 
 type VoiceLogMetadata = {
@@ -410,18 +475,39 @@ function formatDuration(totalSeconds: number) {
 function buildDeletedMessagePreview(metadata: DeletedMessageLogMetadata, guildName: string, fileName: string) {
   const authorName = metadata.authorDisplayName || metadata.authorTag || metadata.authorUsername || "Autor desconhecido";
   const channelName = metadata.channelName ? `#${metadata.channelName}` : metadata.channelId ? `#${metadata.channelId}` : "canal desconhecido";
-  const content = metadata.content?.trim() || metadata.unavailableReason || "Conteúdo não disponível.";
-  const contentLines = wrapText(content, 88).slice(0, 22);
-  const contentHeight = Math.max(210, contentLines.length * 27 + 52);
+  const content = messageContentForLog(metadata);
+  const contentLines = wrapText(content, 82).slice(0, 18);
+  const attachmentLines = metadata.attachments.map((item) => `Anexo: ${item.name} (${formatBytes(item.size)})${item.url ? "" : " - indisponivel"}`).slice(0, 6);
+  const embedLines = metadata.embeds.map((item, index) => `Embed ${index + 1}: ${item.title || item.description || item.url || "sem titulo"}`).slice(0, 4);
+  const stickerLines = metadata.stickers.map((item) => `Sticker: ${item.name}`).slice(0, 4);
+  const referenceLines = metadata.reference
+    ? wrapText(`Respondendo ${metadata.reference.authorDisplayName || metadata.reference.authorUsername || metadata.reference.authorId || "mensagem"}: ${metadata.reference.content || "conteudo indisponivel"}`, 78).slice(0, 3)
+    : [];
+  const contentHeight = Math.max(
+    230,
+    contentLines.length * 27
+      + attachmentLines.length * 24
+      + embedLines.length * 24
+      + stickerLines.length * 24
+      + referenceLines.length * 22
+      + 100
+  );
   const metaLines = [
     metadata.authorId ? `ID do usuario: ${metadata.authorId}` : null,
     metadata.messageId ? `ID da mensagem: ${metadata.messageId}` : null,
-    metadata.channelId ? `ID do canal: ${metadata.channelId}` : null
+    metadata.channelId ? `ID do canal: ${metadata.channelId}` : null,
+    metadata.webhookId ? `Webhook: ${metadata.webhookId}` : null
   ].filter((item): item is string => Boolean(item));
   const height = Math.min(980, 190 + contentHeight + metaLines.length * 22 + 80);
   const messageY = 136;
   const contentY = messageY + 84;
   const footerY = contentY + contentHeight + 34;
+  const roleColor = metadata.authorRoleColor ? `#${metadata.authorRoleColor.toString(16).padStart(6, "0")}` : "#5865f2";
+  const referenceStartY = contentY + 68;
+  const contentStartY = referenceStartY + referenceLines.length * 22 + (referenceLines.length ? 26 : 0);
+  const attachmentsStartY = contentStartY + contentLines.length * 27 + 20;
+  const embedsStartY = attachmentsStartY + attachmentLines.length * 24 + 8;
+  const stickersStartY = embedsStartY + embedLines.length * 24 + 8;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="${height}" viewBox="0 0 1120 ${height}">`,
     "<rect width=\"1120\" height=\"100%\" rx=\"12\" fill=\"#2b2d31\"/>",
@@ -429,13 +515,18 @@ function buildDeletedMessagePreview(metadata: DeletedMessageLogMetadata, guildNa
     "<rect x=\"28\" y=\"26\" width=\"1064\" height=\"72\" rx=\"8\" fill=\"#31343b\"/>",
     `<text x="54" y="58" fill="#f2f3f5" font-family="Arial, sans-serif" font-size="18" font-weight="700">Mensagem removida no servidor ${escapeXml(limitInline(guildName, 90))}</text>`,
     `<text x="54" y="82" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">Canal: ${escapeXml(limitInline(channelName, 80))} • ${escapeXml(metadata.deletedAt ? formatDate(metadata.deletedAt) : "apagada agora")}</text>`,
-    `<circle cx="70" cy="${messageY + 28}" r="24" fill="#5865f2"/>`,
+    `<circle cx="70" cy="${messageY + 28}" r="24" fill="${roleColor}"/>`,
     `<text x="60" y="${messageY + 38}" fill="#ffffff" font-family="Arial, sans-serif" font-size="24" font-weight="700">${escapeXml(authorName.slice(0, 1).toUpperCase() || "?")}</text>`,
-    `<text x="108" y="${messageY + 22}" fill="#f2f3f5" font-family="Arial, sans-serif" font-size="21" font-weight="700">${escapeXml(limitInline(authorName, 72))}</text>`,
-    `<text x="108" y="${messageY + 48}" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">${escapeXml(metadata.createdAt ? formatDate(metadata.createdAt) : "horario original desconhecido")}</text>`,
+    `<text x="108" y="${messageY + 22}" fill="#f2f3f5" font-family="Arial, sans-serif" font-size="21" font-weight="700">${escapeXml(limitInline(authorName, 64))}${metadata.authorBot ? " BOT" : ""}</text>`,
+    `<text x="108" y="${messageY + 48}" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">${escapeXml(metadata.createdAt ? formatDate(metadata.createdAt) : "horario original desconhecido")}${metadata.editedAt ? " (editada)" : ""}</text>`,
     `<rect x="54" y="${contentY}" width="1012" height="${contentHeight}" rx="6" fill="#383b4d" stroke="#4e5268"/>`,
     `<text x="82" y="${contentY + 34}" fill="#f2f3f5" font-family="Consolas, monospace" font-size="18" font-weight="700">Mensagem:</text>`,
-    ...contentLines.map((line, index) => `<text x="82" y="${contentY + 72 + index * 27}" fill="#ffffff" font-family="Consolas, monospace" font-size="18" font-weight="700">${escapeXml(line)}</text>`),
+    ...referenceLines.map((line, index) => `<text x="94" y="${referenceStartY + index * 22}" fill="#b5bac1" font-family="Arial, sans-serif" font-size="15">${escapeXml(line)}</text>`),
+    referenceLines.length ? `<rect x="82" y="${referenceStartY - 18}" width="4" height="${Math.max(22, referenceLines.length * 22)}" rx="2" fill="#4e5268"/>` : "",
+    ...contentLines.map((line, index) => `<text x="82" y="${contentStartY + index * 27}" fill="#ffffff" font-family="Consolas, monospace" font-size="18" font-weight="700">${escapeXml(line)}</text>`),
+    ...attachmentLines.map((line, index) => `<text x="82" y="${attachmentsStartY + index * 24}" fill="#dbdee1" font-family="Arial, sans-serif" font-size="16">📎 ${escapeXml(line)}</text>`),
+    ...embedLines.map((line, index) => `<text x="82" y="${embedsStartY + index * 24}" fill="#dbdee1" font-family="Arial, sans-serif" font-size="16">▣ ${escapeXml(line)}</text>`),
+    ...stickerLines.map((line, index) => `<text x="82" y="${stickersStartY + index * 24}" fill="#dbdee1" font-family="Arial, sans-serif" font-size="16">◇ ${escapeXml(line)}</text>`),
     ...metaLines.map((line, index) => `<text x="54" y="${footerY + index * 22}" fill="#dbdee1" font-family="Arial, sans-serif" font-size="15" font-weight="700">${escapeXml(line)}</text>`),
     `<text x="54" y="${height - 34}" fill="#949ba4" font-family="Arial, sans-serif" font-size="14">Feito com a NexTech • Snapshot automatico da mensagem apagada</text>`,
     "</svg>"
