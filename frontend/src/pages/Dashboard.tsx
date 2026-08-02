@@ -4728,7 +4728,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
               <FivemChannelSelect channels={channels} disabled={!canManage} label="Canal dos relatórios" onChange={(value) => patch({ summaryChannelId: value })} placeholder="Sem relatório automático" value={settings.summaryChannelId ?? null} />
               <TicketField disabled={!canManage} label="Modelo do nome do canal" onChange={(value) => patch({ channelNameTemplate: value })} value={settings.channelNameTemplate} />
               </div>
-              <Button disabled={!canManage || saving || !settings.enabled || !settings.requestPanelEnabled || !settings.requestPanelChannelId} onClick={() => void publishRequestPanel()} size="sm" type="button"><Upload className="mr-2 h-4 w-4" />Publicar painel</Button>
+              <Button disabled={!canManage || saving || !settings.enabled || (!settings.requestPanelChannelId && !settings.rankingChannelId)} onClick={() => void publishRequestPanel()} size="sm" type="button"><Upload className="mr-2 h-4 w-4" />Publicar painel/ranking</Button>
             </section>
             ) : null}
             {activeGoalTab === "permissions" ? (

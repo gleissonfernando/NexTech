@@ -1515,7 +1515,7 @@ async function validateFacResources(guildId: string, botId: string, input: z.inf
 
 async function validateGoalResources(guildId: string, botId: string, input: z.infer<typeof goalSettingsSchema>) {
   const botToken = await getDevBotToken(botId);
-  const channelIds = [input.logChannelId, input.requestPanelChannelId, input.correctionManagement?.logChannelId].filter((channelId): channelId is string => typeof channelId === "string" && Boolean(channelId));
+  const channelIds = [input.logChannelId, input.requestPanelChannelId, input.rankingChannelId, input.summaryChannelId, input.correctionManagement?.logChannelId].filter((channelId): channelId is string => typeof channelId === "string" && Boolean(channelId));
 
   const channelChecks = await Promise.all(
     [...new Set(channelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken))
@@ -1532,6 +1532,9 @@ async function validateGoalResources(guildId: string, botId: string, input: z.in
   }
   if (input.requestPanelChannelId) {
     await assertPanelChannelReady(guildId, botId, input.requestPanelChannelId);
+  }
+  if (input.rankingChannelId) {
+    await assertPanelChannelReady(guildId, botId, input.rankingChannelId);
   }
 
   const roleIds = [

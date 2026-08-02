@@ -1382,26 +1382,49 @@ async function handleSummaryPagination(interaction: ButtonInteraction, context: 
 }
 
 export async function refreshFivemGoalRankingPanel(guild: Guild, context: BotContext) {
-  const runtime = await context.api.getFivemGoalRankingRuntime(guild.id).catch(() => null);
+  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
+  const runtime = await context.api.getFivemGoalRankingRuntime(guild.id).catch(async (error) => {
+    await logGoalPanelPublish(context, guild.id, settings, "ranking_runtime_error", readUnknownError(error), {}, error);
+    return null;
+  });
   if (!runtime?.settings.rankingChannelId) return;
+  await logGoalPanelPublish(context, guild.id, settings, "ranking_start", "Iniciando publicação do ranking de farm.", { channelId: runtime.settings.rankingChannelId });
   const visible = await visibleRankingMembers(guild, runtime);
   const nextRuntime = { ...runtime, members: visible, totalPlayers: visible.length };
-  const channel = await guild.channels.fetch(runtime.settings.rankingChannelId).catch(() => null);
-  if (!channel?.isSendable()) {
+  const channel = await guild.channels.fetch(runtime.settings.rankingChannelId).catch((error) => {
+    void logGoalPanelPublish(context, guild.id, settings, "ranking_channel_fetch_error", readUnknownError(error), { channelId: runtime.settings.rankingChannelId }, error);
+    return null;
+  });
+  if (!channel?.isSendable() || !("messages" in channel)) {
+    await logGoalPanelPublish(context, guild.id, settings, "ranking_channel_invalid", "Canal do ranking não encontrado ou não aceita envio de mensagens pelo bot.", { channelId: runtime.settings.rankingChannelId });
     await context.api.updateFivemGoalRankingPanelState({ channelId: null, guildId: guild.id, messageId: null }).catch(() => null);
     return;
   }
   const payload = createGoalRankingPayload(guild, nextRuntime, 0);
   const existingMessageId = runtime.settings.rankingMessageId ?? null;
-  if (existingMessageId && "messages" in channel) {
+  if (existingMessageId) {
     const message = await channel.messages.fetch(existingMessageId).catch(() => null);
     if (message) {
-      await message.edit(payload).catch(() => null);
-      return;
+      const edited = await message.edit(payload).catch(async (error) => {
+        await logGoalPanelPublish(context, guild.id, settings, "ranking_edit_error", readUnknownError(error), { channelId: channel.id, messageId: existingMessageId }, error);
+        return null;
+      });
+      if (edited) {
+        await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: edited.id }).catch(() => null);
+        await logGoalPanelPublish(context, guild.id, settings, "ranking_updated", "Ranking de farm atualizado no Discord.", { channelId: channel.id, messageId: edited.id });
+        return;
+      }
     }
+    await logGoalPanelPublish(context, guild.id, settings, "ranking_old_message_missing", "Mensagem antiga do ranking não encontrada; publicando uma nova.", { channelId: channel.id, messageId: existingMessageId });
   }
-  const sent = await channel.send(payload).catch(() => null);
-  if (sent) await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: sent.id }).catch(() => null);
+  const sent = await channel.send(payload).catch(async (error) => {
+    await logGoalPanelPublish(context, guild.id, settings, "ranking_send_error", readUnknownError(error), { channelId: channel.id }, error);
+    return null;
+  });
+  if (sent) {
+    await context.api.updateFivemGoalRankingPanelState({ channelId: channel.id, guildId: guild.id, messageId: sent.id }).catch(() => null);
+    await logGoalPanelPublish(context, guild.id, settings, "ranking_sent", "Ranking de farm publicado no Discord.", { channelId: channel.id, messageId: sent.id });
+  }
 }
 
 async function visibleRankingMembers(guild: Guild, runtime: FivemGoalRankingRuntime) {

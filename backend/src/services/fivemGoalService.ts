@@ -385,12 +385,12 @@ export async function saveFivemGoalSettings(guildId: string, botId: string | nul
 export async function requestFivemGoalPanelPublish(guildId: string, botId: string, actorId: string | null) {
   const settings = await getFivemGoalSettings(guildId, botId);
   if (!settings.enabled) throw new Error("Ative o sistema de metas antes de publicar o painel.");
-  if (!settings.requestPanelChannelId) throw new Error("Configure o canal do painel de solicitação de meta.");
+  if (!settings.requestPanelChannelId && !settings.rankingChannelId) throw new Error("Configure o canal do painel de solicitação ou o canal do ranking de metas.");
 
   await writeFivemGoalLog({
     action: "request_panel.publish_requested",
     botId,
-    details: { channelId: settings.requestPanelChannelId },
+    details: { channelId: settings.requestPanelChannelId, rankingChannelId: settings.rankingChannelId },
     guildId,
     metaId: null,
     userId: actorId
