@@ -31,6 +31,7 @@ test("log de aprovação do Pedido de Set usa o formato de Registro aprovado", (
     actorId: "444444444444444444",
     actorLabel: "Arsenal | 10354 (arsenal7_)",
     decidedAt: new Date("2026-07-30T19:12:19.000Z"),
+    roleIds: ["222222222222222222"],
     status: "approved"
   });
 
@@ -42,7 +43,11 @@ test("log de aprovação do Pedido de Set usa o formato de Registro aprovado", (
   const content = firstBlock.content ?? firstBlock.components?.[0]?.content ?? "";
   assert.match(content, /Registro - Aprovado/);
   assert.match(content, /Usuario:\*\* <@111111111111111111> \| 15774 \(ytairanw7\)/);
-  assert.match(content, /Personagem: Tairan cooper/);
+  assert.match(content, /Nome aprovado: Tairan cooper/);
+  assert.match(content, /ID in-game: 15774/);
+  assert.match(content, /Cargo recebido: <@&222222222222222222>/);
+  assert.match(content, /Aprovador: <@444444444444444444> \| Arsenal \| 10354 \(arsenal7_\)/);
+  assert.match(content, /Data e horário:/);
   assert.match(content, /Recrutador: melo gst/);
   assert.doesNotMatch(content, /Log de Pedido de Set/);
 });

@@ -605,7 +605,6 @@ async function handleRegistrationSubmit(interaction: ModalSubmitInteraction, con
       const member = await interaction.guild.members.fetch(submission.userId).catch(() => null);
       const goalChannelId = result.metaChannelId;
       if (member && settings.dmNotifications) await member.send(createDecisionDmPayload(settings, submission, { goalChannelId, guild: interaction.guild, status: "approved" })).catch(() => null);
-      await sendRegistrationDecisionLog(interaction.guild, settings, submission, { actorId: interaction.client.user.id, actorLabel: interaction.client.user.username, decidedAt: new Date(), farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds, status: "approved" });
     } catch (error) {
       automaticError = error instanceof Error ? error.message : "Não foi possível aplicar o cargo automaticamente.";
       await context.api.postLog({ guildId: interaction.guild.id, message: automaticError, metadata: { submissionId: submission.id }, type: "manual-registration.auto_approval_failed", userId: interaction.user.id }).catch(() => null);
@@ -717,6 +716,8 @@ async function processSetApproval(input: {
 
     const saved = await context.api.completeManualRegistrationApproval({ actorId, farmChannelId: goal.channelId, guildId: guild.id, id: processing.id, metaChannelId: goal.channelId, roleIds });
     await traceSetApproval(context, "[SET_APPROVAL_COMPLETED]", { ...traceBase, farmChannelId: goal.channelId, metaChannelId: goal.channelId, status: saved.status });
+    const logSent = await sendRegistrationDecisionLog(guild, settings, saved, { actorId, actorLabel: input.actorLabel, decidedAt: new Date(), farmChannelId: goal.channelId, metaChannelId: goal.channelId, roleIds, status: "approved" }, context);
+    await traceSetApproval(context, logSent ? "[SET_LOG_SENT]" : "[SET_LOG_FAILED]", { ...traceBase, logChannelId: settings.logChannelId, submissionId: saved.id });
     return { farmChannelId: goal.channelId, metaChannelId: goal.channelId, roleIds, submission: saved } satisfies SetApprovalResult;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao aprovar Pedido de Set.";
@@ -864,8 +865,6 @@ async function executeApproveSubmission(interaction: ButtonInteraction, context:
         await requestMessage?.edit(createReviewPayload(settings, result.submission, interaction.guild, { farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds })).catch(() => null);
       }
     }
-    await sendRegistrationDecisionLog(interaction.guild, settings, result.submission, { actorId: interaction.user.id, actorLabel: actor.displayName || interaction.user.username, decidedAt: new Date(), farmChannelId: result.farmChannelId, metaChannelId: result.metaChannelId, roleIds: result.roleIds, status: "approved" });
-    await traceSetApproval(context, "[SET_LOG_SENT]", { actorId: interaction.user.id, guildId: interaction.guild.id, requestId: result.submission.id, userId: result.submission.userId });
     await interaction.editReply(`Usuário aprovado com sucesso. O canal de meta foi criado e o sistema de farm foi vinculado: <#${result.metaChannelId}>`);
     await closeRequestChannel(interaction.guild, context, result.submission, "Pedido de Set aprovado");
   } catch (error) {
@@ -1228,6 +1227,10 @@ type DecisionLogInput = {
   status: "approved" | "failed" | "rejected";
 };
 
+function approvedRoleSummary(roleIds: string[] | undefined) {
+  return roleIds?.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "não informado";
+}
+
 export function createManualRegistrationDecisionLogPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput, guild: Guild | null = null) {
   const approved = input.status === "approved";
   const failed = input.status === "failed";
@@ -1238,11 +1241,11 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
   const phone = submissionFieldValue(submission, ["telefone", "telefone_in_game", "telefone_ingame"]) ?? "-";
   const recruiter = submissionFieldValue(submission, ["recrutador", "quem_recrutou"]) ?? "-";
   const decisionLines = [
-    `- Por: <@${input.actorId}> | ${input.actorLabel}`,
-    `- Em: ${formatBrazilDateTime(input.decidedAt)}`
+    `- Aprovador: <@${input.actorId}> | ${input.actorLabel}`,
+    `- Data e horário: ${formatBrazilDateTime(input.decidedAt)}`
   ];
   if (approved) {
-    decisionLines.push(`- Cargos aplicados: ${input.roleIds?.length ? input.roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "não informado"}`);
+    decisionLines.push(`- Cargo recebido: ${approvedRoleSummary(input.roleIds)}`);
     decisionLines.push(`- Canal de meta: ${input.metaChannelId ? `<#${input.metaChannelId}>` : "não informado"}`);
     decisionLines.push(`- Canal de farm: ${input.farmChannelId ? `<#${input.farmChannelId}>` : "mesmo canal de meta"}`);
     decisionLines.push("- Banco de dados: atualizado");
@@ -1257,8 +1260,9 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
       `${systemEmojiText("homem", guild, guild?.client)} **Usuario:** <@${submission.userId}> | ${gameId} (${submission.username})`,
       "",
       `${systemEmojiText("prancheta", guild, guild?.client)} **Dados do registro**`,
-      `- Personagem: ${characterName}`,
-      `- ID: ${gameId}`,
+      `- Nome aprovado: ${characterName}`,
+      `- ID in-game: ${gameId}`,
+      `- Usuário Discord: <@${submission.userId}>`,
       `- Telefone: ${phone}`,
       `- Recrutador: ${recruiter}`,
       "",
@@ -1283,19 +1287,36 @@ export function createManualRegistrationDecisionLogPayload(settings: ManualRegis
   };
 }
 
-async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput) {
-  if (!settings.logChannelId) return;
+async function sendRegistrationDecisionLog(guild: Guild, settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: DecisionLogInput, context?: BotContext) {
+  const reportFailure = async (message: string, metadata: Record<string, unknown> = {}) => {
+    await context?.api.postLog({
+      executorId: input.actorId,
+      guildId: guild.id,
+      message,
+      metadata: { logChannelId: settings.logChannelId, status: input.status, submissionId: submission.id, ...metadata },
+      type: "manual-registration.decision_log_failed",
+      userId: submission.userId
+    }).catch(() => null);
+  };
+  if (!settings.logChannelId) {
+    await reportFailure("Canal de logs do Pedido de Set não configurado.");
+    return false;
+  }
   const channel = await guild.channels.fetch(settings.logChannelId).catch((error) => {
     console.error("[REGISTRO] Falha ao buscar canal de log de decisão", { error, guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
     return null;
   });
   if (!channel?.isSendable()) {
     console.error("[REGISTRO] Canal de log de decisão inválido ou sem permissão", { guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
-    return;
+    await reportFailure("Canal de logs do Pedido de Set inválido ou sem permissão de envio.");
+    return false;
   }
-  await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch((error) => {
+  const sent = await channel.send(createManualRegistrationDecisionLogPayload(settings, submission, { ...input, serverIconUrl: guild.iconURL({ size: 256 }) }, guild)).catch(async (error) => {
     console.error("[REGISTRO] Falha ao enviar log de decisão", { error, guildId: guild.id, logChannelId: settings.logChannelId, submissionId: submission.id });
+    await reportFailure(error instanceof Error ? error.message : "Falha ao enviar log de aprovação do Pedido de Set.", { reason: "discord_send_failed" });
+    return null;
   });
+  return Boolean(sent);
 }
 
 export function createDecisionDmPayload(settings: ManualRegistrationSettings, submission: ManualRegistrationSubmission, input: { goalChannelId?: string | null; guild: Guild; reason?: string | null; status: "approved" | "rejected" }) {
