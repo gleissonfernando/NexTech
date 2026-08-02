@@ -25,6 +25,7 @@ import {
 import type { BotContext } from "../types";
 import type { BotCommand } from "../types";
 import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalSettings } from "./apiClient";
+import { fixedSystemEmojiText, isSystemEmojiKey, type SystemEmojiKey } from "../config/systemEmojis";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
@@ -742,7 +743,7 @@ function createFarmingItemsPayload(settings: FivemGoalSettings, guild: Guild, no
             .setPlaceholder("Selecione um item")
             .addOptions(items.slice(0, 25).map((item) => ({
               description: `${goalItemTypeLabel(item.type)} · ${item.enabled ? "Ativo" : "Inativo"} · valor interno ${formatGoalValue(item.requiredAmount ?? 1)}`.slice(0, 100),
-              emoji: item.emoji && !item.emoji.startsWith("<") ? item.emoji : undefined,
+              emoji: goalItemSelectEmoji(item, guild),
               label: item.name.slice(0, 100),
               value: item.id
             })))
@@ -1152,7 +1153,7 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
             .setMaxValues(1)
             .addOptions(items.slice(0, 25).map((item) => ({
               description: item.category?.slice(0, 100) || undefined,
-              emoji: item.emoji && !item.emoji.startsWith("<") ? item.emoji : undefined,
+              emoji: goalItemSelectEmoji(item, guild),
               label: item.name.slice(0, 100),
               value: item.id
             })))
@@ -1680,6 +1681,25 @@ function activeGoalItems(settings: FivemGoalSettings | null | undefined): FivemG
     .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name, "pt-BR"));
 }
 
+function farmSystemEmojiText(key: SystemEmojiKey, guild: Guild | null, client: Client | null = guild?.client ?? null) {
+  const fixed = fixedSystemEmojiText(key);
+  return fixed || systemEmojiText(key, guild, client);
+}
+
+function renderFarmConfiguredEmoji(value: string | null | undefined, guild: Guild, fallbackKey: SystemEmojiKey = "caixa") {
+  const raw = value?.trim();
+  if (!raw) return farmSystemEmojiText(fallbackKey, guild, guild.client);
+  const normalized = replaceSystemEmojis(raw, guild, guild.client)
+    .replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => isSystemEmojiKey(alias) ? fixedSystemEmojiText(alias) : match)
+    .trim();
+  return normalized || farmSystemEmojiText(fallbackKey, guild, guild.client);
+}
+
+function goalItemSelectEmoji(item: FivemGoalItem, guild: Guild) {
+  const rendered = renderFarmConfiguredEmoji(item.emoji, guild);
+  return rendered ? rendered.slice(0, 100) : undefined;
+}
+
 export function createImageReviewPayload(userId: string, channelId: string, sourceMessageId: string, _attachmentId: string, imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = [], guild: Guild | null = null) {
   const correctionIntro = corrections.length ? "\n\n⚠️ Existe correção pendente. Esta imagem será usada para refazer uma meta solicitada." : "";
   const guildId = guild?.id ?? null;
@@ -1695,7 +1715,7 @@ export function createImageReviewPayload(userId: string, channelId: string, sour
         accent_color: 0x22c55e,
         components: [
           { type: 12, items: [{ media: { url: imageUrl }, description: "meta image" }] },
-          { type: 10, content: replaceSystemEmojis(`## ${systemEmojiText("prancheta_acertos", guild, client)} Registro de Farm\n\n${systemEmojiText("homem", guild, client)} Usuário: <@${userId}>\n${systemEmojiText("interrogacao", guild, client)} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, guild, client) },
+          { type: 10, content: replaceSystemEmojis(`## ${farmSystemEmojiText("prancheta_acertos", guild, client)} Registro de Farm\n\n${farmSystemEmojiText("homem", guild, client)} Usuário: <@${userId}>\n${farmSystemEmojiText("interrogacao", guild, client)} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, guild, client) },
           { type: 14, divider: true, spacing: 1 },
           ...(corrections.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
             new StringSelectMenuBuilder().setCustomId(correctCustomId).setPlaceholder("Qual meta você está refazendo?").addOptions(corrections.slice(0, 25).map((item) => ({ description: item.reason.slice(0, 100), label: correctionOptionLabel(item).slice(0, 100), value: item.id })))
@@ -1712,7 +1732,7 @@ export function createImageReviewPayload(userId: string, channelId: string, sour
 function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild, itemEmoji?: string | null) {
   const itemLabel = fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() || "Farm";
   const client = guild.client;
-  const itemIcon = itemEmoji?.trim() || systemEmojiText("caixa", guild, client);
+  const itemIcon = renderFarmConfiguredEmoji(itemEmoji, guild);
   return {
     allowedMentions: { parse: [] as never[], users: [userId] },
     components: [{
@@ -1724,15 +1744,15 @@ function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: A
           components: [{
             type: 10,
             content: [
-              `## ${systemEmojiText("visto", guild, client)} Farm registrado`,
+              `## ${farmSystemEmojiText("visto", guild, client)} Farm registrado`,
               "",
-              `${systemEmojiText("homem", guild, client)} **Usuário:** <@${userId}> | ${userId}`,
+              `${farmSystemEmojiText("homem", guild, client)} **Usuário:** <@${userId}> | ${userId}`,
               "",
-              `${systemEmojiText("prancheta", guild, client)} **Resumo**`,
+              `${farmSystemEmojiText("prancheta", guild, client)} **Resumo**`,
               `- ${itemIcon} ${itemLabel}: ${formatGoalValue(quantity)}`,
               "",
-              `**Status:** ${systemEmojiText("visto", guild, client)} Registrado`,
-              `${systemEmojiText("relogio", guild, client)} Data: ${formatBrazilDateTime(new Date())}`
+              `**Status:** ${farmSystemEmojiText("visto", guild, client)} Registrado`,
+              `${farmSystemEmojiText("relogio", guild, client)} Data: ${formatBrazilDateTime(new Date())}`
             ].join("\n")
           }],
           accessory: { type: 11, media: { url: imageUrl } }
