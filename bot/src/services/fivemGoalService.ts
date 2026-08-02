@@ -310,29 +310,14 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
 
   const pendingCorrections = await context.api.getPendingFivemGoalCorrections(message.guild.id, message.author.id, message.channel.id).catch(() => []);
   const reviewPayload = createImageReviewPayload(message.author.id, message.channel.id, message.id, image.id, image.url, settings, pendingCorrections, message.guild);
-  const dmPanel = await message.author.send(reviewPayload).catch(() => null);
-  if (!dmPanel) {
-    const notice = await message.reply("Não consegui enviar o painel privado por DM. Ative as mensagens diretas deste servidor e envie a imagem novamente.").catch(() => null);
-    if (notice) setTimeout(() => void notice.delete().catch(() => null), 15000);
-    await context.api.postLog({
-      guildId: message.guild.id,
-      message: "Falha ao enviar painel privado de registro de farm por DM.",
-      metadata: {
-        channelId: message.channel.id,
-        imageUrl: image.url
-      },
-      type: "fivem.goals.photo_review_dm_failed",
-      userId: message.author.id
-    }).catch(() => null);
-    return true;
-  }
+  await message.reply(reviewPayload);
   await context.api.postLog({
     guildId: message.guild.id,
-    message: "Foto de meta recebida no canal individual e painel privado enviado ao usuário.",
+    message: "Foto de meta recebida no canal individual e painel de registro publicado na sala.",
     metadata: {
       channelId: message.channel.id,
       imageUrl: image.url,
-      reviewDelivery: "dm"
+      reviewDelivery: "channel"
     },
     type: "fivem.goals.photo_received",
     userId: message.author.id
