@@ -308,13 +308,30 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
   }
 
   const pendingCorrections = await context.api.getPendingFivemGoalCorrections(message.guild.id, message.author.id, message.channel.id).catch(() => []);
-  await message.reply(createImageReviewPayload(message.author.id, message.channel.id, message.id, image.id, image.url, settings, pendingCorrections));
+  const reviewPayload = createImageReviewPayload(message.author.id, message.channel.id, message.id, image.id, image.url, settings, pendingCorrections, message.guild);
+  const dmPanel = await message.author.send(reviewPayload).catch(() => null);
+  if (!dmPanel) {
+    const notice = await message.reply("Não consegui enviar o painel privado por DM. Ative as mensagens diretas deste servidor e envie a imagem novamente.").catch(() => null);
+    if (notice) setTimeout(() => void notice.delete().catch(() => null), 15000);
+    await context.api.postLog({
+      guildId: message.guild.id,
+      message: "Falha ao enviar painel privado de registro de farm por DM.",
+      metadata: {
+        channelId: message.channel.id,
+        imageUrl: image.url
+      },
+      type: "fivem.goals.photo_review_dm_failed",
+      userId: message.author.id
+    }).catch(() => null);
+    return true;
+  }
   await context.api.postLog({
     guildId: message.guild.id,
-    message: "Foto de meta recebida no canal individual.",
+    message: "Foto de meta recebida no canal individual e painel privado enviado ao usuário.",
     metadata: {
       channelId: message.channel.id,
-      imageUrl: image.url
+      imageUrl: image.url,
+      reviewDelivery: "dm"
     },
     type: "fivem.goals.photo_received",
     userId: message.author.id
@@ -1094,26 +1111,28 @@ function readUnknownError(error: unknown) {
 }
 
 async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, correctionRequestId: string | null = null) {
-  if (!interaction.guild) return;
-  const sourceMessageId = interaction.customId.split(":")[2] ?? "";
-  const pending = await recoverFarmImageContext(interaction, context, sourceMessageId, correctionRequestId);
+  const component = parseFarmComponentContext(interaction.customId);
+  const guild = await resolveFarmGuild(interaction, component.guildId);
+  if (!guild) return;
+  const correctionId = correctionRequestId ?? component.correctionRequestId;
+  const pending = await recoverFarmImageContext(interaction, context, component.sourceMessageId, correctionId, component.guildId, component.channelId);
 
   if (!pending) {
-    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
+    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ...privateReplyOptions(interaction) });
     return;
   }
 
-  if (pending.userId !== interaction.user.id || pending.channelId !== interaction.channelId) {
-    await interaction.reply({ content: "Este painel pertence a outro usuário.", ephemeral: true });
+  if (pending.userId !== interaction.user.id) {
+    await interaction.reply({ content: "Este painel pertence a outro usuário.", ...privateReplyOptions(interaction) });
     return;
   }
 
-  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   const items = activeGoalItems(settings);
   if (!items.length) {
     await interaction.reply({
       content: "Nenhum item de meta foi cadastrado neste servidor.\n\nSolicite que um administrador configure os itens antes de realizar o registro.",
-      ephemeral: true
+      ...privateReplyOptions(interaction)
     });
     return;
   }
@@ -1124,10 +1143,10 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
       type: 17,
       accent_color: 0xfacc15,
       components: [
-        { type: 10, content: `## ${systemEmojiText("prancheta", interaction.guild)} Selecione o item\n\nSelecione o item que deseja registrar:` },
+        { type: 10, content: `## ${systemEmojiText("prancheta", guild, guild.client)} Selecione o item\n\nSelecione o item que deseja registrar:` },
         new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`${PREFIX}:item:${sourceMessageId}:${interaction.user.id}:${correctionRequestId ?? "none"}`)
+            .setCustomId(farmItemCustomId(pending.sourceMessageId, interaction.user.id, pending.correctionRequestId ?? correctionId, pending.channelId, guild.id))
             .setPlaceholder("Selecione o item")
             .setMinValues(1)
             .setMaxValues(1)
@@ -1140,8 +1159,7 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
         )
       ]
     }],
-    ephemeral: true,
-    flags: MessageFlags.IsComponentsV2
+    flags: (interaction.guild ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
   });
   if (interaction.isButton()) {
     await interaction.message.delete().catch(() => null);
@@ -1149,30 +1167,31 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
 }
 
 async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
-  if (!interaction.guild) return;
-  const [, , sourceMessageId, ownerId, correctionRequestId] = interaction.customId.split(":");
+  const component = parseFarmComponentContext(interaction.customId);
+  const guild = await resolveFarmGuild(interaction, component.guildId);
+  if (!guild) return;
   const selectedItemId = interaction.isStringSelectMenu() ? interaction.values[0] ?? "" : "";
-  const pending = await recoverFarmImageContext(interaction, context, sourceMessageId ?? "", correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : null);
+  const pending = await recoverFarmImageContext(interaction, context, component.sourceMessageId, component.correctionRequestId, component.guildId, component.channelId);
 
   if (!pending || !selectedItemId) {
-    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ephemeral: true });
+    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ...privateReplyOptions(interaction) });
     return;
   }
 
-  if (pending.userId !== interaction.user.id || pending.userId !== ownerId || pending.channelId !== interaction.channelId) {
-    await interaction.reply({ content: "Este painel pertence a outro usuário.", ephemeral: true });
+  if (pending.userId !== interaction.user.id || pending.userId !== component.ownerId) {
+    await interaction.reply({ content: "Este painel pertence a outro usuário.", ...privateReplyOptions(interaction) });
     return;
   }
 
-  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   const selectedItem = activeGoalItems(settings).find((item) => item.id === selectedItemId);
   if (!selectedItem) {
-    await interaction.reply({ content: "O item selecionado não está mais cadastrado ou foi desativado.", ephemeral: true });
+    await interaction.reply({ content: "O item selecionado não está mais cadastrado ou foi desativado.", ...privateReplyOptions(interaction) });
     return;
   }
 
   const modal = new ModalBuilder()
-    .setCustomId(`${PREFIX}:modal:${sourceMessageId}:${selectedItem.id}:${interaction.user.id}:${correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : "none"}`)
+    .setCustomId(farmModalCustomId(pending.sourceMessageId, selectedItem.id, interaction.user.id, pending.correctionRequestId, pending.channelId, guild.id))
     .setTitle("Registrar Farm")
     .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
       new TextInputBuilder()
@@ -1184,13 +1203,19 @@ async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuIn
     ));
 
   await interaction.showModal(modal);
+  if (interaction.isStringSelectMenu()) {
+    await interaction.message.delete().catch(() => null);
+  }
 }
 
 async function submitGoalModal(interaction: ModalSubmitInteraction, context: BotContext) {
-  if (!interaction.guild) return;
-  await interaction.deferReply({ ephemeral: true });
-  const [, , sourceMessageId, itemId, ownerId, correctionRequestId] = interaction.customId.split(":");
-  const lockKey = `${interaction.guild.id}:${sourceMessageId}:${interaction.user.id}:${itemId}`;
+  const component = parseFarmComponentContext(interaction.customId);
+  const guild = await resolveFarmGuild(interaction, component.guildId);
+  if (!guild) return;
+  if (interaction.guild) await interaction.deferReply({ ephemeral: true });
+  else await interaction.deferReply();
+  const itemId = component.itemId ?? "";
+  const lockKey = `${guild.id}:${component.sourceMessageId}:${interaction.user.id}:${itemId}`;
   if (pendingFarmItems.has(lockKey)) {
     await interaction.editReply("Esse item já está sendo registrado. Aguarde alguns instantes.");
     return;
@@ -1198,19 +1223,19 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   pendingFarmItems.add(lockKey);
 
   try {
-    const pending = await recoverFarmImageContext(interaction, context, sourceMessageId ?? "", correctionRequestId && correctionRequestId !== "none" ? correctionRequestId : null);
+    const pending = await recoverFarmImageContext(interaction, context, component.sourceMessageId, component.correctionRequestId, component.guildId, component.channelId);
 
     if (!pending || !itemId) {
       await interaction.editReply("Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.");
       return;
     }
 
-    if (pending.userId !== interaction.user.id || pending.userId !== ownerId || pending.channelId !== interaction.channelId) {
+    if (pending.userId !== interaction.user.id || pending.userId !== component.ownerId) {
       await interaction.editReply("Este painel pertence a outro usuário.");
       return;
     }
 
-    const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+    const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
     const selectedItem = activeGoalItems(settings).find((item) => item.id === itemId);
     if (!selectedItem) {
       await interaction.editReply("O item selecionado não está mais cadastrado ou foi desativado.");
@@ -1225,17 +1250,17 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     const quantityValue = quantity as number;
 
     const activeConfig = settings?.configs?.find((config) => config.status === "active") ?? settings?.configs?.[0] ?? null;
-    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
     const fields = [
       { id: "item", label: "Item", value: selectedItem.name },
       { id: "quantity", label: "Quantidade", value: String(quantity) }
     ];
-    const idempotencyKey = `${interaction.guild.id}:${pending.sourceMessageId}:${interaction.user.id}:${selectedItem.id}`;
+    const idempotencyKey = `${guild.id}:${pending.sourceMessageId}:${interaction.user.id}:${selectedItem.id}`;
     const saved = await context.api.createFivemGoalEntry({
       attachmentId: pending.attachmentId,
-      channelId: interaction.channelId ?? "",
+      channelId: pending.channelId,
       fields,
-      guildId: interaction.guild.id,
+      guildId: guild.id,
       idempotencyKey,
       imageUrl: pending.imageUrl,
       itemId: selectedItem.id,
@@ -1253,10 +1278,10 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     }
 
     await context.api.postLog({
-      guildId: interaction.guild.id,
+      guildId: guild.id,
       message: "Meta confirmada a partir de foto enviada no canal individual.",
       metadata: {
-        channelId: interaction.channelId,
+        channelId: pending.channelId,
         imageUrl: pending.imageUrl,
         itemId: selectedItem.id,
         quantity: quantityValue,
@@ -1267,15 +1292,15 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     }).catch(() => null);
 
     await interaction.editReply("Farm registrado.");
-    const channel = interaction.channel;
+    const channel = await guild.channels.fetch(pending.channelId).catch(() => null);
     if (channel?.isSendable()) {
-      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, interaction.guild, selectedItem.emoji)).catch(() => null);
+      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, guild, selectedItem.emoji)).catch(() => null);
       if (pending.correctionRequestId && pending.replacementForRegistrationId) {
-        await channel.send(createCorrectionCompletedPayload({ fields, replacementForRegistrationId: pending.replacementForRegistrationId }, interaction.guild)).catch(() => null);
+        await channel.send(createCorrectionCompletedPayload({ fields, replacementForRegistrationId: pending.replacementForRegistrationId }, guild)).catch(() => null);
       }
     }
     if (pending.correctionRequestId && pending.replacementForRegistrationId) {
-      await sendGoalLog(interaction.guild, context, `✅ Correção de meta concluída\n\nUsuário: <@${interaction.user.id}>\nRegistro original: ${pending.replacementForRegistrationId}\nNovo registro: ${"entry" in saved ? saved.entry?.id ?? "-" : "-"}\nItem: ${selectedItem.name}\nNova quantidade: ${formatGoalValue(quantityValue)}`, { id: pending.correctionRequestId });
+      await sendGoalLog(guild, context, `✅ Correção de meta concluída\n\nUsuário: <@${interaction.user.id}>\nRegistro original: ${pending.replacementForRegistrationId}\nNovo registro: ${"entry" in saved ? saved.entry?.id ?? "-" : "-"}\nItem: ${selectedItem.name}\nNova quantidade: ${formatGoalValue(quantityValue)}`, { id: pending.correctionRequestId });
     }
   } finally {
     pendingFarmItems.delete(lockKey);
@@ -1540,6 +1565,67 @@ function readApiError(error: unknown, fallback: string) {
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
+type FarmComponentContext = {
+  channelId: string | null;
+  correctionRequestId: string | null;
+  guildId: string | null;
+  itemId: string | null;
+  ownerId: string | null;
+  sourceMessageId: string;
+};
+
+function correctionIdOrNull(value: string | null | undefined) {
+  return value && value !== "none" ? value : null;
+}
+
+function farmComponentCustomId(action: "register" | "correct", sourceMessageId: string, channelId: string | null, guildId: string | null) {
+  return guildId && channelId ? `${PREFIX}:${action}:${guildId}:${channelId}:${sourceMessageId}` : `${PREFIX}:${action}:${sourceMessageId}`;
+}
+
+function farmItemCustomId(sourceMessageId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {
+  return guildId && channelId
+    ? `${PREFIX}:item:${guildId}:${channelId}:${sourceMessageId}:${ownerId}:${correctionRequestId ?? "none"}`
+    : `${PREFIX}:item:${sourceMessageId}:${ownerId}:${correctionRequestId ?? "none"}`;
+}
+
+function farmModalCustomId(sourceMessageId: string, itemId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {
+  return guildId && channelId
+    ? `${PREFIX}:modal:${guildId}:${channelId}:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`
+    : `${PREFIX}:modal:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`;
+}
+
+function parseFarmComponentContext(customId: string): FarmComponentContext {
+  const parts = customId.split(":");
+  const action = parts[1] ?? "";
+  if ((action === "register" || action === "correct") && parts.length >= 5) {
+    return { channelId: parts[3] ?? null, correctionRequestId: null, guildId: parts[2] ?? null, itemId: null, ownerId: null, sourceMessageId: parts[4] ?? "" };
+  }
+  if ((action === "register" || action === "correct") && parts.length >= 3) {
+    return { channelId: null, correctionRequestId: null, guildId: null, itemId: null, ownerId: null, sourceMessageId: parts[2] ?? "" };
+  }
+  if (action === "item" && parts.length >= 7) {
+    return { channelId: parts[3] ?? null, correctionRequestId: correctionIdOrNull(parts[6]), guildId: parts[2] ?? null, itemId: null, ownerId: parts[5] ?? null, sourceMessageId: parts[4] ?? "" };
+  }
+  if (action === "item") {
+    return { channelId: null, correctionRequestId: correctionIdOrNull(parts[4]), guildId: null, itemId: null, ownerId: parts[3] ?? null, sourceMessageId: parts[2] ?? "" };
+  }
+  if (action === "modal" && parts.length >= 8) {
+    return { channelId: parts[3] ?? null, correctionRequestId: correctionIdOrNull(parts[7]), guildId: parts[2] ?? null, itemId: parts[5] ?? null, ownerId: parts[6] ?? null, sourceMessageId: parts[4] ?? "" };
+  }
+  if (action === "modal") {
+    return { channelId: null, correctionRequestId: correctionIdOrNull(parts[5]), guildId: null, itemId: parts[3] ?? null, ownerId: parts[4] ?? null, sourceMessageId: parts[2] ?? "" };
+  }
+  return { channelId: null, correctionRequestId: null, guildId: null, itemId: null, ownerId: null, sourceMessageId: "" };
+}
+
+async function resolveFarmGuild(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, guildId: string | null) {
+  return interaction.guild ?? (guildId ? await interaction.client.guilds.fetch(guildId).catch(() => null) : null);
+}
+
+function privateReplyOptions(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction) {
+  return interaction.guild ? { ephemeral: true } : {};
+}
+
 type FarmImageContext = {
   attachmentId: string;
   channelId: string;
@@ -1551,23 +1637,34 @@ type FarmImageContext = {
   userId: string;
 };
 
-async function recoverFarmImageContext(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, context: BotContext, sourceMessageId: string, correctionRequestId: string | null = null): Promise<FarmImageContext | null> {
-  if (!interaction.guild || !interaction.channel || !sourceMessageId || !("messages" in interaction.channel)) return null;
-  const goalChannel = await context.api.getFivemGoalChannelByChannel(interaction.channelId ?? "").catch(() => null);
+async function recoverFarmImageContext(
+  interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
+  context: BotContext,
+  sourceMessageId: string,
+  correctionRequestId: string | null = null,
+  guildId: string | null = null,
+  channelId: string | null = null
+): Promise<FarmImageContext | null> {
+  const guild = await resolveFarmGuild(interaction, guildId);
+  const sourceChannelId = channelId ?? interaction.channelId ?? "";
+  if (!guild || !sourceMessageId || !sourceChannelId) return null;
+  const sourceChannel = channelId ? await guild.channels.fetch(sourceChannelId).catch(() => null) : interaction.channel;
+  if (!sourceChannel || !("messages" in sourceChannel)) return null;
+  const goalChannel = await context.api.getFivemGoalChannelByChannel(sourceChannelId).catch(() => null);
   if (!goalChannel) return null;
-  const sourceMessage = await interaction.channel.messages.fetch(sourceMessageId).catch(() => null);
+  const sourceMessage = await sourceChannel.messages.fetch(sourceMessageId).catch(() => null);
   if (!sourceMessage || sourceMessage.author.id !== goalChannel.userId) return null;
   const image = sourceMessage.attachments.find(isAllowedGoalImage);
   if (!image) return null;
 
   const correction = correctionRequestId
-    ? await context.api.getPendingFivemGoalCorrections(interaction.guild.id, goalChannel.userId, interaction.channelId ?? "").then((items) => items.find((item) => item.id === correctionRequestId) ?? null).catch(() => null)
+    ? await context.api.getPendingFivemGoalCorrections(guild.id, goalChannel.userId, sourceChannelId).then((items) => items.find((item) => item.id === correctionRequestId) ?? null).catch(() => null)
     : null;
-  const autoCorrection = correction ?? await context.api.getPendingFivemGoalCorrections(interaction.guild.id, goalChannel.userId, interaction.channelId ?? "").then((items) => items.length === 1 ? items[0] ?? null : null).catch(() => null);
+  const autoCorrection = correction ?? await context.api.getPendingFivemGoalCorrections(guild.id, goalChannel.userId, sourceChannelId).then((items) => items.length === 1 ? items[0] ?? null : null).catch(() => null);
 
   return {
     attachmentId: image.id,
-    channelId: interaction.channelId ?? "",
+    channelId: sourceChannelId,
     correctionRequestId: autoCorrection?.id ?? null,
     imageUrl: image.url,
     metaId: autoCorrection?.originalRegistration?.metaId ?? null,
@@ -1583,8 +1680,12 @@ function activeGoalItems(settings: FivemGoalSettings | null | undefined): FivemG
     .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name, "pt-BR"));
 }
 
-export function createImageReviewPayload(userId: string, _channelId: string, sourceMessageId: string, _attachmentId: string, imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = []) {
+export function createImageReviewPayload(userId: string, channelId: string, sourceMessageId: string, _attachmentId: string, imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = [], guild: Guild | null = null) {
   const correctionIntro = corrections.length ? "\n\n⚠️ Existe correção pendente. Esta imagem será usada para refazer uma meta solicitada." : "";
+  const guildId = guild?.id ?? null;
+  const client = guild?.client ?? null;
+  const registerCustomId = farmComponentCustomId("register", sourceMessageId, channelId, guildId);
+  const correctCustomId = farmComponentCustomId("correct", sourceMessageId, channelId, guildId);
 
   return {
     allowedMentions: { parse: [] as never[] },
@@ -1594,12 +1695,12 @@ export function createImageReviewPayload(userId: string, _channelId: string, sou
         accent_color: 0x22c55e,
         components: [
           { type: 12, items: [{ media: { url: imageUrl }, description: "meta image" }] },
-          { type: 10, content: replaceSystemEmojis(`## ${systemEmojiText("prancheta_acertos")} Registro de Farm\n\n${systemEmojiText("homem")} Usuário: <@${userId}>\n${systemEmojiText("interrogacao")} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, null) },
+          { type: 10, content: replaceSystemEmojis(`## ${systemEmojiText("prancheta_acertos", guild, client)} Registro de Farm\n\n${systemEmojiText("homem", guild, client)} Usuário: <@${userId}>\n${systemEmojiText("interrogacao", guild, client)} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, guild, client) },
           { type: 14, divider: true, spacing: 1 },
           ...(corrections.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-            new StringSelectMenuBuilder().setCustomId(`${PREFIX}:correct:${sourceMessageId}`).setPlaceholder("Qual meta você está refazendo?").addOptions(corrections.slice(0, 25).map((item) => ({ description: item.reason.slice(0, 100), label: correctionOptionLabel(item).slice(0, 100), value: item.id })))
+            new StringSelectMenuBuilder().setCustomId(correctCustomId).setPlaceholder("Qual meta você está refazendo?").addOptions(corrections.slice(0, 25).map((item) => ({ description: item.reason.slice(0, 100), label: correctionOptionLabel(item).slice(0, 100), value: item.id })))
           )] : [new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(`${PREFIX}:register:${sourceMessageId}`).setEmoji(systemComponentEmoji("prancheta_acertos")).setLabel("Registrar Farm").setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId(registerCustomId).setEmoji(systemComponentEmoji("prancheta_acertos", guild, client)).setLabel("Registrar Farm").setStyle(ButtonStyle.Primary)
           )])
         ]
       }
