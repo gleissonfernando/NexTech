@@ -5290,28 +5290,42 @@ function DashboardNoticeCenter({
 
 function DashboardMaintenanceScreen({ maintenance }: { maintenance: MaintenanceState }) {
   return (
-    <section className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-[#FFD500]/20 bg-[#050505] px-4 py-10 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,213,0,.12),transparent_34%),#050505]" />
+    <section className="relative flex min-h-[calc(100vh-190px)] items-center justify-center overflow-hidden rounded-lg border border-[#FFD500]/20 bg-[#050505] px-4 py-10 text-white">
+      <div className="absolute inset-0 bg-[#050505]" />
+      <div className="absolute inset-x-0 top-0 h-px bg-[#FFD500]/45" />
+      <div className="absolute inset-y-0 right-0 w-1/3 bg-[url('/maintenance/nft-coding.gif')] bg-cover bg-center opacity-[.08]" />
       <motion.section
         animate={{ opacity: 1, y: 0 }}
-        className="relative w-full max-w-xl rounded-lg border border-[#FFD500]/25 bg-[#141414]/90 p-8 text-center shadow-glow backdrop-blur-2xl"
+        className="relative w-full max-w-[440px] rounded-lg border border-[#FFD500]/15 bg-[#141414]/95 px-8 py-9 text-center shadow-[0_22px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl"
         initial={{ opacity: 0, y: 14 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFD500]/30 bg-[#FFD500]/10">
-          <ShieldAlert className="h-7 w-7 text-[#FFD500]" />
+        <img alt="NexTech" className="mx-auto h-8 w-auto object-contain" src="/brand/nextech.png" />
+        <div className="mx-auto mt-8 flex h-36 w-36 items-center justify-center overflow-hidden rounded-lg border border-[#FFD500]/10 bg-black/35">
+          <img alt="Manutenção NexTech" className="h-full w-full object-cover" src="/maintenance/nft-coding.gif" />
         </div>
-        <h1 className="mt-5 text-2xl font-black tracking-normal text-white">Bot em manutenção</h1>
-        <p className="mt-3 text-sm font-semibold leading-6 text-zinc-300">
-          {maintenance.botName ? `${maintenance.botName} está temporariamente indisponível.` : "Este bot está temporariamente indisponível."} Troque de bot pelo menu para acessar outro painel ativo.
+        <div className="mx-auto mt-6 inline-flex items-center gap-2 rounded-md border border-[#FFD500]/20 bg-[#FFD500]/10 px-3 py-1.5 text-xs font-bold text-[#FFD500]">
+          <span className="h-2 w-2 rounded-full bg-[#FFD500]" />
+          Manutenção em andamento
+        </div>
+        <h1 className="mx-auto mt-6 max-w-sm text-2xl font-black leading-tight tracking-normal text-white">
+          Estamos fora do ar para manutenção
+        </h1>
+        <p className="mx-auto mt-5 max-w-sm text-sm font-medium leading-6 text-zinc-300">
+          {maintenance.botName ? `${maintenance.botName} está temporariamente indisponível.` : "Este painel está temporariamente indisponível."} Voltaremos em breve. Obrigado pela paciência.
         </p>
         <p className="mt-4 text-xs font-medium text-zinc-500">
           Iniciada em {maintenance.activatedAt ? formatFullDate(maintenance.activatedAt) : "horário não informado"}.
         </p>
-        <Button className="mt-6" onClick={() => window.location.reload()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Verificar novamente
+        <Button asChild className="mt-7">
+          <a href={SUPPORT_URL} rel="noreferrer" target="_blank">
+            <MessageCircle className="h-4 w-4" />
+            Avisos no Discord
+          </a>
         </Button>
+        <div className="mt-7 border-t border-[#FFD500]/15 pt-5 text-xs font-medium text-zinc-500">
+          Avisamos assim que tudo voltar no Discord.
+        </div>
       </motion.section>
     </section>
   );
