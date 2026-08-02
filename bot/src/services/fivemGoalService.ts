@@ -25,7 +25,7 @@ import {
 import type { BotContext } from "../types";
 import type { BotCommand } from "../types";
 import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalSettings } from "./apiClient";
-import { fixedSystemEmojiText, isSystemEmojiKey, type SystemEmojiKey } from "../config/systemEmojis";
+import { FIXED_SYSTEM_EMOJI_BY_KEY, SYSTEM_EMOJI_BY_KEY, isSystemEmojiKey, type SystemEmojiKey } from "../config/systemEmojis";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "fivem_goal";
@@ -1697,15 +1697,19 @@ function activeGoalItems(settings: FivemGoalSettings | null | undefined): FivemG
 }
 
 function farmSystemEmojiText(key: SystemEmojiKey, guild: Guild | null, client: Client | null = guild?.client ?? null) {
-  const fixed = fixedSystemEmojiText(key);
-  return fixed || systemEmojiText(key, guild, client);
+  const fixed = FIXED_SYSTEM_EMOJI_BY_KEY[key];
+  const definition = SYSTEM_EMOJI_BY_KEY.get(key);
+  const names = [...new Set([key, fixed?.name, definition?.name, ...(definition?.aliases ?? [])].filter((name): name is string => Boolean(name)))];
+  const guildEmoji = guild?.emojis.cache.find((emoji) => Boolean(emoji.name && names.includes(emoji.name) && emoji.available !== false));
+  if (guildEmoji) return `<${guildEmoji.animated ? "a" : ""}:${guildEmoji.name}:${guildEmoji.id}>`;
+  return systemEmojiText(key, guild, client);
 }
 
 function renderFarmConfiguredEmoji(value: string | null | undefined, guild: Guild, fallbackKey: SystemEmojiKey = "caixa") {
   const raw = value?.trim();
   if (!raw) return farmSystemEmojiText(fallbackKey, guild, guild.client);
   const normalized = replaceSystemEmojis(raw, guild, guild.client)
-    .replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => isSystemEmojiKey(alias) ? fixedSystemEmojiText(alias) : match)
+    .replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => isSystemEmojiKey(alias) ? farmSystemEmojiText(alias, guild, guild.client) : match)
     .trim();
   return normalized || farmSystemEmojiText(fallbackKey, guild, guild.client);
 }
