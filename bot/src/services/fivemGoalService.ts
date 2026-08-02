@@ -92,12 +92,22 @@ export const resumoMetaCommand: BotCommand = {
 
 export function startFivemGoalService(client: Client<true>, context: BotContext) {
   context.socket.onFivemGoalPanelPublish((payload, ack) => {
-    const guild = client.guilds.cache.get(payload.guildId);
-    if (!guild) {
-      ack?.({ ok: false, error: "Bot não está conectado ao servidor configurado." });
-      return;
+    const cachedGuild = client.guilds.cache.get(payload.guildId) ?? null;
+    if (!cachedGuild) {
+      void context.api.postLog({
+        guildId: payload.guildId,
+        message: "Guild do painel de metas não estava no cache; tentando buscar no Discord antes de publicar.",
+        metadata: { botId: payload.botId ?? null },
+        type: "fivem.goals.panel_publish_cache_miss",
+        userId: null
+      }).catch(() => null);
     }
     void (async () => {
+      const guild = cachedGuild ?? (await client.guilds.fetch(payload.guildId).catch(() => null));
+      if (!guild) {
+        ack?.({ ok: false, error: "Bot não está conectado ao servidor configurado." });
+        return;
+      }
       const [requestPanel, rankingPanel] = await Promise.all([
         publishGoalRequestPanel(guild, context),
         refreshFivemGoalRankingPanel(guild, context)
