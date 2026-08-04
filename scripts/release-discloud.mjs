@@ -97,7 +97,7 @@ const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
 console.log("[release] Publicando painel de atualizações no Discord...");
-await runAutoUpdateLogger({ send: true }).catch((error) => {
+await runAutoUpdateLogger({ mode: process.env.UPDATE_PANEL_MODE || "realtime-summary", send: true }).catch((error) => {
   console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
 });
 

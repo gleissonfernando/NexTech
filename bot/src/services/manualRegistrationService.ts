@@ -40,15 +40,36 @@ type SetApprovalResult = { farmChannelId: string | null; metaChannelId: string; 
 export function startManualRegistrationService(client: Client<true>, context: BotContext) {
   context.socket.onManualRegistrationPanelPublish((payload) => {
     const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) void publishConfiguredPanel(guild, context);
+    if (guild) runManualRegistrationSocketTask(context, "panel_publish", payload.guildId, null, () => publishConfiguredPanel(guild, context));
   });
   context.socket.onManualRegistrationExecute((payload) => {
     const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) void executeDashboardRegistration(guild, context, payload);
+    if (guild) runManualRegistrationSocketTask(context, "execute", payload.guildId, payload.userId, () => executeDashboardRegistration(guild, context, payload));
   });
   context.socket.onManualRegistrationRemove((payload) => {
     const guild = client.guilds.cache.get(payload.guildId);
-    if (guild) void removeManualRegistrationFromDiscord(guild, context, payload);
+    if (guild) runManualRegistrationSocketTask(context, "remove", payload.guildId, payload.userId, () => removeManualRegistrationFromDiscord(guild, context, payload));
+  });
+}
+
+function runManualRegistrationSocketTask(context: BotContext, action: string, guildId: string, userId: string | null, task: () => Promise<unknown>) {
+  void task().catch((error) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    console.error(JSON.stringify({
+      action,
+      at: new Date().toISOString(),
+      error: message,
+      level: "error",
+      module: "manual-registration",
+      source: "socket"
+    }));
+    void context.api.postLog({
+      guildId,
+      message,
+      metadata: { action, source: "socket" },
+      type: "manual-registration.socket_task_failed",
+      userId
+    }).catch(() => null);
   });
 }
 
@@ -868,7 +889,7 @@ async function executeApproveSubmission(interaction: ButtonInteraction, context:
     await interaction.editReply(`Usuário aprovado com sucesso. O canal de meta foi criado e o sistema de farm foi vinculado: <#${result.metaChannelId}>`);
     await closeRequestChannel(interaction.guild, context, result.submission, "Pedido de Set aprovado");
   } catch (error) {
-    const reason = manualRegistrationErrorMessage(error);
+    const reason = error instanceof ApprovalFlowError ? error.message : manualRegistrationErrorMessage(error);
     const failed = targetId ? await context.api.getLatestManualRegistrationSubmission(interaction.guild.id, targetId).catch(() => null) : null;
     if (failed?.channelId) {
       const requestChannel = await interaction.guild.channels.fetch(failed.channelId).catch(() => null);

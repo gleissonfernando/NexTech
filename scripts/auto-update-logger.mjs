@@ -13,6 +13,7 @@ const discordApi = "https://discord.com/api/v10";
 const isDryRun = process.argv.includes("--dry-run");
 const isSendRequested = process.argv.includes("--send") || process.env.AUTO_UPDATE_SEND === "true";
 const isForceSend = process.argv.includes("--force") || process.env.AUTO_UPDATE_ALWAYS_SEND === "true";
+const cliMode = process.argv.find((arg) => arg.startsWith("--mode="))?.slice("--mode=".length);
 
 export function buildCurrentReleaseMetadata() {
   const currentCommit = currentReleaseCommit(null);
@@ -59,6 +60,7 @@ export async function runAutoUpdateLogger(options = {}) {
     || metadata?.previousCommit
     || safeGit(["rev-parse", "HEAD~1"]).trim();
   const analysis = analyzeReleaseSafely(previousCommit, currentCommit, metadata);
+  const panelMode = normalizeUpdatePanelMode(options.mode || cliMode || readConfigValue("UPDATE_PANEL_MODE"));
   const version = existingRelease?.version
     || metadata?.version
     || nextVersion(history.releases.find((release) => release.commit !== currentCommit)?.version, readPackageVersion());
@@ -79,12 +81,12 @@ export async function runAutoUpdateLogger(options = {}) {
   };
 
   if (isDryRun || options.dryRun) {
-    const payload = buildDiscordPayload({ analysis, bot: null, channelId, release });
+    const payload = buildDiscordPayload({ analysis, bot: null, channelId, mode: panelMode, release });
     console.log(JSON.stringify(payload, null, 2));
     return { release, skipped: true };
   }
 
-  const payload = buildDiscordPayload({ analysis, bot: null, channelId, release });
+  const payload = buildDiscordPayload({ analysis, bot: null, channelId, mode: panelMode, release });
 
   if (!sendEnabled) {
     writeReleaseDraft(release, payload);
@@ -111,7 +113,7 @@ export async function runAutoUpdateLogger(options = {}) {
   }
 
   const bot = await fetchDiscordBot(token).catch(() => null);
-  const sendPayload = buildDiscordPayload({ analysis, bot, channelId, release });
+  const sendPayload = buildDiscordPayload({ analysis, bot, channelId, mode: panelMode, release });
 
   if (!forceSend && await hasRecentDiscordRelease(token, channelId, currentCommit).catch(() => false)) {
     writeReleaseDraft(release, sendPayload);
@@ -377,7 +379,7 @@ function looksLikeModuleLabel(value) {
   return /(sistema|m[oó]dulo|dashboard|painel|five|pol[ií]cia|captcha|media|vídeo|video)/i.test(value);
 }
 
-function buildDiscordPayload({ analysis, bot, release }) {
+function buildDiscordPayload({ analysis, bot, mode, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#FFD500");
   const bannerUrl = readConfigValue("UPDATE_PANEL_BANNER_URL");
   const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
@@ -386,7 +388,11 @@ function buildDiscordPayload({ analysis, bot, release }) {
     || "Atualização publicada automaticamente com correções, melhorias e ajustes gerais do sistema.";
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
-  const sections = [
+  const compact = mode === "realtime-summary";
+  const sections = compact ? [
+    ["🆕 Novidades", unique([...analysis.summary.novidades, ...analysis.summary.recursos, ...analysis.summary.melhorias])],
+    ["🔧 Erros corrigidos", analysis.summary.correcoes]
+  ] : [
     ["📌 O que mudou", buildReleaseChangeSummary(release, analysis)],
     ["🔧 Correções", analysis.summary.correcoes],
     ["🤖 Melhorias", analysis.summary.melhorias],
@@ -400,12 +406,14 @@ function buildDiscordPayload({ analysis, bot, release }) {
   }
 
   const content = [
-    `## ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
+    compact ? `## ATUALIZAÇÃO EM TEMPO REAL - ${formatUpdateDate(date)}` : `## ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
     "",
     ...sections.flatMap(([title, items]) => formatUpdateSection(title, items)),
-    "📣 **Observação**",
-    `• ${escapeMarkdown(observation).slice(0, 260)}`,
-    "",
+    ...(compact ? [] : [
+      "📣 **Observação**",
+      `• ${escapeMarkdown(observation).slice(0, 260)}`,
+      ""
+    ]),
     `-# Versão ${escapeMarkdown(release.version)} • commit ${release.commit.slice(0, 8)}`,
     `-# **${escapeMarkdown(footer)}**`
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
@@ -421,6 +429,13 @@ function buildDiscordPayload({ analysis, bot, release }) {
     components: [{ type: 17, accent_color: color, components }],
     flags: 32768
   };
+}
+
+function normalizeUpdatePanelMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["realtime", "tempo-real", "realtime-summary", "summary", "resumo", "compact", "compacto"].includes(normalized)
+    ? "realtime-summary"
+    : "full";
 }
 
 function buildReleaseChangeSummary(release, analysis) {

@@ -1195,7 +1195,9 @@ export type MongoFivemGoalEntry = {
   idempotencyKey?: string | null;
   itemId: string | null;
   metaId?: string | null;
+  periodId?: string | null;
   quantity: number | null;
+  registeredAt?: Date | null;
   status?: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated";
   correctionRequestId?: string | null;
   replacedByRegistrationId?: string | null;
@@ -1203,6 +1205,30 @@ export type MongoFivemGoalEntry = {
   sourceMessageId?: string | null;
   updatedAt: Date;
   userId: string;
+};
+
+export type MongoFivemGoalPeriodStatus = "ACTIVE" | "CLOSING" | "CLOSED";
+
+export type MongoFivemGoalPeriod = {
+  _id: string;
+  auditCompletedAt?: Date | null;
+  auditError?: string | null;
+  auditStartedAt?: Date | null;
+  botId: string | null;
+  closedAt?: Date | null;
+  closingStartedAt?: Date | null;
+  createdAt: Date;
+  cutAt: Date;
+  endAt: Date;
+  finalizedBy?: string | null;
+  finalizationType?: "manual" | "automatic" | null;
+  guildId: string;
+  nextPeriodId?: string | null;
+  previousPeriodId?: string | null;
+  reportSnapshot?: Record<string, unknown> | null;
+  startAt: Date;
+  status: MongoFivemGoalPeriodStatus;
+  updatedAt: Date;
 };
 
 export type MongoFivemGoalCorrectionRequest = {
@@ -1281,7 +1307,9 @@ export type MongoFivemGoalSubmission = {
   guildId: string;
   idempotencyKey?: string | null;
   metaId: string;
+  periodId?: string | null;
   proofUrl: string | null;
+  registeredAt?: Date | null;
   refusedAt?: Date | null;
   refusedBy?: string | null;
   refusalReason?: string | null;
@@ -5750,6 +5778,7 @@ export async function getMongoCollections() {
     manualRegistrationSubmissions: db.collection<MongoManualRegistrationSubmission>("manual_registration_submissions"),
     manualRegistrationLogs: db.collection<MongoManualRegistrationLog>("manual_registration_logs"),
     fivemGoalSettings: db.collection<MongoFivemGoalSettings>("fivem_goal_settings"),
+    fivemGoalPeriods: db.collection<MongoFivemGoalPeriod>("fivem_goal_periods"),
     fivemGoalUserChannels: db.collection<MongoFivemGoalUserChannel>("fivem_goal_user_channels"),
     fivemGoalEntries: db.collection<MongoFivemGoalEntry>("fivem_goal_entries"),
     fivemGoalCorrectionRequests: db.collection<MongoFivemGoalCorrectionRequest>("fivem_goal_correction_requests"),
@@ -6092,6 +6121,16 @@ async function createMongoIndexes(db: Db) {
       { name: "fivem_goal_entry_idempotency_unique", partialFilterExpression: { idempotencyKey: { $type: "string" } }, unique: true }
     ),
     db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, userId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalEntry>("fivem_goal_entries").createIndex({ botId: 1, guildId: 1, periodId: 1, registeredAt: -1 }),
+    db.collection<MongoFivemGoalPeriod>("fivem_goal_periods").createIndex(
+      { botId: 1, guildId: 1, status: 1 },
+      { name: "fivem_goal_active_period_unique", partialFilterExpression: { status: "ACTIVE" }, unique: true }
+    ),
+    db.collection<MongoFivemGoalPeriod>("fivem_goal_periods").createIndex(
+      { botId: 1, guildId: 1, startAt: 1, endAt: 1 },
+      { name: "fivem_goal_period_window_unique", unique: true }
+    ),
+    db.collection<MongoFivemGoalPeriod>("fivem_goal_periods").createIndex({ botId: 1, guildId: 1, status: 1, endAt: 1 }),
     db.collection<MongoFivemGoalCorrectionRequest>("fivem_goal_correction_requests").createIndex({ botId: 1, guildId: 1, userId: 1, status: 1, requestedAt: -1 }),
     db.collection<MongoFivemGoalCorrectionRequest>("fivem_goal_correction_requests").createIndex(
       { botId: 1, guildId: 1, originalRegistrationId: 1, status: 1 },
@@ -6102,6 +6141,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, periodId: 1, registeredAt: -1 }),
     db.collection<MongoFivemGoalLog>("fivem_goal_logs").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
     db.collection<MongoFivemOrderSettings>("fivem_order_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoFivemOrderFamily>("fivem_order_families").createIndex(

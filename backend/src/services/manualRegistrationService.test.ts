@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultManualRegistrationSettings, isManualRegistrationRemovableStatus } from "./manualRegistrationService";
+import { defaultManualRegistrationSettings, isManualRegistrationBlockingStatus, isManualRegistrationRemovableStatus } from "./manualRegistrationService";
 
 test("exclusão do Pedido de Set aceita cadastro pendente e aprovado", () => {
   assert.equal(isManualRegistrationRemovableStatus("pending"), true);
@@ -10,6 +10,15 @@ test("exclusão do Pedido de Set aceita cadastro pendente e aprovado", () => {
 test("exclusão do Pedido de Set bloqueia cadastros já finalizados", () => {
   assert.equal(isManualRegistrationRemovableStatus("rejected"), false);
   assert.equal(isManualRegistrationRemovableStatus("removed"), false);
+});
+
+test("novo Pedido de Set só é bloqueado por cadastros ativos ou em andamento", () => {
+  assert.equal(isManualRegistrationBlockingStatus("pending"), true);
+  assert.equal(isManualRegistrationBlockingStatus("processing"), true);
+  assert.equal(isManualRegistrationBlockingStatus("failed"), true);
+  assert.equal(isManualRegistrationBlockingStatus("approved"), true);
+  assert.equal(isManualRegistrationBlockingStatus("rejected"), false);
+  assert.equal(isManualRegistrationBlockingStatus("removed"), false);
 });
 
 test("Pedido de Set padrao usa somente os tres campos configurados", () => {

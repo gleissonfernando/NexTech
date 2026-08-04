@@ -3,11 +3,13 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   TextInputBuilder,
   TextInputStyle,
   UserSelectMenuBuilder,
@@ -210,7 +212,11 @@ export async function ensureFivemGoalChannelForApprovedSet(
     ],
     reason: `Canal de metas FiveM para ${userId}`,
     type: ChannelType.GuildText
-  });
+  }).catch((error) => null);
+
+  if (!channel) {
+    return goalSetIntegrationResult(null, null, targetCategoryId, false, "O Discord recusou a criação do canal de meta. Verifique se o bot possui Gerenciar Canais na categoria de metas e se o servidor não atingiu o limite de canais.");
+  }
 
   try {
     await channel.send(createFarmRoomPanelPayload(guild, settings, userId));
@@ -235,7 +241,6 @@ function validateGoalBotPermissions(guild: Guild, categoryId: string | null) {
   const required = [
     PermissionFlagsBits.ViewChannel,
     PermissionFlagsBits.ManageChannels,
-    PermissionFlagsBits.ManageRoles,
     PermissionFlagsBits.SendMessages,
     PermissionFlagsBits.EmbedLinks,
     PermissionFlagsBits.AttachFiles,
@@ -257,7 +262,6 @@ function goalPermissionName(permission: bigint) {
   const names = new Map<bigint, string>([
     [PermissionFlagsBits.ViewChannel, "Ver Canal"],
     [PermissionFlagsBits.ManageChannels, "Gerenciar Canais"],
-    [PermissionFlagsBits.ManageRoles, "Gerenciar Cargos"],
     [PermissionFlagsBits.SendMessages, "Enviar Mensagens"],
     [PermissionFlagsBits.EmbedLinks, "Inserir Links"],
     [PermissionFlagsBits.AttachFiles, "Anexar Arquivos"],
@@ -431,21 +435,16 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
   }
 
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:register:`)) {
-    await showFarmItemSelect(interaction, context);
-    return true;
-  }
-
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:item:`)) {
     await showGoalModal(interaction, context);
     return true;
   }
 
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${PREFIX}:correct:`)) {
-    await showFarmItemSelect(interaction, context, interaction.values[0] ?? null);
+    await showGoalModal(interaction, context, interaction.values[0] ?? null);
     return true;
   }
 
-  if (interaction.isModalSubmit() && interaction.customId.startsWith(`${PREFIX}:modal:`)) {
+  if (interaction.isModalSubmit() && (interaction.customId.startsWith(`${PREFIX}:modal:`) || interaction.customId.startsWith(`${PREFIX}:modal_ref:`))) {
     await submitGoalModal(interaction, context);
     return true;
   }
@@ -1156,7 +1155,7 @@ function readUnknownError(error: unknown) {
   return error instanceof Error ? error.message : "Falha desconhecida ao publicar o painel de solicitação de sala de meta.";
 }
 
-async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, correctionRequestId: string | null = null) {
+async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext, correctionRequestId: string | null = null) {
   const component = parseFarmComponentContext(interaction.customId);
   const guild = await resolveFarmGuild(interaction, component.guildId);
   if (!guild) return;
@@ -1176,82 +1175,56 @@ async function showFarmItemSelect(interaction: ButtonInteraction | StringSelectM
   const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
   const items = activeGoalItems(settings);
   if (!items.length) {
-    await interaction.reply({
-      content: "Nenhum item de meta foi cadastrado neste servidor.\n\nSolicite que um administrador configure os itens antes de realizar o registro.",
-      ...privateReplyOptions(interaction)
-    });
+    await interaction.reply({ content: "Não existem itens de meta ativos disponíveis para registro.", ...privateReplyOptions(interaction) });
     return;
   }
 
-  await interaction.reply({
-    allowedMentions: { parse: [] },
-    components: [{
-      type: 17,
-      accent_color: 0xfacc15,
-      components: [
-        { type: 10, content: `## ${systemEmojiText("prancheta", guild, guild.client)} Selecione o item\n\nSelecione o item que deseja registrar:` },
-        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(farmItemCustomId(pending.sourceMessageId, interaction.user.id, pending.correctionRequestId ?? correctionId, pending.channelId, guild.id))
-            .setPlaceholder("Selecione o item")
-            .setMinValues(1)
-            .setMaxValues(1)
-            .addOptions(items.slice(0, 25).map((item) => ({
-              description: item.category?.slice(0, 100) || undefined,
-              emoji: goalItemSelectEmoji(item, guild),
-              label: item.name.slice(0, 100),
-              value: item.id
-            })))
-        )
-      ]
-    }],
-    flags: (interaction.guild ? MessageFlags.Ephemeral : 0) | MessageFlags.IsComponentsV2
-  });
-  if (interaction.isButton()) {
-    await interaction.message.delete().catch(() => null);
-  }
-}
-
-async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
-  const component = parseFarmComponentContext(interaction.customId);
-  const guild = await resolveFarmGuild(interaction, component.guildId);
-  if (!guild) return;
-  const selectedItemId = interaction.isStringSelectMenu() ? interaction.values[0] ?? "" : "";
-  const pending = await recoverFarmImageContext(interaction, context, component.sourceMessageId, component.correctionRequestId, component.guildId, component.channelId);
-
-  if (!pending || !selectedItemId) {
-    await interaction.reply({ content: "Essa foto não foi localizada. Envie a imagem novamente no seu canal de meta.", ...privateReplyOptions(interaction) });
-    return;
-  }
-
-  if (pending.userId !== interaction.user.id || pending.userId !== component.ownerId) {
-    await interaction.reply({ content: "Este painel pertence a outro usuário.", ...privateReplyOptions(interaction) });
-    return;
-  }
-
-  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
-  const selectedItem = activeGoalItems(settings).find((item) => item.id === selectedItemId);
-  if (!selectedItem) {
-    await interaction.reply({ content: "O item selecionado não está mais cadastrado ou foi desativado.", ...privateReplyOptions(interaction) });
-    return;
-  }
-
-  const modal = new ModalBuilder()
-    .setCustomId(farmModalCustomId(pending.sourceMessageId, selectedItem.id, interaction.user.id, pending.correctionRequestId, pending.channelId, guild.id))
-    .setTitle("Registrar Farm")
-    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
-      new TextInputBuilder()
-        .setCustomId("quantity")
-        .setLabel("Quantidade")
-        .setPlaceholder("Digite a quantidade entregue")
-        .setRequired(true)
-        .setStyle(TextInputStyle.Short)
-    ));
+  const modal = createGoalRegistrationModal(
+    farmModalCustomId(pending.sourceMessageId, "select", interaction.user.id, pending.correctionRequestId ?? correctionId, pending.channelId, guild.id),
+    items,
+    guild
+  );
 
   await interaction.showModal(modal);
-  if (interaction.isStringSelectMenu()) {
-    await interaction.message.delete().catch(() => null);
-  }
+}
+
+export function createGoalRegistrationModal(customId: string, items: FivemGoalItem[], guild: Guild | null = null) {
+  const itemSelect = new StringSelectMenuBuilder()
+    .setCustomId("meta_item_select")
+    .setPlaceholder("Selecione o item que deseja registrar")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .setRequired(true)
+    .addOptions(items.slice(0, 25).map((item) => {
+      const option = new StringSelectMenuOptionBuilder()
+        .setLabel(item.name.slice(0, 100))
+        .setValue(item.id)
+        .setDescription((item.category || `Registrar ${item.name}`).slice(0, 100));
+      const emoji = guild ? goalItemSelectEmoji(item, guild) : undefined;
+      if (emoji) option.setEmoji(emoji);
+      return option;
+    }));
+
+  const itemLabel = new LabelBuilder()
+    .setLabel("Selecione o item que deseja registrar")
+    .setDescription("Escolha um dos itens ativos da meta.")
+    .setStringSelectMenuComponent(itemSelect);
+
+  const quantidadeInput = new TextInputBuilder()
+    .setCustomId("meta_quantidade")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Digite a quantidade")
+    .setRequired(true);
+
+  const quantidadeLabel = new LabelBuilder()
+    .setLabel("Quantidade")
+    .setDescription("Informe a quantidade que será registrada.")
+    .setTextInputComponent(quantidadeInput);
+
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle("Registrar Farm")
+    .addLabelComponents(itemLabel, quantidadeLabel);
 }
 
 async function submitGoalModal(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -1260,7 +1233,10 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
   if (!guild) return;
   if (interaction.guild) await interaction.deferReply({ ephemeral: true });
   else await interaction.deferReply();
-  const itemId = component.itemId ?? "";
+  const selectedItemId = interaction.fields.fields.has("meta_item_select")
+    ? interaction.fields.getStringSelectValues("meta_item_select")[0] ?? ""
+    : component.itemId === "select" ? "" : component.itemId ?? "";
+  const itemId = selectedItemId.trim();
   const lockKey = `${guild.id}:${component.sourceMessageId}:${interaction.user.id}:${itemId}`;
   if (pendingFarmItems.has(lockKey)) {
     await interaction.editReply("Esse item já está sendo registrado. Aguarde alguns instantes.");
@@ -1288,7 +1264,8 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
       return;
     }
 
-    const quantity = parseGoalNumericValue(interaction.fields.getTextInputValue("quantity"));
+    const quantityInput = interaction.fields.fields.has("meta_quantidade") ? interaction.fields.getTextInputValue("meta_quantidade") : interaction.fields.getTextInputValue("quantity");
+    const quantity = parseGoalNumericValue(quantityInput);
     if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0) {
       await interaction.editReply("Informe uma quantidade válida maior que zero.");
       return;
@@ -1784,12 +1761,6 @@ function correctionIdOrNull(value: string | null | undefined) {
 
 function farmComponentCustomId(action: "register" | "correct", sourceMessageId: string, channelId: string | null, guildId: string | null) {
   return guildId && channelId ? `${PREFIX}:${action}:${guildId}:${channelId}:${sourceMessageId}` : `${PREFIX}:${action}:${sourceMessageId}`;
-}
-
-function farmItemCustomId(sourceMessageId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {
-  return guildId && channelId
-    ? `${PREFIX}:item:${guildId}:${channelId}:${sourceMessageId}:${ownerId}:${correctionRequestId ?? "none"}`
-    : `${PREFIX}:item:${sourceMessageId}:${ownerId}:${correctionRequestId ?? "none"}`;
 }
 
 function farmModalCustomId(sourceMessageId: string, itemId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {

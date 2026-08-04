@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload, createGoalRequestPanelPayload, createImageReviewPayload, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -44,4 +44,19 @@ test("painel de registro de farm preserva a mensagem original no custom id", () 
   assert.match(serialized, /Registrar Farm/);
   assert.match(serialized, /fivem_goal:register:333333333333333333/);
   assert.doesNotMatch(serialized, /fivem_goal:confirm:/);
+});
+
+test("modal de registro de farm inclui select de item e campo de quantidade", () => {
+  const modal = createGoalRegistrationModal("fivem_goal:modal:source:select:user:none", [
+    { enabled: true, id: "dirty-money", name: "Dinheiro Sujo", emoji: null, category: "Registrar dinheiro" },
+    { enabled: true, id: "ammo", name: "Munição", emoji: null, category: null }
+  ]);
+  const serialized = JSON.stringify(modal.toJSON());
+
+  assert.match(serialized, /meta_item_select/);
+  assert.match(serialized, /Selecione o item que deseja registrar/);
+  assert.match(serialized, /dirty-money/);
+  assert.match(serialized, /ammo/);
+  assert.match(serialized, /meta_quantidade/);
+  assert.doesNotMatch(serialized, /fivem_goal:item:/);
 });

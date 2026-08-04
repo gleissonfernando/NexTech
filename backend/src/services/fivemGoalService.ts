@@ -7,6 +7,7 @@ import {
   type MongoFivemGoalConfig,
   type MongoFivemGoalEntry,
   type MongoFivemGoalLog,
+  type MongoFivemGoalPeriod,
   type MongoFivemGoalSettings,
   type MongoFivemGoalSubmission,
   type MongoFivemGoalUserChannel
@@ -15,6 +16,9 @@ import { dashboardLogRealtimeRoom, devBotRealtimeRoom, emitRealtimeToRoom, emitR
 
 export const FIVEM_GOALS_MODULE_ID = "fivem-goals";
 const WEEKLY_RANKING_LIMIT = 10;
+const DEFAULT_GOAL_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+const SAO_PAULO_OFFSET_MS = -3 * 60 * 60 * 1000;
+const fivemGoalPeriodLocks = new Map<string, Promise<unknown>>();
 
 export type FivemGoalFieldDto = {
   id: string;
@@ -114,7 +118,9 @@ export type FivemGoalEntryDto = {
   imageUrl: string;
   itemId: string | null;
   metaId: string | null;
+  periodId: string | null;
   quantity: number | null;
+  registeredAt: string | null;
   status: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated";
   correctionRequestId: string | null;
   replacedByRegistrationId: string | null;
@@ -207,7 +213,9 @@ export type FivemGoalSubmissionDto = {
   guildId: string;
   id: string;
   metaId: string;
+  periodId: string | null;
   proofUrl: string | null;
+  registeredAt: string | null;
   refusedAt: string | null;
   refusedBy: string | null;
   refusalReason: string | null;
@@ -219,6 +227,27 @@ export type FivemGoalSubmissionDto = {
   updatedAt: string;
   userId: string;
   value: number;
+};
+
+export type FivemGoalPeriodDto = {
+  auditCompletedAt: string | null;
+  auditError: string | null;
+  auditStartedAt: string | null;
+  botId: string | null;
+  closedAt: string | null;
+  closingStartedAt: string | null;
+  createdAt: string;
+  cutAt: string;
+  endAt: string;
+  finalizedBy: string | null;
+  finalizationType: "manual" | "automatic" | null;
+  guildId: string;
+  id: string;
+  nextPeriodId: string | null;
+  previousPeriodId: string | null;
+  startAt: string;
+  status: "ACTIVE" | "CLOSING" | "CLOSED";
+  updatedAt: string;
 };
 
 export type FivemGoalLogDto = {
@@ -439,16 +468,153 @@ export async function updateFivemGoalRankingPanelState(guildId: string, botId: s
   return saveFivemGoalSettings(guildId, botId, patch, null);
 }
 
+export function fivemGoalPeriodContains(period: Pick<MongoFivemGoalPeriod, "startAt" | "endAt">, registeredAt: Date) {
+  return registeredAt.getTime() >= period.startAt.getTime() && registeredAt.getTime() < period.endAt.getTime();
+}
+
+export function nextFivemGoalPeriodWindow(period: Pick<MongoFivemGoalPeriod, "startAt" | "endAt">) {
+  const duration = period.endAt.getTime() - period.startAt.getTime();
+  const interval = Number.isFinite(duration) && duration > 0 ? duration : DEFAULT_GOAL_PERIOD_MS;
+  const startAt = new Date(period.endAt.getTime());
+  return { endAt: new Date(startAt.getTime() + interval), startAt };
+}
+
+export function resolveFivemGoalPeriodWindow(settings: Pick<FivemGoalSettingsDto, "cycle">, now = new Date()) {
+  const cycle = settings.cycle ?? defaultFivemGoalSettings("_", null).cycle;
+  if (cycle.frequency !== "weekly") return currentSaoPauloWeek(now);
+  const [hours = 0, minutes = 0] = String(cycle.endTime || "23:59").split(":").map((part) => Number.parseInt(part, 10));
+  const closeDay = Number.isInteger(cycle.endDay) ? ((cycle.endDay % 7) + 7) % 7 : 0;
+  const local = new Date(now.getTime() + SAO_PAULO_OFFSET_MS);
+  const candidateLocal = new Date(local.getTime());
+  candidateLocal.setUTCHours(Number.isFinite(hours) ? hours : 23, Number.isFinite(minutes) ? minutes : 59, 0, 0);
+  candidateLocal.setUTCDate(candidateLocal.getUTCDate() + (closeDay - candidateLocal.getUTCDay()));
+  let cutAt = new Date(candidateLocal.getTime() - SAO_PAULO_OFFSET_MS);
+  if (now.getTime() >= cutAt.getTime()) cutAt = new Date(cutAt.getTime() + DEFAULT_GOAL_PERIOD_MS);
+  const start = new Date(cutAt.getTime() - DEFAULT_GOAL_PERIOD_MS);
+  return { end: cutAt, start };
+}
+
+async function withFivemGoalPeriodLock<T>(guildId: string, botId: string | null, task: () => Promise<T>): Promise<T> {
+  const key = `${botId ?? "main"}:${guildId}`;
+  const previous = fivemGoalPeriodLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = previous.catch(() => undefined).then(() => new Promise<void>((resolve) => { release = resolve; }));
+  fivemGoalPeriodLocks.set(key, current);
+  await previous.catch(() => undefined);
+  try {
+    return await task();
+  } finally {
+    release();
+    if (fivemGoalPeriodLocks.get(key) === current) fivemGoalPeriodLocks.delete(key);
+  }
+}
+
+async function getOrCreateActiveFivemGoalPeriod(guildId: string, botId?: string | null, now = new Date()): Promise<MongoFivemGoalPeriod> {
+  const normalizedBotId = normalizeBotId(botId);
+  return withFivemGoalPeriodLock(guildId, normalizedBotId, async () => {
+    const { fivemGoalPeriods } = await getMongoCollections();
+    for (let attempts = 0; attempts < 3; attempts += 1) {
+      const active = await fivemGoalPeriods.findOne({
+        ...scopeQuery(guildId, normalizedBotId),
+        status: "ACTIVE",
+        startAt: { $lte: now },
+        endAt: { $gt: now }
+      });
+      if (active) return active;
+
+      const expired = await fivemGoalPeriods.findOne({
+        ...scopeQuery(guildId, normalizedBotId),
+        status: "ACTIVE",
+        endAt: { $lte: now }
+      }, { sort: { endAt: 1 } });
+      if (expired) {
+        await rolloverFivemGoalPeriodUnsafe({ actorId: null, botId: normalizedBotId, finalizationType: "automatic", guildId, now });
+        continue;
+      }
+
+      const settings = await getFivemGoalSettings(guildId, normalizedBotId);
+      const { start, end } = resolveFivemGoalPeriodWindow(settings, now);
+      const doc: MongoFivemGoalPeriod = {
+        _id: randomUUID(),
+        auditCompletedAt: null,
+        auditError: null,
+        auditStartedAt: null,
+        botId: normalizedBotId,
+        closedAt: null,
+        closingStartedAt: null,
+        createdAt: now,
+        cutAt: end,
+        endAt: end,
+        finalizedBy: null,
+        finalizationType: null,
+        guildId,
+        nextPeriodId: null,
+        previousPeriodId: null,
+        reportSnapshot: null,
+        startAt: start,
+        status: "ACTIVE",
+        updatedAt: now
+      };
+      try {
+        await fivemGoalPeriods.insertOne(doc);
+        return doc;
+      } catch (error) {
+        if (!isDuplicateKeyError(error)) throw error;
+      }
+    }
+
+    const fallback = await fivemGoalPeriods.findOne({ ...scopeQuery(guildId, normalizedBotId), status: "ACTIVE" }, { sort: { startAt: -1 } });
+    if (fallback) return fallback;
+    throw new Error("Não foi possível inicializar o período ativo da meta.");
+  });
+}
+
+function periodRecordWindowQuery(period: Pick<MongoFivemGoalPeriod, "_id" | "startAt" | "endAt">) {
+  const window = { $gte: period.startAt, $lt: period.endAt };
+  return {
+    $or: [
+      { periodId: period._id },
+      { periodId: { $exists: false }, registeredAt: window },
+      { periodId: null, registeredAt: window },
+      { periodId: { $exists: false }, registeredAt: { $exists: false }, createdAt: window },
+      { periodId: null, registeredAt: null, createdAt: window }
+    ]
+  };
+}
+
+async function buildFivemGoalReportForPeriod(
+  guildId: string,
+  botId: string | null,
+  period: Pick<MongoFivemGoalPeriod, "_id" | "startAt" | "endAt">,
+  knownConfigs?: FivemGoalConfigDto[]
+): Promise<FivemGoalReportDto> {
+  const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
+  const [rows, configs] = await Promise.all([
+    fivemGoalSubmissions.find({
+      $and: [
+        scopeQuery(guildId, botId),
+        periodRecordWindowQuery(period)
+      ]
+    }).sort({ createdAt: -1 }).limit(5000).toArray(),
+    knownConfigs
+      ? Promise.resolve(knownConfigs)
+      : fivemGoalConfigs.find({ ...scopeQuery(guildId, botId), deletedAt: null }).sort({ order: 1, createdAt: 1 }).limit(100).toArray().then((rows) => rows.map((row) => toConfigDto(row)))
+  ]);
+  return buildFivemGoalReport(rows, configs, period.startAt, period.endAt);
+}
+
 export async function getFivemGoalRankingRuntime(guildId: string, botId?: string | null): Promise<FivemGoalRankingRuntimeDto> {
   const normalizedBotId = normalizeBotId(botId);
-  const { start, end } = currentSaoPauloWeek();
+  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
   const { fivemGoalEntries, manualRegistrationSubmissions } = await getMongoCollections();
   const [settings, entries, registrations] = await Promise.all([
     getFivemGoalSettings(guildId, normalizedBotId),
     fivemGoalEntries.find({
       ...scopeQuery(guildId, normalizedBotId),
-      createdAt: { $gte: start, $lt: end },
-      $or: [{ status: "confirmed" }, { status: { $exists: false } }]
+      $and: [
+        periodRecordWindowQuery(period),
+        { $or: [{ status: "confirmed" }, { status: { $exists: false } }] }
+      ]
     }).sort({ createdAt: 1 }).limit(10000).toArray(),
     manualRegistrationSubmissions.find({
       ...scopeQuery(guildId, normalizedBotId),
@@ -465,8 +631,9 @@ export async function getFivemGoalRankingRuntime(guildId: string, botId?: string
   for (const entry of entries) {
     const quantity = typeof entry.quantity === "number" && Number.isFinite(entry.quantity) ? entry.quantity : 0;
     if (quantity <= 0) continue;
+    const registeredAt = entry.registeredAt ?? entry.createdAt;
     const current = members.get(entry.userId) ?? {
-      firstFarmAt: entry.createdAt.toISOString(),
+      firstFarmAt: registeredAt.toISOString(),
       items: [],
       registeredName: registeredNames.get(entry.userId) ?? "Sem cadastro no Set",
       targetValue,
@@ -474,7 +641,7 @@ export async function getFivemGoalRankingRuntime(guildId: string, botId?: string
       userId: entry.userId
     };
     current.total += quantity;
-    if (entry.createdAt.toISOString() < current.firstFarmAt) current.firstFarmAt = entry.createdAt.toISOString();
+    if (registeredAt.toISOString() < current.firstFarmAt) current.firstFarmAt = registeredAt.toISOString();
     const item = entry.itemId ? items.get(entry.itemId) : null;
     const itemName = item?.name ?? entry.fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value ?? "Farm";
     const existingItem = current.items.find((row) => row.itemId === (entry.itemId ?? itemName));
@@ -488,8 +655,8 @@ export async function getFivemGoalRankingRuntime(guildId: string, botId?: string
   return {
     generatedAt: new Date().toISOString(),
     members: ranked,
-    periodEnd: end.toISOString(),
-    periodStart: start.toISOString(),
+    periodEnd: period.endAt.toISOString(),
+    periodStart: period.startAt.toISOString(),
     settings: {
       rankingChannelId: settings.rankingChannelId,
       rankingMessageId: settings.rankingMessageId,
@@ -519,15 +686,16 @@ export async function getCurrentWeekFivemGoalReport(
   knownConfigs?: FivemGoalConfigDto[]
 ): Promise<FivemGoalReportDto> {
   const normalizedBotId = normalizeBotId(botId);
-  const { start, end } = currentSaoPauloWeek();
-  const { fivemGoalSubmissions } = await getMongoCollections();
-  const [rows, configs] = await Promise.all([
-    fivemGoalSubmissions.find({
-      ...scopeQuery(guildId, normalizedBotId),
-      createdAt: { $gte: start, $lt: end }
-    }).sort({ createdAt: -1 }).limit(5000).toArray(),
-    knownConfigs ? Promise.resolve(knownConfigs) : listFivemGoalConfigs(guildId, normalizedBotId, true)
-  ]);
+  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  return buildFivemGoalReportForPeriod(guildId, normalizedBotId, period, knownConfigs);
+}
+
+function buildFivemGoalReport(
+  rows: MongoFivemGoalSubmission[],
+  configs: FivemGoalConfigDto[],
+  periodStart: Date,
+  periodEnd: Date
+): FivemGoalReportDto {
   const configsById = new Map(configs.map((config) => [config.id, config]));
   const members = new Map<string, FivemGoalReportDto["members"][number]>();
   const types = new Map<string, FivemGoalReportDto["types"][number]>();
@@ -582,8 +750,8 @@ export async function getCurrentWeekFivemGoalReport(
     members: [...members.values()].sort((a, b) => b.totalApprovedValue - a.totalApprovedValue || a.userId.localeCompare(b.userId)),
     participantCount: approvedParticipants.size,
     pendingCount,
-    periodEnd: end.toISOString(),
-    periodStart: start.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    periodStart: periodStart.toISOString(),
     refusedCount,
     totalApprovedValue,
     totalPendingValue,
@@ -599,48 +767,164 @@ export async function finalizeCurrentFivemGoalPeriod(input: {
   guildId: string;
 }) {
   const normalizedBotId = normalizeBotId(input.botId);
-  const report = await getCurrentWeekFivemGoalReport(input.guildId, normalizedBotId);
-  const { fivemGoalLogs } = await getMongoCollections();
-  const existing = await fivemGoalLogs.findOne({
-    action: "period.finalized",
-    ...scopeQuery(input.guildId, normalizedBotId),
-    "details.periodEnd": report.periodEnd,
-    "details.periodStart": report.periodStart
-  });
+  return withFivemGoalPeriodLock(input.guildId, normalizedBotId, () => rolloverFivemGoalPeriodUnsafe({
+    actorId: input.actorId,
+    botId: normalizedBotId,
+    finalizationType: input.finalizationType ?? "manual",
+    guildId: input.guildId,
+    now: new Date()
+  }));
+}
 
-  if (existing) {
-    return {
-      alreadyFinalized: true,
-      finalized: false,
-      logId: existing._id,
-      report
-    };
+async function rolloverFivemGoalPeriodUnsafe(input: {
+  actorId: string | null;
+  botId: string | null;
+  finalizationType: "manual" | "automatic";
+  guildId: string;
+  now: Date;
+}) {
+  const { fivemGoalLogs, fivemGoalPeriods } = await getMongoCollections();
+  const active = await fivemGoalPeriods.findOne({ ...scopeQuery(input.guildId, input.botId), status: "ACTIVE" }, { sort: { endAt: 1 } });
+  if (!active) {
+    const closed = await fivemGoalPeriods.findOne({ ...scopeQuery(input.guildId, input.botId), status: { $in: ["CLOSING", "CLOSED"] } }, { sort: { cutAt: -1 } });
+    if (closed) {
+      const report = closed.reportSnapshot
+        ? closed.reportSnapshot as FivemGoalReportDto
+        : await buildFivemGoalReportForPeriod(input.guildId, input.botId, closed);
+      return { alreadyFinalized: true, finalized: false, logId: null, period: toPeriodDto(closed), report };
+    }
+    throw new Error("Nenhum período ativo de meta foi encontrado para fechamento.");
   }
 
-  await writeFivemGoalLog({
-    action: "period.finalized",
-    botId: normalizedBotId,
-    details: {
-      approvedCount: report.approvedCount,
-      finalizationType: input.finalizationType ?? "manual",
-      participantCount: report.participantCount,
-      pendingCount: report.pendingCount,
-      periodEnd: report.periodEnd,
-      periodStart: report.periodStart,
-      refusedCount: report.refusedCount,
-      totalApprovedValue: report.totalApprovedValue,
-      totalPendingValue: report.totalPendingValue,
-      totalRecords: report.totalRecords
-    },
-    guildId: input.guildId,
-    metaId: null,
-    userId: input.actorId
-  });
+  const cutAt = active.endAt.getTime() <= input.now.getTime() ? active.endAt : input.now;
+  const closingStartedAt = new Date();
+  const closingUpdate = await fivemGoalPeriods.updateOne(
+    { _id: active._id, ...scopeQuery(input.guildId, input.botId), status: "ACTIVE" },
+    {
+      $set: {
+        closingStartedAt,
+        cutAt,
+        endAt: cutAt,
+        finalizedBy: input.actorId,
+        finalizationType: input.finalizationType,
+        status: "CLOSING",
+        updatedAt: closingStartedAt
+      }
+    }
+  );
 
+  if (closingUpdate.modifiedCount === 0) {
+    const current = await fivemGoalPeriods.findOne({ _id: active._id, ...scopeQuery(input.guildId, input.botId) });
+    const report = current
+      ? await buildFivemGoalReportForPeriod(input.guildId, input.botId, current)
+      : await getCurrentWeekFivemGoalReport(input.guildId, input.botId);
+    return { alreadyFinalized: true, finalized: false, logId: null, period: current ? toPeriodDto(current) : null, report };
+  }
+
+  const closingPeriod: MongoFivemGoalPeriod = { ...active, closingStartedAt, cutAt, endAt: cutAt, finalizedBy: input.actorId, finalizationType: input.finalizationType, status: "CLOSING", updatedAt: closingStartedAt };
+  const nextWindow = nextFivemGoalPeriodWindow(closingPeriod);
+  let nextPeriod = await fivemGoalPeriods.findOne({ ...scopeQuery(input.guildId, input.botId), startAt: nextWindow.startAt, endAt: nextWindow.endAt });
+  if (!nextPeriod) {
+    const nextDoc: MongoFivemGoalPeriod = {
+      _id: randomUUID(),
+      auditCompletedAt: null,
+      auditError: null,
+      auditStartedAt: null,
+      botId: input.botId,
+      closedAt: null,
+      closingStartedAt: null,
+      createdAt: closingStartedAt,
+      cutAt: nextWindow.endAt,
+      endAt: nextWindow.endAt,
+      finalizedBy: null,
+      finalizationType: null,
+      guildId: input.guildId,
+      nextPeriodId: null,
+      previousPeriodId: active._id,
+      reportSnapshot: null,
+      startAt: nextWindow.startAt,
+      status: "ACTIVE",
+      updatedAt: closingStartedAt
+    };
+    try {
+      await fivemGoalPeriods.insertOne(nextDoc);
+      nextPeriod = nextDoc;
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      nextPeriod = await fivemGoalPeriods.findOne({ ...scopeQuery(input.guildId, input.botId), status: "ACTIVE" }, { sort: { startAt: -1 } });
+    }
+  } else if (nextPeriod.status !== "ACTIVE") {
+    const promoted = await fivemGoalPeriods.findOneAndUpdate(
+      { _id: nextPeriod._id, ...scopeQuery(input.guildId, input.botId), status: { $ne: "ACTIVE" } },
+      { $set: { status: "ACTIVE", updatedAt: closingStartedAt } },
+      { returnDocument: "after" }
+    );
+    if (promoted) nextPeriod = promoted;
+  }
+  if (!nextPeriod) throw new Error("Não foi possível ativar o novo período da meta.");
+
+  await fivemGoalPeriods.updateOne({ _id: active._id, ...scopeQuery(input.guildId, input.botId) }, { $set: { nextPeriodId: nextPeriod._id, auditStartedAt: new Date(), updatedAt: new Date() } });
+  const report = await buildFivemGoalReportForPeriod(input.guildId, input.botId, closingPeriod);
+  const existingLog = await fivemGoalLogs.findOne({
+    action: "period.finalized",
+    ...scopeQuery(input.guildId, input.botId),
+    "details.periodId": active._id
+  });
+  let logId = existingLog?._id ?? null;
+  if (!existingLog) {
+    await writeFivemGoalLog({
+      action: "period.finalized",
+      botId: input.botId,
+      details: {
+        approvedCount: report.approvedCount,
+        finalizationType: input.finalizationType,
+        nextPeriodEnd: nextPeriod.endAt.toISOString(),
+        nextPeriodId: nextPeriod._id,
+        nextPeriodStart: nextPeriod.startAt.toISOString(),
+        participantCount: report.participantCount,
+        pendingCount: report.pendingCount,
+        periodEnd: report.periodEnd,
+        periodId: active._id,
+        periodStart: report.periodStart,
+        refusedCount: report.refusedCount,
+        totalApprovedValue: report.totalApprovedValue,
+        totalPendingValue: report.totalPendingValue,
+        totalRecords: report.totalRecords
+      },
+      guildId: input.guildId,
+      metaId: null,
+      userId: input.actorId
+    });
+    const savedLog = await fivemGoalLogs.findOne({
+      action: "period.finalized",
+      ...scopeQuery(input.guildId, input.botId),
+      "details.periodId": active._id
+    });
+    logId = savedLog?._id ?? null;
+  }
+
+  const completedAt = new Date();
+  const closed = await fivemGoalPeriods.findOneAndUpdate(
+    { _id: active._id, ...scopeQuery(input.guildId, input.botId), status: "CLOSING" },
+    {
+      $set: {
+        auditCompletedAt: completedAt,
+        closedAt: completedAt,
+        reportSnapshot: report,
+        status: "CLOSED",
+        updatedAt: completedAt
+      }
+    },
+    { returnDocument: "after" }
+  );
+
+  if (input.botId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, input.botId), "fivem:goals:updated", { botId: input.botId, guildId: input.guildId });
   return {
-    alreadyFinalized: false,
-    finalized: true,
-    logId: null,
+    alreadyFinalized: Boolean(existingLog),
+    finalized: !existingLog,
+    logId,
+    nextPeriod: toPeriodDto(nextPeriod),
+    period: toPeriodDto(closed ?? { ...closingPeriod, auditCompletedAt: completedAt, closedAt: completedAt, reportSnapshot: report, status: "CLOSED", updatedAt: completedAt }),
     report
   };
 }
@@ -651,10 +935,11 @@ export async function listFivemGoalConfigs(guildId: string, botId?: string | nul
     await ensureDefaultGoalConfigFromLegacy(await getFivemGoalSettings(guildId, normalizedBotId), null);
   }
   const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
+  const activePeriod = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
   const [rows, progress] = await Promise.all([
     fivemGoalConfigs.find({ ...scopeQuery(guildId, normalizedBotId), deletedAt: null }).sort({ order: 1, createdAt: 1 }).limit(100).toArray(),
     fivemGoalSubmissions.aggregate<{ _id: string; currentValue: number; totalParticipants: number }>([
-      { $match: { ...scopeQuery(guildId, normalizedBotId), status: "approved" } },
+      { $match: { $and: [scopeQuery(guildId, normalizedBotId), { status: "approved" }, periodRecordWindowQuery(activePeriod)] } },
       { $group: { _id: "$metaId", currentValue: { $sum: "$value" }, participants: { $addToSet: "$userId" } } },
       { $project: { _id: 1, currentValue: 1, totalParticipants: { $size: "$participants" } } }
     ]).toArray()
@@ -789,8 +1074,9 @@ export async function createFivemGoalEntry(input: {
   sourceMessageId?: string | null;
   userId: string;
 }) {
-  const now = new Date();
+  const registeredAt = new Date();
   const normalizedBotId = normalizeBotId(input.botId);
+  const activePeriod = await getOrCreateActiveFivemGoalPeriod(input.guildId, normalizedBotId, registeredAt);
   const sourceMessageId = normalizeSnowflake(input.sourceMessageId);
   const attachmentId = normalizeText(input.attachmentId, 120);
   const itemId = normalizeText(input.itemId, 80);
@@ -809,23 +1095,36 @@ export async function createFivemGoalEntry(input: {
     attachmentId,
     botId: normalizedBotId,
     channelId: input.channelId,
-    createdAt: now,
+    createdAt: registeredAt,
     fields: input.fields.map((field) => ({ id: field.id, label: field.label.slice(0, 100), value: field.value.slice(0, 1500) })),
     guildId: input.guildId,
     imageUrl: input.imageUrl.slice(0, 2048),
     idempotencyKey,
     itemId,
     metaId: input.metaId ?? null,
+    periodId: activePeriod._id,
     quantity: typeof input.quantity === "number" && Number.isFinite(input.quantity) ? input.quantity : null,
+    registeredAt,
     status: "confirmed",
     correctionRequestId: normalizeText(input.correctionRequestId, 120),
     replacementForRegistrationId: normalizeText(input.replacementForRegistrationId, 120),
     replacedByRegistrationId: null,
     sourceMessageId,
-    updatedAt: now,
+    updatedAt: registeredAt,
     userId: input.userId
   };
-  await fivemGoalEntries.insertOne(doc);
+  try {
+    await fivemGoalEntries.insertOne(doc);
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    const duplicate = idempotencyKey
+      ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), idempotencyKey })
+      : sourceMessageId && attachmentId
+        ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), sourceMessageId, attachmentId })
+        : null;
+    if (duplicate) return toEntryDto(duplicate);
+    throw error;
+  }
   await createFivemGoalSubmission({
     botId: input.botId,
     description: input.fields.find((field) => /obs|descricao|descri/i.test(field.id))?.value ?? null,
@@ -834,6 +1133,7 @@ export async function createFivemGoalEntry(input: {
     metaId: input.metaId ?? null,
     proofUrl: input.imageUrl,
     idempotencyKey,
+    periodRegisteredAt: registeredAt,
     registrationId: doc._id,
     correctionRequestId: doc.correctionRequestId,
     replacementForRegistrationId: doc.replacementForRegistrationId,
@@ -859,13 +1159,15 @@ export async function listFivemGoalEntries(guildId: string, botId?: string | nul
 
 export async function listCurrentFivemGoalCorrectionCandidates(guildId: string, botId: string | null, userId: string) {
   const normalizedBotId = normalizeBotId(botId);
-  const { start, end } = currentSaoPauloWeek();
+  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
   const { fivemGoalEntries } = await getMongoCollections();
   const rows = await fivemGoalEntries.find({
     ...scopeQuery(guildId, normalizedBotId),
     userId,
-    createdAt: { $gte: start, $lt: end },
-    $or: [{ status: "confirmed" }, { status: { $exists: false } }]
+    $and: [
+      periodRecordWindowQuery(period),
+      { $or: [{ status: "confirmed" }, { status: { $exists: false } }] }
+    ]
   }).sort({ createdAt: -1 }).limit(25).toArray();
   return rows.map(toEntryDto);
 }
@@ -1010,6 +1312,7 @@ export async function createFivemGoalSubmission(input: {
   guildId: string;
   metaId?: string | null;
   proofUrl?: string | null;
+  periodRegisteredAt?: Date | null;
   roleIdsSnapshot?: string[];
   registrationId?: string | null;
   correctionRequestId?: string | null;
@@ -1019,11 +1322,12 @@ export async function createFivemGoalSubmission(input: {
   idempotencyKey?: string | null;
 }) {
   const normalizedBotId = normalizeBotId(input.botId);
+  const registeredAt = input.periodRegisteredAt instanceof Date && Number.isFinite(input.periodRegisteredAt.getTime()) ? input.periodRegisteredAt : new Date();
+  const activePeriod = await getOrCreateActiveFivemGoalPeriod(input.guildId, normalizedBotId, registeredAt);
   const configs = await listFivemGoalConfigs(input.guildId, normalizedBotId, true);
   const meta = input.metaId ? configs.find((config) => config.id === input.metaId) : configs.find((config) => config.status === "active") ?? configs[0];
   if (!meta) return null;
   if (!Number.isFinite(input.value) || input.value <= 0) throw new Error("O valor da meta deve ser maior que zero.");
-  const now = new Date();
   const idempotencyKey = normalizeText(input.idempotencyKey, 200)
     ?? (input.proofUrl ? `${input.userId}:${meta.id}:${input.proofUrl}`.slice(0, 200) : null);
   const { fivemGoalSubmissions } = await getMongoCollections();
@@ -1034,16 +1338,18 @@ export async function createFivemGoalSubmission(input: {
   const status = meta.requiresApproval ? "pending" as const : "approved" as const;
   const doc: MongoFivemGoalSubmission = {
     _id: randomUUID(),
-    approvedAt: status === "approved" ? now : null,
+    approvedAt: status === "approved" ? registeredAt : null,
     approvedBy: status === "approved" ? "system" : null,
     botId: normalizedBotId,
-    createdAt: now,
+    createdAt: registeredAt,
     description: normalizeText(input.description, 1000),
     fields: (input.fields ?? []).map((field) => ({ id: normalizeText(field.id, 80) || "campo", label: normalizeText(field.label, 100) || "Campo", value: normalizeText(field.value, 1500) || "" })).slice(0, 10),
     guildId: input.guildId,
     idempotencyKey,
     metaId: meta.id,
+    periodId: activePeriod._id,
     proofUrl: normalizeText(input.proofUrl, 2048),
+    registeredAt,
     refusedAt: null,
     refusedBy: null,
     refusalReason: null,
@@ -1052,7 +1358,7 @@ export async function createFivemGoalSubmission(input: {
     registrationId: normalizeText(input.registrationId, 120),
     correctionRequestId: normalizeText(input.correctionRequestId, 120),
     replacementForRegistrationId: normalizeText(input.replacementForRegistrationId, 120),
-    updatedAt: now,
+    updatedAt: registeredAt,
     userId: input.userId,
     value: input.value
   };
@@ -1319,7 +1625,9 @@ function toEntryDto(row: MongoFivemGoalEntry): FivemGoalEntryDto {
     imageUrl: row.imageUrl,
     itemId: row.itemId,
     metaId: row.metaId ?? null,
+    periodId: row.periodId ?? null,
     quantity: row.quantity,
+    registeredAt: (row.registeredAt ?? row.createdAt)?.toISOString() ?? null,
     replacedByRegistrationId: row.replacedByRegistrationId ?? null,
     replacementForRegistrationId: row.replacementForRegistrationId ?? null,
     sourceMessageId: row.sourceMessageId ?? null,
@@ -1401,7 +1709,9 @@ function toSubmissionDto(row: MongoFivemGoalSubmission): FivemGoalSubmissionDto 
     guildId: row.guildId,
     id: row._id,
     metaId: row.metaId,
+    periodId: row.periodId ?? null,
     proofUrl: row.proofUrl ?? null,
+    registeredAt: (row.registeredAt ?? row.createdAt)?.toISOString() ?? null,
     refusedAt: row.refusedAt?.toISOString() ?? null,
     refusedBy: row.refusedBy ?? null,
     refusalReason: row.refusalReason ?? null,
@@ -1413,6 +1723,29 @@ function toSubmissionDto(row: MongoFivemGoalSubmission): FivemGoalSubmissionDto 
     updatedAt: row.updatedAt.toISOString(),
     userId: row.userId,
     value: row.value
+  };
+}
+
+function toPeriodDto(row: MongoFivemGoalPeriod): FivemGoalPeriodDto {
+  return {
+    auditCompletedAt: row.auditCompletedAt?.toISOString() ?? null,
+    auditError: row.auditError ?? null,
+    auditStartedAt: row.auditStartedAt?.toISOString() ?? null,
+    botId: normalizeBotId(row.botId),
+    closedAt: row.closedAt?.toISOString() ?? null,
+    closingStartedAt: row.closingStartedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    cutAt: row.cutAt.toISOString(),
+    endAt: row.endAt.toISOString(),
+    finalizedBy: row.finalizedBy ?? null,
+    finalizationType: row.finalizationType ?? null,
+    guildId: row.guildId,
+    id: row._id,
+    nextPeriodId: row.nextPeriodId ?? null,
+    previousPeriodId: row.previousPeriodId ?? null,
+    startAt: row.startAt.toISOString(),
+    status: row.status,
+    updatedAt: row.updatedAt.toISOString()
   };
 }
 
@@ -1659,6 +1992,10 @@ function scopeQuery(guildId: string, botId: string | null) {
 function normalizeBotId(botId: string | null | undefined) {
   const normalized = botId?.trim();
   return normalized ? normalized : null;
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === 11000;
 }
 
 function normalizeSnowflake(value: string | null | undefined) {

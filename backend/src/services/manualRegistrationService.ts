@@ -97,6 +97,7 @@ export type ManualRegistrationSubmissionDto = {
   username: string;
 };
 
+export type ManualRegistrationBlockingStatus = "pending" | "processing" | "failed" | "approved";
 export type ManualRegistrationRemovableStatus = "pending" | "failed" | "approved";
 
 export type ManualRegistrationLogDto = {
@@ -255,11 +256,12 @@ export async function createManualRegistrationSubmission(input: {
   const normalizedBotId = normalizeBotId(input.botId);
   const settings = await getManualRegistrationSettings(input.guildId, normalizedBotId);
   const { manualRegistrationSubmissions } = await getMongoCollections();
-  const active = await manualRegistrationSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId, status: { $in: ["pending", "processing", "failed", "approved"] } });
-  if (active?.status === "pending") throw conflict("Você já possui um pedido de set pendente.");
-  if (active?.status === "processing") throw conflict("Seu pedido de set já está sendo processado.");
-  if (active?.status === "failed") throw conflict("Seu pedido de set precisa ser revisado pela equipe antes de enviar outro.");
-  if (active?.status === "approved") throw conflict("Você já possui um cadastro de set ativo.");
+  const active = await manualRegistrationSubmissions.findOne({
+    ...scopeQuery(input.guildId, normalizedBotId),
+    userId: input.userId,
+    status: { $in: MANUAL_REGISTRATION_BLOCKING_STATUSES }
+  });
+  assertNoBlockingManualRegistration(active);
   const latest = settings.allowResubmit ? null : await manualRegistrationSubmissions.findOne(
     { ...scopeQuery(input.guildId, normalizedBotId), userId: input.userId },
     { sort: { createdAt: -1 } }
@@ -305,7 +307,7 @@ export async function createManualRegistrationSubmission(input: {
   };
 
   await ensureGuild(input.guildId);
-  try { await manualRegistrationSubmissions.insertOne(submission); } catch (error) { if (typeof error === "object" && error && "code" in error && error.code === 11000) throw conflict("Você já possui um pedido ou cadastro ativo."); throw error; }
+  try { await manualRegistrationSubmissions.insertOne(submission); } catch (error) { if (isDuplicateKeyError(error)) throw conflict("Você já possui um pedido ou cadastro ativo."); throw error; }
   await writeManualRegistrationLog({ action: "submission.created", botId: normalizedBotId, data: { requestedRoleId: submission.requestedRoleId }, executorId: input.userId, guildId: input.guildId, submissionId: submission._id, targetUserId: input.userId });
   emitManualRegistrationUpdated(input.guildId, normalizedBotId);
   return toSubmissionDto(submission);
@@ -324,6 +326,14 @@ export async function createManualRegistrationDashboardSubmission(input: {
   username: string;
 }) {
   const now = new Date();
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const active = await manualRegistrationSubmissions.findOne({
+    ...scopeQuery(input.guildId, input.botId),
+    userId: input.userId,
+    status: { $in: MANUAL_REGISTRATION_BLOCKING_STATUSES }
+  });
+  assertNoBlockingManualRegistration(active);
+
   const submission: MongoManualRegistrationSubmission = {
     _id: randomUUID(), approvedAt: null, approvedBy: null, botId: input.botId, createdAt: now,
     fields: [
@@ -335,9 +345,13 @@ export async function createManualRegistrationDashboardSubmission(input: {
     requestedRoleId: input.requestedRoleId, status: "pending", updatedAt: now,
     userAvatar: input.userAvatar ?? null, userId: input.userId, username: input.username
   };
-  const { manualRegistrationSubmissions } = await getMongoCollections();
   await ensureGuild(input.guildId);
-  await manualRegistrationSubmissions.insertOne(submission);
+  try {
+    await manualRegistrationSubmissions.insertOne(submission);
+  } catch (error) {
+    if (isDuplicateKeyError(error)) throw conflict("Você já possui um pedido ou cadastro ativo.");
+    throw error;
+  }
   await writeManualRegistrationLog({ action: "submission.manual_created", botId: input.botId, data: { requestedRoleId: input.requestedRoleId }, executorId: input.actorId, guildId: input.guildId, submissionId: submission._id, targetUserId: input.userId });
   emitManualRegistrationUpdated(input.guildId, input.botId);
   emitRealtimeToRoom(devBotRealtimeRoom(input.botId), "manual-registration:execute", {
@@ -758,6 +772,23 @@ function conflict(message: string) {
 
 export function isManualRegistrationRemovableStatus(status: MongoManualRegistrationSubmission["status"]): status is ManualRegistrationRemovableStatus {
   return status === "pending" || status === "failed" || status === "approved";
+}
+
+const MANUAL_REGISTRATION_BLOCKING_STATUSES: ManualRegistrationBlockingStatus[] = ["pending", "processing", "failed", "approved"];
+
+export function isManualRegistrationBlockingStatus(status: MongoManualRegistrationSubmission["status"]): status is ManualRegistrationBlockingStatus {
+  return MANUAL_REGISTRATION_BLOCKING_STATUSES.includes(status as ManualRegistrationBlockingStatus);
+}
+
+function assertNoBlockingManualRegistration(submission: MongoManualRegistrationSubmission | null) {
+  if (submission?.status === "pending") throw conflict("Você já possui um pedido de set pendente.");
+  if (submission?.status === "processing") throw conflict("Seu pedido de set já está sendo processado.");
+  if (submission?.status === "failed") throw conflict("Seu pedido de set precisa ser revisado pela equipe antes de enviar outro.");
+  if (submission?.status === "approved") throw conflict("Você já possui um cadastro de set ativo.");
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
 }
 
 function settingsLogSnapshot(settings: ManualRegistrationSettingsDto) {

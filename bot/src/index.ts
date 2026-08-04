@@ -239,10 +239,10 @@ process.on("unhandledRejection", (reason) => {
     at: new Date().toISOString(),
     error: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
     level: "critical",
+    note: "logged without shutdown to preserve bot availability",
     service: "bot",
     type: "unhandledRejection"
   }));
-  shutdown("unhandledRejection", 1);
 });
 
 process.on("uncaughtException", (error) => {
