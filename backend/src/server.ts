@@ -5,7 +5,7 @@ import { createSocketServer } from "./realtime/socket";
 import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
 import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
-import { startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
+import { cleanupObsoleteDevBotCommands, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
 import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
 import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, startServerBackupScheduler } from "./services/serverBackupService";
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
@@ -63,8 +63,9 @@ httpServer.listen(env.PORT, env.HOST, () => {
       console.warn("[dev-bot] não foi possível reconciliar status no boot:", error instanceof Error ? error.message : error);
     })
     .then(() => runAccessControlStartupAudit())
+    .then(() => cleanupObsoleteDevBotCommands())
     .catch((error) => {
-      console.warn("[access-audit] varredura inicial falhou:", error instanceof Error ? error.message : error);
+      console.warn("[startup] varredura/limpeza inicial falhou:", error instanceof Error ? error.message : error);
     })
     .finally(() => {
       if (env.START_REGISTERED_DEV_BOTS) {

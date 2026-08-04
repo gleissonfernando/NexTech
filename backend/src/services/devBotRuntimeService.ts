@@ -25,6 +25,11 @@ type DiscordApplication = {
   flags?: number;
 };
 
+type DiscordApplicationCommand = {
+  id: string;
+  name: string;
+};
+
 type StopDevBotOptions = {
   message?: string;
   notifyBot?: boolean;
@@ -37,6 +42,7 @@ const GATEWAY_MESSAGE_CONTENT = 1 << 18;
 const GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19;
 const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-fac", "account-age-security", "safe-bot", "moderation"];
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
+const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
 const DEV_BOT_START_CONCURRENCY = 1;
 const DEV_BOT_START_STAGGER_MS = 5_000;
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
@@ -69,6 +75,42 @@ export async function startRegisteredDevBots() {
   console.log(`[dev-bot] ${bots.length - enabledBots.length} bot(s) permanecerao desligados por bloqueio persistente.`);
   await startDevBotRuntimeBatch(enabledBots);
   return enabledBots.length;
+}
+
+export async function cleanupObsoleteDevBotCommands() {
+  const bots = await listDevBotRuntimeConfigs().catch((error) => {
+    console.warn("[dev-bot] não foi possível carregar bots para limpar comandos obsoletos:", error instanceof Error ? error.message : error);
+    return [];
+  });
+  let checkedScopes = 0;
+  let removedCommands = 0;
+
+  for (const bot of bots) {
+    const guildIds = [...new Set([bot.mainGuildId, ...bot.guildIds].filter(Boolean))];
+    const scopes = [
+      { guildId: null, label: "global" },
+      ...guildIds.map((guildId) => ({ guildId, label: `guild:${guildId}` }))
+    ];
+
+    for (const scope of scopes) {
+      try {
+        const commands = await listDiscordApplicationCommands(bot, scope.guildId);
+        checkedScopes += 1;
+        const obsoleteCommands = commands.filter((command) => OBSOLETE_DEV_BOT_COMMAND_NAMES.has(command.name));
+
+        for (const command of obsoleteCommands) {
+          await deleteDiscordApplicationCommand(bot, command.id, scope.guildId);
+          removedCommands += 1;
+          console.log(`[dev-bot] comando obsoleto /${command.name} removido de ${bot.id} (${scope.label}).`);
+        }
+      } catch (error) {
+        console.warn(`[dev-bot] falha ao limpar comandos obsoletos de ${bot.id} (${scope.label}):`, error instanceof Error ? error.message : error);
+      }
+    }
+  }
+
+  console.log(`[dev-bot] limpeza de comandos obsoletos concluída: scopes=${checkedScopes}, removidos=${removedCommands}.`);
+  return { checkedScopes, removedCommands };
 }
 
 async function waitForDevBotSupervisorLease() {
@@ -482,6 +524,31 @@ async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[]) {
 
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function listDiscordApplicationCommands(bot: DevBotRuntimeConfig, guildId: string | null) {
+  const endpoint = guildId
+    ? `${DISCORD_API}/applications/${bot.clientId}/guilds/${guildId}/commands`
+    : `${DISCORD_API}/applications/${bot.clientId}/commands`;
+  const { data } = await axios.get<DiscordApplicationCommand[]>(endpoint, {
+    headers: {
+      Authorization: `Bot ${bot.token}`
+    },
+    timeout: 10_000
+  });
+  return data;
+}
+
+async function deleteDiscordApplicationCommand(bot: DevBotRuntimeConfig, commandId: string, guildId: string | null) {
+  const endpoint = guildId
+    ? `${DISCORD_API}/applications/${bot.clientId}/guilds/${guildId}/commands/${commandId}`
+    : `${DISCORD_API}/applications/${bot.clientId}/commands/${commandId}`;
+  await axios.delete(endpoint, {
+    headers: {
+      Authorization: `Bot ${bot.token}`
+    },
+    timeout: 10_000
+  });
 }
 
 async function canUseGuildMemberIntent(bot: DevBotRuntimeConfig) {
