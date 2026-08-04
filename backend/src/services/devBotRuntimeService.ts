@@ -78,10 +78,7 @@ export async function startRegisteredDevBots() {
 }
 
 export async function cleanupObsoleteDevBotCommands() {
-  const bots = await listDevBotRuntimeConfigs().catch((error) => {
-    console.warn("[dev-bot] não foi possível carregar bots para limpar comandos obsoletos:", error instanceof Error ? error.message : error);
-    return [];
-  });
+  const bots = await listDevBotRuntimeConfigsWithRetry();
   let checkedScopes = 0;
   let removedCommands = 0;
 
@@ -111,6 +108,26 @@ export async function cleanupObsoleteDevBotCommands() {
 
   console.log(`[dev-bot] limpeza de comandos obsoletos concluída: scopes=${checkedScopes}, removidos=${removedCommands}.`);
   return { checkedScopes, removedCommands };
+}
+
+async function listDevBotRuntimeConfigsWithRetry() {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      return await listDevBotRuntimeConfigs();
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `[dev-bot] não foi possível carregar bots para limpar comandos obsoletos (${attempt}/8):`,
+        error instanceof Error ? error.message : error
+      );
+      await delay(10_000);
+    }
+  }
+
+  console.warn("[dev-bot] limpeza de comandos obsoletos ignorada:", lastError instanceof Error ? lastError.message : lastError);
+  return [];
 }
 
 async function waitForDevBotSupervisorLease() {
