@@ -3,6 +3,7 @@ import { getMongoCollections, type MongoCourseExamAnswer, type MongoCourseExamAt
 import { getCourseSettings, logCourseAction } from "./courseService";
 import { recordApprovedCourseHistoryFromAttempt } from "./courseTrackingService";
 import { emitRealtime } from "../realtime/events";
+import { COURSE_GRADE_RULE_VERSION, COURSE_PASSING_GRADE, evaluateCourseGrade, optionalCourseGrade, roundCourseGrade, type CourseGradeResult } from "./courseGradeService";
 
 const DEFAULT_INITIAL = "Bem-vindo à prova do curso. Leia cada pergunta com atenção e responda uma etapa por vez.";
 const DEFAULT_FINAL = "Sua prova foi concluída. Clique abaixo para finalizar.";
@@ -11,8 +12,7 @@ const DEFAULT_REJECTION = "Você foi reprovado na prova do curso.";
 const DEFAULT_EXTERNAL_LINK_TEXT = "Acessar material da prova";
 const DEFAULT_RELEASE_MODE = "immediate";
 const EXAM_TOTAL_SCORE = 10;
-const DEFAULT_MIN_SCORE = 6;
-const COURSE_EXAM_PASSING_SCORE = 6;
+const DEFAULT_MIN_SCORE = COURSE_PASSING_GRADE;
 const MAX_QUESTION_SCORE = 1;
 const MAX_EXAM_ALTERNATIVES = 25;
 
@@ -514,9 +514,10 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   const now = new Date();
   const settings = await collections.courseExamSettings.findOne({ _id: attempt.examId ?? "", ...scope(botId, guildId) })
     ?? await collections.courseExamSettings.findOne({ ...scope(botId, guildId), courseId: attempt.courseId });
-  const minimumScore = COURSE_EXAM_PASSING_SCORE;
+  const gradeEvaluation = evaluateCourseGrade(guardedScore);
+  const minimumScore = gradeEvaluation.passingGrade;
   const awaitingManualReview = shouldAwaitManualExamReview(settings);
-  const automaticResult = decideCourseExamResult(guardedScore);
+  const automaticResult = gradeEvaluation.result;
   const result = awaitingManualReview ? null : automaticResult;
   const status: MongoCourseExamAttempt["status"] = awaitingManualReview ? "finished" : automaticResult;
   await logCourseAction(botId, guildId, "course.exam_score_calculated", attempt.studentId, attempt.courseId, attempt.publicationId, {
@@ -527,15 +528,15 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
     objectiveCorrect,
     objectiveWrong,
     percent,
-    score: guardedScore,
+    score: gradeEvaluation.grade,
     result: result ?? "awaiting_review"
   });
   const updatedStatus = await collections.courseExamAttempts.updateOne({ _id: attemptId, ...scope(botId, guildId), status: "in_progress" }, {
     $set: {
-      automaticScore: guardedScore,
+      automaticScore: gradeEvaluation.grade,
       correctedAt: awaitingManualReview ? null : now,
       correctedBy: awaitingManualReview ? null : attempt.instructorId,
-      finalScore: awaitingManualReview ? null : guardedScore,
+      finalScore: awaitingManualReview ? null : gradeEvaluation.grade,
       finishedAt: now,
       manualScore: awaitingManualReview ? null : 0,
       maxScore,
@@ -544,7 +545,7 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
       percent,
       rejectionReason: null,
       result,
-      score: guardedScore,
+      score: gradeEvaluation.grade,
       status,
       updatedAt: now,
       writtenCount
@@ -555,11 +556,11 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
     return null;
   }
   const updated = await collections.courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
-  await logCourseAction(botId, guildId, "course.exam_result_saved", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, maxScore, minimumScore, percent, result, score: guardedScore });
-  await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score: guardedScore });
+  await logCourseAction(botId, guildId, "course.exam_result_saved", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, maxScore, minimumScore, percent, result, ruleVersion: gradeEvaluation.ruleVersion, score: gradeEvaluation.grade });
+  await logCourseAction(botId, guildId, "course.exam_finished", attempt.studentId, attempt.courseId, attempt.publicationId, { attemptId, percent, score: gradeEvaluation.grade });
   await collections.courseEnrollments.updateOne(
     { ...scope(botId, guildId), publicationId: attempt.publicationId, studentId: attempt.studentId },
-    { $set: { examStatus: awaitingManualReview ? "COMPLETED" : result === "approved" ? "APPROVED" : "FAILED", attemptId, examChannelId: attempt.channelId, score: guardedScore, correctAnswers: objectiveCorrect, completedAt: now, correctedBy: awaitingManualReview ? null : attempt.instructorId, result, updatedAt: now } }
+    { $set: { examStatus: awaitingManualReview ? "COMPLETED" : result === "approved" ? "APPROVED" : "FAILED", attemptId, examChannelId: attempt.channelId, score: gradeEvaluation.grade, correctAnswers: objectiveCorrect, completedAt: now, correctedBy: awaitingManualReview ? null : attempt.instructorId, result, updatedAt: now } }
   );
   if (result === "approved") {
     await recordApprovedCourseHistoryFromAttempt(botId, guildId, attemptId).catch((error) => {
@@ -583,14 +584,16 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
   };
   const existing = await courseExamAttempts.findOne(reviewableFilter);
   if (!existing) return null;
-  const automaticScore = Number(existing.automaticScore ?? existing.score ?? 0) || 0;
-  const manualScore = Math.max(0, parseDecimalNumber(manualScoreInput ?? existing.manualScore ?? 0, 0));
-  const finalScore = capExamScore(decimalSum([automaticScore, manualScore]));
+  const automaticScore = optionalCourseGrade(existing.automaticScore ?? existing.score ?? 0, 0);
+  const manualScore = optionalCourseGrade(manualScoreInput ?? existing.manualScore ?? 0, 0);
+  if (manualScore < 0) throw Object.assign(new Error("Nota manual inválida. Informe um número maior ou igual a zero."), { statusCode: 400 });
+  const finalScore = roundCourseGrade(capExamScore(decimalSum([automaticScore, manualScore])));
   const percent = decimalMultiplyByInteger(finalScore, 10);
-  const finalResult = decideCourseExamResult(finalScore);
+  const evaluation = evaluateCourseGrade(finalScore);
+  const finalResult = evaluation.result;
   const finalRejectionReason = finalResult === "rejected" ? rejectionReason || null : null;
   const decided = await courseExamAttempts.updateOne(reviewableFilter, {
-    $set: { automaticScore, correctedAt: now, correctedBy: reviewerId, finalScore, manualScore, percent, rejectionReason: finalRejectionReason, result: finalResult, score: finalScore, status: finalResult, updatedAt: now }
+    $set: { automaticScore, correctedAt: now, correctedBy: reviewerId, finalScore: evaluation.grade, manualScore, percent, rejectionReason: finalRejectionReason, result: finalResult, score: evaluation.grade, status: finalResult, updatedAt: now }
   });
   if (decided.matchedCount === 0) return null;
   const attempt = await courseExamAttempts.findOne({ _id: attemptId, ...scope(botId, guildId) });
@@ -598,7 +601,7 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
   await logCourseAction(botId, guildId, `course.exam_${finalResult}`, reviewerId, attempt.courseId, attempt.publicationId, { attemptId, requestedStatus: status });
   await courseEnrollments.updateOne(
     { ...scope(botId, guildId), publicationId: attempt.publicationId, studentId: attempt.studentId },
-    { $set: { examStatus: finalResult === "approved" ? "APPROVED" : "FAILED", score: finalScore, result: finalResult, correctedBy: reviewerId, completedAt: attempt.finishedAt ?? now, updatedAt: now } }
+    { $set: { examStatus: finalResult === "approved" ? "APPROVED" : "FAILED", score: evaluation.grade, result: finalResult, correctedBy: reviewerId, completedAt: attempt.finishedAt ?? now, updatedAt: now } }
   );
   if (finalResult === "approved") {
     await recordApprovedCourseHistoryFromAttempt(botId, guildId, attemptId).catch((error) => {
@@ -632,6 +635,25 @@ export async function setCourseExamResultDelivery(botId: string | null, guildId:
   await logCourseAction(botId, guildId, "course.exam_result_panel_delivered", null, null, null, { attemptId, channelId: input.channelId, messageId: input.messageId });
 }
 
+export async function auditInconsistentCourseExamResults(botId: string | null, guildId: string, courseId?: string | null) {
+  const { courseExamAttempts } = await getMongoCollections();
+  const filter = {
+    ...scope(botId, guildId),
+    ...(courseId ? { courseId } : {}),
+    $and: [
+      { $or: [{ finalScore: { $gte: COURSE_PASSING_GRADE } }, { score: { $gte: COURSE_PASSING_GRADE } }] },
+      { $or: [{ result: "rejected" as const }, { status: "rejected" as const }] }
+    ]
+  };
+  const attempts = await courseExamAttempts.find(filter).sort({ updatedAt: -1 }).limit(200).toArray();
+  return {
+    attempts: attempts.map(mapAttempt),
+    passingGrade: COURSE_PASSING_GRADE,
+    ruleVersion: COURSE_GRADE_RULE_VERSION,
+    total: await courseExamAttempts.countDocuments(filter)
+  };
+}
+
 function mapSettings(settings: MongoCourseExamSettings) {
   return {
     id: settings._id,
@@ -639,7 +661,7 @@ function mapSettings(settings: MongoCourseExamSettings) {
     guildId: settings.guildId,
     courseId: settings.courseId,
     enabled: settings.enabled,
-    minScore: settings.minScore ?? DEFAULT_MIN_SCORE,
+    minScore: COURSE_PASSING_GRADE,
     maxTimeMinutes: settings.maxTimeMinutes,
     correctionChannelId: settings.correctionChannelId ?? null,
     resultChannelId: settings.resultChannelId ?? null,
@@ -769,7 +791,7 @@ function mapAnswer(answer: MongoCourseExamAnswer) {
 async function cleanSettings(botId: string | null, guildId: string, courseId: string, input: Partial<CourseExamSettingsDto>) {
   const patch: Record<string, unknown> = { ...input };
   if ("maxTimeMinutes" in input) patch.maxTimeMinutes = input.maxTimeMinutes ? Math.max(1, Number(input.maxTimeMinutes)) : null;
-  if ("minScore" in input) patch.minScore = Math.max(0, Math.min(1000, parseDecimalNumber(input.minScore, DEFAULT_MIN_SCORE)));
+  if ("minScore" in input) patch.minScore = COURSE_PASSING_GRADE;
   if ("manualQuestionMaxScore" in input) patch.manualQuestionMaxScore = Math.max(0, parseDecimalNumber(input.manualQuestionMaxScore, MAX_QUESTION_SCORE));
   if ("correctionChannelId" in input) patch.correctionChannelId = normalizeNullableText(input.correctionChannelId, 32);
   if ("resultChannelId" in input) patch.resultChannelId = normalizeNullableText(input.resultChannelId, 32);
@@ -929,8 +951,8 @@ function isObjectiveAnswerFullyScored(question: MongoCourseExamQuestion, pointsE
   return maxScore > 0 && pointsEarned > 0;
 }
 
-export function decideCourseExamResult(score: number): "approved" | "rejected" {
-  return parseDecimalNumber(score, 0) >= COURSE_EXAM_PASSING_SCORE ? "approved" : "rejected";
+export function decideCourseExamResult(score: unknown): CourseGradeResult {
+  return evaluateCourseGrade(score).result;
 }
 
 function shouldAwaitManualExamReview(settings: Pick<MongoCourseExamSettings, "automaticApproval" | "manualApproval"> | null | undefined) {
@@ -1110,7 +1132,7 @@ async function validateCourseExamActivation(botId: string | null, guildId: strin
   const errors: string[] = [];
   if (!course) errors.push("Curso não encontrado.");
   if (!questions.length) errors.push("A prova precisa ter pelo menos 1 pergunta ativa configurada.");
-  if (!Number(merged.minScore)) errors.push("Nota mínima não configurada.");
+  if (!Number(COURSE_PASSING_GRADE)) errors.push("Nota mínima não configurada.");
   if (!(courseSettings.tempProofCategoryId || courseSettings.temporaryCategoryId)) errors.push("Categoria de canais temporários não configurada na Configuração de Canais.");
   if (!courseSettings.evaluationChannelId) errors.push("Canal de avaliação/correção não configurado na Configuração de Canais.");
   if (!courseSettings.resultChannelId) errors.push("Canal de Resultado das Avaliações não configurado na Configuração de Canais.");

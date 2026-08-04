@@ -45,6 +45,7 @@ import {
 import {
   createCourseExamQuestion,
   createOrResumeCourseExamAttempt,
+  auditInconsistentCourseExamResults,
   deleteCourseExamQuestion,
   duplicateCourseExamQuestion,
   finalizeCourseExamAttempt,
@@ -566,6 +567,15 @@ coursesRouter.post("/:guildId/courses/:courseId/exam/questions/reorder", async (
     if (!botId || isBotRequest(req) || !(await canManage(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para reordenar perguntas." });
     const { questionIds } = reorderExamQuestionsSchema.parse(req.body ?? {});
     return res.json({ questions: await reorderCourseExamQuestions(botId, guildId, routeParam(req, "courseId"), questionIds, res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/:guildId/courses/:courseId/exam/audit", async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await resolveRequestBotId(req);
+    if (!botId || isBotRequest(req) || !(await canRead(req, guildId, botId))) return res.status(403).json({ message: "Sem permissão para auditar provas." });
+    return res.json(await auditInconsistentCourseExamResults(botId, guildId, routeParam(req, "courseId")));
   } catch (error) { return next(error); }
 });
 
