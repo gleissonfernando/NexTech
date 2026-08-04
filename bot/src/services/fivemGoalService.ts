@@ -84,6 +84,14 @@ export const gerenciamentoFarmingCommand: BotCommand = {
   }
 };
 
+export const fechamentoMetaCommand: BotCommand = {
+  data: new SlashCommandBuilder().setName("fechamento-meta").setDescription("Abre a confirmação para finalizar o período atual de metas."),
+  moduleId: "fivem-goals",
+  async execute(interaction, context) {
+    await showFarmingFinalizePanel(interaction, context);
+  }
+};
+
 export const resumoMetaCommand: BotCommand = {
   data: new SlashCommandBuilder().setName("resumo-meta").setDescription("Mostra o resumo semanal de metas de todos os usuários."),
   moduleId: "fivem-goals",
@@ -632,6 +640,19 @@ async function showFarmingManagementPanel(interaction: ChatInputCommandInteracti
     return;
   }
   await interaction.reply(createFarmingManagementPayload(settings, interaction.guild, null));
+}
+
+async function showFarmingFinalizePanel(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
+    await interaction.reply({
+      content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem finalizar a meta.",
+      ephemeral: true
+    });
+    return;
+  }
+  await interaction.reply(createFarmingFinalizeConfirmPayload(settings, interaction.guild));
 }
 
 async function handleFarmingManagementInteraction(interaction: Interaction, context: BotContext) {
