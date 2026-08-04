@@ -18,7 +18,6 @@ import {
     markFivemFacAbsenceStarted,
     rejectFivemFacAbsence,
     requestFivemFacPanelPublish,
-    resetFivemFacTestHistory,
     saveFivemFacAbsencePhotoFile,
     saveFivemFacPanelImageFile,
     saveFivemFacSettings,
@@ -139,10 +138,6 @@ const createAbsenceSchema = z.object({
   endDate: dateOnlySchema,
   notes: z.string().max(1000).nullable().optional(),
   requesterRoleIds: z.array(snowflakeSchema).max(100).optional()
-});
-const facHistoryResetSchema = z.object({
-  actorId: snowflakeSchema,
-  guildId: guildIdSchema
 });
 const goalFieldSchema = z.object({
   id: z.string().max(80),
@@ -1117,24 +1112,6 @@ fivemRouter.post("/bot/fac/panel-state", requireBot, async (req, res, next) => {
 
     return res.json({
       settings: await updateFivemFacPanelMessageState(botId, input.guildId, input.messageId ?? null)
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-fivemRouter.post("/bot/fac/history/reset", requireBot, async (req, res, next) => {
-  try {
-    const input = facHistoryResetSchema.parse(req.body);
-    const botId = await readRequiredBotId(req);
-    await assertBotFacLicense(botId);
-
-    return res.json({
-      result: await resetFivemFacTestHistory({
-        actorId: input.actorId,
-        botId,
-        guildId: input.guildId
-      })
     });
   } catch (error) {
     return next(error);

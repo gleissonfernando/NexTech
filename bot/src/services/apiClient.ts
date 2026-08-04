@@ -2065,28 +2065,6 @@ export type FivemFacLifecycleResult = {
   changed: boolean;
 };
 
-export type FivemFacHistoryResetResult = {
-  actorId: string;
-  botId: string;
-  deleted: {
-    facAbsences: number;
-    fivemGoalEntries: number;
-    fivemGoalLogs: number;
-    fivemGoalSubmissions: number;
-    fivemGoalUserChannels: number;
-    manualRegistrationLogs: number;
-    manualRegistrationSubmissions: number;
-    total: number;
-  };
-  discordChannelIds: {
-    all: string[];
-    facAbsencePrivate: string[];
-    fivemGoalUser: string[];
-  };
-  guildId: string;
-  resetAt: string;
-};
-
 export type OpenDutySettings = {
   id: string;
   botId: string | null;
@@ -4606,11 +4584,6 @@ export class ApiClient {
   async updateFivemFacPanelState(input: { guildId: string; messageId?: string | null }) {
     const { data } = await this.http.post<{ settings: FivemFacSettings }>("/fivem/bot/fac/panel-state", input);
     return data.settings;
-  }
-
-  async resetFivemFacTestHistory(input: { actorId: string; guildId: string }) {
-    const { data } = await this.http.post<{ result: FivemFacHistoryResetResult }>("/fivem/bot/fac/history/reset", input);
-    return data.result;
   }
 
   async createFivemFacAbsence(input: {

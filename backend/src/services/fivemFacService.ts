@@ -81,28 +81,6 @@ export type FivemFacLifecycleResult = {
   changed: boolean;
 };
 
-export type FivemFacHistoryResetResult = {
-  actorId: string;
-  botId: string;
-  deleted: {
-    facAbsences: number;
-    fivemGoalEntries: number;
-    fivemGoalLogs: number;
-    fivemGoalSubmissions: number;
-    fivemGoalUserChannels: number;
-    manualRegistrationLogs: number;
-    manualRegistrationSubmissions: number;
-    total: number;
-  };
-  discordChannelIds: {
-    all: string[];
-    facAbsencePrivate: string[];
-    fivemGoalUser: string[];
-  };
-  guildId: string;
-  resetAt: string;
-};
-
 export type SaveFivemFacSettingsInput = {
   enabled?: boolean;
   categoryId?: string | null;
@@ -408,88 +386,6 @@ export async function updateFivemFacPanelMessageState(botId: string, guildId: st
   );
 
   return getFivemFacSettings(guildId, botId);
-}
-
-export async function resetFivemFacTestHistory(input: { actorId: string; botId: string; guildId: string }): Promise<FivemFacHistoryResetResult> {
-  const {
-    fivemFacAbsences,
-    fivemGoalEntries,
-    fivemGoalLogs,
-    fivemGoalSubmissions,
-    fivemGoalUserChannels,
-    manualRegistrationLogs,
-    manualRegistrationSubmissions
-  } = await getMongoCollections();
-  const scope = { botId: input.botId, guildId: input.guildId };
-  const [facAbsenceChannels, goalChannels] = await Promise.all([
-    fivemFacAbsences
-      .find(scope, { projection: { privateChannelId: 1 } })
-      .toArray(),
-    fivemGoalUserChannels
-      .find(scope, { projection: { channelId: 1 } })
-      .toArray()
-  ]);
-  const facAbsencePrivate = uniqueSnowflakes(facAbsenceChannels.map((absence) => absence.privateChannelId));
-  const fivemGoalUser = uniqueSnowflakes(goalChannels.map((channel) => channel.channelId));
-  const [facAbsences, manualSubmissions, manualLogs, goalUserChannels, goalEntries, goalSubmissions, goalLogs] = await Promise.all([
-    fivemFacAbsences.deleteMany(scope),
-    manualRegistrationSubmissions.deleteMany(scope),
-    manualRegistrationLogs.deleteMany(scope),
-    fivemGoalUserChannels.deleteMany(scope),
-    fivemGoalEntries.deleteMany(scope),
-    fivemGoalSubmissions.deleteMany(scope),
-    fivemGoalLogs.deleteMany(scope)
-  ]);
-  const deleted = {
-    facAbsences: facAbsences.deletedCount ?? 0,
-    fivemGoalEntries: goalEntries.deletedCount ?? 0,
-    fivemGoalLogs: goalLogs.deletedCount ?? 0,
-    fivemGoalSubmissions: goalSubmissions.deletedCount ?? 0,
-    fivemGoalUserChannels: goalUserChannels.deletedCount ?? 0,
-    manualRegistrationLogs: manualLogs.deletedCount ?? 0,
-    manualRegistrationSubmissions: manualSubmissions.deletedCount ?? 0,
-    total: 0
-  };
-
-  deleted.total = Object.entries(deleted)
-    .filter(([key]) => key !== "total")
-    .reduce((sum, [, count]) => sum + count, 0);
-
-  const resetAt = new Date().toISOString();
-  const result: FivemFacHistoryResetResult = {
-    actorId: input.actorId,
-    botId: input.botId,
-    deleted,
-    discordChannelIds: {
-      all: uniqueSnowflakes([...facAbsencePrivate, ...fivemGoalUser]),
-      facAbsencePrivate,
-      fivemGoalUser
-    },
-    guildId: input.guildId,
-    resetAt
-  };
-  const log = await createFacLog({
-    botId: input.botId,
-    guildId: input.guildId,
-    type: "fivem.fac.test_history_reset",
-    userId: input.actorId,
-    message: "Histórico de teste do FAC limpo.",
-    metadata: {
-      action: "test_history_reset",
-      deleted,
-      discordChannelIds: result.discordChannelIds.all,
-      module: FAC_MODULE_ID,
-      resetAt
-    }
-  });
-
-  emitRealtime("fivem:fac:history_reset", result);
-  emitRealtimeToRoom(devBotRealtimeRoom(input.botId), "fivem:fac:history_reset", result);
-  if (log) {
-    emitRealtime("logs:new", log);
-  }
-
-  return result;
 }
 
 export async function createFivemFacAbsence(input: CreateFivemFacAbsenceInput) {
