@@ -536,7 +536,7 @@ export function CoursesPanel({ botId, canManage, guildId }: CoursesPanelProps) {
   async function reviewExamAttempt(attemptId: string, status: "approved" | "rejected") {
     if (!selectedCourse || !exam || exam.settings.courseId !== selectedCourse.id) return;
     const manualScore = status === "approved"
-      ? Math.max(0, parseDecimalNumber(window.prompt("Nota manual adicional da prova", "0") ?? "0", 0))
+      ? window.prompt("Nota manual adicional da prova", "0") ?? "0"
       : 0;
     const rejectionReason = status === "rejected" ? window.prompt("Motivo da reprovação (opcional)", "") || null : null;
     setSaving(true);

@@ -38,7 +38,7 @@ test("resposta correta objetiva sem score positivo usa os pontos da pergunta", (
   const score = questions.slice(0, 7).reduce((total, question) => total + calculateSelectionScore(question, question.alternatives[0]), 0);
 
   assert.equal(score, 7);
-  assert.equal(score >= 6, true);
+  assert.equal(decideCourseExamResult(score), "approved");
 });
 
 test("multipla escolha divide os pontos restantes entre corretas sem score", () => {

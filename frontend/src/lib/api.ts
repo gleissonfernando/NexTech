@@ -2965,7 +2965,7 @@ export async function deleteCourseExamQuestionApi(botId: string, guildId: string
   return data.question;
 }
 
-export async function reviewCourseExamAttemptApi(botId: string, guildId: string, courseId: string, attemptId: string, payload: { manualScore?: number | null; rejectionReason?: string | null; status: "approved" | "rejected" }) {
+export async function reviewCourseExamAttemptApi(botId: string, guildId: string, courseId: string, attemptId: string, payload: { manualScore?: number | string | null; rejectionReason?: string | null; status: "approved" | "rejected" }) {
   const { data } = await api.post<{ attempt: CourseExamDashboard["attempts"][number] }>(
     `/courses/${encodeURIComponent(guildId)}/courses/${encodeURIComponent(courseId)}/exam/attempts/${encodeURIComponent(attemptId)}/review`,
     payload,

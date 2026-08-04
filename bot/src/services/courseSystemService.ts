@@ -2042,21 +2042,22 @@ async function reviewExam(interaction: ButtonInteraction, context: BotContext) {
 async function approveExamWithManualScore(interaction: ModalSubmitInteraction, context: BotContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const attemptId = idFromCustomId(interaction.customId);
-  const rawScore = interaction.fields.getTextInputValue("manualScore").trim().replace(",", ".");
-  if (!/^\d+(?:\.\d+)?$/.test(rawScore)) {
-    await interaction.editReply("Informe uma nota numérica válida, como 0, 0.5 ou 1.0.");
+  const manualScore = interaction.fields.getTextInputValue("manualScore").trim();
+  const compactScore = manualScore.replace(/\s+/g, "");
+  if (!/^(?:\d|10)(?:[.,]\d{1,2})?$/.test(compactScore)) {
+    await interaction.editReply("Informe uma nota válida de 0 a 10, como 6, 6,0 ou 6.5.");
     return;
   }
-  const manualScore = Number(rawScore);
-  if (!Number.isFinite(manualScore) || manualScore < 0 || manualScore > 1000) {
-    await interaction.editReply("A nota manual deve ficar entre 0 e 1000.");
+  const numericScore = Number(compactScore.replace(",", "."));
+  if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > 10) {
+    await interaction.editReply("A nota manual deve ficar entre 0 e 10.");
     return;
   }
   const reviewed = await completeExamReview(interaction, context, attemptId, "approved", manualScore);
   if (reviewed) await interaction.editReply("Prova aprovada, nota final calculada e painel atualizado.");
 }
 
-async function completeExamReview(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, attemptId: string, status: "approved" | "rejected", manualScore: number) {
+async function completeExamReview(interaction: ButtonInteraction | ModalSubmitInteraction, context: BotContext, attemptId: string, status: "approved" | "rejected", manualScore: number | string) {
   const bundle = await context.api.getCourseExamAttempt(interaction.guildId!, attemptId);
   if (!(await canReviewExam(interaction, context, bundle.attempt))) {
     await interaction.editReply("Você não tem permissão para corrigir esta prova.");

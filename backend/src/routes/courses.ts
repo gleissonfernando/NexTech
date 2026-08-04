@@ -303,7 +303,8 @@ const identificationSchema = z.object({
   rpId: z.string().max(100).nullable().optional(),
   confirm: z.boolean().optional()
 });
-const reviewSchema = z.object({ actorId: snowflake, manualScore: decimalNumber(z.number().min(0).max(1000)).nullable().optional(), rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
+const reviewScoreSchema = z.union([z.string(), z.number()]).nullable().optional();
+const reviewSchema = z.object({ actorId: snowflake, manualScore: reviewScoreSchema, rejectionReason: z.string().max(1000).nullable().optional(), status: z.enum(["approved", "rejected"]) });
 const correctionMessageSchema = z.object({ messageId: snowflake });
 const deliveryMessageSchema = z.object({ channelId: snowflake, messageId: snowflake });
 const instructorTrackingSettingsSchema = z.object({

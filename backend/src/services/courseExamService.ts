@@ -571,7 +571,7 @@ export async function finalizeCourseExamAttempt(botId: string | null, guildId: s
   return updated ? { answers: scoredAnswers.map(mapAnswer), attempt: mapAttempt(updated), questions: relevantQuestions.map(mapQuestion) } : null;
 }
 
-export async function reviewCourseExamAttempt(botId: string | null, guildId: string, attemptId: string, reviewerId: string, status: "approved" | "rejected", rejectionReason?: string | null, manualScoreInput?: number | null) {
+export async function reviewCourseExamAttempt(botId: string | null, guildId: string, attemptId: string, reviewerId: string, status: "approved" | "rejected", rejectionReason?: string | null, manualScoreInput?: unknown) {
   const collections = await getMongoCollections();
   const { courseExamAttempts, courseEnrollments } = collections;
   const now = new Date();
@@ -584,9 +584,20 @@ export async function reviewCourseExamAttempt(botId: string | null, guildId: str
   };
   const existing = await courseExamAttempts.findOne(reviewableFilter);
   if (!existing) return null;
-  const automaticScore = optionalCourseGrade(existing.automaticScore ?? existing.score ?? 0, 0);
-  const manualScore = optionalCourseGrade(manualScoreInput ?? existing.manualScore ?? 0, 0);
-  if (manualScore < 0) throw Object.assign(new Error("Nota manual inválida. Informe um número maior ou igual a zero."), { statusCode: 400 });
+  let automaticScore: number;
+  let manualScore: number;
+  try {
+    automaticScore = optionalCourseGrade(existing.automaticScore ?? existing.score ?? 0, 0);
+    manualScore = optionalCourseGrade(manualScoreInput ?? existing.manualScore ?? 0, 0);
+  } catch (error) {
+    await logCourseAction(botId, guildId, "course.exam_review_invalid_score", reviewerId, existing.courseId, existing.publicationId, {
+      attemptId,
+      automaticScore: existing.automaticScore ?? existing.score ?? null,
+      error: error instanceof Error ? error.message : String(error),
+      manualScoreInput
+    });
+    throw error;
+  }
   const finalScore = roundCourseGrade(capExamScore(decimalSum([automaticScore, manualScore])));
   const percent = decimalMultiplyByInteger(finalScore, 10);
   const evaluation = evaluateCourseGrade(finalScore);

@@ -3165,7 +3165,7 @@ export class ApiClient {
     return data;
   }
 
-  async reviewCourseExamAttempt(guildId: string, attemptId: string, input: { actorId: string; manualScore?: number | null; rejectionReason?: string | null; status: "approved" | "rejected" }) {
+  async reviewCourseExamAttempt(guildId: string, attemptId: string, input: { actorId: string; manualScore?: number | string | null; rejectionReason?: string | null; status: "approved" | "rejected" }) {
     const { data } = await this.http.post<{ attempt: CourseExamAttempt }>(`/courses/bot/${guildId}/exam-attempts/${attemptId}/review`, input);
     return data.attempt;
   }
