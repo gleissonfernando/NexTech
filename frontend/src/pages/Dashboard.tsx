@@ -400,7 +400,7 @@ const moduleCatalog: ModuleDefinition[] = [
   {
     id: "terms-panel",
     title: "Painel de Termos",
-    description: "Publica um painel Components V2 com botão para a página oficial de termos da NexTech.",
+    description: "Publica um painel Components V2 com texto estruturado e banner de termos.",
     icon: BookOpen,
     view: "terms-panel"
   },
@@ -7461,7 +7461,7 @@ function TermsPanel({
 
       <SimpleToggleCard
         checked={Boolean(settings.termsPanelEnabled)}
-        description="Libera a publicação do painel informativo com botão para os termos oficiais."
+        description="Libera a publicação do painel informativo de termos no canal escolhido."
         disabled={!canManage || saving}
         icon={BookOpen}
         onChange={(checked) => void saveTerms(checked)}
@@ -7492,10 +7492,6 @@ function TermsPanel({
             <DashboardTextField disabled={!canManage} label="Subtítulo" maxLength={160} onChange={(value) => setDraft((current) => ({ ...current, termsPanelSubtitle: value }))} value={draft.termsPanelSubtitle} />
           </div>
           <DashboardTextarea disabled={!canManage} label="Texto do painel" maxLength={1800} onChange={(value) => setDraft((current) => ({ ...current, termsPanelDescription: value }))} value={draft.termsPanelDescription} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <DashboardTextField disabled={!canManage} label="Texto do botão" maxLength={80} onChange={(value) => setDraft((current) => ({ ...current, termsPanelButtonLabel: value }))} value={draft.termsPanelButtonLabel} />
-            <DashboardTextField disabled={!canManage} label="URL dos termos" maxLength={2048} onChange={(value) => setDraft((current) => ({ ...current, termsPanelButtonUrl: value }))} value={draft.termsPanelButtonUrl} />
-          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <DashboardTextField disabled={!canManage} label="Imagem/Banner por URL" maxLength={2048} onChange={(value) => setDraft((current) => ({ ...current, termsPanelImageUrl: value }))} value={draft.termsPanelImageUrl} />
             <label className="space-y-2">
@@ -7556,38 +7552,48 @@ function defaultTermsDraft() {
 
 function defaultTermsPanelDescription() {
   return [
-    "### 🤝 Aceitação dos Termos & Serviço",
-    "• Ao utilizar os serviços oferecidos pelo NexTech, você automaticamente concorda com os termos e condições estabelecidos abaixo.",
+    "## 🤝 Aceitação dos Termos & Serviço",
+    "- Ao utilizar os serviços oferecidos pela **NexTech**, você concorda com os termos e condições estabelecidos abaixo.",
     "",
-    "### 💰 Pagamento e Orçamento",
-    "• Os valores dos serviços apresentados no Discord do NexTech são pré-estabelecidos, mas estão sujeitos a alterações com base dificuldade do projeto.",
+    "## 💰 Pagamento e Orçamento",
+    "- **Valores:** os serviços apresentados no Discord da **NexTech** são pré-estabelecidos, mas podem mudar conforme a dificuldade do projeto.",
     "",
-    "• Não nos responsabilizamos por pagamentos realizados ao destinatário errado ou qualquer falha no processo de pagamento que esteja fora do nosso controle.",
+    "- **Responsabilidade:** não nos responsabilizamos por pagamentos enviados ao destinatário errado ou por falhas fora do nosso controle.",
     "",
-    "• O prazo de entrega é estabelecido de acordo com as demanda do cliente.",
+    "- **Prazo:** a entrega é combinada de acordo com a demanda do cliente.",
     "",
-    "• Os produtos são para uso exclusivo de nossos clientes, não permitimos a revenda desses conteúdos a terceiros.",
+    "- **Uso exclusivo:** os produtos são destinados somente aos nossos clientes; revenda a terceiros não é permitida.",
     "",
-    "### ☑️ Política de Reembolso",
-    "• Após a entrega, não haverá reembolso.",
+    "## ☑️ Política de Reembolso",
+    "- **Entrega concluída:** após a entrega, não haverá reembolso.",
     "",
-    "• A comunicação deve ser feita através de tickets para evitar transtornos.",
+    "- **Comunicação:** fale sempre por tickets para evitar transtornos.",
     "",
-    "• Em caso de possíveis golpes, olhe os membros do servidor com o cargo **Dev** e envie uma mensagem com as provas do caso."
+    "- **Golpes:** em caso de suspeita, confira os membros com cargo **Dev** e envie uma mensagem com as provas do caso."
   ].join("\n");
 }
 
 function TermsPanelPreview({ draft }: { draft: ReturnType<typeof defaultTermsDraft> }) {
   const imageUrl = draft.termsPanelImageUrl || "/terms-banner.png";
+  const sections = parseTermsPreviewSections(draft.termsPanelDescription);
   return (
-    <div className="max-w-2xl rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white shadow-2xl">
-      <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.termsPanelColor }}>
+    <div className="max-w-2xl rounded-md border border-zinc-700 bg-[#313338] p-3 text-white shadow-2xl">
+      <div className="border-l-4 py-1 pl-4" style={{ borderColor: draft.termsPanelColor }}>
         <div className={imageUrl && draft.termsPanelImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
           <div>
-            <h3 className="text-base font-extrabold leading-tight text-white">{draft.termsPanelTitle}</h3>
-            {draft.termsPanelSubtitle ? <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.termsPanelSubtitle}</p> : null}
-            <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-zinc-100">{draft.termsPanelDescription}</p>
-            {draft.termsPanelFooterText ? <p className="mt-4 text-[11px] italic text-zinc-100">{draft.termsPanelFooterText}</p> : null}
+            <h3 className="text-lg font-extrabold leading-tight text-white">{draft.termsPanelTitle}</h3>
+            <p className="mt-1 text-xs font-semibold text-zinc-200">{draft.termsPanelSubtitle || "Contratação, pagamento e reembolso"}</p>
+            <div className="mt-3 space-y-3">
+              {sections.map((section, index) => (
+                <div className={index === 0 ? "" : "border-t border-zinc-600/70 pt-3"} key={`${section.title}-${index}`}>
+                  {section.title ? <h4 className="text-sm font-extrabold text-white">{section.title}</h4> : null}
+                  <div className="mt-2 space-y-2 text-xs leading-relaxed text-zinc-100">
+                    {section.lines.map((line, lineIndex) => <p key={`${line}-${lineIndex}`}>{line}</p>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {draft.termsPanelFooterText ? <p className="mt-4 border-t border-zinc-600/70 pt-2 text-[11px] italic text-zinc-100">{draft.termsPanelFooterText}</p> : null}
           </div>
           {imageUrl && draft.termsPanelImageFormat !== "horizontal" ? <img alt="" className={draft.termsPanelImageFormat === "vertical" ? "h-52 w-full rounded-md object-cover" : "aspect-square w-full rounded-md object-cover"} src={imageUrl} /> : null}
         </div>
@@ -7595,6 +7601,35 @@ function TermsPanelPreview({ draft }: { draft: ReturnType<typeof defaultTermsDra
       </div>
     </div>
   );
+}
+
+function parseTermsPreviewSections(text: string) {
+  const sections: Array<{ lines: string[]; title: string }> = [];
+  let current: { lines: string[]; title: string } | null = null;
+
+  text.split("\n").forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+
+    if (/^#{1,6}\s/.test(line)) {
+      if (current) sections.push(current);
+      current = { title: cleanTermsPreviewLine(line), lines: [] };
+      return;
+    }
+
+    if (!current) current = { title: "", lines: [] };
+    current.lines.push(cleanTermsPreviewLine(line));
+  });
+
+  if (current) sections.push(current);
+  return sections.length ? sections : [{ title: "", lines: ["Configure o texto do painel."] }];
+}
+
+function cleanTermsPreviewLine(value: string) {
+  return value
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^[-•]\s*/, "")
+    .replace(/\*\*/g, "");
 }
 
 function DashboardTextField({ disabled, label, maxLength, onChange, value }: { disabled: boolean; label: string; maxLength: number; onChange: (value: string) => void; value: string }) {

@@ -97,9 +97,12 @@ export function buildTermsPanelPayload(settings: GuildSettingsDto) {
 function buildTermsTextComponents(settings: GuildSettingsDto): DiscordComponent[] {
   const title = displayTermsTitle(settings.termsPanelTitle);
   const company = extractCompanyName(settings.termsPanelTitle);
-  const description = settings.termsPanelDescription?.trim() || defaultTermsDescription(company);
-  const lines = [`## ${title}`, description].filter(Boolean);
+  const description = settings.termsPanelDescription?.trim();
+  if (!description) {
+    return defaultTermsComponents(title, company, settings.termsPanelSubtitle, settings.termsPanelFooterText);
+  }
 
+  const lines = [`# ${title}`, settings.termsPanelSubtitle?.trim() ? `**${settings.termsPanelSubtitle.trim()}**` : null, description, settings.termsPanelFooterText?.trim() ? `-# ${settings.termsPanelFooterText.trim()}` : null].filter(Boolean);
   return chunkText(lines.join("\n\n"), 3900).map((content) => ({ type: 10, content }));
 }
 
@@ -124,27 +127,37 @@ function resolveTermsImageUrl(settings: GuildSettingsDto) {
   return `${publicOrigin()}${source.startsWith("/") ? source : `/${source}`}`;
 }
 
-function defaultTermsDescription(company: string) {
-  return [
-    "### 🤝 Aceitação dos Termos & Serviço",
-    `• Ao utilizar os serviços oferecidos pelo ${company}, você automaticamente concorda com os termos e condições estabelecidos abaixo.`,
-    "",
-    "### 💰 Pagamento e Orçamento",
-    `• Os valores dos serviços apresentados no Discord do ${company} são pré-estabelecidos, mas estão sujeitos a alterações com base dificuldade do projeto.`,
-    "",
-    "• Não nos responsabilizamos por pagamentos realizados ao destinatário errado ou qualquer falha no processo de pagamento que esteja fora do nosso controle.",
-    "",
-    "• O prazo de entrega é estabelecido de acordo com as demanda do cliente.",
-    "",
-    "• Os produtos são para uso exclusivo de nossos clientes, não permitimos a revenda desses conteúdos a terceiros.",
-    "",
-    "### ☑️ Política de Reembolso",
-    "• Após a entrega, não haverá reembolso.",
-    "",
-    "• A comunicação deve ser feita através de tickets para evitar transtornos.",
-    "",
-    "• Em caso de possíveis golpes, olhe os membros do servidor com o cargo **Dev** e envie uma mensagem com as provas do caso."
+function defaultTermsComponents(title: string, company: string, subtitle: string | null, footer: string | null) {
+  const header = [
+    `# ${title}`,
+    subtitle?.trim() ? `**${subtitle.trim()}**` : "**Contratação, pagamento e reembolso**",
+    "-# Leia as regras abaixo antes de contratar qualquer serviço."
   ].join("\n");
+
+  const sections = [
+    header,
+    [
+      "## 🤝 Aceitação dos Termos & Serviço",
+      `- Ao utilizar os serviços oferecidos pela **${company}**, você concorda com os termos e condições estabelecidos abaixo.`
+    ].join("\n"),
+    [
+      "## 💰 Pagamento e Orçamento",
+      `- **Valores:** os serviços apresentados no Discord da **${company}** são pré-estabelecidos, mas podem mudar conforme a dificuldade do projeto.`,
+      "- **Responsabilidade:** não nos responsabilizamos por pagamentos enviados ao destinatário errado ou por falhas fora do nosso controle.",
+      "- **Prazo:** a entrega é combinada de acordo com a demanda do cliente.",
+      "- **Uso exclusivo:** os produtos são destinados somente aos nossos clientes; revenda a terceiros não é permitida."
+    ].join("\n"),
+    [
+      "## ☑️ Política de Reembolso",
+      "- **Entrega concluída:** após a entrega, não haverá reembolso.",
+      "- **Comunicação:** fale sempre por tickets para evitar transtornos.",
+      "- **Golpes:** em caso de suspeita, confira os membros com cargo **Dev** e envie uma mensagem com as provas do caso."
+    ].join("\n")
+  ];
+
+  if (footer?.trim()) sections.push(`-# ${footer.trim()}`);
+
+  return sections.map((content) => ({ type: 10, content }));
 }
 
 function publicOrigin() {
