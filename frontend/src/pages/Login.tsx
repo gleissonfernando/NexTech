@@ -1,4 +1,6 @@
 import {
+  Activity,
+  ArrowRight,
   Bot,
   Check,
   CheckCircle2,
@@ -371,31 +373,44 @@ export function Login({
       <div className="fixed inset-0 -z-10 bg-[#050505]" />
       <Header entering={verifying} onStart={handleStart} onNavigate={scrollTo} />
 
-      <section id="inicio" className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center overflow-hidden px-4 pb-16 pt-32 text-center sm:px-6 lg:px-8">
-        <Reveal delay={0.1} className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-4 py-2 text-center text-xs font-semibold leading-5 text-[#FFEA70] sm:text-sm">
-          <Sparkles className="h-4 w-4" />
-          Plataforma completa de automação para Discord
-        </Reveal>
+      <section id="inicio" className="relative mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 overflow-hidden px-4 pb-16 pt-28 sm:px-6 lg:grid-cols-[1fr_.92fr] lg:px-8 lg:pt-24">
+        <div className="nex-tech-grid pointer-events-none absolute inset-x-0 top-0 h-[36rem] opacity-70" />
+        <div className="relative text-left">
+          <Reveal delay={0.1} className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 py-2 text-xs font-black uppercase leading-5 text-[#FFEA70] sm:text-sm">
+            <Sparkles className="h-4 w-4" />
+            NexTech Bot Platform
+          </Reveal>
 
-        <Reveal delay={0.2} className="mt-8 w-full max-w-5xl">
-          <h1 className="mx-auto max-w-5xl text-4xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
-            Automação inteligente para o seu servidor{" "}
-            <span className="text-[#FFD500]">do seu jeito</span>
-          </h1>
-        </Reveal>
+          <Reveal delay={0.2} className="mt-7 w-full">
+            <h1 className="max-w-4xl text-4xl font-black leading-[1.04] text-white sm:text-6xl lg:text-7xl">
+              Sistemas para Discord com visual{" "}
+              <span className="text-[#FFD500]">preto e amarelo</span>
+            </h1>
+            <p className="mt-6 max-w-2xl text-base leading-8 text-[#B3B3B3] sm:text-lg">
+              Venda planos, controle bots, gerencie módulos e acompanhe tudo em uma dashboard com a identidade da NexTech.
+            </p>
+          </Reveal>
 
-        <Reveal delay={0.4} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button className="h-12 min-w-44" disabled={verifying} onClick={handleStart}>
-            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-            {startLabel}
-          </Button>
-          <Button className="h-12 min-w-44" onClick={() => scrollTo("solucoes")} variant="outline">
-            Ver Soluções
-          </Button>
-        </Reveal>
+          <Reveal delay={0.35} className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Button className="h-12 min-w-48 text-sm font-black" disabled={verifying} onClick={handleStart}>
+              {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+              {startLabel}
+            </Button>
+            <Button className="h-12 min-w-44 text-sm font-black" onClick={() => scrollTo("planos")} variant="outline">
+              Ver planos
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Reveal>
+
+          <Reveal delay={0.42} className="mt-8 grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
+            {stats.map((stat) => (
+              <HeroStat key={stat.label} {...stat} />
+            ))}
+          </Reveal>
+        </div>
 
         {error ? (
-          <Reveal delay={0.45} className="mt-5 w-full max-w-2xl rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-4 text-sm font-medium text-red-100">
+          <Reveal delay={0.45} className="relative w-full rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-4 text-sm font-medium text-red-100 lg:col-span-2">
             <p className="whitespace-pre-line">{error}</p>
             <Button asChild className="mt-3 h-10 w-full sm:w-auto" variant="outline">
               <a href={SUPPORT_URL} rel="noreferrer" target="_blank">
@@ -406,8 +421,8 @@ export function Login({
           </Reveal>
         ) : null}
 
-        <Reveal delay={0.5} className="mt-12 w-full max-w-5xl">
-          <TerminalMockup />
+        <Reveal delay={0.5} className="relative w-full min-w-0">
+          <DashboardPreview />
         </Reveal>
 
       </section>
@@ -427,7 +442,7 @@ export function Login({
           ))}
         </div>
 
-        <Reveal className="mt-24 grid gap-10 py-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-14">
+        <Reveal className="mt-16 grid gap-4 rounded-lg border border-[#FFD500]/15 bg-[#101010] p-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <StatCounter key={stat.label} {...stat} />
           ))}
@@ -491,6 +506,98 @@ export function Login({
 
       <Footer currentYear={currentYear} onNavigate={scrollTo} />
     </main>
+  );
+}
+
+function HeroStat({
+  decimals = 0,
+  displayOverride,
+  label,
+  prefix = "",
+  suffix = "",
+  value
+}: {
+  decimals?: number;
+  displayOverride?: string;
+  label: string;
+  prefix?: string;
+  suffix?: string;
+  value: number;
+}) {
+  const formattedValue = displayOverride ?? `${prefix}${formatStatNumber(value, decimals)}${suffix}`;
+
+  return (
+    <div className="rounded-lg border border-[#FFD500]/16 bg-[#101010] p-3">
+      <p className="truncate text-lg font-black text-[#FFD500]">{formattedValue}</p>
+      <p className="mt-1 truncate text-[11px] font-bold uppercase text-zinc-500">{label}</p>
+    </div>
+  );
+}
+
+function DashboardPreview() {
+  const modules = [
+    ["Tickets", "online", "98%"],
+    ["Logs", "sincronizado", "42ms"],
+    ["Planos", "checkout", "ativo"],
+    ["Proteção", "monitorando", "24/7"]
+  ];
+
+  return (
+    <div className="rounded-lg border border-[#FFD500]/25 bg-[#0B0B0B] shadow-[0_24px_70px_rgba(0,0,0,.55),0_0_44px_rgba(255,213,0,.1)]">
+      <div className="flex items-center justify-between gap-3 border-b border-[#FFD500]/15 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#FFD500] text-black"><MonitorCog className="h-5 w-5" /></span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-white">Painel NexTech</p>
+            <p className="truncate text-xs font-semibold text-zinc-500">Operação em tempo real</p>
+          </div>
+        </div>
+        <span className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 py-1 text-xs font-black uppercase text-[#FFEA70]">Online</span>
+      </div>
+      <div className="grid gap-4 p-4 sm:grid-cols-[.8fr_1.2fr]">
+        <div className="grid gap-3">
+          <PreviewMetric icon={Bot} label="Bots ativos" value="126" />
+          <PreviewMetric icon={Activity} label="Resposta" value="42ms" />
+          <PreviewMetric icon={ShieldCheck} label="Segurança" value="Ativa" />
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/35 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase text-[#FFEA70]">Módulos</p>
+            <Settings2 className="h-4 w-4 text-[#FFD500]" />
+          </div>
+          <div className="mt-4 grid gap-3">
+            {modules.map(([name, status, value]) => (
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-white/10 bg-[#101010] px-3 py-3" key={name}>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white">{name}</p>
+                  <p className="mt-1 truncate text-xs text-zinc-500">{status}</p>
+                </div>
+                <span className="rounded-md bg-[#FFD500] px-2 py-1 text-xs font-black text-black">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-[#FFD500]/15 px-4 py-3">
+        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-[78%] rounded-full bg-[#FFD500]" />
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+          <span>deploy estável</span>
+          <span className="font-bold text-[#FFEA70]">78% automação</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewMetric({ icon: Icon, label, value }: { icon: typeof Bot; label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/35 p-4">
+      <Icon className="h-5 w-5 text-[#FFD500]" />
+      <p className="mt-4 text-xs font-black uppercase text-zinc-500">{label}</p>
+      <p className="mt-1 text-2xl font-black text-white">{value}</p>
+    </div>
   );
 }
 
