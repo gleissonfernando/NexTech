@@ -7363,12 +7363,12 @@ function TermsPanel({
       termsPanelButtonUrl: settings?.termsPanelButtonUrl || `${window.location.origin}/termos`,
       termsPanelChannelId: settings?.termsPanelChannelId || "",
       termsPanelColor: settings?.termsPanelColor || "#FFD500",
-      termsPanelDescription: settings?.termsPanelDescription || "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
-      termsPanelFooterText: settings?.termsPanelFooterText || "NexTech © Termos informativos",
-      termsPanelImageFormat: settings?.termsPanelImageFormat || "none",
-      termsPanelImageUrl: settings?.termsPanelImageUrl || "",
-      termsPanelSubtitle: settings?.termsPanelSubtitle || "Leia as condições antes de contratar um serviço.",
-      termsPanelTitle: settings?.termsPanelTitle || "Termos de Serviço da NexTech"
+      termsPanelDescription: settings?.termsPanelDescription || defaultTermsPanelDescription(),
+      termsPanelFooterText: settings?.termsPanelFooterText || "",
+      termsPanelImageFormat: settings?.termsPanelImageFormat === "none" ? "horizontal" : settings?.termsPanelImageFormat || "horizontal",
+      termsPanelImageUrl: settings?.termsPanelImageUrl || "/terms-banner.png",
+      termsPanelSubtitle: settings?.termsPanelSubtitle || "",
+      termsPanelTitle: settings?.termsPanelTitle || "Termos & Serviço"
     });
   }, [settings]);
 
@@ -7545,33 +7545,54 @@ function defaultTermsDraft() {
     termsPanelButtonUrl: typeof window === "undefined" ? "/termos" : `${window.location.origin}/termos`,
     termsPanelChannelId: "",
     termsPanelColor: "#FFD500",
-    termsPanelDescription: "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.",
-    termsPanelFooterText: "NexTech © Termos informativos",
-    termsPanelImageFormat: "none" as RulesPanelImageFormat,
-    termsPanelImageUrl: "",
-    termsPanelSubtitle: "Leia as condições antes de contratar um serviço.",
-    termsPanelTitle: "Termos de Serviço da NexTech"
+    termsPanelDescription: defaultTermsPanelDescription(),
+    termsPanelFooterText: "",
+    termsPanelImageFormat: "horizontal" as RulesPanelImageFormat,
+    termsPanelImageUrl: "/terms-banner.png",
+    termsPanelSubtitle: "",
+    termsPanelTitle: "Termos & Serviço"
   };
 }
 
+function defaultTermsPanelDescription() {
+  return [
+    "### 🤝 Aceitação dos Termos & Serviço",
+    "• Ao utilizar os serviços oferecidos pelo NexTech, você automaticamente concorda com os termos e condições estabelecidos abaixo.",
+    "",
+    "### 💰 Pagamento e Orçamento",
+    "• Os valores dos serviços apresentados no Discord do NexTech são pré-estabelecidos, mas estão sujeitos a alterações com base dificuldade do projeto.",
+    "",
+    "• Não nos responsabilizamos por pagamentos realizados ao destinatário errado ou qualquer falha no processo de pagamento que esteja fora do nosso controle.",
+    "",
+    "• O prazo de entrega é estabelecido de acordo com as demanda do cliente.",
+    "",
+    "• Os produtos são para uso exclusivo de nossos clientes, não permitimos a revenda desses conteúdos a terceiros.",
+    "",
+    "### ☑️ Política de Reembolso",
+    "• Após a entrega, não haverá reembolso.",
+    "",
+    "• A comunicação deve ser feita através de tickets para evitar transtornos.",
+    "",
+    "• Em caso de possíveis golpes, olhe os membros do servidor com o cargo **Dev** e envie uma mensagem com as provas do caso."
+  ].join("\n");
+}
+
 function TermsPanelPreview({ draft }: { draft: ReturnType<typeof defaultTermsDraft> }) {
-  const imageUrl = draft.termsPanelImageFormat === "none" ? "" : draft.termsPanelImageUrl;
+  const imageUrl = draft.termsPanelImageUrl || "/terms-banner.png";
   return (
     <div className="max-w-2xl rounded-lg border border-zinc-800 bg-[#313338] p-3 text-white shadow-2xl">
-      {imageUrl && draft.termsPanelImageFormat === "horizontal" ? <img alt="" className="mb-3 max-h-44 w-full rounded-md object-cover" src={imageUrl} /> : null}
       <div className="border-l-4 py-1 pl-3" style={{ borderColor: draft.termsPanelColor }}>
         <div className={imageUrl && draft.termsPanelImageFormat !== "horizontal" ? "grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]" : ""}>
           <div>
-            <h3 className="text-base font-extrabold leading-tight text-white">📜 {draft.termsPanelTitle}</h3>
-            <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.termsPanelSubtitle}</p>
+            <h3 className="text-base font-extrabold leading-tight text-white">{draft.termsPanelTitle}</h3>
+            {draft.termsPanelSubtitle ? <p className="mt-1 border-b border-zinc-600 pb-2 text-xs font-semibold text-zinc-200">{draft.termsPanelSubtitle}</p> : null}
             <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-zinc-100">{draft.termsPanelDescription}</p>
-            <p className="mt-3 border-l border-[#FFD500]/50 pl-2 text-xs font-semibold text-[#FFEA70]">Projetos personalizados exigem pagamento inicial de 40%.</p>
             {draft.termsPanelFooterText ? <p className="mt-4 text-[11px] italic text-zinc-100">{draft.termsPanelFooterText}</p> : null}
           </div>
           {imageUrl && draft.termsPanelImageFormat !== "horizontal" ? <img alt="" className={draft.termsPanelImageFormat === "vertical" ? "h-52 w-full rounded-md object-cover" : "aspect-square w-full rounded-md object-cover"} src={imageUrl} /> : null}
         </div>
+        {imageUrl && draft.termsPanelImageFormat === "horizontal" ? <img alt="" className="mt-4 max-h-44 w-full rounded-md object-cover" src={imageUrl} /> : null}
       </div>
-      <span className="mt-3 inline-flex rounded-md bg-[#5865F2] px-3 py-2 text-xs font-bold text-white">📜 {draft.termsPanelButtonLabel}</span>
     </div>
   );
 }

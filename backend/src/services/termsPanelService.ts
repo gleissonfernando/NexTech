@@ -6,6 +6,7 @@ import { updateGuildSettings } from "./settingsService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const COMPONENTS_V2_FLAG = 1 << 15;
+const DEFAULT_TERMS_BANNER_PATH = "/terms-banner.png";
 
 type DiscordMessage = {
   id: string;
@@ -66,10 +67,6 @@ export function buildTermsPanelPayload(settings: GuildSettingsDto) {
   const imageUrl = resolveTermsImageUrl(settings);
   const textComponents = buildTermsTextComponents(settings);
 
-  if (imageUrl && settings.termsPanelImageFormat === "horizontal") {
-    components.push({ type: 12, items: [{ media: { url: imageUrl } }] });
-  }
-
   if (imageUrl && (settings.termsPanelImageFormat === "square" || settings.termsPanelImageFormat === "vertical")) {
     components.push({
       type: 9,
@@ -81,16 +78,9 @@ export function buildTermsPanelPayload(settings: GuildSettingsDto) {
     components.push(...textComponents);
   }
 
-  components.push({
-    type: 1,
-    components: [{
-      type: 2,
-      emoji: { name: "📜" },
-      label: settings.termsPanelButtonLabel || "Ler termos",
-      style: 5,
-      url: resolveTermsUrl(settings)
-    }]
-  });
+  if (imageUrl && settings.termsPanelImageFormat !== "square" && settings.termsPanelImageFormat !== "vertical") {
+    components.push({ type: 12, items: [{ media: { url: imageUrl } }] });
+  }
 
   return {
     allowed_mentions: { parse: [] },
@@ -105,30 +95,56 @@ export function buildTermsPanelPayload(settings: GuildSettingsDto) {
 }
 
 function buildTermsTextComponents(settings: GuildSettingsDto): DiscordComponent[] {
-  const title = settings.termsPanelTitle || "Termos de Serviço da NexTech";
-  const subtitle = settings.termsPanelSubtitle || "Leia as condições antes de contratar um serviço.";
-  const description = settings.termsPanelDescription || "Acesse os termos oficiais da NexTech para entender pagamentos, prazos, garantias, responsabilidades e políticas dos projetos personalizados.";
-  const lines = [
-    `# 📜 ${title}`,
-    subtitle ? `**${subtitle}**` : null,
-    description,
-    "> Projetos personalizados exigem pagamento inicial de **40%** para reserva de agenda, planejamento e início do desenvolvimento.",
-    settings.termsPanelFooterText ? `*${settings.termsPanelFooterText}*` : null
-  ].filter((line): line is string => Boolean(line));
+  const title = displayTermsTitle(settings.termsPanelTitle);
+  const company = extractCompanyName(settings.termsPanelTitle);
+  const description = settings.termsPanelDescription?.trim() || defaultTermsDescription(company);
+  const lines = [`## ${title}`, description].filter(Boolean);
 
   return chunkText(lines.join("\n\n"), 3900).map((content) => ({ type: 10, content }));
 }
 
-function resolveTermsUrl(settings: GuildSettingsDto) {
-  return settings.termsPanelButtonUrl || `${publicOrigin()}/termos`;
+function displayTermsTitle(value: string | null) {
+  const normalized = value?.trim();
+  if (!normalized || /^Termos de Servi[cç]o da NexTech$/i.test(normalized)) return "Termos & Serviço";
+  return normalized;
+}
+
+function extractCompanyName(value: string | null) {
+  const normalized = value?.trim() || "";
+  const company = normalized.replace(/^Termos\s+(?:de|&)\s+Servi[cç]o\s+(?:da|do|dos)?\s*/i, "").trim();
+  return company && !/^Termos\s*&?\s*Servi[cç]o$/i.test(company) ? company : "NexTech";
 }
 
 function resolveTermsImageUrl(settings: GuildSettingsDto) {
-  if (settings.termsPanelImageFormat === "none") return null;
-  const source = settings.termsPanelImageUrl;
+  const source = settings.termsPanelImageFormat === "none"
+    ? DEFAULT_TERMS_BANNER_PATH
+    : settings.termsPanelImageUrl || DEFAULT_TERMS_BANNER_PATH;
   if (!source) return null;
   if (/^https?:\/\//i.test(source)) return source;
   return `${publicOrigin()}${source.startsWith("/") ? source : `/${source}`}`;
+}
+
+function defaultTermsDescription(company: string) {
+  return [
+    "### 🤝 Aceitação dos Termos & Serviço",
+    `• Ao utilizar os serviços oferecidos pelo ${company}, você automaticamente concorda com os termos e condições estabelecidos abaixo.`,
+    "",
+    "### 💰 Pagamento e Orçamento",
+    `• Os valores dos serviços apresentados no Discord do ${company} são pré-estabelecidos, mas estão sujeitos a alterações com base dificuldade do projeto.`,
+    "",
+    "• Não nos responsabilizamos por pagamentos realizados ao destinatário errado ou qualquer falha no processo de pagamento que esteja fora do nosso controle.",
+    "",
+    "• O prazo de entrega é estabelecido de acordo com as demanda do cliente.",
+    "",
+    "• Os produtos são para uso exclusivo de nossos clientes, não permitimos a revenda desses conteúdos a terceiros.",
+    "",
+    "### ☑️ Política de Reembolso",
+    "• Após a entrega, não haverá reembolso.",
+    "",
+    "• A comunicação deve ser feita através de tickets para evitar transtornos.",
+    "",
+    "• Em caso de possíveis golpes, olhe os membros do servidor com o cargo **Dev** e envie uma mensagem com as provas do caso."
+  ].join("\n");
 }
 
 function publicOrigin() {
