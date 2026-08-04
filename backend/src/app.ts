@@ -5,6 +5,7 @@ import path from "node:path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import type { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import { env } from "./config/env";
@@ -78,7 +79,7 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true }));
-app.use(sessionMiddleware);
+app.use(sessionAwareMiddleware);
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev", {
   skip: (req) => req.path.startsWith("/health")
 }));
@@ -142,4 +143,33 @@ function ensureFrontendBuild() {
   if (result.status !== 0 || !fs.existsSync(frontendIndexPath)) {
     console.error("[frontend] não foi possível gerar frontend/dist/index.html.");
   }
+}
+
+function sessionAwareMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (shouldSkipSession(req)) {
+    next();
+    return;
+  }
+
+  sessionMiddleware(req, res, next);
+}
+
+function shouldSkipSession(req: Request) {
+  if (req.path === "/health" || req.path.startsWith("/health/")) {
+    return true;
+  }
+
+  if (req.path.startsWith("/uploads/") || req.path.startsWith("/transcripts/")) {
+    return true;
+  }
+
+  if (req.path.startsWith("/auth") || req.path.startsWith("/api")) {
+    return false;
+  }
+
+  if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    return false;
+  }
+
+  return true;
 }
