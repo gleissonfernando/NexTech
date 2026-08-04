@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "../config/env";
+import { fixedSystemEmojiText } from "../config/systemEmojis";
 import { createLog } from "./logService";
 import type { GuildSettingsDto } from "./settingsService";
 import { updateGuildSettings } from "./settingsService";
@@ -7,7 +8,7 @@ import { updateGuildSettings } from "./settingsService";
 const DISCORD_API = "https://discord.com/api/v10";
 const COMPONENTS_V2_FLAG = 1 << 15;
 const DEFAULT_TERMS_BANNER_PATH = "/terms-banner.png";
-const DEFAULT_TERMS_BANNER_VERSION = "20260804-terms-panel";
+const DEFAULT_TERMS_BANNER_VERSION = "20260804-terms-panel-v2";
 
 type DiscordMessage = {
   id: string;
@@ -146,18 +147,18 @@ function defaultTermsComponents(title: string, company: string, subtitle: string
   const sections = [
     header,
     [
-      "## 🤝 Aceitação dos Termos & Serviço",
+      `## ${fixedSystemEmojiText("folha")} Aceitação dos Termos & Serviço`,
       `- Ao utilizar os serviços oferecidos pela **${company}**, você concorda com os termos e condições estabelecidos abaixo.`
     ].join("\n"),
     [
-      "## 💰 Pagamento e Orçamento",
+      `## ${fixedSystemEmojiText("dinheiro")} Pagamento e Orçamento`,
       `- **Valores:** os serviços apresentados no Discord da **${company}** são pré-estabelecidos, mas podem mudar conforme a dificuldade do projeto.`,
       "- **Responsabilidade:** não nos responsabilizamos por pagamentos enviados ao destinatário errado ou por falhas fora do nosso controle.",
       "- **Prazo:** a entrega é combinada de acordo com a demanda do cliente.",
       "- **Uso exclusivo:** os produtos são destinados somente aos nossos clientes; revenda a terceiros não é permitida."
     ].join("\n"),
     [
-      "## ☑️ Política de Reembolso",
+      `## ${fixedSystemEmojiText("prancheta_acertos")} Política de Reembolso`,
       "- **Entrega concluída:** após a entrega, não haverá reembolso.",
       "- **Comunicação:** fale sempre por tickets para evitar transtornos.",
       "- **Golpes:** em caso de suspeita, confira os membros com cargo **Dev** e envie uma mensagem com as provas do caso."

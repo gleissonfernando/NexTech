@@ -30,9 +30,12 @@ test("painel de termos usa texto estruturado e banner solto no final", () => {
   assert.equal(components.some((component) => component.type === 1), false);
   assert.equal(textComponents.length >= 4, true);
   assert.equal(components.at(-1).type, 12);
-  assert.match(components.at(-1).items[0].media.url, /\/terms-banner\.png\?v=20260804-terms-panel$/);
+  assert.match(components.at(-1).items[0].media.url, /\/terms-banner\.png\?v=20260804-terms-panel-v2$/);
   assert.match(text, /# Termos & Serviço/);
   assert.match(text, /Contratação, pagamento e reembolso/);
+  assert.match(text, /<:folha:1525682208122212553>/);
+  assert.match(text, /<:dinheiro:1525682192640905216>/);
+  assert.match(text, /<:prancheta_acertos:1525682863058587900>/);
   assert.match(text, /Aceitação dos Termos & Serviço/);
   assert.match(text, /Pagamento e Orçamento/);
   assert.match(text, /Política de Reembolso/);
