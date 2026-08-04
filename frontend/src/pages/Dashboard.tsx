@@ -734,13 +734,6 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-subpoenas"
   },
   {
-    id: "fivem-orders",
-    title: "Encomendas FiveM",
-    description: "Controle separado para pedidos, fila, produção, entrega e histórico de encomendas.",
-    icon: Boxes,
-    view: "fivem-orders"
-  },
-  {
     id: "fivem-washing",
     title: "Sistema de Lavagem",
     description: "Lavagem RP isolada com regras de porcentagem, cálculo automático, logs e histórico.",
@@ -870,13 +863,8 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-subpoenas": "police-subpoenas",
   "rh-admin": "rh-admin",
   "police-iab": "police-iab",
-  "fivem-orders": "fivem-orders",
-  "fivem-families": "fivem-orders",
   "fivem-washing": "fivem-washing",
-  "fivem-ammo": "fivem-orders",
   "fivem-drug": "fivem-drugs",
-  "fivem-weapon": "fivem-orders",
-  "fivem-custom": "fivem-orders",
   "fivem-finance": "fivem-finance",
   "fivem-goals": "fivem-goals",
   "fivem-captcha": "fivem-captcha",
@@ -2030,33 +2018,11 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             settings={settings}
           />
         ) : null}
-        {activeView === "fivem-orders" ? (
-          <FivemView
-            botId={activeBotId}
-            canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)}
-            enabledModules={enabledModules}
-            fivemModules={fivemModules}
-            guild={selectedGuild}
-            mode="orders"
-          />
-        ) : null}
-        {activeView === "fivem-families" ? (
-          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard) || canManageModule(selectedBot, "fivem-drugs", canManageDashboard) || canManageModule(selectedBot, "fivem-washing", canManageDashboard)} familyOnly guild={selectedGuild} initialTab="families" mode="orders" />
-        ) : null}
         {activeView === "fivem-washing" ? (
           <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-washing", canManageDashboard)} guild={selectedGuild} mode="washing" />
         ) : null}
-        {activeView === "fivem-ammo" ? (
-          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)} guild={selectedGuild} mode="ammo" />
-        ) : null}
         {activeView === "fivem-drug" ? (
           <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-drugs", canManageDashboard)} guild={selectedGuild} mode="drug" />
-        ) : null}
-        {activeView === "fivem-weapon" ? (
-          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)} guild={selectedGuild} mode="weapon" />
-        ) : null}
-        {activeView === "fivem-custom" ? (
-          <FivemOrdersManager botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-orders", canManageDashboard)} guild={selectedGuild} mode="custom" />
         ) : null}
         {activeView === "fivem-finance" ? (
           <FivemFinancePanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-finance", canManageDashboard)} guild={selectedGuild} />
@@ -3701,7 +3667,7 @@ function FivemView({
   enabledModules: string[];
   fivemModules: FivemModuleDefinition[];
   guild: DashboardGuild | null;
-  mode?: "general" | "orders" | "goals";
+  mode?: "general" | "goals";
 }) {
   const modules = fivemUserModules(enabledModules, fivemModules, mode);
 
@@ -3715,7 +3681,6 @@ function FivemView({
     );
   }
   const goalsEnabled = enabledModules.includes("fivem-goals");
-  const ordersEnabled = enabledModules.includes("fivem-orders");
 
   if (mode === "goals") {
     return (
@@ -3729,7 +3694,7 @@ function FivemView({
     <div className="space-y-5">
       <Card className="border-emerald-500/10 bg-zinc-950/75">
         <CardHeader>
-          <CardTitle>{mode === "orders" ? "Sistema de Encomendas FiveM" : "Central FiveM"}</CardTitle>
+          <CardTitle>Central FiveM</CardTitle>
           <CardDescription>{fivemModeDescription(mode)}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
@@ -3756,7 +3721,6 @@ function FivemView({
           </Card>
         ))}
       </div>
-      {mode === "orders" && ordersEnabled ? <FivemOrdersManager botId={botId} canManage={canManage} guild={guild} /> : null}
       {mode === "general" && enabledModules.includes("fivem-factions") ? <Pd7Panel botId={botId} canManage={canManage} guild={guild} /> : null}
     </div>
   );
@@ -4935,16 +4899,12 @@ function roleLabel(roles: GuildRoleOption[], id: string) {
   return roles.find((role) => role.id === id)?.name ?? id;
 }
 
-function fivemModeDescription(mode: "general" | "orders" | "goals") {
+function fivemModeDescription(mode: "general" | "goals") {
   if (mode === "goals") {
     return "Metas e registros por membro ficam em um fluxo próprio: cadastro aprovado cria canal individual, o membro envia foto/quantidade e a lideranca acompanha tudo por histórico.";
   }
 
-  if (mode === "orders") {
-    return "Encomendas ficam em um fluxo próprio: pedido, fila, produção, entrega, cancelamento e logs. Não mistura com metas, ausências ou financeiro.";
-  }
-
-  return "Central dos modulos FiveM liberados para este bot. Metas e Encomendas possuem menus próprios quando liberados; Hierarquia fica na área Polícia.";
+  return "Central dos modulos FiveM liberados para este bot. Metas possuem menu próprio quando liberadas; Hierarquia fica na área Polícia.";
 }
 
 function defaultGoalCycle(): NonNullable<FivemGoalSettings["cycle"]> {
@@ -4976,7 +4936,7 @@ function defaultGoalCorrectionManagement(): NonNullable<FivemGoalSettings["corre
   };
 }
 
-function fivemModeSteps(mode: "general" | "orders" | "goals") {
+function fivemModeSteps(mode: "general" | "goals") {
   if (mode === "goals") {
     return [
       { title: "1. Cadastro aprovado", description: "O sistema usa o cadastro manual/FiveM para identificar o membro e criar ou localizar o canal individual." },
@@ -4985,30 +4945,20 @@ function fivemModeSteps(mode: "general" | "orders" | "goals") {
     ];
   }
 
-  if (mode === "orders") {
-    return [
-      { title: "1. Pedido", description: "O cliente escolhe o produto ou tipo de encomenda e envia quantidade, prioridade e observação." },
-      { title: "2. Fila da equipe", description: "A staff acompanha pedidos pendentes, em produção, prontos, entregues e cancelados." },
-      { title: "3. Logs e histórico", description: "Cada mudança de status deve gerar registro isolado para este bot e servidor." }
-    ];
-  }
-
   return [
     { title: "Modulos liberados", description: "Somente os sistemas autorizados na Dashboard DEV aparecem para o cliente." },
     { title: "Escopo isolado", description: "As configurações ficam vinculadas ao bot selecionado e ao servidor atual." },
-    { title: "Menus dedicados", description: "Hierarquia, Metas e Encomendas aparecem separados para evitar confusao operacional." }
+    { title: "Menus dedicados", description: "Hierarquia e Metas aparecem separados para evitar confusao operacional." }
   ];
 }
 
-function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDefinition[], mode: "general" | "orders" | "goals" = "general") {
+function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDefinition[], mode: "general" | "goals" = "general") {
   const fallbackCatalog: FivemModuleDefinition[] = [
     { builtIn: true, description: "Controle de membros, cargos e operação das facções.", id: "fivem-factions", permissions: "Admin FiveM", title: "Facções" },
     { builtIn: true, description: "Gestao operacional de corporacoes e equipes.", id: "fivem-corporations", permissions: "Admin FiveM", title: "Corporacoes" },
     { builtIn: true, description: "Solicitacoes e aprovação de ausências RP.", id: "fivem-absences", permissions: "Admin FiveM", title: "Ausência" },
-    { builtIn: true, description: "Pedidos, entregas e acompanhamento de encomendas.", id: "fivem-orders", permissions: "Admin FiveM", title: "Encomendas" },
     { builtIn: true, description: "Lavagem RP com regras de porcentagem, cálculo automático, logs e histórico.", id: "fivem-washing", permissions: "Admin FiveM", title: "Sistema de Lavagem" },
     { builtIn: true, description: "Drogas, famílias autorizadas, pedidos, produção, logs e histórico isolados.", id: "fivem-drugs", permissions: "Admin FiveM", title: "Sistema de Drogas" },
-    { builtIn: true, description: "Pedidos, produção, entrega, logs e financeiro de munições.", id: "fivem-ammo", permissions: "Admin FiveM", title: "Municoes" },
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Verificação inteligente por CAPTCHA integrada ao fluxo FiveM.", id: "fivem-captcha", permissions: "Admin FiveM", title: "CAPTCHA FiveM" },
@@ -5023,9 +4973,8 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     .filter((module) => isFivemCatalogModule(module.id))
     .filter((module) => enabled.has(module.id))
     .filter((module) => {
-      if (mode === "orders") return module.id === "fivem-orders";
       if (mode === "goals") return module.id === "fivem-goals";
-      return module.id !== "fivem-orders" && module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences";
+      return module.id !== "fivem-goals" && module.id !== "fivem-hierarchy" && module.id !== "fivem-absences";
     })
     .map((module) => ({
       description: module.description,
@@ -5041,7 +4990,6 @@ function isFivemCatalogModule(moduleId: string) {
 
 function fivemIconForModule(moduleId: string) {
   const icons: Record<string, typeof Bot> = {
-    "fivem-ammo": Shield,
     "fivem-absences": CalendarClock,
     "fivem-corporations": Server,
     "fivem-factions": Building2,
@@ -5053,7 +5001,6 @@ function fivemIconForModule(moduleId: string) {
     "fivem-actions": Activity,
     "fivem-drugs": Boxes,
     "fivem-hierarchy": Users,
-    "fivem-orders": ListChecks,
     "police-absences": CalendarClock,
     "police-actions": Activity,
     "police-qru": ShieldCheck,
@@ -5150,10 +5097,8 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "fivem-factions",
       "fivem-corporations",
       "fivem-absences",
-      "fivem-orders",
       "fivem-washing",
       "fivem-drugs",
-      "fivem-ammo",
       "fivem-finance",
       "fivem-goals",
       "fivem-captcha",
@@ -5204,11 +5149,11 @@ function isModuleReleasedForBot(bot: DashboardBot, moduleId: string) {
   }
 
   if (moduleId === "fivem-drugs") {
-    return released.has("fivem-drugs") || released.has("fivem-orders");
+    return released.has("fivem-drugs");
   }
 
   if (moduleId === "fivem-washing") {
-    return released.has("fivem-washing") || released.has("fivem-orders");
+    return released.has("fivem-washing");
   }
 
   return moduleReleaseIds(moduleId).some((candidate) => released.has(candidate));
@@ -12502,13 +12447,8 @@ const fallbackDashboardViewOrder: ViewId[] = [
   "police-time-clock",
   "police-daf-roster",
   "auto-activity-clock",
-  "fivem-orders",
-  "fivem-families",
   "fivem-washing",
-  "fivem-ammo",
   "fivem-drug",
-  "fivem-weapon",
-  "fivem-custom",
   "fivem-finance",
   "fivem-goals",
   "fivem-captcha",
@@ -12566,7 +12506,6 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
       "fivem",
       "fivem-factions",
       "fivem-corporations",
-      "fivem-ammo",
       "fivem-finance"
     ].includes(moduleId));
   }
@@ -12577,10 +12516,6 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
 
   if (view === "police-absence") {
     return hasReleasedModule(enabledModules, "police-absences");
-  }
-
-  if (view === "fivem-families") {
-    return enabledModules.includes("fivem-orders") || enabledModules.includes("fivem-drugs") || enabledModules.includes("fivem-washing");
   }
 
   const requiredModule = viewModuleIds[view];

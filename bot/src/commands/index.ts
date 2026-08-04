@@ -5,7 +5,6 @@ import { clearCommand } from "./clear";
 import { deleteServeCommand } from "./deleteServe";
 import { emojiClonerCommand } from "./emojiCloner";
 import { gravarCommand } from "./gravar";
-import { fivemOrdersCommand } from "./fivemOrders";
 import { fivemFinanceCommand } from "./fivemFinance";
 import { acaoCommand } from "../services/fivemActionService";
 import { bauCommand } from "../services/factionChestService";
@@ -53,7 +52,6 @@ export function createCommandCollection() {
     emojiClonerCommand,
     gravarCommand,
     fivemFinanceCommand,
-    fivemOrdersCommand,
     acaoCommand,
     bauCommand,
     lavagemCommand,

@@ -365,7 +365,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("fivem-goals", isBotModuleEnabled("fivem-goals"), () => startFivemGoalService(client, context));
   startRuntimeService("ztk-webhook", isBotModuleEnabled("ztk-webhook"), () => startZtkWebhookService(client, context));
   startRuntimeService("fivem-finance", isBotModuleEnabled("fivem-finance"), () => startFivemFinanceService(client, context));
-  startRuntimeService("fivem-orders", isBotModuleEnabled("fivem-orders") || isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing"), () => startFivemOrderService(client, context));
+  startRuntimeService("fivem-orders", isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing"), () => startFivemOrderService(client, context));
   startRuntimeService("manual-payments", isBotModuleEnabled("manual-payments"), () => startManualPaymentService(client, context));
   startRuntimeService("custom-bot-orders", isBotModuleEnabled("custom-bot-orders"), () => startCustomBotOrderService(client, context));
   startRuntimeService("contract-billing-dm", true, () => startContractBillingDmService(client, context));

@@ -214,7 +214,6 @@ function moduleIdForPanel(panelId: string) {
   if (panelId === "courses") return "courses";
   if (panelId === "auto-activity-clock" || /^auto-activity-clock-banner-\d+$/i.test(panelId)) return "auto-activity-clock";
   if (panelId === "fivem-absence") return "fivem-fac";
-  if (panelId === "fivem-orders") return "fivem-orders";
   if (panelId === "police-qru") return "police-qru";
   if (isFivemHierarchyPanelImageId(panelId)) return "fivem-hierarchy";
   if (panelId === "police-actions" || panelId === "fivem-actions-police" || /^police-actions-banner-[23]$/i.test(panelId)) return "police-actions";

@@ -39,13 +39,6 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
-    description: "Solicitacoes, filas, entregas e status de encomendas RP.",
-    id: "fivem-orders",
-    permissions: "Admin FiveM, Operador",
-    title: "Sistema de Encomendas"
-  },
-  {
-    builtIn: true,
     description: "Lavagem RP isolada com regras de porcentagem, cálculo automático, logs e histórico.",
     id: "fivem-washing",
     permissions: "Admin FiveM, Financeiro",
@@ -57,13 +50,6 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
     id: "fivem-drugs",
     permissions: "Admin FiveM, Liderança",
     title: "Sistema de Drogas"
-  },
-  {
-    builtIn: true,
-    description: "Pedidos, produção, entrega, logs e financeiro de munições.",
-    id: "fivem-ammo",
-    permissions: "Admin FiveM, Arsenal",
-    title: "Sistema de Municoes"
   },
   {
     builtIn: true,

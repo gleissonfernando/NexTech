@@ -3227,14 +3227,12 @@ function toFiveMModuleView(module: FivemModuleDefinition): FiveMModuleView {
 
 function fiveMModuleIcon(moduleId: string): LucideIcon {
   const icons: Record<string, LucideIcon> = {
-    "fivem-ammo": Shield,
     "fivem-absences": CalendarClock,
     "fivem-corporations": BriefcaseBusiness,
     "fivem-factions": Building2,
     "fivem-finance": Activity,
     "fivem-washing": PackagePlus,
     "fivem-drugs": PackagePlus,
-    "fivem-orders": PackagePlus,
     "fivem-hierarchy": Users,
     "police-absences": CalendarClock,
     "police-actions": Activity,

@@ -202,10 +202,8 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-factions", label: "FiveM - Sistema de Facção" },
   { id: "fivem-corporations", label: "FiveM - Sistema de Corporações" },
   { id: "fivem-absences", label: "FiveM - Sistema de Ausências" },
-  { id: "fivem-orders", label: "Sistema de Encomendas RP" },
   { id: "fivem-washing", label: "FiveM - Sistema de Lavagem" },
   { id: "fivem-drugs", label: "FiveM - Sistema de Drogas" },
-  { id: "fivem-ammo", label: "FiveM - Sistema de Municoes" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "faction-chest", label: "Sistema de Baú" },
@@ -273,8 +271,6 @@ type BotMenuId =
   | "select-menu"
   | "fivem"
   | "fivem-factions"
-  | "fivem-ammo"
-  | "fivem-orders"
   | "fivem-washing"
   | "fivem-drugs"
   | "fivem-finance"
@@ -609,22 +605,6 @@ const botMenuItems: BotMenuItem[] = [
         description: "Facções e ausências",
         icon: Users,
         moduleIds: ["fivem-factions", "fivem-absences"]
-      },
-      {
-        group: "fivem",
-        id: "fivem-ammo",
-        label: "Municoes",
-        description: "Controle de munições",
-        icon: Hash,
-        moduleIds: ["fivem-ammo"]
-      },
-      {
-        group: "fivem",
-        id: "fivem-orders",
-        label: "Encomendas",
-        description: "Pedidos e entregas",
-        icon: Ticket,
-        moduleIds: ["fivem-orders"]
       },
       {
         group: "fivem",

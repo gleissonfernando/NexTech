@@ -461,7 +461,16 @@ function mergeProductSettings(settings: FivemOrderSettingsDto, product: MongoFiv
 
 function toSettingsDto(row: MongoFivemOrderSettings): FivemOrderSettingsDto { const { _id: _id, updatedAt, ...rest } = row; return { ...defaultFivemOrderSettings(row.guildId, row.botId), ...rest, approveRoleIds: row.approveRoleIds ?? [], editValueRoleIds: row.editValueRoleIds ?? [], enabledOrderModules: normalizeOrderModules(row.enabledOrderModules), panelImage: null, updatedAt: updatedAt?.toISOString() ?? null }; }
 function toFamilyDto(row: MongoFivemOrderFamily): FivemOrderFamilyDto { const { _id, createdAt, updatedAt, ...rest } = row; return { ...rest, orderModules: normalizeOrderModules(row.orderModules ?? []), createdAt: createdAt.toISOString(), id: _id, updatedAt: updatedAt.toISOString() }; }
-async function withPanelImage(settings: FivemOrderSettingsDto) { if (!settings.botId) return settings; const image = await getPanelImageSettings(settings.guildId, settings.botId, "fivem-orders").catch(() => null); return { ...settings, panelImage: image?.imageEnabled ? image : null }; }
+async function withPanelImage(settings: FivemOrderSettingsDto) {
+  if (!settings.botId) return settings;
+  const panelId = settings.enabledOrderModules.length === 1 && settings.enabledOrderModules[0] === "drug"
+    ? "fivem-drugs"
+    : settings.enabledOrderModules.length === 1 && settings.enabledOrderModules[0] === "washing"
+    ? "fivem-washing"
+    : "fivem-orders";
+  const image = await getPanelImageSettings(settings.guildId, settings.botId, panelId).catch(() => null);
+  return { ...settings, panelImage: image?.imageEnabled ? image : null };
+}
 function toProductDto(row: MongoFivemOrderProduct): FivemOrderProductDto { const { _id, createdAt, updatedAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), id: _id, updatedAt: updatedAt.toISOString() }; }
 function toOrderDto(row: MongoFivemOrder): FivemOrderDto { const { _id, createdAt, history, updatedAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), history: history.map((item) => ({ ...item, at: item.at.toISOString() })), id: _id, updatedAt: updatedAt.toISOString() }; }
 function toLogDto(row: MongoFivemOrderLog): FivemOrderLogDto { const { _id, createdAt, ...rest } = row; return { ...rest, createdAt: createdAt.toISOString(), id: _id }; }

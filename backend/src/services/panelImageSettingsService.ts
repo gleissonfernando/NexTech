@@ -136,7 +136,6 @@ const PANEL_VISUAL_REFRESH_EVENTS: Record<string, string[]> = {
   "fivem-finance": ["fivem:finance:panel_publish"],
   "fivem-general": ["fivem:fac:panel_publish"],
   "fivem-absence": ["fivem:fac:panel_publish"],
-  "fivem-orders": ["fivem:orders:panel_publish"],
   "fivem-washing": ["fivem:orders:panel_publish"],
   "fivem-drugs": ["fivem:orders:panel_publish"],
   "fivem-goals": ["fivem:goals:panel_publish"],

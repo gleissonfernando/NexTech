@@ -110,13 +110,8 @@ export type ViewId =
   | "police-time-clock"
   | "police-daf-roster"
   | "auto-activity-clock"
-  | "fivem-orders"
-  | "fivem-families"
   | "fivem-washing"
-  | "fivem-ammo"
   | "fivem-drug"
-  | "fivem-weapon"
-  | "fivem-custom"
   | "fivem-finance"
   | "fivem-goals"
   | "fivem-captcha"
@@ -193,7 +188,7 @@ const navItems: NavItem[] = [
   { id: "first-lady", label: "Primeira Dama", icon: UserPlus, moduleId: "first-lady" },
   { id: "permissions", label: "Usuários", icon: Users, moduleId: "verification" },
   { id: "logs", label: "Logs e Notificações", icon: ScrollText, moduleId: "logs" },
-  { id: "fivem", label: "FiveM Geral", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-ammo", "fivem-finance"] },
+  { id: "fivem", label: "FiveM Geral", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-finance"] },
   { id: "fivem-absence", label: "Ausência", icon: CalendarClock, moduleIds: ["fivem-absences", "fivem-fac"] },
   { id: "fivem-hierarchy", label: "hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-actions", label: "Ações FAC", icon: Activity, moduleId: "fivem-actions" },
@@ -213,13 +208,8 @@ const navItems: NavItem[] = [
   { id: "police-time-clock", label: "Relógio de Ponto", icon: CalendarClock, moduleId: "police-time-clock" },
   { id: "police-daf-roster", label: "Escala DAF", icon: CalendarClock, moduleId: "police-daf-roster" },
   { id: "auto-activity-clock", label: "Ponto Automático", icon: Activity, moduleId: "auto-activity-clock" },
-  { id: "fivem-orders", label: "Encomendas RP", icon: Archive, moduleId: "fivem-orders" },
-  { id: "fivem-families", label: "Famílias", icon: Users, moduleIds: ["fivem-orders", "fivem-drugs", "fivem-washing"] },
   { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },
-  { id: "fivem-ammo", label: "Munição", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },
-  { id: "fivem-weapon", label: "Armas", icon: Archive, moduleId: "fivem-orders" },
-  { id: "fivem-custom", label: "Personalizados", icon: Archive, moduleId: "fivem-orders" },
   { id: "fivem-finance", label: "Financeiro", icon: CircleDollarSign, moduleId: "fivem-finance" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
   { id: "fivem-captcha", label: "CAPTCHA FiveM", icon: ShieldCheck, moduleId: "fivem-captcha" },
@@ -281,13 +271,8 @@ const fivemViewIds = new Set<ViewId>([
   "fivem-absence",
   "fivem-hierarchy",
   "fivem-actions",
-  "fivem-orders",
-  "fivem-families",
   "fivem-washing",
-  "fivem-ammo",
   "fivem-drug",
-  "fivem-weapon",
-  "fivem-custom",
   "fivem-finance",
   "fivem-goals",
   "fivem-captcha",

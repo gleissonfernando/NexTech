@@ -296,7 +296,6 @@ function readablePlanFeature(key: string) {
     "fivem.faction": "Facção RP Completo: membros, metas e estoque",
     "fivem.finance": "Financeiro FiveM com auditoria",
     "fivem.hierarchy": "Hierarquia FiveM e cargos",
-    "fivem.orders": "Encomendas RP",
     "fivem.police_basic": "Polícia RP Básico: ações, QRU e ponto",
     "fivem.police": "Polícia RP Completo: patentes, metas e plantão",
     "security.anti_ban": "Anti Ban administrativo",

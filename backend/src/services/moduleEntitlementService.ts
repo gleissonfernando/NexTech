@@ -4,7 +4,6 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
   "streamer.clip_automation": ["clips", "kick-clips"],
   "streamer.giveaways": ["giveaway"],
   "fivem.finance": ["fivem-finance"],
-  "fivem.orders": ["fivem-orders", "fivem-washing", "fivem-drugs", "fivem-ammo"],
   "fivem.hierarchy": ["fivem-hierarchy"],
   "fivem.police_basic": [
     "fivem",

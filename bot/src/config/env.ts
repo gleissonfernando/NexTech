@@ -182,9 +182,8 @@ const MODULE_ALIASES: Record<string, string[]> = {
   "fivem-absences": ["fivem-absences", "fivem-fac", "police-absences"],
   "fivem-fac": ["fivem-fac", "fivem-absences", "police-absences"],
   "police-absences": ["police-absences", "fivem-absences", "fivem-fac"],
-  "fivem-orders": ["fivem-orders", "fivem-drugs", "fivem-washing"],
-  "fivem-drugs": ["fivem-drugs", "fivem-orders"],
-  "fivem-washing": ["fivem-washing", "fivem-orders"],
+  "fivem-drugs": ["fivem-drugs"],
+  "fivem-washing": ["fivem-washing"],
   daf: ["police-daf-roster", "daf"],
   "police-daf-roster": ["police-daf-roster", "daf"]
 };
