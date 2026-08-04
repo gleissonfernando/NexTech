@@ -7,6 +7,7 @@ import { updateGuildSettings } from "./settingsService";
 const DISCORD_API = "https://discord.com/api/v10";
 const COMPONENTS_V2_FLAG = 1 << 15;
 const DEFAULT_TERMS_BANNER_PATH = "/terms-banner.png";
+const DEFAULT_TERMS_BANNER_VERSION = "20260804-terms-panel";
 
 type DiscordMessage = {
   id: string;
@@ -123,8 +124,16 @@ function resolveTermsImageUrl(settings: GuildSettingsDto) {
     ? DEFAULT_TERMS_BANNER_PATH
     : settings.termsPanelImageUrl || DEFAULT_TERMS_BANNER_PATH;
   if (!source) return null;
-  if (/^https?:\/\//i.test(source)) return source;
-  return `${publicOrigin()}${source.startsWith("/") ? source : `/${source}`}`;
+  const url = /^https?:\/\//i.test(source)
+    ? source
+    : `${publicOrigin()}${source.startsWith("/") ? source : `/${source}`}`;
+  return versionDefaultTermsBannerUrl(url);
+}
+
+function versionDefaultTermsBannerUrl(url: string) {
+  if (!/\/terms-banner\.png(?:$|\?)/i.test(url)) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return url.includes("v=") ? url : `${url}${separator}v=${DEFAULT_TERMS_BANNER_VERSION}`;
 }
 
 function defaultTermsComponents(title: string, company: string, subtitle: string | null, footer: string | null) {
