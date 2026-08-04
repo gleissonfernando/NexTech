@@ -216,19 +216,57 @@ function FilterGroup<T extends string>({
 
 function PublicPlanCard({ busy, onBuy, plan }: { busy: boolean; onBuy: () => void; plan: Plan }) {
   const price = plan.promotionalPriceInCents ?? plan.priceInCents;
-  const includedFeatures = plan.entitlements.filter((feature) => feature.enabled).map((feature) => feature.key.replace(/[._-]+/g, " "));
+  const level = planLevel(plan);
+  const includedFeatures = plan.entitlements.filter((feature) => feature.enabled).map((feature) => readablePlanFeature(feature.key));
   const features = [`${plan.botLimit} ${plan.botLimit === 1 ? "bot" : "bots"}`, `${plan.guildLimit} ${plan.guildLimit === 1 ? "servidor" : "servidores"}`, plan.validityDays ? `${plan.validityDays} dias de validade` : "Validade contínua", ...includedFeatures];
   return <article className={`relative flex flex-col rounded-2xl border bg-[var(--nextech-surface)] p-6 ${plan.isRecommended ? "border-primary/60 shadow-[0_0_42px_rgba(255,213,0,.16)]" : "border-primary/20"}`}>
     {plan.badge || plan.isRecommended ? <span className="absolute right-4 top-4 rounded-full bg-primary px-3 py-1 text-xs font-black text-black">{plan.badge || "Recomendado"}</span> : null}
     <p className="text-sm font-semibold text-[var(--nextech-accent-soft)]">{cycleLabel(plan.billingCycle)}</p><h2 className="mt-3 pr-24 text-2xl font-black">{plan.name}</h2><p className="mt-3 min-h-12 text-sm leading-6 text-zinc-400">{plan.shortDescription || plan.description}</p>
     <div className="mt-6"><span className="text-4xl font-black text-primary">{formatPrice(price, plan.currency)}</span><span className="text-sm text-zinc-500"> {price ? cycleSuffix(plan.billingCycle) : ""}</span></div>
     {plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents < plan.priceInCents ? <p className="mt-1 text-sm text-zinc-600 line-through">{formatPrice(plan.priceInCents, plan.currency)}</p> : null}
-    <ul className="mt-7 space-y-3">{features.map((feature) => <li className="flex gap-3 text-sm text-zinc-300" key={feature}><Check className="h-4 w-4 shrink-0 text-primary" />{feature}</li>)}</ul>
+    <div className="mt-7 rounded-xl border border-primary/10 bg-black/20 p-4">
+      <p className="text-xs font-black uppercase text-[var(--nextech-accent-soft)]">Incluído no {level === "basic" ? "Básico" : "Avançado"}</p>
+      <ul className="mt-4 space-y-3">{features.map((feature) => <li className="flex gap-3 text-sm leading-5 text-zinc-300" key={feature}><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />{feature}</li>)}</ul>
+    </div>
     {plan.isPurchasable ? <div className="mt-8">
       <button className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-black transition hover:bg-[var(--nextech-accent-soft)] disabled:cursor-not-allowed disabled:opacity-70" disabled={busy} onClick={onBuy} type="button">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Comprar</button>
       <p className="mt-2 text-center text-xs font-medium text-zinc-500">Pix e cartão conforme disponibilidade do checkout</p>
     </div> : <span className="mt-8 flex h-12 items-center justify-center rounded-lg border border-zinc-700 text-sm font-bold text-zinc-500">Indisponível</span>}
   </article>;
+}
+
+function readablePlanFeature(key: string) {
+  const features: Record<string, string> = {
+    "billing.free_hosting_30d": "30 dias de hospedagem grátis",
+    "billing.future_updates": "Atualizações futuras incluídas",
+    "billing.lifetime_license": "Licença vitalícia do módulo",
+    "discord.courses": "Cursos, provas e publicações",
+    "discord.dashboard": "Dashboard para configurar e acompanhar",
+    "discord.logs": "Logs do Discord em tempo real",
+    "discord.tickets": "Tickets de atendimento e suporte",
+    "fivem.faction_basic": "Facção RP Básico: membros e ações essenciais",
+    "fivem.faction": "Facção RP Completo: membros, metas e estoque",
+    "fivem.finance": "Financeiro FiveM com auditoria",
+    "fivem.hierarchy": "Hierarquia FiveM e cargos",
+    "fivem.orders": "Encomendas RP",
+    "fivem.police_basic": "Polícia RP Básico: ações, QRU e ponto",
+    "fivem.police": "Polícia RP Completo: patentes, metas e plantão",
+    "security.anti_ban": "Anti Ban administrativo",
+    "security.role_protection_basic": "Proteção básica contra alteração de cargos",
+    "security.role_protection": "Proteção completa de cargos e permissões",
+    "security.self_bot": "SelfBot Protection",
+    "streamer.ai": "Recursos de IA para comunidade",
+    "streamer.clip_automation": "Automação de clips",
+    "streamer.giveaways": "Sorteios e campanhas",
+    "streamer.kick_alerts": "Alertas Kick",
+    "streamer.ranking": "Ranking de engajamento",
+    "streamer.twitch_alerts": "Alertas Twitch",
+    "streamer.vip": "Sistema VIP",
+    "support.24h": "Atendimento prioritário 24 horas",
+    "support.priority": "Suporte prioritário"
+  };
+
+  return features[key] ?? key.replace(/[._-]+/g, " ");
 }
 
 function planPeriodicity(_plan: Plan): Exclude<PlanPeriodicityFilter, "all"> {
