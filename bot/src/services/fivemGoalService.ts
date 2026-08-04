@@ -165,14 +165,15 @@ export async function ensureFivemGoalChannelForApprovedSet(
   const existing = await context.api.getFivemGoalChannelByUser(guild.id, userId).catch(() => null);
   if (existing?.channelId) {
     const existingChannel = await guild.channels.fetch(existing.channelId).catch(() => null);
-    if (existingChannel?.isTextBased() && !existingChannel.isDMBased() && "messages" in existingChannel) {
-      const recent = await existingChannel.messages.fetch({ limit: 30 }).catch(() => null);
+    if (isReusableFarmRoomChannel(existingChannel)) {
+      const farmChannel = existingChannel as typeof existingChannel & { messages: { fetch(input: { limit: number }): Promise<unknown> }; send(payload: unknown): Promise<unknown> };
+      const recent = await farmChannel.messages.fetch({ limit: 30 }).catch(() => null) as { find(predicate: (message: Message) => boolean): Message | undefined; some(predicate: (message: Message) => boolean): boolean } | null;
       const hasPanel = recent?.some((message) => message.author.id === guild.client.user.id && messageHasFarmRoomPanel(message, userId));
       if (!hasPanel) {
         const legacyPanel = recent?.find((message) => message.author.id === guild.client.user.id && messageHasLegacyGoalPanel(message, userId));
         try {
           if (legacyPanel) await legacyPanel.edit(createFarmRoomPanelPayload(guild, settings, userId));
-          else await existingChannel.send(createFarmRoomPanelPayload(guild, settings, userId));
+          else await farmChannel.send(createFarmRoomPanelPayload(guild, settings, userId));
         } catch (error) {
           return goalSetIntegrationResult(existing.channelId, null, targetCategoryId, false, error instanceof Error ? `Não foi possível publicar o painel da Sala de Farm: ${error.message}` : "Não foi possível publicar o painel da Sala de Farm.");
         }
@@ -185,7 +186,7 @@ export async function ensureFivemGoalChannelForApprovedSet(
       }
       return goalSetIntegrationResult(existing.channelId, previousCategoryId, targetCategoryId, false, null);
     }
-    return goalSetIntegrationResult(existing.channelId, null, targetCategoryId, false, "Canal de metas salvo não foi encontrado ou não é um canal de texto.");
+    await discardStaleFivemGoalChannel(context, guild.id, existing.channelId, userId);
   }
 
   const permissionValidation = validateGoalBotPermissions(guild, targetCategoryId);
@@ -227,6 +228,31 @@ export async function ensureFivemGoalChannelForApprovedSet(
   }
 
   return goalSetIntegrationResult(channel.id, null, targetCategoryId, Boolean(targetCategoryId), null);
+}
+
+export function isReusableFarmRoomChannel(channel: unknown): channel is { isDMBased(): boolean; isTextBased(): boolean; messages: { fetch(input: { limit: number }): Promise<unknown> }; parentId?: string | null } {
+  return Boolean(
+    channel
+    && typeof channel === "object"
+    && "isTextBased" in channel
+    && typeof (channel as { isTextBased?: unknown }).isTextBased === "function"
+    && (channel as { isTextBased(): boolean }).isTextBased()
+    && "isDMBased" in channel
+    && typeof (channel as { isDMBased?: unknown }).isDMBased === "function"
+    && !(channel as { isDMBased(): boolean }).isDMBased()
+    && "messages" in channel
+  );
+}
+
+async function discardStaleFivemGoalChannel(context: BotContext, guildId: string, channelId: string, userId: string) {
+  await context.api.deleteFivemGoalChannelByChannel(channelId).catch(() => null);
+  await context.api.postLog({
+    guildId,
+    message: "Vínculo antigo de sala de farm removido porque o canal não existe mais no Discord.",
+    metadata: { channelId, userId },
+    type: "fivem.goals.room_stale_channel_removed",
+    userId
+  }).catch(() => null);
 }
 
 function goalSetIntegrationResult(channelId: string | null, previousCategoryId: string | null, targetCategoryId: string | null, moved: boolean, error: string | null): FivemGoalSetIntegrationResult {

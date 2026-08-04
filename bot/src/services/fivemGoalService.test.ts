@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -59,4 +59,11 @@ test("modal de registro de farm inclui select de item e campo de quantidade", ()
   assert.match(serialized, /ammo/);
   assert.match(serialized, /meta_quantidade/);
   assert.doesNotMatch(serialized, /fivem_goal:item:/);
+});
+
+test("sala de farm salva só é reutilizada quando o canal ainda existe e é texto", () => {
+  assert.equal(isReusableFarmRoomChannel(null), false);
+  assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => false, messages: {} }), false);
+  assert.equal(isReusableFarmRoomChannel({ isDMBased: () => true, isTextBased: () => true, messages: {} }), false);
+  assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => true, messages: { fetch: async () => null } }), true);
 });
