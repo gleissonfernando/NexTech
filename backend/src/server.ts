@@ -90,6 +90,12 @@ httpServer.listen(env.PORT, env.HOST, () => {
         console.warn("[default-panel-emojis] falha ao processar pacote padrão:", error instanceof Error ? error.message : error);
       });
   }, 20_000).unref();
+  setTimeout(() => {
+    void cleanupObsoleteDevBotCommands()
+      .catch((error) => {
+        console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
+      });
+  }, 60_000).unref();
 });
 
 function shutdown(signal: string, exitCode = 0) {
