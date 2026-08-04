@@ -389,10 +389,7 @@ function buildDiscordPayload({ analysis, bot, mode, release }) {
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const compact = mode === "realtime-summary";
-  const sections = compact ? [
-    ["🆕 Novidades", unique([...analysis.summary.novidades, ...analysis.summary.recursos, ...analysis.summary.melhorias])],
-    ["🔧 Erros corrigidos", analysis.summary.correcoes]
-  ] : [
+  const sections = compact ? buildRealtimeSummarySections(release, analysis) : [
     ["📌 O que mudou", buildReleaseChangeSummary(release, analysis)],
     ["🔧 Correções", analysis.summary.correcoes],
     ["🤖 Melhorias", analysis.summary.melhorias],
@@ -462,10 +459,87 @@ function buildReleaseChangeSummary(release, analysis) {
   return items;
 }
 
+function buildRealtimeSummarySections(release, analysis) {
+  const releaseItems = buildReleaseMessageItems(release);
+  const specificCorrections = specificRealtimeItems(analysis.summary.correcoes);
+  const specificNews = specificRealtimeItems([
+    ...analysis.summary.novidades,
+    ...analysis.summary.recursos,
+    ...analysis.summary.melhorias
+  ]);
+  const correctionItems = [];
+  const newsItems = [];
+
+  for (const item of releaseItems) {
+    if (looksLikeCorrection(item)) {
+      correctionItems.push(humanizeRealtimeItem(item, "correction"));
+    } else if (looksLikeNews(item)) {
+      newsItems.push(humanizeRealtimeItem(item, "news"));
+    }
+  }
+
+  newsItems.push(...specificNews.map((item) => humanizeRealtimeItem(item, "news")));
+  correctionItems.push(...specificCorrections.map((item) => humanizeRealtimeItem(item, "correction")));
+
+  if (!newsItems.length && !correctionItems.length) {
+    newsItems.push("Atualização publicada com mudanças registradas no sistema.");
+  }
+
+  return [
+    ["🆕 Novidades", unique(newsItems).slice(0, 5)],
+    ["🔧 Erros corrigidos", unique(correctionItems).slice(0, 5)]
+  ].filter(([, items]) => items.length);
+}
+
+function buildReleaseMessageItems(release) {
+  const items = [];
+  if (release.commitSubject) items.push(release.commitSubject);
+  if (release.commitBody) {
+    items.push(...release.commitBody
+      .split(/\r?\n/)
+      .map((line) => line.trim().replace(/^[-*]\s+/, ""))
+      .filter(Boolean)
+      .slice(0, 6));
+  }
+  return unique(items);
+}
+
+function specificRealtimeItems(items) {
+  return unique(items)
+    .filter((item) => !isGenericRealtimeItem(item))
+    .slice(0, 6);
+}
+
+function isGenericRealtimeItem(item) {
+  return /Correções de falhas e tratamento de erro detectadas no código alterado/i.test(item)
+    || /Atualização publicada com alterações registradas no repositório/i.test(item)
+    || /Carregamento, cache ou streaming otimizado automaticamente pelo diff/i.test(item);
+}
+
+function looksLikeCorrection(item) {
+  return /(corrig|corre[cç][aã]o|erro|falha|bug|fix|ajust|resolve|repara|impede|remove|remov|refor[cç]a|valida|tratamento)/i.test(item);
+}
+
+function looksLikeNews(item) {
+  return /(adicion|novo|nova|cria|criado|implement|inclu|libera|publica|sistema|m[oó]dulo|painel|modal|recurso|suporte)/i.test(item);
+}
+
+function humanizeRealtimeItem(item, kind) {
+  const normalized = item.trim().replace(/[.。]+$/, "");
+  if (/^(foi|foram)\s/i.test(normalized)) return normalized;
+  if (kind === "news" && /^(adicion|cria|implement|inclu|libera|publica)/i.test(normalized)) {
+    return `Foi adicionado: ${normalized}`;
+  }
+  if (kind === "correction" && /^(corrig|ajust|resolve|remove|remov|refor[cç]a|valida|impede)/i.test(normalized)) {
+    return `Foi corrigido: ${normalized}`;
+  }
+  return normalized;
+}
+
 function formatUpdateSection(title, items) {
   return [
     `**${title}**`,
-    ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
+    ...items.map((item) => `- ${escapeMarkdown(item).slice(0, 220)}`),
     ""
   ];
 }
