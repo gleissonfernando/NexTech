@@ -411,7 +411,7 @@ export async function createFivemFacAbsence(input: CreateFivemFacAbsenceInput) {
   }
 
   const now = new Date();
-  const autoApproved = shouldAutoApproveAbsence(settings, startDate, endDate, input.requesterRoleIds ?? []);
+  const autoApproved = shouldAutoApproveFivemFacAbsence(settings, startDate, endDate, input.requesterRoleIds ?? []);
   const absence: MongoFivemFacAbsence = {
     _id: randomUUID(),
     botId: input.botId,
@@ -543,10 +543,6 @@ export async function approveFivemFacAbsence(input: ModerateFivemFacAbsenceInput
 
   ensureApprover(settings, input.moderatorRoleIds);
 
-  if (absence.status === "approved") {
-    return toAbsenceDto(absence);
-  }
-
   if (absence.status !== "pending") {
     throw createFacError("Apenas solicitacoes pendentes podem ser aprovadas.", 409);
   }
@@ -603,7 +599,7 @@ export async function rejectFivemFacAbsence(input: ModerateFivemFacAbsenceInput)
 
   ensureApprover(settings, input.moderatorRoleIds);
 
-  if (absence.status !== "pending" && absence.status !== "approved") {
+  if (absence.status !== "pending") {
     throw createFacError("Esta solicitação não pode mais ser reprovada.", 409);
   }
 
@@ -1020,7 +1016,7 @@ function validateAbsenceDates(startDate: string, endDate: string, requireFuture:
   }
 }
 
-function shouldAutoApproveAbsence(settings: FivemFacSettingsDto, startDate: string, endDate: string, requesterRoleIds: string[]) {
+export function shouldAutoApproveFivemFacAbsence(settings: Pick<FivemFacSettingsDto, "autoApproveEnabled" | "autoApproveMaxDays" | "autoApproveRoleIds">, startDate: string, endDate: string, requesterRoleIds: string[]) {
   if (!settings.autoApproveEnabled || !settings.autoApproveRoleIds.length) {
     return false;
   }
@@ -1030,19 +1026,43 @@ function shouldAutoApproveAbsence(settings: FivemFacSettingsDto, startDate: stri
     return false;
   }
 
-  return settings.autoApproveMaxDays === null
-    || absenceDurationDays(startDate, endDate) <= settings.autoApproveMaxDays;
-}
-
-function absenceDurationDays(startDate: string, endDate: string) {
-  const start = dateKeyToUtcMs(startDate);
-  const end = dateKeyToUtcMs(endDate);
-
-  if (start === null || end === null || end < start) {
-    return Number.POSITIVE_INFINITY;
+  const durationMs = absenceDurationMs(startDate, endDate);
+  if (durationMs === null || durationMs < 86_400_000) {
+    return false;
   }
 
-  return Math.round((end - start) / 86_400_000);
+  return settings.autoApproveMaxDays === null
+    || Math.round(durationMs / 86_400_000) <= settings.autoApproveMaxDays;
+}
+
+export function isFivemFacAbsenceShorterThan24Hours(startDate: string, endDate: string) {
+  const durationMs = absenceDurationMs(startDate, endDate);
+  return durationMs !== null && durationMs < 86_400_000;
+}
+
+export function fivemFacAbsenceDurationMsForTest(startDate: string, endDate: string) {
+  return absenceDurationMs(startDate, endDate);
+}
+
+function absenceDurationMs(startDate: string, endDate: string) {
+  const start = absenceDateToUtcMs(startDate);
+  const end = absenceDateToUtcMs(endDate);
+
+  if (start === null || end === null || end < start) {
+    return null;
+  }
+
+  return end - start;
+}
+
+function absenceDateToUtcMs(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return dateKeyToUtcMs(value);
+  }
+
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : null;
 }
 
 function dateKeyToUtcMs(value: string) {
@@ -1052,7 +1072,16 @@ function dateKeyToUtcMs(value: string) {
     return null;
   }
 
-  return Date.UTC(year, month - 1, day);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date.getTime();
 }
 
 function normalizeDateOnly(value: string) {
