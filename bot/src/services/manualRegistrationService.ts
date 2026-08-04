@@ -719,7 +719,7 @@ async function processSetApproval(input: {
 
     const goalCategoryId = input.goalCategoryId ?? selectedGoalCategoryId(settings, processing);
     await traceSetApproval(context, "[META_CHANNEL_CREATING]", { ...traceBase, categoryId: goalCategoryId });
-    const goal = await ensureFivemGoalChannelForApprovedSet(context, guild, processing.userId, officialName, goalCategoryId, true, submissionGameId(processing));
+    const goal = await ensureGoalChannelForApproval(context, guild, processing.userId, officialName, goalCategoryId, submissionGameId(processing));
     if (!goal.channelId || goal.error) throw new ApprovalFlowError(goal.error || "Canal de meta não foi criado.");
     await traceSetApproval(context, "[META_CHANNEL_CREATED]", { ...traceBase, channelId: goal.channelId, moved: goal.moved, targetCategoryId: goal.targetCategoryId });
     await traceSetApproval(context, "[META_PANEL_SENT]", { ...traceBase, channelId: goal.channelId });
@@ -751,6 +751,33 @@ async function processSetApproval(input: {
 }
 
 class ApprovalFlowError extends Error {}
+
+async function ensureGoalChannelForApproval(
+  context: BotContext,
+  guild: Guild,
+  userId: string,
+  officialName: string,
+  goalCategoryId: string | null,
+  gameId: string | null
+) {
+  const first = await ensureFivemGoalChannelForApprovedSet(context, guild, userId, officialName, goalCategoryId, true, gameId);
+  if (!isStaleGoalChannelError(first.error)) return first;
+
+  const stale = await context.api.getFivemGoalChannelByUser(guild.id, userId).catch(() => null);
+  if (stale?.channelId) await context.api.deleteFivemGoalChannelByChannel(stale.channelId).catch(() => null);
+  await context.api.postLog({
+    guildId: guild.id,
+    message: "Aprovação do Pedido de Set refez a sala de farm porque o canal salvo não existe mais.",
+    metadata: { channelId: stale?.channelId ?? null, userId },
+    type: "manual-registration.approval_stale_goal_channel_retry",
+    userId
+  }).catch(() => null);
+  return ensureFivemGoalChannelForApprovedSet(context, guild, userId, officialName, goalCategoryId, true, gameId);
+}
+
+function isStaleGoalChannelError(error: string | null) {
+  return Boolean(error && /canal de metas salvo|não foi encontrado|nao foi encontrado|não é um canal de texto|nao e um canal de texto/i.test(error));
+}
 
 async function syncApprovedSetNickname(context: BotContext, guild: Guild, member: GuildMember, submission: ManualRegistrationSubmission, officialName: string, actorId: string) {
   const baseMetadata = {

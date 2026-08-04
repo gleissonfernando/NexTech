@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -66,4 +66,57 @@ test("sala de farm salva só é reutilizada quando o canal ainda existe e é tex
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => false, messages: {} }), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => true, isTextBased: () => true, messages: {} }), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => true, messages: { fetch: async () => null } }), true);
+});
+
+test("aprovação remove vínculo antigo quando canal de farm salvo foi apagado", async () => {
+  const calls = { deleted: [] as string[], saved: [] as string[] };
+  const createdChannel = {
+    delete: async () => undefined,
+    id: "333333333333333333",
+    send: async () => ({ id: "444444444444444444" })
+  };
+  const guild = {
+    channels: {
+      cache: new Map(),
+      create: async () => createdChannel,
+      fetch: async (id: string) => id === "222222222222222222"
+        ? { id, permissionsFor: () => ({ has: () => true }), type: 4 }
+        : null
+    },
+    client: { user: { id: "999999999999999999" } },
+    emojis: { cache: new Map() },
+    id: "111111111111111111",
+    iconURL: () => null,
+    members: {
+      me: { id: "999999999999999999", permissions: { has: () => true } },
+      fetch: async () => ({ displayName: "User", roles: { cache: new Map() } })
+    },
+    roles: { cache: new Map(), everyone: { id: "000000000000000000" } }
+  } as any;
+  const context = {
+    api: {
+      deleteFivemGoalChannelByChannel: async (channelId: string) => { calls.deleted.push(channelId); return null; },
+      getFivemGoalChannelByUser: async () => ({ channelId: "555555555555555555" }),
+      getFivemGoalSettings: async () => ({
+        botId: "bot",
+        categoryId: "222222222222222222",
+        channelNameTemplate: "meta-{username}",
+        enabled: true,
+        items: [],
+        managerRoleId: null,
+        managerRoleIds: [],
+        viewRoleId: null,
+        viewerRoleIds: []
+      }),
+      postLog: async () => null,
+      saveFivemGoalChannel: async (input: { channelId: string }) => { calls.saved.push(input.channelId); return input; }
+    }
+  } as any;
+
+  const result = await ensureFivemGoalChannelForApprovedSet(context, guild, "666666666666666666", "VILAO", "222222222222222222", true, "111111");
+
+  assert.equal(result.error, null);
+  assert.equal(result.channelId, createdChannel.id);
+  assert.deepEqual(calls.deleted, ["555555555555555555"]);
+  assert.deepEqual(calls.saved, [createdChannel.id]);
 });
