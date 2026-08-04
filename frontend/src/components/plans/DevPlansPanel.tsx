@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
+  Tags,
   SlidersHorizontal,
   XCircle
 } from "lucide-react";
@@ -36,6 +37,7 @@ import {
 import type { DevPlansDashboard, Plan, PlanFeature, SavePlanPayload } from "../../types";
 
 type TabId = "overview" | "plans" | "features" | "subscriptions" | "orders" | "payments" | "logs";
+type PlanLevelFilter = "basic" | "advanced";
 
 type PlanFormState = {
   badge: string;
@@ -68,6 +70,14 @@ type FeatureFormState = {
   name: string;
   order: string;
   unit: string;
+};
+
+type BulkPlanPriceState = {
+  isActive: boolean;
+  isPublic: boolean;
+  isPurchasable: boolean;
+  priceInCents: string;
+  promotionalPriceInCents: string;
 };
 
 const emptyPlanForm: PlanFormState = {
@@ -110,7 +120,9 @@ export function DevPlansPanel() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [planLevelFilter, setPlanLevelFilter] = useState<PlanLevelFilter>("basic");
   const [planForm, setPlanForm] = useState<PlanFormState>(emptyPlanForm);
+  const [bulkPriceForm, setBulkPriceForm] = useState<Record<string, BulkPlanPriceState>>({});
   const [featureForm, setFeatureForm] = useState<FeatureFormState>(emptyFeatureForm);
   const [activation, setActivation] = useState({ planId: "", userId: "", workspaceName: "" });
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>({
@@ -166,6 +178,21 @@ export function DevPlansPanel() {
     { id: "payments", label: "Pagamentos" },
     { id: "logs", label: "Auditoria" }
   ], []);
+
+  const filteredPlans = useMemo(() => (
+    dashboard?.plans.filter((plan) => planLevel(plan) === planLevelFilter) ?? []
+  ), [dashboard?.plans, planLevelFilter]);
+
+  useEffect(() => {
+    if (!dashboard) return;
+    setBulkPriceForm((current) => {
+      const next: Record<string, BulkPlanPriceState> = {};
+      for (const plan of dashboard.plans) {
+        next[plan.id] = current[plan.id] ?? planToBulkPriceState(plan);
+      }
+      return next;
+    });
+  }, [dashboard]);
 
   async function withRefresh(key: string, action: () => Promise<unknown>, success: string) {
     setBusyKey(key);
@@ -232,6 +259,23 @@ export function DevPlansPanel() {
     }), "Configuração de pagamento atualizada.");
   }
 
+  async function handleBulkPriceSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dashboard) return;
+
+    const changedPlans = dashboard.plans.filter((plan) => hasBulkPriceChanges(plan, bulkPriceForm[plan.id]));
+    if (!changedPlans.length) {
+      setNotice("Nenhum valor foi alterado.");
+      return;
+    }
+
+    await withRefresh("plans:bulk-prices", async () => {
+      for (const plan of changedPlans) {
+        await updateDevPlan(plan.id, planPayloadFromPlan(plan, bulkPriceForm[plan.id] ?? planToBulkPriceState(plan)));
+      }
+    }, `${changedPlans.length} plano(s) atualizado(s) de uma vez.`);
+  }
+
   if (loading) {
     return (
       <Card>
@@ -280,25 +324,36 @@ export function DevPlansPanel() {
 
       {tab === "plans" && dashboard ? (
         <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {dashboard.plans.map((plan) => (
+          <div className="space-y-4">
+            <PlanLevelSelector value={planLevelFilter} onChange={setPlanLevelFilter} />
+            <BulkPriceEditor
+              busy={busyKey === "plans:bulk-prices"}
+              form={bulkPriceForm}
+              onChange={setBulkPriceForm}
+              onSubmit={handleBulkPriceSubmit}
+              plans={filteredPlans}
+            />
+            <div className="grid gap-4 lg:grid-cols-2">
+            {filteredPlans.map((plan) => (
               <Card key={plan.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <CardTitle>{plan.name}</CardTitle>
-                      <CardDescription>{plan.slug}</CardDescription>
+                      <CardDescription>{planLevelLabel(plan)} / {plan.slug}</CardDescription>
                     </div>
                     <Badge variant={plan.isActive ? "success" : "muted"}>{plan.isActive ? "Ativo" : "Inativo"}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm leading-6 text-zinc-400">{plan.shortDescription || plan.description || "Sem descrição."}</p>
+                  <p className="text-sm leading-6 text-zinc-400">{plan.shortDescription || plan.description || defaultPlanDescription(plan)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="muted">{plan.botLimit} bot(s)</Badge>
                     <Badge variant="muted">{plan.guildLimit} servidor(es)</Badge>
+                    <Badge variant="muted">{plan.validityDays ? `${plan.validityDays} dias` : "Sem vencimento fixo"}</Badge>
                     <Badge variant={plan.isPurchasable ? "success" : "muted"}>{plan.isPurchasable ? "Compra ativa" : "Interesse"}</Badge>
                   </div>
+                  <PlanIncludedList features={dashboard.features} plan={plan} />
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => setPlanForm(planToForm(plan))} size="sm" variant="outline">
                       <SlidersHorizontal className="h-4 w-4" />
@@ -316,6 +371,8 @@ export function DevPlansPanel() {
                 </CardContent>
               </Card>
             ))}
+            {!filteredPlans.length ? <p className="rounded-lg border border-zinc-800 bg-black/25 p-6 text-center text-sm text-zinc-500">Nenhum plano {planLevelFilter === "basic" ? "básico" : "avançado"} cadastrado.</p> : null}
+            </div>
           </div>
           <PlanEditor form={planForm} busy={busyKey === "plan:save"} onChange={setPlanForm} onSubmit={handlePlanSubmit} />
         </section>
@@ -484,6 +541,123 @@ function PlanEditor({ busy, form, onChange, onSubmit }: { busy: boolean; form: P
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function PlanLevelSelector({ onChange, value }: { onChange: (value: PlanLevelFilter) => void; value: PlanLevelFilter }) {
+  const options: Array<{ description: string; label: string; value: PlanLevelFilter }> = [
+    { description: "Planos de entrada, com recursos essenciais.", label: "Básico", value: "basic" },
+    { description: "Planos completos, com módulos e limites maiores.", label: "Avançado", value: "advanced" }
+  ];
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-zinc-800 bg-black/25 p-3 sm:grid-cols-2">
+      {options.map((option) => (
+        <button
+          className={[
+            "rounded-lg border p-4 text-left transition",
+            value === option.value ? "border-[#FFD500]/50 bg-[#FFD500]/10" : "border-zinc-800 bg-zinc-950/60 hover:border-[#FFD500]/25"
+          ].join(" ")}
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          type="button"
+        >
+          <span className="flex items-center gap-2 text-sm font-black text-white">
+            <Tags className="h-4 w-4 text-[#FFD500]" />
+            {option.label}
+          </span>
+          <span className="mt-1 block text-xs leading-5 text-zinc-500">{option.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BulkPriceEditor({
+  busy,
+  form,
+  onChange,
+  onSubmit,
+  plans
+}: {
+  busy: boolean;
+  form: Record<string, BulkPlanPriceState>;
+  onChange: (value: Record<string, BulkPlanPriceState>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  plans: Plan[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Valores em lote</CardTitle>
+        <CardDescription>Altere preço, promoção e status dos planos selecionados e salve tudo de uma vez.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-3" onSubmit={onSubmit}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500">
+                <tr className="border-b border-zinc-800">
+                  <th className="py-2 pr-3">Plano</th>
+                  <th className="px-3 py-2">Preço</th>
+                  <th className="px-3 py-2">Promoção</th>
+                  <th className="px-3 py-2">Ativo</th>
+                  <th className="px-3 py-2">Público</th>
+                  <th className="px-3 py-2">Compra</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plans.map((plan) => {
+                  const row = form[plan.id] ?? planToBulkPriceState(plan);
+                  const updateRow = (patch: Partial<BulkPlanPriceState>) => onChange({ ...form, [plan.id]: { ...row, ...patch } });
+
+                  return (
+                    <tr className="border-b border-zinc-900" key={plan.id}>
+                      <td className="py-3 pr-3">
+                        <p className="font-semibold text-white">{plan.name}</p>
+                        <p className="mt-1 font-mono text-xs text-zinc-600">{plan.slug}</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <input className="h-10 w-28 rounded-lg border border-zinc-800 bg-black px-3 text-white outline-none focus:border-[#FFD500]/50" onChange={(event) => updateRow({ priceInCents: event.target.value })} value={row.priceInCents} />
+                      </td>
+                      <td className="px-3 py-3">
+                        <input className="h-10 w-28 rounded-lg border border-zinc-800 bg-black px-3 text-white outline-none focus:border-[#FFD500]/50" onChange={(event) => updateRow({ promotionalPriceInCents: event.target.value })} placeholder="Sem promo" value={row.promotionalPriceInCents} />
+                      </td>
+                      <td className="px-3 py-3"><input checked={row.isActive} onChange={(event) => updateRow({ isActive: event.target.checked })} type="checkbox" /></td>
+                      <td className="px-3 py-3"><input checked={row.isPublic} onChange={(event) => updateRow({ isPublic: event.target.checked })} type="checkbox" /></td>
+                      <td className="px-3 py-3"><input checked={row.isPurchasable} onChange={(event) => updateRow({ isPurchasable: event.target.checked })} type="checkbox" /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Button disabled={busy || !plans.length} type="submit">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Salvar valores em lote
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlanIncludedList({ features, plan }: { features: PlanFeature[]; plan: Plan }) {
+  const included = plan.entitlements.filter((item) => item.enabled).slice(0, 8);
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/25 p-3">
+      <p className="text-sm font-semibold text-white">O que inclui no {planLevelLabel(plan).toLowerCase()}</p>
+      <div className="mt-3 grid gap-2">
+        {included.map((item) => (
+          <div className="flex items-start gap-2 text-sm text-zinc-300" key={item.key}>
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#FFD500]" />
+            <span>{featureLabel(item.key, features)}</span>
+          </div>
+        ))}
+        {!included.length ? <span className="text-sm text-zinc-500">Sem recursos vinculados.</span> : null}
+      </div>
+    </div>
   );
 }
 
@@ -692,6 +866,16 @@ function planToForm(plan: Plan): PlanFormState {
   };
 }
 
+function planToBulkPriceState(plan: Plan): BulkPlanPriceState {
+  return {
+    isActive: plan.isActive,
+    isPublic: plan.isPublic,
+    isPurchasable: plan.isPurchasable,
+    priceInCents: centsToCurrencyInput(plan.priceInCents),
+    promotionalPriceInCents: plan.promotionalPriceInCents === null ? "" : centsToCurrencyInput(plan.promotionalPriceInCents)
+  };
+}
+
 function featureToForm(feature: PlanFeature): FeatureFormState {
   return {
     category: feature.category,
@@ -732,6 +916,67 @@ function planPayloadFromForm(form: PlanFormState): SavePlanPayload {
     slug: form.slug || undefined,
     validityDays: form.validityDays ? Number(form.validityDays) : null
   };
+}
+
+function planPayloadFromPlan(plan: Plan, form: BulkPlanPriceState): SavePlanPayload {
+  return {
+    badge: plan.badge,
+    billingCycle: plan.billingCycle,
+    botLimit: plan.botLimit,
+    buttonText: plan.buttonText,
+    color: plan.color,
+    currency: plan.currency,
+    description: plan.description,
+    entitlements: plan.entitlements,
+    guildLimit: plan.guildLimit,
+    icon: plan.icon,
+    imageUrl: plan.imageUrl,
+    isActive: form.isActive,
+    isPublic: form.isPublic,
+    isPurchasable: form.isPurchasable,
+    isRecommended: plan.isRecommended,
+    name: plan.name,
+    order: plan.order,
+    priceInCents: currencyInputToCents(form.priceInCents),
+    promotionalPriceInCents: form.promotionalPriceInCents.trim() ? currencyInputToCents(form.promotionalPriceInCents) : null,
+    shortDescription: plan.shortDescription,
+    slug: plan.slug,
+    validityDays: plan.validityDays
+  };
+}
+
+function hasBulkPriceChanges(plan: Plan, form?: BulkPlanPriceState) {
+  if (!form) return false;
+  return currencyInputToCents(form.priceInCents) !== plan.priceInCents
+    || (form.promotionalPriceInCents.trim() ? currencyInputToCents(form.promotionalPriceInCents) : null) !== plan.promotionalPriceInCents
+    || form.isActive !== plan.isActive
+    || form.isPublic !== plan.isPublic
+    || form.isPurchasable !== plan.isPurchasable;
+}
+
+function planLevel(plan: Plan): PlanLevelFilter {
+  const text = normalizePlanText([plan.name, plan.slug, plan.badge, plan.shortDescription, plan.description].filter(Boolean).join(" "));
+  if (/\b(avancado|completo|completa|premium|profissional|pro|ultimate|enterprise)\b/.test(text)) return "advanced";
+  return "basic";
+}
+
+function planLevelLabel(plan: Plan) {
+  return planLevel(plan) === "advanced" ? "Avançado" : "Básico";
+}
+
+function defaultPlanDescription(plan: Plan) {
+  return planLevel(plan) === "advanced"
+    ? "Plano avançado com recursos completos, mais limite e automações para operação maior."
+    : "Plano básico com recursos essenciais para iniciar e manter o bot funcionando.";
+}
+
+function featureLabel(key: string, features: PlanFeature[]) {
+  const feature = features.find((item) => item.key === key);
+  return feature?.name || key.replace(/[._-]+/g, " ");
+}
+
+function normalizePlanText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function centsToCurrencyInput(value: number) {

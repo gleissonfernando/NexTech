@@ -4,7 +4,7 @@ import { createPlanCheckoutInterest, getPublicPlans } from "../lib/api";
 import type { Plan } from "../types";
 
 type PlanPeriodicityFilter = "all" | "monthly";
-type PlanLevelFilter = "all" | "basic" | "complete";
+type PlanLevelFilter = "basic" | "advanced";
 
 const PERIODICITY_FILTERS: Array<{ label: string; value: PlanPeriodicityFilter }> = [
   { label: "Todos", value: "all" },
@@ -12,9 +12,8 @@ const PERIODICITY_FILTERS: Array<{ label: string; value: PlanPeriodicityFilter }
 ];
 
 const LEVEL_FILTERS: Array<{ label: string; value: PlanLevelFilter }> = [
-  { label: "Todos", value: "all" },
   { label: "Básico", value: "basic" },
-  { label: "Completo", value: "complete" }
+  { label: "Avançado", value: "advanced" }
 ];
 
 export function PublicPlansPage() {
@@ -25,11 +24,11 @@ export function PublicPlansPage() {
   const [busyPaymentMethod, setBusyPaymentMethod] = useState<"card" | "pix" | null>(null);
   const [paymentPlan, setPaymentPlan] = useState<Plan | null>(null);
   const [periodicityFilter, setPeriodicityFilter] = useState<PlanPeriodicityFilter>("all");
-  const [levelFilter, setLevelFilter] = useState<PlanLevelFilter>("all");
+  const [levelFilter, setLevelFilter] = useState<PlanLevelFilter>("basic");
 
   const filteredPlans = useMemo(() => plans.filter((plan) => {
     const periodicityMatches = periodicityFilter === "all" || planPeriodicity(plan) === periodicityFilter;
-    const levelMatches = levelFilter === "all" || planLevel(plan) === levelFilter;
+    const levelMatches = planLevel(plan) === levelFilter;
     return periodicityMatches && levelMatches;
   }), [levelFilter, periodicityFilter, plans]);
 
@@ -88,7 +87,7 @@ export function PublicPlansPage() {
         {error ? <div className="mx-auto max-w-xl rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">{error}</div> : null}
         {!loading && !error && filteredPlans.length ? <section aria-label="Planos disponíveis" className="plans-grid-transition grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3" key={`${periodicityFilter}-${levelFilter}`}>{filteredPlans.map((plan) => <PublicPlanCard busy={busyPlanSlug === plan.slug} key={plan.id} onBuy={() => setPaymentPlan(plan)} plan={plan} />)}</section> : null}
         {!loading && !error && !plans.length ? <p className="py-20 text-center text-zinc-500">Nenhum plano público disponível no momento.</p> : null}
-        {!loading && !error && plans.length > 0 && !filteredPlans.length ? <p className="plans-grid-transition py-20 text-center text-zinc-500" key={`${periodicityFilter}-${levelFilter}-empty`}>Nenhum plano encontrado para este filtro.</p> : null}
+        {!loading && !error && plans.length > 0 && !filteredPlans.length ? <p className="plans-grid-transition py-20 text-center text-zinc-500" key={`${periodicityFilter}-${levelFilter}-empty`}>Nenhum plano {levelFilter === "basic" ? "básico" : "avançado"} encontrado para este filtro.</p> : null}
         <div className="mx-auto mt-16 flex max-w-3xl items-start gap-3 rounded-xl border border-primary/15 bg-primary/[.05] p-5 text-sm leading-6 text-zinc-400"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><p>Esta página mostra somente informações públicas. Tokens, pagamentos e dados administrativos não são enviados ao navegador.</p></div>
       </div>
       {paymentPlan ? (
@@ -236,9 +235,9 @@ function planPeriodicity(_plan: Plan): Exclude<PlanPeriodicityFilter, "all"> {
   return "monthly";
 }
 
-function planLevel(plan: Plan): Exclude<PlanLevelFilter, "all"> {
+function planLevel(plan: Plan): PlanLevelFilter {
   const text = normalizePlanText([plan.name, plan.slug, plan.badge, plan.shortDescription, plan.description].filter(Boolean).join(" "));
-  if (/\b(completo|completa|premium|profissional|pro)\b/.test(text)) return "complete";
+  if (/\b(avancado|completo|completa|premium|profissional|pro|ultimate|enterprise)\b/.test(text)) return "advanced";
   return "basic";
 }
 
