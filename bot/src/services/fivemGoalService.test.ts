@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -43,7 +43,36 @@ test("painel de registro de farm preserva a mensagem original no custom id", () 
   assert.match(serialized, /Registro de Farm/);
   assert.match(serialized, /Registrar Farm/);
   assert.match(serialized, /fivem_goal:register:333333333333333333/);
+  assert.doesNotMatch(serialized, /https:\/\/cdn\.discordapp\.com\/image\.png/);
+  assert.doesNotMatch(serialized, /meta image/);
   assert.doesNotMatch(serialized, /fivem_goal:confirm:/);
+});
+
+test("painel de farm registrado usa icone do servidor no lugar da foto enviada", () => {
+  const guild = {
+    client: {
+      emojis: { cache: { find: () => null, get: () => null } },
+      guilds: { cache: { get: () => null } },
+      user: {
+        displayAvatarURL: () => "https://cdn.discordapp.com/bot-avatar.png"
+      }
+    },
+    emojis: { cache: { find: () => null, get: () => null } },
+    iconURL: () => "https://cdn.discordapp.com/server-icon.png"
+  } as any;
+
+  const payload = createFarmRegisteredPayload(
+    "111111111111111111",
+    [{ id: "item", label: "Item", value: "Dinheiro sujo" }],
+    19999,
+    guild,
+    null
+  );
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /Farm registrado/);
+  assert.match(serialized, /https:\/\/cdn\.discordapp\.com\/server-icon\.png/);
+  assert.doesNotMatch(serialized, /https:\/\/cdn\.discordapp\.com\/image\.png/);
 });
 
 test("modal de registro de farm inclui select de item e campo de quantidade", () => {

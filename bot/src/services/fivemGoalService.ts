@@ -1206,7 +1206,7 @@ async function showGoalModal(interaction: ButtonInteraction | StringSelectMenuIn
   }
 
   const modal = createGoalRegistrationModal(
-    farmModalCustomId(pending.sourceMessageId, "select", interaction.user.id, pending.correctionRequestId ?? correctionId, pending.channelId, guild.id),
+    farmModalCustomId(pending.sourceMessageId, "select", interaction.user.id, pending.correctionRequestId ?? correctionId, pending.channelId, guild.id, interaction.message?.id ?? null),
     items,
     guild
   );
@@ -1343,7 +1343,8 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
     await interaction.editReply("Farm registrado.");
     const channel = await guild.channels.fetch(pending.channelId).catch(() => null);
     if (channel?.isSendable()) {
-      await channel.send(createFarmRegisteredPayload(interaction.user.id, pending.imageUrl, fields, quantityValue, guild, selectedItem.emoji)).catch(() => null);
+      const registeredMessage = await channel.send(createFarmRegisteredPayload(interaction.user.id, fields, quantityValue, guild, selectedItem.emoji)).catch(() => null);
+      if (registeredMessage) await deleteFarmReviewMessage(channel, component.reviewMessageId ?? null);
       if (pending.correctionRequestId && pending.replacementForRegistrationId) {
         await channel.send(createCorrectionCompletedPayload({ fields, replacementForRegistrationId: pending.replacementForRegistrationId }, guild)).catch(() => null);
       }
@@ -1778,6 +1779,7 @@ type FarmComponentContext = {
   guildId: string | null;
   itemId: string | null;
   ownerId: string | null;
+  reviewMessageId?: string | null;
   sourceMessageId: string;
 };
 
@@ -1789,10 +1791,10 @@ function farmComponentCustomId(action: "register" | "correct", sourceMessageId: 
   return guildId && channelId ? `${PREFIX}:${action}:${guildId}:${channelId}:${sourceMessageId}` : `${PREFIX}:${action}:${sourceMessageId}`;
 }
 
-function farmModalCustomId(sourceMessageId: string, itemId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null) {
-  const fullContext = { channelId, correctionRequestId, guildId, itemId, ownerId, sourceMessageId };
+function farmModalCustomId(sourceMessageId: string, itemId: string, ownerId: string, correctionRequestId: string | null, channelId: string | null, guildId: string | null, reviewMessageId: string | null = null) {
+  const fullContext = { channelId, correctionRequestId, guildId, itemId, ownerId, reviewMessageId, sourceMessageId };
   const legacyCustomId = `${PREFIX}:modal:${sourceMessageId}:${itemId}:${ownerId}:${correctionRequestId ?? "none"}`;
-  if (!guildId || !channelId || legacyCustomId.length <= 100) return legacyCustomId;
+  if (!reviewMessageId && (!guildId || !channelId || legacyCustomId.length <= 100)) return legacyCustomId;
   return `${PREFIX}:modal_ref:${storeFarmModalContext(fullContext)}`;
 }
 
@@ -1933,7 +1935,7 @@ function goalItemSelectEmoji(item: FivemGoalItem, guild: Guild) {
   return rendered ? rendered.slice(0, 100) : undefined;
 }
 
-export function createImageReviewPayload(userId: string, channelId: string, sourceMessageId: string, _attachmentId: string, imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = [], guild: Guild | null = null) {
+export function createImageReviewPayload(userId: string, channelId: string, sourceMessageId: string, _attachmentId: string, _imageUrl: string, _settings: FivemGoalSettings, corrections: FivemGoalCorrectionRequest[] = [], guild: Guild | null = null) {
   const correctionIntro = corrections.length ? "\n\n⚠️ Existe correção pendente. Esta imagem será usada para refazer uma meta solicitada." : "";
   const guildId = guild?.id ?? null;
   const client = guild?.client ?? null;
@@ -1947,7 +1949,6 @@ export function createImageReviewPayload(userId: string, channelId: string, sour
         type: 17,
         accent_color: 0x22c55e,
         components: [
-          { type: 12, items: [{ media: { url: imageUrl }, description: "meta image" }] },
           { type: 10, content: replaceSystemEmojis(`## ${farmSystemEmojiText("prancheta_acertos", guild, client)} Registro de Farm\n\n${farmSystemEmojiText("homem", guild, client)} Usuário: <@${userId}>\n${farmSystemEmojiText("interrogacao", guild, client)} Foto recebida. Clique no botão abaixo para registrar os itens.${correctionIntro}`, guild, client) },
           { type: 14, divider: true, spacing: 1 },
           ...(corrections.length > 1 ? [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -1962,10 +1963,11 @@ export function createImageReviewPayload(userId: string, channelId: string, sour
   };
 }
 
-function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild, itemEmoji?: string | null) {
+export function createFarmRegisteredPayload(userId: string, fields: Array<{ id: string; label: string; value: string }>, quantity: number, guild: Guild, itemEmoji?: string | null) {
   const itemLabel = fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() || "Farm";
   const client = guild.client;
   const itemIcon = renderFarmConfiguredEmoji(itemEmoji, guild);
+  const serverIconUrl = farmRegisteredAccessoryUrl(guild);
   return {
     allowedMentions: { parse: [] as never[], users: [userId] },
     components: [{
@@ -1988,7 +1990,7 @@ function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: A
               `${farmSystemEmojiText("relogio", guild, client)} Data: ${formatBrazilDateTime(new Date())}`
             ].join("\n")
           }],
-          accessory: { type: 11, media: { url: imageUrl } }
+          ...(serverIconUrl ? { accessory: { type: 11, media: { url: serverIconUrl } } } : {})
         },
         { type: 14, divider: true, spacing: 1 },
         { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
@@ -1996,6 +1998,16 @@ function createFarmRegisteredPayload(userId: string, imageUrl: string, fields: A
     }],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+async function deleteFarmReviewMessage(channel: { messages?: { fetch: (id: string) => Promise<{ delete: () => Promise<unknown> } | null> } }, reviewMessageId: string | null) {
+  if (!reviewMessageId || !channel.messages) return;
+  const reviewMessage = await channel.messages.fetch(reviewMessageId).catch(() => null);
+  await reviewMessage?.delete().catch(() => null);
+}
+
+function farmRegisteredAccessoryUrl(guild: Guild) {
+  return guild.iconURL({ extension: "png", size: 256 }) ?? guild.client.user?.displayAvatarURL({ extension: "png", size: 256 }) ?? null;
 }
 
 function noRecordsPayload(userId: string, guild: Guild | null) {
