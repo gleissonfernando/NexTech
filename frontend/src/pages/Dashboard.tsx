@@ -7366,7 +7366,7 @@ function TermsPanel({
       termsPanelDescription: settings?.termsPanelDescription || defaultTermsPanelDescription(),
       termsPanelFooterText: settings?.termsPanelFooterText || "",
       termsPanelImageFormat: settings?.termsPanelImageFormat === "none" ? "horizontal" : settings?.termsPanelImageFormat || "horizontal",
-      termsPanelImageUrl: settings?.termsPanelImageUrl || "/terms-banner.png?v=20260804-terms-panel-v2",
+      termsPanelImageUrl: settings?.termsPanelImageUrl || "/terms-banner.png?v=20260804-terms-panel-v3",
       termsPanelSubtitle: settings?.termsPanelSubtitle || "",
       termsPanelTitle: settings?.termsPanelTitle || "Termos & Serviço"
     });
@@ -7544,7 +7544,7 @@ function defaultTermsDraft() {
     termsPanelDescription: defaultTermsPanelDescription(),
     termsPanelFooterText: "",
     termsPanelImageFormat: "horizontal" as RulesPanelImageFormat,
-    termsPanelImageUrl: "/terms-banner.png?v=20260804-terms-panel-v2",
+    termsPanelImageUrl: "/terms-banner.png?v=20260804-terms-panel-v3",
     termsPanelSubtitle: "",
     termsPanelTitle: "Termos & Serviço"
   };
@@ -7574,7 +7574,7 @@ function defaultTermsPanelDescription() {
 }
 
 function TermsPanelPreview({ draft }: { draft: ReturnType<typeof defaultTermsDraft> }) {
-  const imageUrl = draft.termsPanelImageUrl || "/terms-banner.png?v=20260804-terms-panel-v2";
+  const imageUrl = draft.termsPanelImageUrl || "/terms-banner.png?v=20260804-terms-panel-v3";
   const sections = parseTermsPreviewSections(draft.termsPanelDescription);
   return (
     <div className="max-w-2xl rounded-md border border-zinc-700 bg-[#313338] p-3 text-white shadow-2xl">

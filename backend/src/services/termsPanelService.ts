@@ -8,7 +8,7 @@ import { updateGuildSettings } from "./settingsService";
 const DISCORD_API = "https://discord.com/api/v10";
 const COMPONENTS_V2_FLAG = 1 << 15;
 const DEFAULT_TERMS_BANNER_PATH = "/terms-banner.png";
-const DEFAULT_TERMS_BANNER_VERSION = "20260804-terms-panel-v2";
+const DEFAULT_TERMS_BANNER_VERSION = "20260804-terms-panel-v3";
 
 type DiscordMessage = {
   id: string;
