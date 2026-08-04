@@ -44,8 +44,8 @@ export function isChannelIgnoredOrAllowed(
   const channel = resolveMessageChannel(message);
   const base = { ...channel, allowed: true, matchedId: null, moduleId };
 
-  if (!settings.enabled) return { ...base, reason: "system_disabled" };
-  if (settings.moduleToggles[moduleId] === false) return { ...base, reason: "module_disabled" };
+  if (settings.enabled !== true) return { ...base, reason: "system_disabled" };
+  if (settings.moduleToggles[moduleId] !== true) return { ...base, reason: "module_disabled" };
 
   const moduleAllowedIds = MEDIA_MODULES.has(moduleId)
     ? settings.mediaChannelIds

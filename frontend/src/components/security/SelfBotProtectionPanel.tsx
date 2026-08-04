@@ -488,8 +488,6 @@ export function SelfBotProtectionPanel({
         nicknameWindowSeconds: nextSettings.nicknameWindowSeconds,
         antiBotAction: nextSettings.antiBotAction,
         raidLockdownEnabled: nextSettings.raidLockdownEnabled,
-        dmWarningEnabled: nextSettings.dmWarningEnabled,
-        dmWarningMessage: nextSettings.dmWarningMessage,
         moduleLogChannelIds: nextSettings.moduleLogChannelIds,
         moduleToggles: nextSettings.moduleToggles,
         multiChannelLimit: nextSettings.multiChannelLimit,
@@ -762,20 +760,14 @@ export function SelfBotProtectionPanel({
             </div>
           </Section>
 
-          <Section icon={Bot} title="Entrada de bots, raid e avisos">
+          <Section icon={Bot} title="Entrada de bots e raid">
             <div className="grid gap-4 md:grid-cols-2">
               <SelectField disabled={disabled} icon={Bot} label="Ao entrar um bot" onChange={(value) => updateSetting("antiBotAction", value as SelfBotProtectionSettings["antiBotAction"])} options={[
                 { label: "Permitir", value: "allow" }, { label: "Expulsar", value: "kick" }, { label: "Banir", value: "ban" }, { label: "Aprovação manual", value: "manual" }
               ]} placeholder="Selecione uma ação" value={settings.antiBotAction} />
               <div className="grid gap-2">
                 <ToggleRow checked={settings.raidLockdownEnabled} disabled={disabled} label="Lockdown automático em raid" onChange={(value) => updateSetting("raidLockdownEnabled", value)} />
-                <ToggleRow checked={settings.dmWarningEnabled} disabled={disabled} label="Avisar usuário por DM" onChange={(value) => updateSetting("dmWarningEnabled", value)} />
               </div>
-              <label className="grid gap-2 text-sm md:col-span-2">
-                <span className="font-medium text-zinc-200">Mensagem da DM</span>
-                <textarea className="min-h-24 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-zinc-100" disabled={disabled || !settings.dmWarningEnabled} onChange={(event) => updateSetting("dmWarningMessage", event.target.value)} value={settings.dmWarningMessage} />
-                <span className="text-xs text-zinc-500">Variáveis: {'{proteção}'}, {'{modulo}'}, {'{servidor}'}, {'{usuário}'}</span>
-              </label>
             </div>
           </Section>
 

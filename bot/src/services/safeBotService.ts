@@ -381,9 +381,12 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
   }
 
   if (message.channelId === runtime.filterChannelId) {
+    if (!isSafeBotProtectionModuleActive(runtime, "anti-auto-spam")) {
+      return false;
+    }
     const punishment = await applyFilterChannelPunishment(context, member, message, runtime);
     await Promise.allSettled([
-      sendFilterLog(message, runtime, punishment),
+      punishment.actions.includes("log") ? sendFilterLog(message, runtime, punishment) : Promise.resolve(),
       recordSafeBotIncident(context, message, runtime, {
         actionError: punishment.error,
         actions: punishment.actions,
@@ -410,7 +413,7 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
         `SafeBot: ${detected.label} enviado por usuário marcado como Self Bot.`
       );
       await Promise.allSettled([
-        sendSelfBotDetectedLog(message, runtime, detected, punishment),
+        punishment.actions.includes("log") ? sendSelfBotDetectedLog(message, runtime, detected, punishment) : Promise.resolve(),
         recordSafeBotIncident(context, message, runtime, {
           actionError: punishment.error,
           actions: punishment.actions,
@@ -433,7 +436,7 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
 
     const punishment = await applyConfiguredPunishment(context, member, message, runtime, flood.moduleId, `SafeBot: ${flood.reason}`, flood.messages);
     await Promise.allSettled([
-      sendFloodLog(message, runtime, flood.reason, punishment),
+      punishment.actions.includes("log") ? sendFloodLog(message, runtime, flood.reason, punishment) : Promise.resolve(),
       recordSafeBotIncident(context, message, runtime, {
         actionError: punishment.error,
         actions: punishment.actions,
@@ -459,7 +462,7 @@ async function shouldApplyProtection(
 ) {
   if (!(await isRuntimeModuleAuthorized(context, message.guild!.id, moduleId))) return false;
   const settings = runtime.protectionSettings;
-  if (!settings) return false;
+  if (runtime.settings.safeBotEnabled !== true || settings?.enabled !== true || settings.moduleToggles[moduleId] !== true) return false;
   if (moduleId === "anti-imagens" && !settings.blockImages) return false;
   if (moduleId === "anti-gif" && !settings.blockGifs) return false;
   if (moduleId === "anti-anexos" && detected?.label === "Video" && !settings.blockVideos) return false;
@@ -489,6 +492,12 @@ async function hasOnlyAllowedDiscordInvites(message: Message, settings: SelfBotP
   if (!codes.length) return false;
   const invites = await Promise.all([...new Set(codes)].map((code) => context.client.fetchInvite(code).catch(() => null)));
   return invites.every((invite) => Boolean(invite?.guild?.id && settings.allowedInviteGuildIds.includes(invite.guild.id)));
+}
+
+function isSafeBotProtectionModuleActive(runtime: SafeBotRuntime, moduleId: SelfBotProtectionModuleId) {
+  return runtime.settings.safeBotEnabled === true
+    && runtime.protectionSettings?.enabled === true
+    && runtime.protectionSettings.moduleToggles[moduleId] === true;
 }
 
 async function applyFilterChannelPunishment(

@@ -193,7 +193,7 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
 
   for (const action of configuredActions) {
     try {
-      if (action === "dm") await target.send(render(level.userMessage, warning, target, staff));
+      if (action === "dm") continue;
       if (action === "channel_message" || action === "notify_staff") await sendConfiguredChannel(level, render(action === "notify_staff" ? level.staffMessage : level.userMessage, warning, target, staff), target);
       if (action === "add_role") await target.roles.add(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
       if (action === "remove_role") await target.roles.remove(level.roleId!, `Advertência Safe Bot #${warning.warningNumber}: ${warning.reason}`);
@@ -222,10 +222,6 @@ async function executeConfiguredAction(warning: SafeBotWarningRecord, settings: 
     } catch (error) {
       errors.push(`${actionLabel(action)}: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  if (level.userMessage && !configuredActions.includes("dm") && !configuredActions.some((action) => ["kick", "ban"].includes(action))) {
-    await target.send(render(level.userMessage, warning, target, staff)).catch(() => null);
   }
 
   return {

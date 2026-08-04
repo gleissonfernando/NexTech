@@ -64,4 +64,5 @@ test("URLs internas e anexos do Discord não são tratados como domínios extern
 test("sistema e módulo desativados interrompem apenas a proteção aplicável", () => {
   assert.equal(isChannelIgnoredOrAllowed(message(), settings({ enabled: false }), "anti-links").reason, "system_disabled");
   assert.equal(isChannelIgnoredOrAllowed(message(), settings({ moduleToggles: { "anti-links": false } as SelfBotProtectionSettings["moduleToggles"] }), "anti-links").reason, "module_disabled");
+  assert.equal(isChannelIgnoredOrAllowed(message(), settings({ moduleToggles: {} as SelfBotProtectionSettings["moduleToggles"] }), "anti-links").reason, "module_disabled");
 });
