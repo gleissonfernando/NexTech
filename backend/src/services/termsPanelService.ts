@@ -44,7 +44,7 @@ export async function publishTermsPanelToDiscord(settings: GuildSettingsDto, bot
       return data.id;
     } catch (error) {
       const status = axios.isAxiosError(error) ? error.response?.status : null;
-      if (status !== 404) throw error;
+      if (status !== 404) throw formatDiscordTermsPanelError(error);
     }
   }
 
@@ -52,7 +52,9 @@ export async function publishTermsPanelToDiscord(settings: GuildSettingsDto, bot
     `${DISCORD_API}/channels/${settings.termsPanelChannelId}/messages`,
     payload,
     { headers, timeout: 10_000 }
-  );
+  ).catch((error) => {
+    throw formatDiscordTermsPanelError(error);
+  });
 
   await updateGuildSettings(settings.guildId, { termsPanelMessageId: data.id }, settings.botId);
   await logTermsPanelEvent(settings, "terms.panel_created", "Painel de termos criado.", data.id);
@@ -151,6 +153,24 @@ function chunkText(text: string, maxLength: number) {
 function parseColor(value: string | null) {
   const normalized = value?.replace("#", "").trim();
   return normalized && /^[0-9a-f]{6}$/i.test(normalized) ? Number.parseInt(normalized, 16) : 0xffd500;
+}
+
+function formatDiscordTermsPanelError(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error : new Error("Não foi possível publicar o painel de termos.");
+  }
+
+  const status = error.response?.status;
+  const discordMessage = typeof error.response?.data === "object" && error.response.data
+    ? JSON.stringify(error.response.data).slice(0, 500)
+    : null;
+
+  if (status === 401) return new Error("Token do bot inválido ao publicar o painel de termos.");
+  if (status === 403) return new Error("O bot não tem permissão para enviar ou editar mensagens no canal de termos.");
+  if (status === 404) return new Error("Canal de termos não encontrado. Selecione outro canal e publique novamente.");
+  if (status === 400) return new Error(`Discord recusou o painel de termos. ${discordMessage ?? "Confira URL, imagem e texto configurados."}`);
+
+  return new Error(`Não foi possível publicar o painel de termos${status ? ` (Discord ${status})` : ""}.`);
 }
 
 async function logTermsPanelEvent(settings: GuildSettingsDto, type: string, message: string, messageId: string) {

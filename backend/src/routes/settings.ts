@@ -5,7 +5,7 @@ import { isBotRequest, requireAuth, requireAuthOrBot, requireBot } from "../midd
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom, emitRealtimeToRoomWithAck } from "../realtime/events";
 import { isDashboardDevUserId } from "../config/devOwner";
 import { canManageDashboardGuild, canReadDashboardGuild } from "../services/dashboardGuildAccessService";
-import { authorizeBotRuntimeModule, canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken } from "../services/devBotService";
+import { authorizeBotRuntimeModule, canAccessDevBotGuild, canManageDevBot, canUseDevBotModule, getDevBot, getDevBotToken, listGuildBotRuntimeConfigs } from "../services/devBotService";
 import { createLog } from "../services/logService";
 import { hasBotIdentityConflict, resolveRequestBotId } from "../services/requestBotScopeService";
 import {
@@ -860,7 +860,7 @@ settingsRouter.post("/:guildId/terms-panel", requireAuth, async (req, res, next)
     }
 
     const settings = await getGuildSettings(guildId, botId);
-    const messageId = await publishTermsPanelToDiscord(settings, await getDevBotToken(botId));
+    const messageId = await publishTermsPanelToDiscord(settings, await resolvePanelPublishBotToken(guildId, botId, "terms-panel"));
     const updatedSettings = await getGuildSettings(guildId, botId);
 
     emitRealtime("settings:updated", updatedSettings);
@@ -874,6 +874,22 @@ settingsRouter.post("/:guildId/terms-panel", requireAuth, async (req, res, next)
     return next(error);
   }
 });
+
+async function resolvePanelPublishBotToken(guildId: string, botId: string | null, moduleId: string) {
+  const directToken = await getDevBotToken(botId);
+  if (directToken) {
+    return directToken;
+  }
+
+  const runtimeConfigs = await listGuildBotRuntimeConfigs(guildId);
+  const candidate = runtimeConfigs.find((config) => (
+    config.guildIds.includes(guildId)
+    && config.enabledModules.includes(moduleId)
+    && Boolean(config.token)
+  ));
+
+  return candidate?.token ?? null;
+}
 
 settingsRouter.post("/:guildId/report-system-panel", requireAuth, async (req, res, next) => {
   try {
