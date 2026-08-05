@@ -882,72 +882,12 @@ export async function listFivemFacDueAbsences(botId: string, today = currentDate
   return absences.map(toAbsenceDto);
 }
 
-export async function markFivemFacAbsenceStarted(absenceId: string, botId: string, roleAdded = true): Promise<FivemFacLifecycleResult> {
-  const { fivemFacAbsences } = await getMongoCollections();
+export async function markFivemFacAbsenceStarted(absenceId: string, botId: string, _roleAdded = true): Promise<FivemFacLifecycleResult> {
   const absence = await findModeratableAbsence(absenceId, botId);
 
-  if (absence.status === "active") {
-    return {
-      absence: toAbsenceDto(absence),
-      changed: false
-    };
-  }
-
-  if (absence.status !== "approved") {
-    throw createFacError("Ausência não está aprovada para iniciar.", 409);
-  }
-
-  const now = new Date();
-  const result = await fivemFacAbsences.updateOne(
-    {
-      _id: absenceId,
-      botId,
-      status: "approved"
-    },
-    {
-      $set: {
-        status: "active",
-        roleAddedAt: roleAdded ? (absence.roleAddedAt ?? now) : absence.roleAddedAt,
-        startedAt: absence.startedAt ?? now,
-        updatedAt: now
-      },
-      $push: {
-        audit: auditEntry("started", null, null, "active", now)
-      }
-    }
-  );
-
-  const updated = await getFivemFacAbsence(absenceId, botId);
-
-  if (!updated) {
-    throw createFacError("Ausência não encontrada.", 404);
-  }
-
-  if (!result.modifiedCount) {
-    return {
-      absence: updated,
-      changed: false
-    };
-  }
-
-  const log = await createFacLog({
-    botId,
-    guildId: updated.guildId,
-    type: "fivem.fac.absence_started",
-    userId: updated.userId,
-    message: "Ausência iniciada automaticamente.",
-    metadata: auditMetadata(updated, {
-      action: "absence_started",
-      date: now.toISOString(),
-      moderatorId: updated.moderatorId,
-      module: FAC_MODULE_ID
-    })
-  });
-
-  emitFacAbsenceEvent("started", updated, log);
   return {
-    absence: updated,
-    changed: true
+    absence: toAbsenceDto(absence),
+    changed: false
   };
 }
 
