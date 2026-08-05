@@ -113,6 +113,8 @@ export type CreateFivemFacAbsenceInput = {
 export type ModerateFivemFacAbsenceInput = {
   absenceId: string;
   botId: string;
+  canManageGuild?: boolean;
+  isAdministrator?: boolean;
   moderatorId: string;
   moderatorRoleIds: string[];
   reason?: string | null;
@@ -411,7 +413,6 @@ export async function createFivemFacAbsence(input: CreateFivemFacAbsenceInput) {
   }
 
   const now = new Date();
-  const autoApproved = shouldAutoApproveFivemFacAbsence(settings, startDate, endDate, input.requesterRoleIds ?? []);
   const absence: MongoFivemFacAbsence = {
     _id: randomUUID(),
     botId: input.botId,
@@ -423,25 +424,20 @@ export async function createFivemFacAbsence(input: CreateFivemFacAbsenceInput) {
     endDate,
     notes: normalizeShortText(input.notes, 1000),
     photoUrl: null,
-    status: autoApproved ? "approved" : "pending",
+    status: "pending",
     privateChannelId: null,
     requestMessageId: null,
     moderatorId: null,
-    approvedBy: autoApproved ? "automatic" : null,
+    approvedBy: null,
     rejectionReason: null,
     roleAddedAt: null,
     roleRemovedAt: null,
-    approvedAt: autoApproved ? now : null,
+    approvedAt: null,
     rejectedAt: null,
     startedAt: null,
     finishedAt: null,
     closedAt: null,
-    audit: autoApproved
-      ? [
-          auditEntry("created", input.userId, null, "pending", now),
-          auditEntry("auto_approved", "automatic", null, "approved", now)
-        ]
-      : [auditEntry("created", input.userId, null, "pending", now)],
+    audit: [auditEntry("created", input.userId, null, "pending", now)],
     createdAt: now,
     updatedAt: now
   };
@@ -463,24 +459,6 @@ export async function createFivemFacAbsence(input: CreateFivemFacAbsenceInput) {
   });
 
   emitFacAbsenceEvent("created", dto, log);
-  if (autoApproved) {
-    const approvalLog = await createFacLog({
-      botId: input.botId,
-      guildId: input.guildId,
-      type: "fivem.fac.request_auto_approved",
-      userId: input.userId,
-      message: "Solicitação de ausência aprovada automaticamente.",
-      metadata: auditMetadata(dto, {
-        action: "request_auto_approved",
-        autoApproveMaxDays: settings.autoApproveMaxDays,
-        autoApproveRoleIds: settings.autoApproveRoleIds,
-        date: now.toISOString(),
-        moderatorId: "automatic",
-        module: FAC_MODULE_ID
-      })
-    });
-    emitFacAbsenceEvent("approved", dto, approvalLog);
-  }
   return dto;
 }
 
@@ -541,17 +519,18 @@ export async function approveFivemFacAbsence(input: ModerateFivemFacAbsenceInput
   const absence = await findModeratableAbsence(input.absenceId, input.botId);
   const settings = await getFivemFacSettings(absence.guildId, input.botId);
 
-  ensureApprover(settings, input.moderatorRoleIds);
+  ensureApprover(settings, input.moderatorRoleIds, input);
 
   if (absence.status !== "pending") {
     throw createFacError("Apenas solicitacoes pendentes podem ser aprovadas.", 409);
   }
 
   const now = new Date();
-  await fivemFacAbsences.updateOne(
+  const result = await fivemFacAbsences.updateOne(
     {
       _id: absence._id,
-      botId: input.botId
+      botId: input.botId,
+      status: "pending"
     },
     {
       $set: {
@@ -571,6 +550,10 @@ export async function approveFivemFacAbsence(input: ModerateFivemFacAbsenceInput
 
   if (!updated) {
     throw createFacError("Ausência não encontrada.", 404);
+  }
+
+  if (!result.modifiedCount) {
+    throw createFacError("Apenas solicitacoes pendentes podem ser aprovadas.", 409);
   }
 
   const log = await createFacLog({
@@ -597,17 +580,18 @@ export async function rejectFivemFacAbsence(input: ModerateFivemFacAbsenceInput)
   const settings = await getFivemFacSettings(absence.guildId, input.botId);
   const rejectionReason = normalizeRequiredText(input.reason, 800, "Informe o motivo da reprovação.");
 
-  ensureApprover(settings, input.moderatorRoleIds);
+  ensureApprover(settings, input.moderatorRoleIds, input);
 
   if (absence.status !== "pending") {
     throw createFacError("Esta solicitação não pode mais ser reprovada.", 409);
   }
 
   const now = new Date();
-  await fivemFacAbsences.updateOne(
+  const result = await fivemFacAbsences.updateOne(
     {
       _id: absence._id,
-      botId: input.botId
+      botId: input.botId,
+      status: "pending"
     },
     {
       $set: {
@@ -631,6 +615,10 @@ export async function rejectFivemFacAbsence(input: ModerateFivemFacAbsenceInput)
     throw createFacError("Ausência não encontrada.", 404);
   }
 
+  if (!result.modifiedCount) {
+    throw createFacError("Esta solicitação não pode mais ser reprovada.", 409);
+  }
+
   const log = await createFacLog({
     botId: input.botId,
     guildId: updated.guildId,
@@ -650,12 +638,58 @@ export async function rejectFivemFacAbsence(input: ModerateFivemFacAbsenceInput)
   return updated;
 }
 
+export async function markFivemFacAbsenceRoleApplied(absenceId: string, botId: string, applied: boolean, actorId: string | null = null): Promise<FivemFacLifecycleResult> {
+  const { fivemFacAbsences } = await getMongoCollections();
+  const absence = await findModeratableAbsence(absenceId, botId);
+
+  if (absence.status !== "approved" && absence.status !== "active") {
+    throw createFacError("Cargo só pode ser marcado em ausência aprovada.", 409);
+  }
+
+  if (absence.roleAddedAt || !applied) {
+    return {
+      absence: toAbsenceDto(absence),
+      changed: false
+    };
+  }
+
+  const now = new Date();
+  const result = await fivemFacAbsences.updateOne(
+    {
+      _id: absenceId,
+      botId,
+      roleAddedAt: null,
+      status: { $in: ["approved", "active"] }
+    },
+    {
+      $set: {
+        roleAddedAt: now,
+        updatedAt: now
+      },
+      $push: {
+        audit: auditEntry("role_applied", actorId, null, absence.status, now)
+      }
+    }
+  );
+
+  const updated = await getFivemFacAbsence(absenceId, botId);
+
+  if (!updated) {
+    throw createFacError("Ausência não encontrada.", 404);
+  }
+
+  return {
+    absence: updated,
+    changed: Boolean(result.modifiedCount)
+  };
+}
+
 export async function closeFivemFacAbsence(input: ModerateFivemFacAbsenceInput & { roleRemoved?: boolean }) {
   const { fivemFacAbsences } = await getMongoCollections();
   const absence = await findModeratableAbsence(input.absenceId, input.botId);
   const settings = await getFivemFacSettings(absence.guildId, input.botId);
 
-  ensureApprover(settings, input.moderatorRoleIds);
+  ensureApprover(settings, input.moderatorRoleIds, input);
 
   if (absence.status === "rejected" || absence.status === "finished" || absence.status === "closed") {
     throw createFacError("Esta ausência já foi encerrada.", 409);
@@ -1017,22 +1051,11 @@ function validateAbsenceDates(startDate: string, endDate: string, requireFuture:
 }
 
 export function shouldAutoApproveFivemFacAbsence(settings: Pick<FivemFacSettingsDto, "autoApproveEnabled" | "autoApproveMaxDays" | "autoApproveRoleIds">, startDate: string, endDate: string, requesterRoleIds: string[]) {
-  if (!settings.autoApproveEnabled || !settings.autoApproveRoleIds.length) {
-    return false;
-  }
-
-  const allowedRoles = new Set(settings.autoApproveRoleIds);
-  if (!requesterRoleIds.some((roleId) => allowedRoles.has(roleId))) {
-    return false;
-  }
-
-  const durationMs = absenceDurationMs(startDate, endDate);
-  if (durationMs === null || durationMs < 86_400_000) {
-    return false;
-  }
-
-  return settings.autoApproveMaxDays === null
-    || Math.round(durationMs / 86_400_000) <= settings.autoApproveMaxDays;
+  void settings;
+  void startDate;
+  void endDate;
+  void requesterRoleIds;
+  return false;
 }
 
 export function isFivemFacAbsenceShorterThan24Hours(startDate: string, endDate: string) {
@@ -1327,7 +1350,11 @@ async function findModeratableAbsence(absenceId: string, botId: string) {
   return absence;
 }
 
-function ensureApprover(settings: FivemFacSettingsDto, roleIds: string[]) {
+function ensureApprover(settings: FivemFacSettingsDto, roleIds: string[], access?: { canManageGuild?: boolean; isAdministrator?: boolean }) {
+  if (access?.isAdministrator || access?.canManageGuild) {
+    return;
+  }
+
   const allowed = new Set(settings.approverRoleIds);
 
   if (!roleIds.some((roleId) => allowed.has(roleId))) {

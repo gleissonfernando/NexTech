@@ -37,14 +37,14 @@ test("ausencia de 23 horas e 59 minutos exige aprovacao manual", () => {
   assert.equal(shouldAutoApproveFivemFacAbsence(autoApproveSettings, "2026-08-04T10:00:00.000Z", "2026-08-05T09:59:00.000Z", ["role-auto"]), false);
 });
 
-test("ausencia de exatamente 24 horas segue a regra existente de autoaprovacao", () => {
+test("ausencia de exatamente 24 horas tambem exige aprovacao manual", () => {
   assert.equal(isFivemFacAbsenceShorterThan24Hours("2026-08-04T10:00:00.000Z", "2026-08-05T10:00:00.000Z"), false);
-  assert.equal(shouldAutoApproveFivemFacAbsence(autoApproveSettings, "2026-08-04T10:00:00.000Z", "2026-08-05T10:00:00.000Z", ["role-auto"]), true);
+  assert.equal(shouldAutoApproveFivemFacAbsence(autoApproveSettings, "2026-08-04T10:00:00.000Z", "2026-08-05T10:00:00.000Z", ["role-auto"]), false);
 });
 
-test("ausencia de 24 horas e 1 minuto segue o fluxo normal existente", () => {
+test("ausencia de 24 horas e 1 minuto tambem exige aprovacao manual", () => {
   assert.equal(isFivemFacAbsenceShorterThan24Hours("2026-08-04T10:00:00.000Z", "2026-08-05T10:01:00.000Z"), false);
-  assert.equal(shouldAutoApproveFivemFacAbsence(autoApproveSettings, "2026-08-04T10:00:00.000Z", "2026-08-05T10:01:00.000Z", ["role-auto"]), true);
+  assert.equal(shouldAutoApproveFivemFacAbsence(autoApproveSettings, "2026-08-04T10:00:00.000Z", "2026-08-05T10:01:00.000Z", ["role-auto"]), false);
 });
 
 test("ausencia com data ou horario invalido nao autoaprova", () => {

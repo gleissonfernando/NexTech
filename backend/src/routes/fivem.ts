@@ -14,6 +14,7 @@ import {
     listActiveFivemFacSettings,
     listFivemFacDueAbsences,
     listFivemFacUserAbsences,
+    markFivemFacAbsenceRoleApplied,
     markFivemFacAbsenceFinished,
     markFivemFacAbsenceStarted,
     rejectFivemFacAbsence,
@@ -346,6 +347,8 @@ const panelStateSchema = z.object({
   messageId: optionalSnowflakeSchema
 });
 const moderationSchema = z.object({
+  canManageGuild: z.boolean().optional(),
+  isAdministrator: z.boolean().optional(),
   moderatorId: snowflakeSchema,
   moderatorRoleIds: z.array(snowflakeSchema).default([]),
   reason: z.string().max(800).nullable().optional()
@@ -353,6 +356,10 @@ const moderationSchema = z.object({
 const lifecycleSchema = z.object({
   roleAdded: z.boolean().optional(),
   roleRemoved: z.boolean().optional()
+});
+const roleAppliedSchema = z.object({
+  actorId: snowflakeSchema.nullable().optional(),
+  applied: z.boolean()
 });
 const facPhotoUpload = raw({
   limit: "10mb",
@@ -1227,6 +1234,8 @@ fivemRouter.post("/bot/fac/absences/:absenceId/approve", requireBot, async (req,
       absence: await approveFivemFacAbsence({
         absenceId,
         botId,
+        canManageGuild: input.canManageGuild === true,
+        isAdministrator: input.isAdministrator === true,
         moderatorId: input.moderatorId,
         moderatorRoleIds: input.moderatorRoleIds
       })
@@ -1247,6 +1256,8 @@ fivemRouter.post("/bot/fac/absences/:absenceId/reject", requireBot, async (req, 
       absence: await rejectFivemFacAbsence({
         absenceId,
         botId,
+        canManageGuild: input.canManageGuild === true,
+        isAdministrator: input.isAdministrator === true,
         moderatorId: input.moderatorId,
         moderatorRoleIds: input.moderatorRoleIds,
         reason: input.reason ?? null
@@ -1270,6 +1281,8 @@ fivemRouter.post("/bot/fac/absences/:absenceId/close", requireBot, async (req, r
       absence: await closeFivemFacAbsence({
         absenceId,
         botId,
+        canManageGuild: input.canManageGuild === true,
+        isAdministrator: input.isAdministrator === true,
         moderatorId: input.moderatorId,
         moderatorRoleIds: input.moderatorRoleIds,
         reason: input.reason ?? null,
@@ -1289,6 +1302,21 @@ fivemRouter.post("/bot/fac/absences/:absenceId/start", requireBot, async (req, r
     await assertBotFacLicense(botId);
 
     const result = await markFivemFacAbsenceStarted(absenceId, botId, input.roleAdded !== false);
+
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/fac/absences/:absenceId/role-applied", requireBot, async (req, res, next) => {
+  try {
+    const absenceId = z.string().min(1).parse(req.params.absenceId);
+    const input = roleAppliedSchema.parse(req.body ?? {});
+    const botId = await readRequiredBotId(req);
+    await assertBotFacLicense(botId);
+
+    const result = await markFivemFacAbsenceRoleApplied(absenceId, botId, input.applied, input.actorId ?? null);
 
     return res.json(result);
   } catch (error) {

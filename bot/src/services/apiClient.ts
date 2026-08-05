@@ -4725,17 +4725,17 @@ export class ApiClient {
     return data.absence;
   }
 
-  async approveFivemFacAbsence(absenceId: string, input: { moderatorId: string; moderatorRoleIds: string[] }) {
+  async approveFivemFacAbsence(absenceId: string, input: { canManageGuild?: boolean; isAdministrator?: boolean; moderatorId: string; moderatorRoleIds: string[] }) {
     const { data } = await this.http.post<{ absence: FivemFacAbsence }>(`/fivem/bot/fac/absences/${absenceId}/approve`, input);
     return data.absence;
   }
 
-  async rejectFivemFacAbsence(absenceId: string, input: { moderatorId: string; moderatorRoleIds: string[]; reason: string }) {
+  async rejectFivemFacAbsence(absenceId: string, input: { canManageGuild?: boolean; isAdministrator?: boolean; moderatorId: string; moderatorRoleIds: string[]; reason: string }) {
     const { data } = await this.http.post<{ absence: FivemFacAbsence }>(`/fivem/bot/fac/absences/${absenceId}/reject`, input);
     return data.absence;
   }
 
-  async closeFivemFacAbsence(absenceId: string, input: { moderatorId: string; moderatorRoleIds: string[]; reason?: string | null; roleRemoved?: boolean }) {
+  async closeFivemFacAbsence(absenceId: string, input: { canManageGuild?: boolean; isAdministrator?: boolean; moderatorId: string; moderatorRoleIds: string[]; reason?: string | null; roleRemoved?: boolean }) {
     const { data } = await this.http.post<{ absence: FivemFacAbsence }>(`/fivem/bot/fac/absences/${absenceId}/close`, input);
     return data.absence;
   }
@@ -4744,6 +4744,11 @@ export class ApiClient {
     const { data } = await this.http.post<FivemFacLifecycleResult>(`/fivem/bot/fac/absences/${absenceId}/start`, {
       roleAdded
     });
+    return data;
+  }
+
+  async markFivemFacAbsenceRoleApplied(absenceId: string, input: { actorId?: string | null; applied: boolean }) {
+    const { data } = await this.http.post<FivemFacLifecycleResult>(`/fivem/bot/fac/absences/${absenceId}/role-applied`, input);
     return data;
   }
 
