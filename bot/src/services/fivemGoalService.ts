@@ -41,9 +41,10 @@ const EDIT_RECORD_SELECT_CUSTOM_ID_PREFIX = `${PREFIX}:edit:record`;
 const EDIT_REASON_MODAL_PREFIX = `${PREFIX}:edit:reason`;
 const EDIT_CONFIRM_PREFIX = `${PREFIX}:edit:confirm`;
 const MANAGEMENT_PREFIX = `${PREFIX}:manage`;
-const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp)(?:\?.*)?$/i;
-const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif)(?:\?.*)?$/i;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const pendingFarmItems = new Set<string>();
+const processedGoalImageTriggers = new Map<string, number>();
 const pendingFarmModalContexts = new Map<string, FarmComponentContext & { expiresAt: number }>();
 const pendingEditSelections = new Map<string, { entries: FivemGoalEntry[]; expiresAt: number; guildId: string; managerId: string; targetUserId: string }>();
 const pendingEditConfirmations = new Map<string, { entry: FivemGoalEntry; expiresAt: number; guildId: string; managerId: string; managerName: string; reason: string; targetUserId: string }>();
@@ -350,51 +351,26 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
     return false;
   }
 
-  if (goalChannel.userId !== message.author.id) {
-    await message.reply("Essa call/canal de meta pertence a outro usuário. Envie sua foto apenas no seu canal individual de meta.").catch(() => null);
-    await context.api.postLog({
-      guildId: message.guild.id,
-      message: "Foto de meta enviada no canal individual errado.",
-      metadata: {
-        channelId: message.channel.id,
-        ownerId: goalChannel.userId
-      },
-      type: "fivem.goals.photo_wrong_channel",
-      userId: message.author.id
-    }).catch(() => null);
-    return true;
-  }
+  const image = message.attachments.find(isAllowedGoalImage);
+  if (!image) return true;
 
   const settings = await context.api.getFivemGoalSettings(message.guild.id).catch(() => null);
-  if (!settings?.enabled) return false;
+  if (!settings?.enabled) return true;
 
-  if (settings.setRequestEnabled && !(await hasApprovedSetRegistration(context, message.guild.id, message.author.id))) {
+  const authorized = message.author.id === goalChannel.userId || await canSubmitGoalImageMessage(message, settings);
+  if (!authorized) return true;
+
+  if (settings.setRequestEnabled && !(await hasApprovedSetRegistration(context, message.guild.id, goalChannel.userId))) {
     await quarantineUnregisteredFarmChannel(message, context, goalChannel.userId);
     return true;
   }
 
-  if (!message.attachments.size) return false;
+  const triggerKey = goalImageTriggerKey(message.guild.id, message.channel.id, message.id, image);
+  if (isGoalImageTriggerProcessed(triggerKey)) return true;
+  markGoalImageTriggerProcessed(triggerKey);
 
-  const image = message.attachments.find(isAllowedGoalImage);
-
-  if (!image) {
-    await message.reply("Envie uma imagem válida em PNG, JPG, JPEG ou WEBP no seu canal de meta. Outros arquivos não são aceitos.").catch(() => null);
-    await context.api.postLog({
-      guildId: message.guild.id,
-      message: "Foto de meta recusada por formato inválido.",
-      metadata: {
-        channelId: message.channel.id,
-        attachmentCount: message.attachments.size,
-        allowedFormats: ["png", "jpg", "jpeg", "webp"]
-      },
-      type: "fivem.goals.photo_invalid",
-      userId: message.author.id
-    }).catch(() => null);
-    return true;
-  }
-
-  const pendingCorrections = await context.api.getPendingFivemGoalCorrections(message.guild.id, message.author.id, message.channel.id).catch(() => []);
-  const reviewPayload = createImageReviewPayload(message.author.id, message.channel.id, message.id, image.id, image.url, settings, pendingCorrections, message.guild);
+  const pendingCorrections = await context.api.getPendingFivemGoalCorrections(message.guild.id, goalChannel.userId, message.channel.id).catch(() => []);
+  const reviewPayload = createImageReviewPayload(goalChannel.userId, message.channel.id, message.id, image.id, image.url, settings, pendingCorrections, message.guild);
   await message.reply(reviewPayload);
   await context.api.postLog({
     guildId: message.guild.id,
@@ -402,10 +378,11 @@ export async function handleFivemGoalMessage(message: Message, context: BotConte
     metadata: {
       channelId: message.channel.id,
       imageUrl: image.url,
+      sourceAuthorId: message.author.id,
       reviewDelivery: "channel"
     },
     type: "fivem.goals.photo_received",
-    userId: message.author.id
+    userId: goalChannel.userId
   }).catch(() => null);
   return true;
 }
@@ -619,6 +596,19 @@ async function cancelEditMeta(interaction: ChatInputCommandInteraction, context:
 async function canUseGoalCorrectionCommand(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction, settings: FivemGoalSettings) {
   if (!interaction.guild) return false;
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+  const managerRoleIds = new Set([
+    settings.correctionManagement?.managerRoleId,
+    settings.managerRoleId,
+    ...(settings.managerRoleIds ?? [])
+  ].filter((value): value is string => Boolean(value)));
+  if (managerRoleIds.size && member.roles.cache.some((role) => managerRoleIds.has(role.id))) return true;
+  return settings.correctionManagement?.allowAdministrators === true && member.permissions.has(PermissionFlagsBits.Administrator);
+}
+
+async function canSubmitGoalImageMessage(message: Message, settings: FivemGoalSettings) {
+  if (!message.guild) return false;
+  const member = await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member) return false;
   const managerRoleIds = new Set([
     settings.correctionManagement?.managerRoleId,
@@ -1906,7 +1896,10 @@ async function recoverFarmImageContext(
   const goalChannel = await context.api.getFivemGoalChannelByChannel(sourceChannelId).catch(() => null);
   if (!goalChannel) return null;
   const sourceMessage = await sourceChannel.messages.fetch(sourceMessageId).catch(() => null);
-  if (!sourceMessage || sourceMessage.author.id !== goalChannel.userId) return null;
+  if (!sourceMessage) return null;
+  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
+  const authorized = sourceMessage.author.id === goalChannel.userId || (settings ? await canSubmitGoalImageMessage(sourceMessage, settings) : false);
+  if (!authorized) return null;
   const image = sourceMessage.attachments.find(isAllowedGoalImage);
   if (!image) return null;
 
@@ -2047,9 +2040,35 @@ function noRecordsPayload(userId: string, guild: Guild | null) {
   };
 }
 
-function isAllowedGoalImage(attachment: Attachment) {
+export function isAllowedGoalImage(attachment: Attachment) {
   const contentType = attachment.contentType?.split(";")[0]?.toLowerCase() ?? "";
   return ALLOWED_IMAGE_TYPES.has(contentType) || ALLOWED_IMAGE_EXTENSIONS.test(attachment.url);
+}
+
+function goalImageTriggerKey(guildId: string, channelId: string, messageId: string, attachment: Attachment) {
+  return [guildId, channelId, messageId, attachment.id, attachment.url].join(":");
+}
+
+function isGoalImageTriggerProcessed(key: string) {
+  cleanupProcessedGoalImageTriggers();
+  return processedGoalImageTriggers.has(key);
+}
+
+function markGoalImageTriggerProcessed(key: string) {
+  cleanupProcessedGoalImageTriggers();
+  processedGoalImageTriggers.set(key, Date.now() + 60 * 60 * 1000);
+}
+
+function cleanupProcessedGoalImageTriggers() {
+  const now = Date.now();
+  for (const [key, expiresAt] of processedGoalImageTriggers) {
+    if (expiresAt <= now) processedGoalImageTriggers.delete(key);
+  }
+  if (processedGoalImageTriggers.size <= 1000) return;
+  const overflow = processedGoalImageTriggers.size - 1000;
+  for (const key of [...processedGoalImageTriggers.keys()].slice(0, overflow)) {
+    processedGoalImageTriggers.delete(key);
+  }
 }
 
 function parseGoalNumericValue(value: string) {

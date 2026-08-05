@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -75,6 +75,91 @@ test("painel de farm registrado usa icone do servidor no lugar da foto enviada",
   assert.doesNotMatch(serialized, /https:\/\/cdn\.discordapp\.com\/image\.png/);
 });
 
+test("gatilho de meta ignora texto no canal de farm sem responder ou logar", async () => {
+  const calls = { logs: 0, replies: 0, settings: 0 };
+  const message = createGoalMessageMock({ attachments: [], authorId: "111111111111111111", ownerId: "111111111111111111", reply: async () => { calls.replies++; } });
+  const context = createGoalContextMock({
+    getFivemGoalSettings: async () => { calls.settings++; return { enabled: true }; },
+    postLog: async () => { calls.logs++; }
+  });
+
+  const handled = await handleFivemGoalMessage(message as any, context as any);
+
+  assert.equal(handled, true);
+  assert.equal(calls.replies, 0);
+  assert.equal(calls.logs, 0);
+  assert.equal(calls.settings, 0);
+});
+
+test("gatilho de meta ignora anexos que nao sao imagem valida em silencio", async () => {
+  const calls = { logs: 0, replies: 0 };
+  const message = createGoalMessageMock({
+    attachments: [{ contentType: "application/pdf", id: "att-pdf", url: "https://cdn.discordapp.com/prova.pdf" }],
+    authorId: "111111111111111111",
+    ownerId: "111111111111111111",
+    reply: async () => { calls.replies++; }
+  });
+  const context = createGoalContextMock({ postLog: async () => { calls.logs++; } });
+
+  const handled = await handleFivemGoalMessage(message as any, context as any);
+
+  assert.equal(handled, true);
+  assert.equal(calls.replies, 0);
+  assert.equal(calls.logs, 0);
+});
+
+test("gatilho de meta ignora imagem enviada por usuario nao autorizado", async () => {
+  const calls = { logs: 0, replies: 0 };
+  const message = createGoalMessageMock({
+    attachments: [{ contentType: "image/png", id: "att-img", url: "https://cdn.discordapp.com/prova.png" }],
+    authorId: "222222222222222222",
+    ownerId: "111111111111111111",
+    reply: async () => { calls.replies++; }
+  });
+  const context = createGoalContextMock({
+    getFivemGoalSettings: async () => ({ correctionManagement: { allowAdministrators: false }, enabled: true, managerRoleIds: [] }),
+    postLog: async () => { calls.logs++; }
+  });
+
+  const handled = await handleFivemGoalMessage(message as any, context as any);
+
+  assert.equal(handled, true);
+  assert.equal(calls.replies, 0);
+  assert.equal(calls.logs, 0);
+});
+
+test("gatilho de meta publica painel quando dono envia imagem valida", async () => {
+  const calls = { logs: [] as any[], replies: [] as any[] };
+  const message = createGoalMessageMock({
+    attachments: [{ contentType: "image/gif", id: "att-gif", url: "https://cdn.discordapp.com/prova.gif" }],
+    authorId: "111111111111111111",
+    id: "333333333333333333",
+    ownerId: "111111111111111111",
+    reply: async (payload: any) => { calls.replies.push(payload); }
+  });
+  const context = createGoalContextMock({
+    getFivemGoalSettings: async () => ({ enabled: true, items: [], setRequestEnabled: false }),
+    getPendingFivemGoalCorrections: async () => [],
+    postLog: async (payload: any) => { calls.logs.push(payload); }
+  });
+
+  const handled = await handleFivemGoalMessage(message as any, context as any);
+
+  assert.equal(handled, true);
+  assert.equal(calls.replies.length, 1);
+  assert.match(JSON.stringify(calls.replies[0]), /Registrar Farm/);
+  assert.equal(calls.logs.length, 1);
+  assert.equal(calls.logs[0].type, "fivem.goals.photo_received");
+  assert.equal(calls.logs[0].userId, "111111111111111111");
+});
+
+test("validacao de imagem aceita MIME e extensoes permitidas", () => {
+  assert.equal(isAllowedGoalImage({ contentType: "image/png; charset=binary", url: "https://cdn.discordapp.com/file.bin" } as any), true);
+  assert.equal(isAllowedGoalImage({ contentType: null, url: "https://cdn.discordapp.com/file.jpeg?token=1" } as any), true);
+  assert.equal(isAllowedGoalImage({ contentType: "image/gif", url: "https://cdn.discordapp.com/file.dat" } as any), true);
+  assert.equal(isAllowedGoalImage({ contentType: "application/zip", url: "https://cdn.discordapp.com/file.zip" } as any), false);
+});
+
 test("modal de registro de farm inclui select de item e campo de quantidade", () => {
   const modal = createGoalRegistrationModal("fivem_goal:modal:source:select:user:none", [
     { enabled: true, id: "dirty-money", name: "Dinheiro Sujo", emoji: null, category: "Registrar dinheiro" },
@@ -96,6 +181,59 @@ test("sala de farm salva só é reutilizada quando o canal ainda existe e é tex
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => true, isTextBased: () => true, messages: {} }), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => true, messages: { fetch: async () => null } }), true);
 });
+
+function createGoalContextMock(overrides: Record<string, any> = {}) {
+  return {
+    api: {
+      deleteFivemGoalChannelByChannel: async () => null,
+      getFivemGoalChannelByChannel: async () => ({ userId: "111111111111111111" }),
+      getFivemGoalSettings: async () => ({ enabled: true, items: [], setRequestEnabled: false }),
+      getLatestManualRegistrationSubmission: async () => ({ status: "approved" }),
+      getPendingFivemGoalCorrections: async () => [],
+      postLog: async () => null,
+      ...overrides
+    }
+  };
+}
+
+function createGoalMessageMock(input: {
+  attachments: Array<{ contentType: string | null; id: string; url: string }>;
+  authorId: string;
+  id?: string;
+  ownerId: string;
+  reply?: (payload: any) => Promise<void>;
+}) {
+  const attachmentList = input.attachments.map((attachment) => ({ ...attachment }));
+  return {
+    attachments: {
+      find: (predicate: (attachment: any) => boolean) => attachmentList.find(predicate),
+      size: attachmentList.length
+    },
+    author: { bot: false, id: input.authorId },
+    channel: {
+      id: "222222222222222222",
+      isDMBased: () => false,
+      isSendable: () => true,
+      send: async () => null
+    },
+    delete: async () => null,
+    guild: {
+      client: {
+        emojis: { cache: { find: () => null, get: () => null } },
+        guilds: { cache: { get: () => null } },
+        user: { displayAvatarURL: () => null }
+      },
+      emojis: { cache: { find: () => null, get: () => null } },
+      id: "999999999999999999",
+      iconURL: () => null,
+      members: {
+        fetch: async () => ({ permissions: { has: () => false }, roles: { cache: { some: () => false } } })
+      }
+    },
+    id: input.id ?? `msg-${Math.random().toString(36).slice(2)}`,
+    reply: input.reply ?? (async () => undefined)
+  };
+}
 
 test("aprovação remove vínculo antigo quando canal de farm salvo foi apagado", async () => {
   const calls = { deleted: [] as string[], saved: [] as string[] };
